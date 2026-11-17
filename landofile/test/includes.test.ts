@@ -6,14 +6,15 @@ import { isAbsolute, join } from "node:path";
 import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
 import type { GitTransport } from "@lando/source-acquisition";
 import { Effect } from "effect";
-import { getLandofileIncludeSources, getLocalIncludePaths } from "../src/include-provenance.ts";
 import type { ResolveIncludesError } from "../src/includes.ts";
 import {
   authoredRecipe,
   resolveAuthoredIncludes as resolveLandofileIncludesPackage,
 } from "./include-pipeline.ts";
+import { includeSourcesOf, localIncludePathsOf } from "./provenance-support.ts";
 import {
   loadTestLandofileLayers as loadLandofileLayers,
+  loadTestLandofileLayersCarrier,
   makeNpmPackageTarball,
   makeTestLandofilePorts,
   makeTestLandofileStateStore,
@@ -46,8 +47,8 @@ const runResolve = (
   userIncludesDir = cacheRoot,
 ) => Effect.runPromise(resolveEffect(landofile, appRoot, cacheRoot, userIncludesDir));
 
-const serviceType = (landofile: LandofileShape, name: string) =>
-  landofile.services?.[ServiceName.make(name)]?.type;
+const serviceType = (compiled: { readonly document: LandofileShape }, name: string) =>
+  compiled.document.services?.[ServiceName.make(name)]?.type;
 
 const includeErrorKind = (error: ResolveIncludesError): string => {
   if (error._tag !== "LandofileIncludeError") throw new Error(`expected include error, got ${error._tag}`);
@@ -104,7 +105,7 @@ describe("resolveLandofileIncludes", () => {
       cacheRoot,
     );
 
-    expect(result).toEqual({
+    expect(result.document).toEqual({
       name: "demo",
       services: { [ServiceName.make("api")]: { type: "node", primary: true } },
     });
@@ -123,7 +124,7 @@ describe("resolveLandofileIncludes", () => {
       }),
     );
     // Then
-    expect(result.services?.[ServiceName.make("api")]?.primary).toBe(false);
+    expect(result.document.services?.[ServiceName.make("api")]?.primary).toBe(false);
   });
 
   test("rejects recipe declarations in fragments rather than exporting bindings", async () => {
@@ -216,13 +217,13 @@ describe("resolveLandofileIncludes", () => {
     );
 
     // Then: nesting and precedence match ordinary includes, while authored paths stay app-relative.
-    expect(result.services?.[ServiceName.make("api")]).toMatchObject({
+    expect(result.document.services?.[ServiceName.make("api")]).toMatchObject({
       type: "php",
       envFile: ["./app.env"],
       build: { context: "./docker" },
     });
     expect(serviceType(result, "cache")).toBe("redis");
-    expect(getLandofileIncludeSources(result)).toEqual([
+    expect(includeSourcesOf(result)).toEqual([
       {
         id: "user:corp/base.yml",
         sha256: createHash("sha256")
@@ -252,7 +253,7 @@ describe("resolveLandofileIncludes", () => {
     const result = await runResolve({ name: "demo" }, appRoot, cacheRoot, userIncludesDir);
 
     // Then: the profile has no effect.
-    expect(result.services).toBeUndefined();
+    expect(result.document.services).toBeUndefined();
   });
 
   test("preserves user include provenance through layered Landofile loading", async () => {
@@ -262,7 +263,7 @@ describe("resolveLandofileIncludes", () => {
 
     // When: the complete layered loader resolves the app.
     const landofile = await Effect.runPromise(
-      loadLandofileLayers(appRoot, join(appRoot, ".lando.yml"), {
+      loadTestLandofileLayersCarrier(appRoot, join(appRoot, ".lando.yml"), {
         ports: makeTestLandofilePorts(cacheRoot, userIncludesDir),
         stateStore: makeTestLandofileStateStore(),
         templates: { modules: [] },
@@ -270,7 +271,7 @@ describe("resolveLandofileIncludes", () => {
     );
 
     // Then: public provenance remains logical after the layer merge.
-    expect(getLandofileIncludeSources(landofile)).toEqual([
+    expect(includeSourcesOf(landofile)).toEqual([
       {
         id: "user:corp.yml",
         sha256: createHash("sha256").update("services:\n  api:\n    type: node\n").digest("hex"),
@@ -589,7 +590,7 @@ describe("resolveLandofileIncludes", () => {
 
     const result = await runResolve({ includes: ["./parent.yml"] }, appRoot, cacheRoot);
 
-    expect(result).toEqual({
+    expect(result.document).toEqual({
       services: { [ServiceName.make("api")]: { type: "node", primary: true } },
     });
   });
@@ -699,7 +700,7 @@ describe("resolveLandofileIncludes", () => {
 
     // When
     const resolved = await runResolve({ includes: ["./outer.yml"] }, appRoot, cacheRoot);
-    const localIncludePaths = getLocalIncludePaths(resolved);
+    const localIncludePaths = localIncludePathsOf(resolved);
 
     // Then every remembered path stays an absolute filesystem path, because the app-plan cache
     // invalidator realpaths and root-checks them; an authored relative spec would resolve wrong.

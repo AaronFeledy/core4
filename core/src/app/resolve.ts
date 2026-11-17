@@ -15,8 +15,8 @@ import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-stat
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { runtimeServiceContext } from "@lando/engine/runtime/observability";
 import { scopedLandofileRuntimeInputs } from "@lando/engine/services/landofile-live";
-import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { withAppDiscovery } from "@lando/landofile/operation-discovery";
+import { provenanceOf } from "@lando/landofile/provenance";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import type { App, AppSelector } from "@lando/sdk/app";
 import { mapFailures } from "@lando/sdk/command-result";
@@ -85,12 +85,12 @@ const planFromShape = Effect.fnUntraced(function* (
   const sourcePath = join(appRoot, ".lando.yml");
   const authored = yield* Schema.encodeEffect(LandofileShape)(shape, { onExcessProperty: "error" });
   const landofile = yield* loadAuthoredDocuments(
-    [{ file: sourcePath, value: copyLandofileProvenance(shape, authored) }],
+    [{ file: sourcePath, value: authored, provenance: provenanceOf(shape) }],
     { appRoot, file: sourcePath },
     yield* scopedLandofileRuntimeInputs,
   );
   yield* assertUserAppIdNotReserved(landofile.document);
-  yield* assertLandoVersionConstraint(landofile.document, { sourcePath });
+  yield* assertLandoVersionConstraint(landofile.document, provenanceOf(landofile), { sourcePath });
   return yield* planResolvedLandofile(landofile, appRoot);
 }, mapFailures(toAppResolveError));
 

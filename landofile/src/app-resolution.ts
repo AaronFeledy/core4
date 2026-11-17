@@ -8,6 +8,7 @@ import type { AbsolutePath, AppPlan, AppRef, LandofileShape, LoadScopedLandofile
 import { normalizeAppSlug } from "@lando/sdk/schema";
 import type { LandofileService, UserLandofileError } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
+import { type LandofileProvenance, provenanceOf } from "./provenance.ts";
 
 export type { UserLandofileError };
 
@@ -44,6 +45,7 @@ export interface UserAppResolutionOptions {
   readonly inputs?: LandofileRuntimeInputs;
   readonly assertVersionConstraint: (
     landofile: LandofileShape,
+    provenance: LandofileProvenance | undefined,
     sourcePath?: string,
   ) => Effect.Effect<void, LandofileParseError | LandofileVersionConstraintError>;
 }
@@ -73,7 +75,7 @@ export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAp
       }),
       Effect.tap(({ landofile }) => assertUserAppIdNotReserved(landofile.document)),
       Effect.tap(({ landofile, sourcePath }) =>
-        options.assertVersionConstraint(landofile.document, sourcePath),
+        options.assertVersionConstraint(landofile.document, provenanceOf(landofile), sourcePath),
       ),
       Effect.map(({ landofile }) => landofile),
     );
@@ -92,7 +94,9 @@ export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAp
           )
     ).pipe(
       Effect.tap((landofile) => assertUserAppIdNotReserved(landofile.document)),
-      Effect.tap((landofile) => options.assertVersionConstraint(landofile.document, filePath)),
+      Effect.tap((landofile) =>
+        options.assertVersionConstraint(landofile.document, provenanceOf(landofile), filePath),
+      ),
     );
   };
 

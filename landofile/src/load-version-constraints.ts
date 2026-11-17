@@ -1,33 +1,31 @@
 import { LandofileParseError } from "@lando/sdk/errors";
-import { isPlainRecord, withValueOrigins } from "@lando/sdk/landofile";
 import { Effect } from "effect";
 import { type LoadFailureRecorder, loadPathBlocked } from "./load-failures.ts";
 import { type LandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
-import { rememberOrigins } from "./pipeline/origins.ts";
-import {
-  type VersionConstraintEntry,
-  getVersionConstraintEntries,
-  isValidSemverRange,
-} from "./version-constraint.ts";
+import { authoredDocumentFrom } from "./provenance.ts";
+import { type VersionConstraintEntry, isValidSemverRange } from "./version-constraint.ts";
 
+/**
+ * Materialize the ranges recorded while composing. Each `lando:` value is
+ * re-evaluated in isolation with an origin that names the entry's own file, so
+ * a whole-value expression is attributed where it was authored.
+ */
 export const loadVersionConstraints = Effect.fnUntraced(function* (
-  document: Record<string, unknown>,
-  file: string,
+  entries: readonly VersionConstraintEntry[],
   scope: LandofileLoadScope & { readonly recorder: LoadFailureRecorder },
 ) {
   const constraints: VersionConstraintEntry[] = [];
-  for (const entry of getVersionConstraintEntries(document, file)) {
+  for (const entry of entries) {
     const source = { file: entry.source, layer: entry.layer, path: ["lando"] };
     if (loadPathBlocked(scope.recorder, source)) continue;
     const authored = { lando: entry.range };
-    const origins = withValueOrigins(authored, (path) => ({ ...source, path })).origins;
     const resolved = yield* materializeLandofileLayer(
       entry.source,
-      rememberOrigins(authored, origins),
+      authoredDocumentFrom(authored, source),
       scope,
     );
     if (loadPathBlocked(scope.recorder, source)) continue;
-    const range = isPlainRecord(resolved) ? resolved.lando : undefined;
+    const range = resolved.value.lando;
     if (typeof range !== "string" || !isValidSemverRange(range)) {
       scope.recorder.record(
         new LandofileParseError({

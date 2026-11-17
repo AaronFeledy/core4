@@ -11,7 +11,8 @@ import { ToolingEnvironment, type ValidationIssuePath } from "@lando/sdk/schema"
 import { Predicate, Result, Schema, SchemaIssue } from "effect";
 import { keyValueEntryPath } from "./load-expression-shape.ts";
 import type { LoadFailureRecorder } from "./load-failures.ts";
-import type { AuthoredOrigin, PreparedOverlay } from "./pipeline/prepare.ts";
+import type { PreparedOverlay } from "./pipeline/prepare.ts";
+import type { AuthoredOrigin } from "./provenance.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
 import { landofileIssuesFromSchema } from "./validation-suggestions.ts";
 

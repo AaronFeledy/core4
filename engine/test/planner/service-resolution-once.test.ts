@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { ServiceName } from "@lando/sdk/schema";
 import { PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { planApp } from "../plan-app.ts";
+import { withAppRoot } from "../provenance-support.ts";
 
 test("planApp resolves each service exactly once", async () => {
   // Given
@@ -30,7 +30,7 @@ test("planApp resolves each service exactly once", async () => {
         };
       }),
   };
-  const landofile = rememberLandofileAppRoot(
+  const landofile = withAppRoot(
     {
       name: "counted",
       services: {

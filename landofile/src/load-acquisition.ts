@@ -3,44 +3,60 @@ import {
   type ValueOrigins,
   isLandofileOverride,
   isPlainRecord,
-  mergeLandofiles,
+  mergeValuesWithOrigins,
   override,
+  valueOriginAt,
   withValueOrigins,
 } from "@lando/sdk/landofile";
+import { LandofileShape } from "@lando/sdk/schema";
 import { Result } from "effect";
-import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { attributeIncludeError } from "./include-guard.ts";
 import { decodeIncludeAcquisition, includeAcquisitionView } from "./include-layer-overlays.ts";
 import { type LoadFailureRecorder, loadPathBlocked } from "./load-failures.ts";
-import { getOrigins, rememberOrigins } from "./pipeline/origins.ts";
-import type { AuthoredOrigin } from "./pipeline/prepare.ts";
+import type { AuthoredDocument, AuthoredOrigin } from "./provenance.ts";
 import { assertCompatibleIncludeFields } from "./tooling-include-entries.ts";
 import { validationErrorFromCause } from "./validation.ts";
 
+const ACQUISITION_KEYS = ["includes", "include", "toolingIncludes", "lando"] as const;
+
 export const prepareIncludeAcquisition = (
-  document: Record<string, unknown>,
+  document: AuthoredDocument,
   context: { readonly recorder: LoadFailureRecorder; readonly source: AuthoredOrigin },
-): Record<string, unknown> => {
-  if (["includes", "include", "toolingIncludes", "lando"].every((key) => document[key] === undefined))
-    return document;
+): AuthoredDocument => {
+  if (ACQUISITION_KEYS.every((key) => document.value[key] === undefined)) return document;
   if (context.recorder.blocked.length === 0) {
-    const acquisition = decodeIncludeAcquisition(document);
+    const acquisition = decodeIncludeAcquisition(document.value);
     if (Result.isSuccess(acquisition) && assertCompatibleIncludeFields(acquisition.success) === undefined)
       return document;
   }
-  const origins =
-    getOrigins(document) ?? withValueOrigins(document, (path) => ({ ...context.source, path })).origins;
+  const origins = document.provenance.origins;
   const children = new Map(origins.children);
-  const projection = mergeLandofiles([
-    Object.fromEntries(
-      ["includes", "include", "toolingIncludes", "lando"].flatMap((key) =>
-        Object.hasOwn(document, key) ? [[key, document[key]]] : [],
+  // Rebuild the projection with the document's own origins; directive materialization
+  // must not relocate authored paths.
+  const projection = mergeValuesWithOrigins(
+    LandofileShape,
+    withValueOrigins({}, () => origins.source),
+    {
+      value: Object.fromEntries(
+        ACQUISITION_KEYS.flatMap((key) =>
+          Object.hasOwn(document.value, key) ? [[key, document.value[key]]] : [],
+        ),
       ),
-    ),
-  ]);
-  const result = { ...document };
-  for (const key of ["includes", "include", "toolingIncludes", "lando"] as const) {
-    const value = projection[key];
+      origins: {
+        ...origins,
+        children: new Map(
+          ACQUISITION_KEYS.flatMap((key) => {
+            const node = origins.children.get(key);
+            return node === undefined ? [] : [[key, node] as const];
+          }),
+        ),
+      },
+    },
+  );
+  const projected = isPlainRecord(projection.value) ? projection.value : {};
+  const result = { ...document.value };
+  for (const key of ACQUISITION_KEYS) {
+    const value = projected[key];
     if (value === undefined) continue;
     let parts: [string | number | undefined, unknown][];
     if (Array.isArray(value)) parts = value.map((entry, index) => [index, entry]);
@@ -50,10 +66,7 @@ export const prepareIncludeAcquisition = (
     const entryOrigins = new Map<string | number, ValueOrigins<AuthoredOrigin>>();
     for (const [part, entry] of parts) {
       const path = part === undefined ? [key] : [key, part];
-      const source = origins.children.get(key)?.children.get(part ?? "")?.source ?? {
-        ...context.source,
-        path,
-      };
+      const source = valueOriginAt(projection.origins, path).source;
       if (loadPathBlocked(context.recorder, source)) continue;
       let candidateValue = entry;
       if (typeof part === "number") candidateValue = [entry];
@@ -96,22 +109,23 @@ export const prepareIncludeAcquisition = (
         );
         continue;
       }
-      const node =
-        part === undefined ? origins.children.get(key) : origins.children.get(key)?.children.get(part);
-      if (node !== undefined && part !== undefined)
-        entryOrigins.set(typeof part === "number" ? accepted.length : part, node);
+      if (part !== undefined)
+        entryOrigins.set(
+          typeof part === "number" ? accepted.length : part,
+          valueOriginAt(projection.origins, [key, part]),
+        );
       accepted.push([part, entry]);
     }
     if (Array.isArray(value)) {
       const entries = accepted.map(([, entry]) => entry);
-      result[key] = isLandofileOverride(document[key]) ? override(entries) : entries;
+      result[key] = isLandofileOverride(document.value[key]) ? override(entries) : entries;
     } else if (key === "toolingIncludes" && isPlainRecord(value))
       result[key] = Object.fromEntries(accepted.map(([part, entry]) => [part, entry]));
     else if (accepted.length === 0) delete result[key];
     else result[key] = value;
-    const node = children.get(key);
+    const node = projection.origins.children.get(key);
     if (node !== undefined && (Array.isArray(value) || key === "toolingIncludes"))
       children.set(key, { ...node, children: entryOrigins });
   }
-  return rememberOrigins(copyLandofileProvenance(document, result), { ...origins, children });
+  return { value: result, provenance: { ...document.provenance, origins: { ...origins, children } } };
 };

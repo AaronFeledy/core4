@@ -3,7 +3,7 @@ import { Result, Schema } from "effect";
 import { analyzeComposeRejections } from "./compose/rejections.ts";
 import { attributeLintIssue } from "./lint-source.ts";
 import { pruneRejectedKeys, rejectionViolation, violationsFromSchema } from "./lint-violations.ts";
-import type { SourceDocument } from "./pipeline/source-table.ts";
+import type { SourceDocument } from "./provenance.ts";
 import {
   UNSUPPORTED_REMEDIATION,
   scanToolingForUnsupported,

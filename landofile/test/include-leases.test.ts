@@ -6,7 +6,7 @@ import type { StateStoreShape } from "@lando/sdk/services";
 import type { GitTransport } from "@lando/source-acquisition";
 import { Effect, Schema } from "effect";
 import { loadLandofileLayers } from "../src/service.ts";
-import { resolveAuthoredIncludes, updateAuthoredIncludes } from "./include-pipeline.ts";
+import { resolveAuthoredDocument, updateAuthoredIncludes } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const Lease = Schema.Struct({
@@ -65,7 +65,7 @@ test.each(["direct", "layers", "update"] as const)(
       switch (mode) {
         case "direct":
           await Effect.runPromise(
-            resolveAuthoredIncludes({
+            resolveAuthoredDocument({
               appRoot: root,
               cacheRoot,
               ports,

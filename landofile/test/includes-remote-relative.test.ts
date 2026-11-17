@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { resolveAuthoredIncludes, updateAuthoredIncludes } from "./include-pipeline.ts";
+import { resolveAuthoredDocument, updateAuthoredIncludes } from "./include-pipeline.ts";
 import {
   gitDeps,
   makeNpmPackageTarball,
@@ -61,7 +61,7 @@ test("warm git symlink fragment keeps relative children inside its snapshot", as
     `includes:\n${entries.map((entry) => `  - source: github:acme/shared/${entry.path}\n    version: ${entry.version}\n    resolved: ${SHA}\n    checksum: ${new Bun.CryptoHasher("sha256").update(entry.content).digest("hex")}\n`).join("")}`,
   );
   const loaded = await Effect.runPromise(
-    resolveAuthoredIncludes({
+    resolveAuthoredDocument({
       ...options(),
       landofile: {
         includes: [{ source: "github:acme/shared", path: "fragments/parent.yml", version: "main" }],
@@ -84,7 +84,7 @@ for (const indirect of [false, true]) {
         },
       }),
     };
-    const error = await Effect.runPromise(Effect.flip(resolveAuthoredIncludes(input)));
+    const error = await Effect.runPromise(Effect.flip(resolveAuthoredDocument(input)));
     expect(error).toMatchObject({ _tag: "LandofileIncludeError", kind: "cycle" });
   });
 }
@@ -123,11 +123,11 @@ for (const kind of ["git", "npm"] as const) {
       landofile: { includes: [{ source, path: "fragments/parent.yml", version: "main" }] },
       deps,
     };
-    await Effect.runPromise(resolveAuthoredIncludes(input));
+    await Effect.runPromise(resolveAuthoredDocument(input));
     const acquisitions = calls.length;
     // Offline warm reload: keep registry transport for index lookup, drop fetch activity via deps.
     const loaded = await Effect.runPromise(
-      resolveAuthoredIncludes({
+      resolveAuthoredDocument({
         ...input,
         deps: kind === "npm" ? registry : {},
       }),
@@ -163,7 +163,7 @@ for (const child of ["../../outside.yml", "/outside.yml"]) {
         },
       }),
     };
-    const error = await Effect.runPromise(Effect.flip(resolveAuthoredIncludes(input)));
+    const error = await Effect.runPromise(Effect.flip(resolveAuthoredDocument(input)));
     expect(error).toMatchObject({ _tag: "LandofileIncludeError", kind: "outside-root" });
     expect(await Bun.file(join(root, ".lando.lock.yml")).exists()).toBe(false);
   });
@@ -183,7 +183,7 @@ test("parent refresh moves descendant selectors to the refreshed revision", asyn
       },
     }),
   };
-  await Effect.runPromise(resolveAuthoredIncludes(input));
+  await Effect.runPromise(resolveAuthoredDocument(input));
   revision = NEW_SHA;
   const report = await Effect.runPromise(updateAuthoredIncludes(input));
   expect(report.entries.find((entry) => entry.source.endsWith("/leaf.yml"))).toMatchObject({

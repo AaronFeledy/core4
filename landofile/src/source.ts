@@ -1,26 +1,25 @@
 import { dirname } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 import { LandofileParseError } from "@lando/sdk/errors";
-import { isPlainRecord } from "@lando/sdk/landofile";
 import { Effect } from "effect";
 import { captureCompilationContext, sourceCarrier } from "./compilation.ts";
 import { rejectComposeKeys } from "./compose/rejections.ts";
-import { copyLandofileProvenance } from "./copy-provenance.ts";
-import { recordEnvironment } from "./environment-dependencies.ts";
+import { emptyEnvironmentDependencies, recordEnvironment } from "./environment-dependencies.ts";
 import { type LegacyFailureSource, legacyLoadFailure } from "./legacy-load-failure.ts";
 import type { LandofileLoadContext } from "./load-context.ts";
 import { resolveLandofileLoadExpressions } from "./load-expression.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
-import {
-  rememberLandofileEnvironmentDependencies,
-  rememberLandofileReferencedFiles,
-} from "./load-expression-provenance.ts";
 import { parseLandofile } from "./parser.ts";
 import { checkDocumentData } from "./pipeline/data.ts";
-import { rememberOrigins } from "./pipeline/origins.ts";
 import { prepareOverlay } from "./pipeline/prepare.ts";
-import { getSourceDocuments, rememberSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
+import {
+  type AuthoredDocument,
+  type LandofileProvenance,
+  type SourceDocument,
+  emptyProvenance,
+  normalizeReferencedFiles,
+} from "./provenance.ts";
 import { hostExpressionEnvironment } from "./recipe-expressions.ts";
 import { buildTemplateEngineRegistry, renderLandofileTemplate } from "./template-render.ts";
 import { rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
@@ -153,9 +152,11 @@ export const resolveLandofileSourceExpressions = Effect.fn("Landofile.resolveSou
     readonly value: unknown;
     readonly content?: string;
     readonly context: LandofileLoadContext;
+    readonly provenance?: LandofileProvenance | undefined;
   },
 >(source: S) {
   const { file, value, content, context } = source;
+  const { value: _authored, ...rest } = source;
   yield* checkDocumentData(value, { file, layer: context.layer });
   const resolved = yield* resolveLandofileLoadExpressions({
     value,
@@ -179,19 +180,9 @@ export const resolveLandofileSourceExpressions = Effect.fn("Landofile.resolveSou
     );
   }
   const prepared = yield* prepareOverlay(resolved.value, { file, layer: context.layer }, value);
-  if (isPlainRecord(value)) copyLandofileProvenance(value, prepared.value);
-  const document = rememberLandofileReferencedFiles(
-    rememberOrigins(prepared.value, prepared.origins),
-    resolved.dependencies,
-  );
-  if (context.environmentRecorder !== undefined) {
-    rememberLandofileEnvironmentDependencies(document, context.environmentRecorder.dependencies());
-  }
-  const documents =
+  const documents: readonly SourceDocument[] =
     content === undefined
-      ? typeof value === "object" && value !== null
-        ? getSourceDocuments(value)
-        : []
+      ? (source.provenance?.documents ?? [])
       : [
           {
             file,
@@ -202,20 +193,40 @@ export const resolveLandofileSourceExpressions = Effect.fn("Landofile.resolveSou
             document: value,
           },
         ];
-  rememberSourceDocuments(document, documents);
+  const document: AuthoredDocument = {
+    value: prepared.value,
+    provenance: {
+      ...emptyProvenance(prepared.origins),
+      ...(source.provenance ?? {}),
+      origins: prepared.origins,
+      documents: [
+        ...documents,
+        ...(source.provenance?.documents ?? []).filter((d) => !documents.includes(d)),
+      ],
+      referencedFiles: normalizeReferencedFiles([
+        ...(source.provenance?.referencedFiles ?? []),
+        ...resolved.dependencies,
+      ]),
+      environmentDependencies:
+        context.environmentRecorder?.dependencies() ??
+        source.provenance?.environmentDependencies ??
+        emptyEnvironmentDependencies(),
+    },
+  };
   return {
-    ...source,
+    ...rest,
     value: document,
     pendingSites: resolved.pendingSites,
     dependencies: resolved.dependencies,
     compiled: yield* Effect.try({
       try: () =>
         sourceCarrier({
-          document,
+          document: document.value,
+          provenance: document.provenance,
           pendingSites: resolved.pendingSites,
           context: context.compilationContext ?? captureCompilationContext(context.appRoot),
         }),
-      catch: (cause) => validationErrorFromCause(file, document, cause),
+      catch: (cause) => validationErrorFromCause(file, document.value, cause),
     }),
   };
 });

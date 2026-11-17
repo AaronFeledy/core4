@@ -2,8 +2,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import { presentLandofileLayers } from "@lando/landofile/layers";
-import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
-import { getSourceDocuments } from "@lando/landofile/pipeline/source-table";
+import { provenanceOf } from "@lando/landofile/provenance";
 import { readGlobalConfigSources } from "@lando/paths/config-sources";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { GlobalAppError } from "@lando/sdk/errors";
@@ -75,7 +74,9 @@ const readSource = async (file: string, expected?: string) => {
 export const captureGlobalEnsureInputs = Effect.fnUntraced(
   function* (plan: AppPlan, landofile: LoadScopedLandofile, provider: RuntimeProviderShape) {
     if (!cacheableServices(landofile, plan)) return undefined;
-    const documents = getSourceDocuments(landofile.document);
+    const provenance = provenanceOf(landofile);
+    if (provenance === undefined) return undefined;
+    const documents = provenance.documents;
     if (
       documents.length === 0 ||
       documents.some(
@@ -126,9 +127,7 @@ export const captureGlobalEnsureInputs = Effect.fnUntraced(
       try: async () => {
         const loaded = await Promise.all(documents.map((source) => readSource(source.file, source.digest)));
         const referenced = await Promise.all(
-          getLandofileReferencedFiles(landofile.document).map((source) =>
-            readSource(source.absolutePath, source.sha256),
-          ),
+          provenance.referencedFiles.map((source) => readSource(source.absolutePath, source.sha256)),
         );
         if (
           loaded.some((source) => source === undefined) ||

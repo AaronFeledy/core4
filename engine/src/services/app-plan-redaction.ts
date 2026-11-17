@@ -1,4 +1,5 @@
 import { committedSensitiveLiterals, sensitiveLandofileOccurrences } from "@lando/landofile/authored-literal";
+import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { RedactionService, collectPublicCredentialValues } from "@lando/redaction/service";
 import { isLandofileOverride, isLandofileReset, isPlainRecord } from "@lando/sdk/landofile";
 import type { ValidationIssuePath } from "@lando/sdk/schema";
@@ -21,7 +22,10 @@ const finalizeTiers = (
   publicValues,
 });
 
-export const collectAuthoredRedactionTokens = (document: unknown): LandofileRedactionValues => {
+export const collectAuthoredRedactionTokens = (
+  document: unknown,
+  provenance: LandofileProvenance | undefined,
+): LandofileRedactionValues => {
   const publicValues = new Set<string>();
   const discover = (node: unknown, path: ValidationIssuePath): void => {
     if (isLandofileReset(node)) return;
@@ -54,7 +58,9 @@ export const collectAuthoredRedactionTokens = (document: unknown): LandofileReda
   };
   discover(document, []);
 
-  const committed = isPlainRecord(document) ? committedSensitiveLiterals(document) : new Set<string>();
+  const committed = isPlainRecord(document)
+    ? committedSensitiveLiterals(document, provenance)
+    : new Set<string>();
   const substring = new Set<string>();
   const wholeToken = new Set<string>();
   for (const { value } of sensitiveLandofileOccurrences(document)) {

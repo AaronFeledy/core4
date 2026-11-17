@@ -1,19 +1,19 @@
 import { join } from "node:path";
 import { LandofileIncludeError } from "@lando/sdk/errors";
 import { type ValueOrigins, valueOriginAt } from "@lando/sdk/landofile";
-import type { LandofileShape } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { materializeIncludeConditions } from "./include-conditions.ts";
 import { attributeIncludeError } from "./include-guard.ts";
 import { includeAcquisitionView } from "./include-layer-overlays.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY, type LandofileLoadPolicy } from "./load-expression-file.ts";
-import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import type { LoadFailureRecorder } from "./load-failures.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
-import { getOrigins, rememberOrigins } from "./pipeline/origins.ts";
-import type { AuthoredOrigin } from "./pipeline/prepare.ts";
-import type { SourceDocument } from "./pipeline/source-table.ts";
+import type {
+  AuthoredDocument,
+  AuthoredOrigin,
+  LandofileReferencedFile,
+  SourceDocument,
+} from "./provenance.ts";
 import type { ToolingIncludeDefaults } from "./tooling-include-defaults.ts";
 import {
   assertCompatibleIncludeFields,
@@ -29,8 +29,7 @@ export type { ToolingIncludeError } from "./tooling-source.ts";
 
 export interface ResolveToolingIncludesOptions {
   readonly recorder?: LoadFailureRecorder | undefined;
-  readonly origins?: ValueOrigins<AuthoredOrigin> | undefined;
-  readonly landofile: Pick<LandofileShape, "includes" | "toolingIncludes">;
+  readonly document: AuthoredDocument;
   readonly loadScope: LandofileLoadScope;
   readonly appRoot: string;
   readonly sourceRoot: string;
@@ -39,10 +38,35 @@ export interface ResolveToolingIncludesOptions {
   readonly onRelaxedRead?: ToolingSourceContext["onRelaxedRead"];
 }
 
+export interface InternalToolingSource {
+  readonly tooling: Readonly<Record<string, unknown>> | undefined;
+  readonly internalTaskIds: ReadonlyArray<string>;
+}
+
+/** Highest-precedence membership wins: a later source that defines the task decides. */
+export const winningInternalToolingTasks = (
+  sources: ReadonlyArray<InternalToolingSource>,
+): ReadonlyArray<string> => {
+  const winners = new Set<string>();
+  for (const source of sources) {
+    const internal = new Set(source.internalTaskIds);
+    for (const id of Object.keys(source.tooling ?? {})) {
+      if (internal.has(id)) winners.add(id);
+      else winners.delete(id);
+    }
+  }
+  return [...winners];
+};
+
+export interface ResolvedTooling {
+  readonly value: Record<string, unknown>;
+  readonly origins: ValueOrigins<AuthoredOrigin>;
+}
+
 export interface ToolingIncludeResolution {
   readonly defaults: ReadonlyMap<string, ToolingIncludeDefaults>;
   readonly sources: readonly SourceDocument[];
-  readonly tooling: Readonly<Record<string, unknown>>;
+  readonly tooling: ResolvedTooling;
   readonly internalTaskIds: ReadonlyArray<string>;
   readonly localFragmentPaths: ReadonlyArray<string>;
   readonly referencedFiles: ReadonlyArray<LandofileReferencedFile>;
@@ -51,28 +75,27 @@ export interface ToolingIncludeResolution {
 export const resolveToolingIncludes = Effect.fnUntraced(function* (
   options: ResolveToolingIncludesOptions,
 ): Effect.fn.Return<ToolingIncludeResolution, ToolingIncludeError> {
-  const file = options.origins?.source.file ?? join(options.sourceRoot, ".lando.yml");
-  const document = copyLandofileProvenance(options.landofile, { ...options.landofile });
-  if (options.origins !== undefined) rememberOrigins(document, options.origins);
-  const conditioned = yield* materializeIncludeConditions(document, {
+  const file = options.document.provenance.origins.source.file ?? join(options.sourceRoot, ".lando.yml");
+  const conditioned = yield* materializeIncludeConditions(options.document, {
     source: {
       sourcePath: file,
       sourceRoot: options.sourceRoot,
       appRoot: options.appRoot,
-      layer: options.origins?.source.layer ?? "canonical",
+      layer: options.document.provenance.origins.source.layer,
     },
     policy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
     scope: { ...options.loadScope, recorder: options.recorder ?? options.loadScope.recorder },
     ...(options.onRelaxedRead === undefined ? {} : { onRelaxedRead: options.onRelaxedRead }),
   });
   const surface = yield* Effect.try({
-    try: () => includeAcquisitionView(conditioned),
-    catch: (cause) => validationErrorFromCause(file, conditioned, cause),
+    try: () => includeAcquisitionView(conditioned.value),
+    catch: (cause) => validationErrorFromCause(file, conditioned.value, cause),
   });
-  const origins = getOrigins(conditioned);
+  const origins = conditioned.provenance.origins;
+  const toolingOrigin: ValueOrigins<AuthoredOrigin> = origins.children.get("tooling") ?? origins;
   const forbidden = assertCompatibleIncludeFields(surface);
   if (forbidden !== undefined) {
-    const origin = origins === undefined ? undefined : valueOriginAt(origins, forbidden.path ?? []).source;
+    const origin = valueOriginAt(origins, forbidden.path ?? []).source;
     return yield* Effect.fail(
       attributeIncludeError(
         // Copy fields explicitly: `message` is not an own enumerable property, so a spread drops it.
@@ -90,7 +113,7 @@ export const resolveToolingIncludes = Effect.fnUntraced(function* (
   if (!hasToolingIncludes(surface))
     return {
       defaults: new Map(),
-      tooling: {},
+      tooling: { value: {}, origins: { ...toolingOrigin, children: new Map() } },
       internalTaskIds: [],
       localFragmentPaths: [],
       referencedFiles: [],
@@ -111,11 +134,10 @@ export const resolveToolingIncludes = Effect.fnUntraced(function* (
   );
   return {
     defaults: contribution.defaults,
-    tooling: rememberOrigins(Object.fromEntries(contribution.tasks), {
-      source: { file: options.sourceRoot, layer: "canonical", path: ["tooling"] },
-      deleted: false,
-      children: contribution.origins,
-    }),
+    tooling: {
+      value: Object.fromEntries(contribution.tasks),
+      origins: { ...toolingOrigin, children: contribution.origins },
+    },
     sources: contribution.sources,
     internalTaskIds: [...contribution.internal],
     localFragmentPaths: contribution.paths,

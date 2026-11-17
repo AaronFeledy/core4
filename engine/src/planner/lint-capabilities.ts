@@ -195,6 +195,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
   }
   const normalized = yield* normalizeNetworks({
     landofile,
+    provenance: resolution.provenance,
     services: Object.fromEntries(resolution.services.map((seed) => [seed.name, seed.service])),
     appRoot: resolution.appRoot,
     perAppBridge: resolution.appSlug !== "global",

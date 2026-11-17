@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { IncludeEntry, type LandofileShape } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 
-import { resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
+import { resolveAuthoredDocument as resolveLandofileIncludes } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const failure = (landofile: LandofileShape, appRoot: string) =>

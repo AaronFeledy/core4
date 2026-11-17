@@ -1,11 +1,9 @@
 import { Effect } from "effect";
-import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { createIncludeResolutionSession, publishIncludeProposals } from "./include-session.ts";
 import { ensureConsistentRoot } from "./load-context.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
 import { classifyLoadFailure } from "./pipeline/legacy.ts";
-import { getSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 import { evaluateLandofileRootLayers } from "./root-compile.ts";
 
@@ -29,11 +27,11 @@ export const finalizeLandofileRootLayers = Effect.fnUntraced(function* (
     ...(inputs?.templates.context?.env === undefined ? {} : { env: inputs.templates.context.env }),
   }).pipe(
     Effect.catchTag(["LandofileParseError", "LandofileValidationError"], (error) =>
-      classifyLoadFailure(error, appRoot, getSourceDocuments(merged)),
+      classifyLoadFailure(error, appRoot, merged.provenance.documents),
     ),
   );
   yield* publishIncludeProposals(session, inputs?.stateStore);
-  return rememberLandofileAppRoot(landofile, appRoot);
+  return landofile;
 });
 
 export const mergeLandofileRootLayers = Effect.fnUntraced(function* (

@@ -1,3 +1,4 @@
+import type { LandofileProvenance } from "@lando/landofile/provenance";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 import type { PluginRegistry } from "@lando/sdk/services";
 import { type Context, Effect, Result } from "effect";
@@ -20,6 +21,7 @@ import { contributionId } from "./service-types.ts";
 export const declareAppEndpoints = Effect.fnUntraced(function* (input: {
   readonly rows: Map<string, ServiceEndpointProjection>;
   readonly landofile: LandofileShape;
+  readonly provenance?: LandofileProvenance | undefined;
   readonly manifests: readonly PluginManifest[];
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
   readonly appName: string;
@@ -31,7 +33,7 @@ export const declareAppEndpoints = Effect.fnUntraced(function* (input: {
   const allNames = [...input.rows.keys()];
   const record = (error: unknown) => {
     const reasons = appFeatureError(input.appRoot, error).issues.map((issue) =>
-      attributePlannerIssue(input.landofile, { ...issue, rule: "landofile.service" }),
+      attributePlannerIssue(input.provenance, { ...issue, rule: "landofile.service" }),
     );
     issues.push(...reasons);
     return reasons;

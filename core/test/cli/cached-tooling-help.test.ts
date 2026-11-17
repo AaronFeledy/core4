@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { compileToolingCommands } from "@lando/engine/cache/command-compiler";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
-import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { LandofileShape } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
 import { CliInvocation, processInvocationDefaults } from "../../src/runtime/invocation-context";
+import { provenanceIn, withInternalToolingTasks } from "../provenance-support.ts";
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
 
@@ -28,7 +28,7 @@ const withCachedTasks = async (run: (root: string, cacheRoot: string) => Promise
   try {
     // Invalid source prevents help from silently falling back to a live planner.
     await writeFile(join(root, ".lando.yml"), "name: [invalid\n");
-    const landofile = rememberInternalToolingTasks(
+    const landofile = withInternalToolingTasks(
       Schema.decodeUnknownSync(LandofileShape)({
         name: "cached-tasks",
         tooling: {
@@ -48,8 +48,10 @@ const withCachedTasks = async (run: (root: string, cacheRoot: string) => Promise
         cacheRoot,
         env: invocationEnv(root, cacheRoot),
         landofile,
+        provenance: provenanceIn(landofile),
         entries: compileToolingCommands(landofile, createRedactor("secrets").redactString, {
           sourcePath: root,
+          provenance: provenanceIn(landofile),
           toolingSource: (name) => ({
             path: "/authored/tasks.yml",
             locate: (path) => ({

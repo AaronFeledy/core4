@@ -3,8 +3,8 @@ import type { EnvironmentValue } from "@lando/sdk/schema";
 import { collectAuthoredRedactionTokens } from "../../src/services/app-plan-redaction.ts";
 
 const tokensOf = (input: Parameters<typeof collectAuthoredRedactionTokens>[0]) => [
-  ...collectAuthoredRedactionTokens(input).substring,
-  ...collectAuthoredRedactionTokens(input).wholeToken,
+  ...collectAuthoredRedactionTokens(input, undefined).substring,
+  ...collectAuthoredRedactionTokens(input, undefined).wholeToken,
 ];
 
 test("collects an authored Redis password before service resolution", () => {

@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rememberLandofileEnvironmentDependencies } from "@lando/landofile/load-expression-provenance";
 import { Effect } from "effect";
 import {
   readAppCommandCache,
@@ -10,11 +9,15 @@ import {
   writeAppCommandCacheStrict,
 } from "../../src/cache/command-index-writer.ts";
 import { HostExecutionDefaults } from "../../src/services/host-execution-context.ts";
+import { fixtureProvenance } from "../provenance-support.ts";
 
 const landofile = (
   dependencies: { readonly _tag: "Names"; readonly names: readonly string[] } | { readonly _tag: "Complete" },
   name = "environment",
-) => rememberLandofileEnvironmentDependencies({ name }, dependencies);
+) => ({
+  landofile: { name },
+  provenance: fixtureProvenance({ environmentDependencies: dependencies }),
+});
 
 test.each([
   {
@@ -108,7 +111,7 @@ test.each([
     const options = {
       cwd,
       cacheRoot: join(cwd, "cache"),
-      landofile: landofile(dependencies),
+      ...landofile(dependencies),
       entries: [],
     };
     const canary = "private-environment-cache-canary";
@@ -145,7 +148,7 @@ test("keeps Names caches fresh across OLDPWD and LANDO_RENDERER only", async () 
   const options = {
     cwd,
     cacheRoot: join(cwd, "cache"),
-    landofile: landofile({ _tag: "Names", names: ["READ_KEY"] }),
+    ...landofile({ _tag: "Names", names: ["READ_KEY"] }),
     entries: [],
   };
   try {
@@ -179,7 +182,7 @@ test("never stores the private canary under Names or Complete", async () => {
         writeAppCommandCacheStrict({
           cwd,
           cacheRoot: join(cwd, "cache"),
-          landofile: landofile(dependencies),
+          ...landofile(dependencies),
           entries: [],
           env: { A: "one", PRIVATE_CANARY: canary },
           now: () => 1,
@@ -199,7 +202,7 @@ test("engine cache defaults inherit a captured host environment before ambient d
   const options = {
     cwd,
     cacheRoot: join(cwd, "cache"),
-    landofile: landofile({ _tag: "Names", names: ["CAPTURED_ENV"] }, "captured"),
+    ...landofile({ _tag: "Names", names: ["CAPTURED_ENV"] }, "captured"),
     entries: [],
   };
   const env = { CAPTURED_ENV: "host-only" };
@@ -223,22 +226,41 @@ test("engine cache defaults inherit a captured host environment before ambient d
 
 test("reused command entries record the new load's environment dependencies", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "lando-index-reused-environment-"));
-  const document = landofile({ _tag: "Names", names: ["A"] });
-  const options = { cwd, cacheRoot: join(cwd, "cache"), landofile: document, entries: [] };
+  const document = { name: "environment" };
+  const options = (dependencies: { readonly _tag: "Names"; readonly names: readonly string[] }) => ({
+    cwd,
+    cacheRoot: join(cwd, "cache"),
+    landofile: document,
+    provenance: fixtureProvenance({ environmentDependencies: dependencies }),
+    entries: [],
+  });
   const env = { A: "stable", B: "before" };
   try {
     await writeFile(join(cwd, ".lando.yml"), "name: environment\n");
-    await Effect.runPromise(writeAppCommandCacheStrict({ ...options, env, now: () => 1 }));
-    rememberLandofileEnvironmentDependencies(document, { _tag: "Names", names: ["B"] });
-    await Effect.runPromise(writeAppCommandCacheStrict({ ...options, env, now: () => 2 }));
-    const reused = await Effect.runPromise(readAppCommandCacheForCwdDetailed({ ...options, env }));
+    await Effect.runPromise(
+      writeAppCommandCacheStrict({
+        ...options({ _tag: "Names", names: ["A"] }),
+        env,
+        now: () => 1,
+      }),
+    );
+    await Effect.runPromise(
+      writeAppCommandCacheStrict({
+        ...options({ _tag: "Names", names: ["B"] }),
+        env,
+        now: () => 2,
+      }),
+    );
+    const reused = await Effect.runPromise(
+      readAppCommandCacheForCwdDetailed({ ...options({ _tag: "Names", names: ["B"] }), env }),
+    );
     expect(reused).toMatchObject({
       status: "fresh",
       payload: { generatedAtMs: 1, sourceEnvironment: { _tag: "Names", names: ["B"] } },
     });
     const changed = await Effect.runPromise(
       readAppCommandCacheForCwdDetailed({
-        ...options,
+        ...options({ _tag: "Names", names: ["B"] }),
         env: { ...env, B: "after" },
       }),
     );

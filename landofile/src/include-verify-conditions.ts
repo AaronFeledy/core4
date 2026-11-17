@@ -8,7 +8,7 @@ import { classify, normalizeInclude, parseGitInclude, parseNpmInclude } from "./
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
 import { createLoadFailureRecorder, loadPathBlocked } from "./load-failures.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
-import { getSourceDocuments } from "./pipeline/source-table.ts";
+import { authoredDocumentFrom } from "./provenance.ts";
 
 export const includeVerifyConditions = (
   roots: readonly { readonly file: string; readonly document: Record<string, unknown> }[],
@@ -37,7 +37,10 @@ export const includeVerifyConditions = (
         const recorder = createLoadFailureRecorder();
         recorder.recipeAvailable = scope.recorder?.recipeAvailable ?? true;
         const result = yield* materializeIncludeConditions(
-          { includes: [{ source: "./annotation.yml", when: authored.when }] },
+          authoredDocumentFrom(
+            { includes: [{ source: "./annotation.yml", when: authored.when }] },
+            { file: request.origin.file, layer: request.origin.layer, path: [] },
+          ),
           {
             source: {
               sourcePath: request.origin.file,
@@ -52,8 +55,8 @@ export const includeVerifyConditions = (
         disabled =
           Result.isSuccess(result) &&
           recorder.failures.length === 0 &&
-          Array.isArray(result.success.includes) &&
-          result.success.includes.length === 0;
+          Array.isArray(result.success.value.includes) &&
+          result.success.value.includes.length === 0;
       }
       const entry = normalizeInclude(request.entry);
       const identity = yield* Effect.try({
@@ -84,8 +87,8 @@ export const includeVerifyConditions = (
       if (identity !== undefined)
         disabledSources.set(identity, (disabledSources.get(identity) ?? true) && disabled);
       if (acquired !== undefined) {
-        const file = getSourceDocuments(acquired.parsed)[0]?.file ?? acquired.fragment.filePath;
-        documents.set(file, { document: acquired.parsed, disabled });
+        const file = acquired.parsed.provenance.documents[0]?.file ?? acquired.fragment.filePath;
+        documents.set(file, { document: acquired.parsed.value, disabled });
       }
     },
   );

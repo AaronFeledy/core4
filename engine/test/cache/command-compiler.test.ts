@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { LandofileShape } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Schema } from "effect";
@@ -8,6 +7,7 @@ import {
   compileBunShellScriptCommands,
   compileToolingCommands,
 } from "../../src/cache/command-compiler.ts";
+import { fixtureProvenance } from "../provenance-support.ts";
 
 const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
   name: "myapp",
@@ -268,13 +268,13 @@ describe("compileToolingCommands", () => {
 
   test("hides tasks contributed by an internal tooling include", () => {
     // Given a resolved Landofile whose docs include was marked internal
-    const resolved = rememberInternalToolingTasks(
-      landofile({ "docs:build": { cmd: "bun run build" }, build: { cmd: "make" } }),
-      ["docs:build"],
-    );
+    const resolved = landofile({ "docs:build": { cmd: "bun run build" }, build: { cmd: "make" } });
 
     // When
-    const entries = compileToolingCommands(resolved, redact, context);
+    const entries = compileToolingCommands(resolved, redact, {
+      ...context,
+      provenance: fixtureProvenance({ internalToolingTasks: ["docs:build"] }),
+    });
 
     // Then only the included tasks are hidden
     expect(entries.find((entry) => entry.id === "app:docs:build")?.visibility).toBe("internal");
