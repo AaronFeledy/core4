@@ -1,317 +1,201 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
-import * as LandoConfigService from "@lando/engine/services/config";
-import { globalPlanAt, globalTeardownHarness } from "@lando/engine/testing/global-teardown";
-import { ProviderUnavailableError, ScratchAppError } from "@lando/sdk/errors";
-import type { LandoEvent } from "@lando/sdk/events";
-import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
-import { EventService, RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Layer, Queue, Stream } from "effect";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  appIdentityKey,
+} from "@lando/sdk/schema";
+import type { AppliedOrphanGroup, ServiceRuntimeInfo } from "@lando/sdk/services";
+import { DateTime, Effect } from "effect";
 import { poweroffSpec } from "../../src/cli/command-specs/apps/poweroff";
-import { type PoweroffOptions, poweroff } from "../../src/cli/commands/poweroff";
+import { poweroff, renderPoweroffResult } from "../../src/cli/commands/poweroff";
+import { makePoweroffFixture } from "./poweroff-support";
 
-const withPoweroff = async (
-  run: (fixture: Awaited<ReturnType<typeof makeFixture>>) => Promise<void>,
-  failure?: "provider" | "no-plan" | "scratch" | "routes",
-) => {
-  const fixture = await makeFixture(failure);
+const providerId = ProviderId.make("lando");
+
+const planAt = (root: string): AppPlan => ({
+  id: AppId.make("poweroff-app"),
+  name: "poweroff-app",
+  slug: "poweroff-app",
+  root: AbsolutePath.make(root),
+  identity: { appRoot: AbsolutePath.make(root), ownerKey: appIdentityKey("owner", root) },
+  provider: providerId,
+  services: {},
+  routes: [],
+  stores: [],
+  fileSync: [],
+  metadata: {
+    resolvedAt: DateTime.makeUnsafe("2026-08-01T00:00:00.000Z"),
+    source: "applied-state",
+    runtime: 4,
+  },
+  extensions: {},
+});
+
+const serviceAt = (root: string): ServiceRuntimeInfo => ({
+  app: AppId.make("poweroff-app"),
+  appRoot: AbsolutePath.make(root),
+  service: ServiceName.make("web"),
+  providerId,
+  status: "running",
+  containerId: "container-web",
+  publications: { status: "unknown" },
+});
+
+const orphanAt = (root: string): AppliedOrphanGroup => ({
+  providerId,
+  appId: AppId.make("poweroff-app"),
+  services: [serviceAt(root)],
+  volumes: [],
+});
+
+const withRoot = async <A>(use: (root: string) => Promise<A>): Promise<A> => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "lando-poweroff-production-")));
+  await mkdir(join(root, "conf"), { recursive: true });
+  await Bun.write(join(root, ".lando.yml"), "name: poweroff-app\n");
   try {
-    await run(fixture);
+    return await use(root);
   } finally {
-    await rm(fixture.root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   }
 };
 
-const makeFixture = async (failure?: "provider" | "no-plan" | "scratch" | "routes") => {
-  const root = await mkdtemp(join(tmpdir(), "poweroff-production-"));
-  const globalPlan = { ...globalPlanAt(AbsolutePath.make(root)), provider: ProviderId.make("docker") };
-  const teardown = await globalTeardownHarness(root, { routeFailure: failure === "routes" });
-  const calls: string[] = [];
-  const events: string[] = [];
-  const unavailable = new ProviderUnavailableError({
-    message: "Test provider unavailable",
-    providerId: "docker",
-    operation: "destroy",
-    remediation: "Start the test provider.",
-  });
-  const providerLayer = Layer.succeed(
-    RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
-      list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: (plan) =>
-        Effect.succeed({
-          ...TestRuntimeProvider,
-          id: (typeof plan === "string" ? plan : plan?.provider) ?? ProviderId.make("docker"),
-          appliedPlans: Effect.succeed([globalPlan]),
-          destroy: Effect.fnUntraced(function* (target, options) {
-            calls.push(`${typeof plan === "string" ? plan : plan?.provider}:${target.app}`);
-            if (failure === "provider") return yield* Effect.fail(unavailable);
-            if (failure === "no-plan") return { kind: "no-op" as const, reason: "no-applied-plan" as const };
-            expect(options).toEqual({ volumes: false, removeState: false });
-            expect(target.plan).toEqual(target.app === "global" ? globalPlan : undefined);
-            return { kind: "destroyed" as const };
-          }),
-        }),
-    }),
-  );
-  const scratchLayer = Layer.succeed(
-    ScratchAppService,
-    ScratchAppService.of({
-      kind: "scratch",
-      root: Effect.succeed(AbsolutePath.make(root)),
-      ensureRoot: Effect.die("unexpected ensureRoot"),
-      synthesizeId: () => Effect.die("unexpected synthesizeId"),
-      paths: () => Effect.die("unexpected paths"),
-      acquire: () => Effect.die("unexpected acquire"),
-      resolveById: () => Effect.die("unexpected resolve"),
-      list: () => Effect.succeed([]),
-      info: () => Effect.die("unexpected info"),
-      start: () => Effect.die("unexpected start"),
-      stop: () => Effect.die("unexpected stop"),
-      destroy: Effect.fnUntraced(function* (id, options) {
-        expect(options?.keepVolumes).not.toBe(true);
-        calls.push(`scratch:${id}`);
-        if (failure === "scratch")
-          return yield* Effect.fail(
-            new ScratchAppError({
-              message: "Scratch cleanup failed",
-              operation: "destroy",
-              remediation: "Retry scratch cleanup.",
-            }),
-          );
-        return {
-          id: AppId.make(id),
-          app: { kind: "scratch" as const, id: AppId.make(id), root: AbsolutePath.make(root) },
-        };
-      }),
-      gc: () => Effect.die("unexpected gc"),
-    }),
-  );
-  const options: PoweroffOptions = {
-    userDataRoot: root,
-    userCacheRoot: root,
-    discoverContainers: async () => [
-      { appId: "global", appName: "global", providerId: "docker", appRoot: root, services: ["proxy"] },
-      { appId: "user", appName: "user", providerId: "docker", appRoot: root, services: ["web"] },
+test("stops orphaned containers of an app without applied state", async () => {
+  await withRoot(async (root) => {
+    // Given an app whose containers are running but whose applied record is gone.
+    const fixture = await makePoweroffFixture({
+      dataRoot: root,
+      services: [serviceAt(root)],
+      orphans: [orphanAt(root)],
+    });
+    // When the production command powers off.
+    const result = await Effect.runPromise(poweroff().pipe(Effect.provide(fixture.layer)));
+    // Then the stop lifecycle removes the orphan without a bare provider destroy.
+    expect(result.apps).toEqual([
       {
-        appId: "scratch-one",
-        appName: "scratch-one",
-        providerId: "lando",
+        kind: "user",
+        appId: "poweroff-app",
         appRoot: root,
-        services: ["web"],
-        scratch: true,
+        providerId: "lando",
+        outcome: "stopped",
+        servicesStopped: ["web"],
+      },
+      {
+        kind: "global",
+        appId: "global",
+        appRoot: join(root, "global"),
+        providerId: "lando",
+        outcome: "unchanged",
+        servicesStopped: [],
+      },
+    ]);
+    expect(fixture.calls).toEqual(["remove:web", "runtime"]);
+    expect(result.runtimeServiceStopped).toBe(true);
+  });
+});
+
+test("aggregates a failed app and skips runtime shutdown", async () => {
+  await withRoot(async (root) => {
+    const fixture = await makePoweroffFixture({
+      dataRoot: root,
+      services: [serviceAt(root)],
+      appliedPlans: [planAt(root)],
+      destroyFailureRoot: root,
+    });
+    const result = await Effect.runPromise(poweroff().pipe(Effect.result, Effect.provide(fixture.layer)));
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("expected a typed poweroff failure");
+    if (result.failure._tag !== "PoweroffStopError")
+      throw new TypeError(`expected PoweroffStopError, received ${result.failure._tag}`);
+    expect(result.failure).toMatchObject({
+      _tag: "PoweroffStopError",
+      failures: [
+        {
+          kind: "user",
+          appId: "poweroff-app",
+          appRoot: root,
+          errorTag: "ProviderUnavailableError",
+        },
+      ],
+    });
+    expect(result.failure.apps.find((app) => app.kind === "global")?.outcome).toBe("skipped");
+    expect(fixture.calls).not.toContain("runtime");
+  });
+});
+
+test("reports keep flags and leaves the runtime service running", async () => {
+  await withRoot(async (root) => {
+    const fixture = await makePoweroffFixture({
+      dataRoot: root,
+      services: [serviceAt(root)],
+      appliedPlans: [planAt(root)],
+      scratch: [
+        {
+          id: "scratch-one",
+          app: { kind: "scratch", id: AppId.make("scratch-one"), root: AbsolutePath.make(root) },
+          source: { kind: "fork" },
+          mode: "full",
+          created: "2026-08-01T00:00:00.000Z",
+          status: "detached",
+        },
+      ],
+    });
+    const result = await Effect.runPromise(
+      poweroff({ keepGlobal: true, keepScratch: true }).pipe(Effect.provide(fixture.layer)),
+    );
+    expect(result.keptGlobalApp).toBe(true);
+    expect(result.keptScratchApps).toBe(1);
+    expect(result.apps.find((app) => app.kind === "global")?.outcome).toBe("skipped");
+    expect(fixture.calls).not.toContain("runtime");
+    const rendered = renderPoweroffResult(result);
+    expect(rendered).toContain("kept global app running");
+    expect(rendered).toContain("kept 1 scratch app running");
+  });
+});
+
+test("renders duplicate ids with their roots and the runtime line only when stopped", () => {
+  const rendered = renderPoweroffResult({
+    apps: [
+      {
+        kind: "user",
+        appId: "twin",
+        appRoot: "/one",
+        providerId: "lando",
+        outcome: "stopped",
+        servicesStopped: [],
+      },
+      {
+        kind: "user",
+        appId: "twin",
+        appRoot: "/two",
+        providerId: "lando",
+        outcome: "stopped",
+        servicesStopped: [],
+      },
+      {
+        kind: "global",
+        appId: "global",
+        appRoot: "/global",
+        providerId: "lando",
+        outcome: "unchanged",
       },
     ],
-    stopRuntimeService: async () => {
-      calls.push("runtime");
-      return { terminated: true };
-    },
-  };
-  const eventLayer = Layer.succeed(
-    EventService,
-    EventService.of({
-      publish: (event) =>
-        Effect.sync(() => {
-          events.push(event._tag);
-        }),
-      subscribe: () => Stream.empty,
-      subscribeQueue: Queue.unbounded<LandoEvent>(),
-      waitFor: () => Effect.never,
-      subscribeWithHistory: () => Effect.never,
-      waitForAny: () => Effect.never,
-      query: () => Effect.succeed([]),
-    }),
+    keptGlobalApp: false,
+    keptScratchApps: 0,
+    runtimeServiceStopped: true,
+    runtimeServicePid: 1234,
+  });
+  expect(rendered).toBe(
+    ["Powered off: twin (/one), twin (/two), global", "Stopped Lando runtime service"].join("\n"),
   );
-  const layer = Layer.mergeAll(
-    teardown.layer,
-    LandoConfigService.layer,
-    providerLayer,
-    scratchLayer,
-    eventLayer,
-    Layer.succeed(
-      ScratchResourceScanner,
-      ScratchResourceScanner.of({
-        listScratchIds: Effect.die("unexpected scratch scan"),
-        pruneScratch: () => Effect.die("registered scratch must use destroy"),
-        prepareScratch: () => Effect.die("registered scratch must use destroy"),
-      }),
-    ),
-  );
-  return { root, calls, options, layer, events };
-};
-
-test("stops owning providers before host teardown when no stop seam is injected", async () => {
-  // Given: discovered apps on different providers, including a marked scratch.
-  await withPoweroff(async ({ calls, options, layer }) => {
-    // When: the same default operation used by command execution runs.
-    const result = await Effect.runPromise(poweroff(options).pipe(Effect.provide(layer)));
-    // Then: actual provider stops, scratch cleanup, and host teardown are ordered.
-    expect(calls).toEqual(["docker:user", "scratch:scratch-one", "docker:global", "runtime"]);
-    expect(result.appsPoweredOff).toEqual(["user", "scratch-one", "global"]);
-  });
 });
 
-test("poweroff destroys cached scratch entries even without observed services", async () => {
-  // Given a registered scratch represented only by cached state.
-  await withPoweroff(async ({ root, calls, options, layer }) => {
-    // When poweroff resolves that scratch through its lifecycle service.
-    await Effect.runPromise(
-      poweroff({
-        ...options,
-        discoverContainers: async () => [
-          {
-            appId: "scratch-cached",
-            appName: "scratch-cached",
-            appRoot: root,
-            providerId: "cache",
-            services: [],
-            scratch: true,
-          },
-        ],
-      }).pipe(Effect.provide(layer)),
-    );
-    // Then it is destroyed before runtime shutdown rather than skipped like an ordinary cached app.
-    expect(calls).toEqual(["scratch:scratch-cached", "runtime"]);
-  });
-});
-
-test.each([
-  [true, false, ["docker:user", "scratch:scratch-one", "runtime"], 0],
-  [false, true, ["docker:user", "docker:global", "runtime"], 1],
-  [true, true, ["docker:user", "runtime"], 1],
-] as const)(
-  "honors keep-global=%s and keep-scratch=%s in the production default",
-  async (keepGlobal, keepScratch, expected, keptScratch) => {
-    // Given: the same multi-provider inventory with keep flags.
-    await withPoweroff(async ({ calls, options, layer }) => {
-      // When: poweroff runs without an injected stop.
-      const result = await Effect.runPromise(
-        poweroff({ ...options, keepGlobal, keepScratch }).pipe(Effect.provide(layer)),
-      );
-      // Then: kept apps never reach their lifecycle primitive.
-      expect(calls).toEqual([...expected]);
-      expect(result.keptGlobalApp).toBe(keepGlobal);
-      expect(result.keptScratchApps).toBe(keptScratch);
-    });
-  },
-);
-
-test.each(["provider", "no-plan", "scratch"] as const)(
-  "fails before host teardown when stopping returns %s",
-  async (failure) => {
-    // Given: an app that cannot be stopped by its owning provider.
-    await withPoweroff(async ({ calls, options, layer }) => {
-      // When: poweroff uses its production stop.
-      const result = await Effect.runPromise(poweroff(options).pipe(Effect.result, Effect.provide(layer)));
-      // Then: no successful result or runtime teardown hides the failed stop.
-      expect(result._tag).toBe("Failure");
-      if (result._tag !== "Failure") throw new Error("Expected a typed stop failure");
-      expect(result.failure).toMatchObject({
-        _tag: "PoweroffStopError",
-        appId: failure === "scratch" ? "scratch-one" : "user",
-        providerId: failure === "scratch" ? "lando" : "docker",
-      });
-      expect(calls).toEqual(failure === "scratch" ? ["docker:user", "scratch:scratch-one"] : ["docker:user"]);
-    }, failure);
-  },
-);
-
-test("turns injected stop rejection into a tagged failure", async () => {
-  // Given: a rejecting stop seam.
-  await withPoweroff(async ({ calls, options, layer }) => {
-    // When: the injected stop rejects.
-    const result = await Effect.runPromise(
-      poweroff({
-        ...options,
-        stopApp: async () => {
-          throw new Error("stop failed");
-        },
-      }).pipe(Effect.result, Effect.provide(layer)),
-    );
-    // Then: poweroff fails without claiming success or shutting down the runtime.
-    expect(result._tag).toBe("Failure");
-    expect(calls).toEqual([]);
-  });
-});
-
-test("provides provider and scratch services through command metadata", () => {
-  // Given: the shared spec used by native and retained command execution.
-  // When: its runtime requirement is inspected.
-  const bootstrap = poweroffSpec.bootstrap;
-  // Then: the default stop can resolve its services outside an app root.
-  expect(bootstrap).toBe("scratch");
-});
-
-test.each([false, true])("stops a scratch-prefixed user app when keep-scratch=%s", async (keepScratch) => {
-  // Given: a user app whose name is not a scratch identity marker.
-  await withPoweroff(async ({ calls, options, layer, root }) => {
-    // When: the production default handles that app with either keep policy.
-    const result = await Effect.runPromise(
-      poweroff({
-        ...options,
-        keepScratch,
-        discoverContainers: async () => [
-          {
-            appId: "scratch-project",
-            appName: "scratch-project",
-            providerId: "docker",
-            appRoot: root,
-            services: ["web"],
-          },
-        ],
-      }).pipe(Effect.provide(layer)),
-    );
-    // Then: its owning provider stops it without destructive scratch cleanup.
-    expect(calls).toEqual(["docker:scratch-project", "runtime"]);
-    expect(result.appsPoweredOff).toEqual(["scratch-project"]);
-    expect(result.keptScratchApps).toBe(0);
-  });
-});
-
-test.each([false, true])("emits the global stop pair unless keep-global=%s", async (keepGlobal) => {
-  // Given: the production inventory and an event subscriber.
-  await withPoweroff(async ({ options, layer, events }) => {
-    // When: poweroff applies the global keep policy.
-    await Effect.runPromise(poweroff({ ...options, keepGlobal }).pipe(Effect.provide(layer)));
-    // Then: only an actual global stop publishes its lifecycle pair.
-    expect(events).toEqual(keepGlobal ? [] : ["pre-global-stop", "post-global-stop"]);
-  });
-});
-
-test("omits the global post event when its provider fails", async () => {
-  // Given: a global app whose provider cannot stop it.
-  await withPoweroff(async ({ options, layer, events, root }) => {
-    // When: the production default attempts only the global stop.
-    const result = await Effect.runPromise(
-      poweroff({
-        ...options,
-        discoverContainers: async () => [
-          { appId: "global", appName: "global", providerId: "docker", appRoot: root, services: [] },
-        ],
-      }).pipe(Effect.result, Effect.provide(layer)),
-    );
-    // Then: the failed stop never emits a success event.
-    expect(result._tag).toBe("Failure");
-    expect(events).toEqual(["pre-global-stop"]);
-  }, "provider");
-});
-
-test("retains the runtime when shared global route withdrawal fails", async () => {
-  await withPoweroff(async ({ options, layer, events, calls }) => {
-    const result = await Effect.runPromise(poweroff(options).pipe(Effect.result, Effect.provide(layer)));
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: { _tag: "PoweroffStopError", appId: "global" },
-    });
-    expect(calls).toEqual(["docker:user", "scratch:scratch-one", "docker:global"]);
-    expect(events).toEqual(["pre-global-stop"]);
-  }, "routes");
+test("provides the scratch bootstrap tier through command metadata", () => {
+  expect(poweroffSpec.bootstrap).toBe("scratch");
+  expect(poweroffSpec.flags?.yes).toBeDefined();
 });

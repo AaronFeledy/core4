@@ -1,230 +1,175 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
-
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
-import { ConfigService } from "@lando/sdk/services";
-import { Effect, Layer } from "effect";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  appIdentityKey,
+} from "@lando/sdk/schema";
+import type { ServiceRuntimeInfo } from "@lando/sdk/services";
+import { DateTime, Effect, Layer } from "effect";
 import { poweroff, renderPoweroffResult } from "../../src/cli/commands/poweroff.ts";
+import { makePoweroffFixture } from "./poweroff-support";
 
-const noDiscover = async () => [];
+const providerId = ProviderId.make("lando");
+let dataRoot: string;
 
-let userDataRoot: string;
-let userCacheRoot: string;
-
-const fakeConfigService = (dataRoot: string) =>
-  Layer.succeed(
-    ConfigService,
-    ConfigService.of({
-      get: <K extends string>(key: K) =>
-        Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
-      getEffective: () => Effect.succeed({} as never),
-    } as never),
-  );
-
-const makePlan = (id: string, name: string, services: string[]) => ({
-  version: 1,
-  providerId: "lando",
-  appId: id,
-  plan: {
-    id,
-    name,
-    root: `/srv/${name}`,
-    provider: "lando",
-    services: Object.fromEntries(
-      services.map((s) => [s, { name: s, type: "lando.app", primary: false, env: {} }]),
-    ),
+const planAt = (root: string): AppPlan => ({
+  id: AppId.make("user-app"),
+  name: "user-app",
+  slug: "user-app",
+  root: AbsolutePath.make(root),
+  identity: { appRoot: AbsolutePath.make(root), ownerKey: appIdentityKey("owner", root) },
+  provider: providerId,
+  services: {},
+  routes: [],
+  stores: [],
+  fileSync: [],
+  metadata: {
+    resolvedAt: DateTime.makeUnsafe("2026-08-01T00:00:00.000Z"),
+    source: "applied-state",
+    runtime: 4,
   },
+  extensions: {},
+});
+
+const serviceAt = (root: string): ServiceRuntimeInfo => ({
+  app: AppId.make("user-app"),
+  appRoot: AbsolutePath.make(root),
+  service: ServiceName.make("web"),
+  providerId,
+  status: "running",
+  containerId: "container-web",
+  publications: { status: "unknown" },
+});
+
+const scratchSummary = (root: string) => ({
+  id: "scratch-1",
+  app: { kind: "scratch" as const, id: AppId.make("scratch-1"), root: AbsolutePath.make(root) },
+  source: { kind: "fork" as const },
+  mode: "full" as const,
+  created: "2026-08-01T00:00:00.000Z",
+  status: "detached" as const,
 });
 
 beforeAll(async () => {
-  userDataRoot = await mkdtemp(join(tmpdir(), "lando-apps-poweroff-"));
-  userCacheRoot = await mkdtemp(join(tmpdir(), "lando-apps-poweroff-cache-"));
-  const appsDir = join(userDataRoot, "providers", "provider-lando", "apps");
-  await mkdir(appsDir, { recursive: true });
-  await writeFile(join(appsDir, "user.json"), JSON.stringify(makePlan("user-app", "user-app", ["web"])));
-  await writeFile(join(appsDir, "global.json"), JSON.stringify(makePlan("global", "global", ["proxy"])));
-  const scratch = makePlan("scratch-1", "scratch-1", ["web"]);
-  await writeFile(
-    join(appsDir, "scratch.json"),
-    JSON.stringify({
-      ...scratch,
-      plan: { ...scratch.plan, extensions: { "@lando/core/scratch": {} } },
-    }),
-  );
-});
-
-afterAll(async () => {
-  if (userDataRoot !== undefined) await rm(userDataRoot, { recursive: true, force: true });
-  if (userCacheRoot !== undefined) await rm(userCacheRoot, { recursive: true, force: true });
+  dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-apps-poweroff-")));
 });
 
 describe("apps:poweroff command", () => {
-  test("stops every discovered app by default", async () => {
-    const stopped: string[] = [];
-    const result = await Effect.runPromise(
-      poweroff({
-        discoverContainers: noDiscover,
-        userDataRoot,
-        userCacheRoot,
-        stopApp: async (entry) => {
-          stopped.push(entry.appId);
-        },
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
-    );
-    expect([...stopped].sort()).toEqual(["global", "scratch-1", "user-app"]);
-    expect([...result.appsPoweredOff].sort()).toEqual(["global", "scratch-1", "user-app"]);
+  test("stops user apps, destroys scratch apps, then stops the global app", async () => {
+    const fixture = await makePoweroffFixture({
+      dataRoot,
+      services: [serviceAt(dataRoot)],
+      appliedPlans: [planAt(dataRoot)],
+      scratch: [scratchSummary(dataRoot)],
+    });
+    const result = await Effect.runPromise(poweroff().pipe(Effect.provide(fixture.layer)));
+    expect(fixture.calls.slice(0, 3)).toEqual([
+      `destroy:${dataRoot}`,
+      "scratch:scratch-1",
+      "scratch-reason:scratch-1",
+    ]);
+    expect(result.apps.map((app) => [app.kind, app.outcome])).toEqual([
+      ["user", "stopped"],
+      ["scratch", "destroyed"],
+      ["global", "unchanged"],
+    ]);
+    expect(fixture.calls.at(-1)).toBe("runtime");
   });
 
-  test("stops runtime service once after the app loop", async () => {
-    const calls: string[] = [];
-    const result = await Effect.runPromise(
-      poweroff({
-        discoverContainers: noDiscover,
-        userDataRoot,
-        userCacheRoot,
-        stopApp: async (entry) => {
-          calls.push(`app:${entry.appId}`);
-        },
-        stopRuntimeService: async (root) => {
-          calls.push(`runtime:${root}`);
-          return { terminated: true, pid: 1234 };
-        },
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
-    );
-
-    expect(calls.filter((call) => call.startsWith("runtime:"))).toEqual([`runtime:${userDataRoot}`]);
-    expect(calls.at(-1)).toBe(`runtime:${userDataRoot}`);
-    expect(calls.slice(0, -1).sort()).toEqual(["app:global", "app:scratch-1", "app:user-app"]);
+  test("stops the runtime service once after every app", async () => {
+    const fixture = await makePoweroffFixture({
+      dataRoot,
+      services: [serviceAt(dataRoot)],
+      appliedPlans: [planAt(dataRoot)],
+    });
+    const result = await Effect.runPromise(poweroff().pipe(Effect.provide(fixture.layer)));
+    expect(fixture.calls.filter((call) => call === "runtime")).toHaveLength(1);
+    expect(fixture.calls.at(-1)).toBe("runtime");
     expect(result.runtimeServiceStopped).toBe(true);
-    expect(result.runtimeServicePid).toBe(1234);
+    expect(result.runtimeServicePid).toBe(4242);
   });
 
-  test("result records runtimeServiceStopped=true when seam terminated", async () => {
-    const result = await Effect.runPromise(
-      poweroff({
-        discoverContainers: noDiscover,
-        userDataRoot,
-        userCacheRoot,
-        stopApp: async () => {},
-        stopRuntimeService: async () => ({ terminated: true, pid: 1234 }),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
-    );
-
-    expect(result.runtimeServiceStopped).toBe(true);
-    expect(result.runtimeServicePid).toBe(1234);
-  });
-
-  test("result records runtimeServiceStopped=false when seam reports not terminated", async () => {
-    const result = await Effect.runPromise(
-      poweroff({
-        discoverContainers: noDiscover,
-        userDataRoot,
-        userCacheRoot,
-        stopApp: async () => {},
-        stopRuntimeService: async () => ({ terminated: false }),
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
-    );
-
-    expect(result.runtimeServiceStopped).toBe(false);
-    expect(result.runtimeServicePid).toBeUndefined();
-  });
-
-  test("uses the default runtime service seam when none is injected", async () => {
-    const result = await Effect.runPromise(
-      poweroff({
-        discoverContainers: noDiscover,
-        userDataRoot,
-        userCacheRoot,
-        stopApp: async () => {},
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
-    );
-
-    expect(result.runtimeServiceStopped).toBe(false);
-    expect(result.runtimeServicePid).toBeUndefined();
-  });
-
-  test("runs teardown from the host maintenance registry", async () => {
-    // Given: a host maintainer that records the core-computed runtime paths.
-    const teardownInputs: Parameters<NonNullable<HostMaintenanceContribution["teardown"]>>[0][] = [];
-    const maintainer: HostMaintenanceContribution = {
-      id: "fake-runtime",
-      teardown: (input) => {
-        teardownInputs.push(input);
-        return Effect.succeed({ terminated: true, pid: 4321 });
-      },
-    };
-    const services = Layer.mergeAll(
-      fakeConfigService(userDataRoot),
+  test("reports a runtime service that stays running", async () => {
+    const fixture = await makePoweroffFixture({ dataRoot });
+    const layer = Layer.merge(
+      fixture.layer,
       Layer.succeed(
         HostMaintenanceRegistry,
-        HostMaintenanceRegistry.of({ maintainers: [{ ...maintainer, pluginId: "@lando/test" }] }),
+        HostMaintenanceRegistry.of({
+          maintainers: [
+            {
+              pluginId: "@lando/test",
+              id: "runtime",
+              teardown: () => Effect.succeed({ terminated: false }),
+            },
+          ],
+        }),
       ),
     );
+    const result = await Effect.runPromise(poweroff().pipe(Effect.provide(layer)));
+    expect(result.runtimeServiceStopped).toBe(false);
+    expect(result.runtimeServicePid).toBeUndefined();
+  });
 
-    // When: poweroff uses its default runtime teardown seam.
-    const result = await Effect.runPromise(
-      poweroff({ userDataRoot, userCacheRoot, discoverContainers: noDiscover, stopApp: async () => {} }).pipe(
-        Effect.provide(services),
+  test("runs host maintenance with runtime paths and reports its pid", async () => {
+    const teardownInputs: Parameters<NonNullable<HostMaintenanceContribution["teardown"]>>[0][] = [];
+    const fixture = await makePoweroffFixture({ dataRoot });
+    const layer = Layer.merge(
+      fixture.layer,
+      Layer.succeed(
+        HostMaintenanceRegistry,
+        HostMaintenanceRegistry.of({
+          maintainers: [
+            {
+              pluginId: "@lando/test",
+              id: "fake-runtime",
+              teardown: (input) => {
+                teardownInputs.push(input);
+                return Effect.succeed({ terminated: true, pid: 4321 });
+              },
+            },
+          ],
+        }),
       ),
     );
-
-    // Then: the maintainer receives canonical paths and drives the command result.
+    const result = await Effect.runPromise(poweroff().pipe(Effect.provide(layer)));
     expect(teardownInputs).toHaveLength(1);
-    expect(teardownInputs[0]?.paths.runtimeBinDir).toBe(join(userDataRoot, "runtime", "bin"));
+    expect(teardownInputs[0]?.paths.runtimeBinDir).toBe(join(dataRoot, "runtime", "bin"));
     expect(result.runtimeServiceStopped).toBe(true);
     expect(result.runtimeServicePid).toBe(4321);
   });
 
   test("skips host maintenance when the registry is absent", async () => {
-    // Given: only the command's required config service.
-
-    // When: poweroff uses its default runtime teardown seam without a registry.
-    const result = await Effect.runPromise(
-      poweroff({ userDataRoot, userCacheRoot, discoverContainers: noDiscover, stopApp: async () => {} }).pipe(
-        Effect.provide(fakeConfigService(userDataRoot)),
-      ),
+    const fixture = await makePoweroffFixture({ dataRoot });
+    const layer = Layer.merge(
+      fixture.layer,
+      Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [] })),
     );
-
-    // Then: runtime teardown is a safe no-op.
+    const result = await Effect.runPromise(poweroff().pipe(Effect.provide(layer)));
     expect(result.runtimeServiceStopped).toBe(false);
     expect(result.runtimeServicePid).toBeUndefined();
   });
 
-  test("does not power off cache-only cwd-map entries", async () => {
-    const stopped: string[] = [];
-    const result = await Effect.runPromise(
-      poweroff({
-        discoverContainers: noDiscover,
-        userDataRoot,
-        userCacheRoot,
-        stopApp: async (entry) => {
-          stopped.push(entry.appId);
-        },
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
-    );
-    expect(stopped).not.toContain("cached-only");
-    expect(result.appsPoweredOff).not.toContain("cached-only");
-  });
-
   test("respects --keep-global and --keep-scratch", async () => {
-    const stopped: string[] = [];
+    const fixture = await makePoweroffFixture({
+      dataRoot,
+      services: [serviceAt(dataRoot)],
+      appliedPlans: [planAt(dataRoot)],
+      scratch: [scratchSummary(dataRoot)],
+    });
     const result = await Effect.runPromise(
-      poweroff({
-        discoverContainers: noDiscover,
-        userDataRoot,
-        userCacheRoot,
-        keepGlobal: true,
-        keepScratch: true,
-        stopApp: async (entry) => {
-          stopped.push(entry.appId);
-        },
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      poweroff({ keepGlobal: true, keepScratch: true }).pipe(Effect.provide(fixture.layer)),
     );
-    expect(stopped).toEqual(["user-app"]);
-    expect(result.appsPoweredOff).toEqual(["user-app"]);
+    expect(fixture.calls).toEqual([`destroy:${dataRoot}`]);
+    expect(result.apps.filter((app) => app.kind === "user")).toHaveLength(1);
     expect(result.keptGlobalApp).toBe(true);
     expect(result.keptScratchApps).toBe(1);
     const rendered = renderPoweroffResult(result);
@@ -232,9 +177,18 @@ describe("apps:poweroff command", () => {
     expect(rendered).toContain("kept 1 scratch app running");
   });
 
-  test("render shows runtime stop line only when runtime stopped", () => {
+  test("render shows the runtime stop line only when the runtime stopped", () => {
     const stopped = renderPoweroffResult({
-      appsPoweredOff: ["user-app"],
+      apps: [
+        {
+          kind: "user",
+          appId: "user-app",
+          appRoot: "/srv/user-app",
+          providerId: "lando",
+          outcome: "stopped",
+          servicesStopped: [],
+        },
+      ],
       keptGlobalApp: false,
       keptScratchApps: 0,
       runtimeServiceStopped: true,
@@ -243,7 +197,16 @@ describe("apps:poweroff command", () => {
     expect(stopped).toContain("Stopped Lando runtime service");
 
     const notStopped = renderPoweroffResult({
-      appsPoweredOff: ["user-app"],
+      apps: [
+        {
+          kind: "user",
+          appId: "user-app",
+          appRoot: "/srv/user-app",
+          providerId: "lando",
+          outcome: "stopped",
+          servicesStopped: [],
+        },
+      ],
       keptGlobalApp: false,
       keptScratchApps: 0,
       runtimeServiceStopped: false,
@@ -251,4 +214,8 @@ describe("apps:poweroff command", () => {
     expect(notStopped).not.toContain("Stopped Lando runtime service");
     expect(notStopped).toBe("Powered off: user-app");
   });
+});
+
+afterAll(async () => {
+  if (dataRoot !== undefined) await rm(dataRoot, { recursive: true, force: true });
 });

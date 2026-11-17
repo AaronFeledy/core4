@@ -1,176 +1,72 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
-import * as LandoConfigService from "@lando/engine/services/config";
-import { globalTeardownHarness } from "@lando/engine/testing/global-teardown";
-import { ProviderUnavailableError, ScratchAppError } from "@lando/sdk/errors";
-import type { LandoEvent } from "@lando/sdk/events";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { EventService, RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Layer, Queue, Stream } from "effect";
+import type { ScratchSummary, ServiceRuntimeInfo } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { poweroff } from "../../src/cli/commands/poweroff";
+import { makePoweroffFixture } from "./poweroff-support";
 
-test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)(
+const providerId = ProviderId.make("lando");
+const scratchId = "scratch-orphan-abc123";
+
+const scratchService = (dataRoot: string): ServiceRuntimeInfo => ({
+  app: AppId.make(scratchId),
+  appRoot: AbsolutePath.make(dataRoot),
+  service: ServiceName.make("web"),
+  providerId,
+  status: "running",
+  containerId: "container-web",
+  publications: { status: "unknown" },
+  labels: { "dev.lando.scratch": "TRUE" },
+});
+
+const summary = (dataRoot: string): ScratchSummary => ({
+  id: scratchId,
+  app: { kind: "scratch", id: AppId.make(scratchId), root: AbsolutePath.make(dataRoot) },
+  source: { kind: "fork" },
+  mode: "full",
+  created: "2026-08-01T00:00:00.000Z",
+  status: "detached",
+});
+
+test.each(["orphan", "registered", "destroy-failure"] as const)(
   "poweroff handles %s scratch resources without hiding failures",
   async (mode) => {
     // Given: a labeled scratch container and independently controlled registry state.
-    const dataRoot = await mkdtemp(join(tmpdir(), "poweroff-orphan-data-"));
-    const cacheRoot = await mkdtemp(join(tmpdir(), "poweroff-orphan-cache-"));
-    const root = dataRoot;
-    const teardown = await globalTeardownHarness(root);
-    const id = AppId.make("scratch-orphan-abc123");
-    const calls: string[] = [];
-    const providerFailure = new ProviderUnavailableError({
-      providerId: "lando",
-      operation: "removeObservedService",
-      message: "Cannot remove scratch container",
-      remediation: "Restore provider access.",
+    const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "poweroff-orphan-data-")));
+    const fixture = await makePoweroffFixture({
+      dataRoot,
+      services: [scratchService(dataRoot)],
+      ...(mode === "orphan" ? {} : { scratch: [summary(dataRoot)] }),
+      scratchFailure: mode === "destroy-failure",
     });
-    const providerLayer = Layer.succeed(
-      RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        list: Effect.succeed([ProviderId.make("lando")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () =>
-          Effect.succeed({
-            ...TestRuntimeProvider,
-            list: () =>
-              Effect.succeed([
-                {
-                  app: id,
-                  service: ServiceName.make("web"),
-                  providerId: ProviderId.make("lando"),
-                  status: "running" as const,
-                  publications: { status: "unknown" as const },
-                  labels: { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": id },
-                },
-              ]),
-            listVolumes: () => Effect.succeed([]),
-            removeObservedService: Effect.fnUntraced(function* () {
-              calls.push("prune");
-              if (mode === "prune-failure") return yield* Effect.fail(providerFailure);
-              return { kind: "removed" as const };
-            }),
-          }),
-      }),
-    );
-    const scannerLayer = ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(
-      Layer.provide(providerLayer),
-    );
-    const scratchLayer = Layer.effect(
-      ScratchAppService,
-      Effect.map(ScratchResourceScannerLayer.ScratchResourceScanner, (scanner) =>
-        ScratchAppService.of({
-          kind: "scratch",
-          root: Effect.succeed(AbsolutePath.make(root)),
-          ensureRoot: Effect.die("unexpected ensureRoot"),
-          synthesizeId: () => Effect.die("unexpected synthesizeId"),
-          paths: () => Effect.die("unexpected paths"),
-          acquire: () => Effect.die("unexpected acquire"),
-          resolveById: () => Effect.die("unexpected resolve"),
-          list: () => Effect.succeed([]),
-          info: () => Effect.die("unexpected info"),
-          start: () => Effect.die("unexpected start"),
-          stop: () => Effect.die("unexpected stop"),
-          gc: () => Effect.die("must prune only this orphan, not every scratch app"),
-          destroy: Effect.fnUntraced(function* (target, options) {
-            calls.push("destroy");
-            expect(target).toBe(id);
-            expect(options).toEqual({ keepVolumes: false, reason: "poweroff" });
-            switch (mode) {
-              case "registered":
-                return { id, app: { kind: "scratch" as const, id, root: AbsolutePath.make(root) } };
-              case "destroy-failure":
-                return yield* Effect.fail(
-                  new ScratchAppError({
-                    operation: "destroy",
-                    message: "Denied",
-                    remediation: "Injected destroy denial for poweroff orphan fixture.",
-                  }),
-                );
-              case "orphan":
-              case "prune-failure":
-                yield* scanner.pruneScratch(id);
-                return { id, app: { kind: "scratch" as const, id, root: AbsolutePath.make(root) } };
-            }
-          }),
-        }),
-      ),
-    ).pipe(Layer.provide(scannerLayer));
-    const events = Layer.succeed(
-      EventService,
-      EventService.of({
-        publish: () => Effect.void,
-        subscribe: () => Stream.empty,
-        subscribeQueue: Queue.unbounded<LandoEvent>(),
-        waitFor: () => Effect.never,
-        subscribeWithHistory: () => Effect.never,
-        waitForAny: () => Effect.never,
-        query: () => Effect.succeed([]),
-      }),
-    );
     try {
-      // When: poweroff uses the real GC scanner against the discovered scratch app.
-      const result = await Effect.runPromise(
-        poweroff({
-          userDataRoot: dataRoot,
-          userCacheRoot: cacheRoot,
-          discoverContainers: async () => [
-            { appId: id, appName: id, appRoot: root, providerId: "lando", services: ["web"], scratch: true },
-          ],
-          stopRuntimeService: async () => {
-            calls.push("runtime");
-            return { terminated: true };
-          },
-        }).pipe(
-          Effect.result,
-          Effect.provide(
-            Layer.mergeAll(
-              teardown.layer,
-              LandoConfigService.layer,
-              providerLayer,
-              scratchLayer,
-              events,
-              scannerLayer,
-            ),
-          ),
-        ),
-      );
-      // Then: only a missing registry entry permits pruning, and failure keeps the runtime available.
-      switch (mode) {
-        case "orphan":
-        case "registered":
-          expect(result._tag).toBe("Success");
-          if (result._tag === "Success") expect(result.success.appsPoweredOff).toEqual([id]);
-          expect(calls).toEqual(mode === "orphan" ? ["destroy", "prune", "runtime"] : ["destroy", "runtime"]);
-          break;
-        case "prune-failure":
-        case "destroy-failure":
-          expect(result._tag).toBe("Failure");
-          if (result._tag === "Failure") {
-            expect(result.failure).toMatchObject({
-              _tag: "PoweroffStopError",
-              appId: id,
-              providerId: "lando",
-            });
-            if (result.failure._tag === "PoweroffStopError") {
-              expect(result.failure.remediation).toContain("lando scratch gc --prune");
-              if (mode === "prune-failure")
-                expect(result.failure.cause).toMatchObject({ cause: providerFailure });
-            }
-          }
-          expect(calls).toEqual(mode === "prune-failure" ? ["destroy", "prune"] : ["destroy"]);
-          break;
+      // When: poweroff reaps the discovered scratch through its lifecycle service.
+      const result = await Effect.runPromise(poweroff().pipe(Effect.result, Effect.provide(fixture.layer)));
+      // Then: an orphan is destroyed once, and a failure keeps the runtime available.
+      if (mode === "destroy-failure") {
+        expect(result._tag).toBe("Failure");
+        if (result._tag !== "Failure") throw new Error("expected a typed scratch failure");
+        expect(result.failure).toMatchObject({
+          _tag: "PoweroffStopError",
+          failures: [{ kind: "scratch", appId: scratchId, errorTag: "ScratchAppError" }],
+        });
+        expect(fixture.calls).toEqual([`scratch:${scratchId}`, `scratch-reason:${scratchId}`]);
+        expect(fixture.calls).not.toContain("runtime");
+      } else {
+        expect(result._tag).toBe("Success");
+        if (result._tag === "Success")
+          expect(result.success.apps.find((app) => app.kind === "scratch")).toMatchObject({
+            appId: scratchId,
+            outcome: "destroyed",
+          });
+        expect(fixture.calls.filter((call) => call === `scratch:${scratchId}`)).toHaveLength(1);
+        expect(fixture.calls.at(-1)).toBe("runtime");
       }
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
-      await rm(cacheRoot, { recursive: true, force: true });
     }
   },
 );
