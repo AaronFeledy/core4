@@ -9,8 +9,8 @@ const NODE_CODENAMES = SUPPORTED_NODE_MAJORS.map((entry) => entry.codename);
 const NVMRC_REMEDIATION = `Use a supported Node major (${NODE_MAJOR_IDS.join(", ")}), an LTS codename (${NODE_CODENAMES.join(", ")}), lts/*, or an exact pin of a supported major.`;
 
 export class NodeInferenceError extends ServiceConfigIssue {
-  constructor(message: string, remediation: string) {
-    super([], message, remediation);
+  constructor(message: string, remediation: string, projectFile?: string) {
+    super([], message, { suggestion: remediation, ...(projectFile === undefined ? {} : { projectFile }) });
     this.name = "NodeInferenceError";
   }
 }
@@ -46,7 +46,11 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
     .map((line) => line.replace(/#.*$/u, "").trim().toLowerCase())
     .find((line) => line.length > 0);
   if (constraint === undefined) {
-    throw new NodeInferenceError(`Unsupported Node version "" in ${input.path}.`, NVMRC_REMEDIATION);
+    throw new NodeInferenceError(
+      `Unsupported Node version "" in ${input.path}.`,
+      NVMRC_REMEDIATION,
+      input.path,
+    );
   }
 
   if (constraint === "lts" || constraint === "lts/*") {
@@ -66,6 +70,7 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
         throw new NodeInferenceError(
           `Invalid Node version "${constraint}" in ${input.path}.`,
           exactPinRemediation,
+          input.path,
         );
       }
       return {
@@ -94,6 +99,7 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
   throw new NodeInferenceError(
     `Unsupported Node version "${constraint}" in ${input.path}.`,
     NVMRC_REMEDIATION,
+    input.path,
   );
 };
 
@@ -107,12 +113,14 @@ const packageEngine = (
     throw new NodeInferenceError(
       `Node inference could not parse ${input.path} as valid JSON: ${causeMessage(cause)}.`,
       "Fix package.json or remove bare type: node.",
+      input.path,
     );
   }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new NodeInferenceError(
       `${input.path} must contain a JSON object.`,
       "Fix package.json or remove bare type: node.",
+      input.path,
     );
   }
   const engines = Reflect.get(parsed, "engines");
@@ -121,6 +129,7 @@ const packageEngine = (
     throw new NodeInferenceError(
       `${input.path} engines must be an object.`,
       "Set engines.node to a valid semver range.",
+      input.path,
     );
   }
   const node = Reflect.get(engines, "node");
@@ -129,6 +138,7 @@ const packageEngine = (
     throw new NodeInferenceError(
       `${input.path} engines.node must be a string.`,
       "Set engines.node to a valid semver range.",
+      input.path,
     );
   }
   const constraint = node.trim();
@@ -136,6 +146,7 @@ const packageEngine = (
     throw new NodeInferenceError(
       `${input.path} engines.node is not a valid semver range: "${constraint}".`,
       "Set engines.node to a valid semver range.",
+      input.path,
     );
   }
   return constraint;
@@ -167,6 +178,7 @@ export const resolveNodeInference = (
       throw new NodeInferenceError(
         `${nvmrc.path} constraint "${selection.normalizedConstraint}" conflicts with package.json engines.node "${engine}".`,
         "Make both project files describe compatible Node versions.",
+        nvmrc.path,
       );
     }
     return selection;
@@ -183,6 +195,7 @@ export const resolveNodeInference = (
     throw new NodeInferenceError(
       `package.json engines.node "${engine}" does not prove that a complete supported Node image channel (${NODE_MAJOR_IDS.join(", ")}) is compatible.`,
       exactPinRemediation,
+      packageJson?.path,
     );
   }
   throw new NodeInferenceError(
@@ -190,5 +203,6 @@ export const resolveNodeInference = (
       ? "package.json has no Node constraint in engines.node."
       : "Node inference found neither .nvmrc nor package.json.",
     "Add .nvmrc or package.json engines.node, then retry.",
+    packageJson?.present === true ? packageJson.path : undefined,
   );
 };

@@ -150,6 +150,41 @@ test.each([
   }
 });
 
+test.each([
+  { name: "an oversized candidate", setup: "oversize" },
+  { name: "a candidate that is a directory", setup: "directory" },
+] as const)("attributes $name to the project file, not packageRoot", async ({ setup }) => {
+  const appRoot = await mkdtemp(join(tmpdir(), "lando-project-attribution-"));
+  try {
+    if (setup === "oversize") await writeFile(join(appRoot, ".nvmrc"), "22.11.0\n");
+    else await mkdir(join(appRoot, ".nvmrc"));
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem;
+        return yield* Effect.result(
+          loadServiceTypeProjectFiles({
+            appRoot,
+            serviceName: "web",
+            packageRoot: ".",
+            declarations: [{ path: ".nvmrc", maxBytes: 4 }],
+            fileSystem,
+          }),
+        );
+      }).pipe(Effect.provide(BunFileSystem.layer)),
+    );
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      const file = join(appRoot, ".nvmrc");
+      expect(result.failure.file).toBe(file);
+      expect(result.failure.issues).toMatchObject([
+        { path: ["services", "web"], source: { layer: "project-file", file, path: [] } },
+      ]);
+    }
+  } finally {
+    await rm(appRoot, { recursive: true, force: true });
+  }
+});
+
 test("reports project traversal as a typed failure rather than an Effect defect", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {

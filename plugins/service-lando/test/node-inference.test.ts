@@ -244,8 +244,69 @@ describe("bare node version inference", () => {
             path: [],
             message: '.nvmrc constraint "lts/*" conflicts with package.json engines.node "^24".',
             suggestion: remediation,
+            source: { layer: "project-file", file: ".nvmrc", path: [] },
           },
         ],
+      });
+    }
+  });
+
+  test.each([
+    ["# comment only", undefined, ".nvmrc"],
+    ["18", undefined, ".nvmrc"],
+    [undefined, "{", "package.json"],
+    [undefined, JSON.stringify({}), "package.json"],
+  ] satisfies ReadonlyArray<readonly [string | undefined, string | undefined, string]>)(
+    "attributes an inference failure to the project file that caused it",
+    async (nvmrc, packageJson, expected) => {
+      const result = await Effect.runPromise(
+        Effect.result(
+          nodeServiceType.resolve({
+            name: "web",
+            service: { type: "node" },
+            appRoot: "/app",
+            metadata: { resolvedAt: "2026-09-11T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },
+            projectFiles: [
+              nvmrc === undefined ? absentProjectFile(".nvmrc") : projectFile(".nvmrc", nvmrc),
+              packageJson === undefined
+                ? absentProjectFile("package.json")
+                : projectFile("package.json", packageJson),
+            ],
+          }),
+        ),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure.issues?.[0]?.source).toEqual({
+          layer: "project-file",
+          file: expected,
+          path: [],
+        });
+      }
+    },
+  );
+
+  test("keeps a nested packageRoot in the attributed project-file path", async () => {
+    const result = await Effect.runPromise(
+      Effect.result(
+        nodeServiceType.resolve({
+          name: "web",
+          service: { type: "node", packageRoot: "apps/web" },
+          appRoot: "/app",
+          metadata: { resolvedAt: "2026-09-11T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },
+          projectFiles: [
+            projectFile("apps/web/.nvmrc", "lts/*"),
+            projectFile("apps/web/package.json", JSON.stringify({ engines: { node: "^24" } })),
+          ],
+        }),
+      ),
+    );
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure.issues?.[0]?.source).toEqual({
+        layer: "project-file",
+        file: "apps/web/.nvmrc",
+        path: [],
       });
     }
   });

@@ -111,7 +111,7 @@ const resolveSeed = Effect.fnUntraced(function* (
       // A registered type that fails to load is a plugin problem, not an unknown type.
       const baseId = serviceTypeId.split(":")[0];
       return registeredServiceTypeIds.some((id) => id === serviceTypeId || id === baseId)
-        ? servicePlanError(appRoot, name, error)
+        ? servicePlanError({ appRoot, serviceName: name, cause: error })
         : unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds);
     }),
   );
@@ -147,7 +147,7 @@ const resolveSeed = Effect.fnUntraced(function* (
     })
     .pipe(
       Effect.flatMap((raw) => normalizeConnectionClients(serviceType, name, { raw })),
-      mapFailures((error) => servicePlanError(appRoot, name, error)),
+      mapFailures((error) => servicePlanError({ appRoot, serviceName: name, cause: error, projectFiles })),
     );
   return {
     name,

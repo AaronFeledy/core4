@@ -34,6 +34,20 @@ const validationError = (input: ProjectFileRequest, message: string) =>
     issues: [validationIssue(["services", input.serviceName, "packageRoot"], message)],
   });
 
+/** A failure in one declared project file cites that file, not the Landofile's packageRoot. */
+const projectFileError = (input: ProjectFileRequest, absolute: string, message: string) =>
+  new LandofileValidationError({
+    message,
+    remediation: `Repair ${absolute} or remove it, then retry.`,
+    file: absolute,
+    issues: [
+      {
+        ...validationIssue(["services", input.serviceName], message),
+        source: { layer: "project-file", file: absolute, path: [] },
+      },
+    ],
+  });
+
 const containedPath = (
   input: ProjectFileRequest,
   authoredPath: string,
@@ -103,8 +117,9 @@ const readTextBounded = (
       const bytes = state.bytes + chunk.byteLength;
       if (bytes > limit) {
         return Effect.fail(
-          validationError(
+          projectFileError(
             input,
+            absolute,
             `Project-file inference input ${absolute} exceeds the ${limit}-byte read limit.`,
           ),
         );
@@ -127,7 +142,11 @@ const readTextBounded = (
     mapFailures((cause) =>
       cause instanceof LandofileValidationError
         ? cause
-        : validationError(input, `Unable to read project file ${absolute}: ${causeMessage(cause)}.`),
+        : projectFileError(
+            input,
+            absolute,
+            `Unable to read project file ${absolute}: ${causeMessage(cause)}.`,
+          ),
     ),
   );
 
@@ -189,19 +208,20 @@ export const loadServiceTypeProjectFiles = Effect.fnUntraced(function* (
       .lstat(absolute)
       .pipe(
         mapFailures((cause) =>
-          validationError(input, `Unable to inspect project file ${absolute}: ${cause.message}.`),
+          projectFileError(input, absolute, `Unable to inspect project file ${absolute}: ${cause.message}.`),
         ),
       );
     if (!stat.isFile) {
       return yield* Effect.fail(
-        validationError(input, `Project-file inference input is not a file: ${absolute}.`),
+        projectFileError(input, absolute, `Project-file inference input is not a file: ${absolute}.`),
       );
     }
     const limit = Math.min(declaration.maxBytes, MAX_PROJECT_FILE_BYTES);
     if (stat.size > limit) {
       return yield* Effect.fail(
-        validationError(
+        projectFileError(
           input,
+          absolute,
           `Project-file inference input ${absolute} exceeds the ${limit}-byte read limit.`,
         ),
       );
