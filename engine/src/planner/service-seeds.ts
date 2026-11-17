@@ -115,6 +115,11 @@ const resolveSeed = Effect.fnUntraced(function* (
         : unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds);
     }),
   );
+  // A version on a type that publishes no matrix names a sibling type that does not exist, so
+  // answer with the registered versioned siblings instead of a matrix error.
+  if (version !== undefined && (serviceType.versions?.length ?? 0) === 0) {
+    yield* Effect.fail(unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds));
+  }
   const resolvedArtifactTag = yield* resolvePinnedArtifactTag(appRoot, name, serviceType, version);
   const pinnedService: ServiceConfig =
     resolvedArtifactTag === undefined || serviceWithEnvironment.image !== undefined
@@ -125,10 +130,7 @@ const resolveSeed = Effect.fnUntraced(function* (
     name,
     service,
     serviceType,
-    serviceTypeId,
-    version,
     pinnedService,
-    registeredServiceTypeIds,
     fileSystem,
   });
   const resolution = yield* serviceType

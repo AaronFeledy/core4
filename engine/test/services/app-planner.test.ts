@@ -3048,7 +3048,7 @@ describe("AppPlannerLayer.layer", () => {
   test.each([
     [
       { type: "node:22.11.0" },
-      /services.web.type: Service web requests version 22\.11\.0 of service type node, but that ServiceType does not publish any supported versions\. Use the bare type node or choose a ServiceType with shipped version metadata\./,
+      /services.web.type: Unsupported service type node:22\.11\.0 for service web\. Supported alternatives: node:22, node:24, node:26, node:lts\./,
     ],
     [{ type: "node", image: "node:22" }, /cannot combine bare type: node inference with image/i],
     [{ type: "node:22", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
