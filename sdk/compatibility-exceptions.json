@@ -6482,5 +6482,23 @@
     "changeKind": "enum-widened",
     "path": "$.skipped.items.section",
     "justification": "GitHub #2278 adds the app-scoped database-credentials section to `lando doctor --app`. Every previous section id remains valid and unchanged; the new value only names the post-readiness login observation. Consumers that enumerate sections must accept the new id, which the doctor section table, --section validation, and the report tests cover."
+  },
+  {
+    "surface": "command:app:cache:refresh",
+    "changeKind": "union-widened",
+    "path": "$.unavailableTasks.items.issues.items.rule.anyOf",
+    "justification": "GitHub #2184 adds the service.router-tls-termination warning to ConfigLintRuleId. Every existing rule id stays valid; output contracts that carry shared validation issues inherit the additive union. Findings are observations, not persisted state."
+  },
+  {
+    "surface": "command:meta:mcp",
+    "changeKind": "union-widened",
+    "path": "$.diagnostics.items.issues.items.rule.anyOf",
+    "justification": "GitHub #2184 adds the service.router-tls-termination warning to ConfigLintRuleId. Every existing rule id stays valid; output contracts that carry shared validation issues inherit the additive union. Findings are observations, not persisted state."
+  },
+  {
+    "surface": "schema:RegisteredCommand",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "GitHub #2184 widens the shared ConfigLintRuleId union with service.router-tls-termination, which registered command output schemas embed through validation issues. Command ids, flags, and result discriminators are unchanged."
   }
 ]

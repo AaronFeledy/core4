@@ -1017,6 +1017,10 @@
       "digest": "7f6fd21d0c1d3e9249c5c9a4348e0f76050eac7a71d33d13ec2ab4e7ac3b4213"
     },
     {
+      "fixture": "docs/guides/php/fixtures/native-tls-off",
+      "digest": "c19a4052e391c72eaf704d9e2d7c37ceb32d78cd85ca09f896ed83d0a0c38411"
+    },
+    {
       "fixture": "docs/guides/php/fixtures/php-demo",
       "digest": "536eff5da204c3ce0f04b075242584963a956dd342be87293eefa172ece45bba"
     },

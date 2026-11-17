@@ -162,6 +162,13 @@ export const CONFIG_LINT_RULES = {
       "A Landofile `router.bindAddress` does not bind the shared router; the key is installation-wide.",
     examplePaths: ["router.bindAddress"],
   },
+  "service.router-tls-termination": {
+    stages: ["resolve"],
+    severities: ["warning"],
+    summary:
+      "Generated Apache serves HTTPS routes while native TLS is off because `certs: false`, custom certificate material, or a non-root `user:`; TLS terminates at the router and an app force-HTTPS rule redirects in a loop.",
+    examplePaths: ["services.appserver.certs", "services.appserver.user"],
+  },
   "healthcheck.bare-compose-marker": {
     stages: ["effective"],
     severities: ["warning"],

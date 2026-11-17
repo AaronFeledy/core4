@@ -129,6 +129,23 @@ Lando generates the HTTPS listener only when it owns the Apache launcher, the se
 
 A custom `image:`, `build.context`, authored `command:`, or `entrypoint:` takes over Apache's configuration, so no generated TLS listener, certificate request, or module edit applies there. An explicit `certs: true` keeps its existing meaning and configures the TLS listener for a root parent.
 
+`lando app:config:lint` and `lando doctor --app` report `service.router-tls-termination` at `services.<name>.certs` or `services.<name>.user` when a generated Apache service serves an HTTPS route with TLS terminating at the router, because that combination makes an app force-HTTPS rule redirect in a loop. Remove `certs: false` so Lando issues the service certificate, use `certs: true` instead of custom material for Apache's HTTPS listener, or remove the authored `user:` so Apache's parent can read the key while workers still drop privileges. An explicit endpoint selector that binds the plain listener is a deliberate choice and stays silent.
+
+Check it before starting containers:
+
+```sh
+lando app:config:lint --format=json
+```
+
+  <Scenario id="native-tls-off-lint" render>
+    <Step name="lint-native-tls-off">
+      <UseFixture name="native-tls-off" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "service\\.router-tls-termination" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
 ## Keep PHP out of upload directories
 
 Set `uploadDirs` on the service that serves PHP in your `.lando.yml`: a `php` service using `via: apache` (the default), or the [nginx service in front of FPM](./nginx.mdx#stop-php-in-upload-directories). For Apache, add the directories to your PHP service:

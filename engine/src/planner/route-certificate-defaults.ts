@@ -1,5 +1,5 @@
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
-import type { CertificatePlan, RoutePlan } from "@lando/sdk/schema";
+import type { CertificatePlan, GeneratedCertificateEndpoint, RoutePlan } from "@lando/sdk/schema";
 import { isRootContainerUser } from "@lando/sdk/schema";
 import type { ServiceTypeResolution } from "@lando/sdk/services";
 
@@ -21,7 +21,9 @@ import type { ServiceTypeResolution } from "@lando/sdk/services";
  * The decision is pure and runs before feature preparation so the same seeds
  * carry the effective `certs` value into endpoint projection, assembly, plan
  * cache identity, and tooling projection. It never contacts a certificate
- * authority and never mutates the authored Landofile.
+ * authority and never mutates the authored Landofile. `generatedCertificateDemand`
+ * is the one classifier: certificate demand activates only on `active`, and
+ * lint reports the `suppressed` reasons without re-deciding the route intent.
  */
 const authoredHttpsListenerSurvives = (resolution: ServiceTypeResolution, tlsPort: number): boolean => {
   const endpoints = resolution.normalizedConfig.endpoints;
@@ -49,25 +51,54 @@ const routeDemandsNativeTls = (
   });
 };
 
+/** Why an owned launcher's generated certificate cannot activate native TLS. */
+export type GeneratedCertificateSuppression = "certs-disabled" | "custom-certificate" | "non-root-user";
+
+/** The single native-TLS decision shared by route demand and lint. */
+export type GeneratedCertificateDemand =
+  | { readonly kind: "inactive" }
+  | { readonly kind: "active"; readonly endpoint: GeneratedCertificateEndpoint }
+  | {
+      readonly kind: "suppressed";
+      readonly reason: GeneratedCertificateSuppression;
+      readonly endpoint: GeneratedCertificateEndpoint;
+    };
+
+const nativeTlsSuppression = (
+  config: ServiceTypeResolution["normalizedConfig"],
+): GeneratedCertificateSuppression | undefined => {
+  if (config.certs === false) return "certs-disabled";
+  if (config.certs !== undefined && config.certs !== true) return "custom-certificate";
+  if (config.user !== undefined && !isRootContainerUser(config.user)) return "non-root-user";
+  return undefined;
+};
+
+export const generatedCertificateDemand = (input: {
+  readonly resolution: ServiceTypeResolution;
+  readonly routes: readonly NormalizedRoute[] | undefined;
+  readonly routerEnabled: boolean;
+}): GeneratedCertificateDemand => {
+  const { resolution } = input;
+  const association = resolution.generatedCertificateEndpoint;
+  if (association === undefined) return { kind: "inactive" };
+  if (!input.routerEnabled) return { kind: "inactive" };
+  if (!authoredHttpsListenerSurvives(resolution, association.port)) return { kind: "inactive" };
+  // An authored routes list that produced no normalized intent was blocked
+  // upstream; it is unavailable, never a default-HTTPS guess.
+  if (resolution.normalizedConfig.routes !== undefined && input.routes === undefined)
+    return { kind: "inactive" };
+  if (!routeDemandsNativeTls(input.routes, resolution, association.port)) return { kind: "inactive" };
+  const reason = nativeTlsSuppression(resolution.normalizedConfig);
+  return reason === undefined
+    ? { kind: "active", endpoint: association }
+    : { kind: "suppressed", reason, endpoint: association };
+};
+
 const demandsGeneratedCertificate = (input: {
   readonly resolution: ServiceTypeResolution;
   readonly routes: readonly NormalizedRoute[] | undefined;
   readonly routerEnabled: boolean;
-}): boolean => {
-  const { resolution } = input;
-  const association = resolution.generatedCertificateEndpoint;
-  if (association === undefined) return false;
-  if (!input.routerEnabled) return false;
-  // An authored certs value, including `false` and custom material, is final.
-  if (resolution.normalizedConfig.certs !== undefined) return false;
-  const user = resolution.normalizedConfig.user;
-  if (user !== undefined && !isRootContainerUser(user)) return false;
-  if (!authoredHttpsListenerSurvives(resolution, association.port)) return false;
-  // An authored routes list that produced no normalized intent was blocked
-  // upstream; it is unavailable, never a default-HTTPS guess.
-  if (resolution.normalizedConfig.routes !== undefined && input.routes === undefined) return false;
-  return routeDemandsNativeTls(input.routes, resolution, association.port);
-};
+}): boolean => generatedCertificateDemand(input).kind === "active";
 
 export const applyRouteDemandedCertificates = <
   Service extends { readonly name: string; readonly resolution: ServiceTypeResolution },

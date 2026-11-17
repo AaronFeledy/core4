@@ -16,6 +16,7 @@ import type {
 import type { ConfigLintResult, ConfigLintViolation, ProviderId, ValidationIssue } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
+import { routerEnabledFrom } from "../config/router-config.ts";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 import { planApp } from "../planner/assemble.ts";
 import { providerAlternatives } from "../planner/compose-capabilities.ts";
@@ -25,6 +26,7 @@ import { hostShellIssues } from "../planner/host-shell-issues.ts";
 import { configExpressionIssuePath } from "../planner/landofile-scopes.ts";
 import { lintCapabilityIssues } from "../planner/lint-capabilities.ts";
 import { planningLintFindings } from "../planner/lint-planning.ts";
+import { routerTlsTerminationIssues } from "../planner/router-tls-lint.ts";
 import { toolingDeclarationIssues } from "../planner/tooling-declaration-issues.ts";
 import { toolingDynamicIssues } from "../planner/tooling-dynamic-issues.ts";
 import { toolingAndEventIssues } from "../planner/tooling-event-issues.ts";
@@ -140,6 +142,11 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
         pathsService?.platform ?? normalizeHostPlatform(),
       ),
     )),
+    ...routerTlsTerminationIssues({
+      services: resolution.services,
+      routes: resolution.routes,
+      routerEnabled: routerEnabledFrom(resolution.globalConfig?.router, resolution.landofile.router),
+    }),
   ];
   const evaluated = issues
     .filter(
