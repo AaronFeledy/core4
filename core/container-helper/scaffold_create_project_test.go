@@ -65,11 +65,7 @@ func TestCreateProjectEmptyHooksAreUndefined(t *testing.T) {
 			if code := fixture.run(t, "create-project", "acme/hookless"); code != 0 {
 				t.Fatalf("create-project exited %d: %s", code, fixture.stderr.String())
 			}
-			for _, call := range fixture.calls(t) {
-				if strings.HasPrefix(call, "run-script") {
-					t.Fatalf("ran an undefined hook: %s", call)
-				}
-			}
+			mustEqualStrings(t, fixture.calls(t), []string{"create-project", "install"})
 		})
 	}
 }

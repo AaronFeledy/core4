@@ -64,7 +64,7 @@ func runCreateProject(args []string, streams helperIO, crash func(string)) int {
 			return isRegularFile(filepath.Join(root, "composer.json"))
 		},
 	})
-	return scaffoldResult(s, err, streams)
+	return scaffoldResult(err, streams)
 }
 
 func parseCreateProjectArgs(args []string) (createProjectOptions, error) {
@@ -117,9 +117,10 @@ func stageCreateProject(s *scaffold, stage string, options createProjectOptions)
 	return nil
 }
 
-// runCreateProjectHooks runs Composer's own order after promotion. Each
-// completed step is recorded in the manifest, so a resume never reruns a hook
-// that already succeeded.
+// runCreateProjectHooks runs Composer's own order after promotion. Each step is
+// recorded in the manifest after it succeeds, so a resume skips every recorded
+// step. A kill between a hook's exit and that save runs the hook again: a step
+// recorded before it runs could be skipped half done, which is worse.
 func runCreateProjectHooks(s *scaffold, manifest *scaffoldManifest, options createProjectOptions) error {
 	if !options.noScripts && !manifest.Hooks["post-root-package-install"] {
 		defined, err := composerScriptDefined(s.appRoot, "post-root-package-install")
@@ -205,14 +206,9 @@ func composerScriptDefined(root string, event string) (bool, error) {
 	return true, nil
 }
 
-func scaffoldResult(s *scaffold, err error, streams helperIO) int {
+func scaffoldResult(err error, streams helperIO) int {
 	if err == nil {
 		return 0
-	}
-	var complete *scaffoldAlreadyComplete
-	if errors.As(err, &complete) {
-		fmt.Fprintln(streams.stderr, complete.message)
-		return 1
 	}
 	fmt.Fprintln(streams.stderr, err)
 	return 1

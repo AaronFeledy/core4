@@ -38,15 +38,15 @@ func runFakeComposer(args []string) int {
 	}
 	switch env["LANDO_TEST_COMPOSER_RECIPE"] {
 	case "drupal":
-		return fakeDrupalComposer(command, workingDir, positional, arguments)
+		return fakeDrupalComposer(command, workingDir, positional)
 	case "cms":
-		return fakeCmsComposer(command, workingDir, positional, arguments, env)
+		return fakeCmsComposer(command, workingDir, positional, env)
 	default:
-		return fakeCreateComposer(command, workingDir, positional, arguments, env)
+		return fakeCreateComposer(command, positional, env)
 	}
 }
 
-func fakeCreateComposer(command string, _ string, positional []string, _ []string, env map[string]string) int {
+func fakeCreateComposer(command string, positional []string, env map[string]string) int {
 	release := env["LANDO_TEST_COMPOSER_RELEASE"]
 	switch command {
 	case "create-project":
@@ -119,7 +119,7 @@ func fakeCreateComposer(command string, _ string, positional []string, _ []strin
 	return 2
 }
 
-func fakeDrupalComposer(command string, workingDir string, positional []string, _ []string) int {
+func fakeDrupalComposer(command string, workingDir string, positional []string) int {
 	switch command {
 	case "create-project":
 		if len(positional) < 2 {
@@ -162,24 +162,9 @@ func readFakeJSONBytes(data []byte) map[string]any {
 	return value
 }
 
-func cloneFakeObject(value map[string]any) map[string]any {
-	clone := make(map[string]any, len(value))
-	for key, entry := range value {
-		clone[key] = entry
-	}
-	return clone
-}
-
-func removeFakeKey(value map[string]any, key string) {
-	delete(value, key)
-}
-
 func fakeLicense(value any) []any {
 	if entries, ok := value.([]any); ok {
 		return entries
 	}
 	return []any{value}
 }
-
-// writeCmsComposer preserves the reviewed repository first, the way
-// `composer config repositories.lando-svg-image --json` prepends its key.

@@ -150,14 +150,6 @@ func orderedObjectKeys(data []byte) ([]string, map[string]json.RawMessage, error
 	return keys, values, nil
 }
 
-func cloneObject(value map[string]any) map[string]any {
-	clone := make(map[string]any, len(value))
-	for key, entry := range value {
-		clone[key] = entry
-	}
-	return clone
-}
-
 func licenseArray(value any) []any {
 	if entries, ok := value.([]any); ok {
 		return entries

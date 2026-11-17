@@ -33,7 +33,7 @@ func runDrupalCmsScaffold(args []string, streams helperIO, crash func(string)) i
 		},
 		complete: drupalScaffoldComplete,
 	})
-	return scaffoldResult(s, err, streams)
+	return scaffoldResult(err, streams)
 }
 
 func stageDrupalCms(s *scaffold, stage string) error {

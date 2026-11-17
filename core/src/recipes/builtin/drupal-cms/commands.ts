@@ -1,8 +1,3 @@
-/**
- * Readable source for the Drupal CMS install command. The scaffold engine runs
- * from the container helper, so this module no longer carries a shell protocol.
- */
-
 /** Composer installs the pinned drupal/svg_image patch from its git source, so the appserver image needs Git. */
 export const DRUPAL_CMS_GIT_ARTIFACT = {
   run: "apt-get update && apt-get install -y --no-install-recommends git",

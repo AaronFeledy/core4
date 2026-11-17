@@ -82,7 +82,7 @@ func runDrupalScaffold(args []string, streams helperIO, crash func(string)) int 
 		},
 		complete: drupalScaffoldComplete,
 	})
-	return scaffoldResult(s, err, streams)
+	return scaffoldResult(err, streams)
 }
 
 func drupalScaffoldComplete(appRoot string) bool {

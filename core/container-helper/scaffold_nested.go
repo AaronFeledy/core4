@@ -10,6 +10,10 @@ import (
 	"syscall"
 )
 
+// promoteNested fills an empty directory target in place. A mounted vendor,
+// node_modules, or working-directory shadow cannot be replaced by a rename, so
+// the staged tree is copied into a private partial inside the target and each
+// child is then renamed into the target with RENAME_NOREPLACE.
 func (s *scaffold) promoteNested(manifest *scaffoldManifest, entry *scaffoldEntry) error {
 	target := filepath.Join(s.appRoot, entry.Name)
 	partial := filepath.Join(target, ".lando-partial")
@@ -187,7 +191,7 @@ func (s *scaffold) promoteNestedChild(target string, partial string, child *scaf
 	promotedInfo, promotedErr := os.Lstat(promotedChild)
 	switch {
 	case promotedErr == nil:
-		if child.Identity == nil || !sameIdentity(*child.Identity, identityOf(promotedInfo)) {
+		if child.Identity == nil || *child.Identity != identityOf(promotedInfo) {
 			return s.ambiguousTarget(promotedChild)
 		}
 		child.State = "complete"
@@ -198,7 +202,7 @@ func (s *scaffold) promoteNestedChild(target string, partial string, child *scaf
 	if stagedErr != nil {
 		return fmt.Errorf("%s scaffold nested entry is missing: %s", s.label, stagedChild)
 	}
-	if child.Identity == nil || !sameIdentity(*child.Identity, identityOf(stagedInfo)) {
+	if child.Identity == nil || *child.Identity != identityOf(stagedInfo) {
 		return fmt.Errorf("%s scaffold nested entry changed after its manifest: %s", s.label, stagedChild)
 	}
 	if err := renameNoReplace(stagedChild, promotedChild); err != nil {

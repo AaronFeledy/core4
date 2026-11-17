@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,12 +22,12 @@ func newCmsVerifierFixture(t *testing.T) *cmsVerifierFixture {
 	t.Helper()
 	repository := cmsSvgRepositoryJSON()
 	expected := readFakeJSONBytes([]byte(repository))
-	pkg := cloneFakeObject(expected["package"].(map[string]any))
-	upstream := cloneFakeObject(pkg)
+	pkg := maps.Clone(expected["package"].(map[string]any))
+	upstream := maps.Clone(pkg)
 	delete(upstream, "version")
 	delete(upstream, "source")
 
-	locked := cloneFakeObject(pkg)
+	locked := maps.Clone(pkg)
 	locked["license"] = []any{"GPL-2.0-or-later"}
 
 	fixture := &cmsVerifierFixture{
@@ -46,7 +47,7 @@ func newCmsVerifierFixture(t *testing.T) *cmsVerifierFixture {
 		},
 		installed: map[string]any{"packages": []any{map[string]any{
 			"name":                "drupal/svg_image",
-			"source":              cloneFakeObject(pkg["source"].(map[string]any)),
+			"source":              maps.Clone(pkg["source"].(map[string]any)),
 			"installation-source": "source",
 		}}},
 		checkout: upstream,

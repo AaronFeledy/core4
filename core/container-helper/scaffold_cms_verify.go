@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -82,10 +83,10 @@ func verifyCmsProjection(root string, phase string, repositoryJSON string) error
 	if !ok {
 		return errors.New("invalid reviewed repository projection")
 	}
-	upstream := cloneObject(packageMetadata)
+	upstream := maps.Clone(packageMetadata)
 	delete(upstream, "version")
 	delete(upstream, "source")
-	reviewed := cloneObject(upstream)
+	reviewed := maps.Clone(upstream)
 	delete(reviewed, "minimum-stability")
 	reviewed["license"] = licenseArray(reviewed["license"])
 

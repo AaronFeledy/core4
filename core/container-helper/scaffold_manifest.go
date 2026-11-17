@@ -39,25 +39,17 @@ func (s *scaffold) stage(manifest *scaffoldManifest, generate func(stage string)
 	}
 	s.point("stage-created")
 	if err := generate(s.stageDir); err != nil {
-		s.abortStaging()
+		// A generation failure has promoted nothing. A kill does not run
+		// cleanup: the staging phase is replayed from scratch on resume.
+		s.cleanup()
 		return err
 	}
 	s.point("generated")
 	if err := s.classify(manifest); err != nil {
-		s.abortStaging()
+		s.cleanup()
 		return err
 	}
 	return nil
-}
-
-// abortStaging discards a generation that never promoted anything, so a plain
-// generation failure leaves the app root exactly as it was found. A kill does
-// not run this: the staging phase is replayed from scratch on resume.
-func (s *scaffold) abortStaging() {
-	_ = os.RemoveAll(s.stageDir)
-	_ = os.Remove(s.manifestPath)
-	_ = os.Remove(filepath.Join(s.appRoot, scaffoldStageRoot))
-	syncDir(s.appRoot)
 }
 
 func (s *scaffold) cleanup() {

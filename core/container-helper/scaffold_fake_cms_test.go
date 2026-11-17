@@ -2,13 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
 
-func fakeCmsComposer(command string, workingDir string, positional []string, arguments []string, env map[string]string) int {
+func fakeCmsComposer(command string, workingDir string, positional []string, env map[string]string) int {
 	mode := env["LANDO_TEST_COMPOSER_MODE"]
 	switch command {
 	case "create-project":
@@ -33,7 +34,7 @@ func fakeCmsComposer(command string, workingDir string, positional []string, arg
 			repository["package"].(map[string]any)["description"] = "tampered"
 		}
 		repositories := root["repositories"].(map[string]any)
-		root["repositories"] = mergeFirst("lando-svg-image", repository, repositories)
+		repositories["lando-svg-image"] = repository
 		writeCmsComposer(filepath.Join(workingDir, "composer.json"), root)
 		return 0
 	case "require":
@@ -54,8 +55,8 @@ func fakeCmsComposer(command string, workingDir string, positional []string, arg
 		}
 		root := readFakeJSON(filepath.Join(workingDir, "composer.json"))
 		repository := root["repositories"].(map[string]any)["lando-svg-image"].(map[string]any)
-		pkg := cloneFakeObject(repository["package"].(map[string]any))
-		removeFakeKey(pkg, "minimum-stability")
+		pkg := maps.Clone(repository["package"].(map[string]any))
+		delete(pkg, "minimum-stability")
 		pkg["license"] = fakeLicense(pkg["license"])
 		aliases := []any{}
 		switch mode {
@@ -96,7 +97,7 @@ func fakeCmsComposer(command string, workingDir string, positional []string, arg
 		root := readFakeJSON(filepath.Join(workingDir, "composer.json"))
 		lock := readFakeJSON(filepath.Join(workingDir, "composer.lock"))
 		pkg := lock["packages"].([]any)[0].(map[string]any)
-		source := cloneFakeObject(pkg["source"].(map[string]any))
+		source := maps.Clone(pkg["source"].(map[string]any))
 		_ = os.MkdirAll(filepath.Join(workingDir, "vendor", "bin"), 0o755)
 		_ = os.MkdirAll(filepath.Join(workingDir, "vendor", "composer"), 0o755)
 		for _, binary := range []string{"drush", "composer"} {
@@ -111,9 +112,9 @@ func fakeCmsComposer(command string, workingDir string, positional []string, arg
 			"installation-source": "source",
 		}}}
 		writeFakeJSON(filepath.Join(workingDir, "vendor", "composer", "installed.json"), installed)
-		metadata := cloneFakeObject(root["repositories"].(map[string]any)["lando-svg-image"].(map[string]any)["package"].(map[string]any))
-		removeFakeKey(metadata, "version")
-		removeFakeKey(metadata, "source")
+		metadata := maps.Clone(root["repositories"].(map[string]any)["lando-svg-image"].(map[string]any)["package"].(map[string]any))
+		delete(metadata, "version")
+		delete(metadata, "source")
 		if mode == "installed-require" {
 			metadata["require"].(map[string]any)["enshrined/svg-sanitize"] = "^0.22"
 		}
@@ -151,6 +152,8 @@ func fakeCmsComposer(command string, workingDir string, positional []string, arg
 	return 2
 }
 
+// writeCmsComposer preserves the reviewed repository first, the way
+// `composer config repositories.lando-svg-image --json` prepends its key.
 func writeCmsComposer(path string, root map[string]any) {
 	repositories := root["repositories"].(map[string]any)
 	order := make([]string, 0, len(repositories))
@@ -200,15 +203,4 @@ func writeCmsComposer(path string, root map[string]any) {
 	}
 	builder.WriteString("}}")
 	_ = os.WriteFile(path, []byte(builder.String()), 0o644)
-}
-
-func mergeFirst(key string, value map[string]any, rest map[string]any) map[string]any {
-	merged := map[string]any{key: value}
-	for name, entry := range rest {
-		if name == key {
-			continue
-		}
-		merged[name] = entry
-	}
-	return merged
 }

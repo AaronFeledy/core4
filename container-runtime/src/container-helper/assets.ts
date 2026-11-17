@@ -133,11 +133,6 @@ export const extractEmbeddedContainerHelper = async (input: {
   return artifact(input.target, path, bytes);
 };
 
-const missingIfAbsent = (cause: unknown) => {
-  if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return undefined;
-  throw cause;
-};
-
 const publishContainerHelperCommand = async (helper: ContainerHelperArtifact): Promise<void> => {
   const [first] = CONTAINER_HELPER_COMMANDS;
   for (const directory of [
@@ -181,7 +176,10 @@ const publishContainerHelperShim = async (path: string, name: string): Promise<v
 const publishContainerHelperEngine = async (helper: ContainerHelperArtifact, name: string): Promise<void> => {
   const engine = containerHelperCommandEnginePath(helper, name);
   const [published, source] = await Promise.all([
-    stat(engine, { bigint: true }).catch(missingIfAbsent),
+    stat(engine, { bigint: true }).catch((cause: unknown) => {
+      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return undefined;
+      throw cause;
+    }),
     stat(helper.path, { bigint: true }),
   ]);
   if (published !== undefined && published.dev === source.dev && published.ino === source.ino) return;
@@ -232,16 +230,18 @@ export const resolveContainerHelper = (
   return Effect.tryPromise({
     try: async () => {
       const override = (input.env ?? process.env)[CONTAINER_HELPER_DIR_ENV];
-      const artifact =
-        override !== undefined && override.length > 0
-          ? await fromFile(target, resolve(override, `linux-${target.arch}`, CONTAINER_HELPER_FILE))
-          : !standalone
-            ? await fromSourceBuild(target)
-            : await extractEmbeddedContainerHelper({
-                target,
-                files: input.embeddedFiles ?? embeddedFiles(),
-                cacheRoot: input.cacheRoot ?? makeLandoPaths().toolDownloadsDir("container-helper"),
-              });
+      let artifact: ContainerHelperArtifact;
+      if (override !== undefined && override.length > 0) {
+        artifact = await fromFile(target, resolve(override, `linux-${target.arch}`, CONTAINER_HELPER_FILE));
+      } else if (standalone) {
+        artifact = await extractEmbeddedContainerHelper({
+          target,
+          files: input.embeddedFiles ?? embeddedFiles(),
+          cacheRoot: input.cacheRoot ?? makeLandoPaths().toolDownloadsDir("container-helper"),
+        });
+      } else {
+        artifact = await fromSourceBuild(target);
+      }
       await publishContainerHelperCommand(artifact);
       return artifact;
     },

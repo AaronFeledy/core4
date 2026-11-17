@@ -49,10 +49,6 @@ func identityOf(info os.FileInfo) fileIdentity {
 	return fileIdentity{}
 }
 
-func sameIdentity(left, right fileIdentity) bool {
-	return left.Dev == right.Dev && left.Ino == right.Ino
-}
-
 func pathExists(path string) bool {
 	_, err := os.Lstat(path)
 	return err == nil
@@ -79,7 +75,7 @@ func syncDir(path string) {
 		return
 	}
 	// Some container filesystems reject directory fsync; the write-ahead
-	// ordering is still correct without it, so only a real I/O error escapes.
+	// ordering is still correct without it.
 	_ = directory.Sync()
 	_ = directory.Close()
 }

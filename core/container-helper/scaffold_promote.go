@@ -99,7 +99,7 @@ func (s *scaffold) promoteSibling(manifest *scaffoldManifest, entry *scaffoldEnt
 	targetInfo, targetErr := os.Lstat(target)
 	switch {
 	case stagedErr == nil:
-		if entry.Identity == nil || !sameIdentity(*entry.Identity, identityOf(stagedInfo)) {
+		if entry.Identity == nil || *entry.Identity != identityOf(stagedInfo) {
 			return fmt.Errorf("%s scaffold staged entry changed after its manifest: %s", s.label, staged)
 		}
 		if targetErr == nil {
@@ -123,7 +123,7 @@ func (s *scaffold) promoteSibling(manifest *scaffoldManifest, entry *scaffoldEnt
 				entry.Name,
 			)
 		}
-		if entry.Identity == nil || !sameIdentity(*entry.Identity, identityOf(targetInfo)) {
+		if entry.Identity == nil || *entry.Identity != identityOf(targetInfo) {
 			return s.ambiguousTarget(target)
 		}
 	default:
@@ -136,8 +136,3 @@ func (s *scaffold) promoteSibling(manifest *scaffoldManifest, entry *scaffoldEnt
 	s.point("entry-complete")
 	return nil
 }
-
-// promoteNested fills an empty directory target in place. A mounted vendor,
-// node_modules, or working-directory shadow cannot be replaced by a rename, so
-// the staged tree is copied into a private partial inside the target and each
-// child is then renamed into the target with RENAME_NOREPLACE.
