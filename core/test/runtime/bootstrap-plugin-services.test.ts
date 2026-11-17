@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runAppEvent } from "@lando/engine/operations/events";
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
+import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import { ServiceNotReadyError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { FileSyncEngine, ServiceReadiness } from "@lando/sdk/services";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { FileSyncEngine, ServiceReadiness, ToolingEngine } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Context, DateTime, Effect, Layer, Option } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
@@ -95,6 +100,66 @@ describe("bootstrap plugin services", () => {
       expect(registry.value.maintainers.map((maintainer) => maintainer.id)).toContain(
         "lando-runtime-service",
       );
+    }
+  });
+
+  test("scratch bootstrap provides the app lifecycle services poweroff runs", async () => {
+    // Given: the production scratch tier that apps:poweroff dispatches on.
+    const context = await Effect.runPromise(
+      Effect.scoped(
+        Layer.build(makeLandoRuntime({ bootstrap: "scratch", plugins: { policy: "bundled-only" } })),
+      ),
+    );
+
+    // When: the tags a stopped user app needs are resolved from the built context.
+    // Then: event tooling and canonical command execution are present, as on the app tier.
+    expect(Option.isSome(Context.getOption(context, ToolingEngine))).toBe(true);
+    expect(Option.isSome(Context.getOption(context, EventCommandExecutor))).toBe(true);
+  });
+
+  test("scratch bootstrap executes a host post-stop step", async () => {
+    // Given: a plan whose post-stop event touches a host file.
+    const root = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-event-")));
+    const marker = join(root, "hook-ran");
+    const plan: AppPlan = {
+      id: AppId.make("scratch-event"),
+      name: "scratch-event",
+      slug: "scratch-event",
+      root: AbsolutePath.make(root),
+      provider: ProviderId.make("lando"),
+      services: {},
+      routes: [],
+      stores: [],
+      fileSync: [],
+      metadata: {
+        resolvedAt: DateTime.makeUnsafe("2026-08-01T00:00:00.000Z"),
+        source: "scratch-bootstrap-services-test",
+        runtime: 4,
+      },
+      extensions: {},
+      events: {
+        "post-stop": [
+          {
+            step: { cmd: `touch ${marker}`, service: ":host" },
+            source: "project",
+            sourceIndex: 0,
+            status: "active",
+          },
+        ],
+      },
+    };
+
+    try {
+      // When: the scratch tier runs the same event poweroff runs after a user-app stop.
+      await Effect.runPromise(
+        runAppEvent(plan, "post-stop").pipe(
+          Effect.provide(makeLandoRuntime({ bootstrap: "scratch", plugins: { policy: "bundled-only" } })),
+        ),
+      );
+      // Then: the step ran instead of degrading to an unavailable-tooling warning.
+      expect(await Bun.file(marker).exists()).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

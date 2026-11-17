@@ -175,6 +175,8 @@ type ScratchRuntimeServices =
   | AppPlanner
   | BuildOrchestrator
   | RouterService
+  | ToolingEngine
+  | EventCommandExecutor
   | ScratchResourceScanner
   | ScratchAppService;
 export type AppRuntimeServices =

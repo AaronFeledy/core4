@@ -68,12 +68,20 @@ describe("bootstrap layers", () => {
     expect(countOccurrences(app, commandRegistryInstall)).toBe(0);
     expect(countOccurrences(app, subscriberInstall)).toBe(1);
 
-    // Then: global and scratch build on the provider layer without a second registry or subscriber.
-    for (const source of [global, scratch]) {
-      expect(countOccurrences(source, "makeProviderBootstrapLayer(inputs)")).toBe(1);
-      expect(countOccurrences(source, commandRegistryInstall)).toBe(0);
-      expect(countOccurrences(source, subscriberInstall)).toBe(0);
-    }
+    // Then: global builds on the provider layer without a second registry or subscriber.
+    expect(countOccurrences(global, "makeProviderBootstrapLayer(inputs)")).toBe(1);
+    expect(countOccurrences(global, commandRegistryInstall)).toBe(0);
+    expect(countOccurrences(global, subscriberInstall)).toBe(0);
+
+    // Then: scratch composes the full app lifecycle graph instead of re-declaring it.
+    expect(countOccurrences(scratch, "makeAppBootstrapLayer(inputs)")).toBe(1);
+    expect(countOccurrences(scratch, "makeProviderBootstrapLayer(inputs)")).toBe(0);
+    expect(countOccurrences(scratch, commandRegistryInstall)).toBe(0);
+    expect(countOccurrences(scratch, subscriberInstall)).toBe(0);
+    expect(countOccurrences(scratch, "ScratchRegistryLayer.ScratchRegistry.layer")).toBe(1);
+    expect(countOccurrences(scratch, "ScratchResourceScannerLayer.ScratchResourceScanner.layer")).toBe(1);
+    expect(countOccurrences(scratch, "ScratchInitAppPortLayer.layer")).toBe(1);
+    expect(countOccurrences(scratch, "ScratchAppServiceLayer.layer")).toBe(1);
   });
 
   test("plugins bootstrap installs the config translator registry over the contribution graph", async () => {
