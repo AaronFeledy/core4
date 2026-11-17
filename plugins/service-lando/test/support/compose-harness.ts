@@ -12,7 +12,12 @@ import {
   type ServicePlan,
   orderMounts,
 } from "@lando/sdk/schema";
-import type { ServiceFeatureDefinition, ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
+import type {
+  ServiceFeatureDefinition,
+  ServiceType,
+  ServiceTypeHostFacts,
+  ServiceTypeProjectFileInput,
+} from "@lando/sdk/services";
 import { Effect } from "effect";
 import { appNameFor } from "../../src/app-name.ts";
 import { serviceFeatures } from "../../src/features/index.ts";
@@ -31,6 +36,7 @@ export interface ComposeServicePlanArgs {
   readonly host?: ServiceTypeHostFacts;
   readonly applyAuthoredWrappers?: boolean;
   readonly featureOverrides?: ReadonlyMap<string, ServiceFeatureDefinition>;
+  readonly projectFiles?: ReadonlyArray<ServiceTypeProjectFileInput>;
 }
 
 const baseDefaultFeatureIds = (base: "l337" | "lando"): ReadonlyArray<string> =>
@@ -69,6 +75,7 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
       ...(args.provider === undefined ? {} : { provider: args.provider }),
       ...(args.primary === undefined ? {} : { primary: args.primary }),
       ...(args.host === undefined ? {} : { host: args.host }),
+      ...(args.projectFiles === undefined ? {} : { projectFiles: args.projectFiles }),
     }),
   );
 

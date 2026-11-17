@@ -19,6 +19,18 @@ import {
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveNodeInference } from "./node-inference.ts";
+import {
+  COREPACK_HOME,
+  NODE_PACKAGE_MANAGER_STEP_ID,
+  NodePackageManagerConfig,
+  type NodePackageManagerSelection,
+  isProvisionedPackageManager,
+  packageManagerBuildKeyInputs,
+  packageManagerBuildStepCommand,
+  packageManagerConfigFor,
+  packageManagerProvenance,
+  resolveNodePackageManager,
+} from "./node-package-manager.ts";
 import { NODE_ARTIFACTS, SUPPORTED_NODE_VERSIONS, type SupportedNodeVersion } from "./node-versions.ts";
 
 export const NODE_FEATURE_ID = "service-lando.node" as const;
@@ -42,6 +54,7 @@ export const APP_MOUNT_TARGET = "/app";
 
 const NodeFeatureConfigSchema = Schema.Struct({
   version: Schema.String,
+  packageManager: Schema.optionalKey(NodePackageManagerConfig),
 });
 type NodeFeatureConfig = typeof NodeFeatureConfigSchema.Type;
 
@@ -86,7 +99,7 @@ const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
 
 const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const { version } = ctx.config as NodeFeatureConfig;
+  const { version, packageManager } = ctx.config as NodeFeatureConfig;
   const port = plannedPort(service, NODE_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? artifactFor(version) });
@@ -104,6 +117,20 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
       command: nodeGlobalsCommandFor(globals),
       user: "root",
       buildKeyInputs: { globals },
+    });
+  }
+  // Runs after the globals step so an authored global cannot shadow the shim
+  // Corepack provides. The runtime env keeps the cached manager usable by a
+  // non-root `user:` without any container-start work.
+  if (packageManager !== undefined && isProvisionedPackageManager(packageManager.name)) {
+    ctx.addEnv("COREPACK_HOME", COREPACK_HOME);
+    ctx.addEnv("COREPACK_ENABLE_DOWNLOAD_PROMPT", "0");
+    ctx.addBuildStep({
+      id: NODE_PACKAGE_MANAGER_STEP_ID,
+      phase: "build",
+      command: packageManagerBuildStepCommand(packageManager),
+      user: "root",
+      buildKeyInputs: packageManagerBuildKeyInputs(packageManager),
     });
   }
 };
@@ -160,6 +187,21 @@ export const node22ServiceType: ServiceType = makeNodeServiceType("22");
 export const node24ServiceType: ServiceType = makeNodeServiceType("24");
 export const node26ServiceType: ServiceType = makeNodeServiceType("26");
 
+// package.json `packageManager` owns the provisioned manager's version, so a
+// duplicate globals entry would install a second copy the project cannot use.
+const assertPackageManagerNotInGlobals = (
+  globals: ReadonlyArray<PackageEntry>,
+  packageManager: NodePackageManagerSelection | undefined,
+): void => {
+  if (packageManager === undefined || !isProvisionedPackageManager(packageManager.name)) return;
+  if (!globals.some(([name]) => name === packageManager.name)) return;
+  throw new ServiceConfigIssue(
+    ["globals", packageManager.name],
+    `globals installs ${packageManager.name}, but ${packageManager.sourcePath} packageManager already provisions ${packageManager.name}@${packageManager.version}.`,
+    `Remove globals.${packageManager.name}; the packageManager field in ${packageManager.sourcePath} owns that version.`,
+  );
+};
+
 export const nodeServiceType: ServiceType = {
   id: "node",
   name: "node",
@@ -172,14 +214,26 @@ export const nodeServiceType: ServiceType = {
     return [
       { path: `${prefix}.nvmrc`, maxBytes: PROJECT_FILE_LIMIT },
       { path: `${prefix}package.json`, maxBytes: PROJECT_FILE_LIMIT },
+      // A workspace package normally inherits packageManager from the monorepo
+      // root, so the app-root manifest is a declared input only when the service
+      // points elsewhere. At "." the entry above already is the app-root file.
+      ...(packageRoot === "." ? [] : [{ path: "package.json", maxBytes: PROJECT_FILE_LIMIT }]),
     ];
   },
   resolve: (input) =>
     serviceTypeResolve("node", "Failed to infer a Node version.", () => {
-      const inference = resolveNodeInference(input.projectFiles ?? []);
+      const projectFiles = input.projectFiles ?? [];
+      // Version inference keeps its historical input set: the package-root
+      // manifests only. The app-root manifest is for packageManager fallback.
+      const inferenceFiles =
+        (input.service.packageRoot ?? ".") === "."
+          ? projectFiles
+          : projectFiles.filter((file) => file.path !== "package.json");
+      const inference = resolveNodeInference(inferenceFiles);
       const resolvedVersion = inference.artifact.slice("node:".length);
-      normalizeNpmGlobals(input.service.globals);
-      const files = (input.projectFiles ?? []).map((file) => ({
+      const packageManager = resolveNodePackageManager(projectFiles);
+      assertPackageManagerNotInGlobals(normalizeNpmGlobals(input.service.globals), packageManager);
+      const files = projectFiles.map((file) => ({
         path: file.path,
         present: file.present,
         ...(file.present ? { sha256: file.sha256 } : {}),
@@ -188,7 +242,15 @@ export const nodeServiceType: ServiceType = {
         base: "lando" as const,
         normalizedConfig: normalizedService(input.service, resolvedVersion),
         features: [
-          { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
+          {
+            id: NODE_FEATURE_ID,
+            config: {
+              version: resolvedVersion,
+              ...(packageManager === undefined
+                ? {}
+                : { packageManager: packageManagerConfigFor(packageManager) }),
+            },
+          },
           { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
         ],
         metadata: {
@@ -197,6 +259,9 @@ export const nodeServiceType: ServiceType = {
             normalizedConstraint: inference.normalizedConstraint,
             artifact: inference.artifact,
             files,
+            ...(packageManager === undefined
+              ? {}
+              : { packageManager: packageManagerProvenance(packageManager) }),
           },
         },
       };

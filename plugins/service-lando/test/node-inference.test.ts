@@ -153,6 +153,15 @@ describe("bare node version inference", () => {
     expect(nodeServiceType.projectFiles?.(service)).toEqual([
       { path: "apps/web/.nvmrc", maxBytes: 1_048_576 },
       { path: "apps/web/package.json", maxBytes: 1_048_576 },
+      { path: "package.json", maxBytes: 1_048_576 },
+    ]);
+  });
+
+  test("declares no duplicate app-root package.json at the app root", () => {
+    const service = { type: "node" } satisfies ServiceConfig;
+    expect(nodeServiceType.projectFiles?.(service)).toEqual([
+      { path: ".nvmrc", maxBytes: 1_048_576 },
+      { path: "package.json", maxBytes: 1_048_576 },
     ]);
   });
 
@@ -261,6 +270,9 @@ describe("bare node version inference", () => {
   test.each([
     ["# comment only", undefined, ".nvmrc"],
     ["18", undefined, ".nvmrc"],
+    ["lts/-3", undefined, ".nvmrc"],
+    [undefined, JSON.stringify({ engines: { node: "^22" }, packageManager: "bun@1.2.0" }), "package.json"],
+    [undefined, JSON.stringify({ engines: { node: "^22" }, packageManager: "yarn" }), "package.json"],
     [undefined, "{", "package.json"],
     [undefined, JSON.stringify({}), "package.json"],
   ] satisfies ReadonlyArray<readonly [string | undefined, string | undefined, string]>)(

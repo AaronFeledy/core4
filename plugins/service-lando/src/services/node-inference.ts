@@ -79,6 +79,7 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
       throw new NodeInferenceError(
         `Unsupported Node version "${constraint}" in ${input.path}.`,
         NVMRC_REMEDIATION,
+        input.path,
       );
     }
     return majorSelection(major, input.path, constraint);
@@ -118,7 +119,7 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
         exactVersion: undefined,
       };
     }
-    if (isMajor || constraint === codename || constraint === `lts/${codename}`) {
+    if (isMajor || (codename !== null && (constraint === codename || constraint === `lts/${codename}`))) {
       return majorSelection(major, input.path);
     }
   }
@@ -130,9 +131,10 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
   );
 };
 
-const packageEngine = (
+/** Decode one present project file as a JSON object, naming the file on failure. */
+export const readPackageJson = (
   input: ServiceTypeProjectFileInput & { readonly present: true },
-): string | undefined => {
+): Readonly<Record<string, unknown>> => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(input.text);
@@ -150,6 +152,13 @@ const packageEngine = (
       input.path,
     );
   }
+  return Object.fromEntries(Object.entries(parsed));
+};
+
+const packageEngine = (
+  input: ServiceTypeProjectFileInput & { readonly present: true },
+): string | undefined => {
+  const parsed = readPackageJson(input);
   const engines = Reflect.get(parsed, "engines");
   if (engines === undefined) return undefined;
   if (engines === null || typeof engines !== "object" || Array.isArray(engines)) {
