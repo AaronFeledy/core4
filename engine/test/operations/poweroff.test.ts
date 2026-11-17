@@ -244,7 +244,7 @@ describe("poweroff operation", () => {
   });
 
   test("skips a quiescent persisted app so its stop hook never runs", async () => {
-    await withRoots(async ({ a, b, quiet }) => {
+    await withRoots(async ({ a, quiet }) => {
       const harness = await makeHarness({
         roots: [{ root: a, plan: planAt(a), status: "running" }],
         quiescent: { root: quiet, plan: planAt(quiet, "quiet") },
@@ -253,7 +253,6 @@ describe("poweroff operation", () => {
       expect(result.apps.filter((app) => app.kind === "user").map((app) => app.appId)).toEqual(["twin"]);
       expect(harness.calls).not.toContain(`destroy:${quiet}`);
       expect(harness.calls.filter((call) => call.startsWith("destroy:"))).toEqual([`destroy:${a}`]);
-      expect(b).toBeDefined();
     });
   });
 
@@ -289,7 +288,7 @@ describe("poweroff operation", () => {
   });
 
   test("keeps the runtime service when --keep-global is set", async () => {
-    await withRoots(async ({ a, b }) => {
+    await withRoots(async ({ a }) => {
       const harness = await makeHarness({
         roots: [{ root: a, plan: planAt(a), status: "running" }],
       });
@@ -298,12 +297,11 @@ describe("poweroff operation", () => {
       );
       expect(result.keptGlobalApp).toBe(true);
       expect(harness.calls).not.toContain("runtime");
-      expect(b).toBeDefined();
     });
   });
 
   test("stops the runtime service once, after every app and the global stop", async () => {
-    await withRoots(async ({ a, b }) => {
+    await withRoots(async ({ a }) => {
       const harness = await makeHarness({
         roots: [{ root: a, plan: planAt(a), status: "running" }],
       });
@@ -312,7 +310,6 @@ describe("poweroff operation", () => {
       expect(result.runtimeServicePid).toBe(4242);
       expect(harness.calls.filter((call) => call === "runtime")).toHaveLength(1);
       expect(harness.calls.at(-1)).toBe("runtime");
-      expect(b).toBeDefined();
     });
   });
 });
