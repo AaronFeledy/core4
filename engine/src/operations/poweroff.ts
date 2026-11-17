@@ -26,10 +26,10 @@ import { appRootIdentityKey } from "./app-root-identity.ts";
 import { type GlobalStopError, type GlobalStopServices, globalStop } from "./global-stop.ts";
 import { type StopAppError, stopAppAtRoot } from "./stop.ts";
 
-export const PoweroffAppKind = Schema.Literals(["user", "scratch", "global"]);
-export const PoweroffAppOutcome = Schema.Literals(["stopped", "unchanged", "destroyed", "skipped"]);
+const PoweroffAppKind = Schema.Literals(["user", "scratch", "global"]);
+const PoweroffAppOutcome = Schema.Literals(["stopped", "unchanged", "destroyed", "skipped"]);
 
-export const PoweroffAppResultSchema = Schema.Struct({
+const PoweroffAppResultSchema = Schema.Struct({
   kind: PoweroffAppKind,
   appId: Schema.String,
   appRoot: Schema.String,
@@ -42,7 +42,7 @@ export const PoweroffAppResultSchema = Schema.Struct({
 
 export type PoweroffAppResult = typeof PoweroffAppResultSchema.Type;
 
-export const PoweroffStopFailureSchema = Schema.Struct({
+const PoweroffStopFailureSchema = Schema.Struct({
   kind: PoweroffAppKind,
   appId: Schema.String,
   appRoot: Schema.String,
@@ -52,7 +52,7 @@ export const PoweroffStopFailureSchema = Schema.Struct({
   remediation: Schema.NonEmptyString,
 });
 
-export type PoweroffStopFailure = typeof PoweroffStopFailureSchema.Type;
+type PoweroffStopFailure = typeof PoweroffStopFailureSchema.Type;
 
 export const PoweroffResultSchema = Schema.Struct({
   apps: Schema.Array(PoweroffAppResultSchema),
@@ -156,12 +156,7 @@ const stopEntries = (failures: ReadonlyArray<StopFailure>): Effect.Effect<Powero
   Effect.forEach(failures, (failure) => stopFailure(failure, failure.error), { concurrency: 1 });
 
 const appResult = (
-  target: {
-    readonly kind: PoweroffAppResult["kind"];
-    readonly appId: string;
-    readonly appRoot: string;
-    readonly providerId: string;
-  },
+  target: Pick<StopFailure, "kind" | "appId" | "appRoot" | "providerId">,
   outcome: PoweroffAppResult["outcome"],
   result?: StopAppResult,
 ): PoweroffAppResult => ({
@@ -174,11 +169,13 @@ const appResult = (
     : { shutdownObservations: result.shutdownObservations }),
 });
 
-const providerInventoryFailure = (
-  providerId: string,
-  error: unknown,
-  kind: PoweroffAppResult["kind"] = "user",
-): StopFailure => ({ kind, appId: providerId, appRoot: "", providerId, error });
+const providerInventoryFailure = (providerId: string, error: unknown): StopFailure => ({
+  kind: "user",
+  appId: providerId,
+  appRoot: "",
+  providerId,
+  error,
+});
 
 const unreadableAppliedState = (providerId: ProviderId, count: number) =>
   new ProviderUnavailableError({
@@ -419,14 +416,7 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
             providerId: String(globalTarget.providerId),
           },
           stopped.success.outcome,
-          {
-            app: stopped.success.app,
-            outcome: stopped.success.outcome,
-            servicesStopped: stopped.success.servicesStopped,
-            ...(stopped.success.shutdownObservations === undefined
-              ? {}
-              : { shutdownObservations: stopped.success.shutdownObservations }),
-          },
+          stopped.success,
         ),
       );
     }
