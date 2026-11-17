@@ -48,7 +48,7 @@ for (const operation of ["stop", "destroy"] as const) {
         Effect.sync(() => {
           const networksRemoved = networkExists ? 1 : 0;
           networkExists = false;
-          return { servicesRemoved: [], networksRemoved, volumesRemoved: 0 };
+          return { servicesRemoved: [], networksRemoved, volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const harness = makeHarness({
@@ -112,7 +112,7 @@ test("internal selected stop preserves unrelated ownership hints", async () => {
     cleanupOwnedResources: () =>
       Effect.sync(() => {
         cleanups += 1;
-        return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: 0 };
+        return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: { data: 0, cache: 0 } };
       }),
   };
   const harness = makeHarness({

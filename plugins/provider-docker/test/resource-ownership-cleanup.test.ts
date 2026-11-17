@@ -202,7 +202,10 @@ for (const selection of [
       // When
       const result = await Effect.runPromise(cleanup(root, selection));
       // Then
-      expect(result.volumesRemoved).toBe(selection.removed.length);
+      expect(result.volumesRemoved).toEqual({
+        data: selection.removed.filter((name) => name === "data").length,
+        cache: selection.removed.filter((name) => name === "cache").length,
+      });
       expect(calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual(
         selection.removed.map((name): `/${string}` => `/volumes/${name}`),
       );

@@ -37,15 +37,15 @@ for (const evidence of ["absent", "applied", "destroyed", "volume", "preserved-v
             ...(evidence === "applied" || evidence === "destroyed" ? { plan: globalPlanAt(root) } : {}),
             volumes: evidence === "volume" || evidence === "preserved-volume" ? [volume] : [],
             destroyOutcome:
-              evidence === "destroyed" ? { kind: "destroyed" } : { kind: "no-op", reason: "no-applied-plan" },
+              evidence === "destroyed"
+                ? { kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } }
+                : { kind: "no-op", reason: "no-applied-plan" },
           });
           // When stop preserves volumes or destroy requests purge.
           const result =
             command === "stop"
               ? await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)))
-              : await Effect.runPromise(
-                  globalDestroy({ yes: true, purge: true }).pipe(Effect.provide(harness.layer)),
-                );
+              : await Effect.runPromise(globalDestroy({ purge: true }).pipe(Effect.provide(harness.layer)));
           // Then both the machine contract and text report actual mutation, not installation or intent.
           const changed = evidence === "destroyed" || (evidence === "volume" && command === "destroy");
           const outcome = changed ? (command === "stop" ? "stopped" : "destroyed") : "unchanged";
@@ -58,11 +58,12 @@ for (const evidence of ["absent", "applied", "destroyed", "volume", "preserved-v
           const services = evidence === "destroyed" ? ["ssh-agent"] : [];
           if ("servicesDestroyed" in result) {
             expect(result.servicesDestroyed).toEqual(services);
-            expect(result.volumesRemoved).toBe(changed);
+            expect(result.dataVolumesRemoved).toBe(evidence === "volume");
+            expect(result.cacheVolumesRemoved).toBe(false);
           } else expect(result.servicesStopped).toEqual(services);
           if (evidence === "volume" && changed) {
             expect(harness.calls).toContain("removeVolume");
-            expect(rendered).toContain("volumes removed");
+            expect(rendered).toContain("data volumes removed");
             expect(rendered).not.toContain("not installed");
           }
         } finally {

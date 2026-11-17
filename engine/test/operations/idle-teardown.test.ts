@@ -59,13 +59,13 @@ test.each(
           Effect.sync(() => {
             if (!running) throw new Error("ownership cleanup needs readiness");
             actions.push("cleanup");
-            return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: 0 };
+            return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: { data: 0, cache: 0 } };
           }),
         destroy: () =>
           Effect.sync(() => {
             if (!running) throw new Error("destroy needs readiness");
             actions.push("destroy");
-            return { kind: "destroyed" as const };
+            return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
           }),
       };
       const harness = makeHarness({
@@ -231,7 +231,7 @@ test.each(stoppedProviderFixtures)(
       destroy: () =>
         Effect.sync(() => {
           actions.push("destroy");
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const harness = makeHarness({

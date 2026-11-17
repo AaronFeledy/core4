@@ -202,3 +202,4 @@ export {
   VolumeInitializationPhase,
   VolumeInitializationRecord,
 } from "./volume-initialization.ts";
+export * from "./volume-removal.ts";

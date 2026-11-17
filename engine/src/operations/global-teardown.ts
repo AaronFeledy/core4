@@ -1,6 +1,12 @@
 import { AppResolveError } from "@lando/sdk/errors";
 import { PostGlobalDestroyEvent, PreGlobalDestroyEvent } from "@lando/sdk/events";
-import { AbsolutePath, AppId, type ServiceShutdownObservation, isActiveRunStatus } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type ServiceShutdownObservation,
+  isActiveRunStatus,
+  noVolumesRemoved,
+} from "@lando/sdk/schema";
 import { EventService, FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 
@@ -230,7 +236,7 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
     return withShutdownObservations({
       changed: false,
       services: [],
-      volumesRemoved: false,
+      volumesRemoved: { ...noVolumesRemoved },
       cleanup: "routes" as const,
     });
   if (options.intent === "stop" && (yield* resolved.provider.getStatus).state === "idle") {
@@ -238,7 +244,7 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
       return withShutdownObservations({
         changed: false,
         services: [],
-        volumesRemoved: false,
+        volumesRemoved: { ...noVolumesRemoved },
         cleanup: "routes" as const,
       });
     const target = {
@@ -251,7 +257,7 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
     return withShutdownObservations({
       changed: true,
       services: [],
-      volumesRemoved: false,
+      volumesRemoved: { ...noVolumesRemoved },
       cleanup: "routes" as const,
       routes: withdrawal.kind,
     });

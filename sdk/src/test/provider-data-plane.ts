@@ -668,7 +668,7 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
       containers.destroy(target, options).pipe(
         Effect.map((outcome) => {
           const applied = testAppliedEnvironments.delete(target.app);
-          return applied ? { kind: "destroyed" as const } : outcome;
+          return applied ? { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } } : outcome;
         }),
       ),
 

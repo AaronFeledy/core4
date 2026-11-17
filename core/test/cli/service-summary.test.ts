@@ -65,11 +65,13 @@ describe("service summary", () => {
   });
 
   test.each([
-    [true, "volumes removed"],
-    [false, "volumes preserved"],
-  ] as const)("renders volume removal %s", (removed, expected) => {
+    [false, false, "volumes preserved"],
+    [true, false, "data volumes removed"],
+    [false, true, "cache volumes removed"],
+    [true, true, "data and cache volumes removed"],
+  ] as const)("renders volume removal data=%s cache=%s", (data, cache, expected) => {
     // Given / When
-    const trailer = volumesTrailer(removed);
+    const trailer = volumesTrailer(data, cache);
     // Then
     expect(trailer).toBe(expected);
   });

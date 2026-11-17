@@ -143,7 +143,7 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
           },
           "stop",
         )
-      : Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 });
+      : Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } });
   if ((pending === null || pending.phase === "completed") && (execution.requireAppliedEvidence || retired)) {
     const evidence =
       execution.cleanupOwnership === false

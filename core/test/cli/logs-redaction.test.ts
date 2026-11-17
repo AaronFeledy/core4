@@ -149,7 +149,7 @@ const makeLayer = (
     stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => Effect.succeed({ kind: "destroyed" as const }),
+    destroy: () => Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
     readAppEnvironment: () => Effect.succeed(providerValues.map((value) => Redacted.make(value))),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),

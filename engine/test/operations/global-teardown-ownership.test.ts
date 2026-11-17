@@ -103,7 +103,7 @@ const harnessAt = (
     destroy: () =>
       Effect.sync(() => {
         actions.push("destroy");
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     removeObservedService: () =>
       Effect.sync(() => {
@@ -117,7 +117,7 @@ const harnessAt = (
         return {
           servicesRemoved: [ServiceName.make("inventory-service")],
           networksRemoved: 2,
-          volumesRemoved: 3,
+          volumesRemoved: { data: 3, cache: 0 },
         };
       }),
   };
@@ -188,7 +188,11 @@ test("global teardown merges managed cleanup into the receipt after destroying a
     const receipt = await Effect.runPromise(harness.teardown);
     // Then cleanup follows destroy and its service/volume counts affect the receipt.
     expect(harness.actions).toEqual(["destroy", "cleanup"]);
-    expect(receipt).toEqual({ changed: true, services: ["inventory-service"], volumesRemoved: true });
+    expect(receipt).toEqual({
+      changed: true,
+      services: ["inventory-service"],
+      volumesRemoved: { data: 3, cache: 0 },
+    });
   });
 });
 
@@ -200,7 +204,11 @@ test("global teardown queries only managed inventory when docker is also registe
     // Then neither the all-provider resolver nor Docker is needed to find and remove leftovers.
     expect(harness.inventoryReads).toEqual([{ id: ProviderId.make("lando"), root: harness.root }]);
     expect(harness.actions).toEqual(["cleanup"]);
-    expect(receipt).toEqual({ changed: true, services: ["inventory-service"], volumesRemoved: true });
+    expect(receipt).toEqual({
+      changed: true,
+      services: ["inventory-service"],
+      volumesRemoved: { data: 3, cache: 0 },
+    });
   });
 });
 
@@ -229,7 +237,7 @@ test("global orphan teardown uses prepared managed cleanup without all-provider 
     expect(receipt).toEqual({
       changed: true,
       services: ["orphan", "inventory-service"],
-      volumesRemoved: true,
+      volumesRemoved: { data: 3, cache: 0 },
     });
   });
 });

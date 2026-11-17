@@ -121,7 +121,7 @@ export const makeTestProviderContainers = () => {
         }
       }
       return removed || target.plan !== undefined
-        ? { kind: "destroyed" }
+        ? { kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } }
         : { kind: "no-op", reason: "no-applied-plan" };
     });
   const removeObservedService: RuntimeProviderShape["removeObservedService"] = (observed) =>

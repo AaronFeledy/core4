@@ -126,6 +126,7 @@ test("old reachable managed runtime serves rescue requests without repair or ext
     expect(await Effect.runPromise(provider.list({ app, includeUnplanned: true }))).toHaveLength(1);
     expect(await Effect.runPromise(provider.destroy({ app, plan }, { volumes: false }))).toMatchObject({
       kind: "destroyed",
+      volumesRemoved: { data: 0, cache: 0 },
       shutdownObservations: [
         { appId: app, service, containerId: "exact-owned-id", status: "exited", exitCode: 0 },
       ],

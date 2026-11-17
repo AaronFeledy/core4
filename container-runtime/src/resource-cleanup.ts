@@ -1,5 +1,11 @@
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { AbsolutePath, AppId, OwnedResourcesCleanupResult, ServiceName } from "@lando/sdk/schema";
+import {
+  type AbsolutePath,
+  type AppId,
+  type OwnedResourcesCleanupResult,
+  type ServiceName,
+  noVolumesRemoved,
+} from "@lando/sdk/schema";
 import { type DestroyOptions, EventService, type ProviderError } from "@lando/sdk/services";
 import { DateTime, Effect, Option, Schema } from "effect";
 import { removeRuntimeContainer } from "./container-removal.ts";
@@ -30,7 +36,7 @@ export const makeOwnedResourcesCleanup = (input: {
     const skipped: Array<{ appId: AppId; resource: string; reason: string }> = [];
     const events = yield* Effect.serviceOption(EventService);
     let networksRemoved = 0;
-    let volumesRemoved = 0;
+    const volumesRemoved: { data: number; cache: number } = { ...noVolumesRemoved };
     const request = (request: EngineHttpRequest) =>
       input.api?.request === undefined
         ? Effect.fail(ownershipFailure(input.ctx.providerId))
@@ -205,7 +211,7 @@ export const makeOwnedResourcesCleanup = (input: {
             networksRemoved += 1;
             break;
           case "volume":
-            volumesRemoved += 1;
+            volumesRemoved[resource.volumeClass] += 1;
             break;
           default: {
             const unreachable: never = resource;

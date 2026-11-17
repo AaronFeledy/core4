@@ -107,7 +107,11 @@ test("removes a private network by fresh native identity and retires its hint", 
     // When
     const result = await Effect.runPromise(cleanup(root, { volumes: false }));
     // Then
-    expect(result).toEqual({ servicesRemoved: [], networksRemoved: 1, volumesRemoved: 0 });
+    expect(result).toEqual({
+      servicesRemoved: [],
+      networksRemoved: 1,
+      volumesRemoved: { data: 0, cache: 0 },
+    });
     expect(calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
       "/networks/network-owned",
     ]);
@@ -124,7 +128,11 @@ test("retires all absent hints while reporting no physical change", async () => 
     // When
     const result = await Effect.runPromise(cleanup(root, { volumes: true }));
     // Then
-    expect(result).toEqual({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 });
+    expect(result).toEqual({
+      servicesRemoved: [],
+      networksRemoved: 0,
+      volumesRemoved: { data: 0, cache: 0 },
+    });
     expect(await Effect.runPromise(store.summary(root))).toBeUndefined();
   });
 });
@@ -138,7 +146,7 @@ test("retains data volume hints unless policy selects their removal", async () =
     // When
     const result = await Effect.runPromise(cleanup(root, { volumes: false }));
     // Then
-    expect(result.volumesRemoved).toBe(0);
+    expect(result.volumesRemoved).toEqual({ data: 0, cache: 0 });
     expect((await Effect.runPromise(store.load(root)))?.resources.map((resource) => resource.kind)).toEqual([
       "volume",
     ]);
@@ -158,7 +166,11 @@ for (const legacy of [{ Labels: {} }, { Labels: null }, {}]) {
       // When
       const result = await Effect.runPromise(cleanup(root, { volumes: false }));
       // Then
-      expect(result).toEqual({ servicesRemoved: [], networksRemoved: 1, volumesRemoved: 0 });
+      expect(result).toEqual({
+        servicesRemoved: [],
+        networksRemoved: 1,
+        volumesRemoved: { data: 0, cache: 0 },
+      });
       expect(calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
         "/networks/legacy-network",
       ]);

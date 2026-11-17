@@ -106,7 +106,10 @@ export const makeHarness = (
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
-    destroy: () => (options.destroyEffect ?? Effect.void).pipe(Effect.as({ kind: "destroyed" as const })),
+    destroy: () =>
+      (options.destroyEffect ?? Effect.void).pipe(
+        Effect.as({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
+      ),
     listVolumes: () => Effect.succeed(options.volumes ?? []),
     ...(options.appliedFileSyncState === undefined
       ? {}

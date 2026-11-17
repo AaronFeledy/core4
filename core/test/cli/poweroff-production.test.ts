@@ -57,7 +57,7 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch" | "route
             if (failure === "no-plan") return { kind: "no-op" as const, reason: "no-applied-plan" as const };
             expect(options).toEqual({ volumes: false, removeState: false });
             expect(target.plan).toEqual(target.app === "global" ? globalPlan : undefined);
-            return { kind: "destroyed" as const };
+            return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
           }),
         }),
     }),

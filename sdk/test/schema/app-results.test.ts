@@ -160,7 +160,8 @@ describe("DestroyAppResult", () => {
     const value = {
       app: "demo",
       servicesDestroyed: ["web"],
-      volumesRemoved: false,
+      dataVolumesRemoved: true,
+      cacheVolumesRemoved: false,
       snapshotsRemoved: 0,
       landofileEvents: { status: "skipped" as const, reason: "landofile load failed" },
     };
@@ -174,7 +175,8 @@ describe("DestroyAppResult", () => {
     const omitted = {
       app: "demo",
       servicesDestroyed: ["web"],
-      volumesRemoved: false,
+      dataVolumesRemoved: false,
+      cacheVolumesRemoved: true,
       snapshotsRemoved: 0,
     };
     expect(roundTrip(DestroyAppResult, omitted)).toStrictEqual(omitted);
@@ -191,12 +193,27 @@ describe("DestroyAppResult", () => {
         decode(DestroyAppResult, {
           app: "demo",
           servicesDestroyed: [],
-          volumesRemoved: false,
+          dataVolumesRemoved: false,
+          cacheVolumesRemoved: false,
           snapshotsRemoved: 0,
           extra: true,
         }),
       ),
     ).toBe(true);
+  });
+});
+
+describe("DestroyAppResult volume classes", () => {
+  test("requires both class flags and rejects the conflated boolean", () => {
+    const base = {
+      app: "demo",
+      servicesDestroyed: [],
+      snapshotsRemoved: 0,
+    };
+    expect(Result.isFailure(decode(DestroyAppResult, { ...base, volumesRemoved: true }))).toBe(true);
+    expect(Result.isFailure(decode(DestroyAppResult, { ...base, dataVolumesRemoved: true }))).toBe(true);
+    const separate = { ...base, dataVolumesRemoved: false, cacheVolumesRemoved: true };
+    expect(roundTrip(DestroyAppResult, separate)).toStrictEqual(separate);
   });
 });
 

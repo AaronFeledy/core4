@@ -249,7 +249,7 @@ const makeStopLayer = (
       Effect.sync(() => {
         destroyCalls.push({ target, options });
         for (const service of Object.values(plannedApp.services)) stopped.add(service.name);
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -526,7 +526,7 @@ describe("lando stop", () => {
       destroy: () =>
         Effect.sync(() => {
           callLog.push("provider.destroy");
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -811,7 +811,7 @@ describe("lando stop", () => {
       destroy: () =>
         Effect.sync(() => {
           callLog.push("provider.destroy");
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),

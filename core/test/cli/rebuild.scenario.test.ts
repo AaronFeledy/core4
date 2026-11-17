@@ -280,7 +280,7 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
       Effect.sync(() => {
         lifecycleOrder.push("destroy");
         destroyCalls.push({ target, options });
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     inspect: (target) =>
       Effect.succeed({
@@ -383,7 +383,7 @@ const makeCachedBuildLayer = () => {
       Effect.sync(() => {
         containerGeneration += 1;
         applied = undefined;
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     inspect: (target) =>
       Effect.succeed({

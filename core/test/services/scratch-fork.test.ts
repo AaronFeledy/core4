@@ -281,7 +281,7 @@ const makeScratchForkLayer = (
           volumes: options.volumes,
           removeState: options.removeState,
         });
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("scratch fork test provider should not call execStream"),
