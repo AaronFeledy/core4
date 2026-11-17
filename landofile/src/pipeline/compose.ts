@@ -1,33 +1,24 @@
 import { LandofileLoadFailure } from "@lando/sdk/errors";
+import { type ValueWithOrigins, isPlainRecord, withValueOrigins } from "@lando/sdk/landofile";
 import { Logger } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { unionEnvironmentDependencies } from "../environment-dependencies.ts";
-import {
-  getLandofileIncludeSources,
-  getLocalIncludePaths,
-  rememberLandofileIncludeSources,
-  rememberLocalIncludePaths,
-} from "../include-provenance.ts";
 import type { IncludeResolutionSession } from "../include-session.ts";
 import { resolveLandofileIncludeLayers } from "../includes.ts";
 import type { PresentLandofileLayer } from "../layers.ts";
 import type { LandofileLoadContext } from "../load-context.ts";
-import {
-  getLandofileEnvironmentDependencies,
-  getLandofileReferencedFiles,
-  hasLandofileEnvironmentDependencies,
-  rememberLandofileEnvironmentDependencies,
-  rememberLandofileReferencedFiles,
-} from "../load-expression-provenance.ts";
 import type { LandofileEvaluationInputs } from "../ports.ts";
-import { getVersionConstraintEntries, rememberVersionConstraintEntries } from "../version-constraint.ts";
+import {
+  type AuthoredDocument,
+  type AuthoredOrigin,
+  combineProvenance,
+  emptyProvenance,
+} from "../provenance.ts";
 import { foldAuthoredOverlays } from "./fold.ts";
 import { type LandofileLoadScope, buildLandofileLoadScope } from "./materialize.ts";
-import type { AuthoredOrigin } from "./prepare.ts";
-import { getSourceDocuments, rememberSourceDocuments } from "./source-table.ts";
 
 export const composePreparedLayers = Effect.fn("Landofile.compose")(function* (
-  layers: readonly { readonly layer: PresentLandofileLayer; readonly landofile: Record<string, unknown> }[],
+  layers: readonly { readonly layer: PresentLandofileLayer; readonly landofile: AuthoredDocument }[],
   context: Omit<LandofileLoadContext, "layer">,
   evaluation: {
     readonly session: IncludeResolutionSession;
@@ -38,12 +29,17 @@ export const composePreparedLayers = Effect.fn("Landofile.compose")(function* (
   const logger = yield* Effect.serviceOption(Logger);
   const loadScope = evaluation.scope ?? {
     ...(yield* buildLandofileLoadScope(
-      layers.map(({ layer, landofile }) => ({ file: layer.filePath, value: landofile })),
+      layers.map(({ layer, landofile }) => ({ file: layer.filePath, value: landofile.value })),
       context.compilationContext?.env,
       context.pendingSites,
       context.environmentRecorder,
     )),
     recorder: context.recorder,
+  };
+  const fallback: AuthoredOrigin = {
+    file: layers[0]?.layer.filePath ?? ".lando.yml",
+    layer: layers[0]?.layer.layer ?? "canonical",
+    path: [],
   };
   const loaded = yield* Effect.forEach(layers, ({ layer, landofile }) =>
     resolveLandofileIncludeLayers(
@@ -76,49 +72,35 @@ export const composePreparedLayers = Effect.fn("Landofile.compose")(function* (
       },
       evaluation.session,
     ).pipe(
-      Effect.map((resolved) => ({ ...resolved, layer })),
       Effect.catch((error) => {
         if (context.recorder === undefined || !Schema.is(LandofileLoadFailure)(error))
           return Effect.fail(error);
         context.recorder.record(error);
-        return Effect.succeed({ layer, provenance: {}, overlays: [] });
+        return Effect.succeed({
+          document: {
+            value: {},
+            provenance: emptyProvenance(withValueOrigins({}, () => fallback).origins),
+          } satisfies AuthoredDocument,
+          overlays: [] as readonly ValueWithOrigins<AuthoredOrigin>[],
+        });
       }),
     ),
   );
   const overlays = loaded.flatMap(({ overlays }) => overlays);
-  const fallback: AuthoredOrigin = {
-    file: layers[0]?.layer.filePath ?? ".lando.yml",
-    layer: layers[0]?.layer.layer ?? "canonical",
-    path: [],
+  const folded = foldAuthoredOverlays(overlays, fallback);
+  const provenance = combineProvenance(
+    loaded.map(({ document }) => document.provenance),
+    folded.origins,
+  );
+  const environment = unionEnvironmentDependencies(
+    provenance.environmentDependencies,
+    ...(loadScope.environmentRecorder === undefined ? [] : [loadScope.environmentRecorder.dependencies()]),
+  );
+  return {
+    document: {
+      value: isPlainRecord(folded.value) ? folded.value : {},
+      provenance: { ...provenance, environmentDependencies: environment },
+    },
+    scope: loadScope,
   };
-  const document = foldAuthoredOverlays(overlays, fallback);
-  rememberSourceDocuments(
-    document,
-    loaded.flatMap(({ provenance }) => getSourceDocuments(provenance)),
-  );
-  rememberLandofileReferencedFiles(
-    document,
-    loaded.flatMap(({ provenance }) => getLandofileReferencedFiles(provenance)),
-  );
-  rememberLocalIncludePaths(
-    document,
-    loaded.flatMap(({ provenance }) => getLocalIncludePaths(provenance)),
-  );
-  rememberLandofileIncludeSources(
-    document,
-    loaded.flatMap(({ provenance }) => getLandofileIncludeSources(provenance)),
-  );
-  rememberVersionConstraintEntries(
-    document,
-    loaded.flatMap(({ provenance, layer }) => getVersionConstraintEntries(provenance, layer.filePath)),
-  );
-  const envParts = loaded
-    .map(({ provenance }) => provenance)
-    .filter(hasLandofileEnvironmentDependencies)
-    .map(getLandofileEnvironmentDependencies);
-  if (loadScope.environmentRecorder !== undefined)
-    envParts.push(loadScope.environmentRecorder.dependencies());
-  if (envParts.length > 0)
-    rememberLandofileEnvironmentDependencies(document, unionEnvironmentDependencies(...envParts));
-  return { document, scope: loadScope };
 });

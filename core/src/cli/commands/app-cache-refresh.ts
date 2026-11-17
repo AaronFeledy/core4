@@ -18,6 +18,7 @@ import {
 import { registerPlanRedaction } from "@lando/engine/services/plan-redaction";
 import { type BunShellScriptDiscoveryError, inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import { provenanceOf } from "@lando/landofile/provenance";
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import type {
@@ -159,9 +160,11 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
         values: [...collectSecretEnvValues(env), ...planValues.substring],
         wholeTokenValues: planValues.wholeToken,
       });
+  const provenance = provenanceOf(landofile);
   const entries = yield* Effect.sync(() =>
     compileInspectedAppCommands({
       landofile: landofile.document,
+      provenance,
       sourcePath: plan.metadata.source,
       inspection,
       effectiveTooling: effectiveToolingForPlan(plan),
@@ -247,6 +250,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
     sourceScripts: fingerprintsFromInspection(inspection),
     dataIdentityFingerprint,
     landofile: landofile.document,
+    provenance,
     entries,
     cwd,
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),

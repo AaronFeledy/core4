@@ -1,9 +1,7 @@
 import { resolveNetworkTrustPlan } from "@lando/http-client/network-trust";
+import { versionConstraintsFor } from "@lando/landofile/provenance";
 import { landofileValidationError } from "@lando/landofile/validation";
-import {
-  getVersionConstraintEntries,
-  hasSkippedUnsatisfiedVersionConstraint,
-} from "@lando/landofile/version-constraint";
+import { hasSkippedUnsatisfiedVersionConstraint } from "@lando/landofile/version-constraint";
 import { makeLandoPaths } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
@@ -79,9 +77,9 @@ import {
 import { loadComposeConfigFiles } from "./config-files.ts";
 import { validateConnectionValues } from "./connection-values.ts";
 import { compileEffectiveEvents } from "./effective-events.ts";
-import { attachEffectiveTooling } from "./effective-tooling.ts";
+import { attachResolutionTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
-import { environmentCacheInput, rememberAppFeatureEnvironment } from "./environment-cache-input.ts";
+import { environmentCacheInput } from "./environment-cache-input.ts";
 import { type ResolvedLandofile, resolveKnownEventSet } from "./event-set.ts";
 import { fileSyncCacheInput } from "./file-sync-cache-input.ts";
 import { hostEventsShellIssues } from "./host-shell-issues.ts";
@@ -129,9 +127,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     appSlug,
     defaultDomain,
     services: seeds,
-    effectiveTooling,
-    connectionClients,
-    toolingProvenance: provenance,
+    toolingResolution,
+    provenance: landofileProvenance,
     invocationSites,
     appRoot,
     appName,
@@ -218,7 +215,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const sourceFingerprint =
     input.mode === "validate"
       ? undefined
-      : yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
+      : yield* readAppPlanSourceFingerprint(appRoot, landofileProvenance).pipe(
           Effect.catch(() => Effect.succeed(undefined)),
         );
   const certificateAuthority = selectContributedCertificateAuthority<CertificateAuthorityCandidateDefinition>(
@@ -234,7 +231,6 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     identity: input.identity,
   });
   const preparedApp = endpointProjection.preparedApp;
-  rememberAppFeatureEnvironment(authoredLandofile, preparedApp.environment.dependencies);
   const appFeatures = preparedApp.features;
   const composeConfigFileInputs = yield* loadComposeConfigFiles({
     appRoot,
@@ -335,7 +331,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       configSourceInputs,
     });
   }
-  const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
+  const versionConstraints = versionConstraintsFor(landofileProvenance, landofile, landofilePath);
   const hostEvents =
     AppDefaults.isExcludedFromUserAppDefaults(appName, appRoot, pathsService) ||
     globalConfig?.hostEvents === undefined
@@ -439,7 +435,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertProjectUserSupported(provider, providerCapabilities, cached.services);
       const proven = withCommittedLiteralDigests(cached, authoredLandofile);
       return attachCompiledInvocationPlan(
-        attachEffectiveTooling(proven, effectiveTooling, { connectionClients, provenance }),
+        attachResolutionTooling(proven, toolingResolution),
         executableSites,
         effectiveEventsFor(cached.services),
       );
@@ -505,6 +501,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const perAppBridge = appId !== "global";
   const authoredNetworking = yield* normalizeNetworks({
     landofile,
+    provenance: landofileProvenance,
     services: networkServicesWithClones(resolvedServices, cloned, serviceNames),
     appRoot,
     perAppBridge,
@@ -532,7 +529,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...appFeatureResult.requires.globalServices,
   ];
   const plan = attachCompiledInvocationPlan(
-    attachEffectiveTooling(
+    attachResolutionTooling(
       yield* decodeAppPlan(appRoot, {
         id: appId,
         valueModel: 1,
@@ -565,8 +562,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices)),
         Effect.map((decoded) => withCommittedLiteralDigests(decoded, authoredLandofile)),
       ),
-      effectiveTooling,
-      { connectionClients, provenance },
+      toolingResolution,
     ),
     executableSites,
     effectiveEventsFor(finalized.services),

@@ -68,11 +68,6 @@ const derivedTypeScriptPolicies = [
     trackingPath: "core/src/recipes/bundled.ts",
   },
   {
-    ids: ["bootstrap-layers"],
-    ignoreProbe: "core/src/runtime/generated/layers/index.ts",
-    trackingPath: "core/src/runtime/generated/layers",
-  },
-  {
     ids: ["opentui-native-stubs"],
     ignoreProbe: "scripts/generated/opentui-native/catalog.generated.ts",
     trackingPath: "scripts/generated/opentui-native",

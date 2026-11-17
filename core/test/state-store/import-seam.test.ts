@@ -74,25 +74,17 @@ describe("StateStore import seam", () => {
     expect(offenders.sort().join("\n")).toBe("");
   });
 
-  test("renders the minimal layer with the StateStore package service import", async () => {
-    // Given the minimal bootstrap-layer renderer
-    const renderers: unknown = await import(resolve(repositoryRoot, "scripts/bootstrap-layer-renderers.ts"));
-    if (
-      typeof renderers !== "object" ||
-      renderers === null ||
-      !("renderMinimal" in renderers) ||
-      typeof renderers.renderMinimal !== "function"
-    ) {
-      throw new TypeError("bootstrap-layer-renderers.ts must export renderMinimal");
-    }
-    const source = renderers.renderMinimal();
+  test("minimal bootstrap imports the StateStore package service", async () => {
+    // Given the tracked minimal bootstrap layer
+    const sourcePath = resolve(repositoryRoot, "core/src/runtime/layers/minimal.ts");
+    const source = await Bun.file(sourcePath).text();
 
     // When its import-shaped AST edges are scanned
-    const imports = new Set(scanModuleEdges("minimal.ts", source).map((edge) => edge.specifier));
+    const imports = new Set(scanModuleEdges(sourcePath, source).map((edge) => edge.specifier));
 
     // Then it emits the package service import and omits the legacy relative service import
     expect({
-      legacyServiceImport: imports.has("../../../state/service.ts"),
+      legacyServiceImport: [...imports].some((specifier) => specifier.endsWith("state/service.ts")),
       packageServiceImport: imports.has("@lando/state-store/service"),
     }).toEqual({ legacyServiceImport: false, packageServiceImport: true });
   });

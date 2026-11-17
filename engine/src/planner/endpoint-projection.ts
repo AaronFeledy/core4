@@ -1,3 +1,4 @@
+import type { LandofileProvenance } from "@lando/landofile/provenance";
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError } from "@lando/sdk/errors";
@@ -23,6 +24,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
   readonly services: readonly ResolvedServiceSeed[];
   readonly unavailable: ReadonlyMap<string, readonly PlannerIssue[]>;
   readonly landofile: LandofileShape;
+  readonly provenance?: LandofileProvenance | undefined;
   readonly manifests: readonly PluginManifest[];
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
   readonly appName: string;
@@ -39,7 +41,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
   const issues: PlannerIssue[] = [];
   const record = (error: LandofileValidationError) => {
     const reasons = error.issues.map((issue) =>
-      attributePlannerIssue(input.landofile, { ...issue, rule: "landofile.service" }),
+      attributePlannerIssue(input.provenance, { ...issue, rule: "landofile.service" }),
     );
     issues.push(...reasons);
     return reasons;

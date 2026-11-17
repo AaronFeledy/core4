@@ -1,6 +1,5 @@
 import { authoredSourceDocument } from "@lando/landofile/authored-literal";
-import { getLandofileIncludeSources } from "@lando/landofile/include-provenance";
-import { getSourceDocuments } from "@lando/landofile/pipeline/source-table";
+import { provenanceOf } from "@lando/landofile/provenance";
 import {
   acquireLandofileRootLayers,
   composeLandofileRootLayers,
@@ -121,9 +120,9 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
             content: source.content,
             digest: source.digest,
           }).pipe(
-            Effect.map(collectAuthoredRedactionTokens),
+            Effect.map((authored) => collectAuthoredRedactionTokens(authored.value, authored.provenance)),
             Effect.catchTag("LandofileValidationError", () =>
-              Effect.succeed(collectAuthoredRedactionTokens(source.value)),
+              Effect.succeed(collectAuthoredRedactionTokens(source.value, undefined)),
             ),
           ),
         );
@@ -144,10 +143,12 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
           composed.runtime.recorder,
         );
       const sourceValues = yield* Effect.forEach(composed.documents, (document) =>
-        authoredSourceDocument(document).pipe(Effect.map(collectAuthoredRedactionTokens)),
+        authoredSourceDocument(document).pipe(
+          Effect.map((authored) => collectAuthoredRedactionTokens(authored.value, authored.provenance)),
+        ),
       );
       const redactionTokens = yield* attachRedaction(...sourceValues);
-      const landofile = yield* sourceValue(composed.merged);
+      const landofile = yield* sourceValue(composed.merged.value);
       if (selector === undefined) return { source, landofile, redactionTokens };
       const selected = getAtPath(landofile, selector);
       return {
@@ -159,17 +160,21 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
     }
     case "resolved": {
       const service = yield* LandofileService;
-      const landofile = (yield* loadUserLandofile(service)).document;
-      const sourceValues = yield* Effect.forEach(getSourceDocuments(landofile), (document) =>
-        authoredSourceDocument(document).pipe(Effect.map(collectAuthoredRedactionTokens)),
+      const loadedLandofile = yield* loadUserLandofile(service);
+      const landofile = loadedLandofile.document;
+      const provenance = provenanceOf(loadedLandofile);
+      const sourceValues = yield* Effect.forEach(provenance?.documents ?? [], (document) =>
+        authoredSourceDocument(document).pipe(
+          Effect.map((authored) => collectAuthoredRedactionTokens(authored.value, authored.provenance)),
+        ),
       );
       const redactionTokens = yield* attachRedaction(
-        collectAuthoredRedactionTokens(landofile),
+        collectAuthoredRedactionTokens(landofile, provenance),
         ...sourceValues,
       );
       const metadata = {
         app: landofile.name ?? "",
-        sources: getLandofileIncludeSources(landofile),
+        sources: provenance?.includeSources ?? [],
         redactionTokens,
       };
       if (selector === undefined) return { source, ...metadata, landofile };

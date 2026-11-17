@@ -32,7 +32,7 @@ test.each([1, 2])("legacy canonical detection dominates %i missing includes", as
 test("composes legacy root layers without classifying their dialect", async () => {
   await writeFile(join(root, ".lando.yml"), "recipe: lamp\nconfig: {}\n");
   const composed = await Effect.runPromise(composeLandofileRootLayers(root));
-  expect(composed.merged).toMatchObject({ recipe: "lamp", config: {} });
+  expect(composed.merged.value).toMatchObject({ recipe: "lamp", config: {} });
 });
 
 test.each([

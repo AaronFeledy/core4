@@ -12,10 +12,8 @@ import {
 import { Effect, Result, Schema } from "effect";
 import { hasIncludeCycle } from "./include-graph.ts";
 import { attributeIncludeError, includeError, realpathOrSelf } from "./include-guard.ts";
-import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import { loadPathBlocked } from "./load-failures.ts";
-import type { AuthoredOrigin } from "./pipeline/prepare.ts";
-import type { SourceDocument } from "./pipeline/source-table.ts";
+import type { AuthoredOrigin, LandofileReferencedFile, SourceDocument } from "./provenance.ts";
 import { type ToolingIncludeDefaults, layerIncludeDefaults } from "./tooling-include-defaults.ts";
 import {
   type NormalizedToolingInclude,
@@ -108,15 +106,15 @@ export const resolveEntries = Effect.fnUntraced(function* (
         return yield* Effect.fail(
           attributeIncludeError(
             incompatible,
-            valueOriginAt(fragment.origins, incompatible.path ?? []).source,
+            valueOriginAt(fragment.document.provenance.origins, incompatible.path ?? []).source,
           ),
         );
       const nested = yield* resolveEntries(
-        normalizeToolingIncludes(fragment.nested, fragment.origins),
+        normalizeToolingIncludes(fragment.nested, fragment.document.provenance.origins),
         { ...ctx, sourceRoot: dirname(filePath), layer },
         { depth: depth + 1, stack: [...stack, identity] },
       );
-      sources.push(...nested.sources, ...fragment.sources);
+      sources.push(...nested.sources, ...fragment.document.provenance.documents);
       if ((ctx.recorder?.failures.length ?? 0) > initialFailures) return;
 
       const excluded = new Set(entry.excludes);
@@ -147,9 +145,9 @@ export const resolveEntries = Effect.fnUntraced(function* (
           }
           localTasks.set(id, task);
           const taskOrigins =
-            fragment.origins.children.get("tooling")?.children.get(name) ??
+            fragment.document.provenance.origins.children.get("tooling")?.children.get(name) ??
             nested.origins.get(name) ??
-            fragment.origins;
+            fragment.document.provenance.origins;
           localDefaults.set(
             id,
             layerIncludeDefaults(

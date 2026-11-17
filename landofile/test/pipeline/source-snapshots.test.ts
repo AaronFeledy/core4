@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 import { Effect } from "effect";
 import * as parser from "../../src/parser.ts";
-import { getSourceDocuments } from "../../src/pipeline/source-table.ts";
 import { prepareLandofileSource, resolveLandofileSourceExpressions } from "../../src/source.ts";
 
 test("prepares the retained authored snapshot without rereading the changed source", async () => {
@@ -20,11 +19,11 @@ test("prepares the retained authored snapshot without rereading the changed sour
     // When
     const prepared = await Effect.runPromise(resolveLandofileSourceExpressions(acquired));
     // Then
-    expect(prepared.value).toMatchObject({
+    expect(prepared.value.value).toMatchObject({
       name: "snapshot",
       services: { web: { workingDirectory: "/original", primary: "wrong" } },
     });
-    expect(getSourceDocuments(prepared.value)).toEqual([
+    expect(prepared.value.provenance.documents).toEqual([
       {
         file,
         form: "yaml",

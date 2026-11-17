@@ -194,9 +194,9 @@ describe("deriveAppCommandToolingFingerprint", () => {
     } satisfies LandofileShape;
 
     // When
-    const noDefaultsFingerprint = deriveAppCommandToolingFingerprint(withoutDefaults);
-    const defaultsFingerprint = deriveAppCommandToolingFingerprint(withDefaults);
-    const restoredFingerprint = deriveAppCommandToolingFingerprint(withoutDefaults);
+    const noDefaultsFingerprint = deriveAppCommandToolingFingerprint(withoutDefaults, undefined);
+    const defaultsFingerprint = deriveAppCommandToolingFingerprint(withDefaults, undefined);
+    const restoredFingerprint = deriveAppCommandToolingFingerprint(withoutDefaults, undefined);
 
     // Then
     expect(defaultsFingerprint).not.toBe(noDefaultsFingerprint);
@@ -223,7 +223,9 @@ describe("deriveAppCommandToolingFingerprint", () => {
     };
 
     // When / Then
-    expect(deriveAppCommandToolingFingerprint(first)).toBe(deriveAppCommandToolingFingerprint(second));
+    expect(deriveAppCommandToolingFingerprint(first, undefined)).toBe(
+      deriveAppCommandToolingFingerprint(second, undefined),
+    );
   });
 });
 

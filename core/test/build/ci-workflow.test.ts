@@ -659,7 +659,6 @@ describe("ci workflow", () => {
     expect(bundledCodegen).toContain("        run: bun run codegen:opentui-native-stubs");
     expect(bundledCodegen).toContain("        run: bun run codegen:bundled-plugins");
     expect(bundledCodegen).toContain("        run: bun run codegen:bundled-recipes");
-    expect(bundledCodegen).toContain("        run: bun run codegen:bootstrap-layers");
     expect(bundledCodegen).toContain("        run: bun run codegen:provider-images");
     expect(bundledCodegen).toContain(
       "        run: git diff --exit-code -- plugins/file-sync-mutagen/mutagen-versions.json",

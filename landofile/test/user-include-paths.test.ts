@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import { resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
+import { resolveAuthoredDocument as resolveLandofileIncludes } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 describe("user include path validation", () => {

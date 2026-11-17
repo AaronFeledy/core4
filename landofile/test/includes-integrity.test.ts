@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import {
-  resolveAuthoredIncludes,
+  resolveAuthoredDocument,
   updateAuthoredIncludes,
   verifyAuthoredIncludes,
 } from "./include-pipeline.ts";
@@ -105,7 +105,7 @@ test("network pin checks parent bytes before parsing its child", async () => {
   // When
   const error = await Effect.runPromise(
     Effect.flip(
-      resolveAuthoredIncludes({
+      resolveAuthoredDocument({
         ...options(),
         landofile: { includes: [source] },
         deps: {
@@ -161,7 +161,7 @@ test("two npm fragments from one package have distinct pins and unambiguous cach
   // When
   const report = await Effect.runPromise(updateAuthoredIncludes(input));
   const loaded = await Effect.runPromise(
-    resolveAuthoredIncludes({
+    resolveAuthoredDocument({
       ...input,
       deps: { npmRegistry },
       ports: makeTestLandofilePorts(base.cacheRoot, base.cacheRoot, { npmRegistry }),
@@ -200,7 +200,7 @@ for (const returned of ["1.2.3", "2.0.0"]) {
     // When
     const result = await Effect.runPromise(
       Effect.result(
-        resolveAuthoredIncludes({
+        resolveAuthoredDocument({
           ...base,
           ports: makeTestLandofilePorts(base.cacheRoot, base.cacheRoot, { npmRegistry }),
           landofile: { includes: [{ source: "npm:@acme/fragments@latest", path: "web.yml" }] },
@@ -278,7 +278,7 @@ test("a lock entry whose npm version is not an exact version fails closed withou
   // When
   const error = await Effect.runPromise(
     Effect.flip(
-      resolveAuthoredIncludes({
+      resolveAuthoredDocument({
         ...base,
         ports: makeTestLandofilePorts(base.cacheRoot, base.cacheRoot, { npmRegistry }),
         landofile: { includes: [{ source: "npm:@acme/fragments", path: "web.yml" }] },

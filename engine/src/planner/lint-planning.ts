@@ -12,7 +12,7 @@ export const planningLintFindings = (
 ): readonly ConfigLintViolation[] => {
   const landofile = resolution.landofile;
   const finding = (issue: ValidationIssue & { readonly rule: ConfigLintViolation["rule"] }) => [
-    attributeEffectiveLintIssue(landofile, issue),
+    attributeEffectiveLintIssue(landofile, issue, resolution.provenance),
   ];
   const details = { message: error.message, suggestion: error.remediation };
   return Match.value(error).pipe(
@@ -21,7 +21,11 @@ export const planningLintFindings = (
       failure.issues.length === 0
         ? finding({ ...details, rule: "landofile.validation", path: [] })
         : failure.issues.map((issue) =>
-            attributeEffectiveLintIssue(landofile, { ...issue, rule: issue.rule ?? "landofile.validation" }),
+            attributeEffectiveLintIssue(
+              landofile,
+              { ...issue, rule: issue.rule ?? "landofile.validation" },
+              resolution.provenance,
+            ),
           ),
     ),
     Match.tag("HealthcheckTargetUnsupportedError", (failure) => {

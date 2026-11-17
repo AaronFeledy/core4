@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { parseExpressionEither } from "@lando/sdk/expressions";
 import { Result } from "effect";
 import { resolveEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { hostShellIssues, planningHostShellIssues } from "../../src/planner/host-shell-issues.ts";
+import { withInternalToolingTasks } from "../provenance-support.ts";
 
 const resolution = (landofile: Parameters<typeof hostShellIssues>[0]["landofile"]) => ({
   landofile,
@@ -40,7 +40,7 @@ test.each([":host", "web"])("checks explicit var target instead of task target (
 
 test("lints internal include tasks, which still run from event and task steps", () => {
   // Given a hidden include task that uses POSIX-only syntax
-  const landofile = rememberInternalToolingTasks(
+  const landofile = withInternalToolingTasks(
     { name: "hidden-task", tooling: { hidden: { service: ":host", cmd: "echo ${X}" } } },
     ["hidden"],
   );

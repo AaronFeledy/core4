@@ -1,16 +1,15 @@
 import { expect, test } from "bun:test";
 import { mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
 import { Cause, Effect, Exit, Option } from "effect";
 import { appPlanCachePath } from "../../src/cache/paths";
+import { referencedFilesOf } from "../provenance-support.ts";
 import {
   IMPORTED_PEM,
   PEM,
-  discover,
+  discoverCarrier,
   planDiscovered,
   planDiscoveredEffect,
   withApp,
@@ -153,12 +152,10 @@ test("invalidates the app-plan cache when an included fragment reference changes
         join(appRoot, ".lando.yml"),
         ["name: trust-app", "includes:", "  - ./fragments/service.yml", ""].join("\n"),
       );
-      const landofile = await discover();
+      const landofile = await discoverCarrier();
 
       // Then
-      expect(getLandofileReferencedFiles(landofile)).toContainEqual(
-        expect.objectContaining({ absolutePath: pemPath }),
-      );
+      expect(referencedFilesOf(landofile)).toContainEqual(expect.objectContaining({ absolutePath: pemPath }));
 
       await planDiscovered({ appRoot, cacheRoot });
       const cachePath = appPlanCachePath(cacheRoot, "trust-app", appRoot);

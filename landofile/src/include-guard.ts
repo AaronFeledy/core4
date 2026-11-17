@@ -3,7 +3,7 @@ import { isPathWithin } from "@lando/paths";
 
 import { LandofileIncludeError } from "@lando/sdk/errors";
 import { displaySource } from "@lando/source-acquisition";
-import type { AuthoredOrigin } from "./pipeline/prepare.ts";
+import type { AuthoredOrigin } from "./provenance.ts";
 
 export const INCLUDE_REMEDIATION =
   "Check the includes: entry and retry after the referenced Landofile fragment is available.";

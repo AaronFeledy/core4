@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkNpmPackageDistIntegrity } from "@lando/source-acquisition/integrity";
 import { Effect } from "effect";
-import { resolveAuthoredIncludes } from "./include-pipeline.ts";
+import { resolveAuthoredDocument } from "./include-pipeline.ts";
 import { makeNpmPackageTarball, makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const bytes = new TextEncoder().encode("archive");
@@ -61,7 +61,7 @@ for (const [label, metadata, remediation] of [
       // When
       const error = await Effect.runPromise(
         Effect.flip(
-          resolveAuthoredIncludes({
+          resolveAuthoredDocument({
             appRoot: root,
             cacheRoot: join(root, "cache"),
             ports: makeTestLandofilePorts(join(root, "cache"), join(root, "cache"), { npmRegistry }),

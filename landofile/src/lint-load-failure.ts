@@ -4,7 +4,7 @@ import type { Effect } from "effect";
 import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
 import { sourceCoordinates } from "./lint-source.ts";
 import type { finalizeLandofile } from "./pipeline/finalize.ts";
-import type { SourceDocument } from "./pipeline/source-table.ts";
+import type { SourceDocument } from "./provenance.ts";
 import type { inspectLandofileRootLayers } from "./root-compile.ts";
 
 type LoadError = Exclude<

@@ -3,11 +3,9 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { Effect } from "effect";
-import { getLocalIncludePaths } from "./include-provenance.ts";
 import { publishIncludeProposals } from "./include-session.ts";
 import { landofileLayerPaths } from "./layers.ts";
-import { getLandofileReferencedFiles } from "./load-expression-provenance.ts";
-import { getSourceDocuments } from "./pipeline/source-table.ts";
+import { provenanceOf } from "./provenance.ts";
 import { compileLandofileReplacement } from "./replacement.ts";
 
 const identity = async (path: string): Promise<string> => {
@@ -51,15 +49,14 @@ const prepareReplacement = Effect.fn("Landofile.prepareReplacement")(function* (
     catch: failure,
   });
   const { landofile, session } = yield* compileLandofileReplacement(replacement, inputs);
-  const documents = getSourceDocuments(landofile.document).filter(
-    (source) => source.file !== replacement.targetFile,
-  );
-  const references = getLandofileReferencedFiles(landofile.document);
+  const provenance = provenanceOf(landofile);
+  const documents = (provenance?.documents ?? []).filter((source) => source.file !== replacement.targetFile);
+  const references = provenance?.referencedFiles ?? [];
   const files = [
     ...new Set([
       ...documents.map((source) => source.file),
       ...references.map((source) => source.absolutePath),
-      ...getLocalIncludePaths(landofile.document),
+      ...(provenance?.localIncludePaths ?? []),
     ]),
   ].filter(isAbsolute);
   const sources = yield* Effect.tryPromise({

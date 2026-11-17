@@ -10,12 +10,12 @@ import {
 } from "@lando/core/cli/operations";
 import { LandofileService } from "@lando/core/services";
 import * as ConfigLayer from "@lando/engine/services/config";
-import { rememberLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect, Layer, Schema } from "effect";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 import { literalLandofile } from "../_support/value-contracts.ts";
+import { fixtureProvenance } from "../provenance-support.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -64,16 +64,16 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 describe("lando app:config", () => {
   test("returns the discovered Landofile name, recipe, and service list", async () => {
-    const landofile = rememberLandofileIncludeSources(
-      {
-        name: "test-app-config",
-        recipe: "node",
-        services: {},
-      },
-      [{ id: "user:corp.yml", sha256: "a".repeat(64) }],
+    const landofile = {
+      name: "test-app-config",
+      recipe: "node",
+      services: {},
+    };
+    const compiled = literalLandofile(
+      landofile,
+      process.cwd(),
+      fixtureProvenance({ includeSources: [{ id: "user:corp.yml", sha256: "a".repeat(64) }] }),
     );
-    const compiled = literalLandofile(landofile, process.cwd());
-    rememberLandofileIncludeSources(compiled.document, [{ id: "user:corp.yml", sha256: "a".repeat(64) }]);
     const layer = Layer.succeed(
       LandofileService,
       LandofileService.of({

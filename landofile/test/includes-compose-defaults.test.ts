@@ -6,6 +6,7 @@ import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { loadLandofileLayers } from "../src/service.ts";
 import { getLandofileValueSource } from "../src/validation.ts";
+import { provenanceIn } from "./provenance-support.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 let root: string;
@@ -37,7 +38,8 @@ test.each([`include: [${fragment}]`, `includes:\n  - source: ./${fragment}\n    
       "services:\n  mail:\n    image: axllent/mailpit:v1.27\n    env_file: [.env.mail]\n    volumes: ['./data:/data']\n",
     );
     // When
-    const { document } = await load();
+    const compiled = await load();
+    const document = compiled.document;
     // Then
     expect(document.services?.[mail]).toMatchObject({
       type: "compose",
@@ -48,12 +50,12 @@ test.each([`include: [${fragment}]`, `includes:\n  - source: ./${fragment}\n    
     });
     expect(document.services?.[mail]?.home).toBeUndefined();
     for (const key of ["type", "appMount"])
-      expect(getLandofileValueSource(document, ["services", "mail", key])).toEqual({
+      expect(getLandofileValueSource(provenanceIn(compiled), ["services", "mail", key])).toEqual({
         file: join(root, fragment),
         layer: "canonical",
         path: ["services", "mail"],
       });
-    expect(getLandofileValueSource(document, ["services", "mail", "envFile", 0])).toEqual({
+    expect(getLandofileValueSource(provenanceIn(compiled), ["services", "mail", "envFile", 0])).toEqual({
       file: join(root, fragment),
       layer: "canonical",
       path: ["services", "mail", "env_file", 0],
@@ -94,14 +96,15 @@ test("preserves explicit fragment service values", async () => {
     "services:\n  mail:\n    type: mailpit\n    home:\n      path: /home/mail\n    appMount: /site\n",
   );
   // When
-  const { document } = await load();
+  const compiled = await load();
+  const document = compiled.document;
   // Then
   expect(document.services?.[mail]).toMatchObject({
     type: "mailpit",
     home: { path: "/home/mail" },
     appMount: { target: "/site" },
   });
-  expect(getLandofileValueSource(document, ["services", "mail", "type"])?.path).toEqual([
+  expect(getLandofileValueSource(provenanceIn(compiled), ["services", "mail", "type"])?.path).toEqual([
     "services",
     "mail",
     "type",
@@ -117,7 +120,8 @@ test.each([".lando.yml", ".lando.local.yml"])("lets %s override Compose defaults
   if (file !== ".lando.yml") await writeFile(join(root, file), override);
   await writeFile(join(root, fragment), "services:\n  mail:\n    image: axllent/mailpit:v1.27\n");
   // When
-  const { document } = await load();
+  const compiled = await load();
+  const document = compiled.document;
   // Then
   expect(document.services?.[mail]).toMatchObject({
     type: "mailpit",
@@ -125,7 +129,9 @@ test.each([".lando.yml", ".lando.local.yml"])("lets %s override Compose defaults
     appMount: { target: "/site" },
   });
   for (const key of ["type", "home", "appMount"])
-    expect(getLandofileValueSource(document, ["services", "mail", key])?.file).toBe(join(root, file));
+    expect(getLandofileValueSource(provenanceIn(compiled), ["services", "mail", key])?.file).toBe(
+      join(root, file),
+    );
 });
 
 test.each([`includes: [${fragment}]`, `includes:\n  - source: ${fragment}\n    kind: landofile`])(

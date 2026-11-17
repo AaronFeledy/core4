@@ -1,6 +1,5 @@
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
+import { withAppRootProvenance } from "@lando/landofile/provenance";
 import type { LandofileFinalizeOverrides } from "@lando/landofile/service";
 import type { AppPlacementError, GlobalAppError, LandofileParseError } from "@lando/sdk/errors";
 import type { AppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
@@ -97,17 +96,14 @@ export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function
   );
   if (issue !== undefined) return yield* Effect.fail(issue.cause);
   const excluded = new Set(effective.excludedIds);
-  const admitted = rememberLandofileAppRoot(
-    copyLandofileProvenance(landofile, {
+  const admitted = withAppRootProvenance(
+    {
       ...landofile,
-      document: copyLandofileProvenance(landofile.document, {
-        ...landofile.document,
-        services: effective.services,
-      }),
+      document: { ...landofile.document, services: effective.services },
       pendingSites: landofile.pendingSites.filter(
         (site) => site.path[0] !== "services" || !excluded.has(String(site.path[1])),
       ),
-    }),
+    },
     paths.root,
   );
   return { materialized: true as const, paths, landofile: admitted, resolution: effective };

@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
-import { getLandofileReferencedFiles } from "../src/load-expression-provenance.ts";
 import { authoredRecipe, resolveAuthoredIncludes } from "./include-pipeline.ts";
+import { provenanceIn } from "./provenance-support.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 let root: string;
@@ -37,7 +37,7 @@ test.each([
   // When
   const loaded = await Effect.runPromise(resolve());
   // Then
-  expect(loaded.tooling?.["qa:build"]?.flags?.debug?.required).toBe(false);
+  expect(loaded.document.tooling?.["qa:build"]?.flags?.debug?.required).toBe(false);
 });
 
 test("resolves file helpers relative to the tooling fragment and retains their dependencies", async () => {
@@ -53,8 +53,10 @@ test("resolves file helpers relative to the tooling fragment and retains their d
   // When
   const loaded = await Effect.runPromise(resolve());
   // Then
-  expect(loaded.tooling?.["qa:build"]?.flags?.debug?.required).toBe(false);
-  expect(getLandofileReferencedFiles(loaded).some((file) => file.absolutePath === dataPath)).toBe(true);
+  expect(loaded.document.tooling?.["qa:build"]?.flags?.debug?.required).toBe(false);
+  expect(provenanceIn(loaded)?.referencedFiles).toContainEqual(
+    expect.objectContaining({ absolutePath: dataPath }),
+  );
 });
 
 test("materializes a nested tooling include collection before resolving it", async () => {
@@ -68,7 +70,7 @@ test("materializes a nested tooling include collection before resolving it", asy
   // When
   const loaded = await Effect.runPromise(resolve());
   // Then
-  expect(loaded.tooling?.["qa:nested:build"]?.cmd).toBe("nested");
+  expect(loaded.document.tooling?.["qa:nested:build"]?.cmd).toBe("nested");
 });
 
 test.each([

@@ -12,7 +12,7 @@ import { stageFragmentLock } from "./include-lockfile.ts";
 import { fetchGit, fetchNpm } from "./include-remote.ts";
 import { fetchRemoteRelative } from "./include-remote-relative.ts";
 import { classify, normalizeInclude } from "./include-source.ts";
-import type { AuthoredOrigin } from "./pipeline/prepare.ts";
+import type { AuthoredOrigin } from "./provenance.ts";
 
 export const acquireIncludeRequest = Effect.fnUntraced(
   function* (

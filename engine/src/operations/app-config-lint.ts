@@ -4,6 +4,7 @@ import {
   attributeEffectiveLintIssue,
   mergeLintFindings,
 } from "@lando/landofile/lint";
+import { provenanceOf } from "@lando/landofile/provenance";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { normalizeHostPlatform } from "@lando/paths";
 import type {
@@ -132,7 +133,7 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   if (Result.isFailure(resolved)) {
     if (resolved.failure._tag === "ConfigExpressionError") {
       const path = configExpressionIssuePath(resolved.failure);
-      const source = getLandofileValueSource(landofile, path);
+      const source = getLandofileValueSource(provenanceOf(landofile), path);
       return {
         ...result,
         valid: false,

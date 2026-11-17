@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { setupBunSteps } from "./_bun-workflow.ts";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
 import {
@@ -61,14 +62,6 @@ const timingNoticeStep = (label: string, timeoutMinutes: number): string => `   
         if: always()
         run: |
           echo "::notice title=ci-timing::${label} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: ${timeoutMinutes}m)"`;
-
-const setupBunSteps = `      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile`;
 
 const codegenStep = `      - name: Regenerate derived sources
         run: bun run codegen`;
@@ -1042,9 +1035,6 @@ ${setupBunSteps}
 
       - name: Regenerate bundled recipes
         run: bun run codegen:bundled-recipes
-
-      - name: Regenerate bootstrap layers
-        run: bun run codegen:bootstrap-layers
 
       - name: Regenerate Mutagen versions manifest
         run: bun run codegen:mutagen-versions
