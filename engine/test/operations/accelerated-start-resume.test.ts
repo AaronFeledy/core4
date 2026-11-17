@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import { FileSyncEngine } from "@lando/sdk/services";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import {
   beginOrResumeAcceleratedStart,
@@ -64,7 +65,7 @@ test.each(
     withResolvedCwd(
       app.root,
       operation === "stop" ? stopApp().pipe(Effect.asVoid) : destroyApp().pipe(Effect.asVoid),
-    ).pipe(Effect.provide(harness.layer)),
+    ).pipe(Effect.provide(Layer.merge(harness.layer, BunFileSystem.layer))),
   );
   expect(Exit.isSuccess(result)).toBe(true);
   expect(harness.calls).toContain("drain");

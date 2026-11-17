@@ -23,6 +23,7 @@ import { stopApp } from "../../src/operations/stop.ts";
 import { sshAgentSessionPaths } from "../../src/subsystems/ssh-agent/session.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { layerTransactionGuard } from "../services/landofile-layer.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 const providerId = ProviderId.make("lando");
@@ -75,6 +76,7 @@ const layerFor = (root: string) => {
     layer: Layer.mergeAll(
       layerTransactionGuard,
       emptySnapshotsLayer,
+      BunFileSystem.layer,
       PrivateFileAccessService.layer,
       Layer.succeed(StateStore, makeTestStateStore().service),
       Layer.succeed(PathsService, paths),

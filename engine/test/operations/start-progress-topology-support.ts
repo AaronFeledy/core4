@@ -64,6 +64,7 @@ const metadata = {
   runtime: 4 as const,
 };
 
+import * as BunFileSystem from "../../src/services/file-system.ts";
 export const web: ServicePlan = {
   name: ServiceName.make("web"),
   type: "node",
@@ -381,6 +382,7 @@ export const makeHarness = (
   };
   const layer = Layer.mergeAll(
     emptySnapshotsLayer,
+    BunFileSystem.layer,
     PrivateFileAccessService.layer,
     Layer.succeed(StateStore, fixtureStore),
     TestLandofileLayers.layerTransactionGuard,

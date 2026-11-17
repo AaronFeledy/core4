@@ -35,6 +35,7 @@ import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { destroyTreeId } from "../../src/operations/destroy-progress.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { layerTransactionGuard } from "../services/landofile-layer.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 export { destroyTreeId };
@@ -134,6 +135,7 @@ export const makeHarness = (
   const layer = Layer.mergeAll(
     layerTransactionGuard,
     options.dataMover === undefined ? emptySnapshotsLayer : Layer.succeed(DataMover, options.dataMover),
+    BunFileSystem.layer,
     PrivateFileAccessService.layer,
     // The app root holds no Landofile, so teardown skips Landofile events before it would plan.
     Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.die("not used") })),

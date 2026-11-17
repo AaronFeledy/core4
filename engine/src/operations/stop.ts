@@ -21,7 +21,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Result } from "effect";
+import { Effect, Option, Result } from "effect";
 
 import {
   type ResolvedAppTarget,
@@ -69,7 +69,6 @@ type StopAppServices =
   | ManagedFileTransactionGuard
   | AppPlanner
   | EventService
-  | FileSystem
   | LandofileService
   | PathsService
   | PrivateFileAccessService
@@ -562,8 +561,17 @@ const canonicalStopRoot = (root: string) => {
 };
 
 const appRootExists = Effect.fnUntraced(function* (root: AbsolutePath) {
-  const fs = yield* FileSystem;
-  return yield* fs.exists(root).pipe(
+  const fileSystem = yield* Effect.serviceOption(FileSystem);
+  if (Option.isNone(fileSystem))
+    return yield* Effect.fail(
+      new AppResolveError({
+        reason: "missing-root",
+        detail: "unreadable-root",
+        message: `The app folder ${root} cannot be inspected.`,
+        remediation: "Provide the file system service in this runtime, then retry.",
+      }),
+    );
+  return yield* fileSystem.value.exists(root).pipe(
     Effect.catch((cause) =>
       Effect.fail(
         new AppResolveError({
