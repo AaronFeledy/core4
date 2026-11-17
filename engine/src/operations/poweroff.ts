@@ -432,17 +432,26 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
     );
   }
 
-  const globalTarget = yield* globalStopTarget(inventory.snapshots);
+  const globalTargetResult = yield* globalStopTarget().pipe(Effect.result);
+  const globalTarget = Result.isSuccess(globalTargetResult) ? globalTargetResult.success : undefined;
+  if (Result.isFailure(globalTargetResult))
+    failures.push({
+      kind: "global",
+      appId: "global",
+      appRoot: "",
+      providerId: "global",
+      error: globalTargetResult.failure,
+    });
   const keepGlobal = options.keepGlobal === true;
   let globalStopped = false;
-  if (keepGlobal || failures.length > 0) {
+  if (globalTarget === undefined || keepGlobal || failures.length > 0) {
     apps.push(
       appResult(
         {
           kind: "global",
           appId: "global",
-          appRoot: globalTarget.root,
-          providerId: String(globalTarget.providerId),
+          appRoot: globalTarget?.root ?? "",
+          providerId: String(globalTarget?.providerId ?? "global"),
         },
         "skipped",
       ),
@@ -501,15 +510,7 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
   };
 });
 
-const globalStopTarget = Effect.fnUntraced(function* (snapshots: ReadonlyArray<ProviderRuntimeSnapshot>) {
-  const plan = snapshots
-    .flatMap((snapshot) => snapshot.appliedPlans)
-    .find((candidate) => candidate.id === "global");
-  if (plan !== undefined) return { root: plan.identity?.appRoot ?? plan.root, providerId: plan.provider };
-  const service = snapshots
-    .flatMap((snapshot) => snapshot.services)
-    .find((candidate) => candidate.app === "global" && candidate.appRoot !== undefined);
-  if (service?.appRoot !== undefined) return { root: service.appRoot, providerId: service.providerId };
+const globalStopTarget = Effect.fnUntraced(function* () {
   const app = yield* GlobalAppService;
   return { root: (yield* app.paths).root, providerId: yield* globalObserveProviderId };
 });

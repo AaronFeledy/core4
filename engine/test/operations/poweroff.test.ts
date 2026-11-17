@@ -21,6 +21,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeLandoPaths } from "@lando/paths";
 import { DateTime, Effect, Layer } from "effect";
 import { pendingStartBucketSpec } from "../../src/operations/accelerated-start-record.ts";
 import { poweroff } from "../../src/operations/poweroff.ts";
@@ -35,13 +36,13 @@ afterAll(() => rm(dataRoot, { recursive: true, force: true }));
 
 const ownerKey = (root: string): string => appIdentityKey("owner", root);
 
-const planAt = (root: string, id = "twin"): AppPlan => ({
+const planAt = (root: string, id = "twin", provider = providerId): AppPlan => ({
   id: AppId.make(id),
   name: id,
   slug: id,
   root: AbsolutePath.make(root),
   identity: { appRoot: AbsolutePath.make(root), ownerKey: ownerKey(root) },
-  provider: providerId,
+  provider,
   services: {},
   routes: [],
   stores: [],
@@ -85,6 +86,7 @@ const makeHarness = async (input: {
   readonly statusFailure?: boolean;
   readonly idle?: boolean;
   readonly holdingPlans?: ReadonlyArray<AppPlan>;
+  readonly globalPlans?: ReadonlyArray<AppPlan>;
 }) => {
   const teardown = await globalTeardownHarness(dataRoot);
   const calls: string[] = [];
@@ -142,10 +144,15 @@ const makeHarness = async (input: {
     appliedStateInventory: () =>
       Effect.succeed({ plans: input.holdingPlans ?? [], unreadable: [] }),
     observeRuntime: Effect.succeed([snapshot]),
-    appliedPlansFor: (root: AbsolutePath, scope?: ProviderId) =>
-      Effect.succeed(
-        (scope === undefined || scope === providerId) && plans.has(root) ? [plans.get(root) as AppPlan] : [],
-      ),
+    appliedPlansFor: (root: AbsolutePath, scope?: ProviderId) => {
+      const user = (scope === undefined || scope === providerId) && plans.has(root) ? [plans.get(root) as AppPlan] : [];
+      const global = (input.globalPlans ?? []).filter(
+        (plan) =>
+          (scope === undefined || plan.provider === scope) &&
+          (plan.identity?.appRoot === root || plan.root === root),
+      );
+      return Effect.succeed([...user, ...global]);
+    },
     resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: (root: AbsolutePath) =>
       Effect.succeed(
@@ -310,6 +317,26 @@ describe("poweroff operation", () => {
       expect(result.keptGlobalApp).toBe(true);
       expect(harness.calls).not.toContain("runtime");
     });
+  });
+
+  test("aggregates conflicting global placement before any global mutation", async () => {
+    const globalRoot = makeLandoPaths({ userDataRoot: dataRoot }).globalAppRoot;
+    const harness = await makeHarness({
+      roots: [],
+      globalPlans: [
+        planAt(globalRoot, "global", providerId),
+        planAt(globalRoot, "global", ProviderId.make("docker")),
+      ],
+    });
+    const result = await Effect.runPromise(poweroff().pipe(Effect.result, Effect.provide(harness.layer)));
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("expected a typed poweroff failure");
+    if (result.failure._tag !== "PoweroffStopError")
+      throw new TypeError(`expected PoweroffStopError, received ${result.failure._tag}`);
+    expect(result.failure.failures).toMatchObject([
+      { kind: "global", appId: "global", errorTag: "AppResolveError" },
+    ]);
+    expect(harness.calls).not.toContain("runtime");
   });
 
   test("fails a provider with recorded holdings when its runtime inventory is unobserved", async () => {
