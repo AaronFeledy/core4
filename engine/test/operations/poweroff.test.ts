@@ -117,7 +117,7 @@ const makeHarness = async (input: {
         calls.push(`destroy:${target.plan?.root ?? "global"}`);
         const failure = target.plan === undefined ? undefined : failures.get(String(target.plan.root));
         if (failure !== undefined) return yield* Effect.fail(failure);
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
   };
   const registry = {

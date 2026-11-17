@@ -165,7 +165,7 @@ const makeRetentionDouble = (): {
         if (destroyOptions?.volumes === true) {
           for (const store of plan.stores) volumes.delete(store.name);
         }
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
   };
 

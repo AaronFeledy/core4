@@ -51,7 +51,11 @@ test.each(
         providerOverrides: {
           getStatus: Effect.succeed({ state: "running" as const }),
           cleanupOwnedResources: () =>
-            Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
+            Effect.succeed({
+              servicesRemoved: [],
+              networksRemoved: 0,
+              volumesRemoved: { data: 0, cache: 0 },
+            }),
         },
       },
     }),
@@ -289,7 +293,11 @@ test.each(phases.flatMap((phase) => (["owned", "absent"] as const).map((evidence
           providerOverrides: {
             getStatus: Effect.succeed({ state: "running" as const }),
             cleanupOwnedResources: () =>
-              Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
+              Effect.succeed({
+                servicesRemoved: [],
+                networksRemoved: 0,
+                volumesRemoved: { data: 0, cache: 0 },
+              }),
           },
         },
       }),

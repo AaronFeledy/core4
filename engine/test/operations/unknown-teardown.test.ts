@@ -73,7 +73,7 @@ test.each(
         Effect.sync(() => {
           expect(running).toBe(true);
           destroyed++;
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const harness = makeHarness({
@@ -101,9 +101,7 @@ test.each(
                 : withDiscoveryCwd(root, destroyApp({ yes: true }))
             ).pipe(Effect.provide(harness.layer), Effect.result),
           )
-        : await Effect.runPromise(
-            globalDestroy({ yes: true }).pipe(Effect.provide(global.layer), Effect.result),
-          );
+        : await Effect.runPromise(globalDestroy({}).pipe(Effect.provide(global.layer), Effect.result));
     if (mode === "ready") {
       expect(result).toMatchObject({ _tag: "Success", success: { outcome: "destroyed" } });
       expect(preparations).toBe(1);

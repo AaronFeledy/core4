@@ -181,7 +181,8 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
           app: basename(resolution.root),
           outcome: "unchanged" as const,
           servicesDestroyed: [],
-          volumesRemoved: false,
+          dataVolumesRemoved: false,
+          cacheVolumesRemoved: false,
           snapshotsRemoved: 0,
           builtImages,
         };

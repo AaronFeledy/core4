@@ -80,6 +80,7 @@ test("publishes paired stop events for each service when containers are already 
   }
   expect(result).toEqual({
     changed: false,
+    volumesRemoved: { data: 0, cache: 0 },
     shutdownObservations: ["database", "web"].map((service) => ({
       appId: plan.id,
       providerId: provider,

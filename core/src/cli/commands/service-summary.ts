@@ -73,10 +73,18 @@ export const teardownLine = (
 
 export const unchangedLine = (app: string): string => teardownLine("unchanged", app, []);
 
-export const volumesTrailer = (removed: boolean, snapshotsRemoved = 0): string => {
-  if (snapshotsRemoved === 0) return removed ? "volumes removed" : "volumes preserved";
-  const snapshots = `${snapshotsRemoved} snapshot${snapshotsRemoved === 1 ? "" : "s"}`;
-  return removed ? `volumes and ${snapshots} removed` : `${snapshots} removed`;
+/**
+ * Reports the volume classes whose named volumes were actually removed. A class with no
+ * removals is not a cleanup claim: `volumes preserved` means neither class removed anything.
+ */
+export const volumesTrailer = (data: boolean, cache: boolean, snapshotsRemoved = 0): string => {
+  const volumes =
+    data && cache ? "data and cache volumes" : data ? "data volumes" : cache ? "cache volumes" : undefined;
+  const snapshots =
+    snapshotsRemoved === 0 ? undefined : `${snapshotsRemoved} snapshot${snapshotsRemoved === 1 ? "" : "s"}`;
+  if (volumes === undefined) return snapshots === undefined ? "volumes preserved" : `${snapshots} removed`;
+  if (snapshots === undefined) return `${volumes} removed`;
+  return `${volumes} and ${snapshots} removed`;
 };
 
 const builtImages = (count: number): string => `${count} built image${count === 1 ? "" : "s"}`;

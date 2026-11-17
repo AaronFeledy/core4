@@ -224,36 +224,41 @@ intend to enable every known plugin and reset its individual choices.
 
 ## Destroy provider resources
 
-`lando global:destroy` needs `--yes`. Without it the command fails with `GlobalDestroyConfirmationError` and touches nothing. `--yes` is consent.
+`lando global:destroy` asks before it deletes. On a terminal the prompt names what goes: the global app's containers and networks, the data volumes with `--volumes` or `--purge`, and the built images with `--purge`. Answer no and nothing changes. In a non-interactive run, pass `--yes` or the command fails before touching anything and tells you to rerun with it.
 
 ```sh
-lando global:destroy --yes
+lando global:destroy
 ```
 
 Destroy acts on the provider where the global app actually runs. If multiple providers hold applied global plans, target the unwanted copy explicitly:
 
 ```sh
-lando global:destroy --provider=lando --yes
+lando global:destroy --provider=lando
 ```
 
-This reads and cleans up only the selected provider. Named volumes stay unless you pass `--purge`.
+This reads and cleans up only the selected provider. Named volumes stay unless you pass `--volumes` or `--purge`.
 
 Destroy also keeps the newest image Lando built for each global service for up to seven days, so the next `lando global:start` reuses it without building. The summary says how many images it kept and removed.
 
 To move the global app to another provider, do not destroy it by hand. See [Switch providers](../setup/provider-selection.mdx#switch-providers).
 
-To remove service- and app-scoped named volumes as well as provider resources,
-add `--purge`. This deletes their stored data and removes the built images
-right away. Volumes declared with
-`scope: global` survive this operation:
+To remove service- and app-scoped named data volumes as well as provider
+resources, add `--volumes`. Built images stay available for reuse:
 
 ```sh
-lando global:destroy --yes --purge
+lando global:destroy --volumes
+```
+
+Add `--purge` instead to remove those volumes and the built images right away.
+Volumes declared with `scope: global` survive both:
+
+```sh
+lando global:destroy --purge
 ```
 
 Stop and destroy use the global app's applied state, so an invalid edit to a global Landofile doesn't block cleanup. Fix the config before starting the app again.
 
-If nothing needs removing, both commands report `unchanged`. With `--format=json`, check `result.outcome` for `stopped`, `destroyed`, or `unchanged`; `materialized` only says whether the generated Landofile exists. An unchanged destroy reports `volumesRemoved: false`, even with `--purge`.
+If nothing needs removing, both commands report `unchanged`. With `--format=json`, check `result.outcome` for `stopped`, `destroyed`, or `unchanged`; `materialized` only says whether the generated Landofile exists. A destroy reports `dataVolumesRemoved` and `cacheVolumesRemoved` only for the classes that actually lost at least one named volume. Both are `false` when no volume of that class was present, even with `--purge`.
 
 ## Related commands
 

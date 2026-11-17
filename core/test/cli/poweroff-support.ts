@@ -73,7 +73,7 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
               remediation: "Restore provider access and retry `lando poweroff`.",
             }),
           );
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     removeObservedService: (service: ServiceRuntimeInfo) =>
       Effect.sync(() => {

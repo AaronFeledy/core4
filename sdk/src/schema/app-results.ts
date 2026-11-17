@@ -126,8 +126,13 @@ export const DestroyAppResult = Schema.Struct({
   servicesDestroyed: Schema.Array(Schema.String).annotate({
     description: "Names of the services destroyed by the operation.",
   }),
-  volumesRemoved: Schema.Boolean.annotate({
-    description: "Whether the operation removed the app's named volumes.",
+  dataVolumesRemoved: Schema.Boolean.annotate({
+    description:
+      "Whether the operation actually removed at least one of the app's named data volumes; not proof that every data volume is gone.",
+  }),
+  cacheVolumesRemoved: Schema.Boolean.annotate({
+    description:
+      "Whether the operation actually removed at least one of the app's named cache volumes; not proof that every cache volume is gone.",
   }),
   snapshotsRemoved: Schema.Number.annotate({
     description:

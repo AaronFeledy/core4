@@ -23,7 +23,7 @@ test.each([false, true])("global destroy brackets progress and routes with purge
     const plan = globalPlanAt(AbsolutePath.make(join(root, "global")));
     const harness = await globalTeardownHarness(root, { plan });
     // When the destroy command runs.
-    await Effect.runPromise(globalDestroy({ yes: true, purge }).pipe(Effect.provide(harness.layer)));
+    await Effect.runPromise(globalDestroy({ purge }).pipe(Effect.provide(harness.layer)));
     // Then the bracket covers all destructive work, and purge requests volumes only.
     expect(harness.calls.filter((call) => !call.startsWith("task."))).toEqual([
       "pre-global-destroy",
@@ -67,7 +67,7 @@ test("absent global destroy emits no lifecycle or task events", async () => {
     // Given no applied or observed resources.
     const harness = await globalTeardownHarness(root);
     // When destroy is requested.
-    const result = await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
+    const result = await Effect.runPromise(globalDestroy({}).pipe(Effect.provide(harness.layer)));
     // Then historical routes are withdrawn without inventing container lifecycle events.
     expect(result.outcome).toBe("unchanged");
     expect(harness.events).toEqual([]);
@@ -89,7 +89,7 @@ test.each(["provider", "routes"] as const)("global %s failure suppresses post-de
     );
     // When teardown fails.
     const result = await Effect.runPromise(
-      globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer), Effect.result),
+      globalDestroy({}).pipe(Effect.provide(harness.layer), Effect.result),
     );
     // Then progress closes unsuccessfully without reporting successful destroy.
     expect(result._tag).toBe("Failure");
@@ -107,7 +107,7 @@ test("provider no-op reports unchanged in the completed global destroy event", a
       destroyOutcome: { kind: "no-op", reason: "no-applied-plan" },
     });
     // When destroy completes route cleanup.
-    const result = await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
+    const result = await Effect.runPromise(globalDestroy({}).pipe(Effect.provide(harness.layer)));
     // Then the result and closing event agree about actual mutation.
     expect(result.outcome).toBe("unchanged");
     expect(harness.events.at(-1)).toMatchObject({ _tag: "post-global-destroy", outcome: "unchanged" });

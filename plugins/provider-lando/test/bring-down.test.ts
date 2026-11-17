@@ -187,19 +187,24 @@ describe("provider-lando bringDown", () => {
     await Effect.runPromise(bringUp(plan, { api: fake.api }));
     await Effect.runPromise(bringDown(plan, { api: fake.api, volumes: true, purgeCaches: true }));
 
-    const prune = fake.calls.find((call) => call.path.startsWith("/libpod/volumes/prune"));
-    expect(prune).toBeDefined();
-    const pruneUrl = new URL(`http://localhost${prune?.path ?? ""}`);
-    const filters = JSON.parse(decodeURIComponent(pruneUrl.searchParams.get("filters") ?? "{}")) as Record<
-      string,
-      readonly string[]
-    >;
-    expect(filters.label).toEqual([
-      `dev.lando.volume-selector=${volumeSelector(plan.id, "cache")}`,
-      `dev.lando.volume-selector=${volumeSelector(plan.id, "data")}`,
-    ]);
-    expect(filters.all).toBeUndefined();
-    expect(pruneUrl.searchParams.get("all")).toBe("true");
+    const prunes = fake.calls.filter((call) => call.path.startsWith("/libpod/volumes/prune"));
+    expect(prunes).toHaveLength(2);
+    const selectorByClass = Object.fromEntries(
+      prunes.map((prune) => {
+        const pruneUrl = new URL(`http://localhost${prune.path}`);
+        const filters = JSON.parse(
+          decodeURIComponent(pruneUrl.searchParams.get("filters") ?? "{}"),
+        ) as Record<string, readonly string[]>;
+        expect(filters.all).toBeUndefined();
+        expect(pruneUrl.searchParams.get("all")).toBe("true");
+        const value = filters.label?.[0] ?? "";
+        return [value.includes(":cache") ? "cache" : "data", value];
+      }),
+    );
+    expect(selectorByClass).toEqual({
+      cache: `dev.lando.volume-selector=${volumeSelector(plan.id, "cache")}`,
+      data: `dev.lando.volume-selector=${volumeSelector(plan.id, "data")}`,
+    });
   });
 
   test("default cleanup does not prune named volumes without explicit destructive intent", async () => {

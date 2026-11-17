@@ -58,7 +58,7 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
       destroy: () =>
         Effect.sync(() => {
           calls.push("destroy");
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
       removeObservedService: () =>
         Effect.sync(() => {
@@ -68,7 +68,7 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
       cleanupOwnedResources: () =>
         Effect.sync(() => {
           calls.push("owned");
-          return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: 0 };
+          return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     let evidence: AppliedTeardownEvidence;

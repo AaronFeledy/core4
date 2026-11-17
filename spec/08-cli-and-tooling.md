@@ -111,7 +111,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:sources:gc` | `sources:gc` | `minimal` | Reports source-store entries unused longer than `--older-than=<days>` (default 30); `--prune` removes them. Entries pinned by any registered `.lando.lock.yml` or leased by a live process are never removed, and an unreadable lockfile withholds git and npm-indexed pruning for the run. Never automatic (§12.8.5). |
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |
 | `meta:global:config` | `global:config` | `plugins` | Read or write the global app Landofile without an eager provider runtime |
-| `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--provider=<id>` restricts applied evidence and cleanup to that provider; `--purge` includes service/app data volumes |
+| `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; confirmation unless `--yes`; `--provider=<id>` restricts applied evidence and cleanup to that provider; `--volumes` adds global service- and app-scoped data volumes; `--purge` adds those volumes and built-image removal |
 | `meta:global:disable` | `global:disable` | `global` | Save disabled policy for selectors or `--all`; protect running/unknown consumers unless invocation-scoped `--allow-disruption`; ownership-verified selected cleanup and generation; named volumes retained; `--dry-run` previews without writes |
 | `meta:global:enable` | `global:enable` | `global` | Enable contribution/package selectors or `--all`; regenerate without starting; `--dry-run` previews without writes |
 | `meta:global:info` | `global:info` | `global` | Global info; `--service`, `--format` |

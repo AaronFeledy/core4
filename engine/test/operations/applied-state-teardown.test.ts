@@ -288,7 +288,7 @@ const makeLayer = (input: {
                 appliedPlan = undefined;
               }),
         ),
-        Effect.as({ kind: "destroyed" } as const),
+        Effect.as({ kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } } as const),
       ),
     removeVolume: (ref: { readonly store: string }, expectedGeneration: string) =>
       Effect.sync(() => {
@@ -718,7 +718,15 @@ describe("applied-state teardown", () => {
     { volumes: true, purgeCaches: true, removed: ["database", "cache"] },
   ])(
     "destroy at a missing root honors orphan storage options %j",
-    async ({ volumes, purgeCaches, removed }) => {
+    async ({
+      volumes,
+      purgeCaches,
+      removed,
+    }: {
+      readonly volumes: boolean;
+      readonly purgeCaches: boolean;
+      readonly removed: ReadonlyArray<string>;
+    }) => {
       await withTempRoot(async (parent) => {
         const root = join(parent, "gone");
         const harness = makeLayer({
@@ -730,7 +738,8 @@ describe("applied-state teardown", () => {
         expect(result).toMatchObject({
           outcome: "destroyed",
           servicesDestroyed: ["web"],
-          volumesRemoved: removed.length > 0,
+          dataVolumesRemoved: removed.includes("database"),
+          cacheVolumesRemoved: removed.includes("cache"),
         });
         expect(harness.removedVolumes.map((volume) => volume.store)).toEqual([...removed]);
         expect(harness.destroyCalls).toEqual([]);
@@ -748,7 +757,8 @@ describe("applied-state teardown", () => {
         app: "gone",
         outcome: "unchanged",
         servicesDestroyed: [],
-        volumesRemoved: false,
+        dataVolumesRemoved: false,
+        cacheVolumesRemoved: false,
         snapshotsRemoved: 0,
         builtImages: { removed: 0, released: 0, inUse: [] },
       });
@@ -774,7 +784,8 @@ describe("applied-state teardown", () => {
       expect(result).toMatchObject({
         outcome: "destroyed",
         servicesDestroyed: ["leftover"],
-        volumesRemoved: true,
+        dataVolumesRemoved: false,
+        cacheVolumesRemoved: true,
       });
       expect(harness.evidenceRoots).toEqual([root, root, root]);
     });
@@ -893,7 +904,8 @@ describe("applied-state teardown", () => {
         app: desiredPlan.name,
         outcome: "unchanged",
         servicesDestroyed: [],
-        volumesRemoved: false,
+        dataVolumesRemoved: false,
+        cacheVolumesRemoved: false,
         snapshotsRemoved: 0,
         builtImages: { removed: 0, released: 0, inUse: [] },
       });
@@ -953,7 +965,8 @@ describe("applied-state teardown", () => {
         app: "applied-teardown",
         outcome: "destroyed",
         servicesDestroyed: [],
-        volumesRemoved: true,
+        dataVolumesRemoved: true,
+        cacheVolumesRemoved: false,
         snapshotsRemoved: 0,
         builtImages: { removed: 0, released: 0, inUse: [] },
       });
@@ -1164,7 +1177,8 @@ describe("applied-state teardown", () => {
         withResolvedCwd(root, destroyApp({ purgeCaches: true })).pipe(Effect.provide(harness.layer)),
       );
 
-      expect(result.volumesRemoved).toBe(true);
+      expect(result.cacheVolumesRemoved).toBe(true);
+      expect(result.dataVolumesRemoved).toBe(false);
       expect(harness.removedVolumes).toEqual([{ store: "cache", generation: "generation-cache" }]);
     });
   });
@@ -1203,7 +1217,8 @@ describe("applied-state teardown", () => {
 
       // Then only an explicitly purged cache is removed; global data always survives.
       expect(harness.removedVolumes).toEqual([...removed]);
-      expect(result.volumesRemoved).toBe(purgeCaches);
+      expect(result.cacheVolumesRemoved).toBe(purgeCaches);
+      expect(result.dataVolumesRemoved).toBe(false);
     });
   });
 

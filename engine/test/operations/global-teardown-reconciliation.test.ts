@@ -46,7 +46,6 @@ for (const command of ["stop", "destroy"] as const) {
               command === "stop"
                 ? yield* globalStop(mode === "scoped" ? { services: ["ssh-agent"] } : {}).pipe(Effect.result)
                 : yield* globalDestroy({
-                    yes: true,
                     ...(mode === "scoped" ? { providerId: ProviderId.make("lando") } : {}),
                   }).pipe(Effect.result);
             return { outcome, receipt: yield* readGlobalReconciliation() };
@@ -97,7 +96,7 @@ for (const command of ["stop", "destroy"] as const) {
               servicesRemoved: [],
               pending,
             });
-            yield* command === "stop" ? globalStop() : globalDestroy({ yes: true });
+            yield* command === "stop" ? globalStop() : globalDestroy({});
             return yield* readGlobalReconciliation();
           }).pipe(Effect.provideService(RouterService, router), Effect.provide(harness.layer)),
         );

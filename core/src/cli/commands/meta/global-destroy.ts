@@ -8,7 +8,7 @@ export const renderGlobalDestroyResult = (result: GlobalDestroyResult): string =
       result.outcome,
       result.app,
       shutdownServiceRows(result.servicesDestroyed, result.shutdownObservations),
-      volumesTrailer(result.volumesRemoved),
+      volumesTrailer(result.dataVolumesRemoved, result.cacheVolumesRemoved),
     ),
     ...builtImageCleanupLines(result.builtImages, "--purge"),
   ].join("\n");

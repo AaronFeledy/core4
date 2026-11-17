@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { TaggedErrorJson } from "./machine-output.ts";
 import { AppId, ProviderId, ServiceName } from "./primitives.ts";
+import { VolumeRemovalCounts } from "./volume-removal.ts";
 
 // ==== Shutdown observations
 // Daemon-reported facts, never a graceful or forced shutdown verdict.
@@ -76,6 +77,7 @@ export type FileSyncQuiesceResult = typeof FileSyncQuiesceResult.Type;
 export const DestroyOutcome = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("destroyed").annotate({ description: "The provider destroyed applied resources." }),
+    volumesRemoved: VolumeRemovalCounts,
     shutdownObservations,
   }),
   Schema.Struct({

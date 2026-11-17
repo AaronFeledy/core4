@@ -79,7 +79,7 @@ test.each(stoppedProviderFixtures)(
         }),
         inspectAppliedFileSync: stoppedProviderInspection(fixture, () => preparations > 0),
         cleanupOwnedResources: () =>
-          Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
+          Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } }),
       },
     });
     try {
@@ -126,7 +126,11 @@ test("destroy --volumes after rename reaches old and new names through root owne
             for (const id of options.appIds ?? []) {
               if (data.delete(AppId.make(id))) removed++;
             }
-          return { servicesRemoved: [], networksRemoved: 0, volumesRemoved: removed };
+          return {
+            servicesRemoved: [],
+            networksRemoved: 0,
+            volumesRemoved: { data: removed, cache: 0 },
+          };
         }),
     },
   });
@@ -136,7 +140,8 @@ test("destroy --volumes after rename reaches old and new names through root owne
     const result = await Effect.runPromise(
       destroyApp({ volumes: true }, target).pipe(Effect.provide(harness.layer)),
     );
-    expect(result.volumesRemoved).toBe(true);
+    expect(result.dataVolumesRemoved).toBe(true);
+    expect(result.cacheVolumesRemoved).toBe(false);
     expect([...data.values()]).toEqual([]);
     expect(applied).toEqual([]);
   } finally {

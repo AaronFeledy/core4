@@ -47,7 +47,13 @@ test("stop preserves provider destroy shutdownObservations on the public receipt
     resolveTeardownEvidence: () => Effect.succeed({ kind: "applied", plan }),
     selectProvider: () =>
       Effect.succeed(
-        stopProvider(() => Effect.succeed({ kind: "destroyed" as const, shutdownObservations: observed })),
+        stopProvider(() =>
+          Effect.succeed({
+            kind: "destroyed" as const,
+            volumesRemoved: { data: 0, cache: 0 },
+            shutdownObservations: observed,
+          }),
+        ),
       ),
   });
   // When stop tears the applied plan down.
@@ -64,7 +70,12 @@ test("stop omits shutdownObservations when the provider contributes none", async
   const harness = makeHarness({
     resolveAppliedPlan: () => Effect.succeed(plan),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "applied", plan }),
-    selectProvider: () => Effect.succeed(stopProvider(() => Effect.succeed({ kind: "destroyed" as const }))),
+    selectProvider: () =>
+      Effect.succeed(
+        stopProvider(() =>
+          Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
+        ),
+      ),
   });
   // When stop completes.
   const result = await Effect.runPromise(
@@ -97,7 +108,7 @@ test("ownership-only stop never fabricates shutdownObservations", async () => {
         Effect.succeed({
           servicesRemoved: [ServiceName.make("leftover")],
           networksRemoved: 0,
-          volumesRemoved: 0,
+          volumesRemoved: { data: 0, cache: 0 },
         }),
       destroy: () => Effect.die("ownership-only stop must not destroy by plan"),
       removeObservedService: () => Effect.die("ownership-only stop must not remove by observation"),
@@ -129,7 +140,12 @@ test("destroy preserves an empty contributed observation array", async () => {
             Effect.succeed({
               ...TestRuntimeProvider,
               id: "lando",
-              destroy: () => Effect.succeed({ kind: "destroyed" as const, shutdownObservations: [] }),
+              destroy: () =>
+                Effect.succeed({
+                  kind: "destroyed" as const,
+                  volumesRemoved: { data: 0, cache: 0 },
+                  shutdownObservations: [],
+                }),
               list: () => Effect.succeed([]),
               inspectAppliedFileSync: () => Effect.succeed({ status: "ordinary" as const }),
             }),
@@ -183,7 +199,11 @@ test("destroy merges stray-container observations ahead of planned destroy obser
               removeObservedService: () =>
                 Effect.succeed({ kind: "removed" as const, shutdownObservations: [strayObs] }),
               destroy: () =>
-                Effect.succeed({ kind: "destroyed" as const, shutdownObservations: [plannedObs] }),
+                Effect.succeed({
+                  kind: "destroyed" as const,
+                  volumesRemoved: { data: 0, cache: 0 },
+                  shutdownObservations: [plannedObs],
+                }),
               inspectAppliedFileSync: () => Effect.succeed({ status: "ordinary" as const }),
             }),
           resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan: destroyPlan }),

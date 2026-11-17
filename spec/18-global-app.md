@@ -162,7 +162,7 @@ Start payloads carry the global `AppRef`, plan, trigger, requested service ids, 
 
 Warm reuse is limited to a successful configuration, plan, and completed build retained in the same runtime. Admission MUST revalidate policy revision and content, contribution catalog, effective config and environment, provider capabilities, and loaded-source hashes; freshness also includes the generated layer and authored/include inputs used by that plan. Changed or untracked inputs, uncertain provenance, dynamic TypeScript, remote sources without complete freshness proof, secret-dependent values, and dynamic untracked build inputs MUST take the cold path. A healthy-looking container alone MUST NOT authorize a cache hit. Reuse requires no daemon or persistent controller and MUST NOT claim zero-provider access.
 
-Destroy payloads carry the global `AppRef`, `evidence` (`applied`, `orphans`, or `owned`), `purge`, and timestamp; `post-global-destroy` adds `outcome` (`destroyed` or `unchanged`). Only `meta:global:destroy` publishes them: global stop shares the teardown path but publishes no destroy events. `pre-global-destroy` fires before any destructive step; `post-global-destroy` fires after resource teardown succeeds and route withdrawal either succeeds or, with no selectable router, ends in the §10.2 warning; a selected router's withdrawal failure skips it. A destroy with no teardown evidence publishes neither. Global `--purge` removes volumes only.
+Destroy payloads carry the global `AppRef`, `evidence` (`applied`, `orphans`, or `owned`), `purge`, and timestamp; `post-global-destroy` adds `outcome` (`destroyed` or `unchanged`). Only `meta:global:destroy` publishes them: global stop shares the teardown path but publishes no destroy events. `pre-global-destroy` fires before any destructive step; `post-global-destroy` fires after resource teardown succeeds and route withdrawal either succeeds or, with no selectable router, ends in the §10.2 warning; a selected router's withdrawal failure skips it. A destroy with no teardown evidence publishes neither. `--volumes` removes global service- and app-scoped data volumes and releases built images; `--purge` removes those volumes and the built images. `global`-scoped storage survives both.
 
 Generated-layer events carry the trigger, contribution identities, enablement, capability verdicts, and timestamp. Standard Build-scope events and transcript contracts apply when global services build (§6.13, §12.4).
 
@@ -207,7 +207,7 @@ Bootstrap levels for these commands are declared once in the §8.1 command regis
 | Canonical id | Alias | Contract |
 |---|---|---|
 | `meta:global:config` | `global:config` | Read or write the canonical global Landofile using current contribution eligibility; policy is separate. `set`, `unset`, and `edit` follow the §8.2.1 shared mutation workflow, including its format-preserving, fail-closed write and no-op rules. The generated layer is read-only. |
-| `meta:global:destroy` | `global:destroy` | Destroy services and resources; requires confirmation unless `--yes`. `--provider=<id>` restricts applied evidence and cleanup to that provider. `--purge` follows §20.9. |
+| `meta:global:destroy` | `global:destroy` | Destroy services and resources; requires confirmation unless `--yes`, and a non-interactive run without it fails with the `--yes` remediation. `--provider=<id>` restricts applied evidence and cleanup to that provider. `--volumes` removes service- and app-scoped data volumes; `--purge` also removes built images. Both follow §20.9. |
 | `meta:global:disable` | `global:disable` | Save disabled intent for explicit selectors or `--all`, remove ownership-verified selected containers and routes, and regenerate. Named volumes and unselected services survive. Partial work follows §20.3.2. |
 | `meta:global:enable` | `global:enable` | Enable explicit selectors or `--all` and regenerate eligible configuration without starting. Package selection applies to current and future owned contributions (§20.3.1). |
 | `meta:global:info` | `global:info` | Report service information; supports `--service` and `--format`. |
@@ -252,13 +252,13 @@ At `app` bootstrap, `globalServices.<name>.{type,primary,creds,hostnames,routes,
 
 | Written scope | Global-app behavior |
 |---|---|
-| `service` | Data owned by one global service; preserved by normal destroy and removed by `--purge`. |
-| `app` | Data shared across global services; preserved by normal destroy and removed by `--purge`. |
+| `service` | Data owned by one global service; preserved by normal destroy and removed by `--volumes` or `--purge`. |
+| `app` | Data shared across global services; preserved by normal destroy and removed by `--volumes` or `--purge`. |
 | `global` | Shared under §6.5; survives `meta:global:destroy --purge` and is removed only by `meta:uninstall` (§17.7). |
 
 Global-app volumes carry `dev.lando.app: "global"` and the standard storage ownership labels derived from the global root (§6.5). No separate global-app volume marker exists. `apps:poweroff --keep-global` excludes the global app by its app id.
 
-Ordinary global destroy MUST retain service- and app-scoped data (§5.3.1); that guarantee covers named stores only, and a removed global container's anonymous volumes go with it (§6.5). Scratch apps retain their explicit lifetime and volume-removal policy (§21).
+Ordinary global destroy MUST retain service- and app-scoped data (§5.3.1); that guarantee covers named stores only, and a removed global container's anonymous volumes go with it (§6.5). The destroy result reports the data and cache classes the provider actually removed, so a requested class with nothing present reports `false`. Scratch apps retain their explicit lifetime and volume-removal policy (§21).
 
 ### 20.10 Proxy and CA realization through the global app
 

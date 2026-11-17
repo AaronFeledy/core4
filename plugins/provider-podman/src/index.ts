@@ -900,14 +900,14 @@ const assembleRuntimeProvider = (
         const previous = yield* appliedPlans.resolveMutationPlan(target.app);
         const plan = target.plan ?? previous;
         if (plan === undefined) return DESTROY_NO_OP;
-        const { shutdownObservations } = yield* bringDown(plan, {
+        const { shutdownObservations, volumesRemoved } = yield* bringDown(plan, {
           api: podmanApi,
           ctx: PODMAN_CTX,
           volumes: destroyOptions.volumes,
           ...(destroyOptions.purgeCaches === undefined ? {} : { purgeCaches: destroyOptions.purgeCaches }),
         });
         yield* forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions);
-        return { kind: "destroyed", shutdownObservations };
+        return { kind: "destroyed", volumesRemoved, shutdownObservations };
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
         appliedPlans

@@ -178,6 +178,8 @@ Scratch `AppFeature` code may consume permitted `globalServices.<name>.*` expres
 | `apps:scratch:run` | `scratch:run`, `run` | Run one command in a scope-bound toolbox scratch (§21.10.3). |
 | `apps:scratch:gc` | `scratch:gc` | Report orphans; `--prune` reaps them. |
 
+`apps:scratch:logs` resolves the registry handle and that root's exact applied plan; it never reads the acquisition plan cache. Absent applied evidence validates `--since` and returns no lines, an unknown id fails with `ScratchAppNotFoundError`, and orphan or ownership refusals propagate unchanged.
+
 Every command uses `scratch` bootstrap. `apps:list --include-scratch` adds running scratches; `apps:list --all` includes all app kinds. `apps:poweroff` destroys scratches by default; `--keep-scratch` opts out and composes with `--keep-global`.
 
 #### 21.10.1 `apps:scratch:start` flags

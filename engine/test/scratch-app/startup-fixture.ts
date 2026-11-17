@@ -124,7 +124,7 @@ const makeFixture = async (
     destroy: (target, options) =>
       Effect.sync(() => {
         if (options.removeState === true) destroyed.push(String(target.app));
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     ...overrides,
   };

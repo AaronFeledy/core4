@@ -138,7 +138,7 @@ const makeHarness = (input: {
     destroy: (target: { readonly app: string; readonly plan?: AppPlan }) =>
       Effect.sync(() => {
         if (target.plan !== undefined) destroyCalls.push(target.plan);
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     removeObservedService: (service: ServiceRuntimeInfo) =>
       Effect.sync(() => {
