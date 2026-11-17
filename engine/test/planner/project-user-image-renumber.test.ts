@@ -171,6 +171,21 @@ describe("projectUserRenumberStep", () => {
     expect(command).toContain("groupmod -o -g '1000'");
   });
 
+  test("empties lastlog and faillog after usermod so a large host uid cannot grow them", () => {
+    const step = projectUserRenumberStep({
+      identity: phpIdentity,
+      mapping,
+      host: { uid: "1500000", gid: "1500000" },
+    });
+    const script = JSON.stringify(step?.command);
+    const usermodAt = script.indexOf("usermod -o -u '1500000'");
+    expect(usermodAt).toBeGreaterThanOrEqual(0);
+    for (const file of ["/var/log/lastlog", "/var/log/faillog"]) {
+      expect(script).toContain(`test ! -e '${file}' || : > '${file}'`);
+      expect(script.indexOf(`: > '${file}'`)).toBeGreaterThan(usermodAt);
+    }
+  });
+
   test("skips an exact match and a custom image", () => {
     expect(
       projectUserRenumberStep({

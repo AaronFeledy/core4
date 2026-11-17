@@ -398,6 +398,10 @@ export const projectUserRenumberStep = (input: {
     ...(declared.uid === host.uid
       ? [`usermod -g '${host.gid}' "$lando_user"`]
       : [`usermod -o -u '${host.uid}' -g '${host.gid}' "$lando_user"`]),
+    // shadow-utils moves the account's lastlog and faillog records to the new
+    // uid's offset, which a large host uid turns into a huge sparse file in the
+    // derived layer. Emptying the files after usermod keeps the image small.
+    ...["/var/log/lastlog", "/var/log/faillog"].map((file) => `test ! -e '${file}' || : > '${file}'`),
     `find / -xdev \\( -uid '${declared.uid}' -o -gid '${declared.gid}' \\) ! -uid 0 -exec chown -h '${host.uid}:${host.gid}' {} +`,
   ];
   return {
