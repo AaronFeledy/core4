@@ -104,17 +104,6 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
-    // Imports `@lando/sdk/schema`, which re-exports generated/core-service-env.ts.
-    // Sharing a wave with that catalog writer lets the import observe a truncated
-    // file (`Bun.write` is not atomic), which surfaces as a syntax error on the
-    // slowest runner.
-    dependsOn: ["core-service-env-catalog"],
-    id: "bootstrap-layers",
-    ownership: "derived",
-    script: "build-bootstrap-layers.ts",
-    workspace: "repo",
-  },
-  {
     // Also imports every bundled plugin; see `bundled-plugins`.
     dependsOn: [
       "mutagen-versions",
@@ -178,7 +167,9 @@ export const CODEGEN_CATALOG = [
     ],
   },
   {
-    // Imports `@lando/sdk/schema`; see `bootstrap-layers`.
+    // Imports `@lando/sdk/schema`, which re-exports generated/core-service-env.ts.
+    // Sharing a wave with that catalog writer lets the import observe a truncated
+    // file (`Bun.write` is not atomic).
     dependsOn: ["core-service-env-catalog"],
     id: "compiled-decoders",
     ownership: "derived",
@@ -194,7 +185,6 @@ export const CODEGEN_CATALOG = [
       "bundled-command-descriptors",
       "bundled-plugins",
       "bundled-recipes",
-      "bootstrap-layers",
       "setup-plugin-flags",
       "mcp-allowlist",
       "host-proxy-allowlist",

@@ -445,8 +445,6 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run codegen:bundled-plugins");
       expect(workflow).toContain("- name: Regenerate bundled recipes");
       expect(workflow).toContain("run: bun run codegen:bundled-recipes");
-      expect(workflow).toContain("- name: Regenerate bootstrap layers");
-      expect(workflow).toContain("run: bun run codegen:bootstrap-layers");
       expect(workflow).toContain("- name: Regenerate Mutagen versions manifest");
       expect(workflow).toContain("run: bun run codegen:mutagen-versions");
       expect(workflow).toContain("- name: Regenerate provider images manifest");

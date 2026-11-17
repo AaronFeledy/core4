@@ -1043,9 +1043,6 @@ ${setupBunSteps}
       - name: Regenerate bundled recipes
         run: bun run codegen:bundled-recipes
 
-      - name: Regenerate bootstrap layers
-        run: bun run codegen:bootstrap-layers
-
       - name: Regenerate Mutagen versions manifest
         run: bun run codegen:mutagen-versions
 
