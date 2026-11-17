@@ -27,7 +27,6 @@ import { BUILT_ARTIFACT_STORE_LABEL, artifactBuildName } from "./build-artifact-
 import { openArtifactBuildRecording } from "./build-artifact-recording.ts";
 import {
   type ArtifactBuildResult,
-  artifactOwnerKey,
   openArtifactBuildResults,
   useArtifactBuildResult,
 } from "./build-artifact-results.ts";
@@ -84,7 +83,7 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
           ? plan
           : { ...plan, services: { ...plan.services, [service.name]: resolvedService } };
       const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
-      const owner = artifactOwnerKey(BuildOwner.fromPlan(plan));
+      const owner = BuildOwner.fromPlan(plan).key;
       const bucket = yield* openArtifactBuildResults(stateStore).pipe(
         mapFailures((cause) => buildResultsError(provider.id, cause)),
       );

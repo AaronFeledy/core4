@@ -33,7 +33,7 @@ export const resolveEffectiveTooling = (input: ToolingComposition) => {
   const tasks = compileEffectiveTooling(input);
   const contributors = toolingContributors(input.services);
   const originAt = (path: ValidationIssuePath): ToolingOrigin => {
-    const source = getLandofileValueSource(landofile, path);
+    const source = getLandofileValueSource(input.provenance, path);
     return source === undefined ? UNKNOWN_TOOLING_ORIGIN : { _tag: "Known", source };
   };
   const provenance: Record<string, ToolingTaskProvenance> = {};
@@ -81,7 +81,13 @@ export const resolveEffectiveTooling = (input: ToolingComposition) => {
       ...(contributor?.serviceTypeId === undefined ? {} : { serviceTypeId: contributor.serviceTypeId }),
     };
   }
-  return { tasks, beforeDefaults, provenance, connectionClients: connectionClientOwners(input) };
+  return {
+    tasks,
+    beforeDefaults,
+    provenance,
+    internalNames: [...(input.provenance?.internalToolingTasks ?? [])],
+    connectionClients: connectionClientOwners(input),
+  };
 };
 export type EffectiveToolingResolution = ReturnType<typeof resolveEffectiveTooling>;
 

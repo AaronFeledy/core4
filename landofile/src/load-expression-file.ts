@@ -9,7 +9,7 @@ import {
 } from "@lando/sdk/errors";
 import type { FileRef, ImportRefValue, LandofileLayer } from "@lando/sdk/schema";
 
-import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
+import type { LandofileReferencedFile } from "./provenance.ts";
 
 export interface LandofileLoadPolicy {
   readonly allowOutsideRoot: boolean;

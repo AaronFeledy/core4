@@ -45,7 +45,7 @@ describe("check-package-dag source policy", () => {
     "@lando/core",
     "@lando/core/paths",
     "@lando/core/plugins/generated/bundled.ts",
-    "@lando/core/runtime/generated/layers/index.ts",
+    "@lando/core/runtime/layers/index.ts",
     "@lando/provider-lando",
     "@lando/provider-lando/runtime",
   ])("rejects engine source import %s", async (specifier) => {
@@ -210,7 +210,7 @@ describe("check-package-dag source policy", () => {
     }
   });
 
-  test("allows core plugin imports only from the generated composition roots", async () => {
+  test("allows core plugin imports only from the generated plugin composition root", async () => {
     // Given
     await Promise.all([
       fixture.write("core/src/providers/provider.ts", 'import "@lando/service-lando";\n'),
@@ -218,10 +218,7 @@ describe("check-package-dag source policy", () => {
         "core/src/plugins/generated/bundled.ts",
         'export { service } from "@lando/service-lando";\n',
       ),
-      fixture.write(
-        "core/src/runtime/generated/layers/index.ts",
-        'export { service } from "@lando/service-lando";\n',
-      ),
+      fixture.write("core/src/runtime/layers/index.ts", 'export { service } from "@lando/service-lando";\n'),
       fixture.write(
         "core/src/runtime/generated/table.ts",
         'export { service } from "@lando/service-lando";\n',
@@ -235,7 +232,7 @@ describe("check-package-dag source policy", () => {
     expect(result.stdout).toContain("core/src/providers/provider.ts:1: @lando/service-lando");
     expect(result.stdout).toContain("core/src/runtime/generated/table.ts:1: @lando/service-lando");
     expect(result.stdout).not.toContain("core/src/plugins/generated/bundled.ts");
-    expect(result.stdout).not.toContain("core/src/runtime/generated/layers/index.ts");
+    expect(result.stdout).toContain("core/src/runtime/layers/index.ts:1: @lando/service-lando");
   });
 
   test("scans every production TypeScript module extension", async () => {

@@ -1,5 +1,4 @@
 import { compileInvocationSites, compiledValueError } from "@lando/landofile/compiled-sites";
-import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { landofileValidationError } from "@lando/landofile/validation";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
@@ -72,6 +71,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     landofilePath,
     globalConfig,
   });
+  const { provenance } = materialized;
   const { appSlug, defaultDomain, deferredSites } = materialized;
   landofile = materialized.landofile;
   const appDefaults = resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
@@ -92,6 +92,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   const seeds = yield* resolveServiceSeeds({
     dataName,
     landofile,
+    provenance,
     context: materialized.context,
     landofilePath,
     appSlug,
@@ -128,7 +129,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     }
   }
   let pendingSites = seeds.pendingSites;
-  landofile = copyLandofileProvenance(landofile, seeds.document);
+  landofile = seeds.document;
   if (pendingSites.length > 0) {
     const serviceScoped = yield* materializeServiceScopeSites({
       value: landofile,
@@ -146,13 +147,13 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     const decoded = yield* Schema.decodeUnknownEffect(Schema.toType(LandofileShape))(
       serviceScoped.document,
     ).pipe(mapFailures((cause) => compiledValueError(cause, { filePath: landofilePath, pendingSites })));
-    landofile = copyLandofileProvenance(landofile, decoded);
+    landofile = decoded;
     pendingSites = [
       ...pendingSites.filter((site) => blocked.has(deferredSiteKey(site.path))),
       ...serviceScoped.pendingSites,
     ];
   }
-  const validated = validateResolvedLandofile({ landofile, landofilePath, blocked, appSlug });
+  const validated = validateResolvedLandofile({ landofile, provenance, landofilePath, blocked, appSlug });
   // A generated HTTPS route makes an owned Apache-style launcher demand its own
   // certificate. Decide once here so endpoint projection, assembly, cache
   // identity, and tooling all read the same effective `certs` value.
@@ -166,6 +167,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   };
   const projection = yield* projectEndpoints({
     dataName,
+    provenance,
     appSlug,
     services: effectiveSeeds.services,
     unavailable: seeds.unavailable,
@@ -189,7 +191,9 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
       document: landofile,
       pendingSites,
       context: materialized.context,
+      provenance,
     }),
+    provenance,
     document: landofile,
     pendingSites,
     context: materialized.context,
@@ -212,6 +216,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     canonicalFile: input.file,
     toolingResolution: resolveEffectiveTooling({
       landofile,
+      provenance,
       services: effectiveSeeds.services.map((entry) => ({
         name: entry.name,
         serviceTypeId: entry.serviceType.id,
@@ -256,15 +261,17 @@ const knownEventSetFrom = Effect.fnUntraced(function* (
   const {
     tasks: effectiveTooling,
     provenance: toolingProvenance,
+    internalNames,
     connectionClients,
   } = resolution.toolingResolution;
-  const knownEventNames = validEventNames(effectiveTooling);
+  const knownEventNames = validEventNames(effectiveTooling, internalNames);
   return {
     ...resolution,
     services,
     effectiveTooling,
     connectionClients,
     toolingProvenance,
+    internalNames,
     invocationSites,
     knownEventNames,
   };

@@ -3,7 +3,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
-import { resolveAuthoredIncludes } from "./include-pipeline.ts";
+import { resolveAuthoredDocument } from "./include-pipeline.ts";
 import { isIncludeLockKey, makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 test("load merges entries written after its initial lock read under the operation lock", async () => {
@@ -18,7 +18,7 @@ test("load merges entries written after its initial lock read under the operatio
   try {
     // When
     await Effect.runPromise(
-      resolveAuthoredIncludes({
+      resolveAuthoredDocument({
         appRoot: root,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),

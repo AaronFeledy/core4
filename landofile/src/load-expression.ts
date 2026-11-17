@@ -23,7 +23,6 @@ import { includeEntryPath } from "./include-condition-shape.ts";
 import { decodeImplicitFileRef, makeLandofileLoadHelperOverrides } from "./load-expression-decoders.ts";
 import { normalizeLoadExpressionFailure } from "./load-expression-failure.ts";
 import { LandofileFileSession } from "./load-expression-file.ts";
-import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import {
   type ResolveLandofileLoadExpressionsOptions,
   callDepth,
@@ -34,6 +33,7 @@ import {
   keyValueEntryPath,
   templateExpression,
 } from "./load-expression-shape.ts";
+import type { LandofileReferencedFile } from "./provenance.ts";
 import { LOAD_DEFERRED_EXPRESSION_SCOPES } from "./recipe-expressions.ts";
 import { eligibleBindingPath, isLoweredSecretReferenceSite } from "./secret-reference.ts";
 import { deferredToolingScopeError } from "./tooling-deferred-scopes.ts";

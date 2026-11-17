@@ -54,7 +54,6 @@ const stateStoreLayer = Layer.suspend(() => Layer.succeed(StateStore, makeTestSt
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import {
-  artifactOwnerKey,
   openArtifactBuildResults,
   recordArtifactBuildResult,
 } from "../../src/services/build-artifact-results.ts";
@@ -2821,7 +2820,7 @@ describe("BuildOrchestratorLayer.layer", () => {
           const stateStore = yield* StateStore;
           const bucket = yield* openArtifactBuildResults(stateStore);
           yield* recordArtifactBuildResult(bucket, {
-            owner: artifactOwnerKey(BuildOwner.fromPlan(plan)),
+            owner: BuildOwner.fromPlan(plan).key,
             providerId: String(providerId),
             buildKey,
             service: web.name,
@@ -2832,7 +2831,7 @@ describe("BuildOrchestratorLayer.layer", () => {
             transcriptPath: AbsolutePath.make(olderPath),
           });
           yield* recordArtifactBuildResult(bucket, {
-            owner: artifactOwnerKey(BuildOwner.fromPlan(plan)),
+            owner: BuildOwner.fromPlan(plan).key,
             providerId: String(providerId),
             buildKey: "newer-key",
             service: web.name,

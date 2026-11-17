@@ -1,14 +1,12 @@
 import { describe, expect, test } from "bun:test";
-
+import { authoredDocumentFrom, versionConstraintsFor } from "../src/provenance.ts";
 import {
   VERSION_CONSTRAINT_SKIP_ENV_VAR,
   type VersionConstraintEntry,
   evaluateVersionConstraints,
-  getVersionConstraintEntries,
   isValidSemverRange,
   isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
-  rememberVersionConstraintEntries,
   satisfiesRange,
 } from "../src/version-constraint.ts";
 
@@ -126,19 +124,25 @@ describe("isVersionConstraintEntryArray", () => {
 });
 
 describe("version constraint provenance", () => {
-  test("remembers entries for a frozen Landofile", () => {
+  test("reads entries the carried provenance recorded", () => {
     // Given
-    const landofile = Object.freeze({ lando: ">=4" });
     const entries: ReadonlyArray<VersionConstraintEntry> = [
       { range: ">=4.1", source: ".lando.local.yml", layer: "local", order: 4 },
     ];
-
-    // When
-    const remembered = rememberVersionConstraintEntries(landofile, entries);
+    const document = authoredDocumentFrom(
+      { lando: ">=4" },
+      { file: ".lando.yml", layer: "canonical", path: [] },
+    );
+    const provenance = { ...document.provenance, versionConstraints: entries };
 
     // Then
-    expect(remembered).toBe(landofile);
-    expect(getVersionConstraintEntries(landofile, ".lando.yml")).toBe(entries);
+    expect(versionConstraintsFor(provenance, document.value, ".lando.yml")).toBe(entries);
+  });
+
+  test("falls back to the canonical authored range only without recorded entries", () => {
+    expect(versionConstraintsFor(undefined, { lando: ">=4" }, ".lando.yml")).toEqual([
+      { range: ">=4", source: ".lando.yml", layer: "canonical", order: 3 },
+    ]);
   });
 });
 

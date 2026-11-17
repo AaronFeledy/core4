@@ -1,4 +1,5 @@
 import { compiledValueError } from "@lando/landofile/compiled-sites";
+import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, ServiceTypeCollisionError } from "@lando/sdk/errors";
 import type {
@@ -40,6 +41,7 @@ import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
 
 export interface ServiceSeedInput {
   readonly landofile: LandofileShape;
+  readonly provenance?: LandofileProvenance | undefined;
   readonly context: CompilationContext;
   readonly landofilePath: string;
   readonly appSlug: string;
@@ -170,7 +172,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   const issues: PlannerIssue[] = [];
   const record = (error: LandofileValidationError) => {
     const attributed = error.issues.map((issue) =>
-      attributePlannerIssue(landofile, { ...issue, rule: "landofile.service" }),
+      attributePlannerIssue(input.provenance, { ...issue, rule: "landofile.service" }),
     );
     issues.push(...attributed);
     return attributed;

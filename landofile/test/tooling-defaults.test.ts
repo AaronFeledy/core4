@@ -8,7 +8,7 @@ import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceTypeResolution } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-import { resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
+import { resolveAuthoredDocument as resolveLandofileIncludes } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const DEFAULT_DIR = PortablePath.make("/workspace/default");

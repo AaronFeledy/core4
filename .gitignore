@@ -24,7 +24,6 @@ test/scenarios/generated/guides/**
 /core/src/plugins/generated/
 /core/src/recipes/bundled.ts
 /core/src/recipes/generated/
-/core/src/runtime/generated/layers/
 /scripts/generated/opentui-native/
 
 # Dependencies (Bun-only)

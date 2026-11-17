@@ -96,7 +96,6 @@ const expectedCatalogRows = [
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
   ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo", ["core-service-env-catalog"]],
-  ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo", ["core-service-env-catalog"]],
   [
     "setup-plugin-flags",
     "derived",
@@ -150,7 +149,6 @@ const expectedCatalogRows = [
       "bundled-command-descriptors",
       "bundled-plugins",
       "bundled-recipes",
-      "bootstrap-layers",
       "setup-plugin-flags",
       "mcp-allowlist",
       "host-proxy-allowlist",
@@ -340,7 +338,6 @@ describe("codegen catalog", () => {
     const prerequisiteIds = [
       "bundled-plugins",
       "bundled-recipes",
-      "bootstrap-layers",
       "setup-plugin-flags",
       "mcp-allowlist",
       "host-proxy-allowlist",
@@ -391,13 +388,13 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(43);
+    expect(catalog).toHaveLength(42);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(4);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(14);
-    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(25);
+    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(24);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
     ).toBe(true);
@@ -432,7 +429,6 @@ describe("codegen catalog", () => {
     expect(waveOf("setup-plugin-flags")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("host-proxy-allowlist"));
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
-    expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("bootstrap-layers"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("build-guide-scenarios"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("mutagen-versions"));
     expect(waveOf("schema-deprecations")).toBeLessThan(waveOf("command-registry-manifest"));

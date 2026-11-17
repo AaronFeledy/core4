@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { lintLandofileSnapshot } from "../src/lint.ts";
-import { getSourceDocuments } from "../src/pipeline/source-table.ts";
 import type { TemplateEngineInputs } from "../src/ports.ts";
 import { loadLandofileLayers } from "../src/service.ts";
 import * as TsLoader from "../src/ts-loader.ts";
 import * as Validation from "../src/validation.ts";
+import { provenanceIn } from "./provenance-support.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 let root = "";
@@ -415,7 +415,7 @@ describe("retained lint snapshot", () => {
     expect(
       snapshot.resolved === undefined
         ? []
-        : getSourceDocuments(snapshot.resolved).map((source) => source.file),
+        : (provenanceIn(snapshot.resolved)?.documents ?? []).map((source) => source.file),
     ).toContain(join(root, "fragment.yml"));
   });
 

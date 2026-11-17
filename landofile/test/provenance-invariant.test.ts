@@ -7,11 +7,10 @@ import { type ValueOrigins, isLandofileOverride, isLandofileReset } from "@lando
 import { Effect, Predicate, Result } from "effect";
 import { composeIncludeDefaults } from "../src/include-compose-defaults.ts";
 import { LANDOFILE_LAYER_POSITIONS } from "../src/layers.ts";
-import { getOrigins } from "../src/pipeline/origins.ts";
-import type { AuthoredOrigin } from "../src/pipeline/prepare.ts";
-import { getSourceDocuments } from "../src/pipeline/source-table.ts";
-import { composeLandofileRootLayers } from "../src/service.ts";
+import type { AuthoredDocument, AuthoredOrigin, SourceDocument } from "../src/provenance.ts";
+import { composeLandofileRootLayers, loadLandofileLayers } from "../src/service.ts";
 import { expectedGoldenOutcome, readGoldenCorpus } from "./pipeline/golden-corpus-expectation.ts";
+import { provenanceIn } from "./provenance-support.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 type Path = readonly (string | number)[];
@@ -66,7 +65,7 @@ function* scalarLeaves(value: unknown, path: Path = []): Generator<{ path: Path;
 // Local Compose fragments named by a document's top-level `include:` are prepared through the
 // Compose include transform (service defaults and fragment-relative paths) before composition.
 function composeFragmentDocuments(
-  documents: ReturnType<typeof getSourceDocuments>,
+  documents: readonly SourceDocument[],
   appRoot: string,
 ): ReadonlyMap<string, unknown> {
   const fragments = new Map<string, unknown>();
@@ -86,12 +85,12 @@ function composeFragmentDocuments(
   return fragments;
 }
 
-function assertProvenance(document: object, appRoot: string): number {
-  const documents = getSourceDocuments(document);
-  const origins = getOrigins(document);
+function assertProvenance(document: AuthoredDocument, appRoot: string): number {
+  const documents = document.provenance.documents;
+  const origins = document.provenance.origins;
   const composeFragments = composeFragmentDocuments(documents, appRoot);
   let checked = 0;
-  for (const { path, value } of scalarLeaves(document)) {
+  for (const { path, value } of scalarLeaves(document.value)) {
     const { source } = exactOriginAt(origins, path);
     const retained = documents.find(({ file, layer }) => file === source.file && layer === source.layer);
     expect(
@@ -210,7 +209,7 @@ describe("composed Landofile provenance invariant", () => {
     // When: inspect the post-fold document, before tooling fragments or defaults materialize.
     const { merged } = await Effect.runPromise(composeLandofileRootLayers(root, inputs));
     // Then: no composed entry may borrow the local includes ancestor's provenance.
-    expect(merged.includes).toHaveLength(3);
+    expect(merged.value.includes).toHaveLength(3);
     expect(assertProvenance(merged, root)).toBeGreaterThanOrEqual(11);
   });
 
@@ -225,12 +224,12 @@ describe("composed Landofile provenance invariant", () => {
     // When: compose, leaving recipe/environment expressions unmaterialized.
     const { merged, runtime } = await Effect.runPromise(composeLandofileRootLayers(root, inputs));
     // Then: produced text stays inert data with no newly compiled expression sites.
-    expect(merged["x-loaded"]).toEqual({ nested: ["{{ app.name }} ${VALUE}", 17] });
-    expect(merged["x-imported"]).toEqual({ nested: ["{{ app.name }} ${VALUE}", 17] });
+    expect(merged.value["x-loaded"]).toEqual({ nested: ["{{ app.name }} ${VALUE}", 17] });
+    expect(merged.value["x-imported"]).toEqual({ nested: ["{{ app.name }} ${VALUE}", 17] });
     expect(runtime.pendingSites).toEqual([]);
     expect(assertProvenance(merged, root)).toBe(5);
     for (const key of ["x-loaded", "x-imported"]) {
-      expect(exactOriginAt(getOrigins(merged), [key, "nested", 0]).source.path).toEqual([key]);
+      expect(exactOriginAt(merged.provenance.origins, [key, "nested", 0]).source.path).toEqual([key]);
     }
   });
 
@@ -253,17 +252,42 @@ describe("composed Landofile provenance invariant", () => {
     const { merged } = await Effect.runPromise(composeLandofileRootLayers(root, inputs));
     // Then: authored cursor equality holds without special cases for either transformation.
     expect(assertProvenance(merged, root)).toBeGreaterThanOrEqual(6);
-    expect(exactOriginAt(getOrigins(merged), ["services", "other", "workingDirectory"]).source.path).toEqual([
-      "services",
-      "other",
-      "working_dir",
-    ]);
-    expect(exactOriginAt(getOrigins(merged), ["services", "web", "routes", 0, "port"]).source.path).toEqual([
-      "services",
-      "web",
-      "routes",
-      1,
-      "port",
-    ]);
+    expect(
+      exactOriginAt(merged.provenance.origins, ["services", "other", "workingDirectory"]).source.path,
+    ).toEqual(["services", "other", "working_dir"]);
+    expect(
+      exactOriginAt(merged.provenance.origins, ["services", "web", "routes", 0, "port"]).source.path,
+    ).toEqual(["services", "web", "routes", 1, "port"]);
+  });
+
+  test("a composed value carries one provenance record and a spread keeps it", async () => {
+    // Given: an app composed from two authored layers.
+    const root = join(scratch, "carried-provenance");
+    await Bun.write(join(root, ".lando.yml"), "name: carried\nservices:\n  web:\n    type: node\n");
+    await Bun.write(join(root, ".lando.local.yml"), "services:\n  web:\n    primary: true\n");
+    // When: composition and finalization both hand back a value with its provenance.
+    const composed = await Effect.runPromise(composeLandofileRootLayers(root, inputs));
+    const compiled = await Effect.runPromise(loadLandofileLayers(root, join(root, ".lando.yml"), inputs));
+    // Then: the record travels with the value, including across a spread.
+    expect(assertProvenance(composed.merged, root)).toBe(3);
+    for (const provenance of [composed.merged.provenance, provenanceIn(compiled)]) {
+      expect(provenance?.documents.map(({ file }) => file)).toEqual([
+        join(root, ".lando.yml"),
+        join(root, ".lando.local.yml"),
+      ]);
+      expect(
+        ["type", "primary"].map(
+          (field) => exactOriginAt(provenance?.origins, ["services", "web", field]).source,
+        ),
+      ).toEqual([
+        { file: join(root, ".lando.yml"), layer: "canonical", path: ["services", "web", "type"] },
+        { file: join(root, ".lando.local.yml"), layer: "local", path: ["services", "web", "primary"] },
+      ]);
+    }
+    expect(provenanceIn({ ...composed.merged })).toBe(composed.merged.provenance);
+    expect(provenanceIn({ ...compiled })).toBe(provenanceIn(compiled));
+    expect(provenanceIn(compiled)?.appRoot).toBe(root);
+    // And: a hand-built record with no carried provenance is distinguishable, never repaired.
+    expect(provenanceIn({ name: "carried" })).toBeUndefined();
   });
 });

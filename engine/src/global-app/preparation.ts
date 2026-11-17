@@ -1,5 +1,4 @@
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
+import { withAppRootProvenance } from "@lando/landofile/provenance";
 import { ProviderId } from "@lando/sdk/schema";
 import { GlobalAppService } from "@lando/sdk/services";
 import { Effect } from "effect";
@@ -61,17 +60,14 @@ export const prepareGlobalConfiguration = Effect.fn("GlobalApp.prepareConfigurat
       landofile.pendingSites,
     );
     const excluded = new Set(effective.excludedIds);
-    const admitted = rememberLandofileAppRoot(
-      copyLandofileProvenance(landofile, {
+    const admitted = withAppRootProvenance(
+      {
         ...landofile,
-        document: copyLandofileProvenance(landofile.document, {
-          ...landofile.document,
-          services: effective.services,
-        }),
+        document: { ...landofile.document, services: effective.services },
         pendingSites: landofile.pendingSites.filter(
           (site) => site.path[0] !== "services" || !excluded.has(String(site.path[1])),
         ),
-      }),
+      },
       paths.root,
     );
     return {

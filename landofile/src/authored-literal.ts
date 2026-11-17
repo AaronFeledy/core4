@@ -2,11 +2,11 @@ import { isLandofileOverride, isLandofileReset, isPlainRecord, valueOriginAt } f
 import type { ValidationIssuePath } from "@lando/sdk/schema";
 import { isSecretEnvName, isSecretStructuralName } from "@lando/sdk/secrets";
 import { Effect } from "effect";
-import { getOrigins, rememberOrigins } from "./pipeline/origins.ts";
 import { prepareOverlay } from "./pipeline/prepare.ts";
-import { type SourceDocument, getSourceDocuments, rememberSourceDocuments } from "./pipeline/source-table.ts";
+import { type LandofileProvenance, type SourceDocument, emptyProvenance } from "./provenance.ts";
 import { detectTemplateDirective } from "./template-render.ts";
 
+// Pure memo of an immutable source document; not provenance, never consulted for attribution.
 const sourceEligibility = new WeakMap<SourceDocument, boolean>();
 
 const eligibleSource = (source: SourceDocument): boolean => {
@@ -22,7 +22,10 @@ const eligibleSource = (source: SourceDocument): boolean => {
 
 export const authoredSourceDocument = Effect.fnUntraced(function* (source: SourceDocument) {
   const prepared = yield* prepareOverlay(source.document, { file: source.file, layer: source.layer });
-  return rememberSourceDocuments(rememberOrigins(prepared.value, prepared.origins), [source]);
+  return {
+    value: prepared.value,
+    provenance: { ...emptyProvenance(prepared.origins), documents: [source] },
+  };
 });
 
 const at = (document: unknown, path: ValidationIssuePath): unknown => {
@@ -36,10 +39,14 @@ const at = (document: unknown, path: ValidationIssuePath): unknown => {
 };
 
 /** Positive proof for one occurrence, never a search for matching bytes elsewhere. */
-export const authoredLiteralAt = (document: object, path: ValidationIssuePath): string | undefined => {
-  const origins = getOrigins(document);
-  if (origins === undefined) return undefined;
-  const documents = getSourceDocuments(document);
+export const authoredLiteralAt = (
+  document: Record<string, unknown>,
+  provenance: LandofileProvenance | undefined,
+  path: ValidationIssuePath,
+): string | undefined => {
+  if (provenance === undefined) return undefined;
+  const origins = provenance.origins;
+  const documents = provenance.documents;
   let cursor = origins;
   for (const key of path) {
     let child = cursor.children.get(key);
@@ -116,7 +123,10 @@ export function* sensitiveLandofileOccurrences(
   if (sensitive) yield { path, value: String(document) };
 }
 
-export const committedSensitiveLiterals = (document: object): ReadonlySet<string> => {
+export const committedSensitiveLiterals = (
+  document: Record<string, unknown>,
+  provenance: LandofileProvenance | undefined,
+): ReadonlySet<string> => {
   const values = new Set<string>();
   for (const { path, value } of sensitiveLandofileOccurrences(document)) {
     if (
@@ -124,7 +134,7 @@ export const committedSensitiveLiterals = (document: object): ReadonlySet<string
       !(path[0] === "services" && path.length === 4 && path[2] === "creds")
     )
       continue;
-    const literal = authoredLiteralAt(document, path);
+    const literal = authoredLiteralAt(document, provenance, path);
     const key = path.at(-1);
     if (literal === value || (typeof key === "number" && literal?.endsWith(`=${value}`))) values.add(value);
   }

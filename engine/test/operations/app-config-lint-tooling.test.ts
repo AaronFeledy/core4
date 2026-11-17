@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { makeLandoPaths } from "@lando/paths";
 import { PluginManifest, PluginName } from "@lando/sdk/schema";
 import { PathsService, PluginRegistry, type ServiceType, StateStore } from "@lando/sdk/services";
@@ -11,6 +10,7 @@ import { Effect, Layer, Schema } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { lintLandofileSnapshot } from "../../src/services/landofile-live.ts";
+import { internalToolingTasksOf } from "../provenance-support.ts";
 
 const serviceType: ServiceType = {
   id: "reserved-tooling-test",
@@ -249,7 +249,7 @@ test.each([true, false])("reserved scratch include task with internal=%s", async
     );
     // Then
     expect(snapshot.resolved?.document.tooling).toHaveProperty(["scratch:check"]);
-    expect(getInternalToolingTasks(snapshot.resolved ?? {}).includes("scratch:check")).toBe(internal);
+    expect(internalToolingTasksOf(snapshot.resolved ?? {}).includes("scratch:check")).toBe(internal);
     expect(result.valid).toBe(internal);
     expect(result.violations.map(({ rule, path, source }) => ({ rule, path, source }))).toEqual(
       internal

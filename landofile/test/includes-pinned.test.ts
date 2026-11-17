@@ -7,7 +7,7 @@ import type { StateStoreShape } from "@lando/sdk/services";
 import type { GitTransport } from "@lando/source-acquisition";
 import { Effect } from "effect";
 import {
-  resolveAuthoredIncludes,
+  resolveAuthoredDocument,
   updateAuthoredIncludes,
   verifyAuthoredIncludes,
 } from "./include-pipeline.ts";
@@ -84,7 +84,7 @@ for (const useSuffix of [false, true]) {
     const landofile = useSuffix
       ? { includes: [{ source: "github:acme/shared@v1", path: "php.yml" }] }
       : input.landofile;
-    await Effect.runPromise(resolveAuthoredIncludes({ ...input, landofile, deps: cloner(calls) }));
+    await Effect.runPromise(resolveAuthoredDocument({ ...input, landofile, deps: cloner(calls) }));
     const report = await Effect.runPromise(verifyAuthoredIncludes({ ...input, landofile, deps: cloner([]) }));
     expect(calls).toEqual(["v1"]);
     expect(await Bun.file(join(root, ".lando.lock.yml")).text()).toContain("    version: v1\n");
@@ -111,7 +111,7 @@ test("warm pinned load and verify stay offline without rewriting the lock", asyn
       throw new Error("offline");
     },
   });
-  const loaded = await Effect.runPromise(resolveAuthoredIncludes({ ...options("main"), stateStore, deps }));
+  const loaded = await Effect.runPromise(resolveAuthoredDocument({ ...options("main"), stateStore, deps }));
   const verified = await Effect.runPromise(verifyAuthoredIncludes({ ...options("main"), stateStore, deps }));
   expect(loaded.services?.[ServiceName.make("web")]?.type).toBe("php");
   expect(verified.ok).toBe(true);
@@ -124,7 +124,7 @@ for (const returned of [SHA, NEW_SHA]) {
   test(`cold pinned load requests the locked SHA and ${returned === SHA ? "accepts it" : "rejects another SHA"}`, async () => {
     const locked = await writeLock();
     const calls: Array<string | undefined> = [];
-    const load = resolveAuthoredIncludes({ ...options(), deps: cloner(calls, returned) });
+    const load = resolveAuthoredDocument({ ...options(), deps: cloner(calls, returned) });
     const result = await Effect.runPromise(Effect.result(load));
     expect(calls).toEqual([SHA]);
     if (returned === SHA) expect(result._tag).toBe("Success");
@@ -142,7 +142,7 @@ test("moving upstream HEAD does not affect a pinned load", async () => {
   await seedCache();
   const calls: Array<string | undefined> = [];
   const loaded = await Effect.runPromise(
-    resolveAuthoredIncludes({ ...options(), deps: cloner(calls, NEW_SHA, "services: {}\n") }),
+    resolveAuthoredDocument({ ...options(), deps: cloner(calls, NEW_SHA, "services: {}\n") }),
   );
   expect(calls).toEqual([]);
   expect(loaded.services?.[ServiceName.make("web")]?.type).toBe("php");
@@ -153,7 +153,7 @@ test("selector changes re-resolve the requested ref and replace only its lock en
   const other = `  - source: github:acme/other/php.yml\n    resolved: ${SHA}\n    checksum: ${checksum(CONTENT)}\n`;
   await Bun.write(join(root, ".lando.lock.yml"), locked + other);
   const calls: Array<string | undefined> = [];
-  await Effect.runPromise(resolveAuthoredIncludes({ ...options("v2"), deps: cloner(calls, NEW_SHA) }));
+  await Effect.runPromise(resolveAuthoredDocument({ ...options("v2"), deps: cloner(calls, NEW_SHA) }));
   expect(calls).toEqual(["v2"]);
   const entries = Bun.YAML.parse(await Bun.file(join(root, ".lando.lock.yml")).text());
   expect(entries).toEqual({
@@ -169,7 +169,7 @@ test("selector changes fail closed when acquisition is offline", async () => {
   const calls: Array<string | undefined> = [];
   const error = await Effect.runPromise(
     Effect.flip(
-      resolveAuthoredIncludes({
+      resolveAuthoredDocument({
         ...options("v2"),
         deps: gitDeps({
           fetch: async ({ ref }) => {
@@ -223,7 +223,7 @@ test("corrupt cached parent fails its checksum before parsing or acquiring its c
   await seedCache("includes:\n  - github:acme/child/php.yml\n");
   const calls: Array<string | undefined> = [];
   const error = await Effect.runPromise(
-    Effect.flip(resolveAuthoredIncludes({ ...options(), deps: cloner(calls) })),
+    Effect.flip(resolveAuthoredDocument({ ...options(), deps: cloner(calls) })),
   );
   expect(error._tag).toBe("LandofileLockMismatchError");
   expect(calls).toEqual([]);
@@ -271,7 +271,7 @@ test("cold pinned load resolves under a symlinked user cache root", async () => 
   await writeLock();
   const calls: Array<string | undefined> = [];
   const result = await Effect.runPromise(
-    resolveAuthoredIncludes({
+    resolveAuthoredDocument({
       ...options(),
       cacheRoot: linkedCache,
       ports: makeTestLandofilePorts(linkedCache),

@@ -3,12 +3,12 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
-import { type LandofileIncludeSource, getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
-import {
-  type LandofileReferencedFile,
-  getLandofileReferencedFiles,
-} from "@lando/landofile/load-expression-provenance";
+import type {
+  LandofileIncludeSource,
+  LandofileProvenance,
+  LandofileReferencedFile,
+} from "@lando/landofile/provenance";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
@@ -112,7 +112,7 @@ const readIncludeLockChecksums = (path: string): Promise<ReadonlyArray<string>> 
 
 export const readAppPlanSourceFingerprint = (
   appRoot: string,
-  landofile?: LandofileShape,
+  provenance?: LandofileProvenance | undefined,
 ): Effect.Effect<AppPlanSourceFingerprint, CacheError | LandofileFormConflictError> =>
   presentLandofileLayers(appRoot).pipe(
     Effect.flatMap((layers) =>
@@ -128,8 +128,8 @@ export const readAppPlanSourceFingerprint = (
             ),
             includeLockfileHash: await readOptionalHash(includeLockfilePath),
             includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
-            referencedFiles: landofile === undefined ? [] : getLandofileReferencedFiles(landofile),
-            includeSources: landofile === undefined ? [] : getLandofileIncludeSources(landofile),
+            referencedFiles: provenance?.referencedFiles ?? [],
+            includeSources: provenance?.includeSources ?? [],
           };
         },
         catch: (cause) =>

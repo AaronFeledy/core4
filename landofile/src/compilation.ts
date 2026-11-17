@@ -1,4 +1,4 @@
-import { encodeLandofileSourceValue, isPlainRecord } from "@lando/sdk/landofile";
+import { encodeLandofileSourceValue } from "@lando/sdk/landofile";
 import {
   AbsolutePath,
   type CompilationContext,
@@ -8,7 +8,7 @@ import {
   SourceCompiledLandofile,
 } from "@lando/sdk/schema";
 import { Schema } from "effect";
-import { copyLandofileProvenance } from "./copy-provenance.ts";
+import type { LandofileProvenance } from "./provenance.ts";
 import { hostExpressionEnvironment } from "./recipe-expressions.ts";
 
 /**
@@ -22,6 +22,7 @@ export const captureCompilationContext = (
 
 export const sourceCarrier = (input: {
   readonly document: unknown;
+  readonly provenance: LandofileProvenance;
   readonly pendingSites: readonly ParsedPendingSite[];
   readonly context: CompilationContext;
 }) =>
@@ -33,14 +34,12 @@ export const sourceCarrier = (input: {
 
 export const composedCarrier = (input: {
   readonly document: Record<string, unknown>;
+  readonly provenance: LandofileProvenance;
   readonly pendingSites: readonly ParsedPendingSite[];
   readonly context: CompilationContext;
-}) => {
-  const compiled = ComposedCompiledLandofile.make({
+}) =>
+  ComposedCompiledLandofile.make({
     ...input,
     document: Schema.decodeUnknownSync(LandofileSourceValue)(encodeLandofileSourceValue(input.document)),
     stage: "composed",
   });
-  if (isPlainRecord(compiled.document)) copyLandofileProvenance(input.document, compiled.document);
-  return compiled;
-};

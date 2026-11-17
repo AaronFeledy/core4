@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findAppRoot, findLandofilePath } from "@lando/landofile/discovery";
-import { getVersionConstraintEntries } from "@lando/landofile/version-constraint";
+import { provenanceOf } from "@lando/landofile/provenance";
 import {
   LandofileFormConflictError,
   LandofileNotFoundError,
@@ -26,6 +26,13 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
     await rm(dir, { recursive: true, force: true });
   }
 };
+
+const discoverCarrier = () =>
+  Effect.runPromise(
+    Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
+      Effect.provide(TestLandofileServiceLayer.layer),
+    ),
+  );
 
 const discover = () =>
   Effect.runPromise(
@@ -64,10 +71,10 @@ describe("LandofileService layer", () => {
       }
       process.chdir(dir);
 
-      const resolved = await discover();
+      const resolved = await discoverCarrier();
 
-      expect(resolved.name).toBe("layer-5");
-      expect(getVersionConstraintEntries(resolved, "fallback")).toEqual([
+      expect(resolved.document.name).toBe("layer-5");
+      expect(provenanceOf(resolved)?.versionConstraints).toEqual([
         { range: ">=0.0.0", source: join(dir, files[0]), layer: "base", order: 0 },
         { range: ">=1.0.0", source: join(dir, files[1]), layer: "dist", order: 1 },
         { range: ">=2.0.0", source: join(dir, files[2]), layer: "upstream", order: 2 },
@@ -144,9 +151,9 @@ describe("LandofileService layer", () => {
       await writeFile(join(dir, ".lando.yml"), "name: canonical\n");
       process.chdir(dir);
 
-      const resolved = await discover();
+      const resolved = await discoverCarrier();
 
-      expect(getVersionConstraintEntries(resolved, "fallback")).toEqual([
+      expect(provenanceOf(resolved)?.versionConstraints).toEqual([
         { range: ">=4.2", source: fragmentPath, layer: "local", order: 4 },
         { range: "<5", source: join(dir, ".lando.local.yml"), layer: "local", order: 4 },
       ]);

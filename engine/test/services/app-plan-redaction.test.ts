@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "@lando/landofile/load-expression-file";
+import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { loadLandofileFile } from "@lando/landofile/service";
 import { planRedactionValues } from "@lando/redaction/plan-values";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -13,12 +14,18 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Redacted, Schema } from "effect";
 import {
   type LandofileRedactionValues,
-  collectAuthoredRedactionTokens,
-  collectAuthoredRedactionTokens as collectLandofileRedactionTokens,
+  collectAuthoredRedactionTokens as collectAuthoredRedactionTokensWithProvenance,
   registerLandofileRedaction,
 } from "../../src/services/app-plan-redaction.ts";
 import { registerPlanRedaction } from "../../src/services/plan-redaction.ts";
 import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
+import { provenanceIn } from "../provenance-support.ts";
+
+// Authored token collection needs the document's provenance; these fixtures are raw records.
+const collectAuthoredRedactionTokens = (document: unknown) =>
+  collectAuthoredRedactionTokensWithProvenance(document, undefined);
+const collectLandofileRedactionTokens = (document: unknown, provenance?: LandofileProvenance) =>
+  collectAuthoredRedactionTokensWithProvenance(document, provenance);
 
 const planMeta = { resolvedAt: "2026-10-21T00:00:00Z", source: "test", runtime: 4 } as const;
 
@@ -585,7 +592,7 @@ test("canonical authored Landofile password is whole-token; local overlay stays 
         compilationContext: { appRoot: AbsolutePath.make(root), env: {} },
       }),
     );
-    const canonicalValues = collectLandofileRedactionTokens(canonical.document);
+    const canonicalValues = collectLandofileRedactionTokens(canonical.document, provenanceIn(canonical));
     expect(canonicalValues.wholeToken).toEqual(expect.arrayContaining(["wordpress", "canonical-token"]));
     expect(canonicalValues.substring).not.toEqual(expect.arrayContaining(["wordpress"]));
 

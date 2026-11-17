@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { Effect, References, Schema, Tracer } from "effect";
-import { getSourceDocuments } from "../../src/pipeline/source-table.ts";
 import { composeLandofileRootLayers, loadLandofileLayers } from "../../src/service.ts";
 import * as validation from "../../src/validation.ts";
+import { provenanceIn } from "../provenance-support.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "../support.ts";
 
 const withApp = async <T>(files: Readonly<Record<string, string>>, use: (root: string) => Promise<T>) => {
@@ -149,15 +149,11 @@ test("one final runtime validation handles three layers and two partial fragment
         );
         // Then
         expect(calls).toHaveBeenCalledTimes(1);
-        expect(getSourceDocuments(result).map(({ file }) => file.slice(root.length + 1))).toEqual([
-          ".lando.base.yml",
-          "second.yml",
-          "first.yml",
-          ".lando.yml",
-          ".lando.local.yml",
-        ]);
         expect(
-          getSourceDocuments(result).find(({ file }) => file.endsWith("first.yml"))?.document,
+          (provenanceIn(result)?.documents ?? []).map(({ file }) => file.slice(root.length + 1)),
+        ).toEqual([".lando.base.yml", "second.yml", "first.yml", ".lando.yml", ".lando.local.yml"]);
+        expect(
+          (provenanceIn(result)?.documents ?? []).find(({ file }) => file.endsWith("first.yml"))?.document,
         ).toMatchObject({ includes: ["second.yml"] });
         expect(spans.filter((name) => name === "Landofile.finalize")).toHaveLength(1);
         expect(spans.filter((name) => name.includes("decodeLayer"))).toHaveLength(0);
@@ -261,7 +257,7 @@ test("authored composition remains available when final validation fails", async
       const result = await Effect.runPromise(composeLandofileRootLayers(root, inputs(root)));
       // Then
       expect(result.sources).toHaveLength(2);
-      expect(result.merged).toMatchObject({ services: { web: { primary: "wrong", image: "nginx" } } });
+      expect(result.merged.value).toMatchObject({ services: { web: { primary: "wrong", image: "nginx" } } });
     },
   );
 });

@@ -1,3 +1,4 @@
+import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { type ExpressionTemplate, parseExpressionEither } from "@lando/sdk/expressions";
@@ -33,6 +34,7 @@ export interface HostShellSite {
 /** Planner resolution fields needed for host-shell static checks. */
 export interface HostShellResolution {
   readonly landofile: LandofileShape;
+  readonly provenance?: LandofileProvenance | undefined;
   readonly toolingResolution: EffectiveToolingResolution;
 }
 
@@ -135,7 +137,7 @@ export const hostShellIssues = (
       const source =
         command.path[0] === "tooling"
           ? toolingIssueSource(provenance, String(command.path[1]), command.path.slice(2))
-          : getLandofileValueSource(landofile, command.path);
+          : getLandofileValueSource(resolution.provenance, command.path);
       return findings(command).map((issue) => (source === undefined ? issue : { ...issue, source }));
     },
   );
@@ -155,14 +157,14 @@ export const planningHostShellIssues = (
 
 /** Authored host readiness string command findings. */
 export const hostReadinessShellIssues = (
-  landofile: LandofileShape,
+  provenance: LandofileProvenance | undefined,
   serviceName: string,
   command: string,
   blocked?: (path: ValidationIssuePath) => boolean,
 ): ReadonlyArray<PlannerIssue> => {
   const path: ValidationIssuePath = ["services", serviceName, "readiness", "command"];
   if (blocked?.(path)) return [];
-  const source = getLandofileValueSource(landofile, path);
+  const source = getLandofileValueSource(provenance, path);
   return findings({ path, command }).map((issue) => (source === undefined ? issue : { ...issue, source }));
 };
 

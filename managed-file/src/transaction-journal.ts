@@ -212,7 +212,6 @@ export const openJournal = Effect.fnUntraced(function* (
     if (removed) yield* transactionIO("cleanup", () => syncDirectory(dir));
   }, Effect.uninterruptible);
   return {
-    directory: dir,
     path: bucket.path,
     read,
     acquireLock,

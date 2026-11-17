@@ -51,69 +51,65 @@ test("nightly jobs regenerate derived sources after frozen install and before th
   const committed = await Bun.file(workflowPath).text();
   expect(committed).toBe(rendered);
 
-  for (const source of [rendered, committed]) {
-    const { jobs } = Bun.YAML.parse(source) as Workflow;
-    expect(Object.keys(jobs).sort()).toEqual(
-      [
-        ...Object.keys(firstDerivedConsumer),
-        "runtime-bundle-manifest-live",
-        "runtime-bundle-linux-x64",
-        "runtime-bundle-linux-arm64",
-        "runtime-bundle-reproducibility-linux-x64",
-        "runtime-bundle-reproducibility-linux-arm64",
-      ].sort(),
-    );
+  const { jobs } = Bun.YAML.parse(committed) as Workflow;
+  expect(Object.keys(jobs).sort()).toEqual(
+    [
+      ...Object.keys(firstDerivedConsumer),
+      "runtime-bundle-manifest-live",
+      "runtime-bundle-linux-x64",
+      "runtime-bundle-linux-arm64",
+      "runtime-bundle-reproducibility-linux-x64",
+      "runtime-bundle-reproducibility-linux-arm64",
+    ].sort(),
+  );
 
-    for (const [id, [consumerName, consumerCommand]] of Object.entries(firstDerivedConsumer)) {
-      const steps = jobs[id]?.steps;
-      expect(steps).toBeDefined();
-      if (steps === undefined) throw new Error(`Missing nightly job: ${id}`);
+  for (const [id, [consumerName, consumerCommand]] of Object.entries(firstDerivedConsumer)) {
+    const steps = jobs[id]?.steps;
+    expect(steps).toBeDefined();
+    if (steps === undefined) throw new Error(`Missing nightly job: ${id}`);
 
-      const install = steps.findIndex((step) => step.run === "bun install --frozen-lockfile");
-      const codegenSteps = steps.filter((step) => step.run === "bun run codegen");
-      const codegen = steps.findIndex((step) => step.run === "bun run codegen");
-      const consumer = steps.findIndex(
-        (step) =>
-          step.name === consumerName && typeof step.run === "string" && step.run.includes(consumerCommand),
-      );
-      expect(codegenSteps).toHaveLength(1);
-      expect(codegenSteps[0]?.name).toBe("Regenerate derived sources");
-      expect(codegenSteps[0]).not.toHaveProperty("if");
-      expect(codegenSteps[0]).not.toHaveProperty("working-directory");
-      expect(codegenSteps[0]).not.toHaveProperty("continue-on-error");
-      expect(install).toBeGreaterThanOrEqual(0);
-      expect(codegen).toBeGreaterThan(install);
-      expect(consumer).toBeGreaterThan(codegen);
-    }
-
-    const armSteps = jobs["mysql-arm-client-linux-arm64"]?.steps ?? [];
-    expect(jobs["mysql-arm-client-linux-arm64"]?.needs).toContain("runtime-bundle-linux-arm64");
-    const bundleDownload = armSteps.findIndex(
-      (step) => step.name === "Download current-commit Linux arm64 runtime bundle",
-    );
-    expect(bundleDownload).toBeGreaterThanOrEqual(0);
-    expect(armSteps[bundleDownload]).toMatchObject({
-      uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
-      with: { name: "runtime-bundle-linux-arm64-current", path: "dist/cache/runtime-bundle" },
-    });
-    expect(
-      armSteps.some(
-        (step) => typeof step.run === "string" && step.run.includes("assemble-runtime-bundle.ts"),
-      ),
-    ).toBe(false);
-    const localManifest = armSteps.findIndex(
+    const install = steps.findIndex((step) => step.run === "bun install --frozen-lockfile");
+    const codegenSteps = steps.filter((step) => step.run === "bun run codegen");
+    const codegen = steps.findIndex((step) => step.run === "bun run codegen");
+    const consumer = steps.findIndex(
       (step) =>
-        step.name === "Build local runtime bundle manifest" &&
-        typeof step.run === "string" &&
-        step.run.includes("bun run scripts/build-runtime-bundle.ts --local"),
+        step.name === consumerName && typeof step.run === "string" && step.run.includes(consumerCommand),
     );
-    expect(localManifest).toBeGreaterThanOrEqual(0);
-    expect(localManifest).toBeGreaterThan(bundleDownload);
-    expect(localManifest).toBeLessThan(armSteps.findIndex((step) => step.run === "bun run codegen"));
-
-    const pinSteps = jobs["runtime-bundle-manifest-live"]?.steps ?? [];
-    expect(pinSteps.filter((step) => step.run === "bun run codegen")).toHaveLength(0);
+    expect(codegenSteps).toHaveLength(1);
+    expect(codegenSteps[0]?.name).toBe("Regenerate derived sources");
+    expect(codegenSteps[0]).not.toHaveProperty("if");
+    expect(codegenSteps[0]).not.toHaveProperty("working-directory");
+    expect(codegenSteps[0]).not.toHaveProperty("continue-on-error");
+    expect(install).toBeGreaterThanOrEqual(0);
+    expect(codegen).toBeGreaterThan(install);
+    expect(consumer).toBeGreaterThan(codegen);
   }
+
+  const armSteps = jobs["mysql-arm-client-linux-arm64"]?.steps ?? [];
+  expect(jobs["mysql-arm-client-linux-arm64"]?.needs).toContain("runtime-bundle-linux-arm64");
+  const bundleDownload = armSteps.findIndex(
+    (step) => step.name === "Download current-commit Linux arm64 runtime bundle",
+  );
+  expect(bundleDownload).toBeGreaterThanOrEqual(0);
+  expect(armSteps[bundleDownload]).toMatchObject({
+    uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+    with: { name: "runtime-bundle-linux-arm64-current", path: "dist/cache/runtime-bundle" },
+  });
+  expect(
+    armSteps.some((step) => typeof step.run === "string" && step.run.includes("assemble-runtime-bundle.ts")),
+  ).toBe(false);
+  const localManifest = armSteps.findIndex(
+    (step) =>
+      step.name === "Build local runtime bundle manifest" &&
+      typeof step.run === "string" &&
+      step.run.includes("bun run scripts/build-runtime-bundle.ts --local"),
+  );
+  expect(localManifest).toBeGreaterThanOrEqual(0);
+  expect(localManifest).toBeGreaterThan(bundleDownload);
+  expect(localManifest).toBeLessThan(armSteps.findIndex((step) => step.run === "bun run codegen"));
+
+  const pinSteps = jobs["runtime-bundle-manifest-live"]?.steps ?? [];
+  expect(pinSteps.filter((step) => step.run === "bun run codegen")).toHaveLength(0);
 });
 
 test.each([

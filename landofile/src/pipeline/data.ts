@@ -1,7 +1,7 @@
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { isLandofileOverride, isLandofileReset, isPlainRecord } from "@lando/sdk/landofile";
 import { Effect } from "effect";
-import type { AuthoredOrigin } from "./prepare.ts";
+import type { AuthoredOrigin } from "../provenance.ts";
 
 export const checkDocumentData = (value: unknown, source: Omit<AuthoredOrigin, "path">) =>
   Effect.try({

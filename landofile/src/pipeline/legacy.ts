@@ -5,10 +5,10 @@ import { mergeLandofiles } from "@lando/sdk/landofile";
 import { Effect } from "effect";
 import { hasLegacyRawKeys } from "../legacy-keys.ts";
 import { legacyLoadFailure } from "../legacy-load-failure.ts";
+import { type SourceDocument, authoredDocumentFrom } from "../provenance.ts";
 import { prepareLandofileSource, readFileContent, resolveLandofileSourceExpressions } from "../source.ts";
 import { validateLandofile } from "../validation.ts";
 import { buildLandofileLoadScope, materializeLandofileLayer } from "./materialize.ts";
-import type { SourceDocument } from "./source-table.ts";
 
 export const classifyLoadFailure = Effect.fnUntraced(function* (
   error: LandofileParseError | LandofileValidationError,
@@ -39,9 +39,17 @@ export const classifyLoadFailure = Effect.fnUntraced(function* (
     Effect.flatMap((source) =>
       buildLandofileLoadScope([source]).pipe(
         Effect.flatMap((scope) =>
-          materializeLandofileLayer(canonicalFile, mergeLandofiles([source.value]), scope),
+          materializeLandofileLayer(
+            canonicalFile,
+            authoredDocumentFrom(mergeLandofiles([source.value.value]), {
+              file: canonicalFile,
+              layer: canonical?.layer ?? "canonical",
+              path: [],
+            }),
+            scope,
+          ),
         ),
-        Effect.flatMap((value) => validateLandofile(canonicalFile, value)),
+        Effect.flatMap((value) => validateLandofile(canonicalFile, value.value, value.provenance)),
       ),
     ),
     Effect.result,

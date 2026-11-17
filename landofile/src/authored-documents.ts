@@ -10,12 +10,17 @@ import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
 import { createLoadFailureRecorder } from "./load-failures.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
-import type { SourceDocument } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
+import type { LandofileProvenance, SourceDocument } from "./provenance.ts";
 import { prepareLandofileValue } from "./source.ts";
 
 export const loadAuthoredDocuments = Effect.fn("Landofile.loadDocuments")(function* (
-  sources: readonly { readonly file: string; readonly value: unknown; readonly content?: string }[],
+  sources: readonly {
+    readonly file: string;
+    readonly value: unknown;
+    readonly content?: string;
+    readonly provenance?: LandofileProvenance | undefined;
+  }[],
   context: { readonly appRoot: string; readonly file: string },
   inputs?: LandofileRuntimeInputs,
 ) {
