@@ -31,6 +31,7 @@ import {
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import * as BunFileSystemLayer from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { DateTime, Effect, Layer, Stream } from "effect";
 import { layerTransactionGuard } from "../_support/landofile-layer.ts";
@@ -268,6 +269,7 @@ const makeStopLayer = (
 
   const layer = Layer.mergeAll(
     PrivateFileAccessService.layer,
+    BunFileSystemLayer.layer,
     testStateStoreLayer,
     Layer.succeed(
       LandofileService,
@@ -545,6 +547,7 @@ describe("lando stop", () => {
     const layer = Layer.mergeAll(
       testStateStoreLayer,
       PrivateFileAccessService.layer,
+      BunFileSystemLayer.layer,
       Layer.succeed(
         LandofileService,
         LandofileService.of({
@@ -830,6 +833,7 @@ describe("lando stop", () => {
     const layer = Layer.mergeAll(
       testStateStoreLayer,
       PrivateFileAccessService.layer,
+      BunFileSystemLayer.layer,
       Layer.succeed(
         LandofileService,
         LandofileService.of({

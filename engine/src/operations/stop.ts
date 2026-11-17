@@ -1,4 +1,3 @@
-import { stat } from "node:fs/promises";
 import { basename, resolve as resolvePath } from "node:path";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
@@ -14,6 +13,7 @@ import { AbsolutePath, AppId, type AppPlan, type AppRef, type ProviderId } from 
 import {
   type AppPlanner,
   type EventService,
+  FileSystem,
   type LandofileService,
   type ManagedFileTransactionGuard,
   type PathsService,
@@ -69,6 +69,7 @@ type StopAppServices =
   | ManagedFileTransactionGuard
   | AppPlanner
   | EventService
+  | FileSystem
   | LandofileService
   | PathsService
   | PrivateFileAccessService
@@ -560,26 +561,22 @@ const canonicalStopRoot = (root: string) => {
   );
 };
 
-const appRootExists = (root: AbsolutePath): Effect.Effect<boolean, AppResolveError> =>
-  Effect.tryPromise({
-    try: async () => {
-      try {
-        await stat(root);
-        return true;
-      } catch (cause) {
-        if (isErrnoCode(cause, "ENOENT")) return false;
-        throw cause;
-      }
-    },
-    catch: (cause) =>
-      new AppResolveError({
-        reason: "missing-root",
-        detail: "unreadable-root",
-        message: `The app folder ${root} cannot be inspected.`,
-        remediation: `Check that you can read ${root} and its parent folders, then retry.`,
-        cause,
-      }),
-  });
+const appRootExists = Effect.fnUntraced(function* (root: AbsolutePath) {
+  const fs = yield* FileSystem;
+  return yield* fs.exists(root).pipe(
+    Effect.catch((cause) =>
+      Effect.fail(
+        new AppResolveError({
+          reason: "missing-root",
+          detail: "unreadable-root",
+          message: `The app folder ${root} cannot be inspected.`,
+          remediation: `Check that you can read ${root} and its parent folders, then retry.`,
+          cause,
+        }),
+      ),
+    ),
+  );
+});
 
 const stopAtRoot = Effect.fnUntraced(function* (
   requested: string,
