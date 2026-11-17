@@ -4,7 +4,12 @@ import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import type { ListenerContract } from "./_port-helpers.ts";
-import { type ApacheNativeTls, apacheDirectivePath, apacheTlsDirectives } from "./apache.ts";
+import { apacheDirectivePath } from "./apache.ts";
+import {
+  type ApacheNativeTls,
+  nativeTlsVirtualHosts,
+  plainListenerCanonicalDirectives,
+} from "./apache-native-tls.ts";
 import { apacheErrorPageDirectives } from "./http-errors.ts";
 import { apacheHiddenPathDirectives } from "./http-hidden-paths.ts";
 import { uploadDirRegex } from "./upload-dirs.ts";
@@ -263,9 +268,6 @@ export const apacheStartCommand = (
     `ErrorLog "|/bin/sh -c 'exec /bin/cat >&3'"`,
     'CustomLog "|/bin/cat" vhost_combined',
   ];
-  // The plain listener's canonical name keeps a custom physical port out of
-  // self-referencing URLs: a port-less Host yields 80 and a Host port still wins.
-  const plainCanonical = ["ServerName localhost:80", "UseCanonicalName Off", "UseCanonicalPhysicalPort Off"];
   if (tls === undefined) {
     directives.push(
       ...(listenPort === undefined
@@ -273,7 +275,7 @@ export const apacheStartCommand = (
         : [
             `Listen ${String(listenPort)}`,
             `<VirtualHost *:${String(listenPort)}>`,
-            ...plainCanonical,
+            ...plainListenerCanonicalDirectives,
             ...site(true),
             "</VirtualHost>",
           ]),
@@ -283,15 +285,14 @@ export const apacheStartCommand = (
     if (listenPort !== undefined) directives.push(`Listen ${String(listenPort)}`);
     directives.push(
       `Listen ${String(tls.tlsPort)}`,
-      `<VirtualHost *:${String(tls.plainPort)}>`,
-      "SSLEngine off",
-      ...plainCanonical,
-      ...site(true),
-      "</VirtualHost>",
-      `<VirtualHost *:${String(tls.tlsPort)}>`,
-      ...apacheTlsDirectives(tls.serverName),
-      ...site(false),
-      "</VirtualHost>",
+      ...nativeTlsVirtualHosts({
+        family: "php-apache",
+        plainPort: tls.plainPort,
+        tlsPort: tls.tlsPort,
+        serverName: tls.serverName,
+        plainSite: site(true),
+        tlsSite: site(false),
+      }),
     );
   }
   const flags = directives.flatMap((directive) => ["-c", directive]);

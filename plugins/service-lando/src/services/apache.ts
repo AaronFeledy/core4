@@ -5,10 +5,7 @@ import {
   PortNumber,
   type ServiceConfig,
   type ValidationIssuePath,
-  isRootContainerUser,
-  normalizeAppSlug,
   sameImageReference,
-  serviceInternalAlias,
 } from "@lando/sdk/schema";
 import type {
   ServiceBuildStepIntent,
@@ -29,6 +26,15 @@ import { imageAuthority, launcherAuthority, plannedPort, servicePortEndpoints } 
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
+import {
+  type ApacheNativeTls,
+  apacheGeneratedCertificateEndpoint,
+  apacheRunsAsRootParent,
+  generatedHttpsEndpoint,
+  nativeTlsEligible,
+  nativeTlsListener,
+  nativeTlsVirtualHosts,
+} from "./apache-native-tls.ts";
 import { apacheHiddenPathDirectives } from "./http-hidden-paths.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
@@ -42,39 +48,6 @@ export const APACHE_LISTENER = {
 export const DEFAULT_PORT = APACHE_LISTENER.port;
 export const APP_MOUNT_TARGET = "/app";
 
-/** Container port of a generated native-TLS listener when the plain listener is not 443. */
-export const APACHE_TLS_PORT = 443 as const;
-/** Container port used for native TLS when the plain listener itself occupies 443. */
-export const APACHE_TLS_FALLBACK_PORT = 8443 as const;
-
-/** Native TLS listeners never share a container port with the primary plain listener. */
-export const generatedTlsListenerPort = (plainPort: number): PortNumber =>
-  PortNumber.make(plainPort === APACHE_TLS_PORT ? APACHE_TLS_FALLBACK_PORT : APACHE_TLS_PORT);
-
-/** A generated listener alias that never reuses the primary plain listener's name. */
-export const generatedTlsEndpointName = (serviceName: string): string => `${serviceName}-https`;
-
-/**
- * The canonical internal alias a generated certificate names, used as the TLS
- * virtual host's canonical name so a port-less Host still yields port 443.
- */
-export const generatedTlsServerName = (input: {
-  readonly serviceName: string;
-  readonly appName: string;
-  readonly appRoot: string;
-}): string => serviceInternalAlias(input.serviceName, normalizeAppSlug(input.appName, input.appRoot));
-
-/** Whether the effective service asks for a generated leaf certificate. */
-export const generatedCertificateRequested = (config: { readonly certs?: unknown }): boolean =>
-  config.certs === true;
-
-/**
- * Whether the Apache parent process runs as root, and can therefore read the
- * Lando-owned private key before workers drop privileges.
- */
-export const apacheRunsAsRootParent = (user: string | undefined): boolean =>
-  user === undefined || isRootContainerUser(user);
-
 /**
  * Whether this standalone Apache service still uses Lando's own launcher. Only a
  * replacement `build.context` takes over the image; additive build steps do not.
@@ -86,15 +59,6 @@ export const apacheOwnedLauncher = (
   service.entrypoint === undefined &&
   !(service.build !== undefined && "context" in service.build) &&
   (service.image === undefined || sameImageReference(service.image, DEFAULT_IMAGE));
-
-/** The generated-listener association active for one Apache-shaped service. */
-export const apacheGeneratedCertificateEndpoint = (input: {
-  readonly serviceName: string;
-  readonly plainPort: number;
-  readonly owned: boolean;
-  readonly rootParent: boolean;
-}): { readonly port: PortNumber } | undefined =>
-  input.owned && input.rootParent ? { port: generatedTlsListenerPort(input.plainPort) } : undefined;
 
 const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -240,25 +204,6 @@ export const apacheDirectivePath = (webroot: string, path: ValidationIssuePath =
  */
 const PID_FILE = "/tmp/lando-httpd.pid";
 
-/** Native TLS virtual host directives; the certificate pair comes from Lando's generated leaf. */
-export const apacheTlsDirectives = (serverName: string): ReadonlyArray<string> => [
-  `ServerName ${serverName}:443`,
-  "ServerAlias *",
-  "SSLEngine on",
-  'SSLCertificateFile "${LANDO_SERVICE_CERT}"',
-  'SSLCertificateKeyFile "${LANDO_SERVICE_KEY}"',
-  // Canonical name and physical port off keep Host authoritative: a port-less
-  // Host yields 443, while Host's explicit port still wins.
-  "UseCanonicalName Off",
-  "UseCanonicalPhysicalPort Off",
-];
-
-export interface ApacheNativeTls {
-  readonly plainPort: PortNumber;
-  readonly tlsPort: PortNumber;
-  readonly serverName: string;
-}
-
 /**
  * The launcher for a service whose author declared no `command` or `entrypoint`.
  *
@@ -311,25 +256,16 @@ const apacheStartCommand = (
       `Listen ${String(tls.tlsPort)}`,
       "-c",
       `PidFile "${PID_FILE}"`,
-      "-c",
-      `<VirtualHost *:${String(tls.plainPort)}>`,
-      "-c",
-      "ServerName localhost:80",
-      "-c",
-      "SSLEngine off",
-      "-c",
-      "UseCanonicalName Off",
-      "-c",
-      "UseCanonicalPhysicalPort Off",
-      ...flags(site),
-      "-c",
-      "</VirtualHost>",
-      "-c",
-      `<VirtualHost *:${String(tls.tlsPort)}>`,
-      ...flags(apacheTlsDirectives(tls.serverName)),
-      ...flags(site),
-      "-c",
-      "</VirtualHost>",
+      ...flags(
+        nativeTlsVirtualHosts({
+          family: "standalone-apache",
+          plainPort: tls.plainPort,
+          tlsPort: tls.tlsPort,
+          serverName: tls.serverName,
+          plainSite: site,
+          tlsSite: site,
+        }),
+      ),
     );
   }
   return directives;
@@ -342,7 +278,7 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   const webroot = resolveWebroot("Apache", service.webroot, service.appMount);
   const documentRoot = service.environment?.APACHE_DOCUMENT_ROOT ?? webroot;
   const owned = apacheOwnedLauncher(service);
-  const nativeTls = owned && apacheRunsAsRootParent(service.user) && generatedCertificateRequested(service);
+  const nativeTls = nativeTlsEligible({ owned, config: service });
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
@@ -358,15 +294,12 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
           ? ["webroot"]
           : ["environment", "APACHE_DOCUMENT_ROOT"],
         nativeTls
-          ? {
+          ? nativeTlsListener({
               plainPort: port,
-              tlsPort: generatedTlsListenerPort(port),
-              serverName: generatedTlsServerName({
-                serviceName: ctx.serviceName,
-                appName: ctx.appName ?? "app",
-                appRoot: ctx.appRoot,
-              }),
-            }
+              serviceName: ctx.serviceName,
+              appName: ctx.appName ?? "app",
+              appRoot: ctx.appRoot,
+            })
           : undefined,
       ),
     );
@@ -391,20 +324,9 @@ export const apacheServiceFeature: ServiceFeatureDefinition = {
     Effect.sync(() => {
       const port = plannedPort(ctx.normalizedConfig, APACHE_LISTENER);
       const endpoints = servicePortEndpoints(ctx, { port, protocol: "http" });
-      const eligible =
-        apacheOwnedLauncher(ctx.normalizedConfig) &&
-        apacheRunsAsRootParent(ctx.normalizedConfig.user) &&
-        generatedCertificateRequested(ctx.normalizedConfig);
-      return eligible
-        ? [
-            ...endpoints,
-            {
-              _tag: "internal",
-              port: generatedTlsListenerPort(port),
-              protocol: "https",
-              name: generatedTlsEndpointName(ctx.serviceName),
-            },
-          ]
+      const owned = apacheOwnedLauncher(ctx.normalizedConfig);
+      return nativeTlsEligible({ owned, config: ctx.normalizedConfig })
+        ? [...endpoints, generatedHttpsEndpoint({ serviceName: ctx.serviceName, plainPort: port })]
         : endpoints;
     }),
   apply: serviceFeatureApply(APACHE_FEATURE_ID, "service-lando.apache failed to apply", applyApacheFeature),
@@ -424,7 +346,6 @@ export const apacheServiceType: ServiceType = {
     serviceTypeResolve("apache", "Failed to resolve apache", () => {
       const webroot = resolveWebroot("Apache", input.service.webroot, input.service.appMount);
       const endpoint = apacheGeneratedCertificateEndpoint({
-        serviceName: input.name,
         plainPort: input.service.port ?? APACHE_LISTENER.port,
         owned: apacheOwnedLauncher(input.service),
         rootParent: apacheRunsAsRootParent(input.service.user),

@@ -4,7 +4,7 @@ import type { ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
-import { apacheGeneratedCertificateEndpoint, apacheRunsAsRootParent } from "./apache.ts";
+import { apacheGeneratedCertificateEndpoint, apacheRunsAsRootParent } from "./apache-native-tls.ts";
 import { resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
 import { PHP_FEATURE_ID } from "./php-feature.ts";
@@ -94,15 +94,12 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       const webroot = resolveWebroot("PHP", input.service.webroot, input.service.appMount);
       const allowOverride = input.service.allowOverride ?? false;
       const policy = resolvePhpRuntimePolicy(input.service, resolvedVersion, via);
-      const generatedCertificateEndpoint =
-        via === "apache" && policy.processAuthority === "lando"
-          ? apacheGeneratedCertificateEndpoint({
-              serviceName: input.name,
-              plainPort: input.service.port ?? PHP_LISTENERS.apache.port,
-              owned: true,
-              rootParent: apacheRunsAsRootParent(input.service.user),
-            })
-          : undefined;
+      const owned = via === "apache" && policy.processAuthority === "lando";
+      const generatedCertificateEndpoint = apacheGeneratedCertificateEndpoint({
+        plainPort: input.service.port ?? PHP_LISTENERS.apache.port,
+        owned,
+        rootParent: apacheRunsAsRootParent(input.service.user),
+      });
       return {
         base: "lando" as const,
         normalizedConfig: { ...input.service, type: `php:${resolvedVersion}` } satisfies ServiceConfig,

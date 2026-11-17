@@ -19,13 +19,9 @@ import {
   DEBIAN_APACHE_PORTS_CONF_PATH,
   apacheDebianSslBuildStep,
   apacheListenBuildStep,
-  apacheRunsAsRootParent,
   authoredListenPort,
-  generatedCertificateRequested,
-  generatedTlsEndpointName,
-  generatedTlsListenerPort,
-  generatedTlsServerName,
 } from "./apache.ts";
+import { generatedHttpsEndpoint, nativeTlsEligible, nativeTlsListener } from "./apache-native-tls.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
 import { phpBaselineBuildStep } from "./php-baseline.ts";
 import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
@@ -91,7 +87,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     case "apache":
       ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
       if (policy.processAuthority === "lando") {
-        const nativeTls = apacheRunsAsRootParent(service.user) && generatedCertificateRequested(service);
+        const nativeTls = nativeTlsEligible({ owned: true, config: service });
         ctx.addBuildStep(apacheDefaultSiteRemovalBuildStep());
         ctx.addBuildStep(landoErrorPagesBuildStep());
         if (mode.authoredApachePort !== undefined)
@@ -105,15 +101,12 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
             service.user === undefined,
             uploadDirs,
             nativeTls
-              ? {
+              ? nativeTlsListener({
                   plainPort: mode.listener.port,
-                  tlsPort: generatedTlsListenerPort(mode.listener.port),
-                  serverName: generatedTlsServerName({
-                    serviceName: ctx.serviceName,
-                    appName: ctx.appName ?? "app",
-                    appRoot: ctx.appRoot,
-                  }),
-                }
+                  serviceName: ctx.serviceName,
+                  appName: ctx.appName ?? "app",
+                  appRoot: ctx.appRoot,
+                })
               : undefined,
           ),
           ...(service.environment?.BACKDROP_SETTINGS === undefined
@@ -171,21 +164,9 @@ export const phpServiceFeature: ServiceFeatureDefinition = {
       const { listener } = phpServingMode(via, authoredListenPort(ctx.normalizedConfig.port));
       if (listener === undefined) return [];
       const endpoints = servicePortEndpoints(ctx, listener);
-      const eligible =
-        via === "apache" &&
-        policy.processAuthority === "lando" &&
-        apacheRunsAsRootParent(ctx.normalizedConfig.user) &&
-        generatedCertificateRequested(ctx.normalizedConfig);
-      return eligible
-        ? [
-            ...endpoints,
-            {
-              _tag: "internal",
-              port: generatedTlsListenerPort(listener.port),
-              protocol: "https",
-              name: generatedTlsEndpointName(ctx.serviceName),
-            },
-          ]
+      const owned = via === "apache" && policy.processAuthority === "lando";
+      return nativeTlsEligible({ owned, config: ctx.normalizedConfig })
+        ? [...endpoints, generatedHttpsEndpoint({ serviceName: ctx.serviceName, plainPort: listener.port })]
         : endpoints;
     }),
   apply: serviceFeatureApply(PHP_FEATURE_ID, "service-lando.php failed to apply", applyPhpFeature),
