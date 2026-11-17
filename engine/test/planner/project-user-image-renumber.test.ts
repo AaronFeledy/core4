@@ -145,9 +145,15 @@ describe("resolveProjectUser image renumbering", () => {
 
 describe("projectUserRenumberStep", () => {
   const mapping = "image-renumber" as const;
+  const realized = (uid: string, gid: string) => ({ name: "www-data", uid: Number(uid), gid: Number(gid) });
 
   test("renumbers the declared account and moves its files, never root-owned ones", () => {
-    const step = projectUserRenumberStep({ identity: phpIdentity, mapping, host });
+    const step = projectUserRenumberStep({
+      identity: phpIdentity,
+      mapping,
+      projectUser: realized(host.uid, host.gid),
+      host,
+    });
     expect(step?.id).toBe(projectUserRenumberStepId);
     expect(step?.phase).toBe("build");
     expect(step?.user).toBe("root");
@@ -163,6 +169,7 @@ describe("projectUserRenumberStep", () => {
     const step = projectUserRenumberStep({
       identity: phpIdentity,
       mapping,
+      projectUser: realized("33", "1000"),
       host: { uid: "33", gid: "1000" },
     });
     const command = JSON.stringify(step?.command);
@@ -175,6 +182,7 @@ describe("projectUserRenumberStep", () => {
     const step = projectUserRenumberStep({
       identity: phpIdentity,
       mapping,
+      projectUser: realized("1500000", "1500000"),
       host: { uid: "1500000", gid: "1500000" },
     });
     const script = JSON.stringify(step?.command);
@@ -191,6 +199,7 @@ describe("projectUserRenumberStep", () => {
       projectUserRenumberStep({
         identity: phpIdentity,
         mapping,
+        projectUser: realized("33", "33"),
         host: { uid: "33", gid: "33" },
       }),
     ).toBeUndefined();
@@ -198,6 +207,18 @@ describe("projectUserRenumberStep", () => {
       projectUserRenumberStep({
         identity: undefined,
         mapping,
+        projectUser: realized(host.uid, host.gid),
+        host,
+      }),
+    ).toBeUndefined();
+  });
+
+  test("skips a service with no realized project user, such as projectUser: false", () => {
+    expect(
+      projectUserRenumberStep({
+        identity: phpIdentity,
+        mapping,
+        projectUser: undefined,
         host,
       }),
     ).toBeUndefined();
@@ -208,6 +229,7 @@ describe("projectUserRenumberStep", () => {
       projectUserRenumberStep({
         identity: phpIdentity,
         mapping: "userns-keep-id",
+        projectUser: realized(host.uid, host.gid),
         host,
       }),
     ).toBeUndefined();

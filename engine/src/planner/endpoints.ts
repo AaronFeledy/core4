@@ -364,6 +364,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     const renumberStep = projectUserRenumberStep({
       identity: homeIntent.identity,
       mapping: input.providerCapabilities.projectUserMapping,
+      projectUser: projectUserResolution.projectUser,
       host: input.host,
     });
     const draftForPlan = {

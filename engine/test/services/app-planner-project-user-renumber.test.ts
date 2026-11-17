@@ -88,4 +88,24 @@ describe("AppPlanner image-renumber realization", () => {
       expect(ownership).toBeGreaterThan(0);
     });
   });
+
+  test.skipIf(!hostIsUsable)("leaves the image account alone when the service opts out", async () => {
+    await withAppRoot(async (appRoot) => {
+      const result = await plan(
+        appRoot,
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "renumber-app",
+          runtime: 4,
+          services: { web: { type: "php:8.3", projectUser: false } },
+        }),
+      );
+      const web = result.services[ServiceName.make("web")];
+      if (web === undefined) throw new Error("expected a planned web service");
+      expect(web.projectUser).toBeUndefined();
+      expect(web.projectUserExplanation?.state).toBe("opted-out");
+      expect(serviceFeatureBuildSteps(web.extensions).map((step) => step.id)).not.toContain(
+        projectUserRenumberStepId,
+      );
+    });
+  });
 });

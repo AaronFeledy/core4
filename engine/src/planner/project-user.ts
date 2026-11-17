@@ -379,15 +379,18 @@ export const projectUserRenumberStepId = "lando.project-user:renumber" as const;
  * image account may already hold the target id, and only the declared project
  * account changes. Existing image files owned by the old ids move with it,
  * while files owned by uid 0 are never touched. The step is emitted only when
- * the ids differ, and its command carries the ids into the build key.
+ * a project user is realized and the ids differ, and its command carries the
+ * ids into the build key.
  */
 export const projectUserRenumberStep = (input: {
   readonly identity: ServiceImageIdentity | undefined;
   readonly mapping: ProviderCapabilities["projectUserMapping"];
+  readonly projectUser: ServiceProjectUser | undefined;
   readonly host: { readonly uid: string; readonly gid: string } | undefined;
 }): ServiceBuildStepIntent | undefined => {
   const declared = input.identity?.projectUser;
-  if (input.mapping !== "image-renumber" || declared === undefined) return undefined;
+  if (input.mapping !== "image-renumber" || declared === undefined || input.projectUser === undefined)
+    return undefined;
   const host = hostIdentity(input.host);
   if (host === undefined || host.uid === 0 || host.gid === 0) return undefined;
   if (host.uid === declared.uid && host.gid === declared.gid) return undefined;
