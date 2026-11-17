@@ -1,5 +1,5 @@
 import { completionIntentServices } from "@lando/container-runtime/dependency-gates";
-import type { AppPlan, ServiceState, StartedService } from "@lando/sdk/schema";
+import type { AppPlan, ServiceContainerChange, ServiceState, StartedService } from "@lando/sdk/schema";
 import {
   RouterService,
   RuntimeProviderRegistry,
@@ -98,5 +98,11 @@ export const collectPlanConnections = Effect.fn("Connections.collectPlan")(funct
   return yield* collectObservedConnections(plan, rows);
 });
 
-export const startedServices = (rows: readonly CollectedService[]): readonly StartedService[] =>
-  rows.map(({ name, state, connections }) => ({ name, state, connections }));
+export const startedServices = (
+  rows: readonly CollectedService[],
+  containers?: Readonly<Record<string, ServiceContainerChange>>,
+): readonly StartedService[] =>
+  rows.map(({ name, state, connections }) => {
+    const container = containers?.[name];
+    return { name, state, connections, ...(container === undefined ? {} : { container }) };
+  });

@@ -16,6 +16,7 @@ import {
   type EndpointPlan,
   type HostPlatform,
   ProviderId,
+  type ServiceContainerChange,
   ServiceName,
   type ServiceNetworkAttachment,
   type ServicePlan,
@@ -86,7 +87,6 @@ import {
   inspectBindSources,
   inspectContainerLabels,
   inspectNetworkNames,
-  makeServiceRestartWouldRecreateError,
 } from "./bring-up-recreate.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { type ExecOptions, exec, execStream } from "./exec.ts";
@@ -181,7 +181,6 @@ export interface BringUpOptions {
   readonly platform?: HostPlatform;
   readonly daemonUrl?: string;
   readonly probeBind?: ServicePublishProbe;
-  readonly forbidRecreate?: boolean;
   readonly completionPlan?: AppPlan;
   readonly userDataRoot?: string | undefined;
 }
@@ -191,6 +190,7 @@ interface BringUpDeps {
   readonly options: BringUpOptions;
   readonly remediation: string;
   readonly creationEnvironments: Map<string, Readonly<Record<string, string>>>;
+  readonly changes: Map<string, ServiceContainerChange>;
   /** Cached once per bringUp; never construct per failure/inspect line. */
   readonly redactor: ReturnType<typeof redactorFor>;
 }
@@ -607,16 +607,6 @@ const createContainer = Effect.fnUntraced(function* (
       }),
     );
   }
-  if (deps.options.forbidRecreate === true) {
-    return yield* Effect.fail(
-      makeServiceRestartWouldRecreateError({
-        providerId: String(service.provider),
-        service: String(service.name),
-        reason: "host-port",
-        operation: "bringUp.create",
-      }),
-    );
-  }
   const rebound = yield* reassign(createAssignedHostPorts(endpoints));
   createRequest = yield* buildCreateRequest(deps, plan, service, name, rebound);
   const bindRetry = yield* request(deps, { method: "POST", ...createRequest });
@@ -725,6 +715,26 @@ const publish = (
         ),
       );
 
+/**
+ * Anonymous volumes are the inspected container's volume mounts that no planned mount or store of
+ * the service covers. They leave with a replaced container, so the change reports their paths.
+ */
+const anonymousVolumePaths = (service: ServicePlan, body: unknown): ReadonlyArray<string> => {
+  if (typeof body !== "object" || body === null) return [];
+  const mounts = Reflect.get(body, "Mounts");
+  if (!Array.isArray(mounts)) return [];
+  const planned = new Set<string>(service.mounts.map((mount) => mount.target));
+  const paths: string[] = [];
+  for (const mount of mounts) {
+    if (typeof mount !== "object" || mount === null) continue;
+    if (Reflect.get(mount, "Type") !== "volume") continue;
+    const destination = Reflect.get(mount, "Destination");
+    if (typeof destination !== "string" || planned.has(destination)) continue;
+    paths.push(destination);
+  }
+  return paths;
+};
+
 const startService = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
@@ -762,17 +772,6 @@ const startService = Effect.fnUntraced(function* (
         deps.options.ctx,
       )
     : undefined;
-  if (!inspected.exists && deps.options.forbidRecreate === true) {
-    return yield* Effect.fail(
-      new ServiceStartError({
-        providerId: deps.options.ctx.providerId,
-        operation: "bringUp",
-        service: service.name,
-        message: `Cannot restart ${service.name} in place because its container is missing.`,
-        remediation: `Run \`lando rebuild -s ${service.name}\` to create this service.`,
-      }),
-    );
-  }
   const published = service.endpoints.flatMap((endpoint) =>
     endpoint._tag === "published" ? [endpoint] : [],
   );
@@ -781,23 +780,16 @@ const startService = Effect.fnUntraced(function* (
     plannedFingerprint.length > 0 &&
     inspected.publishFingerprint.length > 0 &&
     inspected.publishFingerprint !== plannedFingerprint;
-  const recreateReasons = inspected.exists ? bringUpRecreateReasons(plan, service, inspected) : [];
+  const existedBefore = inspected.exists;
+  const recreateReasons = existedBefore ? bringUpRecreateReasons(plan, service, inspected) : [];
+  let replacedReason: ServiceContainerChange["reason"];
   let before = inspected;
   if (before.exists && (deps.options.reconcile === true || recreateReasons.length > 0)) {
-    if (deps.options.forbidRecreate === true && recreateReasons.length > 0) {
-      return yield* Effect.fail(
-        makeServiceRestartWouldRecreateError({
-          providerId: String(service.provider),
-          service: String(service.name),
-          reason: recreateReasons[0] ?? "publish-port",
-          operation: "bringUp",
-        }),
-      );
-    }
     yield* prepareCreationEnvironment(deps, plan, service);
     if (existingId !== undefined) {
       yield* stopContainerSilent(deps, existingId);
       yield* removeContainer(deps, service, existingId);
+      replacedReason = deps.options.reconcile === true ? "reconcile" : recreateReasons[0];
     }
     before = {
       exists: false,
@@ -848,16 +840,6 @@ const startService = Effect.fnUntraced(function* (
       );
       let retry: EngineHttpResponse | undefined;
       if (isHostPortBindRejection(response) && assigned.size > 0) {
-        if (deps.options.forbidRecreate === true) {
-          return yield* Effect.fail(
-            makeServiceRestartWouldRecreateError({
-              providerId: String(service.provider),
-              service: String(service.name),
-              reason: "host-port",
-              operation: "bringUp.start",
-            }),
-          );
-        }
         yield* prepareCreationEnvironment(deps, plan, service);
         const recoveryId = yield* inspectOwnedNativeId(
           deps.api,
@@ -867,6 +849,8 @@ const startService = Effect.fnUntraced(function* (
         if (recoveryId !== undefined) {
           yield* stopContainerSilent(deps, recoveryId);
           yield* removeContainer(deps, service, recoveryId);
+          // Preserve the original replacement reason if bind recovery recreates it again.
+          if (existedBefore) replacedReason ??= "host-port";
         }
         createEndpoints = yield* prepareEndpoints(assigned);
         yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
@@ -926,6 +910,21 @@ const startService = Effect.fnUntraced(function* (
       }),
     );
   }
+
+  const action =
+    replacedReason !== undefined
+      ? "replaced"
+      : !existedBefore
+        ? "created"
+        : before.running
+          ? "kept"
+          : "started";
+  const anonymousVolumes = action === "replaced" ? anonymousVolumePaths(service, inspected.body) : [];
+  deps.changes.set(String(service.name), {
+    action,
+    ...(replacedReason === undefined ? {} : { reason: replacedReason }),
+    ...(anonymousVolumes.length === 0 ? {} : { anonymousVolumes }),
+  });
 
   yield* publish(
     deps,
@@ -1053,16 +1052,6 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   if (api?.request === undefined) {
     return yield* Effect.fail(missingApi(options.ctx, "bringUp"));
   }
-  if (options.forbidRecreate === true && options.reconcile === true) {
-    return yield* Effect.fail(
-      new ProviderInternalError({
-        providerId: options.ctx.providerId,
-        operation: "bringUp",
-        message: "forbidRecreate cannot be combined with reconcile.",
-        remediation: "Omit reconcile when forbidding recreate, or omit forbidRecreate when reconciling.",
-      }),
-    );
-  }
   const prepared = yield* prepareFileModeMounts(logicalPlan, options.ctx, options.userDataRoot);
   const plan = yield* prepareContainerHelperMounts(prepared, options);
   const deps: BringUpDeps = {
@@ -1070,6 +1059,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     options,
     remediation: applyRemediationFor(plan),
     creationEnvironments: new Map(),
+    changes: new Map(),
     redactor: redactorFor(options.ctx),
   };
 
@@ -1084,19 +1074,16 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     yield* preflightExternalNetwork(api, name, options.ctx);
   }
 
-  let staleNameChanged = false;
-  if (options.forbidRecreate !== true) {
-    const containers = yield* listLabeledServiceContainers(api, options.ctx, plan.id);
-    const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
-    staleNameChanged = (yield* removeStaleServiceContainers(api, options.ctx, plan, stales)).changed;
-  }
+  const containers = yield* listLabeledServiceContainers(api, options.ctx, plan.id);
+  const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
+  const staleNameChanged = (yield* removeStaleServiceContainers(api, options.ctx, plan, stales)).changed;
 
   for (const service of Object.values(plan.services)) {
     const inspected = yield* inspectContainer(deps, containerName(plan, service));
     const replacing =
       inspected.exists &&
       (options.reconcile === true || bringUpRecreateReasons(plan, service, inspected).length > 0);
-    if ((!inspected.exists || replacing) && options.forbidRecreate !== true) {
+    if (!inspected.exists || replacing) {
       yield* prepareCreationEnvironment(deps, plan, service);
     }
   }
@@ -1261,5 +1248,9 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     );
   }
 
-  return { changed: result.changed || staleNameChanged || createdVolumes.length > 0, createdVolumes };
+  return {
+    changed: result.changed || staleNameChanged || createdVolumes.length > 0,
+    createdVolumes,
+    ...(deps.changes.size === 0 ? {} : { services: Object.fromEntries(deps.changes) }),
+  };
 });

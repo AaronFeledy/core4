@@ -105,7 +105,9 @@ test.each(["sidecar", "host"] as const)(
         "/run/lando/ssh-agent/agent.sock",
       );
       expect(applyOptions[0]).not.toHaveProperty(["serviceEnvironment", web.name, "SSH_AUTH_SOCK"]);
-      expect(applyOptions[0]?.recordedPlan?.services[web.name]?.environment.SSH_AUTH_SOCK).toBeUndefined();
+      expect(applyOptions[0]?.recordedPlan?.services[web.name]?.environment.SSH_AUTH_SOCK).toBe(
+        "/run/lando/ssh-agent/agent.sock",
+      );
       expect(applied[0]?.services[web.name]?.mounts).toContainEqual({
         type: "bind",
         source: AbsolutePath.make(join(root, "relay")),

@@ -11,7 +11,7 @@ import { BuildOwner } from "../../src/services/build-owner.ts";
 import { openAppBuildResults } from "../../src/services/build-results.ts";
 import { makeLayer, planWith, providerId, withTempRoots } from "../services/build-app-runner-test-support.ts";
 
-for (const policy of ["user-start", "selected-rebuild"] as const) {
+for (const policy of ["user-start", "selected"] as const) {
   test(`${policy} records the activation identity without build inspections`, async () => {
     await withTempRoots(async () => {
       let inspections = 0;
@@ -58,21 +58,28 @@ for (const policy of ["user-start", "selected-rebuild"] as const) {
             if (policy === "user-start") {
               yield* completeStartup({ ...common, policy, router: TestRouterService });
             } else {
-              yield* completeStartup({ ...common, policy, selectedPlan: plan });
+              yield* completeStartup({
+                ...common,
+                policy,
+                selectedPlan: plan,
+                routePlan: plan,
+                router: TestRouterService,
+                forceAppBuild: true,
+              });
             }
             return yield* (yield* openAppBuildResults(yield* StateStore, BuildOwner.fromPlan(plan))).get;
           }),
         ).pipe(Effect.provide(makeLayer(provider))),
       );
 
-      expect(commands).toBe(policy === "selected-rebuild" ? 1 : 0);
+      expect(commands).toBe(policy === "selected" ? 1 : 0);
       expect(inspections).toBe(0);
       expect(entries?.map((entry) => entry.containerId)).toEqual(["activation-A"]);
     });
   });
 }
 
-test("selected restart never dispatches an app build", async () => {
+test("selected relaunch without force dispatches the app step and records the activation identity", async () => {
   await withTempRoots(async () => {
     let commands = 0;
     let inspections = 0;
@@ -96,24 +103,41 @@ test("selected restart never dispatches an app build", async () => {
       },
     } satisfies RuntimeProviderShape;
     const plan = planWith({ web: [{ id: "install", phase: "app", command: { command: ["install"] } }] });
+    const initial = new Map([
+      [
+        "web",
+        {
+          app: plan.id,
+          service: ServiceName.make("web"),
+          providerId,
+          status: "running" as const,
+          publications: { status: "unknown" as const },
+          containerId: "web-A",
+        },
+      ],
+    ]);
     const entries = await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           yield* completeStartup({
-            policy: "selected-restart",
+            policy: "selected",
             plan,
             selectedPlan: plan,
+            routePlan: plan,
+            router: TestRouterService,
             provider,
             services: [],
             events: yield* EventService,
+            builds: yield* BuildOrchestrator,
+            initial,
           });
           return yield* (yield* openAppBuildResults(yield* StateStore, BuildOwner.fromPlan(plan))).get;
         }),
       ).pipe(Effect.provide(makeLayer(provider))),
     );
-    expect(commands).toBe(0);
+    expect(commands).toBe(1);
     expect(inspections).toBe(0);
-    expect(entries).toEqual([]);
+    expect(entries?.map((entry) => entry.containerId)).toEqual(["web-A"]);
   });
 });
 

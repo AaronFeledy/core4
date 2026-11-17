@@ -51,7 +51,7 @@ test.each([undefined, "previous-declaration"])(
     const desiredPlan = { ...plan, services: { web: desired } };
     const snapshot = { labels: commonContainerLabels(plan, previous) };
     // When
-    const reasons = bringUpRecreateReasons(desiredPlan, desired, snapshot, { skipAbsentFields: true });
+    const reasons = bringUpRecreateReasons(desiredPlan, desired, snapshot);
     // Then
     expect(reasons).toEqual([]);
   },

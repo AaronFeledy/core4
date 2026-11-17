@@ -14,8 +14,7 @@ import {
 import { Cause, DateTime, Duration, Effect, Exit } from "effect";
 
 import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
-import { commonContainerLabels } from "../src/plan.ts";
-import { bringUpRecreateReasons } from "../src/podman/bring-up-recreate.ts";
+import { inspectBindSources, inspectNetworkNames } from "../src/podman/bring-up-recreate.ts";
 import { waitForServiceHealth } from "../src/podman/health.ts";
 import { inspect } from "../src/podman/inspect.ts";
 
@@ -220,27 +219,42 @@ describe("podman inspect health", () => {
     expect(failure.providerId).toBe(ctx.providerId);
   });
 
+  test("projects observed labels without restart-preflight evidence", async () => {
+    const labels = { "dev.lando.create-config": "v1:observed", unrelated: "preserved" };
+    const fake = apiFromResponses([
+      {
+        status: 200,
+        body: JSON.stringify({
+          State: { Running: true },
+          Config: { Labels: labels },
+          Mounts: [{ Type: "bind", Source: "/observed/app", Destination: "/app" }],
+          HostConfig: { PortBindings: { "31080/tcp": [{ HostIp: "127.0.0.1", HostPort: "32768" }] } },
+          NetworkSettings: { Networks: { "observed-network": {} } },
+        }),
+      },
+    ]);
+
+    const info = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+
+    expect(info.labels).toEqual(labels);
+    expect(info).not.toHaveProperty("publishFingerprint");
+    expect(info).not.toHaveProperty("bindSources");
+    expect(info).not.toHaveProperty("networkNames");
+  });
+
   test.each([
-    { fields: {}, reasons: [] },
-    { fields: { Mounts: null, NetworkSettings: { Networks: null } }, reasons: [] },
-    { fields: { Mounts: [], NetworkSettings: { Networks: {} } }, reasons: ["network"] },
+    { fields: {}, bindSources: undefined, networkNames: undefined },
+    {
+      fields: { Mounts: null, NetworkSettings: { Networks: null } },
+      bindSources: undefined,
+      networkNames: undefined,
+    },
+    { fields: { Mounts: [], NetworkSettings: { Networks: {} } }, bindSources: {}, networkNames: [] },
   ])(
     "distinguishes unavailable inspect fields from known-empty attachments: $fields",
-    async ({ fields, reasons }) => {
-      const fake = apiFromResponses([
-        {
-          status: 200,
-          body: JSON.stringify({
-            State: { Running: true },
-            Config: { Labels: commonContainerLabels(plan, service) },
-            ...fields,
-          }),
-        },
-      ]);
-
-      const info = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
-
-      expect(bringUpRecreateReasons(plan, service, info, { skipAbsentFields: true })).toEqual(reasons);
+    ({ fields, bindSources, networkNames }) => {
+      expect(inspectBindSources(fields)).toEqual(bindSources);
+      expect(inspectNetworkNames(fields)).toEqual(networkNames);
     },
   );
 

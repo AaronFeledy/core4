@@ -10,10 +10,8 @@ import { validateSshAgentOverlay } from "../subsystems/ssh-agent/overlay.ts";
 import {
   type PreparedDebuggerOverlay,
   prepareDebuggerOverlay,
-  projectDebuggerOverlay,
   startOverlayRegistry,
 } from "../subsystems/start-overlay-registry.ts";
-import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { validateGpgAgentSocketCapability, withStartedGpgAgent } from "./start-gpg-agent.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
@@ -21,11 +19,7 @@ import { validateHostProxyOverlay, withStartedHostProxy } from "./start-host-pro
 import { validateAgentSocketCapability, withStartedSshAgent } from "./start-ssh-agent.ts";
 import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
 
-export {
-  type PreparedDebuggerOverlay,
-  prepareDebuggerOverlay,
-  projectDebuggerOverlay,
-} from "../subsystems/start-overlay-registry.ts";
+export { projectDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 
 export interface PreparedStartOverlays extends PreparedDebuggerOverlay {
   readonly sshIntent: SshAgentIntent;
@@ -85,10 +79,3 @@ export const withAcquiredStartOverlays = <A, E, R>(
       }),
   });
 };
-
-export const retainStartOverlays = Effect.fn("StartOverlays.retain")(function* (
-  target: Pick<ResolvedAppTarget, "plan" | "app">,
-  prepared: PreparedDebuggerOverlay,
-) {
-  return projectDebuggerOverlay(yield* withRetainedAgentOverlays(target.plan, target.app), prepared);
-});

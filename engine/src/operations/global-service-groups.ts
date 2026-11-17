@@ -1,5 +1,5 @@
 import { GlobalAppError } from "@lando/sdk/errors";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, ServiceContainerChange, ServicePlan } from "@lando/sdk/schema";
 import { type ApplyOptions, EnvironmentValueResolver } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
@@ -72,6 +72,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
       services: Object.fromEntries(apply.services.map((service) => [service.name, service])),
     }));
   let recordedPlan = apply.recordedPlan ?? plan;
+  const changes = new Map<string, ServiceContainerChange>();
   const outcomes = yield* Effect.forEach(
     serviceGroups(apply.services, apply.bindings),
     (group) =>
@@ -102,7 +103,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
                     new Set(removalIds),
                   );
             const runtimePlan = projectDebuggerOverlay(builtPlan, preparedOverlays);
-            yield* withGlobalConsumerReservation(
+            const applied = yield* withGlobalConsumerReservation(
               builtPlan,
               [...names],
               applyActivation({
@@ -123,6 +124,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
               }),
               [...(apply.exclusive ?? []).filter((id) => names.has(id)), ...removalIds],
             );
+            for (const [name, change] of Object.entries(applied.services ?? {})) changes.set(name, change);
             recordedPlan = candidateRecordedPlan;
           }),
         );
@@ -137,7 +139,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
     outcomes.flatMap(({ names, result }) => (Result.isSuccess(result) ? [...names] : [])),
   );
   const services = Object.values(recordedPlan.services).filter((service) => startedNames.has(service.name));
-  return { builtPlan: recordedPlan, services, failures };
+  return { builtPlan: recordedPlan, services, failures, changes: Object.fromEntries(changes) };
 }, Effect.scoped);
 
 export const globalServiceGroupError = <E>(

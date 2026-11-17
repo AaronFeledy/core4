@@ -19,7 +19,6 @@ import type {
   ServiceCopyError,
   ServiceExecError,
   ServiceNotFoundError,
-  ServiceRestartWouldRecreateError,
   ServiceStartError,
   VolumeOperationError,
 } from "../errors/index.ts";
@@ -53,6 +52,7 @@ import type {
   ProviderId,
   ProviderSetupPlan,
   RetainedFileSyncQuiescence,
+  ServiceContainerChange,
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
   ServiceName,
@@ -101,7 +101,6 @@ export type ProviderError =
   | ProviderUnavailableError
   | ServiceExecError
   | ServiceNotFoundError
-  | ServiceRestartWouldRecreateError
   | ServiceStartError
   | VolumeOperationError
   | ServiceCopyError
@@ -196,18 +195,17 @@ export interface ApplyOptions {
   readonly onVolumeCreated?: (
     fact: import("../schema/volume-initialization.ts").VolumeCreationFact,
   ) => Effect.Effect<void, ProviderError>;
-  /**
-   * When true, bring-up fails instead of removing and recreating a container
-   * for publish-port, bind-source, or network drift, and instead of recovering
-   * a host-port bind rejection with a fresh port. Cannot be combined with
-   * `reconcile: true`.
-   */
-  readonly forbidRecreate?: boolean;
 }
 
 export interface ApplyResult {
   readonly changed: boolean;
   readonly createdVolumes?: readonly import("../schema/volume-initialization.ts").VolumeCreationFact[];
+  /**
+   * What apply did to each executed service's container. Providers that cannot report a
+   * container-level outcome omit it, and consumers then announce nothing and add no
+   * `container` field rather than guessing.
+   */
+  readonly services?: Readonly<Record<string, ServiceContainerChange>>;
 }
 
 export interface ServiceSelector {
@@ -340,12 +338,6 @@ export interface ServiceRuntimeFields {
   /** Mount table from the same container inspection, absent when unsupported. */
   readonly mounts?: MountObservation;
   readonly lastStartedAt?: Date;
-  /** Inspect fingerprint of published host ports. Absent when the container is missing. */
-  readonly publishFingerprint?: string;
-  /** Inspected bind and agent-socket mount sources, keyed by container target. */
-  readonly bindSources?: Readonly<Record<string, string>>;
-  /** Inspected network names attached to the container. */
-  readonly networkNames?: ReadonlyArray<string>;
 }
 
 /**

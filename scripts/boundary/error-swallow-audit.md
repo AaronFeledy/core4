@@ -26,13 +26,12 @@ The fixture record is exhaustive over `ProviderError["_tag"]`, including all thr
 | ProviderUnavailableError | pass | pass | pass | pass | pass | pass | pass |
 | ServiceExecError | pass | pass | pass | pass | pass | pass | pass |
 | ServiceNotFoundError | pass | pass | pass | pass | pass | pass | pass |
-| ServiceRestartWouldRecreateError | pass | pass | pass | pass | pass | pass | pass |
 | ServiceStartError | pass | pass | pass | pass | pass | pass | pass |
 | VolumeOperationError | pass | pass | pass | pass | pass | pass | pass |
 | ServiceCopyError | pass | pass | pass | pass | pass | pass | pass |
 | ArtifactTransferError | pass | pass | pass | pass | pass | pass | pass |
 
-Initial execution: 145 pass, 2 fail. Both failures swallowed `ServiceNotFoundError` in selected-service `stop` calls in `engine/src/operations/rebuild.ts` and `restart.ts`. Removing those catches makes a vanished service fail rather than reporting a completed stop and continuing to apply. The two matrix cases are the regressions. Final focused matrix execution: **147 pass, 0 fail, 588 assertions, 2.63 seconds** before final formatting.
+Initial execution: 145 pass, 2 fail. Both failures swallowed `ServiceNotFoundError` in selected-service `stop` calls in `engine/src/operations/rebuild.ts` and `restart.ts`. A selected relaunch now shares one stop owner that treats a vanished container as already stopped, so the two selected-stop matrix cases assert that exception instead of the provider error. Final focused matrix execution: **147 pass, 0 fail, 588 assertions, 2.63 seconds** before final formatting.
 
 ## Audit scope and searches
 

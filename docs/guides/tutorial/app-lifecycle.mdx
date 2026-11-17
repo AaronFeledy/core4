@@ -76,9 +76,11 @@ Tooling aliases declared under `tooling:` run inside their target service.
 
 `lando rebuild` and `lando destroy` ask for confirmation first. Pass `-y` to skip the prompt in scripts.
 
-Bare `restart` stops then starts, so it removes and recreates containers. It is not an in-place process restart. `lando start` applies Landofile changes such as command, environment, image, and mounts, and keeps unchanged containers and named volumes. A `build.app` step runs again in every new container, so `stop` then `start` and bare `restart` both rerun those steps, while a `start` that keeps a container reports them as cached. Reach for `rebuild` when you need a forced image pull, or a forced rerun of build steps in a container that would otherwise stay. `start` does not take `-y`.
+Bare `restart` stops then starts, so it removes and recreates containers. It is not an in-place process restart. `lando start` applies Landofile changes such as command, environment, image, and mounts, and keeps unchanged containers and named volumes. When it replaces a container, it prints the reason and names any anonymous volume that went with it. A `build.app` step runs again in every new container, so `stop` then `start` and bare `restart` both rerun those steps, while a `start` that keeps a container reports them as cached. Reach for `rebuild` when you need a forced image pull, or a forced rerun of build steps in a container that would otherwise stay. `start` does not take `-y`.
 
-`lando stop` withdraws the app's published hostnames along with its containers, and the next `lando start` publishes them again. `lando restart` and `lando rebuild` keep them published, even when the start that follows fails.
+`lando restart --service web` (or `-s`, repeatable) restarts only the services you name and brings each one back the way `lando start` would. An unchanged container restarts in place; a container whose settings changed, or that is missing, is replaced or created, and Lando prints why, naming any anonymous volume that went with it. Route changes on the named services publish with the restart. It refuses only when the app was never started or was destroyed. See [Restart or rebuild one service](../cli/everyday-commands.mdx#restart-or-rebuild-one-service) for the full rules and the `--format=json` fields.
+
+`lando stop` withdraws the app's published hostnames along with its containers, and the next `lando start` publishes them again. `lando restart` and `lando rebuild` keep them published, even when the start that follows fails. A selected `restart -s` or `rebuild -s` publishes route changes on the services it applies and leaves the other services' published routes untouched.
 
 ```sh
 # Stop the app's containers but keep named volumes and state
@@ -93,6 +95,42 @@ lando restart
 # Force a pull and build refresh, then recreate containers
 lando rebuild
 ```
+
+To change one service without touching the rest, edit it and restart just that service. Here the `app` service gets a new environment variable, so its container is replaced while `db` keeps running:
+
+```sh
+# Add an environment variable to the app service
+lando app:config:set services.app.environment.GREETING hello
+
+# Replace only the app container and print why
+lando restart -s app
+
+# Read the new value inside the replaced container
+lando exec app -- printenv GREETING
+```
+
+  <Scenario id="restart-one-service" layer="e2e" render>
+    <Step name="start">
+      <UseFixture name="app-lifecycle-demo" />
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" } }} />
+    </Step>
+    <Step name="restart-in-place">
+      <Verify command="lando restart -s app --format=json" expect={{ stdout: { regex: "\"action\":\\s*\"started\"" } }} />
+    </Step>
+    <Step name="change">
+      <Run command="lando app:config:set services.app.environment.GREETING hello" />
+    </Step>
+    <Step name="replace">
+      <Verify command="lando restart -s app" expect={{ stderr: { regex: "Lando replaced app.s container because its configuration changed" } }} />
+    </Step>
+    <Step name="inspect">
+      <Verify command="lando exec app -- printenv GREETING" expect={{ stdout: { regex: "hello" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
 
 ## Remove a service
 
@@ -130,7 +168,7 @@ Lando removes a container only when its labels prove it belongs to this app. If 
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 
@@ -156,7 +194,7 @@ Database data stores, persistent homes, `node_modules` and `vendor` shadows, and
 
 Images Lando built stay around too. `lando destroy` keeps the newest one for each service for up to seven days, so the next `lando start` reuses it without building. `--purge-caches` removes those images right away.
 
-An image that declares a `VOLUME` path you never mapped gets an anonymous volume instead. The runtime creates it with the container, and Lando asks the runtime to drop it whenever it removes that container: `lando stop`, `lando destroy`, bare `lando restart`, `lando rebuild`, and a `lando start` that recreates a changed container. The runtime keeps one that another live container still uses. `lando restart --service <name>` restarts in place and keeps the container's volumes. A failed start retains established resources for inspection rather than rolling them back.
+An image that declares a `VOLUME` path you never mapped gets an anonymous volume instead. The runtime creates it with the container, and Lando asks the runtime to drop it whenever it removes that container: `lando stop`, `lando destroy`, bare `lando restart`, `lando rebuild`, and a `lando start` that recreates a changed container. The runtime keeps one that another live container still uses. `lando restart --service <name>` keeps an unchanged container and its volumes, and drops them only when it replaces that container. Both `lando start` and `lando restart --service` print the reason for a replacement and name any anonymous volume the old container took with it. A failed start retains established resources for inspection rather than rolling them back.
 
 To keep data at such a path, name it. A bare container path under `volumes:` becomes a named store Lando owns:
 
@@ -248,7 +286,7 @@ lando apps:poweroff
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 
@@ -271,7 +309,7 @@ it stopped. Results stay on stdout; progress goes to stderr:
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 

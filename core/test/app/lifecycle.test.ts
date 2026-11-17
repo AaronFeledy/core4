@@ -308,7 +308,11 @@ const appLayer = (
                     : { kind: "applied" as const, plan: applied };
                 }),
               ),
-            appliedPlansFor: () => Effect.succeed([]),
+            appliedPlansFor: (root) =>
+              (fixtureProvider.appliedPlans ?? Effect.succeed([])).pipe(
+                Effect.map((plans) => plans.filter((candidate) => candidate.root === root)),
+                Effect.orDie,
+              ),
             list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
             capabilities: Effect.succeed(fixtureProvider.capabilities),
             select: () => Effect.succeed(fixtureProvider),
@@ -337,79 +341,117 @@ const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 };
 
 describe("App handle managed lifecycle scopes", () => {
-  test.each([false, true])(
-    "selected rebuild owns a fresh host-proxy worker without replacing current sessions, current=%s",
-    async (priorCurrent) => {
-      // Given a handle with no healthy worker and optionally an existing managed sync session.
-      await withTempApp(async (dir) => {
-        const tracking = makeTrackingEngine();
-        const base = planWithFileSync(dir);
-        const service = base.services[webService.name];
-        if (service === undefined) throw new TypeError("Missing web fixture");
-        const selected = {
-          ...base,
-          services: {
-            [webService.name]: {
-              ...service,
-              extensions: { "@lando/core/service-features": { featureIds: ["lando.host-proxy"] } },
-            },
-          },
-        };
-        const targets: Array<{ readonly os: "linux"; readonly arch: "x64" }> = [];
-        if (!priorCurrent) targets.push({ os: "linux", arch: "x64" });
-        let closed = 0;
-        const provider: RuntimeProviderShape = {
-          ...TestRuntimeProvider,
-          capabilities: {
-            ...TestRuntimeProvider.capabilities,
-            hostReachability: "emulated",
-            hostProxy: { containerTargets: targets },
-          },
-        };
-        const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
-          Effect.succeed(stubContainerHelper("/shim")),
+  const hostProxyFixture = (dir: string, targets: Array<{ readonly os: "linux"; readonly arch: "x64" }>) => {
+    const base = planWithFileSync(dir);
+    const service = base.services[webService.name];
+    if (service === undefined) throw new TypeError("Missing web fixture");
+    const selected = {
+      ...base,
+      services: {
+        [webService.name]: {
+          ...service,
+          extensions: { "@lando/core/service-features": { featureIds: ["lando.host-proxy"] } },
+        },
+      },
+    };
+    const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        hostReachability: "emulated",
+        hostProxy: { containerTargets: targets },
+      },
+    };
+    return { base, selected, provider };
+  };
+
+  const spyOnHostProxyWorker = (appId: string) => {
+    const worker = { closed: 0 };
+    const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+      Effect.succeed(stubContainerHelper("/shim")),
+    );
+    const spawn = spyOn(hostProxyWorker, "startDetachedHostProxyWorker").mockImplementation((options) => {
+      const session = {
+        appId,
+        sessionId: "fresh-selected-worker",
+        token: "token",
+        controlToken: "control",
+        socketPath: "/relay/proxy.sock",
+        shimPath: "/shim",
+        transport: "unix-socket" as const,
+        closed: Promise.resolve(),
+        close: async () => {
+          worker.closed++;
+        },
+      };
+      return (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session));
+    });
+    const restore = () => {
+      prepare.mockRestore();
+      spawn.mockRestore();
+    };
+    return { worker, spawn, restore };
+  };
+
+  test("selected rebuild owns a fresh host-proxy worker without replacing the current sync session", async () => {
+    // Given a started app with a managed sync session and no healthy host-proxy worker.
+    await withTempApp(async (dir) => {
+      const tracking = makeTrackingEngine();
+      const targets: Array<{ readonly os: "linux"; readonly arch: "x64" }> = [];
+      const { base, selected, provider } = hostProxyFixture(dir, targets);
+      const { worker, spawn, restore } = spyOnHostProxyWorker(base.id);
+      try {
+        // When selected rebuild starts a new worker under the library handle.
+        const inside = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const app = yield* resolveApp();
+              yield* app.start();
+              targets.push({ os: "linux", arch: "x64" });
+              yield* app.rebuild({ services: [webService.name] });
+              return { closed: worker.closed, sessions: tracking.sessions.size };
+            }),
+          ).pipe(Effect.provide(appLayer(tracking.engine, dir, selected, provider))),
         );
-        const spawn = spyOn(hostProxyWorker, "startDetachedHostProxyWorker").mockImplementation((options) => {
-          const session = {
-            appId: base.id,
-            sessionId: "fresh-selected-worker",
-            token: "token",
-            controlToken: "control",
-            socketPath: "/relay/proxy.sock",
-            shimPath: "/shim",
-            transport: "unix-socket" as const,
-            closed: Promise.resolve(),
-            close: async () => {
-              closed++;
-            },
-          };
-          return (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session));
-        });
-        try {
-          // When selected rebuild starts a new worker under the library handle.
-          const inside = await Effect.runPromise(
+        // Then the sync session is undisturbed and the fresh worker closes with the handle.
+        expect(inside).toEqual({ closed: 0, sessions: 1 });
+        expect(spawn).toHaveBeenCalledTimes(1);
+        expect(worker.closed).toBe(1);
+        expect(tracking.sessions.size).toBe(0);
+      } finally {
+        restore();
+      }
+    });
+  });
+
+  test("selected rebuild of a never-started accelerated app refuses before starting a host-proxy worker", async () => {
+    // Given an accelerated app that was never started, so no sync target was ever prepared.
+    await withTempApp(async (dir) => {
+      const tracking = makeTrackingEngine();
+      const { base, selected, provider } = hostProxyFixture(dir, [{ os: "linux", arch: "x64" }]);
+      const { spawn, restore } = spyOnHostProxyWorker(base.id);
+      try {
+        // When a selected rebuild runs under the library handle.
+        const error = await Effect.runPromise(
+          Effect.flip(
             Effect.scoped(
               Effect.gen(function* () {
                 const app = yield* resolveApp();
-                if (priorCurrent) yield* app.start();
-                if (priorCurrent) targets.push({ os: "linux", arch: "x64" });
-                yield* app.rebuild({ services: [webService.name] });
-                return { closed, sessions: tracking.sessions.size };
+                return yield* app.rebuild({ services: [webService.name] });
               }),
-            ).pipe(Effect.provide(appLayer(tracking.engine, dir, selected, provider))),
-          );
-          // Then the old owner is undisturbed and the fresh worker closes with the handle.
-          expect(inside).toEqual({ closed: 0, sessions: priorCurrent ? 1 : 0 });
-          expect(spawn).toHaveBeenCalledTimes(1);
-          expect(closed).toBe(1);
-          expect(tracking.sessions.size).toBe(0);
-        } finally {
-          prepare.mockRestore();
-          spawn.mockRestore();
-        }
-      });
-    },
-  );
+            ),
+          ).pipe(Effect.provide(appLayer(tracking.engine, dir, selected, provider))),
+        );
+        // Then it refuses with the start remedy and acquires no worker or session.
+        expect(error).toBeInstanceOf(FileSyncStartError);
+        expect(error.remediation).toContain("lando start");
+        expect(spawn).not.toHaveBeenCalled();
+        expect(tracking.sessions.size).toBe(0);
+      } finally {
+        restore();
+      }
+    });
+  });
   for (const method of ["restart", "rebuild"] as const) {
     for (const priorCurrent of [false, true]) {
       for (const mode of ["failure", "interrupt"] as const) {

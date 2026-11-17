@@ -1,66 +1,36 @@
-import {
-  bringUpRecreateReasons,
-  makeServiceRestartWouldRecreateError,
-} from "@lando/container-runtime/podman/bring-up-recreate";
 import type { RedactionService } from "@lando/redaction/service";
 import type {
   RestartAppOptions,
   RestartAppResult,
   RestartAppError as SdkRestartAppError,
 } from "@lando/sdk/app";
-import {
-  type ComposeKeyRejectedError,
-  type LandofileLoadExpressionError,
-  ProviderUnavailableError,
-} from "@lando/sdk/errors";
-import {
-  PostRestartEvent,
-  PostServiceStopEvent,
-  PreRestartEvent,
-  PreServiceStopEvent,
-} from "@lando/sdk/events";
-import type { AppPlan } from "@lando/sdk/schema";
-import type { EnvironmentValueResolver } from "@lando/sdk/services";
-import {
-  type AppPlanner,
-  type BuildOrchestrator,
+import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
+import { PostRestartEvent, PreRestartEvent } from "@lando/sdk/events";
+import type {
+  AppPlanner,
+  BuildOrchestrator,
+  EnvironmentValueResolver,
   EventService,
-  type FileSystem,
-  type GlobalAppService,
-  type LandofileService,
-  type ManagedFileTransactionGuard,
-  type PathsService,
-  type PluginRegistry,
-  type RouterService,
+  FileSystem,
+  GlobalAppService,
+  LandofileService,
+  ManagedFileTransactionGuard,
+  PathsService,
+  PluginRegistry,
+  RouterService,
   RuntimeProviderRegistry,
-  type ShellRunner,
-  type StateStore,
+  ShellRunner,
+  StateStore,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect } from "effect";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
-import { applyActivation } from "../lifecycle/activation-apply.ts";
-import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
-import { completeStartup } from "../lifecycle/startup-completion.ts";
-import { serviceWithArtifact } from "../services/build-artifact-runner.ts";
-import { type AdmittedServices, withAppActivation } from "./app-activation.ts";
+import { withAppActivation } from "./app-activation.ts";
 import { haltAndRelaunchApp } from "./app-relaunch.ts";
-import { collectPlanConnections, startedServices } from "./connection-collector.ts";
-import {
-  openDatabaseCredentialSession,
-  publishDatabaseCredentialWarningsSafely,
-} from "./database-credential-warnings.ts";
 import { publishAndRunAppEvent } from "./events.ts";
-import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
-import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
-import { inspectAppliedService } from "./service-readiness.ts";
+import { relaunchSelectedServices } from "./selected-relaunch.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
-import { markStartMutation } from "./start-incomplete-notice.ts";
-import { type PreparedDebuggerOverlay, retainStartOverlays } from "./start-overlays.ts";
-import {
-  publishPlacementVolumeTransitionNotices,
-  publishVolumeTransitionNotices,
-} from "./volume-transition-notice.ts";
+import { publishPlacementVolumeTransitionNotices } from "./volume-transition-notice.ts";
 
 export type RestartAppError = SdkRestartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
@@ -83,203 +53,6 @@ type RestartAppServices =
   | ShellRunner
   | StateStore;
 
-const restartSelectedServices = Effect.fnUntraced(function* (
-  admitted: AdmittedServices<PreparedDebuggerOverlay>,
-  options: Pick<RestartAppOptions, "signal">,
-): Effect.fn.Return<RestartAppResult["servicesStarted"], RestartAppError, RestartAppServices> {
-  const { signal } = options;
-  const { selectedPlan, target, provider, overlays: preparedOverlays } = admitted;
-  const events = yield* EventService;
-  const registry = yield* RuntimeProviderRegistry;
-  const appliedPlan = yield* registry.resolveAppliedPlan(target.plan.root);
-  if (
-    appliedPlan === undefined ||
-    appliedPlan.root !== target.plan.root ||
-    appliedPlan.id !== target.plan.id ||
-    appliedPlan.provider !== target.plan.provider
-  ) {
-    return yield* Effect.fail(
-      new ProviderUnavailableError({
-        providerId: String(target.plan.provider),
-        operation: "restart",
-        message: "Selected restart requires an ownership-matched applied plan.",
-        remediation: "Start this app before restarting selected services.",
-      }),
-    );
-  }
-  const projectedServices = yield* Effect.forEach(Object.values(selectedPlan.services), (service) =>
-    Effect.gen(function* () {
-      const artifact = appliedPlan.services[service.name]?.artifact;
-      if (artifact?.kind !== "ref" || artifact.ref.length === 0) {
-        return yield* Effect.fail(
-          new ProviderUnavailableError({
-            providerId: String(target.plan.provider),
-            operation: "restart",
-            message: `Selected restart requires a concrete applied artifact for ${service.name}.`,
-            remediation: `Run \`lando rebuild -s ${service.name}\` to create this service.`,
-          }),
-        );
-      }
-      return [
-        service.name,
-        serviceWithArtifact(service, { providerId: appliedPlan.provider, ...artifact }),
-      ] as const;
-    }),
-  );
-  // Prepare before recreate preflight so changed material is refused while services still run.
-  const { plan, certificates } = yield* prepareServiceCertificates({
-    ...selectedPlan,
-    services: Object.fromEntries(projectedServices),
-  });
-  const runtimePlan = yield* retainStartOverlays(
-    {
-      plan,
-      app: target.app,
-    },
-    preparedOverlays,
-  );
-  const inspectionPlan: AppPlan = {
-    ...target.plan,
-    services: { ...target.plan.services, ...runtimePlan.services },
-  };
-  const services = Object.values(runtimePlan.services);
-
-  for (const service of services) {
-    const runtime = yield* provider.inspect({
-      app: target.plan.id,
-      service: service.name,
-      plan: inspectionPlan,
-    });
-    if (runtime.status === "absent") {
-      return yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId: String(target.plan.provider),
-          operation: "restart",
-          message: `Cannot restart ${service.name} in place because its container is missing.`,
-          remediation: `Run \`lando rebuild -s ${service.name}\` to create this service.`,
-        }),
-      );
-    }
-    const reasons = bringUpRecreateReasons(inspectionPlan, service, runtime, { skipAbsentFields: true });
-    if (reasons[0] !== undefined) {
-      return yield* Effect.fail(
-        makeServiceRestartWouldRecreateError({
-          providerId: String(target.plan.provider),
-          service: String(service.name),
-          reason: reasons[0],
-        }),
-      );
-    }
-  }
-
-  const selected = services.map((service) => service.name);
-  const preRestart = PreRestartEvent.make({
-    _tag: "pre-restart",
-    scope: "app",
-    app: target.app,
-    plan: target.plan,
-    triggeredBy: "app:restart",
-    timestamp: DateTime.nowUnsafe(),
-    services: [...selected],
-  });
-  yield* publishAndRunAppEvent(target.plan, "pre-restart", preRestart);
-  yield* publishVolumeTransitionNotices(appliedPlan, selectedPlan);
-  yield* markStartMutation(target.plan);
-
-  const started = yield* withGlobalConsumerAdmission(
-    {
-      plan: target.plan,
-      setupRouter: true,
-      ...(signal === undefined ? {} : { signal }),
-      ...(target.landofile?.document.router === undefined
-        ? {}
-        : { landofileRouter: target.landofile.document.router }),
-    },
-    Effect.scoped(
-      Effect.gen(function* () {
-        const environment = yield* openDatabaseCredentialSession(runtimePlan);
-        yield* Effect.forEach(
-          [...services].reverse(),
-          (service) =>
-            Effect.gen(function* () {
-              if (signal?.aborted === true) return yield* Effect.interrupt;
-              yield* events.publish(
-                PreServiceStopEvent.make({
-                  eventName: "pre-service-stop",
-                  appRef: target.app,
-                  serviceName: service.name,
-                  providerId: target.plan.provider,
-                  timestamp: DateTime.nowUnsafe(),
-                }),
-              );
-              yield* provider.stop({ app: target.plan.id, service: service.name, plan: target.plan });
-              yield* events.publish(
-                PostServiceStopEvent.make({
-                  eventName: "post-service-stop",
-                  appRef: target.app,
-                  serviceName: service.name,
-                  providerId: target.plan.provider,
-                  timestamp: DateTime.nowUnsafe(),
-                }),
-              );
-            }),
-          { discard: true },
-        );
-
-        if (signal?.aborted === true) return yield* Effect.interrupt;
-        yield* applyActivation({
-          provider,
-          plan: runtimePlan,
-          certificates,
-          reconcile: false,
-          recordedPlan: appliedPlan,
-          completionPlan: target.plan,
-          forbidRecreate: true,
-          beforeApply: verifyGlobalConsumerAdmission,
-          ...(environment === undefined ? {} : { environment }),
-          ...(signal === undefined ? {} : { signal }),
-        });
-        const initial = yield* Effect.forEach(services, (service) =>
-          inspectAppliedService({ provider, plan: target.plan, service: service.name }).pipe(
-            Effect.map((runtime) => [String(service.name), runtime] as const),
-          ),
-        );
-        const ready = yield* completeStartup({
-          policy: "selected-restart",
-          selectedPlan,
-          events,
-          provider,
-          plan: target.plan,
-          services: selected,
-          initial: new Map(initial),
-          ...(signal === undefined ? {} : { signal }),
-        });
-        if (environment !== undefined) {
-          yield* publishDatabaseCredentialWarningsSafely({
-            provider,
-            plan: runtimePlan,
-            services: ready,
-            session: environment,
-            previousPlan: appliedPlan,
-          });
-        }
-        return startedServices(yield* collectPlanConnections(target.plan, ready));
-      }),
-    ),
-  );
-
-  const postRestart = PostRestartEvent.make({
-    _tag: "post-restart",
-    scope: "app",
-    app: target.app,
-    plan: target.plan,
-    timestamp: DateTime.nowUnsafe(),
-    services: [...selected],
-  });
-  yield* publishAndRunAppEvent(target.plan, "post-restart", postRestart);
-  return started;
-});
-
 export const restartApp = Effect.fn("AppOperation.restart")(
   function* (
     options: RestartAppOptions = {},
@@ -299,15 +72,11 @@ export const restartApp = Effect.fn("AppOperation.restart")(
       Effect.fnUntraced(function* (admitted) {
         const { target: resolvedTarget, placement, removedByResume } = admitted;
         const plan = resolvedTarget.plan;
-        if (admitted.scope === "services") {
-          return {
-            app: plan.name,
-            servicesStarted: yield* restartSelectedServices(admitted, {
-              ...(options.signal === undefined ? {} : { signal: options.signal }),
-            }),
-            ...(removedByResume.length === 0 ? {} : { servicesRemoved: removedByResume }),
-          };
-        }
+        const selectedPlan = admitted.scope === "services" ? admitted.selectedPlan : plan;
+        const selected =
+          admitted.scope === "services"
+            ? Object.values(selectedPlan.services).map((service) => service.name)
+            : undefined;
         const preRestart = PreRestartEvent.make({
           _tag: "pre-restart",
           scope: "app",
@@ -315,23 +84,36 @@ export const restartApp = Effect.fn("AppOperation.restart")(
           plan,
           triggeredBy: "app:restart",
           timestamp: DateTime.nowUnsafe(),
+          ...(selected === undefined ? {} : { services: [...selected] }),
         });
         yield* publishAndRunAppEvent(plan, "pre-restart", preRestart);
-        yield* publishPlacementVolumeTransitionNotices(placement, plan);
-        const result = yield* haltAndRelaunchApp(
-          admitted,
-          {
-            reconcile: options.reconcile ?? false,
-            ...(options.signal === undefined ? {} : { signal: options.signal }),
-          },
-          managed,
-        );
+        yield* publishPlacementVolumeTransitionNotices(placement, selectedPlan);
+        const result: RestartAppResult =
+          admitted.scope === "services"
+            ? {
+                app: plan.name,
+                servicesStarted: yield* relaunchSelectedServices(admitted, {
+                  operation: "restart",
+                  ...(options.signal === undefined ? {} : { signal: options.signal }),
+                  ...(managed === undefined ? {} : { managed }),
+                }),
+                ...(removedByResume.length === 0 ? {} : { servicesRemoved: removedByResume }),
+              }
+            : yield* haltAndRelaunchApp(
+                admitted,
+                {
+                  reconcile: options.reconcile ?? false,
+                  ...(options.signal === undefined ? {} : { signal: options.signal }),
+                },
+                managed,
+              );
         const postRestart = PostRestartEvent.make({
           _tag: "post-restart",
           scope: "app",
           app: resolvedTarget.app,
           plan,
           timestamp: DateTime.nowUnsafe(),
+          ...(selected === undefined ? {} : { services: [...selected] }),
         });
         yield* publishAndRunAppEvent(plan, "post-restart", postRestart);
         return result;
