@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import { LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -21,7 +22,6 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { makeLandoPaths } from "@lando/paths";
 import { DateTime, Effect, Layer } from "effect";
 import { pendingStartBucketSpec } from "../../src/operations/accelerated-start-record.ts";
 import { poweroff } from "../../src/operations/poweroff.ts";
@@ -141,11 +141,11 @@ const makeHarness = async (input: {
   const registry = {
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    appliedStateInventory: () =>
-      Effect.succeed({ plans: input.holdingPlans ?? [], unreadable: [] }),
+    appliedStateInventory: () => Effect.succeed({ plans: input.holdingPlans ?? [], unreadable: [] }),
     observeRuntime: Effect.succeed([snapshot]),
     appliedPlansFor: (root: AbsolutePath, scope?: ProviderId) => {
-      const user = (scope === undefined || scope === providerId) && plans.has(root) ? [plans.get(root) as AppPlan] : [];
+      const user =
+        (scope === undefined || scope === providerId) && plans.has(root) ? [plans.get(root) as AppPlan] : [];
       const global = (input.globalPlans ?? []).filter(
         (plan) =>
           (scope === undefined || plan.provider === scope) &&

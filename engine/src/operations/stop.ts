@@ -37,7 +37,6 @@ import {
 import { TeardownProvider, resolveAppPlacement } from "../providers/app-placement.ts";
 import { shellArg } from "../services/shell-quote.ts";
 import { readDiscardableStart } from "./accelerated-start-disposal.ts";
-import { cleanupAppWorkers } from "./destroy-provider.ts";
 import { appLockTarget, canonicalMissingAppRoot, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
@@ -47,6 +46,7 @@ import {
   teardownResolutionAtRoot,
   validateResolvedAppTarget,
 } from "./applied-state-target.ts";
+import { cleanupAppWorkers } from "./destroy-provider.ts";
 import { landofilePresentAt } from "./landofile-events.ts";
 import { prepareMissingRootStartDisposal } from "./missing-root-start-disposal.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
@@ -384,7 +384,11 @@ const stopMissingRootWriters = Effect.fnUntraced(function* (
           { volumes: false, removeState: false },
         );
         if (outcome.kind === "destroyed")
-          services.push(...Object.values(target.plan.services).reverse().map((service) => String(service.name)));
+          services.push(
+            ...Object.values(target.plan.services)
+              .reverse()
+              .map((service) => String(service.name)),
+          );
       }
       const cleanup = yield* prepareOwnedResourceCleanup(
         scope.root,

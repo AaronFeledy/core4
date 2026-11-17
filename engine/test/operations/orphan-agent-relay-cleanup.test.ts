@@ -20,10 +20,10 @@ import { Effect, Layer, Stream } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { stopApp } from "../../src/operations/stop.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import { sshAgentSessionPaths } from "../../src/subsystems/ssh-agent/session.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { layerTransactionGuard } from "../services/landofile-layer.ts";
-import * as BunFileSystem from "../../src/services/file-system.ts";
 import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 const providerId = ProviderId.make("lando");

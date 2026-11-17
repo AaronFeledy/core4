@@ -3,7 +3,6 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import { FileSyncEngine } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Layer } from "effect";
-import * as BunFileSystem from "../../src/services/file-system.ts";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import {
   beginOrResumeAcceleratedStart,
@@ -16,6 +15,7 @@ import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { applyTreeId } from "../../src/operations/start-progress.ts";
 import { stopApp } from "../../src/operations/stop.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { acceleratedPlan, app, recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
 import { makeHarness } from "./start-progress-topology-support.ts";

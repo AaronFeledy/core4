@@ -194,81 +194,75 @@ const unobservedRuntimeError = (providerId: ProviderId) =>
     providerId,
     operation: "getStatus",
     message: "The provider reported a running runtime but no runtime inventory was observed.",
-    remediation:
-      "Restore provider access or stop its recorded apps explicitly, then retry `lando poweroff`.",
+    remediation: "Restore provider access or stop its recorded apps explicitly, then retry `lando poweroff`.",
   });
 
-const collectInventory = (journalProviders: ReadonlySet<string>) =>
-  Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
-    const failures: StopFailure[] = [];
-    const snapshots: ProviderRuntimeSnapshot[] = [];
-    const idsResult = yield* registry.list.pipe(Effect.result);
-    const ids = Result.isSuccess(idsResult) ? idsResult.success : [];
-    if (Result.isFailure(idsResult)) failures.push(providerInventoryFailure("providers", idsResult.failure));
+const collectInventory = Effect.fnUntraced(function* (journalProviders: ReadonlySet<string>) {
+  const registry = yield* RuntimeProviderRegistry;
+  const failures: StopFailure[] = [];
+  const snapshots: ProviderRuntimeSnapshot[] = [];
+  const idsResult = yield* registry.list.pipe(Effect.result);
+  const ids = Result.isSuccess(idsResult) ? idsResult.success : [];
+  if (Result.isFailure(idsResult)) failures.push(providerInventoryFailure("providers", idsResult.failure));
 
-    for (const id of ids) {
-      const state =
-        registry.appliedStateInventory === undefined
-          ? undefined
-          : yield* registry.appliedStateInventory(id).pipe(Effect.result);
-      if (state !== undefined && Result.isFailure(state))
-        failures.push(providerInventoryFailure(String(id), state.failure));
-      if (state !== undefined && Result.isSuccess(state) && state.success.unreadable.length > 0)
-        failures.push(
-          providerInventoryFailure(String(id), unreadableAppliedState(id, state.success.unreadable.length)),
-        );
-      const ownership =
-        registry.hasRecordedOwnership === undefined
-          ? undefined
-          : yield* registry.hasRecordedOwnership(id).pipe(Effect.result);
-      if (ownership !== undefined && Result.isFailure(ownership))
-        failures.push(providerInventoryFailure(String(id), ownership.failure));
-      const hasRecordedHoldings =
-        journalProviders.has(String(id)) ||
-        (state !== undefined &&
-          (Result.isFailure(state) ||
-            state.success.plans.length > 0 ||
-            state.success.unreadable.length > 0)) ||
-        (ownership !== undefined && (Result.isFailure(ownership) || ownership.success));
+  for (const id of ids) {
+    const state =
+      registry.appliedStateInventory === undefined
+        ? undefined
+        : yield* registry.appliedStateInventory(id).pipe(Effect.result);
+    if (state !== undefined && Result.isFailure(state))
+      failures.push(providerInventoryFailure(String(id), state.failure));
+    if (state !== undefined && Result.isSuccess(state) && state.success.unreadable.length > 0)
+      failures.push(
+        providerInventoryFailure(String(id), unreadableAppliedState(id, state.success.unreadable.length)),
+      );
+    const ownership =
+      registry.hasRecordedOwnership === undefined
+        ? undefined
+        : yield* registry.hasRecordedOwnership(id).pipe(Effect.result);
+    if (ownership !== undefined && Result.isFailure(ownership))
+      failures.push(providerInventoryFailure(String(id), ownership.failure));
+    const hasRecordedHoldings =
+      journalProviders.has(String(id)) ||
+      (state !== undefined &&
+        (Result.isFailure(state) || state.success.plans.length > 0 || state.success.unreadable.length > 0)) ||
+      (ownership !== undefined && (Result.isFailure(ownership) || ownership.success));
 
-      // Scope each observation so a broken provider cannot hide another provider's workloads.
-      const observed = yield* (registry.observeRuntime ?? Effect.succeed([])).pipe(
-        Effect.provideService(TeardownProvider, id),
-        Effect.result,
-      );
-      if (Result.isFailure(observed)) {
-        if (hasRecordedHoldings) failures.push(providerInventoryFailure(String(id), observed.failure));
-        continue;
-      }
-      const providerSnapshots = observed.success.filter((snapshot) => snapshot.providerId === id);
-      snapshots.push(...providerSnapshots);
-      if (providerSnapshots.some((snapshot) => snapshot.runtimeObserved)) continue;
-      // A failed status observation is indistinguishable from idle in the snapshot. Classify it
-      // without launching, and fail only when this provider has recorded holdings to protect.
-      const status = yield* registry.select(id).pipe(
-        Effect.flatMap((provider) => provider.getStatus),
-        Effect.result,
-      );
-      if (Result.isFailure(status)) {
-        if (hasRecordedHoldings) failures.push(providerInventoryFailure(String(id), status.failure));
-        continue;
-      }
-      if (status.success.state !== "idle" && hasRecordedHoldings)
-        failures.push(providerInventoryFailure(String(id), unobservedRuntimeError(id)));
+    // Scope each observation so a broken provider cannot hide another provider's workloads.
+    const observed = yield* (registry.observeRuntime ?? Effect.succeed([])).pipe(
+      Effect.provideService(TeardownProvider, id),
+      Effect.result,
+    );
+    if (Result.isFailure(observed)) {
+      if (hasRecordedHoldings) failures.push(providerInventoryFailure(String(id), observed.failure));
+      continue;
     }
+    const providerSnapshots = observed.success.filter((snapshot) => snapshot.providerId === id);
+    snapshots.push(...providerSnapshots);
+    if (providerSnapshots.some((snapshot) => snapshot.runtimeObserved)) continue;
+    // A failed status observation is indistinguishable from idle in the snapshot. Classify it
+    // without launching, and fail only when this provider has recorded holdings to protect.
+    const status = yield* registry.select(id).pipe(
+      Effect.flatMap((provider) => provider.getStatus),
+      Effect.result,
+    );
+    if (Result.isFailure(status)) {
+      if (hasRecordedHoldings) failures.push(providerInventoryFailure(String(id), status.failure));
+      continue;
+    }
+    if (status.success.state !== "idle" && hasRecordedHoldings)
+      failures.push(providerInventoryFailure(String(id), unobservedRuntimeError(id)));
+  }
 
-    return { snapshots, failures };
-  });
+  return { snapshots, failures };
+});
 
 export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
   options: PoweroffOptions = {},
 ): Effect.fn.Return<PoweroffResult, PoweroffError, PoweroffServices> {
   const journalRead = yield* readAcceleratedStartInventory(false).pipe(Effect.result);
   const journalRecords = Result.isSuccess(journalRead) ? journalRead.success.records : [];
-  const inventory = yield* collectInventory(
-    new Set(journalRecords.map((journal) => journal.providerId)),
-  );
+  const inventory = yield* collectInventory(new Set(journalRecords.map((journal) => journal.providerId)));
   const failures: StopFailure[] = [...inventory.failures];
   const apps: PoweroffAppResult[] = [];
   if (Result.isFailure(journalRead)) failures.push(providerInventoryFailure("journals", journalRead.failure));
