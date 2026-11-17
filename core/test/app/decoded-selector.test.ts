@@ -7,7 +7,7 @@ import { AbsolutePath, LandofileShape, LogSourceId, ProviderId, ServiceName } fr
 import { RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
-import { rememberVersionConstraintEntries } from "@lando/landofile/version-constraint";
+import { authoredDocumentFrom } from "@lando/landofile/provenance";
 import { Effect, Layer, Schema } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
@@ -126,9 +126,19 @@ for (const includes of [[], ["fragment.yml"]]) {
       // Given: the visible range is valid but a remembered lower layer is incompatible.
       await Bun.write(join(root, "fragment.yml"), "lando: '*'\n");
       const source = join(root, ".lando.base.yml");
-      const landofile = rememberVersionConstraintEntries(decodedLandofile(includes), [
-        { range: ">=99", source, layer: "base", order: 0 },
-      ]);
+      const landofile = decodedLandofile(includes);
+      Object.defineProperty(landofile, "provenance", {
+        value: {
+          ...authoredDocumentFrom(landofile, {
+            file: join(root, ".lando.yml"),
+            layer: "canonical",
+            path: [],
+          }).provenance,
+          versionConstraints: [{ range: ">=99", source, layer: "base", order: 0 }],
+        },
+        enumerable: false,
+        configurable: true,
+      });
 
       // When: the public API resolves the decoded object.
       const error = await Effect.runPromise(

@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { withValueOrigins } from "@lando/sdk/landofile";
 import { applyFinalizeOverrides } from "../src/pipeline/finalize-overrides.ts";
-import { getOrigins, rememberOrigins } from "../src/pipeline/origins.ts";
+import { authoredDocumentFrom } from "../src/provenance.ts";
 
 test("service selection removes excluded values and their origins without mutating authored input", () => {
   const document = {
@@ -10,19 +9,19 @@ test("service selection removes excluded values and their origins without mutati
       enabled: { type: "lando" },
     },
   };
-  const origins = withValueOrigins(document, (path) => ({
+  const authored = authoredDocumentFrom(document, {
     file: "/app/.lando.yml",
-    layer: "canonical" as const,
-    path,
-  })).origins;
-  rememberOrigins(document, origins);
+    layer: "canonical",
+    path: [],
+  });
+  const origins = authored.provenance.origins;
 
-  const selected = applyFinalizeOverrides(document, { name: "global", excludedServices: ["disabled"] });
+  const selected = applyFinalizeOverrides(authored, { name: "global", excludedServices: ["disabled"] });
 
-  expect(selected).toEqual({ name: "global", services: { enabled: { type: "lando" } } });
-  expect(selected).not.toHaveProperty("excludedServices");
-  expect(getOrigins(selected)?.children.get("services")?.children.has("disabled")).toBe(false);
-  expect(getOrigins(selected)?.children.get("services")?.children.get("enabled")).toBe(
+  expect(selected.value).toEqual({ name: "global", services: { enabled: { type: "lando" } } });
+  expect(selected.value).not.toHaveProperty("excludedServices");
+  expect(selected.provenance.origins.children.get("services")?.children.has("disabled")).toBe(false);
+  expect(selected.provenance.origins.children.get("services")?.children.get("enabled")).toBe(
     origins.children.get("services")?.children.get("enabled"),
   );
   expect(document.services.disabled).toEqual({ environment: { CHANGE: "authored" } });
@@ -30,5 +29,11 @@ test("service selection removes excluded values and their origins without mutati
 });
 
 test("absent services remain absent when only service exclusions are supplied", () => {
-  expect(applyFinalizeOverrides({ runtime: 4 }, { excludedServices: ["disabled"] })).toEqual({ runtime: 4 });
+  const document = authoredDocumentFrom(
+    { runtime: 4 },
+    { file: "/app/.lando.yml", layer: "canonical", path: [] },
+  );
+  expect(applyFinalizeOverrides(document, { excludedServices: ["disabled"] }).value).toEqual({
+    runtime: 4,
+  });
 });

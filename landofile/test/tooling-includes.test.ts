@@ -4,10 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { Effect } from "effect";
-
-import { getLocalIncludePaths } from "../src/include-provenance.ts";
-import { getInternalToolingTasks } from "../src/tooling-include-provenance.ts";
 import { authoredRecipe, resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
+import { internalToolingTasksOf, localIncludePathsOf } from "./provenance-support.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const resolve = (landofile: LandofileShape, appRoot: string) =>
@@ -83,7 +81,7 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
       // When
       const resolved = await resolve(landofile, appRoot);
       // Then
-      expect(resolved.tooling).toEqual({
+      expect(resolved.document.tooling).toEqual({
         "docs:greet": { cmd: "echo hi", vars: { PORT: 4321 } },
         "docs:off": { disabled: true },
       });
@@ -102,7 +100,7 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
       appRoot,
     );
     // Then
-    expect(resolved.tooling?.["docs:greet"]).toEqual({ cmd: "echo local", service: ":host" });
+    expect(resolved.document.tooling?.["docs:greet"]).toEqual({ cmd: "echo local", service: ":host" });
   });
 
   test("nested string tasks inherit include vars with the inner include taking precedence", async () => {
@@ -125,7 +123,7 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
       appRoot,
     );
     // Then
-    expect(resolved.tooling?.["docs:inner:greet"]).toEqual({
+    expect(resolved.document.tooling?.["docs:inner:greet"]).toEqual({
       cmd: "echo hi",
       vars: { PORT: 5173, MODE: "docs" },
     });
@@ -150,7 +148,7 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
       }),
     );
     // Then
-    expect(result.tooling?.["typed:build"]?.flags?.debug?.required).toBe(true);
+    expect(result.document.tooling?.["typed:build"]?.flags?.debug?.required).toBe(true);
   });
 
   test("namespaces included tasks, aliases the namespace, applies excludes, and layers include vars", async () => {
@@ -174,16 +172,16 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
 
     // Then included tasks register under the namespace and its alias, excludes are gone,
     // and include vars apply only where the task did not define its own value.
-    expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual([
+    expect(Object.keys(resolved.document.tooling ?? {}).sort()).toEqual([
       "docs:build",
       "docs:serve",
       "documentation:build",
       "documentation:serve",
     ]);
-    expect(resolved.tooling?.["docs:build"]?.cmd).toBe("bun run build");
-    expect(resolved.tooling?.["docs:build"]?.vars?.DOCS_PORT).toBe(4321);
-    expect(resolved.tooling?.["docs:serve"]?.vars?.DOCS_PORT).toBe(5173);
-    expect(resolved.tooling?.["documentation:build"]?.cmd).toBe("bun run build");
+    expect(resolved.document.tooling?.["docs:build"]?.cmd).toBe("bun run build");
+    expect(resolved.document.tooling?.["docs:build"]?.vars?.DOCS_PORT).toBe(4321);
+    expect(resolved.document.tooling?.["docs:serve"]?.vars?.DOCS_PORT).toBe(5173);
+    expect(resolved.document.tooling?.["documentation:build"]?.cmd).toBe("bun run build");
   });
 
   test("flatten registers included tasks without the namespace prefix", async () => {
@@ -196,7 +194,7 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     const resolved = await resolve(landofile, appRoot);
 
     // Then
-    expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual(["build", "publish", "serve"]);
+    expect(Object.keys(resolved.document.tooling ?? {}).sort()).toEqual(["build", "publish", "serve"]);
   });
 
   test.each(["!override\n  task:\n    cmd: override", "!reset"])(
@@ -219,7 +217,7 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
         },
         appRoot,
       );
-      expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual(
+      expect(Object.keys(resolved.document.tooling ?? {}).sort()).toEqual(
         directive.startsWith("!override") ? ["docs:task", "local"] : ["local"],
       );
     },
@@ -276,12 +274,12 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     const resolved = await resolve(landofile, appRoot);
 
     // Then
-    expect([...getInternalToolingTasks(resolved)].sort()).toEqual([
+    expect([...internalToolingTasksOf(resolved)].sort()).toEqual([
       "docs:build",
       "docs:publish",
       "docs:serve",
     ]);
-    expect(resolved.tooling?.["docs:build"]).not.toHaveProperty("internal");
+    expect(resolved.document.tooling?.["docs:build"]).not.toHaveProperty("internal");
   });
 
   test("the Landofile's own tooling task wins over an included task of the same id", async () => {
@@ -295,8 +293,8 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     const resolved = await resolve(landofile, appRoot);
 
     // Then
-    expect(resolved.tooling?.build?.cmd).toBe("make authored");
-    expect(resolved.tooling?.build?.service).toBe("web");
+    expect(resolved.document.tooling?.build?.cmd).toBe("make authored");
+    expect(resolved.document.tooling?.build?.service).toBe("web");
   });
 
   test("records the fragment path as a local include path so command caches invalidate", async () => {
@@ -309,7 +307,7 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     const resolved = await resolve(landofile, appRoot);
 
     // Then
-    expect(getLocalIncludePaths(resolved).some((path) => path.endsWith(".lando.tasks.yml"))).toBe(true);
+    expect(localIncludePathsOf(resolved).some((path) => path.endsWith(".lando.tasks.yml"))).toBe(true);
   });
 
   test("consumes the tooling include entry instead of leaving it in the resolved Landofile", async () => {
@@ -319,11 +317,14 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     };
 
     // When
-    const resolved = await resolve(landofile, appRoot);
+    const resolved = await resolve(
+      { ...landofile, toolingIncludes: { shorthand: { file: "./docs/.lando.tasks.yml" } } },
+      appRoot,
+    );
 
     // Then
-    expect(resolved.includes).toBeUndefined();
-    expect(resolved).not.toHaveProperty("toolingIncludes");
+    expect(resolved.document.includes).toBeUndefined();
+    expect(resolved.document).not.toHaveProperty("toolingIncludes");
   });
 
   test("keeps canonical tooling declarations from every ordinary fragment", async () => {
@@ -351,8 +352,8 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     );
 
     // Then neither fragment's declaration is dropped and both spellings agree
-    expect(Object.keys(canonical.tooling ?? {}).sort()).toEqual(["a:build", "b:test"]);
-    expect(canonical.tooling).toEqual(shorthand.tooling);
+    expect(Object.keys(canonical.document.tooling ?? {}).sort()).toEqual(["a:build", "b:test"]);
+    expect(canonical.document.tooling).toEqual(shorthand.document.tooling);
   });
 
   test("keeps every canonical declaration pointing one namespace at several fragments", async () => {
@@ -372,7 +373,7 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     );
 
     // Then neither sibling declaration is treated as an override of the other
-    expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual(["shared:atask", "shared:btask"]);
+    expect(Object.keys(resolved.document.tooling ?? {}).sort()).toEqual(["shared:atask", "shared:btask"]);
   });
 
   test("still rejects sibling declarations that contribute the same task id", async () => {
@@ -440,7 +441,7 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     const resolved = await resolve({ includes: ["./fragments/app.yml"] }, appRoot);
 
     // Then the tooling source uses the directory of the fragment that declared it
-    expect(resolved.tooling?.["docs:build"]?.cmd).toBe("bun run build");
+    expect(resolved.document.tooling?.["docs:build"]?.cmd).toBe("bun run build");
   });
 });
 
@@ -491,7 +492,7 @@ describe("tooling includes — toolingIncludes shorthand", () => {
     ]);
 
     // Then they produce identical plans
-    expect(fromShorthand.tooling).toEqual(fromCanonical.tooling);
+    expect(fromShorthand.document.tooling).toEqual(fromCanonical.document.tooling);
   });
 
   test("carries internal through the shorthand form too", async () => {
@@ -504,7 +505,7 @@ describe("tooling includes — toolingIncludes shorthand", () => {
     const resolved = await resolve(landofile, appRoot);
 
     // Then
-    expect([...getInternalToolingTasks(resolved)].sort()).toEqual(["docs:build", "docs:serve"]);
+    expect([...internalToolingTasksOf(resolved)].sort()).toEqual(["docs:build", "docs:serve"]);
   });
 
   test("resolves nested tooling includes relative to the declaring fragment", async () => {
@@ -536,7 +537,7 @@ describe("tooling includes — toolingIncludes shorthand", () => {
     );
 
     // Then the nested include is namespaced beneath its parent namespace
-    expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual(["docs:api:lint", "docs:build"]);
+    expect(Object.keys(resolved.document.tooling ?? {}).sort()).toEqual(["docs:api:lint", "docs:build"]);
   });
 });
 
@@ -571,7 +572,7 @@ describe("tooling includes — failure modes", () => {
     );
 
     // Then
-    expect(resolved.tooling).toBeUndefined();
+    expect(resolved.document.tooling).toBeUndefined();
   });
 
   test("optional does not suppress an outside-root fragment", async () => {

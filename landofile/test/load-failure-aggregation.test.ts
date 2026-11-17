@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Effect } from "effect";
 import { lintLandofileSnapshot } from "../src/lint.ts";
 import { createLoadFailureRecorder } from "../src/load-failures.ts";
+import { authoredDocumentFrom } from "../src/provenance.ts";
 import { loadLandofileLayers } from "../src/service.ts";
 import { resolveToolingIncludes } from "../src/tooling-includes.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
@@ -16,6 +17,9 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
+const authored = (value: Record<string, unknown>) =>
+  authoredDocumentFrom(value, { file: join(root, ".lando.yml"), layer: "canonical", path: [] });
+
 const inputs = () => ({
   ports: makeTestLandofilePorts(root),
   stateStore: makeTestLandofileStateStore(),
@@ -185,17 +189,17 @@ test("discards the entire later tooling contribution on a collision", async () =
       sourceRoot: root,
       recorder,
       loadScope: { env: {}, recipe: undefined, pendingSites: [], recorder },
-      landofile: {
+      document: authored({
         includes: [
           { kind: "tooling", source: "./a.yml", namespace: "tools" },
           { kind: "tooling", source: "./b.yml", namespace: "tools" },
         ],
-      },
+      }),
     }),
   );
   expect(recorder.failures).toHaveLength(1);
   expect(recorder.failures[0]).toMatchObject({ _tag: "LandofileIncludeError", kind: "forbidden-field" });
-  expect(Object.keys(result.tooling)).toEqual(["tools:shared"]);
+  expect(Object.keys(result.tooling.value)).toEqual(["tools:shared"]);
   expect([...result.defaults.keys()]).toEqual(["tools:shared"]);
 });
 
@@ -205,7 +209,7 @@ test("the direct tooling resolver fails with a tagged error for a tooling-only f
       appRoot: root,
       sourceRoot: root,
       loadScope: { env: {}, recipe: undefined, pendingSites: [] },
-      landofile: { includes: [{ source: "./fragment.yml", namespace: "tools" }] },
+      document: authored({ includes: [{ source: "./fragment.yml", namespace: "tools" }] }),
     }),
   );
   if (exit._tag !== "Failure") throw new Error("expected the tooling-only field to fail");
@@ -408,17 +412,17 @@ test("does not diagnose a collision against an incomplete tooling contribution",
       sourceRoot: root,
       recorder,
       loadScope: { env: {}, recipe: undefined, recorder },
-      landofile: {
+      document: authored({
         includes: [
           { kind: "tooling", source: "./a.yml", namespace: "tools" },
           { kind: "tooling", source: "./b.yml", namespace: "tools" },
         ],
-      },
+      }),
     }),
   );
   expect(recorder.failures).toHaveLength(1);
   expect(recorder.failures[0]).toMatchObject({ _tag: "LandofileIncludeError", kind: "fetch-failed" });
-  expect(result.tooling).toMatchObject({ "tools:shared": "second" });
+  expect(result.tooling.value).toMatchObject({ "tools:shared": "second" });
 });
 
 test("does not deduplicate eager failures with the same referenced path at different destinations", async () => {

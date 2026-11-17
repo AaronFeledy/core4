@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { lintLandofileSnapshot } from "../src/lint.ts";
-import { resolveAuthoredIncludes } from "./include-pipeline.ts";
+import { resolveAuthoredDocument } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 let root = "";
@@ -19,7 +19,7 @@ afterEach(async () => {
 const resolveFailure = (landofile: LandofileShape, maxDepth?: number) =>
   Effect.runPromise(
     Effect.flip(
-      resolveAuthoredIncludes({
+      resolveAuthoredDocument({
         landofile,
         appRoot: root,
         cacheRoot: root,

@@ -18,7 +18,6 @@ import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
-import { getLandofileAppRoot, rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import {
   type ComposeDispositionMatch,
   analyzeComposeDispositions,
@@ -127,36 +126,35 @@ const loadYamlExit = async (dir: string, content: string) => {
   };
 };
 
-const compileFixture = (landofile: LandofileShape) => {
-  const root = getLandofileAppRoot(landofile) ?? process.cwd();
+const compileFixture = (landofile: LandofileShape, root: string) => {
   return loadAuthoredDocuments(
     [{ file: join(root, ".lando.yml"), value: Schema.encodeSync(LandofileShape)(landofile) }],
     { appRoot: root, file: join(root, ".lando.yml") },
   );
 };
-const planLandofile = (landofile: LandofileShape, capabilities: ProviderCapabilities = nativeCapabilities) =>
-  Effect.flatMap(compileFixture(landofile), (compiled) =>
+const planLandofile = (
+  landofile: LandofileShape,
+  root: string,
+  capabilities: ProviderCapabilities = nativeCapabilities,
+) =>
+  Effect.flatMap(compileFixture(landofile, root), (compiled) =>
     Effect.flatMap(AppPlanner, (planner) => planner.plan(compiled, capabilities)),
   ).pipe(Effect.provide(plannerLayer), Effect.provide(registryLayer), Effect.runPromise);
 
-const planLandofileExit = (landofile: LandofileShape, capabilities: ProviderCapabilities) =>
-  Effect.flatMap(compileFixture(landofile), (compiled) =>
+const planLandofileExit = (landofile: LandofileShape, root: string, capabilities: ProviderCapabilities) =>
+  Effect.flatMap(compileFixture(landofile, root), (compiled) =>
     Effect.flatMap(AppPlanner, (planner) => planner.plan(compiled, capabilities)),
   ).pipe(Effect.provide(plannerLayer), Effect.provide(registryLayer), Effect.runPromiseExit);
 
-const asComposeLandofile = (landofile: LandofileShape, dir: string): LandofileShape =>
-  rememberLandofileAppRoot<LandofileShape>(
-    {
-      ...landofile,
-      services: Object.fromEntries(
-        Object.entries(landofile.services ?? {}).map(([name, service]) => [
-          name,
-          { ...service, type: "compose", home: false },
-        ]),
-      ),
-    },
-    dir,
-  );
+const asComposeLandofile = (landofile: LandofileShape): LandofileShape => ({
+  ...landofile,
+  services: Object.fromEntries(
+    Object.entries(landofile.services ?? {}).map(([name, service]) => [
+      name,
+      { ...service, type: "compose", home: false },
+    ]),
+  ),
+});
 
 const stubComposeConfigFiles = async (dir: string, landofile: LandofileShape) => {
   for (const definition of Object.values(landofile.configs ?? {})) {
@@ -169,7 +167,7 @@ const stubComposeConfigFiles = async (dir: string, landofile: LandofileShape) =>
 const loadPlannableFixture = async (dir: string, fixture: FixtureCase): Promise<LandofileShape> => {
   const loaded = await loadYamlExit(dir, `name: ${fixture.id}\n${fixture.content}`);
   if (!Exit.isSuccess(loaded.exit)) throw new ComposeFixtureInvariantError();
-  const landofile = asComposeLandofile(loaded.exit.value, dir);
+  const landofile = asComposeLandofile(loaded.exit.value);
   await stubComposeConfigFiles(dir, landofile);
   return landofile;
 };
@@ -227,10 +225,10 @@ describe("Compose conformance fixtures", () => {
         if (!Exit.isSuccess(loaded.exit)) return;
         await materializeFixtureEnvFiles(dir, loaded.exit.value);
         await stubComposeConfigFiles(dir, loaded.exit.value);
-        const composeLandofile = asComposeLandofile(loaded.exit.value, dir);
+        const composeLandofile = asComposeLandofile(loaded.exit.value);
 
         // When
-        const plan = await planLandofile(composeLandofile);
+        const plan = await planLandofile(composeLandofile, dir);
 
         // Then
         const executedAssertionCount = assertFixtureServiceOutcomes(fixture.matches, {
@@ -344,7 +342,7 @@ describe("Compose service-field capability gate", () => {
         await materializeFixtureEnvFiles(dir, landofile);
 
         // When
-        const error = failureOf(await planLandofileExit(landofile, restrictedCapabilities));
+        const error = failureOf(await planLandofileExit(landofile, dir, restrictedCapabilities));
 
         // Then
         expect(error).toBeInstanceOf(CapabilityError);
@@ -364,7 +362,7 @@ describe("Compose service-field capability gate", () => {
         await materializeFixtureEnvFiles(dir, landofile);
 
         // When
-        const plan = await planLandofile(landofile, nativeCapabilities);
+        const plan = await planLandofile(landofile, dir, nativeCapabilities);
 
         // Then
         expect(plan.services[ServiceName.make(service)]).toBeDefined();

@@ -3,15 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
-import { getSourceDocuments } from "../../src/pipeline/source-table.ts";
+import { authoredDocumentFrom } from "../../src/provenance.ts";
 import { loadLandofileLayers } from "../../src/service.ts";
 import * as validation from "../../src/validation.ts";
-import {
-  evaluateVersionConstraints,
-  getVersionConstraintEntries,
-  rememberVersionConstraintEntries,
-} from "../../src/version-constraint.ts";
+import { evaluateVersionConstraints } from "../../src/version-constraint.ts";
 import { resolveAuthoredIncludes } from "../include-pipeline.ts";
+import { provenanceIn } from "../provenance-support.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "../support.ts";
 
 const withApp = async <T>(files: Readonly<Record<string, string>>, use: (root: string) => Promise<T>) => {
@@ -39,11 +36,13 @@ test("resolves an env range before validating and remembering it", async () => {
       const loaded = await Effect.runPromise(load(root, { RANGE: ">=4 <5" }));
       // Then runtime consumers receive the resolved range after exactly one strict decode.
       expect(loaded.document.lando).toBe(">=4 <5");
-      expect(getVersionConstraintEntries(loaded.document, "unused")).toEqual([
+      expect(provenanceIn(loaded)?.versionConstraints ?? []).toEqual([
         { range: ">=4 <5", source: join(root, ".lando.yml"), layer: "canonical", order: 3 },
       ]);
       expect(calls).toHaveBeenCalledTimes(1);
-      expect(getSourceDocuments(loaded)[0]?.document).toMatchObject({ lando: "{{ env.RANGE }}" });
+      expect((provenanceIn(loaded)?.documents ?? [])[0]?.document).toMatchObject({
+        lando: "{{ env.RANGE }}",
+      });
     } finally {
       calls.mockRestore();
     }
@@ -82,7 +81,7 @@ test("resolves every shadowed layer and nested include range against merged reci
       try {
         // When
         const loaded = await Effect.runPromise(load(root, { DIST: "<5", LOCAL: ">=4.3", NESTED: "<4.5" }));
-        const entries = getVersionConstraintEntries(loaded.document, "unused");
+        const entries = provenanceIn(loaded)?.versionConstraints ?? [];
         // Then the winning wildcard does not discard any lower constraint or its attribution.
         expect(loaded.document.lando).toBe("*");
         expect(entries).toEqual([
@@ -102,7 +101,7 @@ test("resolves every shadowed layer and nested include range against merged reci
           join(root, "second.yml"),
         ]);
         expect(calls).toHaveBeenCalledTimes(1);
-        expect(getSourceDocuments(loaded)).toHaveLength(8);
+        expect(provenanceIn(loaded)?.documents ?? []).toHaveLength(8);
       } finally {
         calls.mockRestore();
       }
@@ -193,18 +192,24 @@ test("keeps remembered source constraints while acquiring nested includes", asyn
     async (root) => {
       const base = join(root, ".lando.base.yml");
       const user = join(root, ".lando.user.yml");
-      const landofile = rememberVersionConstraintEntries(
-        { name: "provenance", lando: "*", includes: ["outer.yml"] },
-        [
-          { range: ">=99", source: base, layer: "base", order: 0 },
-          { range: "*", source: user, layer: "user", order: 5 },
+      const landofile = { name: "provenance", lando: "*", includes: ["outer.yml"] };
+      const provenance = {
+        ...authoredDocumentFrom(landofile, {
+          file: join(root, ".lando.yml"),
+          layer: "canonical" as const,
+          path: [],
+        }).provenance,
+        versionConstraints: [
+          { range: ">=99", source: base, layer: "base" as const, order: 0 as const },
+          { range: "*", source: user, layer: "user" as const, order: 5 as const },
         ],
-      );
+      };
 
-      // When includes are acquired under that same object.
+      // When includes are acquired under that same provenance.
       const loaded = await Effect.runPromise(
         resolveAuthoredIncludes({
           landofile,
+          provenance,
           appRoot: root,
           sourcePath: join(root, ".lando.yml"),
           stateStore: makeTestLandofileStateStore(),
@@ -214,8 +219,8 @@ test("keeps remembered source constraints while acquiring nested includes", asyn
       );
 
       // Then neither source is retargeted, dropped, or replayed, and nested ranges stay.
-      expect(loaded.lando).toBe("*");
-      expect(getVersionConstraintEntries(loaded, "unused")).toEqual([
+      expect(loaded.document.lando).toBe("*");
+      expect(provenanceIn(loaded)?.versionConstraints ?? []).toEqual([
         { range: "<9.0.0", source: join(root, "inner.yml"), layer: "canonical", order: 3 },
         { range: ">=1.2.0", source: join(root, "outer.yml"), layer: "canonical", order: 3 },
         { range: ">=99", source: base, layer: "base", order: 0 },

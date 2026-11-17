@@ -9,7 +9,7 @@ import { Effect } from "effect";
 
 import { writeLockEntries } from "../src/include-lockfile.ts";
 import {
-  resolveAuthoredIncludes,
+  resolveAuthoredDocument,
   updateAuthoredIncludes as updateLandofileIncludes,
   verifyAuthoredIncludes as verifyLandofileIncludes,
 } from "./include-pipeline.ts";
@@ -198,7 +198,7 @@ describe("store-backed include lockfile", () => {
     // When
     const error = await Effect.runPromise(
       Effect.flip(
-        resolveAuthoredIncludes({
+        resolveAuthoredDocument({
           landofile: landofile(),
           appRoot,
           cacheRoot,

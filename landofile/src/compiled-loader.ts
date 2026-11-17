@@ -3,8 +3,8 @@ import type { ValueOrigins } from "@lando/sdk/landofile";
 import { ComposedCompiledLandofile, type ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
-import { rememberOrigins } from "./pipeline/origins.ts";
-import { type AuthoredOrigin, prepareOverlay } from "./pipeline/prepare.ts";
+import { prepareOverlay } from "./pipeline/prepare.ts";
+import { type AuthoredDocument, type AuthoredOrigin, emptyProvenance, provenanceOf } from "./provenance.ts";
 import { validationErrorFromCause } from "./validation.ts";
 
 export const loadCompiledLandofile = Effect.fn("Landofile.loadCompiled")(function* (
@@ -36,7 +36,13 @@ export const loadCompiledLandofile = Effect.fn("Landofile.loadCompiled")(functio
     };
   };
   const pendingSites: ParsedPendingSite[] = [...compiled.pendingSites];
-  const document = rememberOrigins(prepared.value, rebase(prepared.origins));
+  const document: AuthoredDocument = {
+    value: prepared.value,
+    provenance: {
+      ...(provenanceOf(compiled) ?? emptyProvenance(prepared.origins)),
+      origins: rebase(prepared.origins),
+    },
+  };
   return yield* finalizeLandofile(file, document, {
     appRoot: compiled.context.appRoot,
     env: compiled.context.env,

@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { type LandofileProvenance, provenanceOf } from "@lando/landofile/provenance";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import type { ProviderCapabilities } from "@lando/sdk/schema";
 import { AbsolutePath, type LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
@@ -7,12 +7,17 @@ import type { AppPlanner } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 
 /** Only for already-decoded literal fixtures; authored expressions use compileTestLandofile. */
-export const literalTestLandofile = (document: LandofileShape, root = process.cwd()) =>
+export const literalTestLandofile = (
+  document: LandofileShape,
+  root = process.cwd(),
+  provenance?: LandofileProvenance,
+) =>
   LoadScopedLandofile.make({
     stage: "load-scoped",
     document,
     pendingSites: [],
     context: { appRoot: AbsolutePath.make(root), env: {} },
+    ...(provenance === undefined ? {} : { provenance }),
   });
 
 export const compileTestLandofile = (document: unknown, root = process.cwd()) => {
@@ -25,7 +30,7 @@ export const planTestLandofile = (
   document: LandofileShape & { readonly stage?: never },
   capabilities: ProviderCapabilities,
 ) =>
-  compileTestLandofile(document, getLandofileAppRoot(document) ?? process.cwd()).pipe(
+  compileTestLandofile(document, provenanceOf(document)?.appRoot ?? process.cwd()).pipe(
     Effect.flatMap((compiled) => planner.plan(compiled, capabilities)),
   );
 
@@ -34,4 +39,7 @@ export const planLiteralTestLandofile = (
   document: LandofileShape & { readonly stage?: never },
   capabilities: ProviderCapabilities,
 ) =>
-  planner.plan(literalTestLandofile(document, getLandofileAppRoot(document) ?? process.cwd()), capabilities);
+  planner.plan(
+    literalTestLandofile(document, provenanceOf(document)?.appRoot ?? process.cwd()),
+    capabilities,
+  );

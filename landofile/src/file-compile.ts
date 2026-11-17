@@ -1,6 +1,5 @@
 import { dirname } from "node:path";
 import { Effect } from "effect";
-import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { createIncludeResolutionSession, publishIncludeProposals } from "./include-session.ts";
 import { LANDOFILE_LAYER_POSITIONS, type PresentLandofileLayer } from "./layers.ts";
 import { type LandofileLoadContext, ensureConsistentRoot } from "./load-context.ts";
@@ -9,7 +8,6 @@ import { composePreparedLayers } from "./pipeline/compose.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import { classifyLoadFailure } from "./pipeline/legacy.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
-import { getSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 import { prepareLandofileSource, prepareLandofileValue } from "./source.ts";
 
@@ -58,9 +56,9 @@ export const compileLandofileFile = Effect.fn("Landofile.loadPreparedFile")(func
     logger: source.context.logger,
   }).pipe(
     Effect.catchTag(["LandofileParseError", "LandofileValidationError"], (error) =>
-      classifyLoadFailure(error, appRoot, getSourceDocuments(merged)),
+      classifyLoadFailure(error, appRoot, merged.provenance.documents),
     ),
   );
   yield* publishIncludeProposals(session, inputs?.stateStore);
-  return { landofile: rememberLandofileAppRoot(landofile, appRoot), scope: loadScope };
+  return { landofile, scope: loadScope };
 }, Effect.scoped);

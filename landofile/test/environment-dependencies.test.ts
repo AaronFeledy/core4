@@ -7,11 +7,7 @@ import {
   recordExpressionEnvironment,
   unionEnvironmentDependencies,
 } from "../src/environment-dependencies.ts";
-import {
-  getLandofileEnvironmentDependencies,
-  hasLandofileEnvironmentDependencies,
-  rememberLandofileEnvironmentDependencies,
-} from "../src/load-expression-provenance.ts";
+import { authoredDocumentFrom, combineProvenance } from "../src/provenance.ts";
 
 describe("recordEnvironment view", () => {
   test("get/has/getOwnPropertyDescriptor record string names including unset", () => {
@@ -113,18 +109,22 @@ describe("unionEnvironmentDependencies", () => {
   });
 });
 
-describe("provenance side channel", () => {
-  test("remembers and reads dependencies without a public field", () => {
-    const landofile = { name: "app" };
-    expect(hasLandofileEnvironmentDependencies(landofile)).toBe(false);
-    expect(getLandofileEnvironmentDependencies(landofile)).toEqual(emptyEnvironmentDependencies());
-    rememberLandofileEnvironmentDependencies(landofile, { _tag: "Names", names: ["FOO"] });
-    expect(hasLandofileEnvironmentDependencies(landofile)).toBe(true);
-    expect(getLandofileEnvironmentDependencies(landofile)).toEqual({
+describe("carried provenance", () => {
+  test("initializes empty dependencies and preserves recorded names through composition", () => {
+    const document = authoredDocumentFrom(
+      { name: "app" },
+      { file: "/app/.lando.yml", layer: "canonical", path: [] },
+    );
+    expect(document.provenance.environmentDependencies).toEqual({ _tag: "Names", names: [] });
+    const provenance = combineProvenance(
+      [{ ...document.provenance, environmentDependencies: { _tag: "Names", names: ["FOO"] } }],
+      document.provenance.origins,
+    );
+    expect(provenance.environmentDependencies).toEqual({
       _tag: "Names",
       names: ["FOO"],
     });
-    expect(Object.keys(landofile)).toEqual(["name"]);
+    expect(Object.keys(document.value)).toEqual(["name"]);
   });
 
   test("documents that raw values are never persisted on the dependency set", () => {

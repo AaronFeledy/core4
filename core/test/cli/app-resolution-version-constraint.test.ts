@@ -6,6 +6,7 @@ import { assertLandoVersionConstraint, loadUserLandofile } from "@lando/engine/l
 import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
+import { provenanceOf } from "@lando/landofile/provenance";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService, Renderer } from "@lando/sdk/services";
@@ -50,22 +51,26 @@ const capturingRendererLayer = (
 
 describe("assertLandoVersionConstraint", () => {
   test("passes when the running version satisfies the constraint", async () => {
-    await Effect.runPromise(assertLandoVersionConstraint(landofile("<5"), { runningVersion: "4.2.0" }));
+    await Effect.runPromise(
+      assertLandoVersionConstraint(landofile("<5"), undefined, { runningVersion: "4.2.0" }),
+    );
   });
 
   test("passes when no lando constraint is declared", async () => {
-    await Effect.runPromise(assertLandoVersionConstraint(landofile(), { runningVersion: "4.2.0" }));
+    await Effect.runPromise(
+      assertLandoVersionConstraint(landofile(), undefined, { runningVersion: "4.2.0" }),
+    );
   });
 
   test("passes a prerelease within the numeric range", async () => {
     await Effect.runPromise(
-      assertLandoVersionConstraint(landofile(">=4.1 <5"), { runningVersion: "4.1.0-beta.2" }),
+      assertLandoVersionConstraint(landofile(">=4.1 <5"), undefined, { runningVersion: "4.1.0-beta.2" }),
     );
   });
 
   test("fails closed with LandofileVersionConstraintError when unsatisfied", async () => {
     const error = await Effect.runPromise(
-      Effect.flip(assertLandoVersionConstraint(landofile(">=4.1"), { runningVersion: "4.0.0" })),
+      Effect.flip(assertLandoVersionConstraint(landofile(">=4.1"), undefined, { runningVersion: "4.0.0" })),
     );
 
     expect(error._tag).toBe("LandofileVersionConstraintError");
@@ -81,7 +86,9 @@ describe("assertLandoVersionConstraint", () => {
 
   test("rejects an unparseable range with LandofileParseError", async () => {
     const error = await Effect.runPromise(
-      Effect.flip(assertLandoVersionConstraint(landofile("not-a-range"), { runningVersion: "4.2.0" })),
+      Effect.flip(
+        assertLandoVersionConstraint(landofile("not-a-range"), undefined, { runningVersion: "4.2.0" }),
+      ),
     );
 
     expect(error._tag).toBe("LandofileParseError");
@@ -92,7 +99,7 @@ describe("assertLandoVersionConstraint", () => {
     const sink = { warnings: [] as string[] };
 
     await Effect.runPromise(
-      assertLandoVersionConstraint(landofile(">=4.1"), {
+      assertLandoVersionConstraint(landofile(">=4.1"), undefined, {
         runningVersion: "4.0.0",
         env: { LANDO_SKIP_VERSION_CONSTRAINT: "1" },
       }).pipe(Effect.provide(capturingRendererLayer(sink))),
@@ -104,7 +111,7 @@ describe("assertLandoVersionConstraint", () => {
 
   test("skip path is a no-op when no Renderer is provided", async () => {
     await Effect.runPromise(
-      assertLandoVersionConstraint(landofile(">=4.1"), {
+      assertLandoVersionConstraint(landofile(">=4.1"), undefined, {
         runningVersion: "4.0.0",
         env: { LANDO_SKIP_VERSION_CONSTRAINT: "1" },
       }),
@@ -115,7 +122,7 @@ describe("assertLandoVersionConstraint", () => {
     const io = createBufferedRendererIO();
 
     await runWithRendererHandling(
-      assertLandoVersionConstraint(landofile(">=5"), {
+      assertLandoVersionConstraint(landofile(">=5"), undefined, {
         runningVersion: "4.2.0",
         env: { LANDO_SKIP_VERSION_CONSTRAINT: "1" },
       }).pipe(Effect.as({ checked: true })),
@@ -155,7 +162,7 @@ describe("lando: is a distinct surface from runtime: and api:", () => {
       runtime: 4,
       services: { web: { api: 4, type: "lando" } },
     });
-    await Effect.runPromise(assertLandoVersionConstraint(shape, { runningVersion: "0.0.1" }));
+    await Effect.runPromise(assertLandoVersionConstraint(shape, undefined, { runningVersion: "0.0.1" }));
   });
 
   test("only lando: drives the constraint while runtime:/api: coexist untouched", async () => {
@@ -165,7 +172,7 @@ describe("lando: is a distinct surface from runtime: and api:", () => {
       services: { web: { api: 4, type: "lando" } },
     });
     const error = await Effect.runPromise(
-      Effect.flip(assertLandoVersionConstraint(shape, { runningVersion: "4.0.0" })),
+      Effect.flip(assertLandoVersionConstraint(shape, undefined, { runningVersion: "4.0.0" })),
     );
 
     expect(error._tag).toBe("LandofileVersionConstraintError");
@@ -207,7 +214,9 @@ describe("loadUserLandofile version-constraint enforcement", () => {
         }).pipe(Effect.provide(makeTestStateStore().layer)),
       );
       const error = await Effect.runPromise(
-        Effect.flip(assertLandoVersionConstraint(resolved, { runningVersion: "4.2.0" })),
+        Effect.flip(
+          assertLandoVersionConstraint(resolved, provenanceOf(resolved), { runningVersion: "4.2.0" }),
+        ),
       );
 
       expect(resolved.document.lando).toBe(">=4.1");

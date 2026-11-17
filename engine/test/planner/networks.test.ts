@@ -9,6 +9,7 @@ import { normalizeNetworks } from "../../src/planner/networks.ts";
 import * as PluginRegistry from "../../src/plugins/registry.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { provenanceIn } from "../provenance-support.ts";
 
 const web = ServiceName.make("web");
 const db = ServiceName.make("db");
@@ -136,6 +137,7 @@ test("attributes a global default attachment failure to its authored local layer
   const result = await Effect.runPromise(
     normalizeNetworks({
       landofile: compiled.document,
+      provenance: provenanceIn(compiled),
       services: compiled.document.services ?? {},
       appRoot,
       perAppBridge: false,

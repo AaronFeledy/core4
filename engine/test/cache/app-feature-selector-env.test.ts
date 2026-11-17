@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getLandofileEnvironmentDependencies } from "@lando/landofile/load-expression-provenance";
 import { definePlugin } from "@lando/sdk/plugins";
 import { type LandofileShape, PluginManifest, ServiceName } from "@lando/sdk/schema";
 import {
@@ -118,15 +117,6 @@ for (const scenario of [
                       ...cache,
                       writeAtomic: (path, bytes) =>
                         cache.writeAtomic(path, bytes).pipe(Effect.tap(() => Effect.sync(() => writes++))),
-                    }),
-                  ),
-                ).pipe(
-                  Effect.tap(() =>
-                    Effect.sync(() => {
-                      expect(getLandofileEnvironmentDependencies(compiled.document)).toEqual({
-                        _tag: "Names",
-                        names: ["LANDO_QA_SEL"],
-                      });
                     }),
                   ),
                 ),

@@ -8,10 +8,10 @@ import {
 import { LANDOFILE_NAME } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
+import { type LandofileProvenance, versionConstraintsFor } from "@lando/landofile/provenance";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
-  getVersionConstraintEntries,
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
 import { LandofileParseError, LandofileVersionConstraintError } from "@lando/sdk/errors";
@@ -73,9 +73,10 @@ const warnConstraintSkipped = Effect.fnUntraced(function* (
 
 export const assertLandoVersionConstraint = (
   landofile: LandofileShape,
+  provenance: LandofileProvenance | undefined,
   options?: LandoVersionConstraintOptions,
 ): Effect.Effect<void, LandofileParseError | LandofileVersionConstraintError> => {
-  const constraints = getVersionConstraintEntries(landofile, options?.sourcePath ?? LANDOFILE_NAME);
+  const constraints = versionConstraintsFor(provenance, landofile, options?.sourcePath ?? LANDOFILE_NAME);
   if (constraints.length === 0) return Effect.void;
 
   const runningVersion = options?.runningVersion ?? CORE_VERSION;
@@ -114,8 +115,8 @@ export const assertLandoVersionConstraint = (
 export const makeEngineUserAppResolution = (inputs: LandofileRuntimeInputs): UserAppResolution =>
   makeUserAppResolution({
     inputs,
-    assertVersionConstraint: (landofile, sourcePath) =>
-      assertLandoVersionConstraint(landofile, {
+    assertVersionConstraint: (landofile, provenance, sourcePath) =>
+      assertLandoVersionConstraint(landofile, provenance, {
         ...(sourcePath === undefined ? {} : { sourcePath }),
         ...(inputs.templates.context?.env === undefined ? {} : { env: inputs.templates.context.env }),
       }),

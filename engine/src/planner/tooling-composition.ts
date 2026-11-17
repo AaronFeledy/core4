@@ -1,8 +1,5 @@
+import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { applyToolingDefaults } from "@lando/landofile/tooling-defaults";
-import {
-  getInternalToolingTasks,
-  rememberInternalToolingTasks,
-} from "@lando/landofile/tooling-include-provenance";
 import { type LandofileShape, ServiceName, type ToolingTaskShape } from "@lando/sdk/schema";
 
 export type EffectiveTooling = Readonly<Record<string, ToolingTaskShape>>;
@@ -19,6 +16,7 @@ export interface ToolingServiceContribution {
 
 export interface ToolingComposition {
   readonly landofile: Pick<LandofileShape, "tooling" | "toolingDefaults">;
+  readonly provenance?: LandofileProvenance | undefined;
   readonly services: readonly ToolingServiceContribution[];
 }
 
@@ -45,13 +43,10 @@ export const toolingBeforeDefaults = (input: ToolingComposition): EffectiveTooli
 };
 
 export const compileEffectiveTooling = (input: ToolingComposition): EffectiveTooling =>
-  rememberInternalToolingTasks(
-    Object.fromEntries(
-      Object.entries(
-        applyToolingDefaults(toolingBeforeDefaults(input), input.landofile.toolingDefaults) ?? {},
-      ).sort(([left], [right]) => compareOrdinal(left, right)),
-    ),
-    getInternalToolingTasks(input.landofile),
+  Object.fromEntries(
+    Object.entries(
+      applyToolingDefaults(toolingBeforeDefaults(input), input.landofile.toolingDefaults) ?? {},
+    ).sort(([left], [right]) => compareOrdinal(left, right)),
   );
 
 export const connectionClientOwners = (input: ToolingComposition): Readonly<Record<string, ServiceName>> =>
