@@ -128,7 +128,7 @@ lando exec app -- printenv GREETING
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 
@@ -168,7 +168,7 @@ Lando removes a container only when its labels prove it belongs to this app. If 
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 
@@ -286,7 +286,7 @@ lando apps:poweroff
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 
@@ -309,7 +309,7 @@ it stopped. Results stay on stdout; progress goes to stderr:
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 
