@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -18,9 +18,11 @@ import {
   LandofileService,
   RuntimeProviderRegistry,
   ScratchAppService,
+  StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
+import { pendingStartBucketSpec } from "../../src/operations/accelerated-start-record.ts";
 import { poweroff } from "../../src/operations/poweroff.ts";
 import { HostMaintenanceRegistry } from "../../src/runtime/host-maintenance.ts";
 import { globalTeardownHarness } from "../../src/testing/global-teardown.ts";
@@ -79,6 +81,10 @@ const makeHarness = async (input: {
   }>;
   readonly quiescent?: { readonly root: string; readonly plan: AppPlan };
   readonly failRoot?: string;
+  readonly runtimeObserved?: boolean;
+  readonly statusFailure?: boolean;
+  readonly idle?: boolean;
+  readonly holdingPlans?: ReadonlyArray<AppPlan>;
 }) => {
   const teardown = await globalTeardownHarness(dataRoot);
   const calls: string[] = [];
@@ -101,15 +107,25 @@ const makeHarness = async (input: {
     services.push(serviceAt(input.quiescent.root, String(input.quiescent.plan.id), "exited"));
   const snapshot: ProviderRuntimeSnapshot = {
     providerId,
-    runtimeObserved: true,
-    appliedPlans: [],
+    runtimeObserved: input.runtimeObserved ?? true,
+    appliedPlans: input.holdingPlans ?? [],
     services,
     volumes: [],
   };
   const provider = {
     ...TestRuntimeProvider,
     id: "lando",
-    appliedPlans: Effect.succeed([]),
+    appliedPlans: Effect.succeed(input.holdingPlans ?? []),
+    getStatus: input.statusFailure
+      ? Effect.fail(
+          new ProviderUnavailableError({
+            providerId,
+            operation: "getStatus",
+            message: "Cannot observe the runtime.",
+            remediation: "Restore provider access and retry.",
+          }),
+        )
+      : Effect.succeed({ state: input.idle === true ? ("idle" as const) : ("running" as const) }),
     list: () => Effect.succeed([]),
     listVolumes: () => Effect.succeed([]),
     destroy: (target: { readonly app: string; readonly plan?: AppPlan }) =>
@@ -123,7 +139,8 @@ const makeHarness = async (input: {
   const registry = {
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+    appliedStateInventory: () =>
+      Effect.succeed({ plans: input.holdingPlans ?? [], unreadable: [] }),
     observeRuntime: Effect.succeed([snapshot]),
     appliedPlansFor: (root: AbsolutePath, scope?: ProviderId) =>
       Effect.succeed(
@@ -292,6 +309,79 @@ describe("poweroff operation", () => {
       );
       expect(result.keptGlobalApp).toBe(true);
       expect(harness.calls).not.toContain("runtime");
+    });
+  });
+
+  test("fails a provider with recorded holdings when its runtime inventory is unobserved", async () => {
+    await withRoots(async ({ a }) => {
+      const harness = await makeHarness({
+        roots: [],
+        runtimeObserved: false,
+        statusFailure: true,
+        holdingPlans: [planAt(a)],
+      });
+      const result = await Effect.runPromise(poweroff().pipe(Effect.result, Effect.provide(harness.layer)));
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") throw new Error("expected a typed poweroff failure");
+      if (result.failure._tag !== "PoweroffStopError")
+        throw new TypeError(`expected PoweroffStopError, received ${result.failure._tag}`);
+      expect(result.failure.failures).toMatchObject([
+        {
+          providerId: "lando",
+          errorTag: "ProviderUnavailableError",
+          message: "Cannot observe the runtime.",
+          remediation: "Restore provider access and retry.",
+        },
+      ]);
+      expect(result.failure.apps.find((app) => app.kind === "global")?.outcome).toBe("skipped");
+      expect(harness.calls).not.toContain("runtime");
+    });
+  });
+
+  test("does not fail an unobserved provider that holds nothing", async () => {
+    await withRoots(async () => {
+      const harness = await makeHarness({
+        roots: [],
+        runtimeObserved: false,
+        idle: true,
+      });
+      const result = await Effect.runPromise(poweroff().pipe(Effect.provide(harness.layer)));
+      expect(result.runtimeServiceStopped).toBe(true);
+      expect(harness.calls).toEqual(["runtime"]);
+    });
+  });
+
+  test("reports every unreadable accelerated-start journal and keeps the runtime running", async () => {
+    await withRoots(async () => {
+      const harness = await makeHarness({ roots: [] });
+      const probe = await Effect.runPromise(
+        StateStore.pipe(
+          Effect.flatMap((store) => store.open(pendingStartBucketSpec("inventory.json"))),
+          Effect.provide(harness.layer),
+        ),
+      );
+      const journalPath = join(dirname(probe.path), `${"a".repeat(64)}.json`);
+      await mkdir(dirname(journalPath), { recursive: true });
+      await writeFile(journalPath, "{ not a journal");
+      try {
+        const result = await Effect.runPromise(poweroff().pipe(Effect.result, Effect.provide(harness.layer)));
+
+        expect(result._tag).toBe("Failure");
+        if (result._tag !== "Failure") throw new Error("expected a typed poweroff failure");
+        if (result.failure._tag !== "PoweroffStopError")
+          throw new TypeError(`expected PoweroffStopError, received ${result.failure._tag}`);
+        expect(result.failure.failures).toMatchObject([
+          {
+            appId: journalPath,
+            providerId: "journals",
+            errorTag: "ProviderUnavailableError",
+            message: expect.stringContaining(journalPath),
+          },
+        ]);
+        expect(harness.calls).not.toContain("runtime");
+      } finally {
+        await rm(journalPath, { force: true });
+      }
     });
   });
 

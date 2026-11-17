@@ -189,46 +189,104 @@ const unreadableAppliedState = (providerId: ProviderId, count: number) =>
 const userTargetKey = (providerId: ProviderId, appRoot: AbsolutePath): string =>
   `${String(providerId)}\0${appRoot}`;
 
-const collectInventory = Effect.gen(function* () {
-  const registry = yield* RuntimeProviderRegistry;
-  const failures: StopFailure[] = [];
-  const snapshots: ProviderRuntimeSnapshot[] = [];
-  const idsResult = yield* registry.list.pipe(Effect.result);
-  const ids = Result.isSuccess(idsResult) ? idsResult.success : [];
-  if (Result.isFailure(idsResult)) failures.push(providerInventoryFailure("providers", idsResult.failure));
+const unobservedRuntimeError = (providerId: ProviderId) =>
+  new ProviderUnavailableError({
+    providerId,
+    operation: "getStatus",
+    message: "The provider reported a running runtime but no runtime inventory was observed.",
+    remediation:
+      "Restore provider access or stop its recorded apps explicitly, then retry `lando poweroff`.",
+  });
 
-  for (const id of ids) {
-    const state =
-      registry.appliedStateInventory === undefined
-        ? undefined
-        : yield* registry.appliedStateInventory(id).pipe(Effect.result);
-    if (state !== undefined && Result.isFailure(state))
-      failures.push(providerInventoryFailure(String(id), state.failure));
-    if (state !== undefined && Result.isSuccess(state) && state.success.unreadable.length > 0)
-      failures.push(
-        providerInventoryFailure(String(id), unreadableAppliedState(id, state.success.unreadable.length)),
+const collectInventory = (journalProviders: ReadonlySet<string>) =>
+  Effect.gen(function* () {
+    const registry = yield* RuntimeProviderRegistry;
+    const failures: StopFailure[] = [];
+    const snapshots: ProviderRuntimeSnapshot[] = [];
+    const idsResult = yield* registry.list.pipe(Effect.result);
+    const ids = Result.isSuccess(idsResult) ? idsResult.success : [];
+    if (Result.isFailure(idsResult)) failures.push(providerInventoryFailure("providers", idsResult.failure));
+
+    for (const id of ids) {
+      const state =
+        registry.appliedStateInventory === undefined
+          ? undefined
+          : yield* registry.appliedStateInventory(id).pipe(Effect.result);
+      if (state !== undefined && Result.isFailure(state))
+        failures.push(providerInventoryFailure(String(id), state.failure));
+      if (state !== undefined && Result.isSuccess(state) && state.success.unreadable.length > 0)
+        failures.push(
+          providerInventoryFailure(String(id), unreadableAppliedState(id, state.success.unreadable.length)),
+        );
+      const ownership =
+        registry.hasRecordedOwnership === undefined
+          ? undefined
+          : yield* registry.hasRecordedOwnership(id).pipe(Effect.result);
+      if (ownership !== undefined && Result.isFailure(ownership))
+        failures.push(providerInventoryFailure(String(id), ownership.failure));
+      const hasRecordedHoldings =
+        journalProviders.has(String(id)) ||
+        (state !== undefined &&
+          (Result.isFailure(state) ||
+            state.success.plans.length > 0 ||
+            state.success.unreadable.length > 0)) ||
+        (ownership !== undefined && (Result.isFailure(ownership) || ownership.success));
+
+      // Scope each observation so a broken provider cannot hide another provider's workloads.
+      const observed = yield* (registry.observeRuntime ?? Effect.succeed([])).pipe(
+        Effect.provideService(TeardownProvider, id),
+        Effect.result,
       );
-    // Scope each observation so a broken provider cannot hide another provider's workloads.
-    const observed = yield* (registry.observeRuntime ?? Effect.succeed([])).pipe(
-      Effect.provideService(TeardownProvider, id),
-      Effect.result,
-    );
-    if (Result.isFailure(observed)) {
-      failures.push(providerInventoryFailure(String(id), observed.failure));
-      continue;
+      if (Result.isFailure(observed)) {
+        if (hasRecordedHoldings) failures.push(providerInventoryFailure(String(id), observed.failure));
+        continue;
+      }
+      const providerSnapshots = observed.success.filter((snapshot) => snapshot.providerId === id);
+      snapshots.push(...providerSnapshots);
+      if (providerSnapshots.some((snapshot) => snapshot.runtimeObserved)) continue;
+      // A failed status observation is indistinguishable from idle in the snapshot. Classify it
+      // without launching, and fail only when this provider has recorded holdings to protect.
+      const status = yield* registry.select(id).pipe(
+        Effect.flatMap((provider) => provider.getStatus),
+        Effect.result,
+      );
+      if (Result.isFailure(status)) {
+        if (hasRecordedHoldings) failures.push(providerInventoryFailure(String(id), status.failure));
+        continue;
+      }
+      if (status.success.state !== "idle" && hasRecordedHoldings)
+        failures.push(providerInventoryFailure(String(id), unobservedRuntimeError(id)));
     }
-    snapshots.push(...observed.success.filter((snapshot) => snapshot.providerId === id));
-  }
 
-  return { snapshots, failures };
-});
+    return { snapshots, failures };
+  });
 
 export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
   options: PoweroffOptions = {},
 ): Effect.fn.Return<PoweroffResult, PoweroffError, PoweroffServices> {
-  const inventory = yield* collectInventory;
+  const journalRead = yield* readAcceleratedStartInventory(false).pipe(Effect.result);
+  const journalRecords = Result.isSuccess(journalRead) ? journalRead.success.records : [];
+  const inventory = yield* collectInventory(
+    new Set(journalRecords.map((journal) => journal.providerId)),
+  );
   const failures: StopFailure[] = [...inventory.failures];
   const apps: PoweroffAppResult[] = [];
+  if (Result.isFailure(journalRead)) failures.push(providerInventoryFailure("journals", journalRead.failure));
+  else {
+    for (const unreadable of journalRead.success.unreadable)
+      failures.push({
+        kind: "user",
+        appId: unreadable.path,
+        appRoot: "",
+        providerId: "journals",
+        error: new ProviderUnavailableError({
+          providerId: "journals",
+          operation: "accelerated-start-journal",
+          message: `The accelerated-start journal ${unreadable.path} could not be read (${unreadable._tag}): ${unreadable.message}`,
+          remediation: unreadable.remediation,
+        }),
+      });
+  }
 
   const userTargets = new Map<string, UserTarget>();
   const scratchObserved = new Map<string, ScratchTarget>();
@@ -271,26 +329,22 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
     }
   }
 
-  const journals = yield* readAcceleratedStartInventory(false).pipe(Effect.result);
-  if (Result.isFailure(journals)) failures.push(providerInventoryFailure("journals", journals.failure));
-  else {
-    for (const journal of journals.success.records) {
-      if (journal.appId === "global") continue;
-      const ref = {
-        kind: "user" as const,
-        id: AppId.make(journal.appId),
-        root: AbsolutePath.make(journal.appRoot),
-      };
-      // The filename binds app kind and root; scratch journals never contribute a user target.
-      if (!journal.path.endsWith(`${digest(appRootIdentityKey(ref, journal.appRoot))}.json`)) continue;
-      const key = userTargetKey(ProviderId.make(journal.providerId), ref.root);
-      if (!userTargets.has(key))
-        userTargets.set(key, {
-          providerId: ProviderId.make(journal.providerId),
-          appRoot: ref.root,
-          appId: ref.id,
-        });
-    }
+  for (const journal of journalRecords) {
+    if (journal.appId === "global") continue;
+    const ref = {
+      kind: "user" as const,
+      id: AppId.make(journal.appId),
+      root: AbsolutePath.make(journal.appRoot),
+    };
+    // The filename binds app kind and root; scratch journals never contribute a user target.
+    if (!journal.path.endsWith(`${digest(appRootIdentityKey(ref, journal.appRoot))}.json`)) continue;
+    const key = userTargetKey(ProviderId.make(journal.providerId), ref.root);
+    if (!userTargets.has(key))
+      userTargets.set(key, {
+        providerId: ProviderId.make(journal.providerId),
+        appRoot: ref.root,
+        appId: ref.id,
+      });
   }
 
   const userOrder = [...userTargets.values()].sort((left, right) =>
