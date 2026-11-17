@@ -419,7 +419,7 @@ const stopResolution = (
       case "applied": {
         const target = resolution.target;
         const pending = yield* journalPending(scope, String(target.app.id));
-        if (pending !== undefined) return asStopped(yield* stopRetainedStart(scope, pending, target.app));
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending, target.app);
         return (yield* stopAppWithResolvedPlan(scope.options, target, {
           revalidate: false,
           requireAppliedEvidence: false,
@@ -428,10 +428,9 @@ const stopResolution = (
         })).result;
       }
       case "orphans": {
-        const first = resolution.groups[0];
-        const app = first?.appId ?? scope.root;
+        const app = resolution.groups[0]?.appId ?? scope.root;
         const pending = yield* journalPending(scope, String(app));
-        if (pending !== undefined) return asStopped(yield* stopRetainedStart(scope, pending));
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending);
         const result = yield* stopOrphans(resolution);
         yield* withdrawOwnerRoutes(routeOwnerFromRoot(result.app, scope.root));
         return result;
@@ -439,7 +438,7 @@ const stopResolution = (
       case "owned": {
         const app = resolution.ownership[0]?.appIds[0] ?? basename(scope.root);
         const pending = yield* journalPending(scope, String(app));
-        if (pending !== undefined) return asStopped(yield* stopRetainedStart(scope, pending));
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending);
         const removed = yield* tearDownOwnedResources(
           scope.root,
           { volumes: false, purgeCaches: false },
@@ -457,7 +456,7 @@ const stopResolution = (
         // A root with an unfinished start is never reported unchanged, and its journal is read
         // before this result is decided.
         const pending = yield* journalPending(scope, app);
-        if (pending !== undefined) return asStopped(yield* stopRetainedStart(scope, pending));
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending);
         if (!scope.loadDesiredOnAbsent) return unchangedResult(app);
         return yield* teardownDesiredOrUnchanged(
           resolution,
@@ -489,13 +488,9 @@ const canonicalStopRoot = (root: string) => {
           reason: "missing-root",
           detail: "unresolvable-root",
           message: `The app folder path ${requested} cannot be resolved.`,
-          remediation:
-            typeof cause.cause === "object" &&
-            cause.cause !== null &&
-            "code" in cause.cause &&
-            cause.cause.code === "ENOENT"
-              ? `Part of ${requested} is a symlink whose target no longer exists. Remove or fix that symlink, then rerun lando stop --root ${shellArg(requested)}.`
-              : `Check that you can read every folder in ${requested}, then rerun.`,
+          remediation: isErrnoCode(cause.cause, "ENOENT")
+            ? `Part of ${requested} is a symlink whose target no longer exists. Remove or fix that symlink, then rerun lando stop --root ${shellArg(requested)}.`
+            : `Check that you can read every folder in ${requested}, then rerun.`,
           cause,
         }),
       ),

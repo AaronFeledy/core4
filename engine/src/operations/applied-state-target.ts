@@ -67,6 +67,7 @@ export const appliedStateTarget = (plan: AppPlan) =>
         root: plan.root,
         app: userAppRef(plan),
       } satisfies ResolvedAppTarget);
+
 export const missingRootAppliedTarget = Effect.fnUntraced(function* (plan: AppPlan, root: AbsolutePath) {
   if (plan.identity === undefined) return yield* Effect.fail(mismatch("identity"));
   if (plan.identity.appRoot !== root || plan.root !== root) {
