@@ -21,7 +21,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Option, Result } from "effect";
+import { Effect, Result } from "effect";
 
 import {
   type ResolvedAppTarget,
@@ -565,17 +565,8 @@ const canonicalStopRoot = (root: string) => {
 };
 
 const appRootExists = Effect.fnUntraced(function* (root: AbsolutePath) {
-  const fileSystem = yield* Effect.serviceOption(FileSystem);
-  if (Option.isNone(fileSystem))
-    return yield* Effect.fail(
-      new AppResolveError({
-        reason: "missing-root",
-        detail: "unreadable-root",
-        message: `The app folder ${root} cannot be inspected.`,
-        remediation: "Provide the file system service in this runtime, then retry.",
-      }),
-    );
-  return yield* fileSystem.value.exists(root).pipe(
+  const fileSystem = yield* FileSystem;
+  return yield* fileSystem.exists(root).pipe(
     Effect.catch((cause) =>
       Effect.fail(
         new AppResolveError({
@@ -590,16 +581,17 @@ const appRootExists = Effect.fnUntraced(function* (root: AbsolutePath) {
   );
 });
 
-const stopAtRoot = Effect.fnUntraced(function* (
+const stopAtRoot = Effect.fnUntraced(function* <E, R>(
   requested: string,
   options: StopAppOptions,
   mode: "cwd" | "root",
+  rootExistsAt: (root: AbsolutePath) => Effect.Effect<boolean, E, R>,
 ) {
   const root = yield* canonicalStopRoot(requested);
   return yield* withAppMutationLock(
     { kind: "user", id: root, root },
     Effect.gen(function* () {
-      const rootExists = yield* appRootExists(root);
+      const rootExists = yield* rootExistsAt(root);
       const present = yield* landofilePresentAt(root);
       // Both authored forms present is still a Landofile at this root; the loader decides.
       const landofilePresent = Result.isSuccess(present) ? present.success : true;
@@ -627,7 +619,8 @@ export const stopApp = Effect.fn("AppOperation.stop")(function* (
 ): Effect.fn.Return<StopAppResult, StopAppError, StopAppServices> {
   if (target !== undefined) return yield* stopAppForTarget(options, target);
   const discovered = yield* findAppRoot();
-  return yield* stopAtRoot(discovered ?? (yield* discoveryCwd()), options, "cwd");
+  // A discovered root, or the working directory, exists by construction.
+  return yield* stopAtRoot(discovered ?? (yield* discoveryCwd()), options, "cwd", () => Effect.succeed(true));
 });
 
 /**
@@ -638,9 +631,9 @@ export const stopApp = Effect.fn("AppOperation.stop")(function* (
 export const stopAppAtRoot = Effect.fn("AppOperation.stopAtRoot")(function* (
   root: string,
   options: StopAppAtRootOptions = {},
-): Effect.fn.Return<StopAppResult, StopAppError, StopAppServices> {
+): Effect.fn.Return<StopAppResult, StopAppError, StopAppServices | FileSystem> {
   const { providerId, ...stopOptions } = options;
-  const effect = stopAtRoot(root, stopOptions, "root");
+  const effect = stopAtRoot(root, stopOptions, "root", appRootExists);
   return yield* providerId === undefined
     ? effect
     : effect.pipe(Effect.provideService(TeardownProvider, providerId));
