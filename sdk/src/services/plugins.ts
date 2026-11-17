@@ -19,6 +19,7 @@ import type {
   ServiceConfig,
   ServiceCreds,
   ServiceName,
+  ServiceProjectUser,
   ToolingTaskShape,
 } from "../schema/index.ts";
 import type { RegisteredCommand } from "../schema/registered-command.ts";
@@ -164,6 +165,12 @@ export interface ServiceImageIdentity {
   readonly defaultUser: ContainerUser;
   /** Home directory per user principal, keyed without any `:group` suffix. */
   readonly homes: Readonly<Record<string, AbsoluteContainerPath>>;
+  /**
+   * The identity that owns files this image's service creates on a provider
+   * that maps one container id to the host user. Omitted when the type's
+   * default user is root or the image ships no such principal.
+   */
+  readonly projectUser?: ServiceProjectUser;
   /** Principals whose passwd home the image does not create or give to that user.
    * Lando creates and owns it in a root build step so a fresh home store seeds correctly. */
   readonly preparedHomes?: ReadonlyArray<string>;

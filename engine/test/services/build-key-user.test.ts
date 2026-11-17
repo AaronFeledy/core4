@@ -68,6 +68,22 @@ const keyForStepUser = (user?: string | null): Promise<string> =>
 
 const keyForOrderedSteps = (steps: ReadonlyArray<{ readonly user?: string }>): Promise<string> =>
   Effect.runPromise(buildKeyForService(provider, serviceWithOrderedSteps(steps)));
+const serviceWithRenumber = (uid: string): ServicePlan => ({
+  ...baseServiceFields,
+  projectUser: { name: "www-data", uid: Number(uid), gid: Number(uid) },
+  extensions: {
+    "@lando/core/service-features": {
+      buildSteps: [
+        {
+          id: "lando.project-user:renumber",
+          phase: "build",
+          user: "root",
+          command: ["sh", "-c", `usermod -o -u '${uid}' www-data`],
+        },
+      ],
+    },
+  },
+});
 
 describe("build step user identity", () => {
   test("keeps the artifact build key unchanged when home storage is added", async () => {
@@ -178,5 +194,13 @@ describe("appBuildKeyForStep user identity", () => {
     expect(asRoot).not.toBe(asWww);
     expect(asRoot).not.toBe(omitted);
     expect(repeated).toBe(asRoot);
+  });
+});
+
+describe("project-user renumber build key", () => {
+  test("host ids in the renumber step change the artifact build key", async () => {
+    const first = await Effect.runPromise(buildKeyForService(provider, serviceWithRenumber("1000")));
+    const second = await Effect.runPromise(buildKeyForService(provider, serviceWithRenumber("1001")));
+    expect(first).not.toBe(second);
   });
 });

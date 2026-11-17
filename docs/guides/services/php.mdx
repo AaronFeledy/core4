@@ -202,9 +202,20 @@ Lando rejects a non-empty list where it can't apply the protection and reports `
     <Step name="cleanup"><Cleanup /></Step>
   </Scenario>
 
+## Understand PHP file ownership
+
+On Linux with the default managed provider, PHP commands run as the project user,
+`www-data`, and their app-file writes belong to your host user. Apache and FPM
+workers use the same account. User commands get a persisted `/var/www` home for
+Composer and shell caches, while the Apache master keeps its root identity and
+image home. macOS, Windows, and Docker keep their previous behavior for now;
+without a realized project user or an authored `user:`, PHP's persisted home is
+`/root`. See [Who owns your app files](./file-ownership.mdx) for overrides,
+platform limits, and help with a directory PHP cannot write.
+
 ## Run as a non-root user
 
-To run stock Apache PHP as the image's `www-data` account, save this as
+To run the Apache master itself as the image's `www-data` account, save this as
 `.lando.yml` in your PHP project root. Use port `8080` for a portable non-root
 listener: permission to bind ports below `1024` depends on runtime policy.
 Put an `index.php` in that directory for Apache to serve:

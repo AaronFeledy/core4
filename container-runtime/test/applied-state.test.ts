@@ -253,7 +253,7 @@ describe("applied plan state layouts", () => {
       onCorrupt: "fail",
       hasDefault: false,
     });
-    expect(calls[0]?.version).toBe(6);
+    expect(calls[0]?.version).toBe(APPLIED_STATE_VERSION);
     expect(typeof calls[0]?.onVersionMismatch).toBe("function");
     expect(appliedPlansDir("/tmp/plugin-state/")).toBe("/tmp/plugin-state/applied-plans");
     expect(appliedPlanPath("/tmp/plugin-state", appId)).toBe("/tmp/plugin-state/applied-plans/example.json");
@@ -275,7 +275,7 @@ describe("applied plan state layouts", () => {
       onCorrupt: "fail",
       hasDefault: false,
     });
-    expect(calls[0]?.version).toBe(6);
+    expect(calls[0]?.version).toBe(APPLIED_STATE_VERSION);
     expect(typeof calls[0]?.onVersionMismatch).toBe("function");
   });
 });

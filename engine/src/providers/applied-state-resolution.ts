@@ -12,6 +12,7 @@ import {
 } from "@lando/sdk/schema";
 import type {
   AppliedOrphanGroup,
+  AppliedPlanLookup,
   AppliedTeardownEvidence,
   ListFilter,
   ProviderError,
@@ -166,8 +167,9 @@ export const observeProviderRuntime = (
 const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(function* (
   root: AbsolutePath,
   providers: ReadonlyArray<AppliedStateProvider>,
-  ownership: "exact" | "ancestor",
+  ownership: AppliedPlanLookup,
   app: Pick<AppRef, "kind" | "id"> = { kind: "user", id: "" },
+  teardown = false,
 ): Effect.fn.Return<AppliedTeardownEvidence, AppResolveError | ProviderError> {
   if (providers.length === 0) {
     return yield* Effect.fail(
@@ -181,14 +183,13 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
   }
   const lookupRoot = AbsolutePath.make(yield* canonicalPath(root));
   const plans = (yield* Effect.forEach(providers, gatherAppliedPlans)).flat();
-  const protectedInventories =
-    ownership === "ancestor"
-      ? yield* Effect.forEach(providers, (provider) =>
-          (provider.appliedStateInventory ?? Effect.succeed({ plans: [], unreadable: [] })).pipe(
-            Effect.map((inventory) => ({ providerId: provider.id, unreadable: inventory.unreadable })),
-          ),
-        )
-      : [];
+  const protectedInventories = teardown
+    ? []
+    : yield* Effect.forEach(providers, (provider) =>
+        (provider.appliedStateInventory ?? Effect.succeed({ plans: [], unreadable: [] })).pipe(
+          Effect.map((inventory) => ({ providerId: provider.id, unreadable: inventory.unreadable })),
+        ),
+      );
   const isProtected = (providerId: string, appId: string) =>
     protectedInventories.some(
       (inventory) =>
@@ -230,7 +231,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
       return appIds.length === 0 ? undefined : { ...hints, appIds };
     });
     const ownershipHints = inventories.filter((item): item is ResourceOwnership => item !== undefined);
-    if (ownership === "exact")
+    if (teardown)
       for (const [index, hints] of inventories.entries()) {
         if (hints === undefined) continue;
         const provider = providers[index];
@@ -250,7 +251,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
       }
     return ownershipHints;
   });
-  const teardownOwnership = ownership === "exact" ? yield* readOwnership : [];
+  const teardownOwnership = teardown ? yield* readOwnership : [];
   const matches = plans
     .filter((plan) => {
       const appRoot = plan.identity?.appRoot;
@@ -287,8 +288,8 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
       );
     }
   }
-  if (ownership === "ancestor" && selected !== undefined) return { kind: "applied", plan: selected };
-  const ownershipHints = ownership === "ancestor" ? yield* readOwnership : teardownOwnership;
+  if (!teardown && selected !== undefined) return { kind: "applied", plan: selected };
+  const ownershipHints = teardown ? teardownOwnership : yield* readOwnership;
   const owned = ownershipHints.length === 0 ? {} : { ownership: ownershipHints };
   if (selected === undefined) {
     // Only a provider that recorded state for this root fails teardown with its status failure;
@@ -296,8 +297,8 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     const evidence = yield* Effect.forEach(providers, (provider) =>
       runtimeEvidence(
         provider,
-        ownership === "exact" ? { includeUnplanned: true } : {},
-        ownership === "exact" && ownershipHints.some((hint) => hint.providerId === provider.id),
+        teardown ? { includeUnplanned: true } : {},
+        teardown && ownershipHints.some((hint) => hint.providerId === provider.id),
       ),
     );
     yield* refuseContradictoryOrphans({ root: lookupRoot, providers, evidence, isProtected });
@@ -322,19 +323,20 @@ export const resolveTeardownEvidence = (
   providers: ReadonlyArray<AppliedStateProvider>,
   app?: Pick<AppRef, "kind" | "id">,
 ): Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError> =>
-  collectEvidence(root, providers, "exact", app);
+  collectEvidence(root, providers, "exact", app, true);
 
 /**
  * Fail-closed applied-state resolution for every non-teardown caller: orphaned runtime resources
- * are a refusal, never a teardown target. Ownership stays ancestor-matched for callers that resolve
- * from an arbitrary working directory.
+ * are a refusal, never a teardown target. `"ancestor"` answers a working directory inside an app;
+ * `"exact"` answers only for the app root the caller already resolved.
  */
 export const resolveAppliedPlanEvidence = (
   root: AbsolutePath,
   providers: ReadonlyArray<AppliedStateProvider>,
   app?: Pick<AppRef, "kind" | "id">,
+  lookup: AppliedPlanLookup = "ancestor",
 ): Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError> =>
-  collectEvidence(root, providers, "ancestor", app).pipe(
+  collectEvidence(root, providers, lookup, app).pipe(
     Effect.flatMap((evidence) => {
       switch (evidence.kind) {
         case "applied":

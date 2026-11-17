@@ -101,7 +101,7 @@ The same recipe scaffold starts, prints lando info, then destroys. This is an e2
     </Step>
     <Step name="cleanup-real-provider-app">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 </Guide>

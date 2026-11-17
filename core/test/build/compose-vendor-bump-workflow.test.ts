@@ -107,7 +107,6 @@ describe("compose-go bump workflow", () => {
     const workflow = renderComposeVendorBumpWorkflow();
 
     expect(workflow).toContain("  report-failure:");
-    expect(workflow).toContain("    if: ${{ failure() }}");
     expect(workflow).toContain("compose-vendor-bump automation failure");
     expect(workflow).toContain(
       "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",

@@ -42,6 +42,7 @@ import { includeWhenDelta } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
+import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
@@ -91,7 +92,9 @@ const expectedLandofile = (): JsonSchema =>
                                   evolveHistoricalReadiness(
                                     evolveHistoricalShorthand(
                                       evolveHistoricalNetworks(
-                                        evolveHistoricalNativeInit(repairedLandofile()),
+                                        evolveHistoricalNativeInit(
+                                          evolveHistoricalProjectUser(repairedLandofile(), "plain"),
+                                        ),
                                         "bare",
                                       ),
                                     ),

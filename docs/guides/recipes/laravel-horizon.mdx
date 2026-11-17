@@ -9,7 +9,7 @@ tags: [docs, recipes, laravel, php, redis, horizon, queues]
 
 Run Horizon in the Laravel recipe's worker, with Redis queues and a dashboard at `/horizon`. A container restart policy reloads Horizon after you terminate it.
 
-This builds on [Run the Laravel recipe](../laravel-workflow/). The app name below is `horizon-demo`.
+This builds on [Run the Laravel recipe](./laravel-workflow.mdx). The app name below is `horizon-demo`.
 
 ## Scaffold Laravel with a worker
 
@@ -50,17 +50,18 @@ The worker can't run yet: Laravel and Horizon aren't installed, so its process e
 
 ## Install Laravel, Horizon, and Predis
 
-From the app directory on your host, scaffold Laravel and install the queue packages. The permission change below makes cache and log directories writable for local development; do not use it as a production permissions policy.
+From the app directory on your host, scaffold Laravel and install the queue packages:
 
 ```sh
-lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
-lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
-chmod -R a+rwX storage bootstrap/cache
+lando create-project laravel/laravel
+lando artisan --version
 lando composer require laravel/horizon predis/predis --no-interaction
 lando artisan horizon:install
 ```
 
 `horizon:install` writes `config/horizon.php` and registers its service provider. Stock PHP includes Horizon's required `pcntl` and `posix` extensions, but not `phpredis`; use the Composer-installed Predis client.
+
+On Linux with the default managed provider, Composer, Artisan tooling, and PHP web workers use `www-data`, mapped to your host user. For a directory Laravel cannot write on another platform or provider, see [Who owns your app files](../services/file-ownership.mdx). A service's main process keeps its own identity; the project user sets the default for commands you run through Lando.
 
 ## Point Laravel at MariaDB and Redis
 
@@ -230,5 +231,5 @@ lando destroy -y
 
 ## Next
 
-- [Run the Laravel recipe](../laravel-workflow/)
-- [Add Redis](../../services/redis/)
+- [Run the Laravel recipe](./laravel-workflow.mdx)
+- [Add Redis](../services/redis.mdx)

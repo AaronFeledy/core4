@@ -62,7 +62,7 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
 
   // Never clean targets using a desired/selected-service plan: users and ownership are old-plan data.
   const appRoot = target.plan.identity?.appRoot ?? target.root;
-  const old = yield* registry.resolveAppliedPlan(appRoot);
+  const old = yield* registry.resolveAppliedPlan(appRoot, target.app, "exact");
   if (
     old === undefined ||
     old.id !== target.plan.id ||

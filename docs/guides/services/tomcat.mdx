@@ -90,7 +90,7 @@ lando exec appserver -- curl --fail --silent http://127.0.0.1:9090/
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 

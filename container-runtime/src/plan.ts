@@ -15,6 +15,7 @@ import {
 } from "./labels.ts";
 
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
+import { serviceProjectUserMapping } from "./project-user-realization.ts";
 
 export { bindMountStrings, mountSuffix } from "./container-mounts.ts";
 export { serviceContainerName } from "./container-name.ts";
@@ -225,7 +226,27 @@ export const containerHostConfigFragment = (
     ...(mounts.length > 0 ? { Mounts: mounts } : {}),
     ...(Object.keys(tmpfs).length > 0 ? { Tmpfs: tmpfs } : {}),
     ...(extraHosts.length === 0 ? {} : { ExtraHosts: extraHosts }),
+    ...(service.projectUser === undefined || serviceProjectUserMapping(service) === "image-renumber"
+      ? {}
+      : {
+          UsernsMode: `keep-id:uid=${service.projectUser.uid},gid=${service.projectUser.gid}`,
+        }),
   };
+};
+
+/**
+ * The create identity an image-renumber plan names directly. A catalog plan
+ * keeps its image account name, so it returns undefined and the caller reads
+ * the image's configured user; a numeric custom image runs as the host ids
+ * that replaced its configured numeric user.
+ */
+export const projectUserNumericCreateUser = (service: ServicePlan): string | undefined => {
+  const projectUser = service.projectUser;
+  return projectUser !== undefined &&
+    serviceProjectUserMapping(service) === "image-renumber" &&
+    /^[0-9]+$/u.test(projectUser.name)
+    ? `${projectUser.uid}:${projectUser.gid}`
+    : undefined;
 };
 
 export interface ContainerCreateBodyOptions {
@@ -235,6 +256,12 @@ export interface ContainerCreateBodyOptions {
   readonly networkingConfig?: Record<string, unknown>;
   readonly onMissingArtifact?: (artifact: ServicePlan["artifact"]) => never;
   readonly environment?: Readonly<Record<string, string>>;
+  /**
+   * Identity the container is created as. A project-user create always names
+   * one explicitly: without it a keep-id container runs as the mapped id
+   * instead of the image's own user.
+   */
+  readonly createUser?: string;
 }
 
 const missingArtifact = (artifact: ServicePlan["artifact"]): never => {
@@ -262,7 +289,7 @@ export const containerCreateBodyFragment = (
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,
-    ...(service.user === undefined || service.user === "" ? {} : { User: service.user }),
+    ...((options.createUser ?? service.user) ? { User: options.createUser ?? service.user } : {}),
     ...(healthcheck === undefined ? {} : { Healthcheck: healthcheck }),
     ...(Object.keys(exposedPorts).length > 0 ? { ExposedPorts: exposedPorts } : {}),
     Labels: options.labels ?? commonContainerLabels(plan, service),

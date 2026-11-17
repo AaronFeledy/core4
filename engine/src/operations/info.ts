@@ -93,6 +93,10 @@ const serviceInfoMetadata = (
     primary: service.primary,
     ...(artifact === undefined ? {} : { artifact }),
     ...(service.user === undefined ? {} : { user: service.user }),
+    ...(service.projectUser === undefined ? {} : { projectUser: service.projectUser }),
+    ...(service.projectUserExplanation === undefined
+      ? {}
+      : { projectUserExplanation: service.projectUserExplanation }),
     ...(service.workingDirectory === undefined ? {} : { workingDirectory: service.workingDirectory }),
     hostnames,
     ...(certs === undefined ? {} : { certs }),
@@ -141,6 +145,7 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
       kind: "user",
       id: completionPlan.id,
     },
+    "exact",
   );
   // selectInfoPlan returns the original plan only for an unscoped view.
   const selectedServices = plan === completionPlan ? undefined : Object.keys(plan.services);

@@ -68,6 +68,42 @@ export const engineInfoArchitecture = (info: unknown): string | undefined => {
   return "Architecture" in info && typeof info.Architecture === "string" ? info.Architecture : undefined;
 };
 
+/**
+ * Whether the live engine runs rootless, read from either API shape: Podman
+ * reports `host.security.rootless`, Docker reports it as a `name=rootless`
+ * security option. Undefined when the response carries neither.
+ */
+export const engineInfoRootless = (info: unknown): boolean | undefined => {
+  if (typeof info !== "object" || info === null) return undefined;
+  const host = "host" in info ? info.host : undefined;
+  if (typeof host === "object" && host !== null) {
+    const security = "security" in host ? host.security : undefined;
+    if (typeof security === "object" && security !== null && "rootless" in security) {
+      const rootless = security.rootless;
+      if (typeof rootless === "boolean") return rootless;
+    }
+  }
+  const options = "SecurityOptions" in info ? info.SecurityOptions : undefined;
+  if (Array.isArray(options)) {
+    return options.some((option) => typeof option === "string" && option === "name=rootless");
+  }
+  return undefined;
+};
+
+/**
+ * Whether the live Docker daemon remaps container ids through a daemon user
+ * namespace (`userns-remap`). Docker reports it as a `name=userns` security
+ * option. Undefined when the response carries no SecurityOptions.
+ */
+export const engineInfoUsernsRemap = (info: unknown): boolean | undefined => {
+  const options =
+    typeof info === "object" && info !== null && "SecurityOptions" in info ? info.SecurityOptions : undefined;
+  if (!Array.isArray(options)) return undefined;
+  return options.some(
+    (option) => typeof option === "string" && (option === "name=userns" || option.startsWith("name=userns,")),
+  );
+};
+
 export interface ProviderCapabilityConstants {
   readonly bindMounts: ProviderCapabilitiesShape["bindMounts"];
   readonly bindMountPerformance: ProviderCapabilitiesShape["bindMountPerformance"];
@@ -81,6 +117,8 @@ export interface ProviderCapabilityConstants {
   readonly ephemeralMounts?: ProviderCapabilitiesShape["ephemeralMounts"];
   readonly tlsCertificates: ProviderCapabilitiesShape["tlsCertificates"];
   readonly rootless: ProviderCapabilitiesShape["rootless"];
+  readonly projectUserMapping?: ProviderCapabilitiesShape["projectUserMapping"];
+  readonly bindOwnership?: ProviderCapabilitiesShape["bindOwnership"];
   readonly architectureEmulation?: ProviderCapabilitiesShape["architectureEmulation"];
   readonly composeSpec: ProviderCapabilitiesShape["composeSpec"];
   readonly composeKnobs?: ProviderCapabilitiesShape["composeKnobs"];
@@ -127,6 +165,8 @@ export const buildProviderCapabilities = (
     rootless: constants.rootless,
     privilegedServices: false,
     architectureEmulation: constants.architectureEmulation ?? false,
+    projectUserMapping: constants.projectUserMapping ?? "unsupported",
+    bindOwnership: constants.bindOwnership ?? "unknown",
     composeSpec: constants.composeSpec,
     composeKnobs: constants.composeKnobs ?? { supported: [] },
     ...(constants.composeProjectFields === undefined

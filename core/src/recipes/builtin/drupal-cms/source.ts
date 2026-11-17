@@ -1,7 +1,7 @@
 import type { RecipeSource } from "@lando/sdk/schema";
 import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
 import { composerTool, drupalOptions, drupalWebVariants, phpAppserver } from "../source-php.ts";
-import { DRUPAL_CMS_GIT_ARTIFACT, DRUPAL_CMS_SCAFFOLD_COMMAND, drupalCmsInstallCommand } from "./commands.ts";
+import { DRUPAL_CMS_GIT_ARTIFACT, drupalCmsInstallCommand } from "./commands.ts";
 import { DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET } from "./php-config.ts";
 
 export const source = {
@@ -36,7 +36,7 @@ export const source = {
         service: "appserver",
         description: "Scaffold Drupal CMS 2 and project-local Drush into the mounted app root.",
         arguments: false,
-        cmd: DRUPAL_CMS_SCAFFOLD_COMMAND,
+        cmd: "lando-drupal-cms-scaffold",
       },
       "drupal-cms-install": {
         service: "appserver",

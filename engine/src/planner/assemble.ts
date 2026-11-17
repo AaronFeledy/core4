@@ -28,7 +28,7 @@ import {
   PathsService,
   PluginRegistry,
 } from "@lando/sdk/services";
-import { DateTime, Effect, Option, Predicate } from "effect";
+import { DateTime, Effect, Option } from "effect";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -88,6 +88,7 @@ import { normalizeNetworks } from "./networks.ts";
 import { assertRoutesCertificateCoverable, decodeAppPlan } from "./plan-decode.ts";
 import {
   agentSocketCapabilityErrors,
+  assertProjectUserSupported,
   assertRouteNetworkingSupported,
   assertServiceInitSupported,
 } from "./resource-capabilities.ts";
@@ -97,9 +98,8 @@ import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { hasServiceArtifacts } from "./service-artifact.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
 import { validateServiceProbes } from "./service-probes.ts";
-import { type ResolvedService, resolvedServiceCacheInput } from "./service-types.ts";
+import { type ResolvedService, resolveHostFacts, resolvedServiceCacheInput } from "./service-types.ts";
 import { authoredStorageScopes } from "./storage.ts";
-
 export interface PlanAppInput {
   readonly identity?: AppIdentity;
   readonly dataName?: string;
@@ -110,7 +110,6 @@ export interface PlanAppInput {
   readonly mode?: "validate";
   readonly resolution?: ResolvedLandofile;
 }
-
 export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   input: PlanAppInput,
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
@@ -365,21 +364,16 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     hostEvents: hostEventCompileBase.skipHostEvents ? undefined : hostEvents,
     env: authoredLandofile.context.env,
   });
-  const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
+  const effectiveEventsFor = (services: Readonly<Record<string, unknown>>) =>
     compileEffectiveEvents({ ...hostEventCompileBase, services, invocationSites: executableSites });
-  const planServices = (services: Readonly<Record<string, unknown>>) =>
-    Object.fromEntries(
-      Object.entries(services).map(([name, service]) => [
-        name,
-        { primary: Predicate.isObject(service) && service.primary === true },
-      ]),
-    );
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
+  const host = resolveHostFacts();
   const cacheKey = deriveAppPlanCacheKey({
     dataName: input.dataName ?? appName,
     kind: input.kind ?? "user",
     hostProvider,
     appRoot,
+    ...(host === undefined ? {} : { host }),
     landofile: { ...cacheLandofile, provider },
     providerCapabilities,
     pluginManifests: manifests,
@@ -438,11 +432,12 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposeKnobsSupported(capabilityContext, cached.services);
       yield* assertServiceInitSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeFieldsSupported(capabilityContext, cached);
+      yield* assertProjectUserSupported(provider, providerCapabilities, cached.services);
       const proven = withCommittedLiteralDigests(cached, authoredLandofile);
       return attachCompiledInvocationPlan(
         attachResolutionTooling(proven, toolingResolution),
         executableSites,
-        effectiveEventsFor(planServices(cached.services)),
+        effectiveEventsFor(cached.services),
       );
     }
   }
@@ -473,17 +468,18 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     );
     yield* Effect.fail(appFeatureCapabilityError(provider, offending?.id ?? "appFeatures", capability));
   }
-
   const finalized = yield* finalizeServices({
     manifests,
     configs: landofile.configs,
     plannedServiceDrafts: plannedWithClones,
     appId,
     appRoot,
+    appKind: input.kind ?? "user",
     appSlug,
     appName,
     dataSlug: normalizeAppSlug(input.dataName ?? appName, appRoot),
     defaultDomain,
+    host,
     provider,
     providerCapabilities,
     metadata,
@@ -569,13 +565,14 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       toolingResolution,
     ),
     executableSites,
-    effectiveEventsFor(planServices(finalized.services)),
+    effectiveEventsFor(finalized.services),
   );
   yield* assertComposeKnobsSupported(capabilityContext, plan.services);
   yield* assertServiceInitSupported(provider, providerCapabilities, plan.services);
   yield* assertAuthoredNetworksSupported(provider, providerCapabilities, plan.networking);
   yield* validateServiceProbes(plan);
   yield* assertComposeFieldsSupported(capabilityContext, plan);
+  yield* assertProjectUserSupported(provider, providerCapabilities, plan.services);
   if (planCache !== undefined && !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) {
     yield* writeCachedAppPlan({
       cacheRoot,

@@ -21,13 +21,14 @@ Default PHP is 8.4, so `symfony new` / `symfony/skeleton` can install the curren
 
 ## Run console, Composer, and the clients
 
-Composer will not install into a directory that already has `.lando.yml`:
+Create Symfony in the app root. The recipe's `create-project` tool preserves
+`.lando.yml`, installs dependencies, and runs the project's Composer hooks:
 
 ```sh
-lando composer create-project symfony/skeleton tmp-app --no-interaction
+lando create-project symfony/skeleton
 ```
 
-Move `tmp-app` up into the app root and keep `.lando.yml`. Then:
+Check the installed application and tools:
 
 ```sh
 lando console --version

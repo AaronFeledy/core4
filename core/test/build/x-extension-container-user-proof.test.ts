@@ -25,6 +25,7 @@ import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts"
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
+import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
@@ -166,15 +167,18 @@ test.each([
               evolveHistoricalServicePort(
                 evolveHistoricalTimestamps(
                   evolveHistoricalContainerUser(
-                    evolveHistoricalReadiness(
-                      evolveHistoricalShorthand(
-                        evolveHistoricalNetworks(
-                          evolveHistoricalNativeInit(
-                            evolveHistoricalSqliteTarget(normalizeJsonSchema(repaired)),
+                    evolveHistoricalProjectUser(
+                      evolveHistoricalReadiness(
+                        evolveHistoricalShorthand(
+                          evolveHistoricalNetworks(
+                            evolveHistoricalNativeInit(
+                              evolveHistoricalSqliteTarget(normalizeJsonSchema(repaired)),
+                            ),
+                            "bare",
                           ),
-                          "bare",
                         ),
                       ),
+                      "plain",
                     ),
                   ),
                   "bare",

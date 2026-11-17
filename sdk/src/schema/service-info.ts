@@ -6,7 +6,7 @@ import { HealthcheckPlan } from "./healthcheck-plan.ts";
 import { ListenerAuthority } from "./listener.ts";
 import { LogSourceStream } from "./log-source.ts";
 import { BindMountPlan } from "./mounts.ts";
-import { PortablePath } from "./primitives.ts";
+import { PortablePath, ProjectUserExplanation, ServiceProjectUser } from "./primitives.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceInfoMount } from "./service-mount.ts";
 
@@ -138,6 +138,12 @@ export const ServiceInfo = Schema.Struct({
     description: "Selected artifact identity without build context, arguments, or inline source.",
   }),
   user: Schema.optionalKey(Schema.String).annotate({ description: "Planned container user." }),
+  projectUser: Schema.optionalKey(ServiceProjectUser).annotate({
+    description: "Realized project-user identity whose files belong to the host user.",
+  }),
+  projectUserExplanation: Schema.optionalKey(ProjectUserExplanation).annotate({
+    description: "Why the service has no realized project user.",
+  }),
   workingDirectory: Schema.optionalKey(PortablePath).annotate({
     description: "Planned working directory inside the service.",
   }),

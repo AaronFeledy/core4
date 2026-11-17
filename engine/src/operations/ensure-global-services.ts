@@ -73,6 +73,7 @@ export interface EnsureGlobalServicesResult {
 
 export type EnsureGlobalServicesError =
   | import("@lando/sdk/errors").CaError
+  | import("@lando/sdk/services").FileSystemError
   | DebuggerHostUnavailableError
   | Effect.Error<ReturnType<typeof globalInstall>>
   | Effect.Error<ReturnType<typeof canonicalAppRoot>>

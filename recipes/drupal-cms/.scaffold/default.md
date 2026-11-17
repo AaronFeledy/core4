@@ -127,5 +127,5 @@ lando app:config --format=json
 ## Cleanup
 
 ```bash
-lando destroy -y
+lando destroy -y --volumes
 ```

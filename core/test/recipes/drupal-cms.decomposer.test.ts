@@ -5,10 +5,7 @@ import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipe
 import { ConfigTranslateInput, type RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import {
-  DRUPAL_CMS_SCAFFOLD_COMMAND,
-  drupalCmsInstallCommand,
-} from "../../src/recipes/builtin/drupal-cms/commands.ts";
+import { drupalCmsInstallCommand } from "../../src/recipes/builtin/drupal-cms/commands.ts";
 import {
   DRUPAL_CMS_PHP_INI,
   DRUPAL_CMS_PHP_INI_PATH,
@@ -124,7 +121,7 @@ describe("drupal-cms decomposition", () => {
           service: "appserver",
           description: "Scaffold Drupal CMS 2 and project-local Drush into the mounted app root.",
           arguments: false,
-          cmd: DRUPAL_CMS_SCAFFOLD_COMMAND,
+          cmd: "lando-drupal-cms-scaffold",
         },
         "drupal-cms-install": {
           service: "appserver",
@@ -248,13 +245,11 @@ describe("drupal-cms decomposition", () => {
     },
   );
 
-  test("keeps the multiline scaffold command intact through snapshot encoding", () => {
+  test("keeps the container helper scaffold command through snapshot encoding", () => {
     const rendered = Result.getOrThrow(renderRecipeSnapshot(drupalCmsSnapshot, defaults)) as {
       tooling: { "drupal-cms-scaffold": { cmd: string } };
     };
-    expect(rendered.tooling["drupal-cms-scaffold"].cmd).toBe(DRUPAL_CMS_SCAFFOLD_COMMAND);
-    expect(DRUPAL_CMS_SCAFFOLD_COMMAND).toContain('"$app_root"');
-    expect(DRUPAL_CMS_SCAFFOLD_COMMAND.split("\n").length).toBeGreaterThan(10);
+    expect(rendered.tooling["drupal-cms-scaffold"].cmd).toBe("lando-drupal-cms-scaffold");
   });
 
   test.each([

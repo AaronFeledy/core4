@@ -26,6 +26,12 @@ Put Lando's own flags (`-s`, `-i`, `--user`, `--cwd`) before `--`. Without `--`,
 
 Open a shell with `lando ssh` or `lando shell --service <name>`.
 
+With a realized project user, `exec`, `ssh`, service shells, and tooling default
+to that account. For stock PHP on Linux with the default managed provider, that
+is `www-data`, whose app-file writes belong to your host user. `--user` overrides
+the default. See [Who owns your app files](../services/file-ownership.mdx) for
+identity precedence and the limits on macOS, Windows, and Docker.
+
 ## Pipe input in
 
 Pipe or redirect stdin, and the command reads it as plain bytes, then exits when the input ends:

@@ -118,6 +118,196 @@ describe("lint:guides", () => {
       'core/test/lint/guides/e2e-smoke.mdx:9:3: guide.scenario.e2e-cleanup: <Scenario layer="e2e"> requires at least one <Cleanup> step so provider resources are torn down.',
     ]);
   });
+  test.each([
+    ["e2e", "lando destroy -y", true],
+    ["e2e", "lando destroy -y --volumes", false],
+    ["e2e", "lando destroy -y --purge", false],
+    ["scenario", "lando destroy -y", false],
+  ] as const)("a %s scenario cleaning up with `%s` is reported: %p", (layer, destroy, reported) => {
+    // Each e2e run uses a fresh app root, so a plain destroy leaves volumes that the next run of
+    // the same app name fails to adopt. The fixture directory is absent; only this rule matters.
+    const diagnostics = lintGuideContent(
+      "core/test/lint/guides/e2e-destroy-volumes.mdx",
+      [
+        "---",
+        "id: e2e-destroy-volumes",
+        "provider: test",
+        "diataxis: tutorial",
+        "---",
+        "",
+        "<Guide>",
+        `  <Scenario id="only" layer="${layer}">`,
+        '    <Step name="start">',
+        '      <Run command="lando start" />',
+        "    </Step>",
+        '    <Step name="cleanup">',
+        "      <Cleanup />",
+        `      <Run command="${destroy}" />`,
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n"),
+    )
+      .diagnostics.map(formatGuideLintDiagnostic)
+      .filter((line) => line.includes("guide.scenario.e2e-destroy-volumes"));
+    expect(diagnostics).toEqual(
+      reported ? [expect.stringContaining(": guide.scenario.e2e-destroy-volumes:")] : [],
+    );
+  });
+
+  test("reports an e2e tab whose selected cleanup only plain-destroys", () => {
+    // The macos tab purges volumes, but the linux cell never runs it, so the linux cleanup
+    // must be judged on its own steps instead of on the whole raw scenario.
+    const diagnostics = lintGuideContent(
+      "core/test/lint/guides/e2e-destroy-tabs.mdx",
+      [
+        "---",
+        "id: e2e-destroy-tabs",
+        "provider: test",
+        "diataxis: tutorial",
+        "tabs: [linux, macos]",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="only" layer="e2e">',
+        '    <Step name="start">',
+        '      <Run command="lando start" />',
+        "    </Step>",
+        "    <Tabs>",
+        '      <Tab name="linux">',
+        '        <Step name="cleanup">',
+        "          <Cleanup />",
+        '          <Run command="lando destroy -y" />',
+        "        </Step>",
+        "      </Tab>",
+        '      <Tab name="macos">',
+        '        <Step name="cleanup">',
+        "          <Cleanup />",
+        '          <Run command="lando destroy -y --volumes" />',
+        "        </Step>",
+        "      </Tab>",
+        "    </Tabs>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n"),
+    )
+      .diagnostics.map(formatGuideLintDiagnostic)
+      .filter((line) => line.includes("guide.scenario.e2e-destroy-volumes"));
+    expect(diagnostics).toEqual([expect.stringContaining(":17:11: guide.scenario.e2e-destroy-volumes:")]);
+  });
+
+  test("accepts an e2e cleanup whose interpolated destroy resolves to --volumes", () => {
+    // The raw command names a variable, so only the resolved argv shows the purge flag.
+    const diagnostics = lintGuideContent(
+      "core/test/lint/guides/e2e-destroy-interpolated.mdx",
+      [
+        "---",
+        "id: e2e-destroy-interpolated",
+        "provider: test",
+        "diataxis: tutorial",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="only" layer="e2e">',
+        '    <Step name="start">',
+        '      <Run command="lando start" />',
+        "    </Step>",
+        '    <Step name="cleanup">',
+        '      <Variable name="destroy_flags" value="--volumes" />',
+        "      <Cleanup />",
+        '      <Run command="lando destroy -y {{destroy_flags}}" />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n"),
+    )
+      .diagnostics.map(formatGuideLintDiagnostic)
+      .filter((line) => line.includes("guide.scenario.e2e-destroy-volumes"));
+    expect(diagnostics).toEqual([]);
+  });
+
+  test("reports a cleanup destroy when only a non-cleanup step purges volumes", () => {
+    // Cleanup steps are the teardown contract; a purge elsewhere does not remove the volumes of
+    // the cleanup destroy that actually runs.
+    const diagnostics = lintGuideContent(
+      "core/test/lint/guides/e2e-destroy-non-cleanup-purge.mdx",
+      [
+        "---",
+        "id: e2e-destroy-non-cleanup-purge",
+        "provider: test",
+        "diataxis: tutorial",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="only" layer="e2e">',
+        '    <Step name="start">',
+        '      <Run command="lando start" />',
+        "    </Step>",
+        '    <Step name="teardown">',
+        '      <Run command="lando destroy -y --purge" />',
+        "    </Step>",
+        '    <Step name="cleanup">',
+        "      <Cleanup />",
+        '      <Run command="lando destroy -y" />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n"),
+    )
+      .diagnostics.map(formatGuideLintDiagnostic)
+      .filter((line) => line.includes("guide.scenario.e2e-destroy-volumes"));
+    expect(diagnostics).toEqual([expect.stringContaining(":17:7: guide.scenario.e2e-destroy-volumes:")]);
+  });
+
+  test("reports only the running variant of an e2e guide whose sibling is skipped", () => {
+    // Both tabs plain-destroy, but the macos cell is skipped. Only the linux cell can be judged,
+    // so the skipped cell must not add a second diagnostic.
+    const diagnostics = lintGuideContent(
+      "core/test/lint/guides/e2e-destroy-skipped-variant.mdx",
+      [
+        "---",
+        "id: e2e-destroy-skipped-variant",
+        "provider: test",
+        "diataxis: tutorial",
+        "tabs: [linux, macos]",
+        "variants:",
+        "  macos:",
+        "    skip:",
+        "      reason: pending the linux-only runtime",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="only" layer="e2e">',
+        '    <Step name="start">',
+        '      <Run command="lando start" />',
+        "    </Step>",
+        "    <Tabs>",
+        '      <Tab name="linux">',
+        '        <Step name="cleanup">',
+        "          <Cleanup />",
+        '          <Run command="lando destroy -y" />',
+        "        </Step>",
+        "      </Tab>",
+        '      <Tab name="macos">',
+        '        <Step name="cleanup">',
+        "          <Cleanup />",
+        '          <Run command="lando destroy -y" />',
+        "        </Step>",
+        "      </Tab>",
+        "    </Tabs>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n"),
+    )
+      .diagnostics.map(formatGuideLintDiagnostic)
+      .filter((line) => line.includes("guide.scenario.e2e-destroy-volumes"));
+    expect(diagnostics).toEqual([expect.stringContaining(":21:11: guide.scenario.e2e-destroy-volumes:")]);
+  });
 
   test("accepts a guide with a <Hidden> block carrying a reason", async () => {
     expect(await lintFixture("hidden-green")).toEqual([]);

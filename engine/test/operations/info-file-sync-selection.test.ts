@@ -200,3 +200,26 @@ for (const malformedSide of ["planned", "applied"] as const) {
     expect(info.fileSync?.pendingChange).toBe(false);
   });
 }
+
+test("info asks for this app's exact applied plan", async () => {
+  // Given a desired app whose applied record the registry cannot confirm.
+  const desired = policyPlan(false);
+  const lookups: Array<string | undefined> = [];
+  const harness = makeHarness({
+    plannedApp: desired,
+    resolveAppliedPlan: (_root, _app, lookup) => {
+      lookups.push(lookup);
+      return Effect.succeed(undefined);
+    },
+  });
+  try {
+    // When info projects file-sync policy.
+    await Effect.runPromise(
+      withResolvedCwd(plan.root, infoApp({ services: [] })).pipe(Effect.provide(harness.layer)),
+    );
+    // Then the applied question is exact, so an enclosing app cannot answer it.
+    expect(lookups.at(-1)).toBe("exact");
+  } finally {
+    rmSync(harness.userDataRoot, { recursive: true, force: true });
+  }
+});

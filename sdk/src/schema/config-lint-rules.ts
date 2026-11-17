@@ -107,6 +107,13 @@ export const CONFIG_LINT_RULES = {
       "Service `networks:` keys are declared at the top level, no `networks.default`, `name` only with `external: true`, no `driver` on an external network, and valid keys.",
     examplePaths: ["services.web.networks.backend", "networks.backend.name"],
   },
+  "service.projectUser": {
+    stages: ["planning"],
+    severities: ["warning"],
+    summary:
+      "A project user the plan deliberately did not realize: an explicit `projectUser: false` opt-out, or a provider that cannot map one container id to the host user.",
+    examplePaths: ["services.web.projectUser"],
+  },
   "landofile.capability": {
     stages: ["resolve", "planning"],
     severities: ["error", "warning"],

@@ -306,7 +306,7 @@ describe("ci workflow", () => {
     );
     expect(workflow).toContain("name: nightly");
     expect(providerLandoE2e).toContain("    runs-on: ubuntu-26.04");
-    expect(providerLandoE2e).toContain("    timeout-minutes: 60");
+    expect(providerLandoE2e).toContain("    timeout-minutes: 90");
     expect(providerLandoE2e).toContain("needs: [container-helper, runtime-bundle-linux-x64]");
     expect(providerLandoE2e).not.toContain("brew install podman");
     expect(providerLandoE2e).not.toContain("podman system service");

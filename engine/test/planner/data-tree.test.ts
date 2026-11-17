@@ -37,9 +37,9 @@ describe("resolveDataTreeOwnership", () => {
     expect(resolveDataTreeOwnership({ ...intent(), plannedUser: "8983:8983" })).toEqual([]);
   });
 
-  test("Given a numeric uid, When resolved, Then the tree is prepared for that uid", () => {
-    const resolved = resolveDataTreeOwnership({ ...intent(), plannedUser: "10001:10001" });
-    expect(resolved).toEqual([{ target: "/var/solr", owner: "10001" }]);
+  test("Given a numeric uid and gid, When resolved, Then the tree keeps both ids", () => {
+    const resolved = resolveDataTreeOwnership({ ...intent(), plannedUser: "10001:10002" });
+    expect(resolved).toEqual([{ target: "/var/solr", owner: "10001:10002" }]);
   });
 
   test("Given a user the service type declares, When resolved, Then the tree is prepared for it", () => {

@@ -23,10 +23,12 @@ tooling:
   jekyll:
     service: builder
     description: Run the Jekyll CLI inside the builder service.
+    wrapper: true
     cmds:
       - bundle exec jekyll
   bundle:
     service: builder
     description: Run Bundler inside the builder service.
+    wrapper: true
     cmds:
       - bundle

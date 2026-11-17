@@ -90,7 +90,9 @@ export const resolveDataTreeOwnership = (input: {
     // so the owners that type says its image seeds no longer describe it.
     if (!input.hasCustomImage && tree.seededOwners.includes(principal)) continue;
     if (NUMERIC_PRINCIPAL.test(principal)) {
-      prepared.push({ target: tree.target, owner: principal });
+      // Keep both ids when the author supplied them: `chown 1000` would pick a
+      // fresh group while `chown 1000:1001` preserves the authored pair.
+      prepared.push({ target: tree.target, owner: input.plannedUser });
       continue;
     }
     if (input.hasCustomImage) {
@@ -145,11 +147,18 @@ export const dataTreeOwnershipStep = (
   trees: ReadonlyArray<DataTreeOwnership>,
 ): ServiceBuildStepIntent | undefined => {
   if (trees.length === 0) return undefined;
-  const commands = trees.flatMap((tree) => [
-    `mkdir -p '${tree.target}'`,
-    `chown -R '${tree.owner}' '${tree.target}'`,
-    `chmod 0770 '${tree.target}'`,
-  ]);
+  // The same target may be claimed by a feature and by derived project-user
+  // intent; the first claim wins so a tree is never chowned twice in one step.
+  const seen = new Set<string>();
+  const commands = trees.flatMap((tree) => {
+    if (seen.has(tree.target)) return [];
+    seen.add(tree.target);
+    return [
+      `mkdir -p '${tree.target}'`,
+      `chown -R '${tree.owner}' '${tree.target}'`,
+      `chmod 0770 '${tree.target}'`,
+    ];
+  });
   return {
     id: DATA_TREE_OWNERSHIP_STEP_ID,
     phase: "build",

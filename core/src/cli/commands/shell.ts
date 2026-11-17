@@ -1,6 +1,7 @@
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
 import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
+import { appliedServicePlan, selectCommandIdentity } from "@lando/engine/services/execution-identity";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
 import { isStdioRendererIO } from "@lando/renderer/io";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
@@ -271,6 +272,11 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
           });
     const service = yield* resolveService(options.service, plan);
     const provider = yield* registry.select(plan);
+    const appliedService = yield* appliedServicePlan(registry, plan, String(service.name));
+    const identity = selectCommandIdentity({
+      cliUser: options.user,
+      service: appliedService,
+    });
     const redaction = yield* Effect.serviceOption(RedactionService);
     const values = Option.isSome(redaction)
       ? yield* redaction.value.payloadValues()
@@ -280,7 +286,7 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       app: plan.id,
       service: service.name,
       plan,
-      ...(options.user === undefined ? {} : { user: options.user }),
+      ...(identity.user === undefined ? {} : { user: identity.user }),
     };
     const terminalSize = currentTerminalSize(io);
     const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.document.agentEnv, sourceEnv);
@@ -288,8 +294,11 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       allowlist,
       lowerThanEnv: service.environment,
     });
+    const baseEnv = options.noHistory === true ? withSessionNoHistoryEnv(forwardedEnv ?? {}) : forwardedEnv;
     const serviceEnv =
-      options.noHistory === true ? withSessionNoHistoryEnv(forwardedEnv ?? {}) : forwardedEnv;
+      Object.keys(identity.environment).length === 0
+        ? baseEnv
+        : { ...identity.environment, ...(baseEnv ?? {}) };
     const spec: CommandSpec = {
       command: serviceLoginShellCommand(options.args),
       stdin: "inherit",

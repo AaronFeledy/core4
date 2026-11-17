@@ -101,7 +101,8 @@ export const makeScenarioProvider = () => {
   const registry = RuntimeProviderRegistry.of({
     appliedPlansFor: (root) =>
       resolveExactPlan(root).pipe(Effect.map((plan) => (plan === undefined ? [] : [plan]))),
-    resolveAppliedPlan: resolvePlan,
+    resolveAppliedPlan: (root, _app, lookup) =>
+      lookup === "exact" ? resolveExactPlan(root) : resolvePlan(root),
     resolveTeardownEvidence: (root) =>
       resolveExactPlan(root).pipe(
         Effect.map((plan) =>

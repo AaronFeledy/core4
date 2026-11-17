@@ -111,6 +111,56 @@ describe("provider-docker capabilities", () => {
       expect(capabilities.agentSocket).toEqual({ delivery: "volume-relay" });
   });
 
+  test("declares image-renumber only on a local rootful engine", () => {
+    const rootful = dockerCapabilitiesForHost("linux", "/var/run/docker.sock");
+    expect(rootful.projectUserMapping).toBe("image-renumber");
+    expect(rootful.bindOwnership).toBe("host-ids");
+
+    const rootless = dockerCapabilitiesForHost("linux", "/var/run/docker.sock", [], true);
+    expect(rootless.projectUserMapping).toBe("unsupported");
+    expect(rootless.bindOwnership).toBe("root-is-host-user");
+
+    const remapped = dockerCapabilitiesForHost("linux", "/var/run/docker.sock", [], false, true);
+    expect(remapped.projectUserMapping).toBe("unsupported");
+    expect(remapped.bindOwnership).toBe("userns-remap");
+
+    const remote = dockerCapabilitiesForHost("linux", "tcp://127.0.0.1:2375");
+    expect(remote.projectUserMapping).toBe("unsupported");
+    expect(remote.bindOwnership).toBe("unknown");
+  });
+
+  test("reports rootless and userns-remap from the engine's security options", async () => {
+    const rootless = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            env: {},
+            dockerApi: { info: Effect.succeed({ SecurityOptions: ["name=seccomp", "name=rootless"] }) },
+          }),
+        ),
+      ),
+    );
+    expect(rootless.capabilities.rootless).toBe(true);
+    expect(rootless.capabilities.bindOwnership).toBe("root-is-host-user");
+    expect(rootless.capabilities.projectUserMapping).toBe("unsupported");
+
+    const remapped = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            env: {},
+            dockerApi: { info: Effect.succeed({ SecurityOptions: ["name=userns"] }) },
+          }),
+        ),
+      ),
+    );
+    expect(remapped.capabilities.rootless).toBe(false);
+    expect(remapped.capabilities.bindOwnership).toBe("userns-remap");
+    expect(remapped.capabilities.projectUserMapping).toBe("unsupported");
+  });
+
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
     const linux = dockerCapabilitiesForPlatform("linux");
     const macos = dockerCapabilitiesForPlatform("darwin");

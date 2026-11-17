@@ -86,7 +86,7 @@ describe("Planned-user ownership of volume-backed data trees", () => {
       );
       const command = ownershipCommand(appPlan, "search");
       expect(command).toContain("mkdir -p '/var/solr'");
-      expect(command).toContain("chown -R '10001' '/var/solr'");
+      expect(command).toContain("chown -R '10001:10001' '/var/solr'");
     });
   });
 

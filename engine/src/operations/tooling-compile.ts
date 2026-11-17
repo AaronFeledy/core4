@@ -21,6 +21,7 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Option, Schema, type Scope } from "effect";
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
+import { appliedAppPlan, selectCommandIdentity } from "../services/execution-identity.ts";
 import { validateHostShellSteps } from "../services/host-shell-validation.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
@@ -207,13 +208,40 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
     stdout: "",
     stderr: "",
   };
+  // Running-command defaults come from the applied plan: a container created
+  // before the project user existed has no mapping, so its commands must keep
+  // the old identity. One lookup serves every container invocation.
+  const primaryServiceName = Object.entries(input.plan.services).find(
+    ([, service]) => service.primary === true,
+  )?.[0];
+  const appliedPlan = input.requiresProvider
+    ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => appliedAppPlan(registry, input.plan))
+    : undefined;
   for (const typedInvocation of input.invocations) {
-    const invocation = {
+    let invocation = {
       ...typedInvocation,
       ...(typedInvocation.env === undefined
         ? {}
         : { env: yield* session.resolveEnvironment(typedInvocation.env) }),
     };
+    if (typedInvocation.service !== ":host") {
+      const serviceName = typedInvocation.service ?? primaryServiceName;
+      const findService = (services: AppPlan["services"]) =>
+        serviceName === undefined
+          ? undefined
+          : Object.values(services).find((service) => String(service.name) === serviceName);
+      const service = findService(appliedPlan?.services ?? {});
+      const identity = selectCommandIdentity({ taskUser: typedInvocation.user, service });
+      if (identity.user !== undefined || Object.keys(identity.environment).length > 0) {
+        invocation = {
+          ...invocation,
+          ...(identity.user === undefined ? {} : { user: identity.user }),
+          ...(Object.keys(identity.environment).length === 0
+            ? {}
+            : { env: { ...identity.environment, ...(invocation.env ?? {}) } }),
+        };
+      }
+    }
     const run: Effect.Effect<
       ToolingEngineResult,
       ToolingExecutionError,
