@@ -106,46 +106,29 @@ export const lintEditorial = (
         ),
       );
   }
-  const e2eScenarios = scenarios.filter(
-    (scenario) => (propsOf(scenario, sourcePath).layer ?? frontmatter.defaultLayer) === "e2e",
-  );
-  const fixtureUsesByName = new Map<string, Array<{ scenario: MdxNode; node: MdxNode }>>();
-  for (const scenario of e2eScenarios)
+  // Every e2e run starts the app from a fresh root on a shared provider. A plain `lando destroy`
+  // keeps the app's volumes, labeled with that root, so the next run of the same app name fails
+  // the volume-ownership check. An e2e scenario that destroys its app must remove the volumes too.
+  for (const scenario of scenarios) {
+    if ((propsOf(scenario, sourcePath).layer ?? frontmatter.defaultLayer) !== "e2e") continue;
+    const destroys: MdxNode[] = [];
     walkAllNodes(scenario, (node) => {
-      if (node.name !== "UseFixture") return;
-      const name = propsOf(node, sourcePath).name;
-      if (typeof name !== "string") return;
-      const uses = fixtureUsesByName.get(name);
-      if (uses === undefined) fixtureUsesByName.set(name, [{ scenario, node }]);
-      else uses.push({ scenario, node });
+      const command = node.name === "Run" ? propsOf(node, sourcePath).command : undefined;
+      if (typeof command === "string" && /\blando\s+destroy\b/u.test(command)) destroys.push(node);
     });
-  const destroysVolumes = (scenario: MdxNode): boolean => {
-    let found = false;
-    walkAllNodes(scenario, (node) => {
-      if (found || node.name !== "Run") return;
-      const command = propsOf(node, sourcePath).command;
-      found = typeof command === "string" && /\blando\s+destroy\b[^\n]*--(?:volumes|purge)\b/u.test(command);
-    });
-    return found;
-  };
-  // Two e2e scenarios in one guide share the provider, so a reused fixture means one app
-  // name in two roots. A plain `lando destroy` keeps that app's volumes, and the next
-  // scenario then fails the volume-ownership check against the earlier root.
-  for (const [name, uses] of fixtureUsesByName) {
-    if (uses.length < 2) continue;
-    const reportedScenarios = new Set<MdxNode>();
-    for (const use of uses) {
-      if (reportedScenarios.has(use.scenario) || destroysVolumes(use.scenario)) continue;
-      reportedScenarios.add(use.scenario);
-      diagnostics.push(
-        diagnostic(
-          sourcePath,
-          use.node,
-          "guide.scenario.e2e-shared-fixture-volumes",
-          `<Scenario layer="e2e"> reuses fixture "${name}", so its cleanup must destroy with --volumes or --purge: a plain lando destroy keeps the app's volumes, which the next scenario using that app name inherits.`,
-        ),
-      );
-    }
+    const purges = destroys.some((node) =>
+      /--(?:volumes|purge)\b/u.test(String(propsOf(node, sourcePath).command)),
+    );
+    const first = destroys[0];
+    if (first === undefined || purges) continue;
+    diagnostics.push(
+      diagnostic(
+        sourcePath,
+        first,
+        "guide.scenario.e2e-destroy-volumes",
+        '<Scenario layer="e2e"> must destroy with --volumes or --purge: a plain lando destroy keeps the app\'s volumes, and the next run of this app name from a new root cannot adopt them.',
+      ),
+    );
   }
   if (
     guide !== undefined &&

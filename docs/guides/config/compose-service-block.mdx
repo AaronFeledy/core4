@@ -149,7 +149,7 @@ the Lando feature stack entirely.
     </Step>
     <Step name="destroy-compose-services">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 

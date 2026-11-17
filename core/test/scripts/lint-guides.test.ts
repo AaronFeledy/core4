@@ -118,53 +118,43 @@ describe("lint:guides", () => {
       'core/test/lint/guides/e2e-smoke.mdx:9:3: guide.scenario.e2e-cleanup: <Scenario layer="e2e"> requires at least one <Cleanup> step so provider resources are torn down.',
     ]);
   });
-  test("requires volume-removing cleanup when e2e scenarios reuse a fixture", () => {
-    const sourcePath = "core/test/lint/guides/e2e-shared-fixture.mdx";
-    const lintWithDestroy = (destroy: string) =>
-      lintGuideContent(
-        sourcePath,
-        [
-          "---",
-          "id: e2e-shared-fixture",
-          "provider: test",
-          "defaultLayer: e2e",
-          "diataxis: tutorial",
-          "---",
-          "",
-          "<Guide>",
-          '  <Scenario id="first">',
-          '    <Step name="start">',
-          '      <UseFixture name="shared-demo" />',
-          '      <Run command="lando start" />',
-          "    </Step>",
-          '    <Step name="cleanup">',
-          "      <Cleanup />",
-          `      <Run command="${destroy}" />`,
-          "    </Step>",
-          "  </Scenario>",
-          '  <Scenario id="second">',
-          '    <Step name="start">',
-          '      <UseFixture name="shared-demo" />',
-          '      <Run command="lando start" />',
-          "    </Step>",
-          '    <Step name="cleanup">',
-          "      <Cleanup />",
-          '      <Run command="lando destroy -y --volumes" />',
-          "    </Step>",
-          "  </Scenario>",
-          "</Guide>",
-          "",
-        ].join("\n"),
-      ).diagnostics.map(formatGuideLintDiagnostic);
-
-    // The fixture directory itself is absent here; only this rule's verdict matters.
-    const sharedFixtureRule = (destroy: string) =>
-      lintWithDestroy(destroy).filter((line) => line.includes("guide.scenario.e2e-shared-fixture-volumes"));
-
-    expect(sharedFixtureRule("lando destroy -y")).toEqual([
-      expect.stringContaining(": guide.scenario.e2e-shared-fixture-volumes:"),
-    ]);
-    expect(sharedFixtureRule("lando destroy -y --volumes")).toEqual([]);
+  test.each([
+    ["e2e", "lando destroy -y", true],
+    ["e2e", "lando destroy -y --volumes", false],
+    ["e2e", "lando destroy -y --purge", false],
+    ["scenario", "lando destroy -y", false],
+  ] as const)("a %s scenario cleaning up with `%s` is reported: %p", (layer, destroy, reported) => {
+    // Each e2e run uses a fresh app root, so a plain destroy leaves volumes that the next run of
+    // the same app name fails to adopt. The fixture directory is absent; only this rule matters.
+    const diagnostics = lintGuideContent(
+      "core/test/lint/guides/e2e-destroy-volumes.mdx",
+      [
+        "---",
+        "id: e2e-destroy-volumes",
+        "provider: test",
+        "diataxis: tutorial",
+        "---",
+        "",
+        "<Guide>",
+        `  <Scenario id="only" layer="${layer}">`,
+        '    <Step name="start">',
+        '      <UseFixture name="demo" />',
+        '      <Run command="lando start" />',
+        "    </Step>",
+        '    <Step name="cleanup">',
+        "      <Cleanup />",
+        `      <Run command="${destroy}" />`,
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n"),
+    )
+      .diagnostics.map(formatGuideLintDiagnostic)
+      .filter((line) => line.includes("guide.scenario.e2e-destroy-volumes"));
+    expect(diagnostics).toEqual(
+      reported ? [expect.stringContaining(": guide.scenario.e2e-destroy-volumes:")] : [],
+    );
   });
 
   test("accepts a guide with a <Hidden> block carrying a reason", async () => {
