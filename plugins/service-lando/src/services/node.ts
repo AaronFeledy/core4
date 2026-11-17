@@ -76,13 +76,10 @@ const REMEDIATION_VERSION = (requested: string): string =>
 
 const PROJECT_FILE_LIMIT = 1_048_576;
 
-export class NodeInferenceError extends Error {
-  readonly remediation: string;
-
+export class NodeInferenceError extends ServiceConfigIssue {
   constructor(message: string, remediation: string) {
-    super(`${message} ${remediation}`);
+    super([], message, remediation);
     this.name = "NodeInferenceError";
-    this.remediation = remediation;
   }
 }
 
