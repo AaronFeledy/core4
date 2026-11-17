@@ -21,7 +21,9 @@ Run this from any directory on your host:
 lando poweroff -y
 ```
 
-The command reports when apps have powered off or when there are none to stop. If an app fails to stop, follow the reported remediation and retry; Lando keeps the runtime available for recovery.
+Each app stops through the same lifecycle as `lando stop` from its own app root, so its Landofile stop steps, file-sync drain, and route withdrawal still run. An app whose applied record is gone is stopped anyway: Lando removes the containers it can prove belong to that root and keeps their named volumes. Apps whose containers have already exited are skipped, so their stop steps do not run again.
+
+If one app fails, poweroff still stops the others and then reports every failure with its remediation. It leaves the global app and the managed runtime running in that case, so you can fix the failed app and run `lando poweroff` again.
 
 <Guide>
   <Scenario id="stop-every-app" render>
@@ -60,7 +62,7 @@ After poweroff, `lando list` reports apps as `stopped` when the API confirms no 
 If runtime state is `unknown` after a crash, `wsl --terminate`, or the first poweroff after an upgrade, `lando destroy` launches or repairs the managed runtime holding the app's resources before checking and removing them. You don't need to start the app first. `lando destroy --root` and `lando apps:gc --prune` do the same for deleted app folders. If runtime preparation fails, cleanup reports that failure and leaves the resources for retry.
 
 On Linux and WSL, Lando records a shutdown receipt after confirming that containers are quiescent, the runtime service has exited, and its private pause process has been torn down. With an absent API, that receipt establishes idle after shutdown or a reboot; each runtime launch invalidates it first. Without valid receipt evidence, status remains `unknown`, because process observations alone cannot prove workloads stopped. On macOS and Windows, read-only inspection of a stopped managed machine establishes idle. Neither status observation nor stop launches the runtime.
-Lando stops the managed runtime service only after all targeted apps stop.
+Lando stops the managed runtime service only after all targeted apps stop and when no keep flag left an app running and no stop failed.
 Before it does, Lando removes containers that image builds left behind, so
 their storage helpers don't keep running.
 If an app cannot stop, the command fails with that app's id and remediation
