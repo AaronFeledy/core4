@@ -12,14 +12,13 @@ import { Result, Schema, SchemaIssue } from "effect";
 
 import {
   NODE_FEATURE_ID,
-  SUPPORTED_NODE_MAJORS,
-  SUPPORTED_NODE_VERSIONS,
   node22ServiceType,
   node24ServiceType,
   node26ServiceType,
   nodeLtsServiceType,
   nodeServiceFeature,
 } from "../src/services/node.ts";
+import { SUPPORTED_NODE_MAJORS, SUPPORTED_NODE_VERSIONS } from "../src/services/node-versions.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {

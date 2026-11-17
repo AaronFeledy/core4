@@ -3,12 +3,8 @@ import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceTypeProjectFileInput } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-import {
-  NodeInferenceError,
-  node22ServiceType,
-  nodeServiceType,
-  resolveNodeInference,
-} from "../src/services/node.ts";
+import { node22ServiceType, nodeServiceType } from "../src/services/node.ts";
+import { NodeInferenceError, resolveNodeInference } from "../src/services/node-inference.ts";
 
 const projectFile = (path: string, text: string): ServiceTypeProjectFileInput => ({
   path,
