@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
@@ -117,6 +117,7 @@ const makeHarness = (input: {
   readonly ownership?: ReadonlyArray<ResourceOwnership>;
 }) => {
   const destroyCalls: AppPlan[] = [];
+  const calls: string[] = [];
   const removalAttempts: Array<{ readonly service: string; readonly containerId: string | undefined }> = [];
   const removedVolumes: string[] = [];
   const evidenceScopes: Array<ProviderId | undefined> = [];
@@ -137,6 +138,7 @@ const makeHarness = (input: {
     listVolumes: () => Effect.succeed([]),
     destroy: (target: { readonly app: string; readonly plan?: AppPlan }) =>
       Effect.sync(() => {
+        calls.push("destroy");
         if (target.plan !== undefined) destroyCalls.push(target.plan);
         return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
@@ -249,6 +251,7 @@ const makeHarness = (input: {
   );
   return {
     layer,
+    calls,
     destroyCalls,
     removalAttempts,
     removedVolumes,
@@ -378,6 +381,81 @@ describe("stopAppAtRoot", () => {
       } finally {
         await Effect.runPromise(Fiber.interrupt(holder));
       }
+    });
+  });
+
+  test("stops verified writers before terminating a missing-root unfinished start", async () => {
+    await withTempRoot(async (root) => {
+      const plan = acceleratedPlanAt(root);
+      const app = { kind: "user" as const, id: plan.id, root: plan.root };
+      const terminations: string[] = [];
+      const paths = makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" });
+      const workerDirs = [
+        paths.hostProxyRunDir(app.id, app.root),
+        paths.agentRelayRunDir("ssh", app.id, app.root),
+        paths.agentRelayRunDir("gpg", app.id, app.root),
+      ];
+      for (const directory of workerDirs) {
+        await mkdir(directory, { recursive: true, mode: 0o700 });
+        await writeFile(join(directory, "credentials"), "stale", { mode: 0o600 });
+      }
+      const engine = {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        listSessions: (filter: { readonly app?: { readonly id?: string; readonly root?: string } }) =>
+          Effect.succeed(
+            plan.fileSync
+              .filter(
+                (entry) =>
+                  filter.app === undefined ||
+                  (entry.session.app.id === filter.app.id && entry.session.app.root === filter.app.root),
+              )
+              .map((entry) => ({
+                ...entry.session,
+                ref: FileSyncSessionRef.make(`${entry.session.service}-${entry.session.mountKey}`),
+                spec: entry.session,
+                status: "running" as const,
+                lastUpdatedAt: DateTime.makeUnsafe("2026-08-01T00:00:00.000Z"),
+              })),
+          ),
+        terminateSession: (ref: unknown) =>
+          Effect.sync(() => {
+            harness.calls.push("terminate");
+            terminations.push(String(ref));
+          }),
+      };
+      const harness = makeHarness({ appliedPlan: plan });
+      const layer = Layer.merge(
+        harness.layer,
+        Layer.succeed(FileSyncResolver, {
+          candidates: [],
+          select: () => Effect.succeed(undefined),
+          acquire: () => Effect.succeed(engine),
+        }),
+      );
+      await Effect.runPromise(
+        beginOrResumeAcceleratedStart(plan, app).pipe(
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
+          Effect.provide(layer),
+        ),
+      );
+      await rm(root, { recursive: true, force: true });
+
+      const result = await Effect.runPromise(stopAppAtRoot(root).pipe(Effect.provide(layer)));
+
+      expect(result).toMatchObject({ app: "stop-at-root", outcome: "stopped", servicesStopped: ["web"] });
+      expect(harness.destroyCalls).toEqual([plan]);
+      expect(harness.routeRemovals).toEqual(["stop-at-root"]);
+      expect(terminations).toHaveLength(1);
+      expect(harness.calls).toEqual(["destroy", "terminate"]);
+      for (const directory of workerDirs)
+        await expect(stat(directory)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(harness.removedVolumes).toEqual([]);
+      const journal = await Effect.runPromise(readJournal(app).pipe(Effect.provide(layer)));
+      expect(journal.pending).not.toBeNull();
+      expect(journal.pending?.phase).not.toBe("completed");
     });
   });
 

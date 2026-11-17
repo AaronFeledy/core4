@@ -37,6 +37,7 @@ import {
 import { TeardownProvider, resolveAppPlacement } from "../providers/app-placement.ts";
 import { shellArg } from "../services/shell-quote.ts";
 import { readDiscardableStart } from "./accelerated-start-disposal.ts";
+import { cleanupAppWorkers } from "./destroy-provider.ts";
 import { appLockTarget, canonicalMissingAppRoot, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
@@ -361,27 +362,88 @@ const journalPending = Effect.fnUntraced(function* (scope: StopScope, id: string
 });
 
 /**
- * Verify a journal at a root that no longer exists and terminate its sessions. The attempt stays
- * unfinished, and its targets, journal, applied state, and named volumes are all kept, so the next
- * start can finish it.
+ * Stop whatever the verified teardown evidence says is still writing at a root whose folder is
+ * gone, then clean host workers and withdraw routes. The journal preflight already proved the
+ * attempt identity; this never loads desired config or runs live file-sync preflight.
  */
-const terminateMissingRootStart = Effect.fnUntraced(function* (
+const stopMissingRootWriters = Effect.fnUntraced(function* (
   scope: StopScope,
   pending: NonNullable<Effect.Success<ReturnType<typeof journalPending>>>,
+  resolution: TeardownResolution,
 ): Effect.fn.Return<StopAppResult, StopAppError, StopAppServices> {
+  const registry = yield* RuntimeProviderRegistry;
   const app = journalRef(scope.root, pending.appId);
-  const disposal = yield* prepareMissingRootStartDisposal(app, pending, { volumes: false });
-  yield* disposal.terminate;
-  return { app: String(app.id), outcome: "stopped", servicesStopped: [] };
+  const services: string[] = [];
+  switch (resolution.kind) {
+    case "applied": {
+      const target = resolution.target;
+      const provider = yield* registry.select(target.plan);
+      if ((yield* provider.getStatus).state !== "idle") {
+        const outcome = yield* provider.destroy(
+          { app: target.plan.id, plan: target.plan },
+          { volumes: false, removeState: false },
+        );
+        if (outcome.kind === "destroyed")
+          services.push(...Object.values(target.plan.services).reverse().map((service) => String(service.name)));
+      }
+      const cleanup = yield* prepareOwnedResourceCleanup(
+        scope.root,
+        { volumes: false, purgeCaches: false },
+        "stop",
+      );
+      services.push(...(yield* cleanup).servicesRemoved);
+      break;
+    }
+    case "orphans": {
+      const removed = yield* stopOrphans(resolution);
+      services.push(...removed.servicesStopped);
+      break;
+    }
+    case "owned": {
+      const removed = yield* tearDownOwnedResources(
+        scope.root,
+        { volumes: false, purgeCaches: false },
+        "stop",
+      );
+      services.push(...removed.servicesRemoved);
+      break;
+    }
+    case "absent":
+      break;
+    default: {
+      const unreachable: never = resolution;
+      return unreachable;
+    }
+  }
+  yield* cleanupAppWorkers(app);
+  yield* withdrawOwnerRoutes(
+    resolution.kind === "applied"
+      ? routeOwnerFromPlan(resolution.target.plan)
+      : routeOwnerFromRoot(String(app.id), scope.root),
+  );
+  return {
+    app: resolution.kind === "applied" ? resolution.target.plan.name : String(app.id),
+    outcome: "stopped",
+    servicesStopped: [...new Set(services)],
+  };
 });
 
 /** Stop a root whose unfinished accelerated start means the desired plan must be the same app. */
 const stopRetainedStart = Effect.fnUntraced(function* (
   scope: StopScope,
   pending: NonNullable<Effect.Success<ReturnType<typeof journalPending>>>,
+  resolution: TeardownResolution,
   expected?: AppRef,
 ): Effect.fn.Return<StopAppResult, StopAppError, StopAppServices> {
-  if (!scope.rootExists) return yield* terminateMissingRootStart(scope, pending);
+  if (!scope.rootExists) {
+    const app = journalRef(scope.root, pending.appId);
+    // Verify the journal and engine identity before any writer is touched.
+    const disposal = yield* prepareMissingRootStartDisposal(app, pending, { volumes: false });
+    const result = yield* stopMissingRootWriters(scope, pending, resolution);
+    // Writers are gone; termination never flushes and the journal stays for the next start.
+    yield* disposal.terminate;
+    return result;
+  }
   const desired = yield* scope.desired;
   if (desired.root !== scope.root) {
     return yield* Effect.fail(
@@ -419,7 +481,7 @@ const stopResolution = (
       case "applied": {
         const target = resolution.target;
         const pending = yield* journalPending(scope, String(target.app.id));
-        if (pending !== undefined) return yield* stopRetainedStart(scope, pending, target.app);
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution, target.app);
         return (yield* stopAppWithResolvedPlan(scope.options, target, {
           revalidate: false,
           requireAppliedEvidence: false,
@@ -430,7 +492,7 @@ const stopResolution = (
       case "orphans": {
         const app = resolution.groups[0]?.appId ?? scope.root;
         const pending = yield* journalPending(scope, String(app));
-        if (pending !== undefined) return yield* stopRetainedStart(scope, pending);
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution);
         const result = yield* stopOrphans(resolution);
         yield* withdrawOwnerRoutes(routeOwnerFromRoot(result.app, scope.root));
         return result;
@@ -438,7 +500,7 @@ const stopResolution = (
       case "owned": {
         const app = resolution.ownership[0]?.appIds[0] ?? basename(scope.root);
         const pending = yield* journalPending(scope, String(app));
-        if (pending !== undefined) return yield* stopRetainedStart(scope, pending);
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution);
         const removed = yield* tearDownOwnedResources(
           scope.root,
           { volumes: false, purgeCaches: false },
@@ -456,7 +518,7 @@ const stopResolution = (
         // A root with an unfinished start is never reported unchanged, and its journal is read
         // before this result is decided.
         const pending = yield* journalPending(scope, app);
-        if (pending !== undefined) return yield* stopRetainedStart(scope, pending);
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution);
         if (!scope.loadDesiredOnAbsent) return unchangedResult(app);
         return yield* teardownDesiredOrUnchanged(
           resolution,
