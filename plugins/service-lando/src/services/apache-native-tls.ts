@@ -50,13 +50,17 @@ export const nativeTlsEligible = (input: {
 }): boolean =>
   input.owned && apacheRunsAsRootParent(input.config.user) && generatedCertificateRequested(input.config);
 
-/** The generated-listener association active for one Apache-shaped service. */
+/**
+ * The generated-listener association for one Apache-shaped service. It is a
+ * capability, not a promise: every Lando-owned launcher carries it, including a
+ * launcher whose parent user cannot read the key, so routing can explain the
+ * opt-out while the TLS listener itself stays root-only.
+ */
 export const apacheGeneratedCertificateEndpoint = (input: {
   readonly plainPort: number;
   readonly owned: boolean;
-  readonly rootParent: boolean;
 }): GeneratedCertificateEndpoint | undefined =>
-  input.owned && input.rootParent ? { port: generatedTlsListenerPort(input.plainPort) } : undefined;
+  input.owned ? { port: generatedTlsListenerPort(input.plainPort) } : undefined;
 
 /** The declared HTTPS listener that serves a generated certificate. */
 export const generatedHttpsEndpoint = (input: {

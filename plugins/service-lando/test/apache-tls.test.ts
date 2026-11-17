@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   APACHE_FEATURE_ID,
@@ -223,4 +223,57 @@ describe("generated Apache native TLS", () => {
     expect(apacheDirectives(plan)).not.toContain("SSLEngine on");
     expect(buildStepIds(plan)).not.toContain(APACHE_SSL_MODULE_BUILD_STEP_ID);
   });
+});
+
+const resolveService = (serviceType: ServiceType, raw: unknown) =>
+  Effect.runSync(
+    serviceType.resolve({
+      name: "web",
+      service: decodeService(raw),
+      appRoot: APP_ROOT,
+      metadata,
+    }),
+  );
+
+describe("generated Apache certificate association", () => {
+  test.each([
+    { label: "php via apache", serviceType: php83ServiceType, raw: { type: "php:8.3", via: "apache" } },
+    { label: "standalone apache", serviceType: apacheServiceType, raw: { type: "apache" } },
+  ] as const)(
+    "$label reports its generated listener before a certificate is requested",
+    ({ serviceType, raw }) => {
+      // Given / When
+      const resolution = resolveService(serviceType, raw);
+      // Then: the association is a capability, not a demand.
+      expect(resolution.generatedCertificateEndpoint).toEqual({ port: 443 });
+      expect(resolution.normalizedConfig.certs).toBeUndefined();
+    },
+  );
+
+  test.each([
+    {
+      label: "php via apache",
+      serviceType: php83ServiceType,
+      raw: { type: "php:8.3", via: "apache", certs: true, user: "www-data" },
+      compose: composePhp,
+    },
+    {
+      label: "standalone apache",
+      serviceType: apacheServiceType,
+      raw: { type: "apache", certs: true, user: "www-data" },
+      compose: composeApache,
+    },
+  ] as const)(
+    "$label keeps the non-root association but no TLS listener",
+    async ({ serviceType, raw, compose }) => {
+      // Given: a root-only key and an explicitly non-root parent.
+      const resolution = resolveService(serviceType, raw);
+      const plan = await compose(raw);
+      // Then: the association records the opt-out; nothing serves native TLS.
+      expect(resolution.generatedCertificateEndpoint).toEqual({ port: 443 });
+      expect(plan.endpoints?.some((endpoint) => endpoint.protocol === "https")).toBe(false);
+      expect(buildStepIds(plan)).not.toContain(APACHE_SSL_MODULE_BUILD_STEP_ID);
+      expect(buildStepIds(plan)).not.toContain(APACHE_SSL_PORTS_BUILD_STEP_ID);
+    },
+  );
 });

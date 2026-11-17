@@ -131,6 +131,14 @@ test("keeps numeric root parent spellings eligible and explicit certs true untou
   ).toBe(true);
 });
 
+test("keeps a non-root owned launcher's association without demanding a certificate", () => {
+  // Given: the resolver reports the capability even though the parent cannot read the key.
+  const nonRoot = resolution({ normalizedConfig: { type: "php:8.3", user: "www-data" } });
+  // When / Then
+  expect(nonRoot.generatedCertificateEndpoint).toEqual({ port: 443 });
+  expect(demandFor({ resolution: nonRoot })).toBeUndefined();
+});
+
 test("demands the certificate for a route naming an authored HTTPS endpoint on the generated port", () => {
   // Given
   const authored = resolution({

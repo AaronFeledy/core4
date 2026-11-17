@@ -29,7 +29,6 @@ import { resolveWebroot } from "./_webroot.ts";
 import {
   type ApacheNativeTls,
   apacheGeneratedCertificateEndpoint,
-  apacheRunsAsRootParent,
   generatedHttpsEndpoint,
   nativeTlsEligible,
   nativeTlsListener,
@@ -348,7 +347,6 @@ export const apacheServiceType: ServiceType = {
       const endpoint = apacheGeneratedCertificateEndpoint({
         plainPort: input.service.port ?? APACHE_LISTENER.port,
         owned: apacheOwnedLauncher(input.service),
-        rootParent: apacheRunsAsRootParent(input.service.user),
       });
       return {
         base: "lando" as const,

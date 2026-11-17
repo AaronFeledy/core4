@@ -4,7 +4,7 @@ import type { ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
-import { apacheGeneratedCertificateEndpoint, apacheRunsAsRootParent } from "./apache-native-tls.ts";
+import { apacheGeneratedCertificateEndpoint } from "./apache-native-tls.ts";
 import { resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
 import { PHP_FEATURE_ID } from "./php-feature.ts";
@@ -98,7 +98,6 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       const generatedCertificateEndpoint = apacheGeneratedCertificateEndpoint({
         plainPort: input.service.port ?? PHP_LISTENERS.apache.port,
         owned,
-        rootParent: apacheRunsAsRootParent(input.service.user),
       });
       return {
         base: "lando" as const,

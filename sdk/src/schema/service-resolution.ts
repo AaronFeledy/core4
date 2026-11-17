@@ -9,11 +9,13 @@ import { PortNumber } from "./primitives.ts";
 
 /**
  * A generated HTTPS listener an owned launcher can serve the service's own
- * generated certificate on. The resolver emits the candidate port whether or
- * not a certificate has been requested yet; the association becomes active only
- * while the effective service config asks for a generated certificate and the
- * selected HTTPS route actually lands on that port. It is a capability
- * declaration, not a certificate request and not an authored endpoint.
+ * generated certificate on. The resolver emits the candidate port for every
+ * owned launcher, whether or not a certificate has been requested and whether
+ * or not the authored `user:` can read the key; the demand phase requires a
+ * root parent before the association can activate. It activates only while the
+ * effective service config asks for a generated certificate and the selected
+ * HTTPS route actually lands on that port. It is a capability declaration, not
+ * a certificate request and not an authored endpoint.
  */
 export const GeneratedCertificateEndpoint = Schema.Struct({
   port: PortNumber.annotateKey({
