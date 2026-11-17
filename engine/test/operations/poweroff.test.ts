@@ -295,7 +295,7 @@ describe("poweroff operation", () => {
           {
             kind: "user",
             appRoot: a,
-            errorTag: "ProviderUnavailableError",
+            _tag: "ProviderUnavailableError",
             remediation: "Restore provider access and retry `lando poweroff`.",
           },
         ],
@@ -334,7 +334,7 @@ describe("poweroff operation", () => {
     if (result.failure._tag !== "PoweroffStopError")
       throw new TypeError(`expected PoweroffStopError, received ${result.failure._tag}`);
     expect(result.failure.failures).toMatchObject([
-      { kind: "global", appId: "global", errorTag: "AppResolveError" },
+      { kind: "global", appId: "global", _tag: "AppResolveError" },
     ]);
     expect(harness.calls).not.toContain("runtime");
   });
@@ -355,7 +355,7 @@ describe("poweroff operation", () => {
       expect(result.failure.failures).toMatchObject([
         {
           providerId: "lando",
-          errorTag: "ProviderUnavailableError",
+          _tag: "ProviderUnavailableError",
           message: "Cannot observe the runtime.",
           remediation: "Restore provider access and retry.",
         },
@@ -401,7 +401,7 @@ describe("poweroff operation", () => {
           {
             appId: journalPath,
             providerId: "journals",
-            errorTag: "ProviderUnavailableError",
+            _tag: "ProviderUnavailableError",
             message: expect.stringContaining(journalPath),
           },
         ]);

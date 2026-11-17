@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { taggedErrorJson } from "@lando/sdk/command-result";
 import {
   AbsolutePath,
   AppId,
@@ -119,11 +120,20 @@ test("aggregates a failed app and skips runtime shutdown", async () => {
           kind: "user",
           appId: "poweroff-app",
           appRoot: root,
-          errorTag: "ProviderUnavailableError",
+          _tag: "ProviderUnavailableError",
         },
       ],
     });
     expect(result.failure.apps.find((app) => app.kind === "global")?.outcome).toBe("skipped");
+    // The machine-output projection keeps each failed app as a nested tagged error.
+    expect(taggedErrorJson(result.failure).failures).toMatchObject([
+      {
+        _tag: "ProviderUnavailableError",
+        appId: "poweroff-app",
+        appRoot: root,
+        message: expect.stringContaining(`poweroff-app (${root}): `),
+      },
+    ]);
     expect(fixture.calls).not.toContain("runtime");
   });
 });

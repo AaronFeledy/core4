@@ -47,7 +47,7 @@ const PoweroffStopFailureSchema = Schema.Struct({
   appId: Schema.String,
   appRoot: Schema.String,
   providerId: Schema.String,
-  errorTag: Schema.String,
+  _tag: Schema.String,
   message: Schema.String,
   remediation: Schema.NonEmptyString,
 });
@@ -144,10 +144,15 @@ const stopFailure = Effect.fnUntraced(function* (
   target: Pick<StopFailure, "kind" | "appId" | "appRoot" | "providerId">,
   error: unknown,
 ) {
+  // App-scoped failures name the app; provider and inventory failures carry no root to name.
+  const message =
+    target.appRoot === ""
+      ? failureMessage(error)
+      : `${target.appId} (${target.appRoot}): ${failureMessage(error)}`;
   return {
     ...target,
-    errorTag: failureTag(error),
-    message: yield* redacted(failureMessage(error)),
+    _tag: failureTag(error),
+    message: yield* redacted(message),
     remediation: yield* redacted(failureRemediation(error)),
   } satisfies PoweroffStopFailure;
 });

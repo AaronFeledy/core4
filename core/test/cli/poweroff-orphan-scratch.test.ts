@@ -51,7 +51,7 @@ test.each(["orphan", "registered", "destroy-failure"] as const)(
         if (result._tag !== "Failure") throw new Error("expected a typed scratch failure");
         expect(result.failure).toMatchObject({
           _tag: "PoweroffStopError",
-          failures: [{ kind: "scratch", appId: scratchId, errorTag: "ScratchAppError" }],
+          failures: [{ kind: "scratch", appId: scratchId, _tag: "ScratchAppError" }],
         });
         expect(fixture.calls).toEqual([`scratch:${scratchId}`, `scratch-reason:${scratchId}`]);
         expect(fixture.calls).not.toContain("runtime");
