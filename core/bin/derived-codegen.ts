@@ -3,7 +3,6 @@ import { join } from "node:path";
 
 export const DERIVED_CODEGEN_SENTINELS = [
   "core/src/plugins/generated/bundled.ts",
-  "core/src/runtime/generated/layers/index.ts",
   "core/src/cli/generated/command-registry-manifest.ts",
   "core/src/cli/generated/compiled-decoders.mjs",
   "core/src/recipes/bundled.ts",

@@ -39,7 +39,7 @@ describe("Linux-x64 release acceptance rehearsal guide", () => {
     expect(guide).toContain(
       "bun run scripts/build-compiled-binary.ts --target linux-x64 --outfile ./dist/lando",
     );
-    expect(guide).toContain("core/src/runtime/generated/layers/<level>.ts");
+    expect(guide).toContain("core/src/runtime/layers/<level>.ts");
 
     expect(guide).toContain("guide-scenarios-linux-x64");
     expect(guide).toContain("perf-budget-linux-x64");

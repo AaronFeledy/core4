@@ -33,7 +33,7 @@ or the root `.lando.yml`; compilation rejects a stale helper. The
 
 | Path | Responsibility |
 | --- | --- |
-| `core/` | CLI, library API, generated bootstrap layers, and bundled-plugin wiring |
+| `core/` | CLI, library API, bootstrap layer modules, and bundled-plugin wiring |
 | `sdk/` | Public Effect Schemas, service contracts, event types, and errors used by plugin authors |
 | `engine/` | Orchestration runtime and implementations of app operations |
 | `container-runtime/` | Provider-independent container-runtime helpers |
@@ -113,9 +113,9 @@ Command declarations belong in `core/src/cli/command-specs/`, spec machinery in
 The built-in registry records whether each command is implemented or deferred.
 Do not introduce a second dispatch path. See [CLI dispatch](../../core/AGENTS.md#cli-dispatch-single-native-engine).
 
-Bootstrap layers are generated under `core/src/runtime/generated/layers/`.
-Change the generator rather than those outputs, and update the runtime-service
-type union when adding a service. A command's declaration selects its bootstrap tier.
+Bootstrap layers are checked-in source under `core/src/runtime/layers/`.
+Edit the module for the tier you are changing and update the runtime-service type
+union in `core/src/runtime/layer.ts` in the same change. A command's declaration selects its bootstrap tier.
 
 Standalone compilation targets `core/bin/lando.ts`, not the library entry point.
 The build uses Bun compilation with bytecode for all six release targets.

@@ -31,7 +31,6 @@ const GITIGNORED_DERIVED_PATHS = [
   "container-runtime/src/generated/provider-images.ts",
   "core/src/plugins/generated",
   "core/src/recipes/bundled.ts",
-  "core/src/runtime/generated/layers",
   "dist/command-schemas",
   "dist/schemas",
   "docs/reference/schemas",
