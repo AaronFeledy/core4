@@ -5,11 +5,6 @@ const DESTROY_FLAGS = new Set(["--volumes", "--purge"]);
 const MESSAGE =
   '<Scenario layer="e2e"> must destroy with --volumes or --purge: a plain lando destroy keeps the app\'s volumes, and the next run of this app name from a new root cannot adopt them.';
 
-const commandArgv = (component: GuideStepComponent): ReadonlyArray<string> | undefined =>
-  component.kind === "Run" || component.kind === "Verify" ? component.argv : undefined;
-
-const isLandoDestroy = (argv: ReadonlyArray<string>): boolean => argv[0] === "lando" && argv[1] === "destroy";
-
 const cleanupDestroys = (
   steps: ReadonlyArray<GuideStepNode>,
 ): ReadonlyArray<{ readonly component: GuideStepComponent; readonly purges: boolean }> =>
@@ -17,8 +12,8 @@ const cleanupDestroys = (
     .filter((step) => step.components.some((component) => component.kind === "Cleanup"))
     .flatMap((step) =>
       step.components.flatMap((component) => {
-        const argv = commandArgv(component);
-        if (argv === undefined || !isLandoDestroy(argv)) return [];
+        const argv = component.kind === "Run" || component.kind === "Verify" ? component.argv : undefined;
+        if (argv === undefined || argv[0] !== "lando" || argv[1] !== "destroy") return [];
         return [{ component, purges: argv.some((word) => DESTROY_FLAGS.has(word)) }];
       }),
     );
@@ -43,7 +38,7 @@ export const lintE2eDestroyVolumes = (guide: GuideScenarioAst): ReadonlyArray<Gu
     if (!e2eScenarios.has(scenarioId)) continue;
     if (resolved.variant?.skip !== undefined || resolved.skipOnly) continue;
     const destroys = cleanupDestroys(resolved.steps);
-    if (destroys.length === 0 || destroys.some((destroy) => destroy.purges)) continue;
+    if (destroys.some((destroy) => destroy.purges)) continue;
     const [first] = destroys;
     if (first === undefined || reported.has(first.component.line)) continue;
     reported.add(first.component.line);
