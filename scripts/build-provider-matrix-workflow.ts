@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 
+import { setupBunSteps as sharedSetupBunSteps } from "./_bun-workflow.ts";
 import {
   CONTAINER_HELPER_JOB_ID,
   containerHelperDownloadStep,
@@ -20,13 +21,7 @@ const GENERATED_HEADER =
 const yamlString = (value: string): string => JSON.stringify(value);
 const cells: readonly ProviderAcceptanceCellPlan[] = PROVIDER_ACCEPTANCE_CELLS;
 
-const setupBunSteps = `      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+const setupBunSteps = `${sharedSetupBunSteps}
 
       - name: Regenerate derived sources
         run: bun run codegen`;

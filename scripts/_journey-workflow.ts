@@ -1,3 +1,4 @@
+import { setupBunSteps } from "./_bun-workflow.ts";
 import { containerHelperDownloadStep } from "./_container-helper-workflow.ts";
 import { isolateLandoRootsStep as isolateRootsStep } from "./_lando-roots-workflow.ts";
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
@@ -42,14 +43,6 @@ export const createJourneyWorkflowBuilder = (workflow: string) => {
     const flags = `--yes --provider=${cell.provider} --skip-install-ca --skip-shell-integration --skip-file-sync`;
     return isWindowsCiPlatform(cell) ? `${flags} --no-interactive` : flags;
   };
-
-  const setupBunSteps = `      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile`;
 
   const derivedSourcesSteps = `      - name: Regenerate derived sources
         run: bun run codegen

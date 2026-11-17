@@ -728,6 +728,7 @@ describe("ci workflow codegen", () => {
       for (const platform of CI_PLATFORMS) {
         expect(workflow).toContain(`--name lando-${platform.id}`);
         expect(workflow).toContain(`dist/${releaseBinaryFileName(platform)}`);
+        expect(workflow).toContain(`test -f dist/${releaseBinaryFileName(platform)}`);
       }
       expect(workflow).toContain("sudo apt-get install -y strace iproute2");
       expect(workflow).toContain("sudo env");
@@ -757,6 +758,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).not.toContain("sbom");
       expect(workflow).not.toContain("installer");
       expect(workflow).not.toContain("update-manifest");
+      expect(workflow).not.toContain("if-no-files-found");
     },
     codegenTestTimeout,
   );
@@ -849,35 +851,6 @@ describe("ci workflow codegen", () => {
       expect(workflow).not.toContain("LANDO_NPM_VERSION: 4.0.0-alpha.${{ github.run_number }}");
       expect(workflow).not.toContain("NPM_TOKEN");
       expect(workflow).not.toContain("NODE_AUTH_TOKEN");
-    },
-    codegenTestTimeout,
-  );
-
-  test(
-    "keeps GitHub binary prerelease in generated workflow",
-    async () => {
-      await runCodegen();
-      const workflow = await readFile(releaseWorkflowPath, "utf8");
-
-      expect(workflow).toContain("dev-prerelease:");
-      expect(workflow).not.toContain("dev-prerelease-linux-x64:");
-      for (const platform of CI_PLATFORMS) {
-        expect(workflow).toContain(`--name lando-${platform.id}`);
-        expect(workflow).toContain(`dist/${releaseBinaryFileName(platform)}`);
-        expect(workflow).toContain(`test -f dist/${releaseBinaryFileName(platform)}`);
-      }
-      expect(workflow).toContain("gh api --method POST repos/{owner}/{repo}/releases");
-      expect(workflow).toContain("gh release upload");
-      expect(workflow).toContain("v4.0.0-dev.${{ github.run_number }}");
-      expect(workflow).toContain("dist/SHA256SUMS");
-      expect(workflow).toContain("-F draft=true");
-      expect(workflow).toContain("set -euo pipefail");
-      expect(workflow).not.toContain("trap ");
-      expect(workflow).not.toContain("--cleanup-tag");
-      expect(workflow).not.toContain("--method DELETE");
-      expect(workflow).toContain('gh api --method PATCH "$release_api" -F draft=false');
-      expect(workflow).not.toContain("sha256sum lando > SHA256SUMS");
-      expect(workflow).not.toContain("if-no-files-found");
     },
     codegenTestTimeout,
   );
