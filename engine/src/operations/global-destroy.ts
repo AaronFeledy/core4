@@ -88,7 +88,12 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
 
       const receipt: Effect.Success<ReturnType<typeof executeGlobalTeardown>> & {
         readonly routes?: RouteWithdrawal["kind"];
-      } = yield* executeGlobalTeardown(loaded, { intent: "destroy", volumes, removeState: true });
+      } = yield* executeGlobalTeardown(loaded, {
+        intent: "destroy",
+        volumes,
+        removeState: true,
+        purge: options.purge === true,
+      });
       const builtImages = yield* removeBuildOutput;
       // Cleanup proof covers routes, so a skipped withdrawal leaves every obligation pending.
       if (options.providerId === undefined && receipt.routes === "withdrawn")

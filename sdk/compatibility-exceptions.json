@@ -6560,5 +6560,35 @@
     "changeKind": "property-removed",
     "path": "$.appsPoweredOff",
     "justification": "GitHub #2118 reports every targeted app with its kind, id, root, provider, and outcome in `apps`, replacing the id-only `appsPoweredOff` list. The replacement carries the same successful apps plus exact identity and per-app outcome; this project is unreleased, so no compatibility shim keeps the old field."
+  },
+  {
+    "surface": "schema:PreGlobalDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.volumes",
+    "justification": "GitHub #2385 separates the effective data-volume removal a global destroy performs from the requested --purge flag. The payload now carries both `volumes` and `purge`, so a --volumes destroy no longer claims a purge request; this project is unreleased, and every producer supplies both fields."
+  },
+  {
+    "surface": "schema:PostGlobalDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.volumes",
+    "justification": "GitHub #2385 separates the effective data-volume removal a global destroy performs from the requested --purge flag. The payload now carries both `volumes` and `purge`, so a --volumes destroy no longer claims a purge request; this project is unreleased, and every producer supplies both fields."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.additionalErrors.items.issues.items.related.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to the shared ValidationIssueSource contract, so related validation sources gain the script arm. Every previous source arm remains valid; the conservative checker cannot classify the enclosing union and requires this explicit review."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.issues.items.related.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to the shared ValidationIssueSource contract, so related validation sources gain the script arm. Every previous source arm remains valid; the conservative checker cannot classify the enclosing union and requires this explicit review."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "unsupported-construct",
+    "path": "$.related.items.source.anyOf",
+    "justification": "#2169 adds script file provenance to the shared ValidationIssueSource contract, so related validation sources gain the script arm. Every previous source arm remains valid; the conservative checker cannot classify the enclosing union and requires this explicit review."
   }
 ]

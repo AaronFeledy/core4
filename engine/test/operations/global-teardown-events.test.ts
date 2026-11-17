@@ -191,7 +191,12 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
         expect(calls.indexOf("task.tree.start")).toBeGreaterThan(0);
         expect(calls.indexOf("routes")).toBeGreaterThan(calls.indexOf("task.tree.start"));
         expect(calls.at(-1)).toBe("post-global-destroy");
-        expect(events[0]).toMatchObject({ evidence: kind, purge: false, app: { kind: "global", root } });
+        expect(events[0]).toMatchObject({
+          evidence: kind,
+          volumes: false,
+          purge: false,
+          app: { kind: "global", root },
+        });
         expect(events.at(-1)).toMatchObject({ outcome: "destroyed", evidence: kind });
       }
     } finally {

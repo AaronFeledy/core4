@@ -229,7 +229,12 @@ export const globalTeardownAppRef = (resolved: GlobalTeardown) => ({
 
 export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
   resolved: GlobalTeardown,
-  options: { readonly intent: "stop" | "destroy"; readonly volumes: boolean; readonly removeState: boolean },
+  options: {
+    readonly intent: "stop" | "destroy";
+    readonly volumes: boolean;
+    readonly removeState: boolean;
+    readonly purge?: boolean;
+  },
 ) {
   const evidence = resolved.evidence.kind;
   if (evidence === "absent")
@@ -276,7 +281,13 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
   }
   const events = yield* EventService;
   const app = globalTeardownAppRef(resolved);
-  const payload = { scope: "global" as const, app, evidence, purge: options.volumes };
+  const payload = {
+    scope: "global" as const,
+    app,
+    evidence,
+    volumes: options.volumes,
+    purge: options.purge === true,
+  };
   yield* events.publish(PreGlobalDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
   const result = yield* withDestroyProgress({
     events,
