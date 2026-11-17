@@ -6,6 +6,7 @@ import type { Root } from "mdast";
 import { decodeGuideFrontmatterEither } from "../sdk/src/docs/components/index.ts";
 import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
 import { discoverGuideMdxFiles, resolveHostGuidePlatform } from "./build-guide-scenarios.ts";
+import { lintE2eDestroyVolumes } from "./guides/e2e-destroy-lint.ts";
 import { lintComponentSyntax, lintEditorial } from "./guides/editorial-lint.ts";
 import {
   type GuideFixtureInventoryEntry,
@@ -82,7 +83,11 @@ const lintParsed = (
     );
     lintYamlFences(sourcePath, root, diagnostics);
     diagnostics.push(...lintFixtures(sourcePath, root, { frontmatter, fixtures: options.fixtures ?? [] }));
-    if (diagnostics.length === 0) return { diagnostics, guide: parseGuideRoot(sourcePath, root) };
+    if (diagnostics.length === 0) {
+      const guide = parseGuideRoot(sourcePath, root);
+      diagnostics.push(...lintE2eDestroyVolumes(guide));
+      return { diagnostics, guide };
+    }
     return { diagnostics };
   } catch (error) {
     return { diagnostics: [errorDiagnostic(sourcePath, error)] };
