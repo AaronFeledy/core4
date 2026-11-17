@@ -84,6 +84,19 @@ describe.serial("compiled CLI managed PHP routing", () => {
         await chmod(root, 0o755);
         await mkdir(join(root, "sub"), { mode: 0o755 });
         await mkdir(join(root, "appdir"), { mode: 0o755 });
+        await mkdir(join(root, "force"), { mode: 0o755 });
+        const schemePhp = [
+          "<?php",
+          "header('Content-Type: application/json');",
+          "echo json_encode([",
+          "  'https' => $_SERVER['HTTPS'] ?? '',",
+          "  'request_scheme' => $_SERVER['REQUEST_SCHEME'] ?? '',",
+          "  'server_port' => $_SERVER['SERVER_PORT'] ?? '',",
+          "  'server_name' => $_SERVER['SERVER_NAME'] ?? '',",
+          "  'http_host' => $_SERVER['HTTP_HOST'] ?? '',",
+          "]);",
+          "",
+        ].join("\n");
         const htaccess = [
           "RewriteEngine On",
           // mod_rewrite skips a slashless directory unless the app opts in, so the
@@ -93,27 +106,23 @@ describe.serial("compiled CLI managed PHP routing", () => {
           "RewriteRule ^old$ /rel/new [R=302,L]",
           // An app-owned rewrite of a slashless directory request.
           "RewriteRule ^appdir$ appdir/index.php [L]",
-          // The production force-HTTPS rule: native TLS already sets HTTPS, so it
-          // must not redirect an HTTPS request. On HTTP the app-authored target
-          // uses HTTP_HOST exactly as the client sent it.
+          "",
+        ].join("\n");
+        // The production force-HTTPS rule lives in its own directory so the plain
+        // listener probe stays reachable over HTTP. Native TLS already sets
+        // HTTPS, so it must not redirect an HTTPS request; on HTTP the app-authored
+        // target uses HTTP_HOST exactly as the client sent it.
+        const forceHtaccess = [
+          "RewriteEngine On",
           "RewriteCond %{HTTPS} off",
           "RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]",
           "",
         ].join("\n");
         const files = {
-          "scheme.php": [
-            "<?php",
-            "header('Content-Type: application/json');",
-            "echo json_encode([",
-            "  'https' => $_SERVER['HTTPS'] ?? '',",
-            "  'request_scheme' => $_SERVER['REQUEST_SCHEME'] ?? '',",
-            "  'server_port' => $_SERVER['SERVER_PORT'] ?? '',",
-            "  'server_name' => $_SERVER['SERVER_NAME'] ?? '',",
-            "  'http_host' => $_SERVER['HTTP_HOST'] ?? '',",
-            "]);",
-            "",
-          ].join("\n"),
+          "scheme.php": schemePhp,
           ".htaccess": htaccess,
+          "force/.htaccess": forceHtaccess,
+          "force/scheme.php": schemePhp,
           "sub/index.php": "<?php echo 'sub-index';\n",
           "appdir/.htaccess": "DirectorySlash Off\n",
           "appdir/index.php": "<?php echo 'app-dir-index';\n",
@@ -189,8 +198,8 @@ describe.serial("compiled CLI managed PHP routing", () => {
             const httpsPort = Number(httpsUrl.port || 443);
             const httpPort = Number(httpUrl.port || 80);
             // Then: the public scheme and port are real, not header-derived.
-            const secure = await request(root, httpsUrl, { caPath });
-            const insecure = await request(root, httpUrl, { caPath });
+            const secure = await request(root, new URL("/scheme.php", httpsUrl), { caPath });
+            const insecure = await request(root, new URL("/scheme.php", httpUrl), { caPath });
             for (const [label, response, expected] of [
               ["https", secure, { https: "on", scheme: "https", port: String(httpsPort) }],
               ["http", insecure, { https: "", scheme: "http", port: String(httpPort) }],
@@ -207,7 +216,10 @@ describe.serial("compiled CLI managed PHP routing", () => {
             }
             // A port-less Host over the TLS ingress is the 443 public shape even
             // when the router's concrete port is a fallback.
-            const portless = await request(root, httpsUrl, { caPath, host: hostname });
+            const portless = await request(root, new URL("/scheme.php", httpsUrl), {
+              caPath,
+              host: hostname,
+            });
             expect(JSON.parse(portless.body)).toMatchObject({
               https: "on",
               request_scheme: "https",
@@ -216,7 +228,10 @@ describe.serial("compiled CLI managed PHP routing", () => {
               http_host: hostname,
             });
             // A Host carrying the public port keeps it.
-            const withPort = await request(root, httpsUrl, { caPath, host: `${hostname}:${httpsPort}` });
+            const withPort = await request(root, new URL("/scheme.php", httpsUrl), {
+              caPath,
+              host: `${hostname}:${httpsPort}`,
+            });
             expect(JSON.parse(withPort.body)).toMatchObject({
               server_port: String(httpsPort),
               http_host: `${hostname}:${httpsPort}`,
@@ -236,7 +251,7 @@ describe.serial("compiled CLI managed PHP routing", () => {
             });
             if (serviceName === "edge") {
               // Router ingress replaces a spoofed client protocol header.
-              const spoofed = await request(root, httpUrl, {
+              const spoofed = await request(root, new URL("/scheme.php", httpUrl), {
                 caPath,
                 headers: ["X-Forwarded-Proto: https", `X-Forwarded-Port: ${httpsPort}`],
               });
@@ -255,16 +270,18 @@ describe.serial("compiled CLI managed PHP routing", () => {
                 expect(denied.body).not.toContain(marker);
               }
               // The production force-HTTPS rule must not redirect HTTPS.
-              const forceSecure = await request(root, new URL("/scheme.php", httpsUrl), { caPath });
+              const forceSecure = await request(root, new URL("/force/scheme.php", httpsUrl), {
+                caPath,
+              });
               expect(forceSecure.status, `${serviceName} force-HTTPS on HTTPS`).toBe(200);
               expect(forceSecure.location).toBeUndefined();
               // On HTTP it redirects once, with the app's own HTTP_HOST authority.
-              const forceInsecure = await request(root, new URL("/scheme.php", httpUrl), {
+              const forceInsecure = await request(root, new URL("/force/scheme.php", httpUrl), {
                 caPath,
                 host: `${hostname}:${httpPort}`,
               });
               expect(forceInsecure.status, `${serviceName} force-HTTPS on HTTP`).toBe(301);
-              expect(forceInsecure.location).toBe(`https://${hostname}:${httpPort}/scheme.php`);
+              expect(forceInsecure.location).toBe(`https://${hostname}:${httpPort}/force/scheme.php`);
               // A relative [R] keeps that authority on both schemes.
               const relativeSecure = await request(root, new URL("/old", httpsUrl), { caPath });
               expect(relativeSecure.status, `${serviceName} relative [R] HTTPS`).toBe(302);
