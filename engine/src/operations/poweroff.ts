@@ -457,9 +457,7 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
   };
 });
 
-const globalStopTarget = Effect.fnUntraced(function* (
-  snapshots: ReadonlyArray<ProviderRuntimeSnapshot>,
-) {
+const globalStopTarget = Effect.fnUntraced(function* (snapshots: ReadonlyArray<ProviderRuntimeSnapshot>) {
   const plan = snapshots
     .flatMap((snapshot) => snapshot.appliedPlans)
     .find((candidate) => candidate.id === "global");
@@ -494,4 +492,3 @@ const stopManagedRuntimeService: Effect.Effect<
   });
   return result satisfies RuntimeServiceStopResult;
 });
-
