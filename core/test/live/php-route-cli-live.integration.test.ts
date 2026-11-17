@@ -239,7 +239,7 @@ describe.serial("compiled CLI managed PHP routing", () => {
             const redirect = await request(root, new URL("/sub", httpsUrl), { caPath });
             expect(redirect.status, `${serviceName} /sub`).toBe(301);
             expect(redirect.location).toBe(
-              serviceName === "appserver" ? `https://${hostname}:${httpsPort}/sub/` : "/sub/",
+              serviceName === "appserver" ? new URL("/sub/", httpsUrl).href : "/sub/",
             );
             evidence.push({
               service: serviceName,
@@ -285,11 +285,11 @@ describe.serial("compiled CLI managed PHP routing", () => {
               // A relative [R] keeps that authority on both schemes.
               const relativeSecure = await request(root, new URL("/old", httpsUrl), { caPath });
               expect(relativeSecure.status, `${serviceName} relative [R] HTTPS`).toBe(302);
-              expect(relativeSecure.location).toBe(`https://${hostname}:${httpsPort}/rel/new`);
+              expect(relativeSecure.location).toBe(new URL("/rel/new", httpsUrl).href);
               // mod_dir keeps the public authority and preserves the query.
               const query = await request(root, new URL("/sub?x=1", httpsUrl), { caPath });
               expect(query.status, `${serviceName} /sub?x=1`).toBe(301);
-              expect(query.location).toBe(`https://${hostname}:${httpsPort}/sub/?x=1`);
+              expect(query.location).toBe(new URL("/sub/?x=1", httpsUrl).href);
               // A directory with its own rewrite returns the app's target, not a
               // Lando-injected directory redirect.
               const appDir = await request(root, new URL("/appdir", httpsUrl), { caPath });
