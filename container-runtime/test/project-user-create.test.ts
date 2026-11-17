@@ -8,7 +8,7 @@ import {
   type ServicePlan,
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
-import { DateTime } from "effect";
+import { DateTime, Effect } from "effect";
 
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import {
@@ -17,6 +17,8 @@ import {
   containerHostConfigFragment,
   projectUserNumericCreateUser,
 } from "../src/plan.ts";
+import { service as creationService, ctx, fakeEngine, withService } from "./fixtures/environment-values.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-11-15T00:00:00Z"),
@@ -147,4 +149,22 @@ describe("image-renumber container creation", () => {
     const renamed = commonContainerLabels(plan(renumbered), renumbered)[CREATE_CONFIG_LABEL];
     expect(renamed).not.toBe(namespaced);
   });
+});
+
+test("an image-renumber custom image is created as the realized host ids, not its authored user", async () => {
+  // Given a custom image whose numeric process user the rootful engine realized as the host ids.
+  const engine = fakeEngine();
+  const custom: ServicePlan = {
+    ...creationService,
+    user: "2000:2000",
+    projectUser: { name: "1000", uid: 1000, gid: 1000 },
+    extensions: { ...creationService.extensions, "@lando/core/project-user-mapping": "image-renumber" },
+  };
+
+  // When the provider creates the container.
+  await Effect.runPromise(bringUp(withService(custom), { api: engine.api, ctx }));
+
+  // Then it runs as the host ids that replaced the configured user.
+  const body = engine.calls.find((call) => call.path.startsWith("/containers/create?"))?.body;
+  expect(body).toMatchObject({ User: "1000:1000" });
 });

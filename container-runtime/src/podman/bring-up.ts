@@ -540,17 +540,19 @@ export const isMissingImageCreateResponse = (response: EngineHttpResponse): bool
  * names it explicitly: without one, keep-id runs the container as the mapped
  * id instead of the image's configured user. An image-renumber catalog plan
  * keeps the image user so a root master stays root; a numeric image-renumber
- * plan is a custom image and runs as the host ids directly. Authored `user:`
- * wins; otherwise the image's own user is read without running anything.
+ * plan is a custom image and runs as the host ids that replaced its authored
+ * numeric user. Otherwise an authored `user:` wins, and without one the image's
+ * own user is read without running anything.
  */
 const resolvedCreateUser = (
   deps: BringUpDeps,
   service: ServicePlan,
 ): Effect.Effect<string | undefined, ProviderError> => {
   if (service.projectUser === undefined) return Effect.succeed(undefined);
-  if (service.user !== undefined && service.user.length > 0) return Effect.succeed(service.user);
+  // A renumbered custom image replaces its authored numeric user with the host ids.
   const numeric = projectUserNumericCreateUser(service);
   if (numeric !== undefined) return Effect.succeed(numeric);
+  if (service.user !== undefined && service.user.length > 0) return Effect.succeed(service.user);
   const artifact = service.artifact;
   const request = deps.api.request;
   if (artifact?.kind !== "ref" || request === undefined) return Effect.succeed("root");
