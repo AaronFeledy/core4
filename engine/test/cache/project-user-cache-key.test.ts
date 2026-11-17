@@ -67,7 +67,7 @@ describe("deriveAppPlanCacheKey project-user facts", () => {
     expect(mapped).not.toBe(hostsIds);
   });
 
-  test("host ids change the key only when the engine renumbers to them", () => {
+  test.each(["uid", "gid"] as const)("host %s changes the key only when the engine renumbers to it", (id) => {
     const renumbered = capabilities({
       projectUserMapping: "image-renumber",
       bindOwnership: "host-ids",
@@ -81,7 +81,7 @@ describe("deriveAppPlanCacheKey project-user facts", () => {
     const second = deriveAppPlanCacheKey(
       base({
         providerCapabilities: renumbered,
-        host: { uid: "1001", gid: "1001" },
+        host: { uid: "1000", gid: "1000", [id]: "1001" },
       }),
     );
     expect(first).not.toBe(second);
@@ -93,7 +93,7 @@ describe("deriveAppPlanCacheKey project-user facts", () => {
       }),
     });
     expect(deriveAppPlanCacheKey({ ...keepId, host: { uid: "1000", gid: "1000" } })).toBe(
-      deriveAppPlanCacheKey({ ...keepId, host: { uid: "1001", gid: "1001" } }),
+      deriveAppPlanCacheKey({ ...keepId, host: { uid: "1000", gid: "1000", [id]: "1001" } }),
     );
   });
 

@@ -338,8 +338,8 @@ const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
     LANDO_SYSTEM_PLUGIN_ROOT: join(dir, "host", "system-plugins"),
   };
   await Promise.all(Object.values(roots).map((root) => mkdir(root, { recursive: true })));
-  const withRoots = () =>
-    withEnvVar("LANDO_USER_DATA_ROOT", roots.LANDO_USER_DATA_ROOT, () =>
+  try {
+    return await withEnvVar("LANDO_USER_DATA_ROOT", roots.LANDO_USER_DATA_ROOT, () =>
       withEnvVar("LANDO_USER_CACHE_ROOT", roots.LANDO_USER_CACHE_ROOT, () =>
         withEnvVar("LANDO_USER_CONF_ROOT", roots.LANDO_USER_CONF_ROOT, () =>
           withEnvVar("LANDO_SYSTEM_PLUGIN_ROOT", roots.LANDO_SYSTEM_PLUGIN_ROOT, () =>
@@ -348,8 +348,6 @@ const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
         ),
       ),
     );
-  try {
-    return await withRoots();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

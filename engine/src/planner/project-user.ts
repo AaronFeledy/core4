@@ -119,10 +119,9 @@ const unsupported = (
   input: ResolveProjectUserInput,
   explicit: boolean,
 ): CapabilityError | ResolvedProjectUser =>
-  explicit
-    ? (projectUserMappingCapabilityError(input.provider, input.capabilities, input.serviceName) ??
-      explanation("provider-unsupported", false, unsupportedDetail(input)))
-    : explanation("provider-unsupported", false, unsupportedDetail(input));
+  (explicit
+    ? projectUserMappingCapabilityError(input.provider, input.capabilities, input.serviceName)
+    : undefined) ?? explanation("provider-unsupported", false, unsupportedDetail(input));
 
 const mappingRefusal = (
   input: ResolveProjectUserInput,
@@ -138,23 +137,10 @@ const mappingRefusal = (
     remediation,
   });
 
-const hostRootRefusal = (input: ResolveProjectUserInput, id: "uid" | "gid"): CapabilityError =>
-  mappingRefusal(
-    input,
-    `Service ${input.serviceName} cannot map its project user because Lando is running with host ${id} 0.`,
-    "Run Lando as your own user instead of with sudo; root cannot be renumbered to a non-root project user.",
-  );
-
 /**
  * Realizes a catalog project user by renumbering the image account to the
  * invoking host ids, or a custom image's configured numeric user by creating
  * the container as the host ids.
- *
- * The catalog rule is decided here from the ids the service type declares:
- * an exact match is already the host identity, and any other host id is
- * carried into the derived-image build step. A build-time `usermod -o` and
- * `groupmod -o` allow non-unique ids, because another image account may
- * already hold the target id and only the declared project account changes.
  */
 const resolveImageRenumber = (
   input: ResolveProjectUserInput,
@@ -175,8 +161,12 @@ const resolveImageRenumber = (
           false,
           "Lando could not read this host's user ids, so the project user is not renumbered.",
         );
-  if (host.uid === 0) return hostRootRefusal(input, "uid");
-  if (host.gid === 0) return hostRootRefusal(input, "gid");
+  if (host.uid === 0 || host.gid === 0)
+    return mappingRefusal(
+      input,
+      `Service ${input.serviceName} cannot map its project user because Lando is running with host ${host.uid === 0 ? "uid" : "gid"} 0.`,
+      "Run Lando as your own user instead of with sudo; root cannot be renumbered to a non-root project user.",
+    );
   const declared = input.identity?.projectUser;
   if (input.identity !== undefined) {
     if (declared === undefined)

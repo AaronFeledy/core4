@@ -115,7 +115,9 @@ export const lintEditorial = (
       if (node.name !== "UseFixture") return;
       const name = propsOf(node, sourcePath).name;
       if (typeof name !== "string") return;
-      fixtureUsesByName.set(name, [...(fixtureUsesByName.get(name) ?? []), { scenario, node }]);
+      const uses = fixtureUsesByName.get(name);
+      if (uses === undefined) fixtureUsesByName.set(name, [{ scenario, node }]);
+      else uses.push({ scenario, node });
     });
   const destroysVolumes = (scenario: MdxNode): boolean => {
     let found = false;

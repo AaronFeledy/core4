@@ -81,11 +81,11 @@ describe("resolveProjectUser image renumbering", () => {
   test.each([
     ["uid", { uid: "0", gid: "1000" }],
     ["gid", { uid: "1000", gid: "0" }],
-  ])("host %s 0 fails planning with sudo remediation", (_id, rootHost) => {
+  ])("host %s 0 fails planning with sudo remediation", (id, rootHost) => {
     const resolved = resolveProjectUser(input({ host: rootHost }));
     expect(resolved).toBeInstanceOf(CapabilityError);
     const error = resolved as CapabilityError;
-    expect(error.message).toContain("running with host");
+    expect(error.message).toContain(`running with host ${id} 0`);
     expect(error.remediation).toContain("sudo");
   });
 

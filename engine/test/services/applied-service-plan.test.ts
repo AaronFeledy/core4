@@ -94,13 +94,17 @@ describe("appliedServicePlan", () => {
       id: AppId.make("nested"),
       root: AbsolutePath.make("/tmp/applied/nested"),
     };
+    const parent: AppPlan = {
+      ...plan,
+      services: { [ServiceName.make("web")]: service("web", { name: "www-data", uid: 33, gid: 33 }) },
+    };
     const calls: Array<{ readonly root: AbsolutePath; readonly lookup: string | undefined }> = [];
     const resolved = await Effect.runPromise(
       appliedServicePlan(
         {
           resolveAppliedPlan: (root: AbsolutePath, _app: unknown, lookup?: string) => {
             calls.push({ root, lookup });
-            return Effect.succeed(undefined);
+            return Effect.succeed(lookup === "exact" ? undefined : parent);
           },
         } as unknown as Parameters<typeof appliedServicePlan>[0],
         nested,

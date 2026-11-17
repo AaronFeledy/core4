@@ -547,8 +547,7 @@ const resolvedCreateUser = (
   deps: BringUpDeps,
   service: ServicePlan,
 ): Effect.Effect<string | undefined, ProviderError> => {
-  const projectUser = service.projectUser;
-  if (projectUser === undefined) return Effect.succeed(undefined);
+  if (service.projectUser === undefined) return Effect.succeed(undefined);
   if (service.user !== undefined && service.user.length > 0) return Effect.succeed(service.user);
   const numeric = projectUserNumericCreateUser(service);
   if (numeric !== undefined) return Effect.succeed(numeric);

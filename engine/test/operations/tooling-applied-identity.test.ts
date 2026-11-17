@@ -110,5 +110,5 @@ test("tooling identity never borrows an enclosing app's project user", async () 
   );
 
   expect(lookups).toEqual(["exact"]);
-  expect(seen[0]?.user).toBeUndefined();
+  expect(seen.map(({ user }) => user)).toEqual([undefined]);
 });
