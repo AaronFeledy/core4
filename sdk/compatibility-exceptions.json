@@ -6554,5 +6554,11 @@
     "changeKind": "property-optional",
     "path": "$.lines",
     "justification": "GitHub #2154 aligns scratch:logs with LogsAppResult, which omits lines when a live sink received the stream (--follow). Absent applied evidence still returns an explicit empty lines array."
+  },
+  {
+    "surface": "command:apps:poweroff",
+    "changeKind": "property-removed",
+    "path": "$.appsPoweredOff",
+    "justification": "GitHub #2118 reports every targeted app with its kind, id, root, provider, and outcome in `apps`, replacing the id-only `appsPoweredOff` list. The replacement carries the same successful apps plus exact identity and per-app outcome; this project is unreleased, so no compatibility shim keeps the old field."
   }
 ]
