@@ -7,8 +7,8 @@ tags: [recipe, node-ts, node, expressions]
 
 # Start a Node app with environment expressions
 
-Create a `.lando.yml` with one Node service whose image and `NODE_ENV` are
-resolved from your environment when Lando loads the app. The recipe has no
+Create a `.lando.yml` with one Node service whose Node version and `NODE_ENV`
+are resolved from your environment when Lando loads the app. The recipe has no
 options beyond the app name.
 
 Before you begin, install Lando and complete provider setup. For a new app,
@@ -27,10 +27,10 @@ The generated Landofile reads two environment variables at load time:
 
 | Variable | Used for | Fallback |
 | --- | --- | --- |
-| `LANDO_NODE_VERSION` | the Node image tag for the `web` service | `26` |
+| `LANDO_NODE_VERSION` | the `web` service type, `node:<value>`: `lts`, `22`, `24`, or `26` | `lts`, Lando's current Node LTS major |
 | `NODE_ENV` | `NODE_ENV` inside the `web` service | `development` |
 
-Set either one in your shell before `lando start` and the app picks it up on the next load. You do not need to regenerate the Landofile or add another config file.
+Set either one in your shell before `lando start` and the app picks it up on the next load. You do not need to regenerate the Landofile or add another config file. A version Lando doesn't ship fails before any container starts and lists the supported values.
 
 ```sh
 LANDO_NODE_VERSION=22 lando start
@@ -56,7 +56,7 @@ lando app:config --format=json
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"node:26\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:lts\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"NODE_ENV\":\\s*\"[^\"]+\"" } }} />
     </Step>
     <Step name="cleanup">
