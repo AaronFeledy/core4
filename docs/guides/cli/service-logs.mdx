@@ -121,6 +121,24 @@ and `line`, plus `source` and a timestamp in epoch milliseconds when available.
 With `--follow --format=json`, lines arrive as stream frames instead; the final
 result contains `app` but omits `lines` rather than returning an empty array.
 
+## Read scratch and global logs
+
+Scratch and global apps take the same filters. Read the global app with `lando global:logs`, using `-s` to pick one service. Add `-f`, `--tail`, or `--since` exactly as for an app:
+
+```sh
+lando global:logs -s traefik --tail 50
+lando global:logs -s traefik --follow
+```
+
+Read a scratch app by its id, which `lando scratch:list` prints:
+
+```sh
+lando scratch:logs <id> --tail 50
+lando scratch:logs <id> -s <service> --since 15m
+```
+
+`lando scratch:logs` looks up the registry entry and that root's recorded plan. An id no registry entry names fails with `ScratchAppNotFoundError`. A scratch whose plan is no longer recorded prints no lines; Lando validates `--since` first, so a malformed duration fails the same way it does for an app.
+
 ## Print build output
 
 Lando saves build step output separately from a service's console, so plain `lando logs` doesn't show it. Add `--build` to print the saved output of the app's most recent build instead of service logs:

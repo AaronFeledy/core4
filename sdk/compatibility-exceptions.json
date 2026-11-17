@@ -6512,5 +6512,47 @@
     "changeKind": "union-widened",
     "path": "$.diagnostics.items.issues.items.rule.anyOf",
     "justification": "The shared config-lint rule-id union gains `service.projectUser` and `service.router-tls-termination` (GitHub #2184). MCP diagnostics keep the same envelope and previous rule ids; the new members only name warnings."
+  },
+  {
+    "surface": "schema:DestroyAppResult",
+    "changeKind": "property-removed",
+    "path": "$.volumesRemoved",
+    "justification": "GitHub #2385 replaces the conflated volumesRemoved boolean/count with dataVolumesRemoved and cacheVolumesRemoved, or with per-class counts on the provider receipt. The replacement reports what a teardown actually removed instead of what its flags requested; this project is unreleased, so no compatibility shim keeps the old field."
+  },
+  {
+    "surface": "command:app:destroy",
+    "changeKind": "property-removed",
+    "path": "$.volumesRemoved",
+    "justification": "GitHub #2385 replaces the conflated volumesRemoved boolean/count with dataVolumesRemoved and cacheVolumesRemoved, or with per-class counts on the provider receipt. The replacement reports what a teardown actually removed instead of what its flags requested; this project is unreleased, so no compatibility shim keeps the old field."
+  },
+  {
+    "surface": "command:meta:global:destroy",
+    "changeKind": "property-removed",
+    "path": "$.volumesRemoved",
+    "justification": "GitHub #2385 replaces the conflated volumesRemoved boolean/count with dataVolumesRemoved and cacheVolumesRemoved, or with per-class counts on the provider receipt. The replacement reports what a teardown actually removed instead of what its flags requested; this project is unreleased, so no compatibility shim keeps the old field."
+  },
+  {
+    "surface": "schema:OwnedResourcesCleanupResult",
+    "changeKind": "type-changed",
+    "path": "$.volumesRemoved",
+    "justification": "GitHub #2385 replaces the conflated volumesRemoved boolean/count with dataVolumesRemoved and cacheVolumesRemoved, or with per-class counts on the provider receipt. The replacement reports what a teardown actually removed instead of what its flags requested; this project is unreleased, so no compatibility shim keeps the old field."
+  },
+  {
+    "surface": "command:apps:scratch:logs",
+    "changeKind": "property-removed",
+    "path": "$.handle",
+    "justification": "GitHub #2154 makes scratch:logs share the app and global logs result (LogsAppResult), so the scratch handle wrapper is gone and lines carry service, stream, source, and timestamp like every other logs command."
+  },
+  {
+    "surface": "command:apps:scratch:logs",
+    "changeKind": "type-changed",
+    "path": "$.lines.items",
+    "justification": "GitHub #2154 makes scratch:logs return LogsAppResult lines (objects with service, stream, line, and optional source/timestamp) instead of preformatted strings, matching app and global logs for text, JSON, and YAML output."
+  },
+  {
+    "surface": "command:apps:scratch:logs",
+    "changeKind": "property-optional",
+    "path": "$.lines",
+    "justification": "GitHub #2154 aligns scratch:logs with LogsAppResult, which omits lines when a live sink received the stream (--follow). Absent applied evidence still returns an explicit empty lines array."
   }
 ]
