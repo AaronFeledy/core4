@@ -7,6 +7,7 @@ import {
   PROVIDER_LABEL,
   SCRATCH_LABEL,
   SERVICE_LABEL,
+  VOLUME_OWNER_LABEL,
 } from "@lando/container-runtime/labels";
 
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
@@ -35,11 +36,17 @@ export interface AppsListEntry {
   readonly scratch?: boolean;
 }
 
+/** One labeled runtime resource whose app the provider still owns. A missing root blocks by id. */
+export interface OwnedAppResource {
+  readonly appId: string;
+  readonly appRoot?: string;
+}
+
 export interface AppsDiscoveryEvidence {
   readonly apps: ReadonlyArray<AppsListEntry>;
   readonly providerConfirmed: boolean;
   readonly confirmedProviderIds: ReadonlyArray<string>;
-  readonly ownedAppIds: ReadonlyArray<string>;
+  readonly ownedResources: ReadonlyArray<OwnedAppResource>;
   readonly idleProviderIds?: ReadonlyArray<string>;
 }
 
@@ -276,10 +283,14 @@ const stringLabels = (value: unknown): Record<string, string> => {
 
 const labeledResourceEvidence = (
   resources: unknown,
+  rootLabel: typeof APP_ROOT_LABEL | typeof VOLUME_OWNER_LABEL,
   includeScratch = false,
-): { readonly appIds: ReadonlyArray<string>; readonly providerIds: ReadonlyArray<string> } => {
-  if (!Array.isArray(resources)) return { appIds: [], providerIds: [] };
-  const appIds: string[] = [];
+): {
+  readonly ownedResources: ReadonlyArray<OwnedAppResource>;
+  readonly providerIds: ReadonlyArray<string>;
+} => {
+  if (!Array.isArray(resources)) return { ownedResources: [], providerIds: [] };
+  const owned = new Map<string, OwnedAppResource>();
   const providerIds: string[] = [];
   for (const resource of resources) {
     if (!Predicate.isObject(resource)) continue;
@@ -287,11 +298,13 @@ const labeledResourceEvidence = (
     const appId = labels[APP_LABEL];
     if (appId === undefined || appId === "" || (!includeScratch && labels[SCRATCH_LABEL] === "TRUE"))
       continue;
-    appIds.push(appId);
+    const appRoot = labels[rootLabel];
+    const identity = `${appId}\0${appRoot ?? ""}`;
+    owned.set(identity, appRoot === undefined || appRoot === "" ? { appId } : { appId, appRoot });
     const providerId = labels[PROVIDER_LABEL];
     if (providerId !== undefined && providerId !== "") providerIds.push(providerId);
   }
-  return { appIds: uniqueSorted(appIds), providerIds: uniqueSorted(providerIds) };
+  return { ownedResources: [...owned.values()], providerIds: uniqueSorted(providerIds) };
 };
 
 export const appsFromContainerList = (
@@ -407,7 +420,7 @@ export const discoverRunningAppsEvidenceFromSockets = async (
   const paths = makeLandoPaths({ userDataRoot });
   const discoveredApps: AppsListEntry[] = [];
   const listedProviders = new Set<string>();
-  const owned = new Set<string>();
+  const owned = new Map<string, OwnedAppResource>();
   const platform = options.platform ?? process.platform;
   const managedSocket = platform === "win32" ? WINDOWS_MANAGED_MACHINE_PIPE : paths.providerSocketPath;
   let managedEndpointFailed = false;
@@ -434,8 +447,16 @@ export const discoverRunningAppsEvidenceFromSockets = async (
         globalAppRoot: await realpath(paths.globalAppRoot).catch(() => paths.globalAppRoot),
         ...(options.includeScratch === true ? { includeScratch: true } : {}),
       });
-      const containerEvidence = labeledResourceEvidence(containers, options.includeScratch === true);
-      const volumeEvidence = labeledResourceEvidence(volumes, options.includeScratch === true);
+      const containerEvidence = labeledResourceEvidence(
+        containers,
+        APP_ROOT_LABEL,
+        options.includeScratch === true,
+      );
+      const volumeEvidence = labeledResourceEvidence(
+        volumes,
+        VOLUME_OWNER_LABEL,
+        options.includeScratch === true,
+      );
       const labeledProviderIds = uniqueSorted([
         ...containerEvidence.providerIds,
         ...volumeEvidence.providerIds,
@@ -444,7 +465,8 @@ export const discoverRunningAppsEvidenceFromSockets = async (
         labeledProviderIds.length > 0 ? labeledProviderIds : [await providerIdOnSocket(socket, userDataRoot)];
       discoveredApps.push(...apps);
       for (const provider of confirmedProviderIds) listedProviders.add(provider);
-      for (const id of [...containerEvidence.appIds, ...volumeEvidence.appIds]) owned.add(id);
+      for (const resource of [...containerEvidence.ownedResources, ...volumeEvidence.ownedResources])
+        owned.set(`${resource.appId}\0${resource.appRoot ?? ""}`, resource);
     } catch (error) {
       if (httpSocketPath(socket) === httpSocketPath(managedSocket) && !isAbsentEndpoint(error))
         managedEndpointFailed = true;
@@ -459,7 +481,7 @@ export const discoverRunningAppsEvidenceFromSockets = async (
     apps: discoveredApps,
     providerConfirmed: listedProviders.size > 0,
     confirmedProviderIds: [...listedProviders],
-    ownedAppIds: [...owned],
+    ownedResources: [...owned.values()],
     idleProviderIds,
   };
 };

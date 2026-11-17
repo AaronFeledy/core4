@@ -95,7 +95,7 @@ for (const fixture of cases) {
               discoverContainersEvidence: async () => ({
                 apps: appsFromContainerList(containers),
                 confirmedProviderIds: fixture.providers,
-                ownedAppIds: containers.length > 0 ? [appId] : [],
+                ownedResources: containers.length > 0 ? [{ appId, appRoot: root }] : [],
                 idleProviderIds: "idle" in fixture ? ["lando"] : [],
               }),
             }),
@@ -186,7 +186,7 @@ const mixedStatusInventory = async (
               },
             ]),
             confirmedProviderIds: ["lando"],
-            ownedAppIds: ["alpha"],
+            ownedResources: [{ appId: "alpha" }],
           };
         },
         ...options,

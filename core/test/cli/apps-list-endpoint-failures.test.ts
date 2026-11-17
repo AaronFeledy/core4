@@ -41,7 +41,7 @@ test.each([
         },
       },
     });
-    expect(evidence).toMatchObject({ confirmedProviderIds: [], idleProviderIds: [], ownedAppIds: [] });
+    expect(evidence).toMatchObject({ confirmedProviderIds: [], idleProviderIds: [], ownedResources: [] });
     expect(inspections).toBe(0);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -59,7 +59,7 @@ test("an installed Linux runtime with an absent endpoint is unknown, never stopp
     const evidence = await discoverRunningAppsEvidenceFromSockets(root, [paths.providerSocketPath], {
       platform: "linux",
     });
-    expect(evidence).toMatchObject({ confirmedProviderIds: [], idleProviderIds: [], ownedAppIds: [] });
+    expect(evidence).toMatchObject({ confirmedProviderIds: [], idleProviderIds: [], ownedResources: [] });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -96,7 +96,7 @@ test.each(["stopped", "admitted", "previous-boot", "corrupt"] as const)(
       expect(evidence).toMatchObject({
         confirmedProviderIds: [],
         idleProviderIds: state === "stopped" || state === "previous-boot" ? ["lando"] : [],
-        ownedAppIds: [],
+        ownedResources: [],
       });
     } finally {
       await rm(root, { recursive: true, force: true });

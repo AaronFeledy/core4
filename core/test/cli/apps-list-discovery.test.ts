@@ -40,7 +40,7 @@ const runList = (
     readonly discoverContainersEvidence?: (root: string) => Promise<{
       readonly apps: ReadonlyArray<AppsListEntry>;
       readonly confirmedProviderIds: ReadonlyArray<string>;
-      readonly ownedAppIds?: ReadonlyArray<string>;
+      readonly ownedResources?: ReadonlyArray<{ readonly appId: string; readonly appRoot?: string }>;
     }>;
     readonly path?: string;
     readonly prune?: boolean;
@@ -483,7 +483,7 @@ describe("apps:list host-wide discovery", () => {
           discoverContainersEvidence: async () => ({
             apps: [],
             confirmedProviderIds: ["lando"],
-            ownedAppIds: [],
+            ownedResources: [],
           }),
         }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
       );
@@ -513,7 +513,7 @@ describe("apps:list host-wide discovery", () => {
         discoverContainersEvidence: async () => ({
           apps: [],
           confirmedProviderIds: ["lando"],
-          ownedAppIds: [],
+          ownedResources: [],
         }),
       });
 
@@ -542,13 +542,81 @@ describe("apps:list host-wide discovery", () => {
         discoverContainersEvidence: async () => ({
           apps: [],
           confirmedProviderIds: ["lando"],
-          ownedAppIds: ["alpha"],
+          ownedResources: [{ appId: "alpha" }],
         }),
       });
 
       expect(result.pruned).toEqual([]);
       expect(result.apps.map((entry) => entry.appId)).toEqual(["alpha"]);
       expect(await Bun.file(statePath).exists()).toBe(true);
+    });
+  });
+
+  test("scopes runtime ownership to the proven root so a deleted checkout can be pruned", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const legacyDir = join(userDataRoot, "providers", "provider-lando", "apps");
+      await mkdir(legacyDir, { recursive: true });
+      const rootA = join(userDataRoot, "checkout-a");
+      const rootB = join(userDataRoot, "checkout-b");
+      await mkdir(rootA, { recursive: true });
+      const legacy = (root: string) => ({
+        version: 1,
+        providerId: "lando",
+        plan: { id: "twin", name: "twin", root, provider: "lando", services: {} },
+      });
+      const fileA = join(legacyDir, "a.json");
+      const fileB = join(legacyDir, "b.json");
+      await writeFile(fileA, JSON.stringify(legacy(rootA)));
+      await writeFile(fileB, JSON.stringify(legacy(rootB)));
+
+      const result = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => ({
+          apps: appsFromContainerList([
+            labeled("twin", "web", {
+              "dev.lando.provider": "lando",
+              "dev.lando.app-root": rootA,
+            }),
+          ]),
+          confirmedProviderIds: ["lando"],
+        }),
+      });
+
+      expect(result.pruned?.map((entry) => entry.appRoot)).toEqual([rootB]);
+      expect(result.apps).toMatchObject([{ appId: "twin", appRoot: rootA, status: "active" }]);
+      expect(await Bun.file(fileA).exists()).toBe(true);
+      expect(await Bun.file(fileB).exists()).toBe(false);
+    });
+  });
+
+  test("keeps a rootless owned resource blocking by app id", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const legacyDir = join(userDataRoot, "providers", "provider-lando", "apps");
+      await mkdir(legacyDir, { recursive: true });
+      const rootA = join(userDataRoot, "checkout-a");
+      const rootB = join(userDataRoot, "checkout-b");
+      await mkdir(rootA, { recursive: true });
+      const legacy = (root: string) => ({
+        version: 1,
+        providerId: "lando",
+        plan: { id: "twin", name: "twin", root, provider: "lando", services: {} },
+      });
+      const fileA = join(legacyDir, "a.json");
+      const fileB = join(legacyDir, "b.json");
+      await writeFile(fileA, JSON.stringify(legacy(rootA)));
+      await writeFile(fileB, JSON.stringify(legacy(rootB)));
+
+      const result = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => ({
+          apps: appsFromContainerList([labeled("twin", "web", { "dev.lando.provider": "lando" })]),
+          confirmedProviderIds: ["lando"],
+        }),
+      });
+
+      expect(result.pruned).toEqual([]);
+      expect(await Bun.file(fileA).exists()).toBe(true);
+      expect(await Bun.file(fileB).exists()).toBe(true);
     });
   });
 
@@ -570,7 +638,7 @@ describe("apps:list host-wide discovery", () => {
           return {
             apps: [],
             confirmedProviderIds: ["lando"],
-            ownedAppIds: evidenceReads === 1 ? [] : ["alpha"],
+            ownedResources: evidenceReads === 1 ? [] : [{ appId: "alpha" }],
           };
         },
       });
@@ -737,7 +805,17 @@ describe("apps:list host-wide discovery", () => {
           return;
         }
         response.end(
-          JSON.stringify({ Volumes: [{ Name: "alpha-data", Labels: { "dev.lando.app": "volume-only" } }] }),
+          JSON.stringify({
+            Volumes: [
+              {
+                Name: "alpha-data",
+                Labels: {
+                  "dev.lando.app": "volume-only",
+                  "dev.lando.volume-owner": "/volumes/alpha",
+                },
+              },
+            ],
+          }),
         );
       });
       await new Promise<void>((resolve, reject) => {
@@ -747,7 +825,10 @@ describe("apps:list host-wide discovery", () => {
       try {
         const evidence = await discoverRunningAppsEvidenceFromSockets(userDataRoot, [socketPath]);
         expect(evidence.apps).toEqual([]);
-        expect(Reflect.get(evidence, "ownedAppIds")).toEqual(["stopped", "volume-only"]);
+        expect(evidence.ownedResources).toEqual([
+          { appId: "stopped" },
+          { appId: "volume-only", appRoot: "/volumes/alpha" },
+        ]);
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
