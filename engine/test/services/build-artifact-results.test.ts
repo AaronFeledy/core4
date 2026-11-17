@@ -5,7 +5,6 @@ import { TestClock } from "effect/testing";
 import { artifactBuildName, artifactBuildStoreKey } from "../../src/services/build-artifact-name.ts";
 import {
   type ArtifactBuildResult,
-  artifactOwnerKey,
   claimArtifactBuild,
   openArtifactBuildResults,
   recordArtifactBuildResult,
@@ -44,7 +43,7 @@ test("rotation isolates providers and scratch ids and keeps five newest keys per
   const scratch = BuildOwner.scratch(AppId.make("scratch-a"));
   const foreign = {
     ...entry("foreign"),
-    owner: artifactOwnerKey(BuildOwner.scratch(AppId.make("scratch-b"))),
+    owner: BuildOwner.scratch(AppId.make("scratch-b")).key,
   };
   const otherProvider = { ...entry("other-provider"), providerId: "docker", owner: scratch.key };
   const rotated = rotateArtifactBuildResults(

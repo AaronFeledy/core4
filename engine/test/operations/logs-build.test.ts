@@ -18,7 +18,6 @@ import { Cause, Effect, Layer, Option, Schema } from "effect";
 
 import { buildLogsApp } from "../../src/operations/logs-build.ts";
 import {
-  artifactOwnerKey,
   openArtifactBuildResults,
   recordArtifactBuildResult,
   useArtifactBuildResult,
@@ -113,7 +112,7 @@ const seed = async (
         : recordArtifactBuildResult(artifacts, {
             ...common,
             phase: "artifact",
-            owner: artifactOwnerKey(owner),
+            owner: owner.key,
             providerId: String(plan.provider),
             artifactRef: `image:${input.name}`,
           }).pipe(Effect.asVoid),
