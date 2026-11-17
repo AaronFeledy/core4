@@ -113,7 +113,8 @@ test("SQLite command resume waits through the SDK readiness port before returnin
       capabilities: Effect.succeed(provider.capabilities),
       appliedPlansFor: () => Effect.succeed([planned]),
       select: () => Effect.succeed(provider),
-      resolveAppliedPlan: () => Effect.succeed(planned),
+      resolveAppliedPlan: (_root, _app, lookup) =>
+        lookup === "exact" ? Effect.succeed(planned) : Effect.die("SQL commands must ask for the exact app"),
       resolveTeardownEvidence: () => unused,
     }),
     Layer.succeed(DataMover, makeTestDataMover().service),

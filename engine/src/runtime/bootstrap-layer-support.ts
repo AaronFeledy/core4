@@ -64,6 +64,8 @@ const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
   routeProvider: false,
   tlsCertificates: "none",
   rootless: true,
+  projectUserMapping: "unsupported",
+  bindOwnership: "unknown",
   privilegedServices: false,
   composeSpec: "none",
   providerExtensions: [],

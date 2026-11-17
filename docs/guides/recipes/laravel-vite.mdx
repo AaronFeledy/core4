@@ -116,13 +116,7 @@ Check that the first command lists URLs ending in `/@vite/client`, `/resources/c
 
 These host requests need both hostnames to resolve locally and your curl installation to trust Lando's CA. For DNS failures, see [Resolve lndo.site on this machine](../subsystems/host-dns.mdx). For certificate failures, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx); curl may use a different CA bundle from your browser. Don't disable certificate verification to hide a trust failure.
 
-If Laravel reports permission denied for `storage` or `bootstrap/cache`, Apache's `www-data` worker needs write access. Lando remaps that worker to the project mount owner on Windows, but not on Linux or macOS. Only if permissions block your local app, run:
-
-```sh
-lando exec appserver -- chmod -R a+rwX storage bootstrap/cache
-```
-
-That grants write access to all users for these directories. Use it only for local development, not as a production permissions policy, then retry the page request.
+On Linux with the default managed provider, PHP's project user maps app-file writes to your host user. If Laravel cannot write `storage` or `bootstrap/cache` on another platform or provider, see [Who owns your app files](../services/file-ownership.mdx), then retry the page request.
 
 Open `https://vite-demo.lndo.site` in a browser. In developer tools, check for a WebSocket to `wss://vite.vite-demo.lndo.site` with status `101`. Then edit `resources/views/welcome.blade.php` and save; `refresh: true` reloads the page. If saves don't trigger a reload on your filesystem, add `usePolling: true` under `server.watch`; polling costs CPU.
 

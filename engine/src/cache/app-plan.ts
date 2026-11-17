@@ -38,7 +38,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 53n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 55n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -56,6 +56,8 @@ export interface AppPlanCacheKeyInput {
   readonly kind?: "user" | "scratch" | "global";
   readonly hostProvider: string;
   readonly appRoot: string;
+  /** Invoking host identity; its ids enter the key only when planning renumbers to them. */
+  readonly host?: { readonly uid: string; readonly gid: string } | undefined;
   readonly landofile: LandofileShape;
   readonly providerCapabilities?: ProviderCapabilities;
   readonly pluginManifests: ReadonlyArray<PluginManifest>;
@@ -175,6 +177,17 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       kind: input.kind ?? "user",
       hostProvider: input.hostProvider,
       landofile: input.landofile,
+      providerProjectUserFacts:
+        input.providerCapabilities === undefined
+          ? null
+          : {
+              projectUserMapping: input.providerCapabilities.projectUserMapping,
+              bindOwnership: input.providerCapabilities.bindOwnership,
+              ...(input.providerCapabilities.projectUserMapping === "image-renumber" &&
+              input.host !== undefined
+                ? { hostUid: input.host.uid, hostGid: input.host.gid }
+                : {}),
+            },
       sourceFingerprint:
         input.sourceFingerprint === undefined
           ? null

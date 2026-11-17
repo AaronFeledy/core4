@@ -85,7 +85,7 @@ Check that the version commands succeed and `lando info` lists an HTTPS URL for 
 
 ## Install Mage-OS
 
-Composer's installer plugins must run to place Magento's files. The PHP service runs Composer as root inside its container; `COMPOSER_ALLOW_SUPERUSER` makes that choice explicit rather than depending on Composer's container detection. Only do this with project code and packages you trust: Composer plugins and scripts can modify the mounted project. See [Composer's container guidance](https://getcomposer.org/doc/faqs/how-to-install-untrusted-packages-safely.md).
+Composer's installer plugins must run to place Magento's files. On Linux with the default managed provider, Composer runs as the project user, `www-data`, whose app-file writes belong to your host user. On platforms where commands still default to root, `COMPOSER_ALLOW_SUPERUSER` permits those plugins explicitly. Only do this with project code and packages you trust: Composer plugins and scripts can modify the mounted project. See [Composer's container guidance](https://getcomposer.org/doc/faqs/how-to-install-untrusted-packages-safely.md).
 
 `composer create-project` needs an empty directory. Create the project skeleton in a fresh temporary directory inside `appserver`, then copy it into `/app` and install its dependencies there. Don't run this over an existing project:
 
@@ -103,20 +103,9 @@ lando exec appserver -- test -f /app/bin/magento
 
 The package version should be `3.6.0`, all platform requirements should pass, and `bin/magento` should exist. Don't bypass a missing extension with `--ignore-platform-reqs`. The build steps add `ftp`, `soap`, `sockets`, and `xsl` to Lando's stock PHP image, which already ships `bcmath`; Composer checks the installed packages against the complete PHP extension set.
 
-Set permissions for this new development project. The first ownership command assigns files the numeric UID that owns `/app` inside the container and Apache's `www-data` group. The next command keeps existing file sessions in `var/session` owned by `www-data`. On a direct Linux bind mount, the source UID normally belongs to your host user. A VM or file-sync provider can use a different container-side owner, so also check host editing below. The `chmod` commands give the group read access and directory traversal across the source, then write access to Magento's writable paths:
+Magento needs write access to `app/etc`, `generated`, `pub/media`, `pub/static`, `var`, and `vendor`. The project user lets Composer, Magento tooling, and PHP web workers share ownership on Linux with the default managed provider, so this setup needs no ownership transfer or group-write workaround. Check access as the same account that serves PHP:
 
 ```sh
-lando exec appserver -- sh -eu -c '
-  cd /app
-  chown -R "$(stat -c %u /app):www-data" /app
-  if [ -d var/session ]; then
-    chown -R www-data:www-data var/session
-  fi
-  chmod -R g+rX /app
-  chmod g+ws /app
-  find app/etc generated pub/media pub/static var vendor -type d -exec chmod g+ws {} +
-  find app/etc generated pub/media pub/static var vendor -type f -exec chmod g+w {} +
-'
 lando exec appserver --user www-data -- sh -eu -c '
   cd /app
   for path in . app/etc generated pub/media pub/static var vendor; do
@@ -135,7 +124,7 @@ The container check must exit successfully. From the same host project directory
 test -w composer.json && test -w app
 ```
 
-Confirm that your editor can save a source file. If the host check fails, fix the ownership or file-sync mapping for your provider before continuing; don't assign the whole project to `www-data` or use world-writable permissions. The application root also needs write access for a [known Mage-OS 3.6.0 regeneration-lock issue](https://mage-os.org/releases/2026-10-14-mage-os-3-6-0-release/). These are development permissions, not production hardening. Repeat the permissions step after Composer changes if a Magento command reports a write-permission error.
+Confirm that your editor can save a source file. The application root also needs write access for a [known Mage-OS 3.6.0 regeneration-lock issue](https://mage-os.org/releases/2026-10-14-mage-os-3-6-0-release/), which is why the container check includes `.`. If a directory check fails on another platform or provider, see [Who owns your app files](./file-ownership.mdx). Keep host editing working too; do not assign the whole project to `www-data` or use world-writable permissions. A deployment with separate filesystem and web users still needs Magento's shared-group permissions policy; this local setup uses the same account for both.
 
 Keep Magento commands and cron running as `www-data`, as the tooling task does. Don't reassign existing files in `var/session` to your host UID: PHP checks session ownership, not just write access. If a page reports `Session data file is not created by your uid`, check the session-file owner inside `appserver` and your provider's filesystem mapping before adding permissions. For Docker through WSL, use the Linux-filesystem project location above.
 
@@ -288,7 +277,7 @@ This command checks PHP style, not whether the module works or its XML is valid.
 - `webroot: pub` keeps non-public application files outside Apache's document root. `allowOverride: true` enables Magento's `.htaccess` rules; Lando enables `mod_rewrite` for this PHP service.
 - `php.ini` applies the same 2 GB memory limit to CLI PHP and Apache. `lando magento` runs from `/app` as `www-data`, matching the web server's PHP worker.
 - `database` and `search` are internal service names, not hostnames to open in your browser. OpenSearch's security plugin is disabled. Don't publish its port for other machines.
-- `vendor` lives in a service volume by default, so your host editor won't see it. To keep it in your host project instead, add `appMount: { target: /app, includes: [vendor] }` to `appserver`, run `lando start`, then `lando composer install` and repeat the permissions step. Changing the mount doesn't copy dependencies out of the old volume. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
+- `vendor` lives in a service volume by default, so your host editor won't see it. To keep it in your host project instead, add `appMount: { target: /app, includes: [vendor] }` to `appserver`, run `lando start`, then `lando composer install` and repeat the access checks. Changing the mount doesn't copy dependencies out of the old volume. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
 - This small local stack uses filesystem caches and the database-backed message queue. Redis or Valkey, RabbitMQ, Varnish, email delivery, and production deployment need their own configuration; they aren't established by this walkthrough.
 
 ## Check the config

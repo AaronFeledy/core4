@@ -3,6 +3,7 @@ import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipe
 import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result } from "effect";
+import { createProjectTool } from "../../src/recipes/builtin/source-php.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
 
 const {
@@ -23,6 +24,7 @@ const expectedServices = {
     type: "php:{{ recipe.php }}",
     primary: true,
     framework: "none",
+    allowOverride: true,
     webroot: "{{ recipe.webroot }}",
     composer: "{{ recipe.composer }}",
     port: 80,
@@ -72,6 +74,7 @@ describe("lamp decomposition", () => {
             cmds: ["composer"],
             wrapper: true,
           },
+          "create-project": createProjectTool,
           php: phpTool,
         },
       },

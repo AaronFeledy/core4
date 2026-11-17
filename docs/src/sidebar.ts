@@ -45,7 +45,10 @@ export const sidebar = [
       {
         label: "Services",
         collapsed: true,
-        items: [{ autogenerate: { directory: "guides/services", collapsed: true } }],
+        items: [
+          { label: "Who owns your app files", slug: "guides/services/file-ownership" },
+          { autogenerate: { directory: "guides/services", collapsed: true } },
+        ],
       },
       {
         label: "Recipe guides",
@@ -78,6 +81,7 @@ export const sidebar = [
           { label: "Run the Drupal recipe", slug: "guides/recipes/drupal-workflow" },
           { label: "Run the Drupal CMS recipe", slug: "guides/recipes/drupal-cms-workflow" },
           { label: "Run the Joomla recipe", slug: "guides/recipes/joomla-workflow" },
+          { label: "Run a Craft CMS site on LAMP", slug: "guides/recipes/craft-workflow" },
           { label: "Run a TYPO3 site on LAMP", slug: "guides/recipes/typo3-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },

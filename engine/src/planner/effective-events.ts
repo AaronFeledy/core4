@@ -16,6 +16,7 @@ import {
   LANDO_HOST_EVENT_ENV,
   resolveLifecycleCommandId,
 } from "@lando/sdk/schema";
+import { Predicate } from "effect";
 import { sitesUnder } from "./invocation-authority.ts";
 
 const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
@@ -38,10 +39,12 @@ export const stampPlanServices = (
   );
 
 export const primaryServiceName = (
-  services: Readonly<Record<string, { readonly primary?: boolean }>> | undefined,
+  services: Readonly<Record<string, unknown>> | undefined,
 ): string | undefined => {
   if (services === undefined) return undefined;
-  return Object.entries(services).find(([, service]) => service.primary === true)?.[0];
+  return Object.entries(services).find(
+    ([, service]) => Predicate.isObject(service) && service.primary === true,
+  )?.[0];
 };
 
 const commandKind = (step: EventStep): "cmd" | "task" | "command" => {
@@ -130,7 +133,7 @@ const projectEventsPlan = (events: LandofileEvents): EventsPlan =>
 export const compileEffectiveEvents = (input: {
   readonly landofile: Pick<LandofileShape, "events">;
   readonly hostEvents?: HostEvents;
-  readonly services?: Readonly<Record<string, { readonly primary?: boolean }>>;
+  readonly services?: Readonly<Record<string, unknown>>;
   readonly skipHostEvents?: boolean;
   readonly invocationSites?: InvocationProgram;
 }): EventsPlan => {

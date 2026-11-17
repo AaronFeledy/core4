@@ -125,7 +125,10 @@ const makeRuntime = (
     capabilities: Effect.die("unused"),
     appliedPlansFor: () => Effect.die("unused"),
     select: () => Effect.succeed(provider),
-    resolveAppliedPlan: () => Effect.succeed(options.applied === false ? undefined : plan),
+    resolveAppliedPlan: (_root, _app, lookup) =>
+      lookup === "exact"
+        ? Effect.succeed(options.applied === false ? undefined : plan)
+        : Effect.die("schedule run must ask for the exact app"),
     resolveTeardownEvidence: () => Effect.die("unused"),
   });
   const layer = Layer.mergeAll(

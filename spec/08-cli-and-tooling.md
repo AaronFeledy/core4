@@ -833,6 +833,24 @@ Cancellation is Effect interruption, not a tagged error: the in-flight acquisiti
 
 Recipe persisted locations are `recipes/<id>/` and the §12.8 source store, `<userCacheRoot>/sources/git/<commit>/` and `<userCacheRoot>/sources/archive/<sha256>/` (npm tarballs included). Compiled manifests, generated Landofiles, and derived snapshots MUST remain independent of provider state.
 
+#### 8.8.17 Composer project tools
+
+Composer recipes (`lamp` when its `composer` option is enabled, `lemp`, `laravel`, `symfony`, and recipes that extend them) ship one tool:
+
+`lando create-project <package> [<version>] [--no-scripts]`
+
+`package` is a required declared argument holding a Composer name (`vendor/name`, optionally pinned as `vendor/name:constraint`); `version` is an optional declared argument holding a version or constraint; `no-scripts` is a declared boolean flag. Because the flag is declared, Lando's own flag parsing leaves it to the task.
+
+The scaffold engine lives in the static Go container helper, not in recipe text. Lando exposes it at three stable PATH names in every service: `/usr/local/bin/lando-create-project`, `/usr/local/bin/lando-drupal-scaffold`, and `/usr/local/bin/lando-drupal-cms-scaffold`; each dispatches on `argv[0]`. Every command mount binds an immutable per-architecture shim from the mounted helper directory, and the shim executes the architecture's current helper by container path, where resolving the helper republishes a hard link with an atomic rename. The mount source therefore never changes, so a helper update never changes a service's create fingerprint and never recreates a container, while a running container resolves the new engine at its next exec. The supervised `exec-run`, `log-file`, and host-proxy roles still execute the digest-addressed artifact, so Lando always drives the helper it resolved. Every service gets the mounts because the binary is static and image-independent: the command uses its own service's Composer when it runs, and gating on an authored type string would break a custom-imaged service that declares the tooling. Recipes therefore carry only short task entries: `cmd: lando-create-project`, `cmd: lando-drupal-scaffold {{ recipe.drupal }}`, and `cmd: lando-drupal-cms-scaffold`. No Landofile contains an architecture-specific or content-addressed helper path, and the same delivery works on every provider that mounts the helper.
+
+The tool MUST refuse an app root that already holds `composer.json` without the engine's own recovery manifest, and the remediation MUST name `lando composer install` as the way to finish an existing project. It MUST stage with `composer create-project <package> <staging> [<version>] --no-install --no-scripts --no-interaction`, MUST NOT overwrite `.lando.yml` or any other existing path, MUST fill an empty directory at a target (a mounted `vendor`, `node_modules`, or working-directory shadow) in place, and MUST install dependencies directly in the app root rather than copying a staged `vendor`.
+
+After promotion it MUST run, in Composer's own order and only for events the root package defines, `post-root-package-install`, then `composer install --no-interaction`, then `post-create-project-cmd`; `--no-scripts` MUST skip both hooks and pass `--no-scripts` to `composer install`. A defined hook that fails MUST fail the tool. Hooks keep the terminal so interactive ones can prompt.
+
+`create-project` and the two Drupal scaffold tools share one engine and one app-root lock that excludes all three from each other. The lock is published by writing its owner `pid` into a private temporary directory and atomically renaming that directory into place, so a crash leaves either no lock or a lock whose owner can be checked; a dead owner, an ownerless lock, and a lock whose owner cannot be parsed are all recoverable, never a permanent "no recoverable owner" failure. The engine writes a durable JSON manifest before every filesystem step it describes, fsyncs each version, and resumes promotion from it. Staged projects live under the app root's Lando-owned `.lando-scaffold/<command>/` directory and survive the run until completion, so a retry promotes the same generation instead of mixing two package releases; a generation is replaced only while the manifest is still in its staging phase and nothing has been promoted. Promotion uses Linux `renameat2(RENAME_NOREPLACE)` for files, symlinks, and directories, builds a private `.lando-partial` inside an empty directory target under a temporary name that already carries its ownership proof and renames it into place, and keeps an existing non-empty path instead of overwriting it. After promotion it reports every kept path on stderr, one line per path naming it and stating that the project's version was not installed; Lando's own files (`.lando.yml`, the lock, staging, manifest, and marker paths) are never reported. Recovery compares recorded device/inode identities, so a path another writer created after the manifest snapshot is never mistaken for the engine's own. Any top-level name is accepted except one containing `/`, NUL, or a newline, or one that names the engine's own lock, staging, manifest, or marker path; the manifest is JSON, so spaces, colons, and non-ASCII names round-trip.
+
+`create-project` MUST record each hook and the install in its manifest after the step succeeds, and a resume MUST skip every recorded step; a kill between a step's exit and that record runs the step again, never skips it half done. An event whose script list is empty counts as undefined. `drupal-scaffold` takes the Drupal major as an argument or `LANDO_DRUPAL_MAJOR`; `drupal-cms-scaffold` takes none. Both keep their Drupal recipes' completion markers and completion checks, run as the invoking project user, and create nothing outside the app root and the Lando-owned staging location. `create-project` leaves no marker or state file in the app root once it succeeds; the `composer.json` refusal above covers a rerun.
+
 ### 8.9 Renderers and messages
 
 The Effect service tag `Renderer` has `id`, current `RendererCapabilities`, `render(Stream<RenderEvent>)`, and immediate first-paint emission. `RendererCapabilities` is the schema-backed boolean set `color`, `interactive`, `animation`, and `notifications`.
@@ -1160,3 +1178,21 @@ Opt-in OTLP export:
 - Export is fire-and-forget. Export failure MUST NOT change exit status or result output. The flush runs after the completion line and is bounded to 1 second. Nothing is sent when neither config nor env names an endpoint.
 
 ---
+
+### 8.12 Execution identity for user commands
+
+A service's process identity is `ServicePlan.user`, or the image's configured user when absent; the Apache master stays root while its workers are `www-data`. User commands instead follow one selector: CLI `--user`, then a tooling step user, then a task user, then the applied service plan's realized `projectUser` (§6.2.3), then the container default.
+
+| Surface | Identity |
+|---|---|
+| `lando exec`, `lando ssh` | User-command selector. |
+| Service-mode `lando shell` | User-command selector, on its own exec target. |
+| Tooling tasks and container Landofile event steps | User-command selector; `:host` steps keep the host identity. |
+| `build.app` steps | User-command selector, resolved into the build step and its build key so a changed mapping cannot reuse an earlier success. |
+| SQLite operations that create app files | The applied service's project user. |
+| Artifact build steps and the main process | Unchanged process identity. |
+| Readiness probes, native healthchecks, database-credential checks, listener diagnostics, and log reads | Unchanged; a probe keeps its explicit `user` or the process identity. |
+| Scheduled jobs | A job without `user` keeps the parent process identity; its sidecar inherits the parent's namespace mapping. |
+| Data-mover, file-sync helpers, and the container-helper supervisor | Unchanged helper identities. |
+
+The selector reads the applied service plan, never the desired plan, so a container created before the project user existed keeps its old command defaults. When the selected identity is the realized project user, the command also receives `HOME` (the planned home when known), `LANDO_USER`, `LANDO_UID`, and `LANDO_GID`. An explicit identity keeps its own environment, and a root process keeps the image's home. Generated administrative tooling that rewrites service configuration is pinned to root explicitly rather than inheriting the project user; Xdebug's toggle task is the first such task.

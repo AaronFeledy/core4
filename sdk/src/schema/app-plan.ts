@@ -30,9 +30,11 @@ import {
   CommandSpec,
   PlanMetadata,
   PortablePath,
+  ProjectUserExplanation,
   ProviderExtensionConfig,
   ProviderId,
   ServiceName,
+  ServiceProjectUser,
 } from "./primitives.ts";
 import { SqliteTargetConfig } from "./sqlite.ts";
 import { SHA256_HEX_PATTERN, patternString } from "./string-forms.ts";
@@ -105,6 +107,14 @@ const ServicePlanFields = {
   }),
   environment: Environment,
   user: Schema.optionalKey(Schema.String),
+  projectUser: Schema.optionalKey(ServiceProjectUser).annotate({
+    description:
+      "Realized in-container identity whose files belong to the host user; only a provider that can map one id to the host user sets it. Execution identity reads only this field.",
+  }),
+  projectUserExplanation: Schema.optionalKey(ProjectUserExplanation).annotate({
+    description:
+      "Why no project user is realized for this service; absent when projectUser is present or the planner is not responsible.",
+  }),
   home: Schema.optionalKey(ServiceHomePlan).annotate({
     description: "Resolved home status, always set by the planner; optional for hand-built plans.",
   }),

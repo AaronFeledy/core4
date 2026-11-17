@@ -56,6 +56,8 @@ const stubCapabilities = {
   routeProvider: false,
   tlsCertificates: "none" as const,
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "none" as const,

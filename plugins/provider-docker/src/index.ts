@@ -3,6 +3,8 @@ import {
   buildProviderCapabilities,
   decodeProviderCapabilitiesFor,
   engineInfoArchitecture,
+  engineInfoRootless,
+  engineInfoUsernsRemap,
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
@@ -269,8 +271,25 @@ export const dockerCapabilitiesForHost = (
   platform: HostPlatform,
   dockerHost: string,
   containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
-): ProviderCapabilities =>
-  buildProviderCapabilities({
+  rootless = false,
+  usernsRemap = false,
+): ProviderCapabilities => {
+  // A VM-mediated endpoint hides the engine's identity facts. A rootless
+  // Docker engine maps only container root to the host user, and a daemon
+  // user namespace stores subordinate host ids, so neither can realize a
+  // non-root project user. A local rootful engine writes real host ids and
+  // can renumber a catalog account to them during the image build.
+  const vmMediated = isVmMediatedDockerHost(platform, dockerHost);
+  const bindOwnership = vmMediated
+    ? ("unknown" as const)
+    : usernsRemap
+      ? ("userns-remap" as const)
+      : rootless
+        ? ("root-is-host-user" as const)
+        : ("host-ids" as const);
+  const projectUserMapping =
+    vmMediated || usernsRemap || rootless ? ("unsupported" as const) : ("image-renumber" as const);
+  return buildProviderCapabilities({
     bindMounts: true,
     artifactBuild: true,
     artifactPull: true,
@@ -281,7 +300,9 @@ export const dockerCapabilitiesForHost = (
     artifactImport: true,
     ephemeralMounts: true,
     tlsCertificates: "none",
-    rootless: false,
+    rootless,
+    projectUserMapping,
+    bindOwnership,
     architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
     composeKnobs: { supported: composeKnobsForDialect("docker") },
@@ -294,6 +315,7 @@ export const dockerCapabilitiesForHost = (
       delivery: isVmMediatedDockerHost(platform, dockerHost) ? "volume-relay" : "bind-directory",
     },
   });
+};
 
 export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
   dockerCapabilitiesForHost(platform, "/var/run/docker.sock");
@@ -326,7 +348,13 @@ export const introspectProviderCapabilities = (
     ),
     Effect.map((info) => {
       const engineArch = engineInfoArchitecture(info);
-      return dockerCapabilitiesForHost(platform, dockerHost, hostProxyContainerTargets(engineArch));
+      return dockerCapabilitiesForHost(
+        platform,
+        dockerHost,
+        hostProxyContainerTargets(engineArch),
+        engineInfoRootless(info) ?? false,
+        engineInfoUsernsRemap(info) ?? false,
+      );
     }),
   );
 

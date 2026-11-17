@@ -74,16 +74,15 @@ Check that `lando info` lists `chrome` as running next to `appserver` and `datab
 
 Browser tests need both `web/sites/simpletest` for temporary sites and snapshots, and `public://simpletest` for test artifacts. On this scaffold, the public-files directory is `web/sites/default/files`. If your site's `$settings['file_public_path']` or multisite directory changes that path, use its `simpletest` subdirectory below instead.
 
-The test runner and Apache both use `www-data`. Give that user ownership of only the two test directories, not the whole site or public-files directory. On a Linux bind mount, this also changes ownership on your host; rootless providers can map `www-data` to a different host UID.
+The test runner and Apache's PHP workers both use `www-data`. On Linux with the default managed provider, that project user maps to your host user. Create the test directories with the default command identity, then explicitly check that the web account can write both:
 
 ```sh
-lando exec appserver --user=root -- mkdir -p web/sites/simpletest/browser_output web/sites/default/files/simpletest
-lando exec appserver --user=root -- chown -R www-data:www-data web/sites/simpletest web/sites/default/files/simpletest
+lando exec appserver -- mkdir -p web/sites/simpletest/browser_output web/sites/default/files/simpletest
 lando exec appserver --user=www-data -- test -w web/sites/simpletest/browser_output
 lando exec appserver --user=www-data -- test -w web/sites/default/files/simpletest
 ```
 
-The last two commands exit successfully without output when both directories are writable.
+The last two commands exit successfully without output when both directories are writable. If either fails on another platform or provider, see [Who owns your app files](../services/file-ownership.mdx) for the directory-specific fallback.
 
 ## Run a Kernel test
 
@@ -96,15 +95,6 @@ An `OK` result confirms the test can use MariaDB through `SIMPLETEST_DB`. The ne
 Pass a test path with this task. Without one, PHPUnit discovers the full configured suites, including tests that need a Drupal source checkout rather than a scaffolded site.
 
 ## Test your own module in a browser
-
-The scaffold can leave `web/modules` owned by container root. Create the new module directory, then match its owner to your host-created `.lando.yml`:
-
-```sh
-lando exec appserver --user=root -- mkdir -p web/modules/custom/hello
-lando exec appserver --user=root -- chown --reference=/app/.lando.yml web/modules/custom/hello
-```
-
-The second command reads the Landofile's ownership without changing the file. This uses the owner as the container sees it, so it doesn't assume host and container UIDs match. If it fails, check that `/app/.lando.yml` exists in `appserver`; don't substitute a guessed UID.
 
 Create the test directories on your host, then save the three files below:
 
@@ -266,7 +256,7 @@ The checks confirm that `2gb` resolves to `2147483648` bytes and that the test s
 
 ## Next
 
-- [Run the Drupal recipe](../drupal-workflow/)
-- [Change a Drupal stack after init](../drupal-stack-overrides/)
-- [Debug PHP with Xdebug in PhpStorm](../../tooling/xdebug-phpstorm/)
-- [Add a Compose service](../../services/compose-passthrough/)
+- [Run the Drupal recipe](./drupal-workflow.mdx)
+- [Change a Drupal stack after init](./drupal-stack-overrides.mdx)
+- [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx)
+- [Add a Compose service](../services/compose-passthrough.mdx)

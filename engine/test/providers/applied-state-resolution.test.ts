@@ -849,3 +849,51 @@ describe("resolveTeardownEvidence", () => {
     expect(failureDetail(result)).toBe("provider-evidence");
   });
 });
+
+describe("exact applied-plan lookup", () => {
+  test("returns the plan recorded for exactly this app root", async () => {
+    const plan = planFor("lando");
+    const resolved = await Effect.runPromise(
+      resolveAppliedPlanEvidence(
+        root,
+        [provider("lando", { appliedPlans: Effect.succeed([plan]) })],
+        undefined,
+        "exact",
+      ),
+    );
+
+    expect(resolved).toEqual(plan);
+  });
+
+  test("never adopts an enclosing app's plan for a nested app root", async () => {
+    const nested = AbsolutePath.make(`${root}/sub`);
+    const parent = planFor("lando");
+    const providers = [provider("lando", { appliedPlans: Effect.succeed([parent]) })];
+
+    // The default lookup resolves a working directory inside the parent app.
+    expect(await Effect.runPromise(resolveAppliedPlanEvidence(nested, providers))).toEqual(parent);
+    // The exact lookup answers only for the app recorded at that root.
+    expect(
+      await Effect.runPromise(resolveAppliedPlanEvidence(nested, providers, undefined, "exact")),
+    ).toBeUndefined();
+  });
+
+  test("prefers the nested app's own record over an enclosing app's", async () => {
+    const nestedRoot = `${root}/sub`;
+    const nested = {
+      ...planFor("lando"),
+      root: AbsolutePath.make(nestedRoot),
+      identity: { appRoot: AbsolutePath.make(nestedRoot), ownerKey: "nested-owner" },
+    };
+    const resolved = await Effect.runPromise(
+      resolveAppliedPlanEvidence(
+        nested.root,
+        [provider("lando", { appliedPlans: Effect.succeed([planFor("lando"), nested]) })],
+        undefined,
+        "exact",
+      ),
+    );
+
+    expect(resolved).toEqual(nested);
+  });
+});

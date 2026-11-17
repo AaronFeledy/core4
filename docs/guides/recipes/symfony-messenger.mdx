@@ -59,7 +59,7 @@ There's no `bin/console` yet, so the worker exits. Lando reports this supervised
 
 ## Install Symfony and Messenger
 
-Install the skeleton as [Run the Symfony recipe](./symfony-workflow.mdx) shows, including moving `tmp-app` into the app root while keeping `.lando.yml`. The current stable skeleton selects Symfony 8.1 and requires PHP 8.4 or newer, matching this recipe's default. The command class below uses invokable commands and `#[Argument]`, available since Symfony 7.3.
+Install the skeleton with `lando create-project symfony/skeleton`, as [Run the Symfony recipe](./symfony-workflow.mdx#run-console-composer-and-the-clients) shows. That command puts Symfony in the app root and keeps your `.lando.yml`. The current stable skeleton selects Symfony 8.1 and requires PHP 8.4 or newer, matching this recipe's default. The command class below uses invokable commands and `#[Argument]`, available since Symfony 7.3.
 
 From the app root, add Messenger with its Doctrine transport. The ORM pack supplies DoctrineBundle and the default database connection that the minimal skeleton lacks:
 

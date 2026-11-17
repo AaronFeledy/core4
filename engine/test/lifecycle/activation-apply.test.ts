@@ -7,6 +7,7 @@ import { TEST_CERTIFICATES, TestRuntimeProvider } from "@lando/sdk/test";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { Effect } from "effect";
 import { applyActivation } from "../../src/lifecycle/activation-apply.ts";
+import { HostMountPoints } from "../../src/lifecycle/host-mount-points.ts";
 import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
 import { serviceCertificatePaths } from "../../src/lifecycle/service-certificate-paths.ts";
 import {
@@ -53,7 +54,10 @@ test("activation stamps both prepared binds without changing recorded or complet
         environment: session,
         recordedPlan,
         completionPlan,
-      }).pipe(Effect.provideService(EnvironmentValueResolver, unusedResolver)),
+      }).pipe(
+        Effect.provideService(EnvironmentValueResolver, unusedResolver),
+        Effect.provide(HostMountPoints.layer),
+      ),
     );
 
     const identity = sha256Hex(TEST_CERTIFICATES.service.certificate);
@@ -101,6 +105,7 @@ test.each(refusalCases)(
                 return session;
               }),
           }),
+          Effect.provide(HostMountPoints.layer),
           Effect.flip,
         ),
       );
@@ -154,6 +159,9 @@ test("activation opens and closes a lazy session around admission and provider a
   ]);
   const { certificates } = await Effect.runPromise(prepareServiceCertificates(plan));
   const calls: string[] = [];
+  const hostMountPoints = HostMountPoints.of({
+    prepare: () => Effect.sync(() => void calls.push("prepare")),
+  });
   let environment: Readonly<Record<string, string>> | undefined;
   const resolver = EnvironmentValueResolver.of({
     openSession: () =>
@@ -182,10 +190,13 @@ test("activation opens and closes a lazy session around admission and provider a
       certificates,
       reconcile: false,
       beforeApply: Effect.sync(() => void calls.push("before")),
-    }).pipe(Effect.provideService(EnvironmentValueResolver, resolver)),
+    }).pipe(
+      Effect.provideService(EnvironmentValueResolver, resolver),
+      Effect.provideService(HostMountPoints, hostMountPoints),
+    ),
   );
 
-  expect(calls).toEqual(["open", "before", "apply", "resolve", "close"]);
+  expect(calls).toEqual(["open", "before", "prepare", "apply", "resolve", "close"]);
   expect(environment).toEqual({ TOKEN: "resolved" });
 });
 
@@ -202,6 +213,7 @@ test("activation uses a supplied environment session without opening another", a
   await Effect.runPromise(
     applyActivation({ provider, plan, certificates, reconcile: false, environment: session }).pipe(
       Effect.provideService(EnvironmentValueResolver, unusedResolver),
+      Effect.provide(HostMountPoints.layer),
     ),
   );
 
@@ -241,6 +253,7 @@ test("activation records a provider-created volume as eligible for initializatio
     applyActivation({ provider, plan, certificates, reconcile: false, environment: session }).pipe(
       Effect.provideService(StateStore, stateStore.service),
       Effect.provideService(EnvironmentValueResolver, unusedResolver),
+      Effect.provide(HostMountPoints.layer),
     ),
   );
 
@@ -263,7 +276,11 @@ test("activation preserves a before-apply failure and never calls the provider",
       reconcile: false,
       environment: session,
       beforeApply: Effect.fail(new CaError({ caId: "admission", message: "Refused", remediation: "Retry." })),
-    }).pipe(Effect.provideService(EnvironmentValueResolver, unusedResolver), Effect.flip),
+    }).pipe(
+      Effect.provideService(EnvironmentValueResolver, unusedResolver),
+      Effect.provide(HostMountPoints.layer),
+      Effect.flip,
+    ),
   );
 
   expect(error).toMatchObject({ _tag: "CaError", caId: "admission" });

@@ -14,7 +14,13 @@ import type {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import type { ConfigLintResult, ConfigLintViolation, ProviderId, ValidationIssue } from "@lando/sdk/schema";
+import type {
+  AppPlan,
+  ConfigLintResult,
+  ConfigLintViolation,
+  ProviderId,
+  ValidationIssue,
+} from "@lando/sdk/schema";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
@@ -34,6 +40,31 @@ import { lintLandofileSnapshot } from "../services/landofile-live.ts";
 import { lintBunShellScripts } from "./app-config-lint-scripts.ts";
 import { lintEnvFiles, snapshotLintFileSystem } from "./config-lint-env-files.ts";
 
+/**
+ * Reports a project user the plan deliberately did not realize. Lint stays
+ * quiet for not-applicable services and for a plain unresolved identity; an
+ * opt-out and an unsupported provider are choices or limits the author can act on.
+ */
+const projectUserLintFindings = (plan: AppPlan): ConfigLintViolation[] =>
+  Object.values(plan.services).flatMap((service) => {
+    const explanation = service.projectUserExplanation;
+    if (explanation === undefined) return [];
+    if (explanation.state !== "opted-out" && explanation.state !== "provider-unsupported") return [];
+    return [
+      {
+        rule: "service.projectUser",
+        reason: explanation.state,
+        severity: "warning" as const,
+        path: ["services", String(service.name), "projectUser"],
+        message: explanation.detail,
+        scopes: ["effective"],
+        suggestion:
+          explanation.state === "opted-out"
+            ? "Remove projectUser: false to let Lando use the service type's project user."
+            : "Files this service writes stay owned by its container identity on this provider; use a provider that maps one container id to the host user, or set projectUser: false to acknowledge it.",
+      },
+    ];
+  });
 export type AppConfigLintOptions = LintLandofileOptions;
 
 const sourceFile = (source: ValidationIssue["source"]): string | undefined =>
@@ -173,6 +204,7 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     ).pipe(Effect.result);
     if (Result.isFailure(planned))
       planningFindings.push(...planningLintFindings(resolution, planned.failure));
+    else planningFindings.push(...projectUserLintFindings(planned.success));
   }
   const finalViolations = mergeLintFindings([...earlier, ...planningFindings]);
   return {

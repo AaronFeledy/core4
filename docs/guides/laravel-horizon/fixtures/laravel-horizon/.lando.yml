@@ -46,9 +46,11 @@ tooling:
     cmds:
       - "php artisan"
     description: "Run a Laravel Artisan command inside the appserver service."
+    wrapper: true
     service: appserver
   composer:
     cmds:
       - composer
     description: "Run Composer inside the appserver service."
+    wrapper: true
     service: appserver

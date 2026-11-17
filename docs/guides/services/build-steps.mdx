@@ -49,10 +49,10 @@ An entry is either a plain string or an object:
 
 | Form | Example | Runs as |
 | --- | --- | --- |
-| String | `npm config set fund false` | The service's planned user |
+| String | `npm config set fund false` | The default for the step's phase |
 | Object | `{ run: "apt-get install -y jq", user: root }` | The `user` you named |
 
-A step with no `user` runs as the service's planned user, which is what `services.<name>.user` sets. Leave `services.<name>.user` out and an artifact step runs as the base image's own user, while an app step runs as the container's configured user.
+A step with no `user` gets a default that depends on its phase. An artifact step runs as the service's planned user, which is what `services.<name>.user` sets, or as the base image's own user when you leave that out. An app step runs as the service's project user when the service has one, the same account `lando exec` and tooling use. Without a project user, it runs as the container's default user. [Who owns your app files](./file-ownership.mdx) explains which services have a project user.
 
 Mixing root and non-root steps in one list is fine. The order is preserved, so `apt-get` as root followed by `npm config` as `node` does exactly that, in that sequence.
 

@@ -439,9 +439,11 @@ import {
   PluginName,
   PortNumber,
   PortablePath,
+  ProjectUserExplanation,
   ProviderExtensionConfig,
   ProviderId,
   ServiceName,
+  ServiceProjectUser,
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
 import { ProviderSetupPlan } from "./provider-setup.ts";
@@ -633,6 +635,8 @@ export type PublicSchemaReferencePage = {
 
 const basePublicSchemaRegistry = schemaRegistry({
   ConfigKeyDescription,
+  ServiceProjectUser,
+  ProjectUserExplanation,
   ExecutionSite,
   ExecutionSiteMatch,
   SecretReference,

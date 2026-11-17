@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import * as BunFileSystem from "@lando/engine/services/file-system";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -26,7 +27,12 @@ test.each([false, true])(
         }),
     };
     const config = Schema.decodeUnknownSync(GlobalConfig)({});
+    // This runtime owns every durable record the report may read. Without its own store the
+    // report also reads the process-wide one, where another test's leftover start journal
+    // shows up as a second missing app root.
+    const store = makeTestStateStore();
     const runtime = Layer.mergeAll(
+      store.layer,
       Layer.succeed(
         ConfigService,
         ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),

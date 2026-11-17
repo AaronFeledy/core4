@@ -18,6 +18,7 @@ import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts"
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
 import { evolveHistoricalIncludeWhen } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
+import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
@@ -121,7 +122,12 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
   const projected = evolveHistoricalDeprecationNotice(
     evolveHistoricalToolingWrapper(
       evolveHistoricalUploadDirs(
-        evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
+        evolveHistoricalIncludeWhen(
+          evolveHistoricalProjectUser(
+            evolveHistoricalAuthoringProjection(historical, source),
+            source === "services" ? "plain" : "directive",
+          ),
+        ),
       ),
     ),
     source,
@@ -197,7 +203,12 @@ describe("embedded wire closed x-* artifact repair", () => {
       evolveHistoricalServiceCreds(
         evolveHistoricalSwarmReservations(
           evolveHistoricalSqliteTarget(
-            evolveHistoricalUploadDirs(evolveHistoricalAuthoringProjection(historical, "services")),
+            evolveHistoricalUploadDirs(
+              evolveHistoricalProjectUser(
+                evolveHistoricalAuthoringProjection(historical, "services"),
+                "plain",
+              ),
+            ),
           ),
         ),
       ),
