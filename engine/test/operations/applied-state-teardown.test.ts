@@ -39,7 +39,11 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
-import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
+import {
+  type ResolvedAppTarget,
+  resolveDesiredAppTarget,
+  withResolvedCwd,
+} from "../../src/landofile/app-resolution.ts";
 import {
   serviceCertificatePaths,
   serviceCertificatesOwnerDir,
@@ -118,6 +122,7 @@ for (const landofilePresent of [true, false]) {
             return "desired";
           }),
         (app) => `unchanged:${app}`,
+        resolveDesiredAppTarget,
       );
       // When
       const result = await Effect.runPromise(
@@ -147,6 +152,7 @@ test("calls onDesired when desired resolution succeeds", async () => {
           { kind: "absent", root: AbsolutePath.make(root), landofilePresent: true },
           (desired) => Effect.succeed(desired.plan),
           () => planAt("/tmp/wrong"),
+          resolveDesiredAppTarget,
         ),
       ).pipe(Effect.provide(harness.layer)),
     );

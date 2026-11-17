@@ -69,10 +69,13 @@ export interface StopAppPreflight {
 export const preflightStopApp = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
   observedState?: StopAppPreflight["runtimeState"],
+  missingRoot = false,
 ): Effect.fn.Return<StopAppPreflight, SdkStopAppError, RuntimeProviderRegistry | StateStore> {
-  const pending = yield* readPendingAcceleratedStart(target.app, target.plan).pipe(
-    mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
-  );
+  const pending = missingRoot
+    ? null
+    : yield* readPendingAcceleratedStart(target.app, target.plan).pipe(
+        mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
+      );
   const registry = yield* RuntimeProviderRegistry;
   const plan = target.plan;
   const provider = yield* registry.select(plan);
