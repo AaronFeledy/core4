@@ -2254,6 +2254,7 @@
       "makeFileSyncAppLifecycleContractSuite",
       "makeHttpClientContractSuite",
       "makeInteractionContractRenderer",
+      "makeMintingCertificateAuthority",
       "makePluginSourceContractSuite",
       "makeRecipeDecomposerContractSuite",
       "makeRemoteSourceContractSuite",

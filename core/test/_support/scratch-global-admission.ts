@@ -1,6 +1,7 @@
 import { expect } from "bun:test";
 import { join } from "node:path";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -14,7 +15,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { TestRouterService } from "@lando/sdk/test";
+import { TestRouterService, makeMintingCertificateAuthority } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Schema } from "effect";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
@@ -22,6 +23,9 @@ import { testStateStoreLayer } from "./landofile-layer.ts";
 
 /** Run global admission independently of the caller's scratch failure hooks. */
 export const scratchGlobalAdmissionFixture = (scratchProvider: RuntimeProviderShape) => {
+  // Match the planner's platform-default CA id (`mkcert`) so apply can issue certificates
+  // in memory without a host tool.
+  const certificateAuthority = makeMintingCertificateAuthority({ id: "mkcert" });
   let applied: AppPlan | undefined;
   const providerId = ProviderId.make(scratchProvider.id);
   const provider: RuntimeProviderShape = {
@@ -142,6 +146,13 @@ export const scratchGlobalAdmissionFixture = (scratchProvider: RuntimeProviderSh
       Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
     ),
     Layer.succeed(RouterService, RouterService.of({ ...TestRouterService, id: "traefik" })),
+    Layer.succeed(
+      CertificateAuthorityResolver,
+      CertificateAuthorityResolver.of({
+        selectedId: certificateAuthority.id,
+        resolve: Effect.succeed(certificateAuthority),
+      }),
+    ),
     Layer.succeed(
       BuildOrchestrator,
       BuildOrchestrator.of({
