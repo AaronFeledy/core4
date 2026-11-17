@@ -9,6 +9,7 @@ export const DERIVED_CODEGEN_SENTINELS = [
   "mcp/src/generated/mcp-allowlist.ts",
   "engine/src/deprecation/generated/schema-deprecations.ts",
   "container-runtime/src/generated/provider-images.ts",
+  "plugins/service-lando/src/services/generated/node-releases.ts",
 ] as const;
 
 export const missingDerivedCodegen = (repoRoot: string): string[] =>

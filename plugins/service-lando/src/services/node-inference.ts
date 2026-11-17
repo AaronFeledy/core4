@@ -5,8 +5,22 @@ import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import { NODE_LTS_MAJOR, SUPPORTED_NODE_MAJORS, type SupportedNodeMajor } from "./node-versions.ts";
 
 const NODE_MAJOR_IDS = SUPPORTED_NODE_MAJORS.map((entry) => String(entry.major));
-const NODE_CODENAMES = SUPPORTED_NODE_MAJORS.map((entry) => entry.codename);
-const NVMRC_REMEDIATION = `Use a supported Node major (${NODE_MAJOR_IDS.join(", ")}), an LTS codename (${NODE_CODENAMES.join(", ")}), lts/*, or an exact pin of a supported major.`;
+const NODE_CODENAMES = SUPPORTED_NODE_MAJORS.flatMap((entry) =>
+  entry.codename === null ? [] : [entry.codename],
+);
+const NODE_LTS_MAJORS = SUPPORTED_NODE_MAJORS.filter((entry) => entry.lts !== null)
+  .map((entry) => entry.major)
+  .sort((left, right) => left - right);
+const NODE_LTS_OFFSETS = Array.from(
+  { length: Math.max(NODE_LTS_MAJORS.length - 1, 0) },
+  (_, index) => `lts/-${index + 1}`,
+);
+const NVMRC_REMEDIATION = [
+  `Use a supported Node major (${NODE_MAJOR_IDS.join(", ")}),`,
+  `an LTS codename (${NODE_CODENAMES.join(", ")}),`,
+  ...(NODE_LTS_OFFSETS.length > 0 ? [`${NODE_LTS_OFFSETS.join(", ")},`] : []),
+  "lts/*, or an exact pin of a supported major.",
+].join(" ");
 
 export class NodeInferenceError extends ServiceConfigIssue {
   constructor(message: string, remediation: string, projectFile?: string) {
@@ -55,6 +69,19 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
 
   if (constraint === "lts" || constraint === "lts/*") {
     return majorSelection(NODE_LTS_MAJOR, input.path, constraint);
+  }
+
+  const ltsOffset = /^lts\/-(\d+)$/u.exec(constraint);
+  if (ltsOffset !== null) {
+    const offset = Number(ltsOffset[1]);
+    const major = NODE_LTS_MAJORS[NODE_LTS_MAJORS.length - 1 - offset];
+    if (major === undefined) {
+      throw new NodeInferenceError(
+        `Unsupported Node version "${constraint}" in ${input.path}.`,
+        NVMRC_REMEDIATION,
+      );
+    }
+    return majorSelection(major, input.path, constraint);
   }
 
   for (const entry of SUPPORTED_NODE_MAJORS) {

@@ -20,6 +20,7 @@ const EXPECTED_CATALOG_PATHS = [
   "plugins/service-lando/src/services/php-msmtp-pins.json",
   "plugins/github-actions/src/pins.json",
   "plugins/service-lando/tomcat/pins.json",
+  "plugins/service-lando/node/releases.json",
   "plugins/service-lando/tomcat/server-*.xml",
   "recipes/*/.scaffold/*",
   "sdk/src/schema/generated/core-service-env.ts",
@@ -35,6 +36,7 @@ const GITIGNORED_DERIVED_PATHS = [
   "dist/schemas",
   "docs/reference/schemas",
   "scripts/generated/opentui-native",
+  "plugins/service-lando/src/services/generated/node-releases.ts",
 ] as const;
 
 const TRACKED_CATALOG_SENTINELS = [

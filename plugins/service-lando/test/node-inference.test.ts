@@ -49,6 +49,8 @@ describe("bare node version inference", () => {
     ["v26.1.0", "node:26.1.0", "26.1.0"],
     ["lithium", "node:26", "26"],
     ["lts/lithium", "node:26", "26"],
+    ["lts/-1", "node:24", "lts/-1"],
+    ["lts/-2", "node:22", "lts/-2"],
     ["lts", "node:26", "lts"],
     ["lts/*", "node:26", "lts/*"],
     ["22.11.0 # pin", "node:22.11.0", "22.11.0"],
@@ -71,6 +73,8 @@ describe("bare node version inference", () => {
     ["22.11", ">=22.11.0 <22.12.0", "node:22.11"],
     ["22.11", "~22.11.0", "node:22.11"],
     ["22.11.0", "22.11.0", "node:22.11.0"],
+    ["lts/-1", "^24.0.0", "node:24"],
+    ["lts/-2", ">=22 <23", "node:22"],
   ] satisfies ReadonlyArray<readonly [string, string, string]>)(
     "accepts compatible package engines for %s",
     (nvmrc, engines, artifact) => {
@@ -110,6 +114,7 @@ describe("bare node version inference", () => {
         /supported Node major \(22, 24, 26\), an LTS codename \(jod, krypton, lithium\)/,
       ),
     });
+    expect(failure("lts/-3", undefined).suggestion).toMatch(/lts\/-1/u);
     expect(failure(undefined, JSON.stringify({ engines: { node: ">=22.11.0 <23" } }))).toMatchObject({
       message: expect.stringMatching(/complete supported Node image channel \(22, 24, 26\)/),
       suggestion: expect.stringMatching(/exact pin in \.nvmrc/),
@@ -122,6 +127,8 @@ describe("bare node version inference", () => {
     ["# comment only", undefined, /unsupported Node version/i],
     ["22.011", undefined, /unsupported Node version/i],
     ["22.9007199254740992", undefined, /unsupported Node version/i],
+    ["lts/-3", undefined, /unsupported Node version/i],
+    ["lts/-", undefined, /unsupported Node version/i],
     ["22", JSON.stringify({ engines: { node: ">=22.0.0 <22.12.0" } }), /conflicts with package\.json/i],
     ["22.11", JSON.stringify({ engines: { node: ">=22.11.0 <22.11.5" } }), /conflicts with package\.json/i],
     ["lts/*", JSON.stringify({ engines: { node: "22" } }), /conflicts with package\.json/i],
