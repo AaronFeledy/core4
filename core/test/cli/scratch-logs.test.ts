@@ -149,15 +149,13 @@ const harness = (input: { readonly plan?: AppPlan; readonly failing?: boolean })
 
 type Harness = ReturnType<typeof harness>;
 
-const run = <A, E>(current: Harness, effect: Effect.Effect<A, E, unknown>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(current.layer)) as Effect.Effect<A, E, never>);
+type HarnessServices = ScratchAppService | RuntimeProviderRegistry;
 
-const failure = async <A, E>(current: Harness, effect: Effect.Effect<A, E, unknown>) => {
-  const result = await Effect.runPromise(
-    effect.pipe(Effect.provide(current.layer), Effect.flip) as Effect.Effect<E, never, never>,
-  );
-  return result as { readonly _tag?: string };
-};
+const run = <A, E>(current: Harness, effect: Effect.Effect<A, E, HarnessServices>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(current.layer)));
+
+const failure = <A, E>(current: Harness, effect: Effect.Effect<A, E, HarnessServices>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(current.layer), Effect.flip));
 
 describe("scratch:logs", () => {
   test("resolves the applied plan by exact scratch identity and forwards log flags", async () => {

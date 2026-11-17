@@ -29,7 +29,7 @@ const invalidLandofile = new LandofileValidationError({
   issues: [{ path: [], message: "invalid test fixture" }],
 });
 
-export const fakeConfigService = (dataRoot: string) =>
+const fakeConfigService = (dataRoot: string) =>
   Layer.succeed(
     ConfigService,
     ConfigService.of({
@@ -53,7 +53,6 @@ export interface PoweroffFixtureInput {
 export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
   const teardown = await globalTeardownHarness(input.dataRoot);
   const calls: string[] = [];
-  const events: unknown[] = [];
   const plans = input.appliedPlans ?? [];
   const provider = {
     ...TestRuntimeProvider,
@@ -178,10 +177,7 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
   const recorder = Layer.succeed(
     EventService,
     EventService.of({
-      publish: (event) =>
-        Effect.sync(() => {
-          events.push(event);
-        }),
+      publish: () => Effect.void,
       subscribe: () => Stream.empty,
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.never,
@@ -208,5 +204,5 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
     Layer.succeed(RuntimeProviderRegistry, registry as never),
     recorder,
   );
-  return { layer, calls, events };
+  return { layer, calls };
 };

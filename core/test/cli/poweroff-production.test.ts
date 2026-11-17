@@ -128,36 +128,6 @@ test("aggregates a failed app and skips runtime shutdown", async () => {
   });
 });
 
-test("reports keep flags and leaves the runtime service running", async () => {
-  await withRoot(async (root) => {
-    const fixture = await makePoweroffFixture({
-      dataRoot: root,
-      services: [serviceAt(root)],
-      appliedPlans: [planAt(root)],
-      scratch: [
-        {
-          id: "scratch-one",
-          app: { kind: "scratch", id: AppId.make("scratch-one"), root: AbsolutePath.make(root) },
-          source: { kind: "fork" },
-          mode: "full",
-          created: "2026-08-01T00:00:00.000Z",
-          status: "detached",
-        },
-      ],
-    });
-    const result = await Effect.runPromise(
-      poweroff({ keepGlobal: true, keepScratch: true }).pipe(Effect.provide(fixture.layer)),
-    );
-    expect(result.keptGlobalApp).toBe(true);
-    expect(result.keptScratchApps).toBe(1);
-    expect(result.apps.find((app) => app.kind === "global")?.outcome).toBe("skipped");
-    expect(fixture.calls).not.toContain("runtime");
-    const rendered = renderPoweroffResult(result);
-    expect(rendered).toContain("kept global app running");
-    expect(rendered).toContain("kept 1 scratch app running");
-  });
-});
-
 test("renders duplicate ids with their roots and the runtime line only when stopped", () => {
   const rendered = renderPoweroffResult({
     apps: [

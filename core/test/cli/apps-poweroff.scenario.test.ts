@@ -172,6 +172,7 @@ describe("apps:poweroff command", () => {
     expect(result.apps.filter((app) => app.kind === "user")).toHaveLength(1);
     expect(result.keptGlobalApp).toBe(true);
     expect(result.keptScratchApps).toBe(1);
+    expect(result.apps.find((app) => app.kind === "global")?.outcome).toBe("skipped");
     const rendered = renderPoweroffResult(result);
     expect(rendered).toContain("kept global app running");
     expect(rendered).toContain("kept 1 scratch app running");

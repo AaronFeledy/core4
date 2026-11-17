@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -208,14 +208,9 @@ const withRoots = async <A>(
   const b = join(parent, "b");
   const quiet = join(parent, "quiet");
   await Promise.all(
-    [a, b, quiet].map(async (root) => {
-      await Bun.write(join(root, ".lando.yml"), `name: ${root === quiet ? "quiet" : "twin"}\n`).catch(
-        async () => {
-          await import("node:fs/promises").then(({ mkdir }) => mkdir(root, { recursive: true }));
-          await writeFile(join(root, ".lando.yml"), `name: ${root === quiet ? "quiet" : "twin"}\n`);
-        },
-      );
-    }),
+    [a, b, quiet].map((root) =>
+      Bun.write(join(root, ".lando.yml"), `name: ${root === quiet ? "quiet" : "twin"}\n`),
+    ),
   );
   try {
     return await use({ a, b, quiet });

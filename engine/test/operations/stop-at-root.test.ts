@@ -155,7 +155,7 @@ const makeHarness = (input: {
     cleanupOwnedResources: (root: AbsolutePath) =>
       Effect.sync(() => {
         cleanupRoots.push(root);
-        return { servicesRemoved: ["owned-web"], networksRemoved: 0, volumesRemoved: 0 };
+        return { servicesRemoved: ["owned-web"], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } };
       }),
   };
   const registry = {
