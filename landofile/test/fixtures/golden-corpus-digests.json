@@ -865,6 +865,14 @@
       "digest": "795cfc700131d5e05f3132b1b440405a6bd8f5bfbc7e6ad3158743a1588fe224"
     },
     {
+      "fixture": "docs/guides/node/fixtures/node-lts",
+      "digest": "702a4a3b26097c32ba1d3f21edc2889102afd3abd50daf5c18676031f8bcbdcd"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-package-manager",
+      "digest": "4558bff0b619635f63bd9fb3d84b14618d81b34cef1683ff635e46cc525ea324"
+    },
+    {
       "fixture": "docs/guides/node/fixtures/node-port",
       "digest": "a46c69af113f682cd3e3bc9d35e0798c4118f96b40310286ad2fb85632210963"
     },
