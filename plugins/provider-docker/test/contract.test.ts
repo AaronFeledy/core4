@@ -5,6 +5,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  fixtureHelperCommandMounts,
   fixtureHelperMount,
   fixtureHelperOptions,
   fixtureHelperOptionsFor,
@@ -1296,6 +1297,7 @@ describe("provider-docker RuntimeProvider contract", () => {
           "My-App-web-app-mount:/app",
           "My-App-web-mount-cace0001:/cache:ro",
           `${fixtureHelperMount.source}:/run/lando/helper:ro`,
+          ...fixtureHelperCommandMounts.map((mount) => `${mount.source}:${mount.target}:ro`),
         ],
         PortBindings: { "31080/tcp": [{ HostIp: "127.0.0.1", HostPort: "31080" }] },
       },

@@ -34,7 +34,7 @@ export const fixtureHelperMount = {
 export const fixtureHelperCommandMounts = CONTAINER_HELPER_COMMANDS.map((name) => ({
   type: "bind" as const,
   origin: "integration" as const,
-  source: `${fixtureHelperMount.source}/shims/${name}`,
+  source: join(fixtureHelperMount.source, "shims", name),
   target: PortablePath.make(`/usr/local/bin/${name}`),
   readOnly: true,
   realization: "passthrough" as const,
