@@ -28,7 +28,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const SUPPORTED_NODE_MAJORS = [
   { major: 22, codename: "jod" },
-  { major: 24, codename: "krypton", lts: true },
+  { major: 24, codename: "krypton" },
   { major: 26, codename: "lithium" },
 ] as const;
 
@@ -36,7 +36,7 @@ export type SupportedNodeMajor = (typeof SUPPORTED_NODE_MAJORS)[number]["major"]
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22", "24", "26"] as const;
 export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
 
-const NODE_LTS_MAJOR = SUPPORTED_NODE_MAJORS.find((entry) => "lts" in entry && entry.lts)?.major ?? 24;
+const NODE_LTS_MAJOR: SupportedNodeMajor = 26;
 
 const NODE_ARTIFACTS: Readonly<Record<SupportedNodeVersion, string>> = Object.fromEntries([
   ["lts", `node:${NODE_LTS_MAJOR}`],
@@ -221,7 +221,7 @@ const compatibleWithEngine = (selection: ParsedNvmrc, engine: string): boolean =
 const selectMajorForEngine = (engine: string): SupportedNodeMajor | undefined => {
   const compatible = SUPPORTED_NODE_MAJORS.filter((entry) => subset(String(entry.major), engine));
   if (compatible.length === 0) return undefined;
-  const lts = compatible.find((entry) => "lts" in entry && entry.lts);
+  const lts = compatible.find((entry) => entry.major === NODE_LTS_MAJOR);
   return (lts ?? compatible.at(-1))?.major;
 };
 
@@ -286,9 +286,9 @@ const artifactFor = (version: string): string =>
     ? NODE_ARTIFACTS[version as SupportedNodeVersion]
     : `node:${version}`;
 
-// Official Node images ship `yarn` as a Yarn 1 symlink; pnpm is absent.
-// Node 26 drops both that symlink and Corepack. --force lets authored globals
-// replace a Yarn 1 stub instead of failing EEXIST.
+// Node 22 and 24 images ship `yarn` as a Yarn 1 symlink and no pnpm; Node 26
+// drops both that symlink and Corepack. --force lets authored globals replace a
+// Yarn 1 stub instead of failing EEXIST.
 const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
   [
     "set -eux",

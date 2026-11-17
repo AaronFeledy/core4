@@ -11,10 +11,10 @@ and storage to the Landofile as your app needs them.
 
 ## Generated services
 
-- `web`: `image: node:<LANDO_NODE_VERSION ?? "24">`
+- `web`: `image: node:<LANDO_NODE_VERSION ?? "26">`
 
 The Node major version is resolved from `LANDO_NODE_VERSION` at
-`LandofileService` load time, with `24` as the default. `NODE_ENV`
+`LandofileService` load time, with `26` as the default. `NODE_ENV`
 defaults to `development` and can be overridden the same way.
 
 ## Limitations

@@ -38,8 +38,8 @@ describe("bare node version inference", () => {
     ["v26.1.0", "node:26.1.0", "26.1.0"],
     ["lithium", "node:26", "26"],
     ["lts/lithium", "node:26", "26"],
-    ["lts", "node:24", "lts"],
-    ["lts/*", "node:24", "lts/*"],
+    ["lts", "node:26", "lts"],
+    ["lts/*", "node:26", "lts/*"],
     ["22.11.0 # pin", "node:22.11.0", "22.11.0"],
     ["# comment\n22", "node:22", "22"],
   ] satisfies ReadonlyArray<readonly [string, string, string]>)(
@@ -76,14 +76,16 @@ describe("bare node version inference", () => {
   });
 
   test.each([
-    [">=20", "node:24"],
-    ["*", "node:24"],
-    [">=22", "node:24"],
-    [">=24", "node:24"],
+    [">=20", "node:26"],
+    ["*", "node:26"],
+    [">=22", "node:26"],
+    [">=24", "node:26"],
     [">=26", "node:26"],
     ["22 || 26", "node:26"],
+    ["^24", "node:24"],
+    ["22 || 24", "node:24"],
   ] satisfies ReadonlyArray<readonly [string, string]>)(
-    "prefers the table LTS major when engines.node %s allows it",
+    "prefers the LTS major when engines.node %s allows it, else the highest compatible major",
     (engines, artifact) => {
       expect(resolve(undefined, JSON.stringify({ engines: { node: engines } }))).toMatchObject({ artifact });
     },
@@ -105,6 +107,7 @@ describe("bare node version inference", () => {
     ["22", JSON.stringify({ engines: { node: ">=22.0.0 <22.12.0" } }), /conflicts with package\.json/i],
     ["22.11", JSON.stringify({ engines: { node: ">=22.11.0 <22.11.5" } }), /conflicts with package\.json/i],
     ["lts/*", JSON.stringify({ engines: { node: "22" } }), /conflicts with package\.json/i],
+    ["lts/*", JSON.stringify({ engines: { node: "^24" } }), /conflicts with package\.json/i],
     ["22.11.0", "{", /valid JSON/i],
     ["18", JSON.stringify({ engines: { node: "22" } }), /unsupported Node version/i],
     ["22.11", JSON.stringify({ engines: { node: ">=22.12.0" } }), /conflicts with package\.json/i],
@@ -141,7 +144,7 @@ describe("bare node version inference", () => {
 
   test("resolves floating LTS through the table to the current LTS major", () => {
     expect(resolve("lts/*", JSON.stringify({ engines: { node: "*" } }))).toMatchObject({
-      artifact: "node:24",
+      artifact: "node:26",
     });
   });
 

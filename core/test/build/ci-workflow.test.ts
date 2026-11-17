@@ -1280,6 +1280,7 @@ describe("ci workflow", () => {
     }
     expect(providerIntegration).toContain("      - name: Pre-pull container images");
     expect(providerIntegration).toContain("          for attempt in 1 2 3; do");
+    expect(providerIntegration).toContain("          pull_image docker.io/library/node:26");
     expect(providerIntegration).toContain("          pull_image docker.io/library/node:24");
     expect(providerIntegration).toContain("          pull_image docker.io/library/node:22-alpine");
     expect(providerIntegration).toContain("          pull_image docker.io/library/postgres:16");

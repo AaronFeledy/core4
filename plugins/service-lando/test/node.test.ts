@@ -88,7 +88,7 @@ describe("node:lts ServiceType", () => {
     const plan = await composeNodePlan(nodeLtsServiceType, { type: "node:lts" });
 
     expect(plan.type).toBe("node:lts");
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "node:24" });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "node:26" });
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
     expect(String(serviceAppMount(plan)?.target)).toBe("/app");

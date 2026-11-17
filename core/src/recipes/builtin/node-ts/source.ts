@@ -13,7 +13,7 @@ export const source = {
     runtime: 4,
     services: {
       web: {
-        image: "node:{{ default(env.LANDO_NODE_VERSION, '24') }}",
+        image: "node:{{ default(env.LANDO_NODE_VERSION, '26') }}",
         environment: { NODE_ENV: "{{ default(env.NODE_ENV, 'development') }}" },
         routes: defaultRoutes,
       },
