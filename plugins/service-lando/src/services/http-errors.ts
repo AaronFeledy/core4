@@ -45,36 +45,61 @@ const LANDO_ERROR_PAGE_STATUSES = [403, 404] as const;
 /** The exact bytes a server sends for a Lando-owned error page. */
 export const landoErrorPageBytes = (status: 403 | 404): string => `${landoErrorPage(status)}\n`;
 
+/** A file baked into the derived image by a Lando-owned web server build step. */
+export interface LandoBuildFile {
+  readonly path: string;
+  readonly content: string;
+}
+
+const buildFileDirectory = (path: string): string => {
+  const separator = path.lastIndexOf("/");
+  return separator <= 0 ? "/" : path.slice(0, separator);
+};
+
 /**
- * The shared 403/404 pages every Lando-owned web server serves.
+ * The shared 403/404 pages, plus any caller-owned image files, installed by
+ * one root build step.
  *
- * The pages are image content, produced once during the image build as root,
- * rather than written by each launcher as PID 1. That is what lets a service
- * keep serving them under a non-root `user:`: a start command that writes
- * nothing needs no write permission anywhere.
+ * The pages and a generated server configuration are image content, produced
+ * once during the image build as root, rather than written by a launcher as
+ * PID 1. That is what lets a service keep serving them under a non-root
+ * `user:`: a start command that writes nothing needs no write permission
+ * anywhere.
  *
- * Each page travels base64-encoded because a derived build renders this step as
- * a Dockerfile `RUN`, and a build-step token carrying CR or LF is refused
- * there. Encoding keeps the served bytes identical to the page this module
- * defines without putting a newline in the command.
+ * Each file travels base64-encoded because a derived build renders this step
+ * as a Dockerfile `RUN`, and a build-step token carrying CR or LF is refused
+ * there. Encoding keeps the served bytes identical to the page or config this
+ * module defines without putting a newline in the command.
  */
-export const landoErrorPagesBuildStep = (): ServiceBuildStepIntent => ({
-  id: LANDO_ERROR_PAGES_BUILD_STEP_ID,
-  phase: "build",
-  user: "root",
-  command: [
-    "sh",
-    "-c",
-    [
-      "set -eu",
-      `mkdir -p ${LANDO_ERROR_PAGE_DIR}`,
-      ...LANDO_ERROR_PAGE_STATUSES.map(
-        (status) =>
-          `printf '%s' '${Buffer.from(landoErrorPageBytes(status), "utf8").toString("base64")}' | base64 -d > ${LANDO_ERROR_PAGE_DIR}/${String(status)}.html`,
-      ),
-    ].join("; "),
-  ],
-});
+export const landoErrorPagesBuildStep = (
+  options: { readonly files?: ReadonlyArray<LandoBuildFile> } = {},
+): ServiceBuildStepIntent => {
+  const files = [
+    ...LANDO_ERROR_PAGE_STATUSES.map((status) => ({
+      path: `${LANDO_ERROR_PAGE_DIR}/${String(status)}.html`,
+      content: landoErrorPageBytes(status),
+    })),
+    ...(options.files ?? []),
+  ];
+  const directories = [...new Set(files.map((file) => buildFileDirectory(file.path)))];
+  return {
+    id: LANDO_ERROR_PAGES_BUILD_STEP_ID,
+    phase: "build",
+    user: "root",
+    command: [
+      "sh",
+      "-c",
+      [
+        "set -eu",
+        ...directories.map((directory) => `mkdir -p ${directory}`),
+        ...files.map(
+          (file) =>
+            `printf '%s' '${Buffer.from(file.content, "utf8").toString("base64")}' | base64 -d > ${file.path}`,
+        ),
+      ].join("; "),
+    ],
+  };
+};
 
 export const nginxErrorPageConfigLines = (): ReadonlyArray<string> => [
   "  error_page 403 /_lando/errors/403.html;",
@@ -83,6 +108,24 @@ export const nginxErrorPageConfigLines = (): ReadonlyArray<string> => [
   "    internal;",
   `    alias ${LANDO_ERROR_PAGE_DIR}/;`,
   "  }",
+];
+
+/**
+ * Caddy handlers for the shared pages.
+ *
+ * `file_server` preserves the error's status when it runs inside
+ * `handle_errors`, so only 403 and 404 are routed here and every other error
+ * keeps Caddy's own response.
+ */
+export const caddyErrorPageConfigLines = (): ReadonlyArray<string> => [
+  "\thandle_errors {",
+  "\t\t@landoError expression `{err.status_code} in [403, 404]`",
+  "\t\thandle @landoError {",
+  `\t\t\troot * ${JSON.stringify(LANDO_ERROR_PAGE_DIR)}`,
+  "\t\t\trewrite * /{err.status_code}.html",
+  "\t\t\tfile_server",
+  "\t\t}",
+  "\t}",
 ];
 
 /** Apache directives, one per element, ready to hand to a launcher as `-c` arguments. */

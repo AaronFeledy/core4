@@ -1256,6 +1256,10 @@
       "digest": "7ebd87c42308f62bb70cf51309e319747b5482a21fdb59b347015b09c969c117"
     },
     {
+      "fixture": "docs/guides/static/fixtures/static-caddy-demo",
+      "digest": "33bdac62ad8f3a464250c1b949fc330937d5e6c0cf190d5add168378a1c6225c"
+    },
+    {
       "fixture": "docs/guides/static/fixtures/static-demo",
       "invalid": {
         "status": "invalid",
