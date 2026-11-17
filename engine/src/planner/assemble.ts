@@ -30,7 +30,7 @@ import {
   PathsService,
   PluginRegistry,
 } from "@lando/sdk/services";
-import { DateTime, Effect, Option, Predicate } from "effect";
+import { DateTime, Effect, Option } from "effect";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -368,15 +368,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     hostEvents: hostEventCompileBase.skipHostEvents ? undefined : hostEvents,
     env: authoredLandofile.context.env,
   });
-  const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
+  const effectiveEventsFor = (services: Readonly<Record<string, unknown>>) =>
     compileEffectiveEvents({ ...hostEventCompileBase, services, invocationSites: executableSites });
-  const planServices = (services: Readonly<Record<string, unknown>>) =>
-    Object.fromEntries(
-      Object.entries(services).map(([name, service]) => [
-        name,
-        { primary: Predicate.isObject(service) && service.primary === true },
-      ]),
-    );
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
   const host = resolveHostFacts();
   const cacheKey = deriveAppPlanCacheKey({
@@ -448,7 +441,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       return attachCompiledInvocationPlan(
         attachEffectiveTooling(proven, effectiveTooling, { connectionClients, provenance }),
         executableSites,
-        effectiveEventsFor(planServices(cached.services)),
+        effectiveEventsFor(cached.services),
       );
     }
   }
@@ -576,7 +569,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       { connectionClients, provenance },
     ),
     executableSites,
-    effectiveEventsFor(planServices(finalized.services)),
+    effectiveEventsFor(finalized.services),
   );
   yield* assertComposeKnobsSupported(capabilityContext, plan.services);
   yield* assertServiceInitSupported(provider, providerCapabilities, plan.services);
