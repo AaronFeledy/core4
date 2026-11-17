@@ -110,11 +110,11 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       applicationConfigs,
     }).pipe(
       mapFailures((error) =>
-        servicePlanError(
-          input.appRoot,
-          name,
-          error.cause instanceof LandofileValidationError ? error.cause : error,
-        ),
+        servicePlanError({
+          appRoot: input.appRoot,
+          serviceName: name,
+          cause: error.cause instanceof LandofileValidationError ? error.cause : error,
+        }),
       ),
     );
     const authoredServicePlanWithoutLabels = applyAuthoredDependencies(

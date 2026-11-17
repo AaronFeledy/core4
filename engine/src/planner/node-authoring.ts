@@ -4,28 +4,19 @@ import { validationIssue } from "@lando/sdk/schema";
 import type { FileSystem, ServiceType, ServiceTypeProjectFileInput } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 import { loadServiceTypeProjectFiles } from "./project-files.ts";
-import { unsupportedServiceType } from "./service-types.ts";
 
 export type AuthorizedProjectFileRequest = {
   readonly appRoot: string;
   readonly name: string;
   readonly service: ServiceConfig;
   readonly serviceType: ServiceType;
-  readonly serviceTypeId: string;
-  readonly version: string | undefined;
   readonly pinnedService: ServiceConfig;
-  readonly registeredServiceTypeIds: ReadonlyArray<string>;
   readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
 };
 
 export const loadAuthorizedServiceProjectFiles = (
   input: AuthorizedProjectFileRequest,
 ): Effect.Effect<ReadonlyArray<ServiceTypeProjectFileInput>, LandofileValidationError> => {
-  if (input.serviceType.id === "node" && input.version !== undefined) {
-    return Effect.fail(
-      unsupportedServiceType(input.appRoot, input.name, input.serviceTypeId, input.registeredServiceTypeIds),
-    );
-  }
   if (input.pinnedService.packageRoot !== undefined && input.serviceType.id !== "node") {
     return Effect.fail(
       new LandofileValidationError({

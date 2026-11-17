@@ -466,9 +466,11 @@ jobs:
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:24
-          pull_image docker.io/library/node:22-alpine
+          # Every supported Node major is pre-pulled from the service-type table.
           pull_image docker.io/library/node:22
+          pull_image docker.io/library/node:24
+          pull_image docker.io/library/node:26
+          pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -704,9 +706,11 @@ jobs:
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:24
-          pull_image docker.io/library/node:22-alpine
+          # Every supported Node major is pre-pulled from the service-type table.
           pull_image docker.io/library/node:22
+          pull_image docker.io/library/node:24
+          pull_image docker.io/library/node:26
+          pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -939,9 +943,11 @@ jobs:
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:24
-          pull_image docker.io/library/node:22-alpine
+          # Every supported Node major is pre-pulled from the service-type table.
           pull_image docker.io/library/node:22
+          pull_image docker.io/library/node:24
+          pull_image docker.io/library/node:26
+          pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18

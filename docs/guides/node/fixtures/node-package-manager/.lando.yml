@@ -1,0 +1,5 @@
+name: node-package-manager
+services:
+  app:
+    type: node
+    primary: true

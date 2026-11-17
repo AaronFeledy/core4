@@ -11,6 +11,7 @@ export const CATALOG_OUTPUT_PATHS = [
   "plugins/service-lando/src/services/php-msmtp-pins.json",
   "plugins/github-actions/src/pins.json",
   "plugins/service-lando/tomcat/pins.json",
+  "plugins/service-lando/node/releases.json",
   "plugins/service-lando/tomcat/server-*.xml",
   "recipes/*/.scaffold/*",
   "sdk/src/schema/generated/core-service-env.ts",

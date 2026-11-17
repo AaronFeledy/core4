@@ -230,6 +230,31 @@ describe("lando app:config:lint (source dispatch)", () => {
       ).toBe(true);
     });
   });
+  test("node inference failures name the project file in text and JSON output", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: node-inference\nservices:\n  web:\n    type: node\n");
+      await writeFile(join(dir, ".nvmrc"), "lts/*\n");
+      await writeFile(join(dir, "package.json"), JSON.stringify({ engines: { node: "^24" } }));
+
+      const json = await runCli(["app:config:lint", "--format=json"], dir);
+      expect(json.exitCode).toBe(1);
+      const parsed = parseEnvelopeResult<ConfigLintResult>(json.stdout);
+      expect(parsed.valid).toBe(false);
+      expect(parsed.violations).toMatchObject([
+        {
+          rule: "landofile.service",
+          path: ["services", "web"],
+          source: { layer: "project-file", file: join(dir, ".nvmrc"), path: [] },
+        },
+      ]);
+
+      const text = await runCli(["app:config:lint"], dir);
+      expect(text.exitCode).toBe(1);
+      expect(text.stdout).toContain(join(dir, ".nvmrc"));
+      expect(text.stdout).toContain("services.web");
+      expect(text.stdout).toContain("project-file layer");
+    });
+  });
   test("warning-only lint renders its stable rule and exits successfully", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(

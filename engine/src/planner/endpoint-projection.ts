@@ -56,7 +56,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
       input.pluginRegistry,
       declaredServiceFeatures(resolution, input.gpgForward),
     ).pipe(
-      mapFailures((error) => servicePlanError(input.appRoot, name, error)),
+      mapFailures((error) => servicePlanError({ appRoot: input.appRoot, serviceName: name, cause: error })),
       Effect.result,
     );
     if (Result.isFailure(loaded)) {
@@ -91,7 +91,9 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
     const declared = yield* declarePreparedServiceEndpoints(prepared);
     if (declared.errors.length > 0) {
       const failure = unavailable(
-        declared.errors.flatMap((error) => record(servicePlanError(input.appRoot, name, error))),
+        declared.errors.flatMap((error) =>
+          record(servicePlanError({ appRoot: input.appRoot, serviceName: name, cause: error })),
+        ),
       );
       rows.set(name, {
         preparation: { _tag: "Available", value: declared.prepared },

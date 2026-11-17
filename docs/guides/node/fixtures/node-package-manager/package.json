@@ -1,0 +1,5 @@
+{
+  "name": "node-package-manager",
+  "private": true,
+  "packageManager": "yarn@4.18.1"
+}

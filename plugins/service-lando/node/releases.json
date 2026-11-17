@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "source": "https://raw.githubusercontent.com/nodejs/Release/main/schedule.json",
+  "releases": [
+    {
+      "major": 22,
+      "codename": "jod",
+      "lts": "2024-10-29",
+      "end": "2027-04-30"
+    },
+    {
+      "major": 24,
+      "codename": "krypton",
+      "lts": "2025-10-28",
+      "end": "2028-04-30"
+    },
+    {
+      "major": 26,
+      "codename": "lithium",
+      "lts": "2026-10-28",
+      "end": "2029-04-30"
+    }
+  ]
+}
