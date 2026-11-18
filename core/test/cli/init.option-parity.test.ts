@@ -304,13 +304,14 @@ describe("recipe option parity", () => {
       expect(landofile.services?.[ServiceName.make("chrome")]?.image).toBe(
         "selenium/standalone-chromium:155.0-20261010",
       );
-      expect(landofile.tooling?.["drupal-contrib-scaffold"]).toMatchObject({
+      expect(appserver?.build).toEqual({ app: ["lando-drupal-contrib-sync module example '^11'"] });
+      expect(landofile.tooling?.["drupal-contrib-sync"]).toMatchObject({
         arguments: false,
-        cmd: ["lando-drupal-contrib-scaffold", "module", "example", "^11"],
+        cmd: ["lando-drupal-contrib-sync", "module", "example", "^11"],
       });
       expect(landofile.tooling?.phpunit).toMatchObject({
         wrapper: true,
-        cmd: ["vendor/bin/phpunit", "-c", "web/core"],
+        cmd: ["/app/vendor/bin/phpunit", "-c", "/app/web/core"],
       });
     });
   });

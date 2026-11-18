@@ -5,6 +5,8 @@ import {
   DRUPAL_CONTRIB_CHROME_IMAGE,
   DRUPAL_CONTRIB_MINK_DRIVER_ARGS,
   contribMountTarget,
+  contribSyncArgv,
+  contribSyncStep,
   mysqlSimpletestDb,
   pgsqlSimpletestDb,
 } from "./stack.ts";
@@ -30,6 +32,8 @@ const contribAppserver = {
   dependsOn: ["database", "chrome"],
   appMount: contribAppMount,
   mounts: [contribSiteVolume],
+  // Every start whose container or core constraint is new brings the site in line.
+  build: { app: [contribSyncStep] },
   environment: {
     SIMPLETEST_BASE_URL: "http://appserver",
     SIMPLETEST_DB: mysqlSimpletestDb,
@@ -39,6 +43,14 @@ const contribAppserver = {
 };
 
 const contribToolingDir = { dir: contribDir } as const;
+/** Checkout tools run where the user stands, so paths and the extension's own configs match the host. */
+const extensionTool = (description: string, binary: string) =>
+  ({
+    service: "appserver",
+    description,
+    cmd: [`${contribDir}/vendor/bin/${binary}`],
+    wrapper: true,
+  }) as const;
 
 export const source = {
   id: "drupal-contrib",
@@ -101,56 +113,24 @@ export const source = {
         description: "Run Composer for the scaffolded Drupal site in /app.",
         ...contribToolingDir,
       },
-      "drupal-contrib-scaffold": {
+      "drupal-contrib-sync": {
         service: "appserver",
-        description: "Scaffold a Drupal site in the /app volume around the extension mount.",
+        description:
+          "Build or update the Drupal site in /app to match .lando.yml and the extension's composer.json.",
         arguments: false,
-        cmd: [
-          "lando-drupal-contrib-scaffold",
-          "{{ recipe.type }}",
-          "{{ recipe.project }}",
-          "{{ recipe.drupal }}",
-        ],
-        ...contribToolingDir,
-      },
-      "core-version": {
-        service: "appserver",
-        description: "Update the Drupal core constraint in the site composer.json and Landofile.",
-        cmd: ["lando-drupal-contrib-core-version", "{{ recipe.type }}", "{{ recipe.project }}"],
-        args: {
-          constraint: { required: true, description: "Composer constraint for Drupal core, such as ^10." },
-        },
+        cmd: contribSyncArgv,
         ...contribToolingDir,
       },
       phpunit: {
         service: "appserver",
         user: "www-data",
-        description: "Run Drupal PHPUnit suites as the web server user.",
-        cmd: ["vendor/bin/phpunit", "-c", "web/core"],
+        description: "Run Drupal PHPUnit tests as the web server user, from your current directory.",
+        cmd: [`${contribDir}/vendor/bin/phpunit`, "-c", `${contribDir}/web/core`],
         wrapper: true,
-        ...contribToolingDir,
       },
-      phpcs: {
-        service: "appserver",
-        description: "Run PHP_CodeSniffer (Drupal Coder) inside the appserver service.",
-        cmds: ["vendor/bin/phpcs"],
-        wrapper: true,
-        ...contribToolingDir,
-      },
-      phpcbf: {
-        service: "appserver",
-        description: "Run phpcbf (Drupal Coder) inside the appserver service.",
-        cmds: ["vendor/bin/phpcbf"],
-        wrapper: true,
-        ...contribToolingDir,
-      },
-      phpstan: {
-        service: "appserver",
-        description: "Run PHPStan from vendor/bin after core-dev is installed.",
-        cmds: ["vendor/bin/phpstan"],
-        wrapper: true,
-        ...contribToolingDir,
-      },
+      phpcs: extensionTool("Run PHP_CodeSniffer with Drupal Coder from your current directory.", "phpcs"),
+      phpcbf: extensionTool("Run phpcbf with Drupal Coder from your current directory.", "phpcbf"),
+      phpstan: extensionTool("Run PHPStan from your current directory.", "phpstan"),
     },
   },
   variants: [
@@ -176,7 +156,7 @@ export const source = {
   postInit: [
     {
       type: "message",
-      text: "Run 'lando start' from the extension root, then scaffold the Drupal site around the mount with 'lando drupal-contrib-scaffold'.",
+      text: "Run 'lando start' from the extension root. The first start builds the Drupal site around your extension, which takes a few minutes.",
     },
   ],
 } as const satisfies RecipeSource;

@@ -26,32 +26,25 @@ Change the machine name with `--answer=project=my_module` so it matches
 `my_module.info.yml`. Use `--answer=type=theme` or `--answer=type=profile` when
 the info file says so.
 
-`lando start` prints the app URL. `lando info` repeats it. The Drupal site is
-not on the host. It lives in an app-scoped named volume at `/app`. Your
-extension is bind-mounted at `/app/web/modules/custom/<project>` (or
-`themes` / `profiles`). Vendor and core stay in that volume, so your IDE sees
-the extension checkout, not Drupal core.
+The first `lando start` builds the Drupal site around your extension, which
+takes a few minutes while Composer downloads Drupal. `lando info` shows the app
+URL. The site lives in a named volume at `/app`, and your extension is mounted
+at `/app/web/modules/custom/<project>` (or `themes` / `profiles`). Drupal core
+and `vendor/` stay in that volume, so your repository holds only your extension.
 
-After start, scaffold the site. Composer runs then, not during image build:
-
-```sh
-lando drupal-contrib-scaffold
-lando drush --version
-lando phpunit --version
-lando composer --version
-```
-
-If the extension has a `composer.json`, the scaffold copies its `require` and
-`require-dev` entries into the site's `composer.json`. It leaves the extension's
-file alone and uses the mounted checkout without installing the extension as a
-Composer package. If the scaffold is interrupted, rerun it to resume.
-
-To run one test by name, pass a PHPUnit filter and the extension's path inside
-`/app`. Replace `ExampleUnitTest` with your test class:
+Run tests and linters from the extension root. Paths are relative to where you
+run them, and your `phpcs.xml.dist` and `phpstan.neon.dist` apply:
 
 ```sh
-lando phpunit --filter ExampleUnitTest web/modules/custom/example
+lando drush status
+lando phpunit tests/src/Unit
+lando phpcs --standard=Drupal,DrupalPractice .
 ```
+
+The site requires your extension's `require` and `require-dev` entries but
+never installs the extension as a Composer package. After you change your
+extension's `composer.json` or `recipe.options.drupal` in `.lando.yml`, run
+`lando drupal-contrib-sync`.
 
 ## Choose stack options
 
@@ -72,7 +65,7 @@ lando init . --recipe drupal-contrib --name=example --yes \
 volumes, including the Drupal site at `/app`. See [Keep data across stop,
 restart, and destroy](../../docs/guides/tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
 
-For the core constraint change and scaffold recovery, see
+For dependency changes, switching Drupal core, and fixing a failed sync, see
 [Run the Drupal contrib recipe](../../docs/guides/recipes/drupal-contrib-workflow.mdx).
 
 <Guide>
@@ -87,8 +80,8 @@ For the core constraint change and scaffold recovery, see
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/web\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/web/modules/custom/example" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "selenium/standalone-chromium:155.0-20261010" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "lando-drupal-contrib-scaffold" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "vendor/bin/phpunit" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "lando-drupal-contrib-sync module example" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/vendor/bin/phpunit" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

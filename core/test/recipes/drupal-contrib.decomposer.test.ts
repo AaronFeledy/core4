@@ -8,6 +8,8 @@ import {
   DRUPAL_CONTRIB_CHROME_IMAGE,
   DRUPAL_CONTRIB_MINK_DRIVER_ARGS,
   contribMountTarget,
+  contribSyncArgv,
+  contribSyncStep,
   mysqlSimpletestDb,
   pgsqlSimpletestDb,
 } from "../../src/recipes/builtin/drupal-contrib/stack.ts";
@@ -86,7 +88,10 @@ describe("drupal-contrib decomposition", () => {
       producer: drupalContribProducer,
       options: defaults,
     });
-    expect(authoringOf(defaults)).toEqual({
+    const { tooling, ...config } = authoringOf(defaults) as {
+      tooling: Record<string, Record<string, unknown>>;
+    };
+    expect(config).toEqual({
       runtime: 4,
       services: {
         appserver: {
@@ -99,6 +104,7 @@ describe("drupal-contrib decomposition", () => {
           dependsOn: ["database", "chrome"],
           appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
           mounts: ["site:/app"],
+          build: { app: [contribSyncStep] },
           environment: {
             SIMPLETEST_BASE_URL: "http://appserver",
             SIMPLETEST_DB: mysqlSimpletestDb,
@@ -113,72 +119,29 @@ describe("drupal-contrib decomposition", () => {
         database: { type: "{{ recipe.database }}" },
         chrome: chromeService,
       },
-      tooling: {
-        drush: {
-          service: "appserver",
-          description: "Run Drush for the scaffolded Drupal site in /app.",
-          cmds: [DRUSH_TOOLING_COMMAND],
-          wrapper: true,
-          dir: contribDir,
-        },
-        composer: {
-          service: "appserver",
-          description: "Run Composer for the scaffolded Drupal site in /app.",
-          cmds: ["composer"],
-          wrapper: true,
-          dir: contribDir,
-        },
-        "drupal-contrib-scaffold": {
-          service: "appserver",
-          description: "Scaffold a Drupal site in the /app volume around the extension mount.",
-          arguments: false,
-          cmd: [
-            "lando-drupal-contrib-scaffold",
-            "{{ recipe.type }}",
-            "{{ recipe.project }}",
-            "{{ recipe.drupal }}",
-          ],
-          dir: contribDir,
-        },
-        "core-version": {
-          service: "appserver",
-          description: "Update the Drupal core constraint in the site composer.json and Landofile.",
-          cmd: ["lando-drupal-contrib-core-version", "{{ recipe.type }}", "{{ recipe.project }}"],
-          args: {
-            constraint: { required: true, description: "Composer constraint for Drupal core, such as ^10." },
-          },
-          dir: contribDir,
-        },
-        phpunit: {
-          service: "appserver",
-          user: "www-data",
-          description: "Run Drupal PHPUnit suites as the web server user.",
-          cmd: ["vendor/bin/phpunit", "-c", "web/core"],
-          wrapper: true,
-          dir: contribDir,
-        },
-        phpcs: {
-          service: "appserver",
-          description: "Run PHP_CodeSniffer (Drupal Coder) inside the appserver service.",
-          cmds: ["vendor/bin/phpcs"],
-          wrapper: true,
-          dir: contribDir,
-        },
-        phpcbf: {
-          service: "appserver",
-          description: "Run phpcbf (Drupal Coder) inside the appserver service.",
-          cmds: ["vendor/bin/phpcbf"],
-          wrapper: true,
-          dir: contribDir,
-        },
-        phpstan: {
-          service: "appserver",
-          description: "Run PHPStan from vendor/bin after core-dev is installed.",
-          cmds: ["vendor/bin/phpstan"],
-          wrapper: true,
-          dir: contribDir,
-        },
+    });
+    // Machine fields only: descriptions are reader copy.
+    const machine = Object.fromEntries(
+      Object.entries(tooling).map(([name, { description: _description, ...task }]) => [name, task]),
+    );
+    expect(machine).toEqual({
+      drush: { service: "appserver", cmds: [DRUSH_TOOLING_COMMAND], wrapper: true, dir: contribDir },
+      composer: { service: "appserver", cmds: ["composer"], wrapper: true, dir: contribDir },
+      "drupal-contrib-sync": {
+        service: "appserver",
+        arguments: false,
+        cmd: [...contribSyncArgv],
+        dir: contribDir,
       },
+      phpunit: {
+        service: "appserver",
+        user: "www-data",
+        cmd: ["/app/vendor/bin/phpunit", "-c", "/app/web/core"],
+        wrapper: true,
+      },
+      phpcs: { service: "appserver", cmd: ["/app/vendor/bin/phpcs"], wrapper: true },
+      phpcbf: { service: "appserver", cmd: ["/app/vendor/bin/phpcbf"], wrapper: true },
+      phpstan: { service: "appserver", cmd: ["/app/vendor/bin/phpstan"], wrapper: true },
     });
   });
 

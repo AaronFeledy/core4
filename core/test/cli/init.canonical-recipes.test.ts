@@ -134,16 +134,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "database", type: "mariadb:11.4" },
       { name: "chrome", type: "compose" },
     ],
-    expectedTooling: [
-      "drush",
-      "composer",
-      "drupal-contrib-scaffold",
-      "core-version",
-      "phpunit",
-      "phpcs",
-      "phpcbf",
-      "phpstan",
-    ],
+    expectedTooling: ["drush", "composer", "drupal-contrib-sync", "phpunit", "phpcs", "phpcbf", "phpstan"],
   },
   {
     recipe: "node-api",

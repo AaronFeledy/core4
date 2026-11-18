@@ -130,7 +130,7 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
 });
 
 describe("the decomposed Drupal contrib Landofile on the native load path", () => {
-  test("loads the nested mount, /app volume, chrome service, and contrib scaffold", async () => {
+  test("loads the nested mount, site volume, chrome service, and site sync", async () => {
     const options = {
       ...drupalContribDefaults,
       type: "theme",
@@ -155,12 +155,15 @@ describe("the decomposed Drupal contrib Landofile on the native load path", () =
       const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
       const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
       const services = landofile.document.services as Record<string, Record<string, unknown>>;
-      expect(tooling["drupal-contrib-scaffold"]?.cmd).toEqual([
-        "lando-drupal-contrib-scaffold",
+      expect(tooling["drupal-contrib-sync"]?.cmd).toEqual([
+        "lando-drupal-contrib-sync",
         "theme",
         "hello_theme",
         ">=10 <11 || ^11",
       ]);
+      expect(services.appserver?.build).toEqual({
+        app: ["lando-drupal-contrib-sync theme hello_theme '>=10 <11 || ^11'"],
+      });
       expect(tooling.composer?.dir).toBe("/app");
       expect(tooling.phpunit?.user).toBe("www-data");
       expect(services.appserver?.webroot).toBe("/app/web");

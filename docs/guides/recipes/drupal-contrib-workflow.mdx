@@ -7,60 +7,122 @@ tags: [docs, recipes, drupal, drupal-contrib, php, phpunit]
 
 # Run the Drupal contrib recipe
 
-Run a local Drupal site against a module, theme, or profile whose git repo is
-the extension. The Drupal codebase lives in a named volume at `/app`. Your
-checkout is bind-mounted under `web/modules|themes|profiles/custom/<project>`.
+Develop a Drupal module, theme, or profile in its own git repository, with a
+working Drupal site, tests, and linters around it. Lando keeps the Drupal site
+in a volume at `/app` and mounts your checkout into it at
+`web/<type>s/custom/<project>`, so Drupal core and `vendor/` never land in your
+repository.
 
 After setting up Lando, run these commands from the extension root on your host.
-The root must contain exactly one `*.info.yml`. Use `example` for a module with
-`example.info.yml`, or substitute your extension's machine name.
+The root must contain exactly one `*.info.yml`. This guide uses a module named
+`example` with `example.info.yml`. Substitute your extension's machine name.
 
 ```sh
 lando init . --recipe drupal-contrib --name=example --yes --answer=project=example
 lando start
+lando drush status
 ```
+
+The first `lando start` builds the Drupal site around your extension, which
+takes a few minutes while Composer downloads Drupal. Later starts reuse it.
+`lando drush status` reports the Drupal version once the site is ready.
 
 `--yes` keeps Drupal `^11`, PHP 8.4, Apache, MariaDB 11.4, Composer 2, type
-`module`, and machine name `example`. The site's webroot is always `/app/web`,
-where the scaffold installs Drupal. The machine name must
-match the root info file (`example.info.yml`). Pass `--answer=type=theme` or
-`--answer=type=profile` when that file says so.
+`module`, and machine name `example`. The machine name must match the root
+info file. Pass `--answer=type=theme` or `--answer=type=profile` when that file
+says so. The site's webroot is always `/app/web`.
 
-## Scaffold the Drupal site around the mount
+## What the site contains
 
-Init writes the Landofile only. After start, fill `/app` with Drupal,
-`drupal/core-dev`, Drush, and Drupal Coder. Composer is not run during image
-build, because the mounts are not there yet:
+The site's `composer.json` lives in the volume, not in your repository. It
+requires `drupal/core-recommended` and `drupal/core-dev` at the recipe's
+`drupal` constraint, plus Drush and Drupal Coder. It also requires everything
+in your extension's `require` and `require-dev`, with your constraints. Lando
+doesn't install your extension as a Composer package: Drupal finds it at the
+mounted path. Your extension's `composer.json` is never changed.
+
+Point your IDE at the extension checkout.
+
+## Run PHPUnit
+
+Run tests from the extension root. Paths are relative to where you run the
+command, the same as in your editor:
 
 ```sh
-lando drupal-contrib-scaffold
-lando drush --version
-lando phpunit --version
-lando phpcs --version
+lando phpunit tests/src/Unit
+lando phpunit --filter ExampleUnitTest tests/src/Unit
 ```
 
-The scaffold prepares the site's Composer manifest, then installs the site
-in `/app` around the extension mount. If it is interrupted, rerun the scaffold
-to resume. It refuses to run again after the site is scaffolded.
+The task uses Drupal core's PHPUnit configuration and runs as `www-data`.
+Kernel and browser tests use the recipe database. FunctionalJavascript tests
+drive the `chrome` service. The recipe bakes in the Chrome service and
+SIMPLETEST settings from
+[Run Drupal tests with PHPUnit and headless Chrome](./drupal-testing.mdx), and
+browser output goes under `/app/web/sites/simpletest`.
 
-The site `composer.json` lives only in the volume. It requires
-`drupal/core-recommended` and `drupal/core-dev` at the `drupal` constraint.
-Composer picks a compatible Drush release. The scaffold copies `require` and
-`require-dev` entries from the extension's `composer.json` if present. It leaves
-that file alone and uses the mounted checkout without installing the extension
-as a Composer package.
+## Lint PHP
 
-Vendor and core stay in the container volume. Point your IDE at the extension
-checkout.
+`lando phpcs`, `lando phpcbf`, and `lando phpstan` also run from your current
+directory, so they read your extension's own `phpcs.xml.dist` and
+`phpstan.neon.dist`, the same files drupal.org CI uses. With those files in the
+extension root, run:
+
+```sh
+lando phpcs
+lando phpstan analyse
+```
+
+Without a PHP_CodeSniffer config, name the standard and path:
+`lando phpcs --standard=Drupal,DrupalPractice .`.
+
+## Add a dependency to your extension
+
+Add the package to your extension's `composer.json`, then sync the site. If
+Composer isn't installed on your host, run it in `appserver` from the extension
+root:
+
+```sh
+lando exec appserver -- composer require --no-update psr/clock:^1.0
+lando drupal-contrib-sync
+lando composer show psr/clock
+```
+
+`lando drupal-contrib-sync` brings the site in line with your `.lando.yml` and
+your extension's `composer.json`. It adds, changes, and removes only the
+requirements it manages, and leaves packages you added with `lando composer`
+alone. When nothing changed, it reports that the site is up to date without
+contacting Composer.
+
+## Change the Drupal core constraint
+
+Set `recipe.options.drupal` in `.lando.yml` to a Composer constraint, then sync:
+
+```yaml
+recipe:
+  id: drupal-contrib
+  options:
+    drupal: "^10"
+```
+
+```sh
+lando drupal-contrib-sync
+lando composer show drupal/core-recommended
+```
+
+The sync updates `drupal/core-recommended`, `drupal/core-dev`, and Drush
+together. `lando start` also syncs when the constraint changed, so restarting
+the app works too. This changes packages, not the database schema of an
+installed site.
 
 ## Inspect the generated services
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.4`, `framework: drupal`, webroot `/app/web`, named volume at `/app`, nested app mount at `/app/web/<type>s/custom/<project>`, Composer `2`, Apache on port `80`, SIMPLETEST env, depends on `database` and `chrome` |
+| `appserver` | `php:8.4`, `framework: drupal`, webroot `/app/web`, the `site` volume at `/app`, your checkout at `/app/web/<type>s/custom/<project>`, Composer `2`, Apache on port `80`, SIMPLETEST env, and a site sync on start; depends on `database` and `chrome` |
 | `database` | `type: mariadb:11.4` |
 | `chrome` | Selenium standalone Chromium for FunctionalJavascript tests |
-| Tooling | `lando drush`, `lando composer`, `lando drupal-contrib-scaffold`, `lando core-version`, `lando phpunit`, `lando phpcs`, `lando phpcbf`, and `lando phpstan` on `appserver`, working directory `/app` |
+| Site tooling | `lando drush`, `lando composer`, and `lando drupal-contrib-sync`, working directory `/app` |
+| Extension tooling | `lando phpunit`, `lando phpcs`, `lando phpcbf`, and `lando phpstan`, working directory: wherever you run them |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass
 `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`,
@@ -69,63 +131,16 @@ instead. `--answer=php=8.6` uses the PHP 8.6 release-candidate image; Xdebug
 isn't available there yet.
 
 Nginx answers add an `edge` service in front of `appserver` (`via: fpm`) and
-set `SIMPLETEST_BASE_URL` to `http://edge`. The `edge` service mounts the same
-`/app` site volume read-only, so it serves the files the scaffold installs. Both webserver choices set
-`uploadDirs: [sites/*/files]` on the service serving PHP.
-
-## Run PHPUnit
-
-The recipe bakes in the Chrome service and SIMPLETEST settings from
-[Run Drupal tests with PHPUnit and headless Chrome](./drupal-testing.mdx).
-Output goes under `/app/web/sites/simpletest`. PHPUnit uses core's config:
-
-```sh
-lando phpunit web/modules/custom/example
-lando phpunit --filter ExampleUnitTest web/modules/custom/example/tests/src/Unit
-```
-
-Replace `example` with your machine name and `ExampleUnitTest` with the class
-you want to run. The task runs as `www-data` from
-`/app`. Kernel and browser tests use the recipe database. FunctionalJavascript
-tests talk to `chrome` on the app network.
-
-## Change the Drupal core constraint
-
-After scaffolding, run `lando core-version` with a quoted Composer constraint
-so your shell passes it as one argument. For example, on a fresh scaffold that
-you haven't installed as a Drupal site, switch from the default `^11` to `^10`:
-
-```sh
-lando core-version '^10'
-lando composer show drupal/core-recommended
-```
-
-The command updates `drupal/core-recommended`, `drupal/core-dev`, and the
-Composer scaffold and project-message packages if present. It also lets
-Composer update Drush. After Composer succeeds, the command saves the constraint
-as `recipe.options.drupal` in your `.lando.yml`. Check that Composer reports a
-10.x version. This changes packages, not the database schema of an installed site. On an
-installed site, the command briefly makes `web/sites/default` writable so
-Composer can update Drupal's scaffold files there, then restores its permissions.
-If an earlier scaffold didn't finish, `core-version` changes nothing and asks you
-to rerun `lando drupal-contrib-scaffold` first.
-
-## Lint PHP
-
-`lando phpcs` and `lando phpcbf` run Drupal Coder from `/app`. `lando phpstan`
-is `vendor/bin/phpstan` after `drupal/core-dev`. Pass the extension path:
-
-```sh
-lando phpcs --standard=Drupal,DrupalPractice web/modules/custom/example
-lando phpstan analyse web/modules/custom/example
-```
+set `SIMPLETEST_BASE_URL` to `http://edge`. `edge` mounts the same `site`
+volume read-only, so it serves the files the sync installs. Both webserver
+choices set `uploadDirs: [sites/*/files]` on the service serving PHP.
 
 Add a Node service if a theme build needs npm. See
 [Compile PHP theme assets with Node](../services/node-theme-assets.mdx).
 
-## Connect Drupal to the database
+## Install Drupal
 
-Install with Drush from `/app` using the MariaDB credentials from `lando info`:
+Install with Drush using the MariaDB credentials from `lando info`:
 
 ```sh
 lando drush site:install standard \
@@ -140,18 +155,23 @@ Match the database name in `--db-url` to the app name. Use host `database`,
 not `127.0.0.1`. For Postgres answers, use `pgsql://` and the password
 `lando info` shows.
 
-## Fix a failed scaffold
+## Fix a failed sync
 
-If the scaffold reports a missing or mismatched extension, check that the
-checkout has exactly one root `*.info.yml`. In `.lando.yml`, set
-`recipe.options.project` to the filename without `.info.yml` and
-`recipe.options.type` to the file's `type` (`module`, `theme`, or `profile`).
-Keep the `recipe:` block, then apply the corrected mount and retry:
+If `lando start` or `lando drupal-contrib-sync` reports a missing or mismatched
+extension, check that the checkout has exactly one root `*.info.yml`. In
+`.lando.yml`, set `recipe.options.project` to the filename without `.info.yml`
+and `recipe.options.type` to the file's `type` (`module`, `theme`, or
+`profile`). Keep the `recipe:` block, then move the mount and sync:
 
 ```sh
 lando restart
-lando drupal-contrib-scaffold
+lando drupal-contrib-sync
 ```
+
+If Composer fails, for example because your extension requires a package that
+conflicts with the Drupal core constraint, fix the requirement and run
+`lando drupal-contrib-sync` again. A failed sync retries the same change, and an
+interrupted first build resumes where it stopped.
 
 ## Destroy the app
 
@@ -165,7 +185,7 @@ lando destroy -y
 ## Verify the resolved config
 
 These checks initialize a contrib app and inspect the nested mount, Chrome
-service, and tooling. They do not download Drupal:
+service, site sync, and tooling. They do not download Drupal:
 
 <Guide>
   <Scenario id="contrib-defaults" render>
@@ -180,8 +200,8 @@ service, and tooling. They do not download Drupal:
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/web/modules/custom/example" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "selenium/standalone-chromium:155.0-20261010" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "SIMPLETEST_DB" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "lando-drupal-contrib-scaffold" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "vendor/bin/phpstan" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "lando-drupal-contrib-sync module example .\\^11." } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/vendor/bin/phpstan" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -203,32 +223,53 @@ service, and tooling. They do not download Drupal:
     </Step>
   </Scenario>
 
-  <Scenario id="extension-reader-path" layer="e2e" tags={["@smoke"]} render={false} reason="Exercise the workflow from a module checkout through the core version change">
+  <Scenario id="extension-smoke" layer="e2e" tags={["@smoke"]} render={false} reason="Prove that start builds a working site around a module checkout">
     <Step name="init">
       <UseFixture name="example-module" />
-      <Run command="lando init . --recipe drupal-contrib --name=contrib-reader-path --yes --answer=project=example" />
+      <Run command="lando init . --recipe drupal-contrib --name=contrib-smoke --yes --answer=project=example" />
     </Step>
-    <Step name="scaffold">
+    <Step name="start">
       <Run command="lando start" />
-      <Run command="lando drupal-contrib-scaffold" />
-      <Verify command="lando drush --version" />
-      <Verify command="lando phpunit --version" />
+      <Verify command="lando drush status --field=drupal-version" expect={{ stdout: { regex: "^11\\." } }} />
+      <Verify command="lando phpunit tests/src/Unit" expect={{ stdout: { regex: "OK \\(1 test" } }} />
+      <Verify command="lando drupal-contrib-sync" expect={{ stdout: { regex: "is up to date" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="extension-journey" layer="e2e" render={false} reason="Exercise tests, linters, site install, dependency sync, and a core switch on a module checkout">
+    <Step name="init">
+      <UseFixture name="example-module" />
+      <Run command="lando init . --recipe drupal-contrib --name=contrib-journey --yes --answer=project=example" />
     </Step>
     <Step name="test-and-lint">
-      <Verify command="lando phpunit --filter ExampleUnitTest web/modules/custom/example/tests/src/Unit" expect={{ stdout: { regex: "(?:OK \\(1 test|Tests: 1, Assertions: 1)" } }} />
-      <Verify command="lando phpunit web/modules/custom/example/tests/src/Kernel" expect={{ stdout: { regex: "(?:OK \\(1 test|Tests: 1, Assertions: 1)" } }} />
-      <Verify command="lando phpunit web/modules/custom/example/tests/src/FunctionalJavascript" expect={{ stdout: { regex: "OK \\(1 test" } }} />
-      <Verify command="lando phpcs --standard=Drupal,DrupalPractice web/modules/custom/example" />
-      <Verify command="lando phpstan analyse --no-progress web/modules/custom/example" />
+      <Run command="lando start" />
+      <Verify command="lando phpunit --filter ExampleUnitTest tests/src/Unit" expect={{ stdout: { regex: "OK \\(1 test" } }} />
+      <Verify command="lando phpunit tests/src/Kernel" expect={{ stdout: { regex: "OK \\(1 test" } }} />
+      <Verify command="lando phpunit tests/src/FunctionalJavascript" expect={{ stdout: { regex: "OK \\(1 test" } }} />
+      <Verify command="lando phpcs" />
+      <Verify command="lando phpstan analyse --no-progress" />
     </Step>
     <Step name="install-site">
-      <Run command="lando drush site:install standard --db-url=mysql://lando:lando@database/contrib-reader-path --site-name=Example --account-name=admin --account-mail=admin@example.com -y" />
+      <Run command="lando drush site:install standard --db-url=mysql://lando:lando@database/contrib-journey --site-name=Example --account-name=admin --account-mail=admin@example.com -y" />
       <Verify command="lando drush status --field=bootstrap" expect={{ stdout: { regex: "Successful" } }} />
     </Step>
+    <Step name="add-dependency">
+      <Run command="lando exec appserver -- composer require --no-update psr/clock:^1.0" />
+      <Run command="lando drupal-contrib-sync" />
+      <Verify command="lando composer show psr/clock --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"psr/clock\"" } }} />
+    </Step>
+    <Hidden reason="Edit recipe.options.drupal through the mounted checkout, as a reader edits .lando.yml">
+      <Step name="set-core-constraint">
+        <Run command="lando exec appserver -- sed -i 's/drupal: .*/drupal: ^10/' .lando.yml" />
+      </Step>
+    </Hidden>
     <Step name="change-core-version">
-      <Run command="lando core-version '^10'" />
+      <Run command="lando drupal-contrib-sync" />
       <Verify command="lando composer show drupal/core-recommended --format=json" expect={{ stdout: { regex: "\"versions\":\\s*\\[\\s*\"v?10\\." } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal\":\\s*\"\\^10\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -239,7 +280,7 @@ service, and tooling. They do not download Drupal:
 
 ## Next
 
-- [Drupal contrib recipe](/recipes/drupal-contrib/)
+- [Drupal contrib recipe](../../../recipes/drupal-contrib/)
 - [Run the Drupal recipe](./drupal-workflow.mdx)
 - [Run Drupal tests with PHPUnit and headless Chrome](./drupal-testing.mdx)
 - [Change a Drupal stack after init](./drupal-stack-overrides.mdx)

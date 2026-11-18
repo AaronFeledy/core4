@@ -11,3 +11,18 @@ export const mysqlSimpletestDb =
 
 export const pgsqlSimpletestDb =
   "pgsql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database/{{ url.encodeComponent(services.database.creds.database) }}";
+
+/** The sync helper's arguments; the constraint stays one argument however many spaces it holds. */
+export const contribSyncArgv = [
+  "lando-drupal-contrib-sync",
+  "{{ recipe.type }}",
+  "{{ recipe.project }}",
+  "{{ recipe.drupal }}",
+] as const;
+
+/**
+ * The same call as a `build.app` shell step. The `drupal` option's pattern
+ * admits no quote characters, so single quotes keep the constraint one word.
+ */
+export const contribSyncStep =
+  "lando-drupal-contrib-sync {{ recipe.type }} {{ recipe.project }} '{{ recipe.drupal }}'";
