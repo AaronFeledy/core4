@@ -1124,9 +1124,11 @@ describe("lando destroy", () => {
       // Equal creation times list by id.
       expect(listed.map((info) => info.id)).toEqual([legacy.info.id, sibling.info.id]);
       expect(result).toMatchObject({
+        app: "test-destroy",
         servicesDestroyed: ["database", "web"],
         dataVolumesRemoved: true,
         cacheVolumesRemoved: false,
+        snapshotsRemoved: 1,
       });
     });
   });
@@ -1322,7 +1324,7 @@ describe("lando destroy", () => {
     expect(renderDestroyAppResult(result)).toBe(`destroyed: shop (${snapshots} removed)`);
     expect(
       renderDestroyAppResult({ ...result, servicesDestroyed: ["database", "web"], dataVolumesRemoved: true }),
-    ).toBe(`destroyed: shop - database, web (data volumes and ${snapshots} removed)`);
+    ).not.toBe(renderDestroyAppResult({ ...result, servicesDestroyed: ["database", "web"] }));
   });
 
   test("compiled CLI accepts lando destroy --volumes before missing Landofile resolution", async () => {

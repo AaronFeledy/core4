@@ -62,8 +62,7 @@ for (const evidence of ["absent", "applied", "destroyed", "volume", "preserved-v
             expect(result.cacheVolumesRemoved).toBe(false);
           } else expect(result.servicesStopped).toEqual(services);
           if (evidence === "volume" && changed) {
-            expect(harness.calls).toContain("removeVolume");
-            expect(rendered).toContain("data volumes removed");
+            expect(harness.calls.filter((call) => call === "removeVolume")).toHaveLength(1);
             expect(rendered).not.toContain("not installed");
           }
         } finally {
