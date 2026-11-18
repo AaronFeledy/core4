@@ -17,7 +17,6 @@ export interface WaitForExitOptions {
   readonly nativeId?: string;
 }
 
-/** Options for the verified-id native wait used by bring-up and public wait. */
 export interface WaitNativeContainerOptions {
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
@@ -25,10 +24,7 @@ export interface WaitNativeContainerOptions {
   readonly signal?: AbortSignal;
 }
 
-/**
- * Result of a native container wait against a verified engine id.
- * `Missing` is only for not-found at the wait endpoint; other failures stay on the error channel.
- */
+/** `Missing` is only for not-found at the wait endpoint; other failures stay on the error channel. */
 export type NativeWaitResult =
   | { readonly _tag: "Returned"; readonly exitCode: number }
   | { readonly _tag: "Missing" };
@@ -36,11 +32,6 @@ export type NativeWaitResult =
 const containerName = (plan: AppPlan, service: ServicePlan): string =>
   serviceContainerName(plan, service.name);
 
-/**
- * Wait for a container identified by a verified engine id.
- * Signature: `waitNativeContainer(id, options) => Effect<NativeWaitResult, ProviderError>`
- * where NativeWaitResult is `{ _tag: "Returned"; exitCode: number } | { _tag: "Missing" }`.
- */
 export const waitNativeContainer = Effect.fn("waitNativeContainer")(function* (
   id: string,
   options: WaitNativeContainerOptions,
@@ -60,7 +51,7 @@ export const waitNativeContainer = Effect.fn("waitNativeContainer")(function* (
   const response = yield* interruptOnAbort(request(options.dialect.request(id)), options.signal);
   // Verified-id not-found at the known wait endpoint only — do not blanket-catch other 404s.
   if (response.status === 404) {
-    return { _tag: "Missing" as const };
+    return { _tag: "Missing" };
   }
   if (response.status < 200 || response.status >= 300) {
     return yield* Effect.fail(
@@ -94,7 +85,7 @@ export const waitNativeContainer = Effect.fn("waitNativeContainer")(function* (
       }),
     );
   }
-  return { _tag: "Returned" as const, exitCode };
+  return { _tag: "Returned", exitCode };
 });
 
 export const waitForExit = Effect.fn("RuntimeProvider.waitForExit")(function* (
@@ -123,7 +114,6 @@ export const waitForExit = Effect.fn("RuntimeProvider.waitForExit")(function* (
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
   if (result._tag === "Missing") {
-    // Public boundary: Missing becomes a provider error; keep ServiceExitResult success shape.
     return yield* Effect.fail(
       new ServiceNotFoundError({
         providerId: options.ctx.providerId,

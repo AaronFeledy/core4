@@ -161,18 +161,9 @@ interface InspectResult {
 }
 
 /**
- * Immediate start outcome kept in the invocation.
- *
  * `startedIdentity` is the ownership-verified native id this start owns (create 201
  * body, 409 ownership read, or the already-verified reuse id). Gated services start
  * by that id and post-start-inspect by planned name must still resolve to it.
- *
- * `startFailure` is set when the post-start running guard rejects the container
- * without publishing post-service-start. Shape:
- * `{ status: "exited" | "dead" | "not-running"; containerId?: string; exitCode?: number }`.
- * Terminal oneshots that feed a scheduled completion gate return this instead of
- * failing the Effect so the caller can project the same dependencyExit diagnostic;
- * a direct start with no such gate still fails the Effect.
  */
 interface StartResult {
   readonly changed: boolean;
@@ -180,7 +171,6 @@ interface StartResult {
   readonly dependencyUnavailable?: { readonly reason: DependencyUnavailableReason };
   readonly startFailure?: {
     readonly status: "exited" | "dead" | "not-running";
-    readonly containerId?: string;
     readonly exitCode?: number;
   };
 }
@@ -939,7 +929,6 @@ const startService = Effect.fnUntraced(function* (
   const recreateReasons = existedBefore ? bringUpRecreateReasons(plan, service, inspected) : [];
   let replacedReason: ServiceContainerChange["reason"];
   let before = inspected;
-  // Proof of the container this start owns; gated services start and fence by it.
   let startedIdentity: string | undefined = before.exists ? existingId : undefined;
   if (before.exists && (deps.options.reconcile === true || recreateReasons.length > 0)) {
     yield* prepareCreationEnvironment(deps, plan, service);
@@ -998,7 +987,6 @@ const startService = Effect.fnUntraced(function* (
   for (const attachment of attachmentsAfterCreate(deps, plan, service, !before.exists)) {
     yield* connectNetwork(deps, service, name, attachment);
   }
-  // Gated services start by verified id only; others keep the planned-name start path.
   const startRef = needsIdentity && startedIdentity !== undefined ? startedIdentity : name;
   if (!before.running) {
     const response = yield* startContainer(deps, startRef);
@@ -1098,16 +1086,6 @@ const startService = Effect.fnUntraced(function* (
       exitCode: "exitCode" in observed ? observed.exitCode : undefined,
     }) === "expected";
   if ((!after.running || observed.status === "restarting") && !completed && !supervised) {
-    const startFailure = {
-      status:
-        observed.status === "exited" || observed.status === "dead"
-          ? observed.status
-          : ("not-running" as const),
-      ...(startedIdentity === undefined && afterId === undefined
-        ? {}
-        : { containerId: startedIdentity ?? afterId }),
-      ...("exitCode" in observed && observed.exitCode !== undefined ? { exitCode: observed.exitCode } : {}),
-    } as const;
     // Gated services return evidence so a scheduled completion gate can project the
     // same diagnostic without a redundant wait. Direct starts keep the Effect failure.
     if (needsIdentity) {
@@ -1125,11 +1103,16 @@ const startService = Effect.fnUntraced(function* (
         ...(replacedReason === undefined ? {} : { reason: replacedReason }),
         ...(anonymousVolumes.length === 0 ? {} : { anonymousVolumes }),
       });
-      // Do not emit post-service-start on failure.
       return {
         changed,
         ...(startedIdentity === undefined ? {} : { startedIdentity }),
-        startFailure,
+        startFailure: {
+          status:
+            observed.status === "exited" || observed.status === "dead" ? observed.status : "not-running",
+          ...("exitCode" in observed && observed.exitCode !== undefined
+            ? { exitCode: observed.exitCode }
+            : {}),
+        },
       };
     }
     return yield* Effect.fail(
@@ -1190,15 +1173,6 @@ const dependencyExitDetails = (service: string, gate: string, exit: DependencyEx
         },
 });
 
-const dependencyUnavailableDetails = (
-  service: string,
-  gate: string,
-  reason: DependencyUnavailableReason,
-) => ({
-  dependencyUnavailable: { service, gate, reason },
-});
-
-/** Snapshot of the container this apply started; undefined when the planned name now resolves to another container. */
 const inspectStartedContainer = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   target: { readonly plan: AppPlan; readonly service: ServicePlan; readonly nativeId: string },
@@ -1212,9 +1186,6 @@ const inspectStartedContainer = Effect.fnUntraced(function* (
   return { _tag: "Observed" as const, state: startObservation(inspected.body) };
 });
 
-const sanitizeInspectCause = <E>(cause: Cause.Cause<E>) =>
-  mapDefectCause(cause, () => "Dependency inspect defect.");
-
 const inspectDependency = (
   deps: BringUpDeps,
   target: { readonly plan: AppPlan; readonly service: ServicePlan; readonly nativeId: string },
@@ -1222,7 +1193,9 @@ const inspectDependency = (
   interruptOnAbort(
     withDeadline(inspectStartedContainer(deps, target), Duration.seconds(1)).pipe(
       Effect.map((checked) => (checked._tag === "Completed" ? checked.value : { _tag: "TimedOut" as const })),
-      Effect.catchCause((cause) => Effect.failCause(sanitizeInspectCause(cause))),
+      Effect.catchCause((cause) =>
+        Effect.failCause(mapDefectCause(cause, () => "Dependency inspect defect.")),
+      ),
       mapFailures((error) => redactProviderError(error, deps.redactor, { cause: "omit" })),
     ),
     deps.options.signal,
@@ -1665,7 +1638,13 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
           exit !== undefined
             ? dependencyExitDetails(blocked.dependency, blocked.unmetGate, exit)
             : unavailable !== undefined
-              ? dependencyUnavailableDetails(blocked.dependency, blocked.unmetGate, unavailable.reason)
+              ? {
+                  dependencyUnavailable: {
+                    service: blocked.dependency,
+                    gate: blocked.unmetGate,
+                    reason: unavailable.reason,
+                  },
+                }
               : blocked.lastError === undefined
                 ? undefined
                 : { readinessFailure: blocked.lastError };
