@@ -78,7 +78,7 @@ If you are looking for a public surface or policy:
 | Event payload schema family | 03 | §11.2 |
 | Subscriber priority, selectors, and factories | 03 | §11.3 |
 | Standard lifecycle sequence, hot-path events, and subscriber failures | 03 | §11.4 + §11.5 + §11.6 |
-| Replaceable abstraction catalog | 04 | §4.2 |
+| Replaceable abstractions, including endpoint declaration and route filter contributions | 04 | §4.2 |
 | Implementation selection precedence | 04 | §4.3 |
 | Plugin manifest contribution registration | 04 | §4.4 |
 | Mandatory abstraction guarantees | 04 | §4.5 |
@@ -89,7 +89,7 @@ If you are looking for a public surface or policy:
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
 | Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
-| `AppPlan` and `ServicePlan` schema families, applied-state v7-to-v8 `kind` migration | 05 | §5.5 |
+| `AppPlan` and `ServicePlan` schema families, applied-state v7-to-v8 `kind` migration, and strict applied-map writers | 05 | §5.5 + §5.5.2 |
 | Runtime-owned helper creation mount, logical/applied-plan exclusion, non-root cache permissions, and file-log delivery | 05 + 06 + 12 | §5.5 + §6.2.1 + §6.4 + §6.14.3 + §12.1 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
@@ -137,7 +137,7 @@ If you are looking for a public surface or policy:
 | Compilation carrier and evaluation stages | 07 | §7.2.1 |
 | External file loading, expressions, and templates | 07 | §7.3 |
 | Top-level Landofile and Compose-subset keys, per-folder data identity, and rename reconciliation | 07 | §7.4 |
-| Config translation contracts and diagnostics | 07 | §7.4.1 |
+| Config translation contracts, diagnostics, and Lando 3 proxy selector lowering | 07 | §7.4.1 |
 | Translation sources, `translate:` refresh, and drift | 07 | §7.4.2 |
 | Global config keys, root defaults, and pure path resolution | 07 | §7.5 + §7.5.1 |
 | Environment override naming | 07 | §7.6 |
@@ -240,7 +240,7 @@ If you are looking for a public surface or policy:
 | Global restart/rebuild and router startup revalidation | 18 | §20.6.5 |
 | Selected global stop and its orphan fail-closed rule | 18 | §20.7 |
 | Global proxy realization, error family, and non-goals | 18 | §20.10 + §20.14 |
-| Scratch identity, roots, sources, and service | 19 | §21.2 + §21.5 |
+| Scratch identity, roots, sources, service, and applied-plan fallback at teardown | 19 | §21.2 + §21.5 |
 | Scratch lifecycle, isolation, storage, and routes | 19 | §21.6 + §21.9 |
 | Scratch CLI, registry, library mode, and errors | 19 | §21.10 + §21.14 |
 | Scratch non-goals | 19 | §21.15 |

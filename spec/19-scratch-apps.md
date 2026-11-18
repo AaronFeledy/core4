@@ -86,6 +86,7 @@ Required behavior:
 - `acquire` binds the root, caches, host-proxy socket, routes, containers, and volumes to the caller's `Scope`. Finalization MUST destroy resources before unlinking state.
 - CLI foreground acquisition uses the command scope so interruption reaches finalization.
 - Destroy is idempotent after success; an unresolved id raises `ScratchUnknownIdError`.
+- On a desired-plan cache miss, destroy and garbage collection MUST resolve the matching applied scratch plan before falling back to planless orphan cleanup (§12.1). Unreadable ownership evidence MUST NOT be treated as absence (§5.3.1).
 - Operations for one id are serialized across callers and processes by one lifecycle lock: the app mutation lock of kind `scratch` keyed by the id and its canonical instance root `<userDataRoot>/scratch/<id>/`, also for passthrough forks whose plan root is the source app. Acquisition holds it from the registry `acquire` write through `mark-running`, covering its own failure cleanup; explicit destroy and stop, `apps:poweroff`, foreground scope-close cleanup, and each GC reap acquire it. Scope-close cleanup reacquires the lock instead of inheriting the acquisition's hold. The lock is taken before any global or app mutation lock.
 - Failures are tagged as listed in §21.14.
 
@@ -157,7 +158,7 @@ The `scope: global` to `scope: app` rewrite is mandatory unless `--share-global-
 
 #### 21.9.2 Route auto-suffix
 
-`ScratchHostnameSuffix` is the plan-time `RoutePlan` filter for scratch routes (§6.6). Unless overridden, it rewrites each route hostname with the scratch id before the domain, including nested and wildcard hostnames. The filter MUST be idempotent.
+`ScratchHostnameSuffix` is the plan-time hostname transform for scratch routes, separate from `RouteFilter` middleware. It runs after endpoint derivation and binding (§6.6). Unless overridden, it rewrites each route hostname with the scratch id before the domain, including nested and wildcard hostnames. The transform MUST be idempotent.
 
 `--no-hostname-suffix` disables the filter. Repeated `--hostname` values preserve selected hostnames and MAY deliberately collide with another app.
 
