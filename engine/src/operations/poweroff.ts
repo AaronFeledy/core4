@@ -1,29 +1,22 @@
-import { SCRATCH_LABEL } from "@lando/container-runtime/labels";
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
-import { AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId, StopAppResult } from "@lando/sdk/schema";
+import { StopAppResult } from "@lando/sdk/schema";
 import {
   ConfigService,
   type FileSystem,
   GlobalAppService,
-  type ProviderRuntimeSnapshot,
-  RuntimeProviderRegistry,
+  type RuntimeProviderRegistry,
   ScratchAppService,
-  type ServiceRuntimeInfo,
   type StateStore,
 } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Option, Result, Schema } from "effect";
 import { globalObserveProviderId } from "../global-app/placement.ts";
-import { TeardownProvider } from "../providers/app-placement.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "../runtime/host-maintenance.ts";
-import { readAcceleratedStartInventory } from "./accelerated-start-inventory.ts";
-import { digest } from "./accelerated-start-record.ts";
-import { appRootIdentityKey } from "./app-root-identity.ts";
 import { type GlobalStopError, type GlobalStopServices, globalStop } from "./global-stop.ts";
+import { readRunningInventory } from "./running-inventory.ts";
 import { type StopAppError, stopAppAtRoot } from "./stop.ts";
 
 const PoweroffAppKind = Schema.Literals(["user", "scratch", "global"]);
@@ -96,23 +89,6 @@ type StopFailure = {
   readonly providerId: string;
   readonly error: unknown;
 };
-type UserTarget = {
-  readonly providerId: ProviderId;
-  readonly appRoot: AbsolutePath;
-  readonly appId: AppId;
-};
-type ScratchTarget = {
-  readonly id: string;
-  readonly appRoot: AbsolutePath;
-  readonly providerId: ProviderId;
-};
-
-const ACTIVE_SERVICE_STATUSES: ReadonlySet<ServiceRuntimeInfo["status"]> = new Set([
-  "running",
-  "paused",
-  "restarting",
-  "created",
-]);
 
 const failureTag = (error: unknown): string => {
   if (error !== null && typeof error === "object") {
@@ -174,179 +150,14 @@ const appResult = (
     : { shutdownObservations: result.shutdownObservations }),
 });
 
-const providerInventoryFailure = (providerId: string, error: unknown): StopFailure => ({
-  kind: "user",
-  appId: providerId,
-  appRoot: "",
-  providerId,
-  error,
-});
-
-const unreadableAppliedState = (providerId: ProviderId, count: number) =>
-  new ProviderUnavailableError({
-    providerId,
-    operation: "applied-state.list",
-    message: `${count} applied-state records could not be read.`,
-    remediation:
-      "Restore a readable applied-state record from a trusted backup or remove the corrupt file, then retry `lando poweroff`.",
-  });
-
-const userTargetKey = (providerId: ProviderId, appRoot: AbsolutePath): string =>
-  `${String(providerId)}\0${appRoot}`;
-
-const unobservedRuntimeError = (providerId: ProviderId) =>
-  new ProviderUnavailableError({
-    providerId,
-    operation: "getStatus",
-    message: "The provider reported a running runtime but no runtime inventory was observed.",
-    remediation: "Restore provider access or stop its recorded apps explicitly, then retry `lando poweroff`.",
-  });
-
-const collectInventory = Effect.fnUntraced(function* (journalProviders: ReadonlySet<string>) {
-  const registry = yield* RuntimeProviderRegistry;
-  const failures: StopFailure[] = [];
-  const snapshots: ProviderRuntimeSnapshot[] = [];
-  const idsResult = yield* registry.list.pipe(Effect.result);
-  const ids = Result.isSuccess(idsResult) ? idsResult.success : [];
-  if (Result.isFailure(idsResult)) failures.push(providerInventoryFailure("providers", idsResult.failure));
-
-  for (const id of ids) {
-    const state =
-      registry.appliedStateInventory === undefined
-        ? undefined
-        : yield* registry.appliedStateInventory(id).pipe(Effect.result);
-    if (state !== undefined && Result.isFailure(state))
-      failures.push(providerInventoryFailure(String(id), state.failure));
-    if (state !== undefined && Result.isSuccess(state) && state.success.unreadable.length > 0)
-      failures.push(
-        providerInventoryFailure(String(id), unreadableAppliedState(id, state.success.unreadable.length)),
-      );
-    const ownership =
-      registry.hasRecordedOwnership === undefined
-        ? undefined
-        : yield* registry.hasRecordedOwnership(id).pipe(Effect.result);
-    if (ownership !== undefined && Result.isFailure(ownership))
-      failures.push(providerInventoryFailure(String(id), ownership.failure));
-    const hasRecordedHoldings =
-      journalProviders.has(String(id)) ||
-      (state !== undefined &&
-        (Result.isFailure(state) || state.success.plans.length > 0 || state.success.unreadable.length > 0)) ||
-      (ownership !== undefined && (Result.isFailure(ownership) || ownership.success));
-
-    // Scope each observation so a broken provider cannot hide another provider's workloads.
-    const observed = yield* (registry.observeRuntime ?? Effect.succeed([])).pipe(
-      Effect.provideService(TeardownProvider, id),
-      Effect.result,
-    );
-    if (Result.isFailure(observed)) {
-      if (hasRecordedHoldings) failures.push(providerInventoryFailure(String(id), observed.failure));
-      continue;
-    }
-    const providerSnapshots = observed.success.filter((snapshot) => snapshot.providerId === id);
-    snapshots.push(...providerSnapshots);
-    if (providerSnapshots.some((snapshot) => snapshot.runtimeObserved)) continue;
-    // A failed status observation is indistinguishable from idle in the snapshot. Classify it
-    // without launching, and fail only when this provider has recorded holdings to protect.
-    const status = yield* registry.select(id).pipe(
-      Effect.flatMap((provider) => provider.getStatus),
-      Effect.result,
-    );
-    if (Result.isFailure(status)) {
-      if (hasRecordedHoldings) failures.push(providerInventoryFailure(String(id), status.failure));
-      continue;
-    }
-    if (status.success.state !== "idle" && hasRecordedHoldings)
-      failures.push(providerInventoryFailure(String(id), unobservedRuntimeError(id)));
-  }
-
-  return { snapshots, failures };
-});
-
 export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
   options: PoweroffOptions = {},
 ): Effect.fn.Return<PoweroffResult, PoweroffError, PoweroffServices> {
-  const journalRead = yield* readAcceleratedStartInventory(false).pipe(Effect.result);
-  const journalRecords = Result.isSuccess(journalRead) ? journalRead.success.records : [];
-  const inventory = yield* collectInventory(new Set(journalRecords.map((journal) => journal.providerId)));
+  const inventory = yield* readRunningInventory();
   const failures: StopFailure[] = [...inventory.failures];
   const apps: PoweroffAppResult[] = [];
-  if (Result.isFailure(journalRead)) failures.push(providerInventoryFailure("journals", journalRead.failure));
-  else {
-    for (const unreadable of journalRead.success.unreadable)
-      failures.push({
-        kind: "user",
-        appId: unreadable.path,
-        appRoot: "",
-        providerId: "journals",
-        error: new ProviderUnavailableError({
-          providerId: "journals",
-          operation: "accelerated-start-journal",
-          message: `The accelerated-start journal ${unreadable.path} could not be read (${unreadable._tag}): ${unreadable.message}`,
-          remediation: unreadable.remediation,
-        }),
-      });
-  }
 
-  const userTargets = new Map<string, UserTarget>();
-  const scratchObserved = new Map<string, ScratchTarget>();
-  for (const snapshot of inventory.snapshots) {
-    for (const service of snapshot.services) {
-      if (service.app === "global") continue;
-      if (service.labels?.[SCRATCH_LABEL] === "TRUE") {
-        if (ACTIVE_SERVICE_STATUSES.has(service.status))
-          scratchObserved.set(String(service.app), {
-            id: String(service.app),
-            appRoot: service.appRoot ?? AbsolutePath.make(""),
-            providerId: service.providerId,
-          });
-        continue;
-      }
-      if (!ACTIVE_SERVICE_STATUSES.has(service.status)) continue;
-      if (service.appRoot === undefined) {
-        failures.push({
-          kind: "user",
-          appId: String(service.app),
-          appRoot: "",
-          providerId: String(service.providerId),
-          error: new AppResolveError({
-            reason: "missing-root",
-            detail: "container-root",
-            message: `The container for ${service.app}/${service.service} has no proven app root.`,
-            remediation:
-              "Restore the container's app-root label or remove it through its owning provider, then retry `lando poweroff`.",
-          }),
-        });
-        continue;
-      }
-      const key = userTargetKey(service.providerId, service.appRoot);
-      if (!userTargets.has(key))
-        userTargets.set(key, {
-          providerId: service.providerId,
-          appRoot: service.appRoot,
-          appId: service.app,
-        });
-    }
-  }
-
-  for (const journal of journalRecords) {
-    if (journal.appId === "global") continue;
-    const ref = {
-      kind: "user" as const,
-      id: AppId.make(journal.appId),
-      root: AbsolutePath.make(journal.appRoot),
-    };
-    // The filename binds app kind and root; scratch journals never contribute a user target.
-    if (!journal.path.endsWith(`${digest(appRootIdentityKey(ref, journal.appRoot))}.json`)) continue;
-    const key = userTargetKey(ProviderId.make(journal.providerId), ref.root);
-    if (!userTargets.has(key))
-      userTargets.set(key, {
-        providerId: ProviderId.make(journal.providerId),
-        appRoot: ref.root,
-        appId: ref.id,
-      });
-  }
-
-  const userOrder = [...userTargets.values()].sort((left, right) =>
+  const userOrder = [...inventory.userTargets.values()].sort((left, right) =>
     `${left.appRoot}\0${left.appId}`.localeCompare(`${right.appRoot}\0${right.appId}`),
   );
   for (const target of userOrder) {
@@ -377,28 +188,10 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
     );
   }
 
-  const scratches = yield* ScratchAppService;
-  const scratchList = yield* scratches.list().pipe(Effect.result);
-  const scratchTargets = new Map(scratchObserved);
-  if (Result.isSuccess(scratchList)) {
-    for (const summary of scratchList.success) {
-      if (!scratchTargets.has(summary.id))
-        scratchTargets.set(summary.id, {
-          id: summary.id,
-          appRoot: summary.app.root,
-          providerId: scratchObserved.get(summary.id)?.providerId ?? ProviderId.make("lando"),
-        });
-    }
-  } else {
-    failures.push({
-      kind: "scratch",
-      appId: "scratch",
-      appRoot: "",
-      providerId: "lando",
-      error: scratchList.failure,
-    });
-  }
+  const { scratchTargets, failures: scratchFailures } = yield* inventory.readScratch;
+  failures.push(...scratchFailures);
 
+  const scratches = yield* ScratchAppService;
   let keptScratch = 0;
   for (const target of [...scratchTargets.values()].sort((left, right) => left.id.localeCompare(right.id))) {
     if (options.keepScratch === true) {
