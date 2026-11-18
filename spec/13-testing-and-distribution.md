@@ -11,7 +11,7 @@ This part defines the release quality bar, test architecture, distribution forms
 
 ### 13.1 Test layers
 
-Healthy-dependency acceptance covers terminal settlement in the start period and regular retry phase, retained real exit evidence, restart through the last attempt, replacement under the same name, optional and required consumers, and preservation of cancellation and mixed causes. Deadline acceptance MUST prove cleanup is joined and a dying finalizer cannot be mistaken for timeout. The live readiness fixture MUST destroy its owned resources, including partial apply, using the production registry and verify absence on the same runtime. SSH readiness acceptance distinguishes an empty identities response from a disconnect.
+Healthy-dependency acceptance covers terminal settlement during the start period and regular retries, retained real exit evidence, restart disarming, replacement under the same name, optional and required consumers, and preservation of cancellation and mixed causes. Transport tests MUST prove that a held wait doesn't block other requests and that cancellation closes the connection before headers or while waiting for the body. The live readiness fixture MUST prove fast exit detection and cancellation of a held native wait on green, destroy its owned resources, including partial apply, using the production registry, and verify absence on the same runtime. Deadline acceptance MUST prove cleanup is joined and a dying finalizer cannot be mistaken for timeout. SSH readiness acceptance distinguishes an empty identities response from a disconnect.
 
 All tests run under `bun test` unless a gate names another tool.
 

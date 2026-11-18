@@ -1,35 +1,33 @@
 import { withDeadline } from "@lando/sdk/command-result";
-import { type ProbeError, type ProbeResult, runProbe } from "@lando/sdk/probe";
+import { runProbeDetailed } from "@lando/sdk/probe";
 import type { HealthcheckPlan } from "@lando/sdk/schema";
 import { Duration, Effect } from "effect";
 
-export const runHealthcheckProbe = Effect.fn("HealthcheckProbe.run")(function* <E, R, R2>(
+export const boundHealthcheckAttempt = <A, E, R>(plan: HealthcheckPlan, attempt: Effect.Effect<A, E, R>) =>
+  withDeadline(attempt, Duration.seconds(plan.timeoutSeconds));
+
+export const runHealthcheckProbe = Effect.fn("HealthcheckProbe.runVerdict")(function* <E, R, R2>(
   input: { readonly id: string; readonly plan: HealthcheckPlan },
   attempt: Effect.Effect<"green" | "red", E, R>,
   onTimeout: Effect.Effect<"red", never, R2>,
-): Effect.fn.Return<ProbeResult, ProbeError, R | R2> {
-  const { plan, id } = input;
-  const bounded = withDeadline(attempt, Duration.seconds(plan.timeoutSeconds)).pipe(
+) {
+  const bounded = boundHealthcheckAttempt(input.plan, attempt).pipe(
     Effect.flatMap((exit) => (exit._tag === "TimedOut" ? onTimeout : Effect.succeed(exit.value))),
   );
-  return yield* runHealthcheckPhases({ id, plan }, bounded, (value) => value === "green");
+  return (yield* runHealthcheckPhases(input, bounded, (value) => value === "green")).result;
 });
 
-/** The probe primitive's green means settled here; the caller decides whether settlement is readiness. */
-export const runHealthcheckPhases = Effect.fnUntraced(function* <A, E, R>(
+export const runHealthcheckPhases = Effect.fn("HealthcheckProbe.run")(function* <A, E, R>(
   { id, plan }: { readonly id: string; readonly plan: HealthcheckPlan },
   attempt: Effect.Effect<A, E, R>,
-  settled: (value: unknown) => boolean,
-): Effect.fn.Return<ProbeResult, ProbeError, R> {
-  const classify = {
-    success: (value: unknown): "green" | "red" => (settled(value) ? "green" : "red"),
-    failure: () => "red" as const,
-  };
+  ready: (value: A) => boolean,
+) {
+  const classify = (value: A): "green" | "red" => (ready(value) ? "green" : "red");
   const startPeriod = plan.startPeriodSeconds ?? 0;
   const cadence = Math.min(1, Math.max(0.001, plan.intervalSeconds));
   const grace =
     startPeriod > 0
-      ? yield* runProbe(
+      ? yield* runProbeDetailed(
           {
             id: `${id}:start-period`,
             policy: {
@@ -43,8 +41,8 @@ export const runHealthcheckPhases = Effect.fnUntraced(function* <A, E, R>(
           attempt,
         )
       : undefined;
-  if (grace?.outcome === "green") return grace;
-  const retried = yield* runProbe(
+  if (grace?.result.outcome === "green") return grace;
+  const retried = yield* runProbeDetailed(
     {
       id,
       policy: {
@@ -58,7 +56,10 @@ export const runHealthcheckPhases = Effect.fnUntraced(function* <A, E, R>(
   );
   return {
     ...retried,
-    attempts: (grace?.attempts ?? 0) + retried.attempts,
-    elapsedMs: (grace?.elapsedMs ?? 0) + retried.elapsedMs,
+    result: {
+      ...retried.result,
+      attempts: (grace?.result.attempts ?? 0) + retried.result.attempts,
+      elapsedMs: (grace?.result.elapsedMs ?? 0) + retried.result.elapsedMs,
+    },
   };
 });

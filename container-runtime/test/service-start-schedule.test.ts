@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { mergeFailure } from "@lando/sdk/command-result";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -9,7 +11,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { Cause, Clock, DateTime, Effect, Exit, Fiber } from "effect";
+import { Cause, Clock, DateTime, Deferred, Effect, Exit, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
 import {
@@ -92,7 +94,7 @@ const recordingHandlers = (record: Array<string>, overrides: Record<string, unkn
   waitForExit: (target: ServicePlan) =>
     Effect.sync(() => {
       record.push(`wait:${String(target.name)}`);
-      return { exitCode: 0 };
+      return { dependencyExit: { containerId: String(target.name), status: "exited" as const, exitCode: 0 } };
     }),
   ...overrides,
 });
@@ -116,7 +118,7 @@ for (const startPeriodSeconds of [0, 15]) {
             calls.push("health:db");
             return { exitCode: 125 };
           }),
-        observeHealthyDependency: () => Effect.succeed({ _tag: "Exited", exit: dependencyExit }),
+        watchDependencyExit: () => Effect.succeed({ _tag: "Terminal", exit: dependencyExit }),
       }).pipe(Effect.provide(TestClock.layer()), Effect.timeout("1 second")),
     );
     expect(calls).toEqual(["start:db", "health:db", "start:cache"]);
@@ -128,7 +130,7 @@ for (const startPeriodSeconds of [0, 15]) {
   });
 }
 
-test("a restarting dependency can pass on the last allowed attempt without another inspect on service-green", async () => {
+test("a disarmed watcher leaves the original retry budget unchanged", async () => {
   let attempts = 0;
   const calls: string[] = [];
   const plan = planOf([
@@ -139,16 +141,16 @@ test("a restarting dependency can pass on the last allowed attempt without anoth
     runServiceStartSchedule(plan, {
       ...recordingHandlers(calls),
       execHealthcheck: () => Effect.sync(() => ({ exitCode: ++attempts === 3 ? 0 : 1 })),
-      observeHealthyDependency: () =>
+      watchDependencyExit: () =>
         Effect.sync(() => {
-          calls.push("inspect:db");
-          return { _tag: "Restarting" };
+          calls.push("watch:db");
+          return { _tag: "Disarmed" };
         }),
     }),
   );
   expect(result).toMatchObject({ blocked: [] });
   expect(attempts).toBe(3);
-  expect(calls).toEqual(["start:db", "inspect:db", "inspect:db", "start:web"]);
+  expect(calls).toEqual(["start:db", "watch:db", "start:web"]);
 });
 
 test("an exceptional readiness cause cannot admit an optional consumer or leak its payload", async () => {
@@ -157,10 +159,23 @@ test("an exceptional readiness cause cannot admit an optional consumer or leak i
     service("db", { healthcheck: commandHealthcheck }),
     service("cache", { dependsOn: [dependency("db", "service_healthy", false)] }),
   ]);
-  const mixed = Cause.combine(Cause.fail("sensitive fail"), Cause.die("sensitive defect"));
-  for (const [execHealthcheck, reasons] of [
-    [() => Effect.failCause(mixed), ["Fail", "Die"]],
-    [() => Effect.interrupt, ["Interrupt"]],
+  const mixed = mergeFailure(Cause.fail("sensitive fail"), Cause.die("sensitive defect"), "cleanup");
+  const providerFailure = new ProviderUnavailableError({
+    providerId: provider,
+    operation: "exec",
+    message: "Transport closed (password=sensitive)",
+    remediation: "Check the provider socket.",
+    details: { phase: "cleanup" },
+  });
+  for (const [execHealthcheck, reasons, tag] of [
+    [() => Effect.failCause(mixed), ["Fail", "Die"], "ServiceExecError"],
+    [
+      () =>
+        Effect.failCause(mergeFailure(Cause.fail(providerFailure), Cause.die("sensitive defect"), "cleanup")),
+      ["Fail", "Die"],
+      "ProviderUnavailableError",
+    ],
+    [() => Effect.interrupt, ["Interrupt"], undefined],
   ] as const) {
     calls.length = 0;
     const exit = await Effect.runPromiseExit(
@@ -170,6 +185,14 @@ test("an exceptional readiness cause cannot admit an optional consumer or leak i
     if (!Exit.isFailure(exit)) throw new Error("Expected the gate to fail");
     expect(exit.cause.reasons.map((reason) => reason._tag)).toEqual([...reasons]);
     expect(Cause.pretty(exit.cause)).not.toContain("sensitive");
+    if (tag !== undefined) {
+      expect(exit.cause.reasons[0]).toMatchObject({ error: { _tag: tag } });
+    }
+    if (tag === "ProviderUnavailableError") {
+      expect(exit.cause.reasons[0]).toMatchObject({
+        error: { remediation: providerFailure.remediation, details: providerFailure.details },
+      });
+    }
   }
 });
 
@@ -465,13 +488,14 @@ describe("runServiceStartSchedule", () => {
       service("seed"),
       service("web", { dependsOn: [dependency("seed", "service_completed_successfully")] }),
     ]);
+    const dependencyExit = { containerId: "seed-1", status: "exited" as const, exitCode: 3 };
 
     // When
     const result = await Effect.runPromise(
       runServiceStartSchedule(
         plan,
         recordingHandlers([], {
-          waitForExit: () => Effect.succeed({ exitCode: 3 }),
+          waitForExit: () => Effect.succeed({ dependencyExit }),
         }),
       ),
     );
@@ -480,8 +504,156 @@ describe("runServiceStartSchedule", () => {
     expect(result).toEqual({
       _tag: "Settled",
       changed: true,
-      blocked: [{ service: "web", unmetGate: "seed:completed", dependency: "seed", lastExitCode: 3 }],
+      blocked: [
+        {
+          service: "web",
+          unmetGate: "seed:completed",
+          dependency: "seed",
+          dependencyExit,
+        },
+      ],
     });
+  });
+
+  test("a provider wait failure stops even an optional completion consumer", async () => {
+    const calls: string[] = [];
+    const brokenWait = new Error("wait authorization failed");
+    const plan = planOf([
+      service("seed"),
+      service("web", { dependsOn: [dependency("seed", "service_completed_successfully", false)] }),
+    ]);
+    const error = await Effect.runPromise(
+      Effect.flip(
+        runServiceStartSchedule(plan, {
+          ...recordingHandlers(calls),
+          waitForExit: () => Effect.fail(brokenWait),
+        }),
+      ),
+    );
+    expect(error).toBe(brokenWait);
+    expect(calls).toEqual(["start:seed"]);
+  });
+
+  test("a fast exit blocks completion and started consumers without calling wait", async () => {
+    const calls: string[] = [];
+    const plan = planOf([
+      service("seed"),
+      service("ready", { dependsOn: [dependency("seed", "service_started")] }),
+      service("web", { dependsOn: [dependency("seed", "service_completed_successfully")] }),
+    ]);
+    const terminalExit = { containerId: "seed-1", status: "exited", exitCode: 7 } as const;
+    const result = await Effect.runPromise(
+      runServiceStartSchedule(plan, {
+        ...recordingHandlers(calls),
+        startService: (target) =>
+          Effect.sync(() => {
+            calls.push(`start:${target.name}`);
+            return { changed: true, terminalExit };
+          }),
+      }),
+    );
+    expect(calls).toEqual(["start:seed"]);
+    expect(result).toMatchObject({
+      _tag: "Settled",
+      blocked: expect.arrayContaining([
+        { service: "web", unmetGate: "seed:completed", dependency: "seed", dependencyExit: terminalExit },
+        { service: "ready", unmetGate: "seed:running", dependency: "seed", dependencyExit: terminalExit },
+      ]),
+    });
+  });
+
+  test("records dependencyUnavailable reasons from a completion wait", async () => {
+    for (const reason of ["missing", "replaced", "unverified"] as const) {
+      const plan = planOf([
+        service("init"),
+        service("web", { dependsOn: [dependency("init", "service_completed_successfully")] }),
+      ]);
+      const result = await Effect.runPromise(
+        runServiceStartSchedule(
+          plan,
+          recordingHandlers([], {
+            waitForExit: () => Effect.succeed({ dependencyUnavailable: { reason } }),
+          }),
+        ),
+      );
+      expect(result).toEqual({
+        _tag: "Settled",
+        changed: true,
+        blocked: [
+          {
+            service: "web",
+            unmetGate: "init:completed",
+            dependency: "init",
+            dependencyUnavailable: { reason },
+          },
+        ],
+      });
+    }
+  });
+
+  test("a terminal exit watcher joins cancellation of the in-flight command", async () => {
+    const calls: string[] = [];
+    const plan = planOf([
+      service("db", {
+        readiness: { ...commandHealthcheck, intervalSeconds: 5, retries: 40, timeoutSeconds: 30 },
+      }),
+      service("web", { dependsOn: [dependency("db", "service_healthy")] }),
+    ]);
+    const dependencyExit = { containerId: "db-1", status: "exited" as const, exitCode: 7 };
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        return yield* runServiceStartSchedule(plan, {
+          ...recordingHandlers(calls),
+          execHealthcheck: () =>
+            Deferred.succeed(entered, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.ensuring(
+                Effect.sync(() => {
+                  calls.push("command finalized");
+                }),
+              ),
+            ),
+          watchDependencyExit: () =>
+            Deferred.await(entered).pipe(Effect.as({ _tag: "Terminal" as const, exit: dependencyExit })),
+        });
+      }).pipe(Effect.provide(TestClock.layer()), Effect.timeout("2 seconds")),
+    );
+    expect(calls).toEqual(["start:db", "command finalized"]);
+    expect(result).toEqual({
+      _tag: "Settled",
+      changed: true,
+      blocked: [{ service: "web", unmetGate: "db:healthy", dependency: "db", dependencyExit }],
+    });
+  });
+
+  test("green readiness cancels a pending exit watcher without re-arming", async () => {
+    const calls: string[] = [];
+    let watchCancelled = false;
+    const plan = planOf([
+      service("db", { readiness: { ...commandHealthcheck, retries: 1 } }),
+      service("web", { dependsOn: [dependency("db", "service_healthy")] }),
+    ]);
+    const result = await Effect.runPromise(
+      runServiceStartSchedule(plan, {
+        ...recordingHandlers(calls),
+        execHealthcheck: () =>
+          Effect.sync(() => {
+            calls.push("health:db");
+            return { exitCode: 0 };
+          }),
+        watchDependencyExit: () =>
+          Effect.callback<never, never>((_resume) => {
+            calls.push("watch:db");
+            return Effect.sync(() => {
+              watchCancelled = true;
+            });
+          }),
+      }),
+    );
+    expect(result).toEqual({ _tag: "Settled", changed: true, blocked: [] });
+    expect(calls).toEqual(["start:db", "health:db", "watch:db", "start:web"]);
+    expect(watchCancelled).toBe(true);
   });
 
   test("tolerates a start failure only when every consumer edge is optional", async () => {
@@ -568,7 +740,7 @@ describe("runServiceStartSchedule", () => {
     const handlers = {
       startService: () => Effect.fail(new Error("fatal start")),
       execHealthcheck: () => Effect.succeed({ exitCode: 0 }),
-      waitForExit: () => Effect.succeed({ exitCode: 0 }),
+      waitForExit: () => Effect.die("no completion dependency"),
     };
 
     // When

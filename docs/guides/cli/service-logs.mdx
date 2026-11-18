@@ -171,7 +171,7 @@ lando logs -s appserver --tail 50
 lando info
 ```
 
-When a healthy dependency exits without a restart, Lando stops retrying the gate. The error includes the dependency's exit code and log tail when available and names its logs command. For a failed probe on a running service, the error may include which TCP ports the service is listening on. See [Inspect a failed start](../services/wait-for-your-app.mdx#inspect-a-failed-start) for what each finding means.
+When a healthy dependency exits without a restart, or a completion job exits nonzero, Lando stops waiting on that gate. The error includes the dependency's exit code and log tail when available and names its logs command. For a failed probe on a running service, the error may include which TCP ports the service is listening on. See [Inspect a failed start](../services/wait-for-your-app.mdx#inspect-a-failed-start) for what each finding means.
 
 Fix the service and run `lando start` again. For a readiness failure, correct its command or timing; set `readiness: false` only when you want process supervision without a lifecycle command gate. Native `healthcheck: false` does not disable authored or contributed readiness. A `service_healthy` dependency still requires enabled command readiness. Post-start steps run only after readiness succeeds. URL-scan warnings do not fail start.
 
@@ -179,7 +179,7 @@ With authored `restart: always` or `unless-stopped`, an exit or observed restart
 
 An inspection failure uses reason `inspect-failed`, not a stopped-container verdict. Run `lando doctor` to diagnose the provider. For global services, use `lando global:logs -s <service>` and retry `lando global:start`. Scratch acquisition also waits for readiness, but failure or interruption cleans up unless `--keep-on-failure` was passed. Inspect a retained scratch by its id, not with user-app `lando start`.
 
-A blocked dependency gate captures the dependency that failed the gate, not the service that was waiting on it, and its remediation names that dependency's logs command. `--format=json` puts the same snapshot on `error.logTail` (`service`, `lines`, `truncated`, and optional `exitCode` / `timedOut`). Gate metadata reports the last healthcheck or completion exit code and whether the healthcheck timed out.
+A blocked dependency gate shows available logs from the dependency, and its remediation names that dependency's logs command. `--format=json` puts the snapshot on `error.logTail` (`service`, `lines`, `truncated`, and optional `exitCode` or `timedOut`). For a verified dependency exit, `error.details.dependencyExit` carries the process exit evidence even when there are no logs. For a missing or replaced container, Lando does not attach logs from a replacement.
 
 Known secrets and credential patterns are redacted before truncation. Unregistered secrets, such as passwords generated inside a container, can still appear. Empty logs, capture failures, and the four-second capture timeout omit the tail without replacing the original start error. Starts interrupted before capture skip it.
 

@@ -74,6 +74,13 @@ export const runDockerApiPrefixFlight = async <A>(
   }
 };
 
+/**
+ * Long-lived Docker requests (container wait) must not own the prefix single-flight: an unresolved
+ * flight holds every other request behind the wait body. Callers settle the prefix first, then arm.
+ */
+export const isDockerWaitRequest = (input: { readonly method: string; readonly path: string }): boolean =>
+  input.method === "POST" && /^\/containers\/[^/?]+\/wait(?:\?|$)/u.test(input.path);
+
 export const isDockerApiPrefixFailure = (
   value: ResolvedDockerApiPrefix | DockerApiNegotiationFail,
 ): value is DockerApiNegotiationFail => "ok" in value && value.ok === false;

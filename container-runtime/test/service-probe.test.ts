@@ -146,7 +146,7 @@ test.each([0, 1])("gates dependents on strong readiness with exit=%s, not cheap 
             observed.push([...(compileServiceProbe(probe, plan, value) ?? [])]);
             return { exitCode };
           }),
-        waitForExit: () => Effect.succeed({ exitCode: 0 }),
+        waitForExit: () => Effect.die("no completion dependency"),
       },
     ),
   );

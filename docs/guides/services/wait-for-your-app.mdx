@@ -190,7 +190,26 @@ services:
 
 ## Inspect a failed start
 
-If a `service_healthy` dependency exits and the runtime confirms it won't restart, Lando stops retrying that gate. `ServiceStartError` names the blocked service and the dependency. With `--format=json`, `error.details.dependencyExit` reports the dependency's state and its process exit code when available, even if the container logged nothing. Read the dependency's logs before changing its probe timing.
+If a `service_healthy` dependency exits and the runtime confirms it won't restart, Lando stops retrying that gate. The same exit report applies when a `service_completed_successfully` job finishes nonzero. `ServiceStartError` names the blocked service and the dependency. With `--format=json`, `error.details.dependencyExit` reports the dependency's state and its process exit code when available, even if the container logged nothing.
+
+If the dependency is missing, replaced, or unverified just after start, the gate can fail before the probe runs. If the runtime discovers the change while watching for an exit, the readiness probe keeps its original retry budget. If those attempts fail, `error.details.dependencyUnavailable` gives the reason (`missing`, `replaced`, or `unverified`). Lando leaves out logs and listener advice because those would describe a container it couldn't verify. Check the provider with `lando doctor`, then retry start.
+
+A oneshot that exits 7 while `web` waits on `init:completed` fails like this:
+
+```text
+Dependency init exited with code 7. Service web could not start because dependency gate init:completed was not satisfied.
+```
+
+```json
+{
+  "dependencyExit": {
+    "service": "init",
+    "gate": "init:completed",
+    "status": "exited",
+    "exitCode": 7
+  }
+}
+```
 
 Start, restart, and rebuild normally wait for effective readiness. If it exhausts its attempts, the command fails with `ServiceNotReadyError` and retains the applied app, routes, and volumes. When a restart policy allows recovery, an exit or observed restart can instead produce a warning and a `restarting` result before the probe passes.
 
@@ -247,7 +266,17 @@ Info never executes probes or reports a durable last-readiness proof. `not-obser
       <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
-  <Scenario id="execution-metadata" render={false} reason="Check canonical execution metadata and real planning without starting containers">
+    <Scenario id="failed-oneshot" layer="e2e" tags={["@smoke"]} render={false} reason="Check that a failed oneshot completion gate reports dependencyExit for init:completed">
+    <Step name="observe-oneshot-exit">
+      <UseFixture name="failed-oneshot" />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "\"_tag\":\\s*\"ServiceStartError\"[^\\n]*\"dependencyExit\":\\s*\\{(?=[^}]*\"service\":\\s*\"init\")(?=[^}]*\"gate\":\\s*\"init:completed\")(?=[^}]*\"exitCode\":\\s*7)" } }} />
+    </Step>
+    <Step name="cleanup-oneshot">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+<Scenario id="execution-metadata" render={false} reason="Check canonical execution metadata and real planning without starting containers">
     <Step name="inspect-user-and-host">
       <UseFixture name="execution-metadata" />
       <Run command="lando app:config --format=json" />

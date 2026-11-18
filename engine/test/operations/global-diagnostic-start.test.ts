@@ -117,7 +117,7 @@ for (const failBuild of [false, true]) {
                   steps.push("healthy:diagnostics");
                   return { exitCode: running.has(diagnostics) ? 0 : 1 };
                 }),
-              waitForExit: () => Effect.succeed({ exitCode: 0 }),
+              waitForExit: () => Effect.die("no completion dependency"),
             }).pipe(
               Effect.tap(() => TestRuntimeProvider.apply(applied, { reconcile: true })),
               Effect.tap(() =>

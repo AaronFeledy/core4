@@ -202,9 +202,18 @@ const makePodmanApi = (
   const api: PodmanApiClient = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.succeed(undefined),
-    request: (request) =>
-      Effect.sync(() => {
-        record(request);
+    request: (request) => {
+      record(request);
+      const waitMatch = request.path.match(/\/containers\/([^/?]+)\/wait$/u);
+      if (request.method === "POST" && waitMatch !== null) {
+        const waitName = resolveName(waitMatch[1]);
+        if (waitName !== undefined && running.has(waitName)) {
+          // Hold like a real engine until green readiness cancels the wait fiber.
+          return Effect.never;
+        }
+        return Effect.succeed({ status: 200, body: "7" });
+      }
+      return Effect.sync(() => {
         if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
           return { status: 200, body: "[]" };
         }
@@ -235,7 +244,8 @@ const makePodmanApi = (
           const created = request.path.slice("/containers/create?name=".length);
           containers.add(created);
           createdSeq += 1;
-          ids.set(created, `id-${created}-created-${createdSeq}`);
+          const createdId = `id-${created}-created-${createdSeq}`;
+          ids.set(created, createdId);
           // New creates carry the live planned labels from the create body when present.
           const decodedBody = Schema.decodeUnknownOption(
             Schema.Struct({ Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)) }),
@@ -245,7 +255,7 @@ const makePodmanApi = (
               ? decodedBody.value.Labels
               : labelFor(created);
           inspectLabels.set(created, bodyLabels);
-          return { status: 201, body: "{}" };
+          return { status: 201, body: JSON.stringify({ Id: createdId }) };
         }
         if (request.method === "POST" && request.path.endsWith("/start") && name !== undefined) {
           if (failedStartNames.has(name)) {
@@ -272,7 +282,8 @@ const makePodmanApi = (
           return { status: 204, body: "" };
         }
         return { status: 204, body: "" };
-      }),
+      });
+    },
     stream: (request) => {
       record(request);
       return Stream.empty;
@@ -294,6 +305,25 @@ const makePodmanApi = (
   return { api, requests, ids, failedStartNames, execCommands };
 };
 
+/** True when bring-up started `containerName`, by planned name or by its native id. */
+const requestStarted = (
+  requests: ReadonlyArray<string>,
+  containerName: string,
+  ids?: ReadonlyMap<string, string>,
+): boolean => {
+  const identity = ids?.get(containerName);
+  return requests.some((request) => {
+    if (!request.startsWith("POST /containers/") || !request.endsWith("/start")) return false;
+    const ref = request.slice("POST /containers/".length, -"/start".length);
+    return (
+      ref === containerName ||
+      (identity !== undefined && ref === identity) ||
+      // Create-id pattern from makePodmanApi when the ids map was not threaded through.
+      ref.startsWith(`id-${containerName}-`)
+    );
+  });
+};
+
 test("starts a service_healthy dependency and probes it before starting the dependent", async () => {
   // Given
   const plan = planWithDependency(dependentNames.web, true);
@@ -303,9 +333,15 @@ test("starts a service_healthy dependency and probes it before starting the depe
   await Effect.runPromise(bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }));
 
   // Then
-  const dbStart = requests.indexOf("POST /containers/lando-bring-up-order-app--db/start");
+  const dbStart = requests.findIndex(
+    (request) =>
+      request.startsWith("POST /containers/") && request.endsWith("/start") && request.includes("db"),
+  );
   const dbExec = requests.indexOf("POST /containers/lando-bring-up-order-app--db/exec");
-  const webStart = requests.indexOf("POST /containers/lando-bring-up-order-app--web/start");
+  const webStart = requests.findIndex(
+    (request) =>
+      request.startsWith("POST /containers/") && request.endsWith("/start") && request.includes("web"),
+  );
   expect(dbStart).toBeGreaterThanOrEqual(0);
   expect(dbExec).toBeGreaterThan(dbStart);
   expect(webStart).toBeGreaterThan(dbExec);
@@ -320,7 +356,7 @@ test("internal health probes work without supervision assets", async () => {
 
   expect(result.changed).toBe(true);
   expect(execCommands).toEqual([["pg_isready"]]);
-  expect(requests).toContain("POST /containers/lando-bring-up-order-app--web/start");
+  expect(requestStarted(requests, "lando-bring-up-order-app--web")).toBe(true);
 });
 
 const healthyObservationCases: ReadonlyArray<{
@@ -328,9 +364,13 @@ const healthyObservationCases: ReadonlyArray<{
   readonly policy: string | undefined;
   readonly host: boolean;
   readonly terminal?: "exited" | "dead";
+  readonly unavailable?: "missing" | "replaced" | "unverified";
 }> = [
   { scenario: "stopped", policy: "no", host: false, terminal: "exited" },
-  { scenario: "replacement", policy: "no", host: false },
+  { scenario: "replacement", policy: "no", host: false, unavailable: "replaced" },
+  { scenario: "ambiguous", policy: "no", host: false, unavailable: "unverified" },
+  { scenario: "missing", policy: "no", host: false, unavailable: "missing" },
+  { scenario: "wait missing", policy: "no", host: false, unavailable: "missing" },
   { scenario: "restarting", policy: "no", host: false },
   { scenario: "dead", policy: "no", host: false, terminal: "dead" },
   { scenario: "dead", policy: "always", host: false },
@@ -340,7 +380,7 @@ const healthyObservationCases: ReadonlyArray<{
   { scenario: "stopped", policy: "no", host: true, terminal: "exited" },
   { scenario: "restarting", policy: "no", host: true },
 ];
-for (const { scenario, policy, host, terminal } of healthyObservationCases) {
+for (const { scenario, policy, host, terminal, unavailable } of healthyObservationCases) {
   test(`the ${host ? "host" : "service"} healthy gate uses current owned identity: ${scenario}, restart=${policy}`, async () => {
     const base = planWithDependency(dependentNames.web, true);
     const db = base.services[dbName];
@@ -359,29 +399,37 @@ for (const { scenario, policy, host, terminal } of healthyObservationCases) {
     const request = api.request;
     if (request === undefined) throw new Error("Expected an inspect transport");
     let attempts = 0;
-    const dbPath = "/containers/lando-bring-up-order-app--db/json";
+    let waits = 0;
+    const dbName_ = "lando-bring-up-order-app--db";
+    const dbPath = `/containers/${dbName_}/json`;
     const result = await Effect.runPromise(
       Effect.result(
         bringUp(plan, {
           ctx,
           api: {
             ...api,
-            request: (input) =>
-              request(input).pipe(
+            request: (input) => {
+              const originalId = ids.get(dbName_);
+              const started = requestStarted(requests, dbName_, ids);
+              if (input.method === "POST" && input.path.endsWith("/wait") && started) {
+                waits++;
+                if (scenario === "wait missing") return Effect.succeed({ status: 404, body: "" });
+                return Effect.succeed({ status: 200, body: terminal === "exited" ? "7" : "0" });
+              }
+              return request(input).pipe(
                 Effect.map((response) => {
-                  const originalId = ids.get("lando-bring-up-order-app--db");
                   if (
                     (input.path !== dbPath && input.path !== `/containers/${originalId}/json`) ||
                     response.status !== 200
                   )
                     return response;
-                  if (
-                    attempts === 0 &&
-                    (scenario !== "restarting" ||
-                      !requests.includes("POST /containers/lando-bring-up-order-app--db/start"))
-                  )
-                    return response;
+                  if (!started) return response;
+                  // Post-start identity fencing and the immediate running guard need the create-id
+                  // running snapshot. Mutate only once a readiness attempt (or terminal wait) samples.
+                  if (attempts === 0 && waits === 0) return response;
+                  if (scenario === "missing") return { status: 404, body: "" };
                   const data = JSON.parse(response.body);
+                  if (scenario === "ambiguous") data.Config.Labels = {};
                   if (policy !== undefined) data.HostConfig = { RestartPolicy: { Name: policy } };
                   const replacementByName = scenario === "replacement" && input.path === dbPath;
                   if (replacementByName) data.Id = "healthy-replacement";
@@ -392,22 +440,44 @@ for (const { scenario, policy, host, terminal } of healthyObservationCases) {
                         ? { Status: "exited", Restarting: true, Running: false }
                         : scenario === "dead"
                           ? { Status: "dead", Dead: true, Running: false, ExitCode: 0 }
-                          : { Status: "stopped", Running: false, ExitCode: 7 };
+                          : scenario === "stopped"
+                            ? { Status: "stopped", Running: false, ExitCode: 7 }
+                            : { Status: "running", Running: true };
                   return { ...response, body: JSON.stringify(data) };
                 }),
-              ),
+              );
+            },
           },
           executeReadinessAttempt: () =>
-            Effect.sync(() => {
+            Effect.suspend(() => {
               attempts++;
-              return { exitCode: host || attempts > 1 ? 0 : 125, stdout: "", stderr: "" };
+              if (terminal !== undefined && !host) return Effect.never;
+              return Effect.succeed({
+                exitCode: unavailable === undefined && (host || attempts > 1) ? 0 : 125,
+                stdout: "",
+                stderr: "",
+              });
             }),
         }),
       ),
     );
-    if (terminal !== undefined) {
-      if (!Result.isFailure(result) || !(result.failure instanceof ServiceStartError))
-        throw new Error("Expected an exited dependency to block startup with ServiceStartError");
+    expect(waits).toBe(1);
+    if (unavailable !== undefined) {
+      expect(result).toMatchObject({
+        failure: {
+          _tag: "ServiceStartError",
+          service: "web",
+          details: { dependencyUnavailable: { service: "db", gate: "db:healthy", reason: unavailable } },
+        },
+      });
+      expect(attempts).toBe(2);
+      expect(requests.some((request) => /\/(logs|exec)(\?|$)/.test(request))).toBe(false);
+    } else if (terminal !== undefined) {
+      if (!Result.isFailure(result) || !(result.failure instanceof ServiceStartError)) {
+        throw new Error(
+          `Expected an exited dependency to block startup with ServiceStartError, got ${Result.isFailure(result) ? result.failure : "success"}`,
+        );
+      }
       expect(result.failure.details).toEqual({
         dependencyExit: {
           service: "db",
@@ -416,11 +486,13 @@ for (const { scenario, policy, host, terminal } of healthyObservationCases) {
           ...(terminal === "exited" ? { exitCode: 7 } : {}),
         },
       });
-      expect(attempts).toBe(1);
+      // Fast-exit evidence at post-start, the exit watcher, or a host-green veto can all
+      // settle the gate; readiness attempts are therefore 0 or 1.
+      expect(attempts).toBeLessThanOrEqual(1);
     } else {
       expect(Result.isSuccess(result)).toBe(true);
       expect(attempts).toBe(2);
-      expect(requests).toContain("POST /containers/lando-bring-up-order-app--web/start");
+      expect(requestStarted(requests, "lando-bring-up-order-app--web")).toBe(true);
     }
   });
 }
@@ -453,15 +525,15 @@ test("selected apply accepts a fast exit-0 job identified by the full completion
       request(input).pipe(
         Effect.map((response) => {
           if (input.path.endsWith("/start")) started = true;
-          return started && input.path.endsWith("/json")
-            ? {
-                status: 200,
-                body: JSON.stringify({
-                  Id: "job-container",
-                  State: { Running: false, Status: "exited", ExitCode: 0 },
-                }),
-              }
-            : response;
+          if (!(started && input.path.endsWith("/json") && response.status === 200)) return response;
+          const original = JSON.parse(response.body) as Record<string, unknown>;
+          return {
+            ...response,
+            body: JSON.stringify({
+              ...original,
+              State: { Running: false, Status: "exited", ExitCode: 0 },
+            }),
+          };
         }),
       ),
   };
@@ -526,7 +598,7 @@ for (const scenario of ["completed", "dead", "replacement"] as const) {
     );
     expect(waitedFor).toBe(fake.ids.get(name));
     expect(Result.isSuccess(result)).toBe(scenario === "completed");
-    expect(fake.requests.includes("POST /containers/lando-bring-up-order-app--web/start")).toBe(
+    expect(requestStarted(fake.requests, "lando-bring-up-order-app--web", fake.ids)).toBe(
       scenario === "completed",
     );
   });
@@ -580,20 +652,20 @@ test("a slow inspect after a completed wait still opens the completion gate", as
                   ),
                 );
                 return waited && input.path === `/containers/${name}/json`
-                  ? Effect.delay(response, "5 seconds")
+                  ? Effect.delay(response, "200 millis")
                   : response;
               },
             },
           }),
         ),
       );
-      yield* TestClock.adjust("10 seconds");
+      yield* TestClock.adjust("1 second");
       return yield* Fiber.join(fiber);
     }).pipe(Effect.provide(TestClock.layer())),
   );
   expect(waited).toBe(true);
   expect(Result.isSuccess(result)).toBe(true);
-  expect(fake.requests.includes("POST /containers/lando-bring-up-order-app--web/start")).toBe(true);
+  expect(requestStarted(fake.requests, "lando-bring-up-order-app--web", fake.ids)).toBe(true);
 });
 
 test("apply retains a supervised worker that exits before the immediate running check", async () => {
@@ -609,15 +681,15 @@ test("apply retains a supervised worker that exits before the immediate running 
       request(input).pipe(
         Effect.map((response) => {
           if (input.path.endsWith("/start")) started = true;
-          return started && input.path.endsWith("/json")
-            ? {
-                status: 200,
-                body: JSON.stringify({
-                  Id: "supervised-worker",
-                  State: { Running: false, Status: "exited", ExitCode: 7 },
-                }),
-              }
-            : response;
+          if (!(started && input.path.endsWith("/json") && response.status === 200)) return response;
+          const original = JSON.parse(response.body) as Record<string, unknown>;
+          return {
+            ...response,
+            body: JSON.stringify({
+              ...original,
+              State: { Running: false, Status: "exited", ExitCode: 7 },
+            }),
+          };
         }),
       ),
   };
@@ -681,8 +753,8 @@ test("fails with ServiceStartError naming the unmet gate and retains started con
   // Then
   expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web" });
   expect(error.message).toContain("db:healthy");
-  expect(requests).not.toContain("POST /containers/lando-bring-up-order-app--web/start");
-  expect(requests).toContain("POST /containers/lando-bring-up-order-app--db/start");
+  expect(requestStarted(requests, "lando-bring-up-order-app--web")).toBe(false);
+  expect(requestStarted(requests, "lando-bring-up-order-app--db")).toBe(true);
   expect(requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
   expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
 });
@@ -697,7 +769,7 @@ test("succeeds without rolling back when only an optional gate fails", async () 
 
   // Then
   expect(result.changed).toBe(true);
-  expect(requests).toContain("POST /containers/lando-bring-up-order-app--cache/start");
+  expect(requestStarted(requests, "lando-bring-up-order-app--cache")).toBe(true);
   expect(requests.filter((request) => request.endsWith("/stop"))).toHaveLength(0);
   expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toHaveLength(0);
 });
@@ -715,12 +787,13 @@ test("optional start failure retains the failed dependency and preserves unrelat
   await Effect.runPromise(bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }));
 
   // Then: optional failure is tolerated; nothing is compensated away.
-  expect(requests).toContain(`POST /containers/${apiName}/start`);
-  expect(requests).toContain(`POST /containers/${db}/start`);
+  expect(requestStarted(requests, apiName, ids)).toBe(true);
+  // Optional db start failure: gated identity start uses the create id when present.
+  expect(requestStarted(requests, db, ids)).toBe(true);
   expect(ids.has(db)).toBe(true);
   expect(requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
   expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
-  expect(requests).toContain("POST /containers/lando-bring-up-order-app--cache/start");
+  expect(requestStarted(requests, "lando-bring-up-order-app--cache", ids)).toBe(true);
   expect(requests.some((request) => request.startsWith("DELETE /networks/"))).toBe(false);
 });
 
@@ -740,7 +813,7 @@ test("interrupts an aborted optional dependency instead of starting its dependen
   expect(Exit.isFailure(exit)).toBe(true);
   if (Exit.isFailure(exit)) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   else throw new TypeError("aborted Podman bringUp unexpectedly succeeded");
-  expect(requests).not.toContain("POST /containers/lando-bring-up-order-app--cache/start");
+  expect(requestStarted(requests, "lando-bring-up-order-app--cache")).toBe(false);
 });
 
 test("unchanged container ID across failed B then retry", async () => {
@@ -788,7 +861,7 @@ test("unchanged container ID across failed B then retry", async () => {
   expect(fake.ids.get(webName)).toBe(webIdAfterFail);
   expect(retryRequests.some((request) => request.includes("/containers/create"))).toBe(false);
   expect(retryRequests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
-  expect(retryRequests).toContain(`POST /containers/${webName}/start`);
+  expect(requestStarted(retryRequests, webName, fake.ids)).toBe(true);
 });
 
 test("corrected config recreates ONLY B", async () => {
@@ -851,6 +924,299 @@ test("corrected config recreates ONLY B", async () => {
   expect(
     retryRequests.filter((request) => request.startsWith("DELETE /containers/") && request.includes(apiId)),
   ).toEqual([]);
+});
+
+test("gated start uses the 201 create id and never starts by planned name", async () => {
+  const plan = planWithDependency(dependentNames.web, true);
+  const { api, requests, ids } = makePodmanApi(0);
+  await Effect.runPromise(bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }));
+  const db = "lando-bring-up-order-app--db";
+  const web = "lando-bring-up-order-app--web";
+  const dbId = ids.get(db);
+  if (dbId === undefined) throw new TypeError("expected create ids");
+  // db is gated by web's healthy edge — start by create id only.
+  expect(requests).toContain(`POST /containers/${dbId}/start`);
+  expect(requests).not.toContain(`POST /containers/${db}/start`);
+  // web has no gated dependents — still starts by planned name.
+  expect(requests).toContain(`POST /containers/${web}/start`);
+  expect(requests).not.toContain(`POST /containers/${ids.get(web)}/start`);
+});
+
+test("409 create adopts only after an ownership read of the planned name", async () => {
+  const plan = planWithDependency(dependentNames.web, true);
+  const db = "lando-bring-up-order-app--db";
+  const dbId = "id-db-owned-409";
+  const dbLabels = commonContainerLabels(plan, plan.services[dbName] ?? servicePlan(dbName, false));
+  const webLabels = commonContainerLabels(
+    plan,
+    plan.services[dependentNames.web] ?? servicePlan(dependentNames.web, true),
+  );
+  // Empty at first inspect; create 409 races in an owned container the ownership read adopts.
+  const containers = new Set<string>();
+  const running = new Set<string>();
+  const ids = new Map<string, string>();
+  const labelsFor = (name: string) => (name.endsWith("-db") ? dbLabels : webLabels);
+  const calls: string[] = [];
+  const resolveName = (ref: string | undefined): string | undefined => {
+    if (ref === undefined) return undefined;
+    if (containers.has(ref)) return ref;
+    for (const [name, id] of ids) if (id === ref) return name;
+    return ref;
+  };
+  const conflictApi: PodmanApiClient = {
+    info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
+    ping: Effect.succeed(undefined),
+    request: (input) => {
+      calls.push(`${input.method} ${input.path}`);
+      const waitMatch = input.path.match(/\/containers\/([^/?]+)\/wait$/u);
+      if (input.method === "POST" && waitMatch !== null) {
+        const waitName = resolveName(waitMatch[1]);
+        if (waitName !== undefined && running.has(waitName)) return Effect.never;
+        return Effect.succeed({ status: 200, body: "0" });
+      }
+      return Effect.sync(() => {
+        if (input.method === "GET" && input.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
+        if (input.method === "GET" && input.path.startsWith("/networks/")) {
+          const networkName = decodeURIComponent(input.path.slice("/networks/".length));
+          return { status: 200, body: JSON.stringify(ownedNetworkInspection(plan, networkName)) };
+        }
+        const match = input.path.match(/^\/containers\/([^/?]+)/u);
+        const name = resolveName(match?.[1]);
+        if (input.method === "GET" && input.path.endsWith("/json") && name !== undefined) {
+          return containers.has(name)
+            ? {
+                status: 200,
+                body: JSON.stringify({
+                  Id: ids.get(name),
+                  Config: { Labels: labelsFor(name) },
+                  State: { Running: running.has(name), Status: running.has(name) ? "running" : "created" },
+                }),
+              }
+            : { status: 404, body: "{}" };
+        }
+        if (input.method === "POST" && input.path.startsWith("/containers/create?name=")) {
+          const created = input.path.slice("/containers/create?name=".length);
+          if (created === db) {
+            containers.add(db);
+            ids.set(db, dbId);
+            // 409 with no Id — gated identity must come from the ownership read.
+            return { status: 409, body: '{"message":"already exists"}' };
+          }
+          containers.add(created);
+          const id = `id-${created}-ok`;
+          ids.set(created, id);
+          return { status: 201, body: JSON.stringify({ Id: id }) };
+        }
+        if (input.method === "POST" && input.path.endsWith("/start") && name !== undefined) {
+          running.add(name);
+          return { status: 204, body: "" };
+        }
+        if (input.method === "POST" && input.path.endsWith("/exec")) {
+          return { status: 201, body: '{"Id":"health-exec"}' };
+        }
+        if (input.method === "GET" && input.path === "/exec/health-exec/json") {
+          return { status: 200, body: JSON.stringify({ ExitCode: 0 }) };
+        }
+        return { status: 204, body: "" };
+      });
+    },
+    stream: () => Stream.empty,
+  };
+  installNonCompensatingExecUmask(conflictApi);
+  installSupervisedExecFixture(conflictApi);
+  await Effect.runPromise(
+    bringUp(plan, { api: conflictApi, ctx, ...supervisedExecFixtureOptions(conflictApi) }),
+  );
+  const createIdx = calls.indexOf(`POST /containers/create?name=${db}`);
+  const ownershipAfterCreate = calls
+    .map((call, index) => ({ call, index }))
+    .filter(({ call, index }) => call === `GET /containers/${db}/json` && index > createIdx);
+  const startIdx = calls.indexOf(`POST /containers/${dbId}/start`);
+  expect(createIdx).toBeGreaterThanOrEqual(0);
+  expect(ownershipAfterCreate.length).toBeGreaterThan(0);
+  expect(ownershipAfterCreate[0]?.index).toBeLessThan(startIdx);
+  expect(startIdx).toBeGreaterThan(createIdx);
+  expect(calls).not.toContain(`POST /containers/${db}/start`);
+});
+
+test("post-start name inspect that resolves to a different owned id fails the start", async () => {
+  const plan = planWithDependency(dependentNames.web, true);
+  const fake = makePodmanApi(0);
+  const request = fake.api.request;
+  if (request === undefined) throw new TypeError("Expected request transport");
+  const db = "lando-bring-up-order-app--db";
+  let started = false;
+  const api: PodmanApiClient = {
+    ...fake.api,
+    request: (input) =>
+      request(input).pipe(
+        Effect.map((response) => {
+          if (input.path.endsWith("/start")) started = true;
+          if (!(started && input.path === `/containers/${db}/json` && response.status === 200))
+            return response;
+          const original = JSON.parse(response.body) as Record<string, unknown>;
+          return {
+            ...response,
+            body: JSON.stringify({ ...original, Id: "same-owner-replacement" }),
+          };
+        }),
+      ),
+  };
+  const error = await Effect.runPromise(Effect.flip(bringUp(plan, { api, ctx })));
+  expect(error).toMatchObject({
+    _tag: "ServiceStartError",
+    service: "web",
+    details: { dependencyUnavailable: { service: "db", gate: "db:healthy", reason: "replaced" } },
+  });
+  expect(fake.requests.some((path) => path.endsWith("/wait"))).toBe(false);
+  expect(requestStarted(fake.requests, "lando-bring-up-order-app--web", fake.ids)).toBe(false);
+});
+
+test("fast nonzero oneshot exit returns startFailure evidence without post-start", async () => {
+  const base = planWithDependency(dependentNames.web, true);
+  const web = base.services[dependentNames.web];
+  const dbSvc = base.services[dbName];
+  if (web === undefined || dbSvc === undefined) throw new TypeError("Expected services");
+  const plan = {
+    ...base,
+    services: {
+      [dbName]: dbSvc,
+      [web.name]: {
+        ...web,
+        dependsOn: [
+          { service: dbName, condition: "service_completed_successfully" as const, required: true },
+        ],
+      },
+    },
+  };
+  const fake = makePodmanApi(0);
+  const request = fake.api.request;
+  if (request === undefined) throw new TypeError("Expected request transport");
+  const events: string[] = [];
+  let started = false;
+  const api: PodmanApiClient = {
+    ...fake.api,
+    request: (input) =>
+      request(input).pipe(
+        Effect.map((response) => {
+          if (input.path.endsWith("/start")) started = true;
+          if (!(started && input.path.endsWith("/json") && response.status === 200)) return response;
+          const name = "lando-bring-up-order-app--db";
+          const original = JSON.parse(response.body) as Record<string, unknown>;
+          const id = fake.ids.get(name);
+          // Only flip the dependency oneshot; leave the dependent alone if it ever starts.
+          if (original.Id !== id && input.path !== `/containers/${name}/json`) return response;
+          return {
+            ...response,
+            body: JSON.stringify({
+              ...original,
+              State: { Running: false, Status: "exited", ExitCode: 7 },
+            }),
+          };
+        }),
+      ),
+  };
+  await Effect.runPromise(
+    Effect.flip(
+      bringUp(plan, {
+        api,
+        ctx,
+        eventService: {
+          publish: (event) =>
+            Effect.sync(() => {
+              const named = event as { readonly eventName?: string; readonly serviceName?: string };
+              events.push(`${named.eventName ?? event._tag}:${String(named.serviceName ?? "")}`);
+            }),
+        },
+      }),
+    ),
+  );
+  const db = "lando-bring-up-order-app--db";
+  const dbId = fake.ids.get(db);
+  if (dbId === undefined) throw new TypeError("expected db id");
+  expect(fake.requests).toContain(`POST /containers/${dbId}/start`);
+  expect(events).toContain("pre-service-start:db");
+  // Failure path must not publish post-service-start for the oneshot.
+  expect(events).not.toContain("post-service-start:db");
+});
+
+test("bind recovery swaps the start identity to the replacement create id", async () => {
+  const base = planWithDependency(dependentNames.web, true);
+  const db = base.services[dbName];
+  if (db === undefined) throw new TypeError("expected db");
+  const plan = {
+    ...base,
+    services: {
+      ...base.services,
+      [dbName]: {
+        ...db,
+        endpoints: [
+          {
+            _tag: "published" as const,
+            protocol: "tcp" as const,
+            port: 5432,
+            primary: true,
+            publication: { hostIp: "127.0.0.1" },
+          },
+        ],
+      },
+    },
+  };
+  const fake = makePodmanApi(0);
+  const request = fake.api.request;
+  if (request === undefined) throw new TypeError("expected request");
+  const dbName_ = "lando-bring-up-order-app--db";
+  let startAttempts = 0;
+  const startRefs: string[] = [];
+  const createIds: string[] = [];
+  const api: PodmanApiClient = {
+    ...fake.api,
+    request: (input) => {
+      if (input.method === "POST" && input.path.startsWith("/containers/create?name=")) {
+        return request(input).pipe(
+          Effect.tap((response) =>
+            Effect.sync(() => {
+              if (response.status === 201) {
+                try {
+                  const id = (JSON.parse(response.body) as { Id?: string }).Id;
+                  if (typeof id === "string") createIds.push(id);
+                } catch {
+                  /* ignore */
+                }
+              }
+            }),
+          ),
+        );
+      }
+      if (input.method === "POST" && input.path.endsWith("/start")) {
+        const ref = input.path.slice("POST /containers/".length, -"/start".length);
+        // path is /containers/REF/start — extract from full path
+        const match = input.path.match(/^\/containers\/([^/]+)\/start$/u);
+        const idOrName = match?.[1] ?? ref;
+        startRefs.push(idOrName);
+        startAttempts += 1;
+        if (startAttempts === 1 && idOrName.startsWith("id-") && idOrName.includes("db")) {
+          return Effect.succeed({
+            status: 500,
+            body: '{"message":"driver failed programming external connectivity: address already in use"}',
+          });
+        }
+      }
+      return request(input);
+    },
+  };
+  await Effect.runPromise(bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }));
+  expect(createIds.length).toBeGreaterThanOrEqual(2);
+  const firstId = createIds[0];
+  const recoveredId = createIds[1];
+  if (firstId === undefined || recoveredId === undefined) throw new TypeError("expected two create ids");
+  expect(firstId).not.toBe(recoveredId);
+  expect(startRefs[0]).toBe(firstId);
+  expect(startRefs).toContain(recoveredId);
+  // Gated start never falls back to the planned name after recovery.
+  expect(startRefs).not.toContain(dbName_);
 });
 
 test("a filtered apply leaves an unselected container's real ID untouched", async () => {

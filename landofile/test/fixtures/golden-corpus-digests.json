@@ -1402,6 +1402,10 @@
       "digest": "5844d2978bfa3f1a505f2e7126097ef4b0c34458826e3332b0abfd74e9a7de3c"
     },
     {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/failed-oneshot",
+      "digest": "ea328ad15e201fb3ae68bbbc9eb0c7dff6f47c7eaf34c58c04ebadff2cbbc1cb"
+    },
+    {
       "fixture": "docs/guides/wait-for-your-app/fixtures/host-command-missing",
       "digest": "a1efbc74f7ffddb808211b2e504bee96908cdd3537bf68d79154d77f2690a4f4"
     },

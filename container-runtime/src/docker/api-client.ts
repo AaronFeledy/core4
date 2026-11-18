@@ -26,6 +26,7 @@ import {
   dockerHttpBaseUrl,
   explicitDockerApiPrefixFromHost,
   isDockerApiPrefixFailure,
+  isDockerWaitRequest,
   learnDockerApiPrefix,
   peekDockerDaemonApiVersion,
   resolveInitialDockerApiPrefix,
@@ -367,17 +368,48 @@ const sendAndLearn = async (
   return retried;
 };
 
+/** Short GET used only to settle an unresolved preferred prefix before arming a long request. */
+const PREFIX_SETTLE_REQUEST: DockerHttpRequest = { method: "GET", path: "/info" };
+
+const settlePreferredPrefix = async (
+  session: DockerPrefixSession,
+  ctx: ProviderErrorContext,
+  send: (prefix: string, request: DockerHttpRequest) => Promise<DockerHttpResponse>,
+): Promise<ResolvedDockerApiPrefix> => {
+  const used = initialPrefix(session, ctx);
+  if (used.source !== "preferred") return used;
+  return runDockerApiPrefixFlight(
+    session.endpointKey,
+    async () => {
+      const current = initialPrefix(session, ctx);
+      if (current.source !== "preferred") return current;
+      await sendAndLearn(session, current, ctx, (prefix) => send(prefix, PREFIX_SETTLE_REQUEST));
+      return initialPrefix(session, ctx);
+    },
+    async () => initialPrefix(session, ctx),
+  );
+};
+
+/**
+ * Negotiate the API prefix for a request. Long-lived wait POSTs settle first with a short probe so
+ * they never hold the single-flight for their whole body; ordinary requests keep the existing flight.
+ */
 const requestWithNegotiatedPrefix = async (
   session: DockerPrefixSession,
   ctx: ProviderErrorContext,
-  send: (prefix: string) => Promise<DockerHttpResponse>,
+  input: DockerHttpRequest,
+  send: (prefix: string, request: DockerHttpRequest) => Promise<DockerHttpResponse>,
 ): Promise<DockerHttpResponse> => {
+  if (isDockerWaitRequest(input)) {
+    const settled = await settlePreferredPrefix(session, ctx, send);
+    return sendAndLearn(session, settled, ctx, (prefix) => send(prefix, input));
+  }
   const used = initialPrefix(session, ctx);
-  if (used.source !== "preferred") return sendAndLearn(session, used, ctx, send);
+  if (used.source !== "preferred") return sendAndLearn(session, used, ctx, (prefix) => send(prefix, input));
   return runDockerApiPrefixFlight(
     session.endpointKey,
-    () => sendAndLearn(session, used, ctx, send),
-    () => sendAndLearn(session, initialPrefix(session, ctx), ctx, send),
+    () => sendAndLearn(session, used, ctx, (prefix) => send(prefix, input)),
+    () => sendAndLearn(session, initialPrefix(session, ctx), ctx, (prefix) => send(prefix, input)),
   );
 };
 
@@ -421,19 +453,19 @@ export const makeUnixDockerApiClient = (
     request: Effect.fn("DockerApiClient.request")(function* (input) {
       return yield* Effect.tryPromise({
         try: (signal) =>
-          requestWithNegotiatedPrefix(session, ctx, async (prefix) => {
+          requestWithNegotiatedPrefix(session, ctx, input, async (prefix, request) => {
             const spawned = await spawnCurl(
-              requestPrefix(session, input, prefix),
-              input,
-              combinedAbortSignal(input.signal, signal),
+              requestPrefix(session, request, prefix),
+              request,
+              combinedAbortSignal(request.signal, signal),
             );
             if (spawned.exitCode !== 0) {
               throw unavailable(ctx)(
                 "docker-api",
                 `Docker API request failed with exit code ${spawned.exitCode}.`,
                 {
-                  method: input.method,
-                  path: input.path,
+                  method: request.method,
+                  path: request.path,
                   stderr: spawned.stderr,
                 },
               );
@@ -481,10 +513,10 @@ export const makeNamedPipeDockerApiClient = (
     request: (input) =>
       Effect.tryPromise({
         try: (signal) =>
-          requestWithNegotiatedPrefix(session, ctx, (prefix) =>
-            clientFor(requestPrefix(session, input, prefix)).request({
-              ...input,
-              signal: combinedAbortSignal(input.signal, signal),
+          requestWithNegotiatedPrefix(session, ctx, input, (prefix, request) =>
+            clientFor(requestPrefix(session, request, prefix)).request({
+              ...request,
+              signal: combinedAbortSignal(request.signal, signal),
             }),
           ),
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
@@ -515,10 +547,10 @@ export const makeHttpDockerApiClient = (
     request: (input) =>
       Effect.tryPromise({
         try: (signal) =>
-          requestWithNegotiatedPrefix(session, ctx, (prefix) =>
-            clientFor(requestPrefix(session, input, prefix)).request({
-              ...input,
-              signal: combinedAbortSignal(input.signal, signal),
+          requestWithNegotiatedPrefix(session, ctx, input, (prefix, request) =>
+            clientFor(requestPrefix(session, request, prefix)).request({
+              ...request,
+              signal: combinedAbortSignal(request.signal, signal),
             }),
           ),
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
