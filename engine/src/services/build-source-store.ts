@@ -37,18 +37,18 @@ export const acquireBuildTrees = Effect.fn("BuildOrchestrator.acquireBuildTrees"
       error("Invalid artifact source acquisition plan.", "Check the service plugin's build inputs."),
     ),
   )).flat();
-  if (acquisitions.length === 0) return trees;
+  const first = acquisitions[0];
+  if (first === undefined) return trees;
   if (store._tag === "None") {
     return yield* error(
       "Host build source acquisition is unavailable.",
       "Supply the build source store in the runtime bootstrap.",
     );
   }
-  const first = acquisitions[0];
   const session = yield* store.value.session.pipe(
     mapFailures((failure) =>
       error(
-        `Unable to open build source cache for ${first?.name}@${first?.version}: ${failure.message}`,
+        `Unable to open build source cache for ${first.name}@${first.version}: ${failure.message}`,
         failure.remediation,
       ),
     ),

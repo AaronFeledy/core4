@@ -9,6 +9,7 @@ import { MAX_PROJECT_FILE_BYTES, type ProjectFileFingerprint } from "./project-f
 const MAX_CANDIDATES = 256;
 const MAX_BYTES = 16 * MAX_PROJECT_FILE_BYTES;
 const MAX_DEPTH = 32;
+const OPEN_FLAGS = constants.O_RDONLY | (sep === "\\" ? 0 : constants.O_NOFOLLOW | constants.O_NONBLOCK);
 
 export const commandProjectFilesFresh = async (
   root: string,
@@ -52,8 +53,7 @@ export const commandProjectFilesFresh = async (
       if (!stat?.isFile() || stat.size !== file.size || file.size > MAX_PROJECT_FILE_BYTES || length > budget)
         return false;
       budget -= length;
-      const flags = constants.O_RDONLY | (sep === "\\" ? 0 : constants.O_NOFOLLOW | constants.O_NONBLOCK);
-      const handle = await open(absolute, flags);
+      const handle = await open(absolute, OPEN_FLAGS);
       try {
         const opened = await handle.stat();
         if (

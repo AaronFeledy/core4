@@ -6,8 +6,8 @@ import { DateTime, Effect, Option } from "effect";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
 import { nodePackageManagerEvidence } from "../planner/node-local-tooling.ts";
 
-const pin = (service: ServicePlan | undefined) => {
-  const raw = nodePackageManagerEvidence(service?.provenance);
+const pin = (service: ServicePlan) => {
+  const raw = nodePackageManagerEvidence(service.provenance);
   if (raw === null) return null;
   if (
     !isPlainRecord(raw) ||
