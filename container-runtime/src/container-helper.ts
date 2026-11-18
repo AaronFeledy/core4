@@ -4,11 +4,12 @@
  * host-proxy client (`lando`), provider log-file follow (`log-file`), the
  * supervised exec process tree (`exec-run`), and the scaffold engine exposed as
  * stable PATH commands `/usr/local/bin/lando-create-project`,
- * `/usr/local/bin/lando-drupal-scaffold`, and
- * `/usr/local/bin/lando-drupal-cms-scaffold`.
+ * `/usr/local/bin/lando-drupal-scaffold`, `/usr/local/bin/lando-drupal-cms-scaffold`,
+ * `/usr/local/bin/lando-drupal-contrib-scaffold`, and
+ * `/usr/local/bin/lando-drupal-contrib-core-version`.
  *
  * The directory mount is stable above content-addressed helper versions. Every
- * service also gets the three command mounts, which bind immutable per-architecture
+ * service also gets the five command mounts, which bind immutable per-architecture
  * shims that execute the current helper through that mounted directory: the binary
  * is static and image-independent, the command uses its own service's Composer when
  * it runs, and gating on an authored type string would break a custom-imaged service
@@ -56,6 +57,8 @@ export const CONTAINER_HELPER_COMMANDS = [
   "lando-create-project",
   "lando-drupal-scaffold",
   "lando-drupal-cms-scaffold",
+  "lando-drupal-contrib-scaffold",
+  "lando-drupal-contrib-core-version",
 ] as const;
 
 export const CONTAINER_HELPER_COMMAND_TARGETS: ReadonlySet<string> = new Set(
