@@ -300,7 +300,11 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
     ...planningHostShellIssues(result.resolution, invocationSites),
   ];
   if (issues.length > 0)
-    return yield* Effect.fail(landofileValidationError(result.resolution.landofilePath, issues));
+    return yield* Effect.fail(
+      landofileValidationError(result.resolution.landofilePath, issues, {
+        appRoot: result.resolution.appRoot,
+      }),
+    );
   return yield* knownEventSetFrom(result.resolution, invocationSites);
 });
 
