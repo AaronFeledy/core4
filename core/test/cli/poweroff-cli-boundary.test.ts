@@ -119,3 +119,49 @@ test("poweroff encodes nested stop failures and reports the global app as skippe
     ),
   );
 }, 30_000);
+
+test.each(["json", "text"] as const)(
+  "poweroff preserves both keep decisions on failure in %s",
+  async (format) => {
+    await Effect.runPromise(
+      withScenarioContext(
+        { guideId: "poweroff", scenarioId: `keep-on-failure-${format}`, render: false },
+        (context) =>
+          Effect.gen(function* () {
+            yield* startWithHook(context, "poweroff-kept", { event: "pre-stop", cmd: "exit 1" });
+            yield* context.fixtures.use("poweroff-demo");
+            const scratch = yield* context.runCli(["scratch:start", "--fork", "--detach", "--format=json"]);
+            expect(scratch.exitCode, scratch.stdout + scratch.stderr).toBe(0);
+
+            const run = yield* context.runCli([
+              "poweroff",
+              "--keep-global",
+              "--keep-scratch",
+              `--format=${format}`,
+            ]);
+
+            expect(run.exitCode).toBe(1);
+            if (format === "json") {
+              expect(decodeEnvelope(run.stdout)).toMatchObject({
+                ok: false,
+                error: {
+                  _tag: "PoweroffStopError",
+                  keptGlobalApp: true,
+                  keptScratchApps: 1,
+                  apps: [{ kind: "global", outcome: "skipped" }],
+                  failures: [{ appId: "poweroff-kept", _tag: "LandofileEventStepFailedError" }],
+                },
+              });
+            } else {
+              expect(run.stderr).toContain("PoweroffStopError");
+              expect(run.stderr.match(/kept(?:GlobalApp|ScratchApps): \w+/gu)).toEqual([
+                "keptGlobalApp: true",
+                "keptScratchApps: 1",
+              ]);
+            }
+          }),
+      ),
+    );
+  },
+  30_000,
+);

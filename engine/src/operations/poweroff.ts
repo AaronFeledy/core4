@@ -23,10 +23,14 @@ import { type StopAppError, stopAppAtRoot } from "./stop.ts";
 
 export type PoweroffAppResult = typeof PoweroffAppResultSchema.Type;
 
-export const PoweroffResultSchema = Schema.Struct({
-  apps: Schema.Array(PoweroffAppResultSchema),
+const poweroffKeepFields = {
   keptGlobalApp: Schema.Boolean,
   keptScratchApps: Schema.Number,
+};
+
+export const PoweroffResultSchema = Schema.Struct({
+  apps: Schema.Array(PoweroffAppResultSchema),
+  ...poweroffKeepFields,
   runtimeServiceStopped: Schema.Boolean,
   runtimeServicePid: Schema.optionalKey(Schema.Number),
 });
@@ -38,6 +42,7 @@ export class PoweroffStopError extends Schema.TaggedError<PoweroffStopError>()("
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   apps: Schema.Array(PoweroffAppResultSchema),
   failures: Schema.Array(PoweroffStopFailureSchema),
+  ...poweroffKeepFields,
 }) {}
 
 export interface PoweroffOptions {
@@ -132,9 +137,15 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
     );
   }
 
-  const globalTargetResult = yield* inventory.resolveGlobalTarget.pipe(Effect.result);
-  const globalTarget = Result.isSuccess(globalTargetResult) ? globalTargetResult.success : undefined;
-  if (Result.isFailure(globalTargetResult))
+  const keepGlobal = options.keepGlobal === true;
+  const globalTargetResult = keepGlobal
+    ? undefined
+    : yield* inventory.resolveGlobalTarget.pipe(Effect.result);
+  const globalTarget =
+    globalTargetResult !== undefined && Result.isSuccess(globalTargetResult)
+      ? globalTargetResult.success
+      : undefined;
+  if (globalTargetResult !== undefined && Result.isFailure(globalTargetResult))
     failures.push({
       kind: "global",
       appId: "global",
@@ -142,9 +153,8 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
       providerId: "global",
       error: globalTargetResult.failure,
     });
-  const keepGlobal = options.keepGlobal === true;
   let globalStopped = false;
-  if (globalTarget === undefined || keepGlobal || failures.length > 0) {
+  if (globalTarget === undefined || failures.length > 0) {
     apps.push(
       appResult(
         {
@@ -185,6 +195,7 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
     }
   }
 
+  const kept = { keptGlobalApp: keepGlobal, keptScratchApps: keptScratch };
   if (failures.length > 0) {
     return yield* Effect.fail(
       new PoweroffStopError({
@@ -193,6 +204,7 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
           "Resolve each reported failure and retry `lando poweroff`; the managed runtime was left running.",
         apps,
         failures: yield* stopEntries(failures),
+        ...kept,
       }),
     );
   }
@@ -203,8 +215,7 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
       : ({ terminated: false } satisfies RuntimeServiceStopResult);
   return {
     apps,
-    keptGlobalApp: keepGlobal,
-    keptScratchApps: keptScratch,
+    ...kept,
     runtimeServiceStopped: runtimeService.terminated,
     ...(runtimeService.pid === undefined ? {} : { runtimeServicePid: runtimeService.pid }),
   };

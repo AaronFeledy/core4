@@ -2,6 +2,7 @@ import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
 import { makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
+import { scratchLabelsForPlan } from "@lando/container-runtime/labels";
 import { forgetAppliedPlanUnlessKept, rememberAppliedPlan } from "@lando/container-runtime/provider-assembly";
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -105,7 +106,14 @@ export const makeScenarioProvider = () => {
           providerId: ProviderId.make(provider.id),
           runtimeObserved: true,
           appliedPlans,
-          services,
+          services: services.map((service) => {
+            const plan = appliedPlans.find(
+              (plan) => plan.id === service.app && planAppRoot(plan) === service.appRoot,
+            );
+            return plan === undefined
+              ? service
+              : { ...service, labels: { ...service.labels, ...scratchLabelsForPlan(plan) } };
+          }),
           volumes: [],
         },
       ]),

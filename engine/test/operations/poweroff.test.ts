@@ -327,16 +327,19 @@ describe("poweroff operation", () => {
     });
   });
 
-  test("keeps the runtime service when --keep-global is set", async () => {
+  test("keeps the global app and runtime service even when its placement conflicts", async () => {
     await withRoots(async ({ a }) => {
+      const globalRoot = makeLandoPaths({ userDataRoot: dataRoot }).globalAppRoot;
       const harness = await makeHarness({
         roots: [{ root: a, plan: planAt(a), status: "running" }],
+        globalPlans: [planAt(globalRoot, "global"), planAt(globalRoot, "global", ProviderId.make("docker"))],
       });
       const result = await Effect.runPromise(
         poweroff({ keepGlobal: true }).pipe(Effect.provide(harness.layer)),
       );
       expect(result.keptGlobalApp).toBe(true);
       expect(harness.calls).not.toContain("runtime");
+      expect(result.apps.find((app) => app.kind === "global")?.outcome).toBe("skipped");
     });
   });
 

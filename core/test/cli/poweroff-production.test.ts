@@ -154,7 +154,7 @@ const failedPostStop = {
   },
 } as const;
 
-test("renders the hook diagnostic on one line for the affected root when app ids repeat", () => {
+test("renders stopped, unchanged, and failed-hook outcomes separately when app ids repeat", () => {
   const rendered = renderPoweroffResult({
     apps: [
       {
@@ -175,9 +175,9 @@ test("renders the hook diagnostic on one line for the affected root when app ids
         landofileEvents: failedPostStop,
       },
       {
-        kind: "global",
-        appId: "global",
-        appRoot: "/global",
+        kind: "user",
+        appId: "twin",
+        appRoot: "/quiet",
         providerId: "lando",
         outcome: "unchanged",
       },
@@ -188,10 +188,9 @@ test("renders the hook diagnostic on one line for the affected root when app ids
     runtimeServicePid: 1234,
   });
   const lines = rendered.split("\n");
-  const otherLines = lines.filter((line) => !line.includes(failedPostStop.event)).join("\n");
-  expect(otherLines).toContain("twin (/one)");
-  expect(otherLines).not.toContain("/two");
-  expect(otherLines).not.toContain("global");
+  expect(
+    lines.filter((line) => line.includes("twin (")).map((line) => line.match(/twin \(\/\w+\)/gu)),
+  ).toEqual([["twin (/one)"], ["twin (/quiet)"], ["twin (/two)"]]);
   expect(lines.filter((line) => line.includes(failedPostStop.event))).toEqual([
     expect.stringContaining("twin (/two)"),
   ]);
@@ -204,6 +203,8 @@ test("encodes the failed hook on a stopped app even when another app fails to st
   const error = new PoweroffStopError({
     message: "Some apps could not stop.",
     remediation: "Restore provider access.",
+    keptGlobalApp: false,
+    keptScratchApps: 0,
     apps: [
       {
         kind: "user",

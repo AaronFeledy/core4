@@ -29,9 +29,12 @@ export const renderPoweroffResult = (result: PoweroffResult): string => {
   const poweredOff = result.apps.filter(
     (app) => app.outcome === "stopped" && app.landofileEvents?.status !== "failed",
   );
+  const unchanged = result.apps.filter((app) => app.outcome === "unchanged");
   const destroyed = result.apps.filter((app) => app.outcome === "destroyed");
   if (poweredOff.length > 0)
     lines.push(`Powered off: ${poweredOff.map((app) => labelApp(app, duplicates)).join(", ")}`);
+  if (unchanged.length > 0)
+    lines.push(`Nothing to stop: ${unchanged.map((app) => labelApp(app, duplicates)).join(", ")}`);
   if (destroyed.length > 0)
     lines.push(`Destroyed scratch apps: ${destroyed.map((app) => labelApp(app, duplicates)).join(", ")}`);
   for (const app of result.apps) {
