@@ -19,11 +19,12 @@ describe("provider-lando applied plan inspection versioning", () => {
 
     expect(opens).toHaveLength(1);
     expect(opens[0]?.version).toBe(APPLIED_STATE_VERSION);
-    expect(APPLIED_STATE_VERSION).toBe(8);
-    // Strict throw adaptation: unconvertible historical payloads throw instead of returning null.
+    // Unconvertible historical payloads throw.
     expect(typeof opens[0]?.onVersionMismatch).toBe("function");
     const migrate = opens[0]?.onVersionMismatch as (raw: unknown, version: number) => unknown;
-    expect(() => migrate({ not: "a plan" }, 1)).toThrow(/Cannot read applied state v1 as v8/);
+    expect(() => migrate({ not: "a plan" }, 1)).toThrow(
+      `Cannot read applied state v1 as v${APPLIED_STATE_VERSION}`,
+    );
   });
 
   test("reports unreadable when migration throws for an unconvertible v1 plan", async () => {
@@ -37,7 +38,7 @@ describe("provider-lando applied plan inspection versioning", () => {
             const migrate = spec.onVersionMismatch;
             if (typeof migrate !== "function") return null;
             // Simulate bucket handing the migrator a v1 payload with an accelerated non-app bind.
-            // Strict throw adaptation: onVersionMismatch throws; the real bucket surfaces that as null/fail.
+            // onVersionMismatch throws; the real bucket surfaces that as a read failure.
             try {
               return migrate(
                 {

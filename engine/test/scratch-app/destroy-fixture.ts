@@ -81,8 +81,8 @@ interface DestroyFixtureOptions {
   readonly skipDesiredPlan?: boolean;
   /** Old desired-plan frame written instead of the current version. */
   readonly desiredPlanVersion?: number;
-  /** Applied plan returned by resolveAppliedPlan; defaults to none. */
-  readonly appliedPlan?: AppPlan | true;
+  /** Return the scratch app's applied plan from resolveAppliedPlan; defaults to none. */
+  readonly appliedPlan?: boolean;
 }
 
 export const withDestroyFixture = async (
@@ -182,9 +182,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       ),
   };
   const applied =
-    options.appliedPlan === true
-      ? { ...plan, extensions: { [SCRATCH_EXTENSION_KEY]: { id } } }
-      : options.appliedPlan;
+    options.appliedPlan === true ? { ...plan, extensions: { [SCRATCH_EXTENSION_KEY]: { id } } } : undefined;
   const providers = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({

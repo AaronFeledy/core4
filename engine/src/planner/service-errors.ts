@@ -8,6 +8,7 @@ import {
 } from "@lando/sdk/errors";
 import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import type { ServiceTypeProjectFileInput } from "@lando/sdk/services";
+import { endpointDeclarationValidationError } from "../services/endpoint-declaration.ts";
 
 export const serviceTypeCollision = (
   appRoot: string,
@@ -58,15 +59,8 @@ export interface ServicePlanErrorInput {
 
 export const servicePlanError = ({ appRoot, serviceName, cause, projectFiles }: ServicePlanErrorInput) => {
   if (cause instanceof LandofileValidationError) return cause;
-  if (cause instanceof ServiceFeatureError && cause.endpointDeclaration !== undefined) {
-    return new LandofileValidationError({
-      message: cause.message,
-      remediation: cause.remediation,
-      file: `${appRoot}/.lando.yml`,
-      cause,
-      issues: cause.issues ?? [],
-    });
-  }
+  const declaration = endpointDeclarationValidationError(appRoot, cause);
+  if (declaration !== undefined) return declaration;
   const remediation =
     cause instanceof ServiceTypeError ||
     cause instanceof ServiceFeatureError ||

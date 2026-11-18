@@ -303,8 +303,3 @@ export const migrateAppliedPlansRecordWithCoordinate = (
   }
   return Object.fromEntries(next);
 };
-
-export const migrateAppliedPlansRecord = (raw: unknown, fromVersion: number) => {
-  const result = migrateAppliedPlansRecordWithCoordinate(raw, fromVersion);
-  return typeof result === "string" ? null : result;
-};

@@ -22,11 +22,7 @@ import {
 } from "./applied-state-read.ts";
 
 export { appliedPlanPath, appliedPlansDir } from "./applied-state-inventory.ts";
-export {
-  APPLIED_STATE_VERSION,
-  migrateAppliedPlan,
-  migrateAppliedPlansRecord,
-} from "./applied-state-migrate.ts";
+export { APPLIED_STATE_VERSION, migrateAppliedPlan } from "./applied-state-migrate.ts";
 export { type AppliedPlanRead, unreadableAppliedStateError } from "./applied-state-read.ts";
 
 const APPLIED_PLANS_KEY = "applied-plans.json";

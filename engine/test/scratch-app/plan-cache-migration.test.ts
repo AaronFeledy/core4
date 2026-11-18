@@ -6,51 +6,28 @@ import { decodeScratchPlan } from "../../src/scratch-app/service.ts";
 import { plan, web } from "../operations/start-progress-topology-support.ts";
 
 /** Scratch cache bytes from before endpoint/filter `kind` used `_tag` / `type`. */
-const asPreKindWire = (wire: unknown): unknown => {
-  if (typeof wire !== "object" || wire === null) return wire;
-  const record = wire as Record<string, unknown>;
-  const servicesIn = record.services;
-  if (typeof servicesIn !== "object" || servicesIn === null) return wire;
-  const services = Object.fromEntries(
-    Object.entries(servicesIn as Record<string, unknown>).map(([name, service]) => {
-      if (typeof service !== "object" || service === null) return [name, service];
-      const svc = service as Record<string, unknown>;
-      const endpoints = Array.isArray(svc.endpoints)
-        ? svc.endpoints.map((item) => {
-            if (typeof item !== "object" || item === null || !("kind" in item)) return item;
-            const { kind, ...rest } = item as Record<string, unknown>;
-            return { ...rest, _tag: kind };
-          })
-        : svc.endpoints;
-      return [name, { ...svc, endpoints }];
-    }),
-  );
-  const routes = Array.isArray(record.routes)
-    ? record.routes.map((route) => {
-        if (typeof route !== "object" || route === null) return route;
-        const r = route as Record<string, unknown>;
-        if (!Array.isArray(r.filters)) return route;
-        return {
-          ...r,
-          filters: r.filters.map((item) => {
-            if (typeof item !== "object" || item === null || !("kind" in item)) return item;
-            const { kind, ...rest } = item as Record<string, unknown>;
-            return { ...rest, type: kind };
-          }),
-        };
-      })
-    : record.routes;
-  return { ...record, services, routes };
-};
+const asPreKindWire = (wire: typeof AppPlan.Encoded) => ({
+  ...wire,
+  services: Object.fromEntries(
+    Object.entries(wire.services).map(([name, service]) => [
+      name,
+      { ...service, endpoints: service.endpoints.map(({ kind, ...rest }) => ({ ...rest, _tag: kind })) },
+    ]),
+  ),
+  routes: wire.routes.map((route) =>
+    route.filters === undefined
+      ? route
+      : { ...route, filters: route.filters.map(({ kind, ...rest }) => ({ ...rest, type: kind })) },
+  ),
+});
 
 test("scratch cache migration preserves the legacy app, storage, and raw volume mounts", () => {
-  const wire = asPreKindWire(Schema.encodeSync(AppPlan)(plan)) as Record<string, unknown>;
-  const services = wire.services as Record<string, Record<string, unknown>>;
+  const wire = asPreKindWire(Schema.encodeSync(AppPlan)(plan));
   const legacy = {
     ...wire,
     services: {
       [web.name]: {
-        ...services[web.name],
+        ...wire.services[web.name],
         appMount: {
           source: "/old",
           target: "/app",
@@ -91,13 +68,12 @@ test("scratch cache migration preserves the legacy app, storage, and raw volume 
 });
 
 test("scratch cache migration fails closed for an ambiguous legacy target", () => {
-  const wire = asPreKindWire(Schema.encodeSync(AppPlan)(plan)) as Record<string, unknown>;
-  const services = wire.services as Record<string, Record<string, unknown>>;
+  const wire = asPreKindWire(Schema.encodeSync(AppPlan)(plan));
   const legacy = {
     ...wire,
     services: {
       [web.name]: {
-        ...services[web.name],
+        ...wire.services[web.name],
         mounts: [],
         storage: [
           { store: "first", target: "/data", readOnly: false },

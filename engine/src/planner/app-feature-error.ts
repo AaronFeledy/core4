@@ -1,7 +1,8 @@
 import { taggedErrorJson } from "@lando/sdk/command-result";
-import { LandofileValidationError, ServiceFeatureError } from "@lando/sdk/errors";
+import { LandofileValidationError } from "@lando/sdk/errors";
 import { validationIssue } from "@lando/sdk/schema";
 import { Schema } from "effect";
+import { endpointDeclarationValidationError } from "../services/endpoint-declaration.ts";
 
 const TaggedAppFeatureFailure = Schema.Struct({
   _tag: Schema.NonEmptyString,
@@ -11,15 +12,8 @@ const TaggedAppFeatureFailure = Schema.Struct({
 
 export const appFeatureError = (appRoot: string, cause: unknown): LandofileValidationError => {
   if (cause instanceof LandofileValidationError) return cause;
-  if (cause instanceof ServiceFeatureError && cause.endpointDeclaration !== undefined) {
-    return new LandofileValidationError({
-      message: cause.message,
-      remediation: cause.remediation,
-      file: `${appRoot}/.lando.yml`,
-      cause,
-      issues: cause.issues ?? [],
-    });
-  }
+  const declaration = endpointDeclarationValidationError(appRoot, cause);
+  if (declaration !== undefined) return declaration;
   if (cause instanceof Error && Schema.is(TaggedAppFeatureFailure)(cause)) {
     const diagnostic = taggedErrorJson(cause);
     const context: Record<string, string> = { _tag: diagnostic._tag };

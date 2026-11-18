@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
-import { migrateAppliedPlan, migrateAppliedPlansRecord } from "@lando/container-runtime/applied-state";
+import { migrateAppliedPlan } from "@lando/container-runtime/applied-state";
 import { AppPlan, ServiceName, planAppIdentity } from "@lando/sdk/schema";
 import { Schema } from "effect";
+import { migrateAppliedPlansRecordWithCoordinate } from "../src/applied-state-migrate.ts";
 import { plan, service } from "./fixtures/environment-values.ts";
 
 const encoded = Schema.encodeSync(AppPlan)(plan);
@@ -58,7 +59,7 @@ test.each([
   const before = JSON.stringify(invalid);
 
   expect(migrateAppliedPlan(invalid, 3)).toBeNull();
-  expect(migrateAppliedPlansRecord({ valid: legacy, invalid }, 3)).toBeNull();
+  expect(migrateAppliedPlansRecordWithCoordinate({ valid: legacy, invalid }, 3)).toBeTypeOf("string");
   expect(JSON.stringify(invalid)).toBe(before);
 });
 
@@ -79,7 +80,7 @@ test("carries v4 plans forward unchanged", () => {
 
   if (result === null) throw new Error("v4 plan did not migrate");
   expect(Schema.encodeSync(AppPlan)(result)).toEqual(encoded);
-  expect(migrateAppliedPlansRecord({ [encoded.id]: encoded }, 4)).not.toBeNull();
+  expect(migrateAppliedPlansRecordWithCoordinate({ [encoded.id]: encoded }, 4)).not.toBeTypeOf("string");
 });
 
 test("carries v5 plans forward unchanged", () => {
@@ -87,7 +88,7 @@ test("carries v5 plans forward unchanged", () => {
 
   if (result === null) throw new Error("v5 plan did not migrate");
   expect(Schema.encodeSync(AppPlan)(result)).toEqual(encoded);
-  expect(migrateAppliedPlansRecord({ [encoded.id]: encoded }, 5)).not.toBeNull();
+  expect(migrateAppliedPlansRecordWithCoordinate({ [encoded.id]: encoded }, 5)).not.toBeTypeOf("string");
 });
 
 test("refuses a v4 service that pairs a SQLite file with a database connection", () => {
@@ -107,5 +108,5 @@ test("refuses a v4 service that pairs a SQLite file with a database connection",
   };
 
   expect(migrateAppliedPlan(contradictory, 4)).toBeNull();
-  expect(migrateAppliedPlansRecord({ valid: encoded, contradictory }, 4)).toBeNull();
+  expect(migrateAppliedPlansRecordWithCoordinate({ valid: encoded, contradictory }, 4)).toBeTypeOf("string");
 });

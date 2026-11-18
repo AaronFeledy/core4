@@ -1,3 +1,4 @@
+import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import { canonicalJson } from "@lando/sdk/digest";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
@@ -135,5 +136,3 @@ export const endpointValidationError = (
     ),
   });
 };
-
-import type { NormalizedRoute } from "@lando/landofile/route-normalize";

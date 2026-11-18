@@ -1,5 +1,5 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { ServiceFeatureError } from "@lando/sdk/errors";
+import { LandofileValidationError, ServiceFeatureError } from "@lando/sdk/errors";
 import { isPlainRecord } from "@lando/sdk/landofile";
 import {
   EndpointDeclaration,
@@ -44,12 +44,12 @@ const declarationError = (
   },
 ) => {
   const paths = validationIssuesFromSchemaIssue(error.issue).map(({ path }) => path);
-  const [entry, ...rest] =
-    paths.find((path) => path.some((part) => typeof part === "number")) ?? paths[0] ?? [];
+  const path =
+    paths.find((candidate) => candidate.some((part) => typeof part === "number")) ?? paths[0] ?? [];
+  const [entry] = path;
   const service =
     context.service ?? (typeof entry === "string" && context.selected?.includes(entry) ? entry : undefined);
-  const [index, ...tail] =
-    context.selected === undefined ? (entry === undefined ? [] : [entry, ...rest]) : rest;
+  const [index, ...tail] = context.selected === undefined ? path : path.slice(1);
   const fieldPath = tail.map((part) =>
     typeof part === "number" || fields.has(part) ? part : "<unknown field>",
   );
@@ -82,3 +82,15 @@ export const decodeAppEndpointDeclarations = (
   raw: unknown,
   context: { readonly feature: string; readonly pluginId: string; readonly selected: readonly string[] },
 ) => decodeMap(raw, strict).pipe(mapFailures((error) => declarationError(error, context)));
+
+/** Invalid plugin output is a plugin finding, not an authored service or app-feature field. */
+export const endpointDeclarationValidationError = (appRoot: string, cause: unknown) =>
+  cause instanceof ServiceFeatureError && cause.endpointDeclaration !== undefined
+    ? new LandofileValidationError({
+        message: cause.message,
+        remediation: cause.remediation,
+        file: `${appRoot}/.lando.yml`,
+        cause,
+        issues: cause.issues ?? [],
+      })
+    : undefined;

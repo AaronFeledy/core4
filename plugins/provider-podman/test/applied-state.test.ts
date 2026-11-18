@@ -22,9 +22,10 @@ test("podman wires v4 aggregate state to the all-or-nothing migration", async ()
     version: APPLIED_STATE_VERSION,
     key: "applied-plans.json",
   });
-  expect(APPLIED_STATE_VERSION).toBe(8);
-  // Strict throw adaptation: unconvertible historical payloads throw instead of returning null.
+  // Unconvertible historical payloads throw.
   expect(typeof opens[0]?.migrate).toBe("function");
   const migrate = opens[0]?.migrate as (raw: unknown, version: number) => unknown;
-  expect(() => migrate({ not: "a plan" }, 1)).toThrow(/Cannot read applied state v1 as v8/);
+  expect(() => migrate({ not: "a plan" }, 1)).toThrow(
+    `Cannot read applied state v1 as v${APPLIED_STATE_VERSION}`,
+  );
 });

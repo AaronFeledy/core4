@@ -1,5 +1,5 @@
 import { isLegacyTagged, mergeLandofiles, parseRouteHostname } from "@lando/sdk/landofile";
-import { EndpointInput, type RouteObjectInput } from "@lando/sdk/schema";
+import { EndpointInput, type RouteFilter, type RouteObjectInput } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 import { resolveCatalogType } from "./catalog.ts";
 import type { Lando3Path, Lando3TranslatorPorts } from "./contract.ts";
@@ -8,7 +8,6 @@ import { type Report, lowerText } from "./lowering-report.ts";
 
 const expression = (text: string) => text.includes("{{") || text.includes("${");
 type RouteWire = typeof RouteObjectInput.Encoded;
-type FilterWire = NonNullable<RouteWire["filters"]>[number];
 
 const parseRoute = (value: unknown): RouteWire | undefined => {
   if (isLegacyTagged(value)) return undefined;
@@ -51,7 +50,7 @@ interface RouteGroup {
   readonly middlewares: Map<string | symbol, Middleware>;
 }
 
-const lowerMiddleware = ({ value, path }: Middleware, report: Report): FilterWire | undefined => {
+const lowerMiddleware = ({ value, path }: Middleware, report: Report): RouteFilter | undefined => {
   const entry = hasPlainObjectPrototype(value) && !isLegacyTagged(value) ? value : {};
   const { name, key, value: raw } = entry;
   const match =
@@ -83,8 +82,8 @@ const lowerMiddleware = ({ value, path }: Middleware, report: Report): FilterWir
 };
 
 const emitRoutes = (group: RouteGroup, report: Report): readonly RouteWire[] => {
-  const plain: FilterWire[] = [...(group.route.filters ?? [])];
-  const secured: FilterWire[] = [];
+  const plain: RouteFilter[] = [...(group.route.filters ?? [])];
+  const secured: RouteFilter[] = [];
   for (const middleware of group.middlewares.values()) {
     const filter = lowerMiddleware(middleware, report);
     if (filter !== undefined) (filter.name?.endsWith("-secured") ? secured : plain).push(filter);
@@ -227,9 +226,8 @@ const servedHttpPorts = (
 /**
  * Lando 3 sent a route to any container port and spoke HTTP to it, defaulting
  * to port 80. Lando 4 binds routes with numeric selectors; when a known service
- * has no served HTTP(S) listener, portless routes get `endpoint: 80`. Explicit
- * numeric ports stay on the route. Native route derivation owns listeners — this
- * never writes a service `endpoints:` list.
+ * has no served HTTP(S) listener, portless routes get `endpoint: 80`. Authored
+ * selectors stay on the route.
  */
 export const bindPortlessRouteDefaults = (
   fragment: V4Wire,
@@ -258,13 +256,11 @@ export const bindPortlessRouteDefaults = (
     if (served.size > 0) continue;
     let defaulted = false;
     routes.forEach((entry, index) => {
-      if (!hasPlainObjectPrototype(entry)) return;
-      // Explicit numeric ports (including secured split halves) stay unchanged.
-      if (entry.endpoint !== undefined) return;
+      if (!hasPlainObjectPrototype(entry) || entry.endpoint !== undefined) return;
       routes[index] = { ...entry, endpoint: LANDO3_DEFAULT_ROUTE_PORT };
       defaulted = true;
     });
-    // One diagnostic at the service proxy entry — split scheme halves share that owner
+    // One diagnostic at the service proxy entry: split scheme halves share that owner,
     // and synthetic indices after a secure-filter split have no authored span.
     if (defaulted)
       report(

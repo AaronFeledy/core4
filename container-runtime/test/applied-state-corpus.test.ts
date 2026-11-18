@@ -70,6 +70,33 @@ const expectMigratedNetworkVocabulary = (plan: {
   expect(plan.extensions?.opaque).toEqual({ _tag: "internal", type: "redirect" });
 };
 
+type PersistedPlan = {
+  readonly id: string;
+  readonly root: string;
+  readonly services: Readonly<
+    Record<string, { readonly endpoints: readonly { kind?: string; _tag?: string }[] }>
+  >;
+  readonly routes: readonly { readonly filters?: readonly { kind?: string; type?: string }[] }[];
+  readonly extensions?: { readonly opaque?: unknown };
+};
+
+const expectPersistedKindKeys = (plan: PersistedPlan) => {
+  const endpoints = plan.services.web?.endpoints ?? [];
+  expect(endpoints.map((endpoint) => endpoint.kind)).toEqual(["internal", "published", "internal"]);
+  expect(endpoints.every((endpoint) => endpoint._tag === undefined)).toBe(true);
+  const filters = plan.routes[0]?.filters ?? [];
+  expect(filters.map((filter) => filter.kind)).toEqual([
+    "stripPrefix",
+    "addPrefix",
+    "requestHeader",
+    "responseHeader",
+    "redirect",
+  ]);
+  expect(filters.every((filter) => filter.type === undefined)).toBe(true);
+  // Opaque extension payload keeps its own historical keys after an ordinary rewrite.
+  expect(plan.extensions?.opaque).toEqual({ _tag: "internal", type: "redirect" });
+};
+
 // The historical plugin contributed both aliases via ServiceFeatureContext.addHostAlias.
 // Main's authored hostnames validator rejected these spellings, but its plan schema did not.
 for (const file of new Bun.Glob("**/*.json").scanSync(v3Fixtures)) {
@@ -188,42 +215,15 @@ for (const fixture of v7Cases) {
 
       const envelope = JSON.parse(await readFile(target, "utf8")) as {
         version: number;
-        data: Record<string, unknown> | { endpoints?: unknown; routes?: unknown };
+        data: Record<string, PersistedPlan> | PersistedPlan;
       };
       expect(envelope.version).toBe(APPLIED_STATE_VERSION);
-      expect(APPLIED_STATE_VERSION).toBe(8);
       const plan =
         fixture.layout === "record"
-          ? (
-              envelope.data as Record<
-                string,
-                {
-                  services: Record<string, { endpoints: { kind?: string; _tag?: string }[] }>;
-                  routes: { filters?: { kind?: string; type?: string }[] }[];
-                  extensions?: { opaque?: unknown };
-                }
-              >
-            )[fixture.appId]
-          : (envelope.data as {
-              services: Record<string, { endpoints: { kind?: string; _tag?: string }[] }>;
-              routes: { filters?: { kind?: string; type?: string }[] }[];
-              extensions?: { opaque?: unknown };
-            });
+          ? (envelope.data as Record<string, PersistedPlan>)[fixture.appId]
+          : (envelope.data as PersistedPlan);
       if (plan === undefined) throw new Error("missing persisted plan");
-      const endpoints = plan.services.web?.endpoints ?? [];
-      expect(endpoints.map((endpoint) => endpoint.kind)).toEqual(["internal", "published", "internal"]);
-      expect(endpoints.every((endpoint) => endpoint._tag === undefined)).toBe(true);
-      const filters = plan.routes[0]?.filters ?? [];
-      expect(filters.map((filter) => filter.kind)).toEqual([
-        "stripPrefix",
-        "addPrefix",
-        "requestHeader",
-        "responseHeader",
-        "redirect",
-      ]);
-      expect(filters.every((filter) => filter.type === undefined)).toBe(true);
-      // Opaque extension payload keeps its own historical keys after an ordinary rewrite.
-      expect(plan.extensions?.opaque).toEqual({ _tag: "internal", type: "redirect" });
+      expectPersistedKindKeys(plan);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -243,34 +243,15 @@ test("podman record remove migrates survivors into one v8 map", async () => {
 
     const envelope = JSON.parse(await readFile(target, "utf8")) as {
       version: number;
-      data: Record<
-        string,
-        {
-          id: string;
-          root: string;
-          services: Record<string, { endpoints: { kind?: string; _tag?: string }[] }>;
-          routes: { filters?: { kind?: string; type?: string }[] }[];
-          extensions?: { opaque?: unknown };
-        }
-      >;
+      data: Record<string, PersistedPlan>;
     };
-    expect(envelope.version).toBe(8);
+    expect(envelope.version).toBe(APPLIED_STATE_VERSION);
     expect(Object.keys(envelope.data)).toEqual(["survivor"]);
-    expect(envelope.data.survivor?.id).toBe("survivor");
-    expect(envelope.data.survivor?.root).toBe("/srv/apps/survivor");
     const survivor = envelope.data.survivor;
     if (survivor === undefined) throw new Error("Missing survivor in rewritten map");
-    const endpoints = survivor.services.web?.endpoints ?? [];
-    expect(endpoints.map((endpoint) => endpoint.kind)).toEqual(["internal", "published", "internal"]);
-    expect(endpoints.every((endpoint) => endpoint._tag === undefined)).toBe(true);
-    expect(survivor.routes[0]?.filters?.map((filter) => filter.kind)).toEqual([
-      "stripPrefix",
-      "addPrefix",
-      "requestHeader",
-      "responseHeader",
-      "redirect",
-    ]);
-    expect(survivor.extensions?.opaque).toEqual({ _tag: "internal", type: "redirect" });
+    expect(survivor.id).toBe("survivor");
+    expect(survivor.root).toBe("/srv/apps/survivor");
+    expectPersistedKindKeys(survivor);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

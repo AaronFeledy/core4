@@ -53,7 +53,7 @@ export const makeScratchReaper = Effect.gen(function* () {
       const entry = yield* registry.get(input.id);
       const reason = input.reason ?? "acquire-failure";
       if (reason === "acquire-failure" && entry === undefined) return;
-      // Desired cache (v2) may miss after a frame bump; recover the matching applied plan
+      // The desired cache may miss after a frame bump; recover the matching applied plan
       // before planless orphan cleanup so snapshots and provider teardown still own the app.
       const lookupRoot = AbsolutePath.make(entry?.rootPath ?? join(String(input.instanceRoot), "root"));
       const plan =
