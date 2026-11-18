@@ -68,7 +68,8 @@ instead. `--answer=php=8.6` uses the PHP 8.6 release-candidate image; Xdebug
 isn't available there yet.
 
 Nginx answers add an `edge` service in front of `appserver` (`via: fpm`) and
-set `SIMPLETEST_BASE_URL` to `http://edge`. Both webserver choices set
+set `SIMPLETEST_BASE_URL` to `http://edge`. The `edge` service mounts the same
+`/app` site volume read-only, so it serves the files the scaffold installs. Both webserver choices set
 `uploadDirs: [sites/*/files]` on the service serving PHP.
 
 ## Run PHPUnit
@@ -103,6 +104,8 @@ Composer scaffold and project-message packages if present. It also lets
 Composer update Drush. After Composer succeeds, the command saves the constraint
 as `recipe.options.drupal` in your `.lando.yml`. Check that Composer reports a
 10.x version. This changes packages, not the database schema of an installed site.
+If an earlier scaffold didn't finish, `core-version` changes nothing and asks you
+to rerun `lando drupal-contrib-scaffold` first.
 
 ## Lint PHP
 
@@ -197,7 +200,7 @@ service, and tooling. They do not download Drupal:
     </Step>
   </Scenario>
 
-  <Scenario id="extension-reader-path" layer="e2e" render={false} reason="Exercise the workflow from a module checkout through the core version change">
+  <Scenario id="extension-reader-path" layer="e2e" tags={["@smoke"]} render={false} reason="Exercise the workflow from a module checkout through the core version change">
     <Step name="init">
       <UseFixture name="example-module" />
       <Run command="lando init . --recipe drupal-contrib --name=contrib-reader-path --yes --answer=project=example" />
@@ -211,7 +214,13 @@ service, and tooling. They do not download Drupal:
     <Step name="test-and-lint">
       <Verify command="lando phpunit --filter ExampleUnitTest web/modules/custom/example/tests/src/Unit" expect={{ stdout: { regex: "(?:OK \\(1 test|Tests: 1, Assertions: 1)" } }} />
       <Verify command="lando phpunit web/modules/custom/example/tests/src/Kernel" expect={{ stdout: { regex: "(?:OK \\(1 test|Tests: 1, Assertions: 1)" } }} />
+      <Verify command="lando phpunit web/modules/custom/example/tests/src/FunctionalJavascript" expect={{ stdout: { regex: "OK \\(1 test" } }} />
       <Verify command="lando phpcs --standard=Drupal,DrupalPractice web/modules/custom/example" />
+      <Verify command="lando phpstan analyse --no-progress web/modules/custom/example" />
+    </Step>
+    <Step name="install-site">
+      <Run command="lando drush site:install standard --db-url=mysql://lando:lando@database/contrib-reader-path --site-name=Example --account-name=admin --account-mail=admin@example.com -y" />
+      <Verify command="lando drush status --field=bootstrap" expect={{ stdout: { regex: "Successful" } }} />
     </Step>
     <Step name="change-core-version">
       <Run command="lando core-version '^10'" />
