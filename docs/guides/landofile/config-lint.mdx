@@ -91,14 +91,16 @@ with offline provider capabilities, final planning applies those features and bu
 the same default routes start would, still without issuing certificates or reading
 or writing a plan cache. An explicit `endpoints:` list replaces type and app-feature
 declarations and synthesis from `ports:` and `expose:`; it does not suppress numeric
-route declarations. `endpoints: []` clears those contributions and still accepts
-implied listeners from valid numeric routes afterward. With multiple HTTP listeners,
+route declarations. `endpoints: []` clears those contributions. With multiple HTTP listeners,
 select one by name or port in the route, or mark one listener `primary: true`. A
 primary TCP listener does not hide the service's only HTTP listener.
 
-A TCP or UDP listener already declared at the selected port is a protocol conflict
-at the route entry: change the route to the real HTTP(S) port, or change the
-declaration to `http:N` or `https:N` if that is what runs. A missing named or
+A numeric route can still use an existing HTTP(S) listener on the same port as
+an independent UDP listener. Without an HTTP(S) listener, known TCP or UDP at the
+selected port causes a protocol conflict, even if `endpoints: []` cleared a listener
+from the service type or a feature. Change the route to the actual HTTP(S) port,
+or declare `http:N` or `https:N` if the backend speaks that protocol. A Compose UDP
+publication alone does not block an implied HTTP listener. A missing named or
 unselected listener, an unmatched alias, or ambiguous selection is an indexed
 `landofile.route` finding. Start and cache refresh reject the same entries. Lint
 also rejects a top-level `proxy:` route whose target service is not declared.

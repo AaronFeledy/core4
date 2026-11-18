@@ -154,12 +154,15 @@ Omit the key to keep defaults.
 This does not change what the daemon listens on or disable its healthcheck.
 Keep endpoint ports aligned with the daemon's configuration. A string selector, an
 omitted selector, and a generated default route never declare a listener. A numeric
-selector never invents a host bind. If the service already declares `tcp` or `udp` at
-that port, lint reports a protocol conflict at the route entry rather than changing
-the protocol; write `http:N` or `https:N` only when that is what runs. An HTTPS backend
-must be declared as `https` on the selected port; the route's public scheme does not
-upgrade an implied listener. Normal Landofile layer merging still happens first,
-including merging endpoint entries by exact name when every entry on both sides is named.
+selector never invents a host bind. An existing HTTP(S) listener still works beside
+an independent UDP listener on the same port. Without HTTP(S), a known TCP or UDP
+listener blocks the numeric route, even if `endpoints: []` cleared a listener from the
+service type or a feature. Declare `http:N` or `https:N` if the backend speaks that
+protocol. A Compose UDP publication alone does not block an implied HTTP listener.
+An HTTPS backend must be declared as `https` on the selected
+port; the route's public scheme does not upgrade an implied listener. Normal Landofile
+layer merging still happens first, including merging endpoint entries by exact name when
+every entry on both sides is named.
 
 A route that names no `endpoint` targets the HTTP or HTTPS listener marked
 `primary: true`. If no HTTP(S) listener is marked, it uses the service's only
