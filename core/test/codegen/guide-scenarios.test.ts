@@ -193,9 +193,10 @@ describe("build-guide-scenarios MDX walker", () => {
       expect(firstContent).toContain(
         'context.vars.set("appName", { value: "version", display: "Node/Postgres" });',
       );
-      expect(firstContent).toContain(
-        'yield* Effect.addFinalizer(() => context.transcript.append({ kind: "cleanup", command: [], exit: 0 }));',
-      );
+      // The cleanup step's commands register up front and run on every exit;
+      // the authored position only records where its transcript belongs.
+      expect(firstContent).toMatch(/const cleanup1 = yield\* context\.deferCleanup\(\[[\s\S]*\], false\);/);
+      expect(firstContent).toContain("    cleanup1();");
       expect(firstContent).toContain('yield* context.fixtures.use("basic-app");');
       expect(firstContent).toContain('context.runCli(["version"], {');
       expect(firstContent).toContain("lastEvents = lastRun.events;");
@@ -821,12 +822,8 @@ describe("build-guide-scenarios MDX walker", () => {
       const written = await buildGuideScenarioTests(root);
       expect(written).toEqual(["test/scenarios/generated/guides/hidden-cleanup-guide/seeded.test.ts"]);
       const generated = await Bun.file(join(root, written[0] ?? "")).text();
-      expect(generated).toContain(
-        'yield* Effect.addFinalizer(() => context.hidden(context.transcript.append({ kind: "cleanup", command: [], exit: 0 })));',
-      );
-      expect(generated).toContain(
-        'yield* Effect.addFinalizer(() => context.transcript.append({ kind: "cleanup", command: [], exit: 0 }));',
-      );
+      expect(generated).toMatch(/const cleanup0 = yield\* context\.deferCleanup\(\[[\s\S]*?\], true\);/);
+      expect(generated).toMatch(/const cleanup1 = yield\* context\.deferCleanup\(\[[\s\S]*?\], false\);/);
 
       const proc = Bun.spawnSync({
         cmd: [process.execPath, "test", join(root, written[0] ?? "")],
