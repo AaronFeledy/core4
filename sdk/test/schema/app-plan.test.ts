@@ -40,7 +40,7 @@ const servicePlanFixture: typeof ServicePlan.Encoded = {
   ],
   endpoints: [
     {
-      _tag: "internal",
+      kind: "internal",
       port: 3000,
       protocol: "http",
       name: "web",
@@ -200,8 +200,8 @@ describe("ServicePlan", () => {
     expect(decoded.endpoints).toHaveLength(1);
     const endpoint = decoded.endpoints[0];
     if (endpoint === undefined) throw new Error("endpoint missing");
-    expect(endpoint._tag).toBe("internal");
-    if (endpoint._tag !== "internal" || endpoint.protocol === "unix") {
+    expect(endpoint.kind).toBe("internal");
+    if (endpoint.kind !== "internal" || endpoint.protocol === "unix") {
       throw new Error("expected an internal TCP endpoint");
     }
     expect(endpoint.port).toBe(3000);
@@ -239,7 +239,7 @@ describe("ServicePlan", () => {
   test("rejects an unknown endpoint protocol literal", () => {
     const result = Schema.decodeUnknownResult(ServicePlan)({
       ...servicePlanFixture,
-      endpoints: [{ _tag: "internal", port: 3000, protocol: "websocket" }],
+      endpoints: [{ kind: "internal", port: 3000, protocol: "websocket" }],
     });
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {

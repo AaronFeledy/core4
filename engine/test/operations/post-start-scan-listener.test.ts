@@ -9,7 +9,7 @@ import { plan, web } from "./start-progress-topology-support.ts";
 
 const service: ServicePlan = {
   ...web,
-  endpoints: [{ _tag: "internal", protocol: "http", port: 3000, primary: true }],
+  endpoints: [{ kind: "internal", protocol: "http", port: 3000, primary: true }],
   listenerAuthority: { owner: "application", daemon: "node", port: 3000, variables: ["PORT"] },
 };
 const plannedApp = { ...plan, services: { [web.name]: service } };

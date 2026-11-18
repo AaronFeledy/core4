@@ -211,7 +211,7 @@ describe("meilisearch service type — scenario: index create + document post + 
     });
     expect(search.endpoints).toEqual([
       {
-        _tag: "internal",
+        kind: "internal",
         port: 7700,
         protocol: "http",
         name: "search",

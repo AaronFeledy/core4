@@ -73,7 +73,7 @@ const curated: ReadonlyArray<{ readonly id: string; readonly input: unknown }> =
         web: {
           type: "compose",
           image: "nginx:alpine",
-          endpoints: [{ _tag: "internal", protocol: "http", port: 80 }],
+          endpoints: [{ kind: "internal", protocol: "http", port: 80 }],
         },
       },
     },
@@ -97,7 +97,7 @@ const curated: ReadonlyArray<{ readonly id: string; readonly input: unknown }> =
       services: {
         web: {
           type: "nginx",
-          routes: [{ hostname: "app.test", filters: [{ type: "stripPrefix", prefix: "/api" }] }],
+          routes: [{ hostname: "app.test", filters: [{ kind: "stripPrefix", prefix: "/api" }] }],
         },
       },
     },

@@ -29,7 +29,7 @@ test.each([
   });
   // Then: all consumers describe the same listener without changing Apache's default shape.
   expect(plan.endpoints).toEqual([
-    { _tag: "internal", name: "web", primary: true, port: input.effective, protocol: input.protocol },
+    { kind: "internal", name: "web", primary: true, port: input.effective, protocol: input.protocol },
   ]);
   expect(plan.healthcheck).toEqual(tcpProbe(input.effective, 10));
   switch (input.via) {

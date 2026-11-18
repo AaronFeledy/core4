@@ -62,7 +62,7 @@ const service: ServicePlan = {
       includes: [],
     },
   ],
-  endpoints: [{ _tag: "internal", port: 31080, protocol: "http", name: "http" }],
+  endpoints: [{ kind: "internal", port: 31080, protocol: "http", name: "http" }],
   routes: [],
   dependsOn: [],
   hostAliases: [],

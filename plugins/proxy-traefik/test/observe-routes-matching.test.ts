@@ -78,28 +78,28 @@ test.each([
 
 const middlewareCases = [
   {
-    filter: { type: "stripPrefix", prefix: "/api" },
+    filter: { kind: "stripPrefix", prefix: "/api" },
     config: { stripPrefix: { prefixes: ["/api"], forceSlash: true } },
   },
-  { filter: { type: "addPrefix", prefix: "/v2" }, config: { addPrefix: { prefix: "/v2" } } },
+  { filter: { kind: "addPrefix", prefix: "/v2" }, config: { addPrefix: { prefix: "/v2" } } },
   {
-    filter: { type: "requestHeader", header: "X-App", value: "yes" },
+    filter: { kind: "requestHeader", header: "X-App", value: "yes" },
     config: { headers: { customRequestHeaders: { "X-App": "yes" } } },
   },
   {
-    filter: { type: "responseHeader", header: "X-App", value: "yes" },
+    filter: { kind: "responseHeader", header: "X-App", value: "yes" },
     config: { headers: { customResponseHeaders: { "X-App": "yes" } } },
   },
   {
-    filter: { type: "redirect", to: "/new" },
+    filter: { kind: "redirect", to: "/new" },
     config: { redirectRegex: { regex: "^.*$", replacement: "/new" } },
   },
   {
-    filter: { type: "redirect", to: "/new", permanent: false },
+    filter: { kind: "redirect", to: "/new", permanent: false },
     config: { redirectRegex: { regex: "^.*$", replacement: "/new" } },
   },
   {
-    filter: { type: "redirect", to: "/new", permanent: true },
+    filter: { kind: "redirect", to: "/new", permanent: true },
     config: { redirectRegex: { regex: "^.*$", replacement: "/new", permanent: true } },
   },
 ] satisfies ReadonlyArray<{
@@ -111,7 +111,7 @@ test.each(middlewareCases)(
   "matches effective middleware with provider defaults (%j)",
   async ({ filter, config }) => {
     const graph = liveGraph();
-    const middleware = `${demoNs7}-f0-${filter.type}`;
+    const middleware = `${demoNs7}-f0-${filter.kind}`;
     const fixture = makeObserveFixture({
       ...graph,
       routers: { [demoRouterHttp]: { ...graph.routers[demoRouterHttp], middlewares: [middleware] } },
@@ -145,7 +145,7 @@ test.each([
   });
   const evidence = await Effect.runPromise(
     fixture.service.observeRoutes(app, [
-      { ...route, scheme: "http", filters: [{ type: "addPrefix", prefix: "/v2" }] },
+      { ...route, scheme: "http", filters: [{ kind: "addPrefix", prefix: "/v2" }] },
     ]),
   );
   expect(evidence.observation).toEqual({ status: "missing" });

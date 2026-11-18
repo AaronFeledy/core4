@@ -117,7 +117,7 @@ const goServicePlan = (appRoot: AbsolutePath): ServicePlan => ({
   ],
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: GO_PORT,
       protocol: "http",
       name: "http",

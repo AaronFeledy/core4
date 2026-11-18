@@ -113,7 +113,7 @@ const servicePlan = (name: string): ServicePlan => ({
     name === "web"
       ? [
           {
-            _tag: "published",
+            kind: "published",
             port: 3000,
             protocol: "http",
             name: "http",

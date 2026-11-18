@@ -8,8 +8,8 @@ const plans = (values: readonly unknown[]) =>
 test("groups primary publications as one logical listener and preserves aliases", () => {
   // Given
   const endpoints = plans([
-    { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
-    { _tag: "published", protocol: "http", port: 80, name: "web", primary: true, publication: {} },
+    { kind: "internal", protocol: "http", port: 80, name: "web", primary: true },
+    { kind: "published", protocol: "http", port: 80, name: "web", primary: true, publication: {} },
   ]);
   // When / Then
   expect(sdk.endpointInvariantIssues(endpoints)).toEqual([]);
@@ -23,8 +23,8 @@ test("groups primary publications as one logical listener and preserves aliases"
 test("selects the unique HTTP secondary instead of a TCP primary", () => {
   // Given
   const endpoints = plans([
-    { _tag: "internal", protocol: "tcp", port: 1025, primary: true },
-    { _tag: "internal", protocol: "http", port: 8025 },
+    { kind: "internal", protocol: "tcp", port: 1025, primary: true },
+    { kind: "internal", protocol: "http", port: 8025 },
   ]);
   // When / Then
   expect(sdk.selectHttpEndpoint(endpoints)).toMatchObject({ status: "selected", endpoint: { port: 8025 } });
@@ -33,8 +33,8 @@ test("selects the unique HTTP secondary instead of a TCP primary", () => {
 test("reports ambiguity without inventing primary order in old plans", () => {
   // Given
   const endpoints = plans([
-    { _tag: "internal", protocol: "http", port: 80 },
-    { _tag: "internal", protocol: "https", port: 443 },
+    { kind: "internal", protocol: "http", port: 80 },
+    { kind: "internal", protocol: "https", port: 443 },
   ]);
   // When / Then
   expect(sdk.selectHttpEndpoint(endpoints).status).toBe("ambiguous");
@@ -47,10 +47,10 @@ test("reports ambiguity without inventing primary order in old plans", () => {
 test("detects alias collisions and conflicting protocols including Unix aliases", () => {
   // Given
   const endpoints = plans([
-    { _tag: "internal", protocol: "http", port: 80, name: "web" },
-    { _tag: "internal", protocol: "https", port: 80 },
-    { _tag: "internal", protocol: "http", port: 81, name: "web" },
-    { _tag: "internal", protocol: "unix", socketPath: "/run/web.sock", name: "web" },
+    { kind: "internal", protocol: "http", port: 80, name: "web" },
+    { kind: "internal", protocol: "https", port: 80 },
+    { kind: "internal", protocol: "http", port: 81, name: "web" },
+    { kind: "internal", protocol: "unix", socketPath: "/run/web.sock", name: "web" },
   ]);
   // When / Then
   expect(
@@ -73,24 +73,24 @@ test("keeps missing publication evidence distinct from observed empty bindings",
 
 test("preserves optional network roles on EndpointPlan and rejects false or Unix primary roles", () => {
   const decode = Schema.decodeUnknownSync(sdk.EndpointPlan, { onExcessProperty: "error" });
-  expect(decode({ _tag: "internal", protocol: "http", port: 80 })).toEqual({
-    _tag: "internal",
+  expect(decode({ kind: "internal", protocol: "http", port: 80 })).toEqual({
+    kind: "internal",
     protocol: "http",
     port: 80,
   });
   expect(
-    decode({ _tag: "internal", protocol: "http", port: 80, primary: true, appProtocol: "opaque" }),
+    decode({ kind: "internal", protocol: "http", port: 80, primary: true, appProtocol: "opaque" }),
   ).toMatchObject({ primary: true, appProtocol: "opaque" });
-  expect(() => decode({ _tag: "internal", protocol: "http", port: 80, primary: false })).toThrow();
+  expect(() => decode({ kind: "internal", protocol: "http", port: 80, primary: false })).toThrow();
   expect(() =>
-    decode({ _tag: "internal", protocol: "unix", socketPath: "/run/app.sock", primary: true }),
+    decode({ kind: "internal", protocol: "unix", socketPath: "/run/app.sock", primary: true }),
   ).toThrow();
 });
 
 test("preserves optional network roles on EndpointInput wire and rejects false or Unix primary roles", () => {
   const decode = Schema.decodeUnknownSync(sdk.EndpointInput, { onExcessProperty: "error" });
   expect(decode({ kind: "internal", protocol: "http", port: 80 })).toEqual({
-    _tag: "internal",
+    kind: "internal",
     protocol: "http",
     port: 80,
   });
@@ -175,7 +175,7 @@ test.each([1, 9, 10, 9999, 10000, 59999, 60000, 64999, 65000, 65499, 65500, 6552
   (port) => {
     const wire = `http:${port}`;
     const decoded = roundTripInput(wire);
-    expect(decoded).toEqual({ _tag: "internal", protocol: "http", port });
+    expect(decoded).toEqual({ kind: "internal", protocol: "http", port });
     expect(Schema.decodeUnknownSync(sdk.PortNumber)(port)).toBe(port);
   },
 );
@@ -210,16 +210,16 @@ test("rejects pending app listeners and pending URLs even with default excess st
 
 test("distinguishes primary identities across transports and resolves named aliases", () => {
   const endpoints = plans([
-    { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
+    { kind: "internal", protocol: "http", port: 80, name: "web", primary: true },
     {
-      _tag: "published",
+      kind: "published",
       protocol: "http",
       port: 80,
       name: "browser",
       primary: true,
       publication: { hostPort: 8080 },
     },
-    { _tag: "internal", protocol: "udp", port: 80, primary: true },
+    { kind: "internal", protocol: "udp", port: 80, primary: true },
   ]);
   expect(sdk.endpointInvariantIssues(endpoints)).toMatchObject([
     { kind: "multiple-primary", identities: ["80/tcp", "80/udp"] },
@@ -235,8 +235,8 @@ test("distinguishes primary identities across transports and resolves named alia
 
 test("does not promote opaque appProtocol metadata or Unix sockets into HTTP selection", () => {
   const endpoints = plans([
-    { _tag: "internal", protocol: "tcp", port: 8000, appProtocol: "http", primary: true },
-    { _tag: "internal", protocol: "unix", socketPath: "/run/http.sock" },
+    { kind: "internal", protocol: "tcp", port: 8000, appProtocol: "http", primary: true },
+    { kind: "internal", protocol: "unix", socketPath: "/run/http.sock" },
   ]);
   expect(sdk.selectHttpEndpoint(endpoints)).toEqual({ status: "none" });
   expect(sdk.groupLogicalEndpoints(endpoints)).toHaveLength(1);

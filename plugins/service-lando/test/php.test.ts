@@ -188,7 +188,7 @@ describe("php:8.2 ServiceType", () => {
     ).toEqual([]);
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 80, protocol: "http", name: "web", primary: true },
     ]);
 
     expect(plan.healthcheck).toEqual({
@@ -301,7 +301,7 @@ describe("php:8.2 ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/php:8.2-custom" });
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 8080, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck).toEqual(tcpProbe(8080, 10));
@@ -412,7 +412,7 @@ describe("php serving modes (via:)", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache-bookworm" });
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 80, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(plan.command?.[2]).toContain('LANDO_HOST_OS:-}" = win32');
@@ -609,7 +609,7 @@ describe("php serving modes (via:)", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-fpm-bookworm" });
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 9000, protocol: "tcp", name: "web", primary: true },
+      { kind: "internal", port: 9000, protocol: "tcp", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toEqual(tcpProbe(9000, 10));
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
@@ -665,7 +665,7 @@ describe("php serving modes (via:)", () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm", port: 9070 });
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 9070, protocol: "tcp", name: "web", primary: true },
+      { kind: "internal", port: 9070, protocol: "tcp", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toEqual(tcpProbe(9070, 10));
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);

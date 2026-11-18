@@ -3,22 +3,28 @@ import type { AppId, AppPlan } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { Effect } from "effect";
 
+export class AppliedStateMigrationError extends Error {}
+
+const migrationDetail = (error: StateStoreError) =>
+  error.cause instanceof AppliedStateMigrationError ? { detail: error.cause.message } : {};
+
 export type AppliedPlanRead =
   | { readonly status: "missing" }
   | { readonly status: "readable"; readonly plan: AppPlan }
-  | { readonly status: "unreadable"; readonly path: string };
+  | { readonly status: "unreadable"; readonly path: string; readonly detail?: string };
 
 export const unreadableAppliedStateError = (input: {
   readonly providerId: string;
   readonly path: string;
   readonly layout: "per-app" | "record";
+  readonly detail?: string;
   /** The app whose record is unreadable; the global app is cleaned up by its own command. */
   readonly appId?: string;
 }) =>
   new ProviderUnavailableError({
     providerId: input.providerId,
     operation: "applied-state.read",
-    message: `The applied provider state file "${input.path}" is unreadable; refusing to mutate runtime resources.${input.layout === "record" ? " This file contains state for several apps; no app in this record can be safely mutated." : ""}`,
+    message: `The applied provider state file "${input.path}" is unreadable; refusing to mutate runtime resources.${input.detail === undefined ? "" : ` ${input.detail}`}${input.layout === "record" ? " This file contains state for several apps; no app in this record can be safely mutated." : ""}`,
     remediation: `Restore "${input.path}" from backup; or, accepting that unflushed accelerated sync changes may be lost, move it aside and rerun ${input.appId === "global" ? "`lando global:destroy --yes`" : "`lando destroy`"}, which then cleans up by ownership labels.${input.layout === "record" ? " Moving this file aside affects every app in the record." : ""}`,
   });
 
@@ -32,7 +38,7 @@ const inspectBucket = <A>(bucket: StateBucket<A>) =>
   );
 
 export const inspectAppliedPlanBucket = (
-  open: Effect.Effect<StateBucket<AppPlan | null>, StateStoreError>,
+  open: Effect.Effect<StateBucket<AppPlan>, StateStoreError>,
   fallbackPath: string,
 ): Effect.Effect<AppliedPlanRead> =>
   open.pipe(
@@ -43,7 +49,13 @@ export const inspectAppliedPlanBucket = (
           if (value === null) return { status: "unreadable", path: bucket.path };
           return { status: "readable", plan: value };
         }),
-        Effect.catch(() => Effect.succeed<AppliedPlanRead>({ status: "unreadable", path: bucket.path })),
+        Effect.catch((error) =>
+          Effect.succeed<AppliedPlanRead>({
+            status: "unreadable",
+            path: bucket.path,
+            ...migrationDetail(error),
+          }),
+        ),
       ),
     ),
     Effect.catch((cause) =>
@@ -52,7 +64,7 @@ export const inspectAppliedPlanBucket = (
   );
 
 export const inspectAppliedPlansRecordBucket = (
-  open: Effect.Effect<StateBucket<Readonly<Record<AppId, AppPlan>> | null>, StateStoreError>,
+  open: Effect.Effect<StateBucket<Readonly<Record<AppId, AppPlan>>>, StateStoreError>,
   fallbackPath: string,
 ) =>
   open.pipe(
@@ -63,7 +75,9 @@ export const inspectAppliedPlansRecordBucket = (
             ? { status: "unreadable" as const, path: bucket.path }
             : { status: "readable" as const, plans: value },
         ),
-        Effect.catch(() => Effect.succeed({ status: "unreadable" as const, path: bucket.path })),
+        Effect.catch((error) =>
+          Effect.succeed({ status: "unreadable" as const, path: bucket.path, ...migrationDetail(error) }),
+        ),
       ),
     ),
     Effect.catch((cause) =>

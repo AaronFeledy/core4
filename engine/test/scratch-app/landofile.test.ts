@@ -20,7 +20,7 @@ services:
 `;
   const loaded = await Effect.runPromise(decodeScratchLandofile(join(root, ".lando.yml"), yaml, root));
   expect(loaded.document.services?.[ServiceName.make("web")]).toMatchObject({
-    endpoints: [{ _tag: "internal", protocol: "http", port: 80 }],
-    routes: [{ hostname: "scratch.test", filters: [{ type: "redirect", to: "https://elsewhere.test" }] }],
+    endpoints: [{ kind: "internal", protocol: "http", port: 80 }],
+    routes: [{ hostname: "scratch.test", filters: [{ kind: "redirect", to: "https://elsewhere.test" }] }],
   });
 });

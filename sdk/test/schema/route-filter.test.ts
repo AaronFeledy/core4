@@ -5,13 +5,13 @@ import { Result, Schema } from "effect";
 
 describe("route filters", () => {
   for (const filter of [
-    { type: "stripPrefix", name: "api", prefix: "/api" },
-    { type: "addPrefix", prefix: "/v1" },
-    { type: "requestHeader", name: "identity", header: "X-Request-ID", value: "request" },
-    { type: "responseHeader", header: "X-Frame-Options", value: "DENY" },
-    { type: "redirect", to: "/login", permanent: true },
+    { kind: "stripPrefix", name: "api", prefix: "/api" },
+    { kind: "addPrefix", prefix: "/v1" },
+    { kind: "requestHeader", name: "identity", header: "X-Request-ID", value: "request" },
+    { kind: "responseHeader", header: "X-Frame-Options", value: "DENY" },
+    { kind: "redirect", to: "/login", permanent: true },
   ] as const) {
-    it(`decodes plan filter ${filter.type} when its options are valid`, () => {
+    it(`decodes plan filter ${filter.kind} when its options are valid`, () => {
       // Given a provider-neutral plan filter.
       // When decoding the public plan contract.
       const result = Schema.decodeUnknownSync(Contracts.RouteFilter)(filter);
@@ -22,14 +22,14 @@ describe("route filters", () => {
 
   for (const filter of [
     { type: "rewritePath", to: "/new" },
-    { type: "stripPrefix", prefix: "api" },
-    { type: "addPrefix", prefix: "api" },
-    { type: "stripPrefix", prefix: "" },
-    { type: "addPrefix", prefix: "" },
-    { type: "requestHeader", header: "Bad Header", value: "x" },
-    { type: "responseHeader", header: "Bad Header", value: "x" },
-    { type: "requestHeader", name: "X-Header", value: "x" },
-    { type: "redirect", to: "" },
+    { kind: "stripPrefix", prefix: "api" },
+    { kind: "addPrefix", prefix: "api" },
+    { kind: "stripPrefix", prefix: "" },
+    { kind: "addPrefix", prefix: "" },
+    { kind: "requestHeader", header: "Bad Header", value: "x" },
+    { kind: "responseHeader", header: "Bad Header", value: "x" },
+    { kind: "requestHeader", name: "X-Header", value: "x" },
+    { kind: "redirect", to: "" },
   ]) {
     it(`rejects invalid plan filter ${JSON.stringify(filter)}`, () => {
       // Given invalid plan options.
@@ -43,7 +43,7 @@ describe("route filters", () => {
   it("exports exactly the supported filter type ids", () => {
     // Given the public discriminator schema.
     // When inspecting its literal values.
-    const types = Contracts.RouteFilterType.literals;
+    const types = Contracts.RouteFilterKind.literals;
     // Then only the five supported ids are available.
     expect(types).toEqual(["stripPrefix", "addPrefix", "requestHeader", "responseHeader", "redirect"]);
   });
@@ -58,12 +58,12 @@ describe("route input and plans", () => {
       // Given shorthand or object authoring with kind filters.
       // When decoding the public route input.
       const result = Schema.decodeUnknownSync(Contracts.RouteInput)(input);
-      // Then the authored form decodes; filters become plan type discriminators.
+      // Then the authored form decodes; filters keep the plan kind discriminator.
       if (typeof input === "string") expect(result).toEqual(input);
       else
         expect(result).toEqual({
           hostname: "app.lndo.site",
-          filters: [{ type: "addPrefix", prefix: "/v1" }],
+          filters: [{ kind: "addPrefix", prefix: "/v1" }],
         });
     });
   }
@@ -110,7 +110,7 @@ describe("route input and plans", () => {
     expect(Result.isFailure(result)).toBe(true);
   });
 
-  for (const options of [{}, { filters: [{ type: "stripPrefix", prefix: "/api" }] }] as const) {
+  for (const options of [{}, { filters: [{ kind: "stripPrefix", prefix: "/api" }] }] as const) {
     it(`accepts a route plan with optional filters ${JSON.stringify(options)}`, () => {
       // Given a complete backend with optional plan filters.
       const plan = {

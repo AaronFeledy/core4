@@ -210,7 +210,7 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
       ref: "docker.elastic.co/elasticsearch/elasticsearch:8.17.0",
     });
     expect(search.endpoints).toEqual([
-      { _tag: "internal", port: 9200, protocol: "tcp", name: "search", primary: true },
+      { kind: "internal", port: 9200, protocol: "tcp", name: "search", primary: true },
     ]);
     const volumes = search.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);

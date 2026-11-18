@@ -73,7 +73,7 @@ describe("@lando/proxy-traefik plugin exports", () => {
         appMount: false,
         command: TRAEFIK_DIAGNOSTICS_COMMAND,
         hostnames: ["traefik-diagnostics.global.internal"],
-        endpoints: [{ _tag: "internal", protocol: "http", port: 8080 }],
+        endpoints: [{ kind: "internal", protocol: "http", port: 8080 }],
       });
       expect(diagnostics.mounts).toEqual([]);
     } finally {

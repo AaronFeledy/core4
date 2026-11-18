@@ -1,18 +1,21 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { isPlainRecord } from "@lando/sdk/landofile";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, AppPlan, type AppPlan as AppPlanShape, type AppliedStateInventory } from "@lando/sdk/schema";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 import { Effect, Option, Schema } from "effect";
 
+import { visitAppliedNetworkVocabulary } from "./applied-network-vocabulary.ts";
 import { APPLIED_PLAN_NAMESPACE, listAppliedPlanInventory } from "./applied-state-inventory.ts";
 import {
   APPLIED_STATE_VERSION,
-  migrateAppliedPlan,
-  migrateAppliedPlansRecord,
+  migrateAppliedPlanWithCoordinate,
+  migrateAppliedPlansRecordWithCoordinate,
 } from "./applied-state-migrate.ts";
 import {
   type AppliedPlanRead,
+  AppliedStateMigrationError,
   inspectAppliedPlanBucket,
   inspectAppliedPlansRecordBucket,
   unreadableAppliedStateError,
@@ -27,7 +30,54 @@ export {
 export { type AppliedPlanRead, unreadableAppliedStateError } from "./applied-state-read.ts";
 
 const APPLIED_PLANS_KEY = "applied-plans.json";
-const AppliedPlans = Schema.Record(AppId, AppPlan);
+const currentPlanIssue = (raw: unknown) => {
+  const checked = visitAppliedNetworkVocabulary(raw, false);
+  return typeof checked === "string" ? checked : undefined;
+};
+const currentMapIssue = (raw: unknown) => {
+  if (!isPlainRecord(raw)) return "apps";
+  for (const [index, [id, plan]] of Object.entries(raw).entries()) {
+    if (!isPlainRecord(plan) || !Object.hasOwn(plan, "id") || plan.id !== id) return `apps[${index}].id`;
+    const issue = currentPlanIssue(plan);
+    if (issue !== undefined) return `apps[${index}].${issue}`;
+  }
+  return undefined;
+};
+
+const checkedAppliedPayload = (check: (raw: unknown) => string | undefined) =>
+  Schema.Unknown.check(
+    Schema.makeFilter((raw) => {
+      const issue = check(raw);
+      return issue === undefined || `Invalid applied state v${APPLIED_STATE_VERSION} at ${issue}.`;
+    }),
+  );
+
+const AppliedPlan = checkedAppliedPayload(currentPlanIssue).pipe(Schema.decodeTo(AppPlan));
+const AppliedPlans = checkedAppliedPayload(currentMapIssue).pipe(
+  Schema.decodeTo(Schema.Record(AppId, AppPlan)),
+);
+
+const requireMigrated = <A>(result: A | string, fromVersion: number): A => {
+  if (typeof result === "string") {
+    throw new AppliedStateMigrationError(
+      `Cannot read applied state v${fromVersion} as v${APPLIED_STATE_VERSION}: ${result}.`,
+    );
+  }
+  return result;
+};
+
+export const openAppliedPlansRecord = (stateStore: Pick<PluginStateStore, "open">) =>
+  stateStore.open({
+    key: APPLIED_PLANS_KEY,
+    schema: AppliedPlans,
+    version: APPLIED_STATE_VERSION,
+    codec: "json",
+    mode: 0o600,
+    lock: "advisory",
+    onCorrupt: "fail",
+    onVersionMismatch: (raw, version) =>
+      requireMigrated(migrateAppliedPlansRecordWithCoordinate(raw, version), version),
+  });
 
 /**
  * Applied state records what the provider realized. Landofile events are not
@@ -110,13 +160,14 @@ export function makeAppliedPlanStore(
       stateStore.open({
         namespace: APPLIED_PLAN_NAMESPACE,
         key: `${appId}.json`,
-        schema: AppPlan,
+        schema: AppliedPlan,
         version: APPLIED_STATE_VERSION,
         codec: "json",
         mode: 0o600,
         lock: "advisory",
         onCorrupt: "fail",
-        onVersionMismatch: migrateAppliedPlan,
+        onVersionMismatch: (raw, version) =>
+          requireMigrated(migrateAppliedPlanWithCoordinate(raw, version), version),
       });
     const inspectAppliedPlan = (stateStore: PluginStateStore, appId: AppId): Effect.Effect<AppliedPlanRead> =>
       inspectAppliedPlanBucket(open(stateStore, appId), `${APPLIED_PLAN_NAMESPACE}/${appId}.json`);
@@ -129,7 +180,7 @@ export function makeAppliedPlanStore(
             case "readable":
               return Effect.succeed(read.plan);
             case "unreadable":
-              return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path, appId }));
+              return Effect.fail(unreadableAppliedStateError({ ...options, ...read, appId }));
             default: {
               const exhaustive: never = read;
               return exhaustive;
@@ -173,17 +224,7 @@ export function makeAppliedPlanStore(
     };
   }
 
-  const open = (stateStore: PluginStateStore) =>
-    stateStore.open({
-      key: APPLIED_PLANS_KEY,
-      schema: AppliedPlans,
-      version: APPLIED_STATE_VERSION,
-      codec: "json",
-      mode: 0o600,
-      lock: "advisory",
-      onCorrupt: "fail",
-      onVersionMismatch: migrateAppliedPlansRecord,
-    });
+  const open = openAppliedPlansRecord;
   const inspectRecord = (stateStore: PluginStateStore) =>
     inspectAppliedPlansRecordBucket(open(stateStore), APPLIED_PLANS_KEY);
   const readRecord = (stateStore: PluginStateStore, appId?: AppId) =>
@@ -194,7 +235,7 @@ export function makeAppliedPlanStore(
             return Effect.fail(
               unreadableAppliedStateError({
                 ...options,
-                path: read.path,
+                ...read,
                 ...(appId === undefined ? {} : { appId }),
               }),
             );
@@ -264,9 +305,12 @@ export function makeAppliedPlanStore(
     removeAppliedPlan: (stateStore, appId) =>
       open(stateStore).pipe(
         Effect.flatMap((bucket) =>
-          bucket.modify((current) => {
-            const { [appId]: _removed, ...remaining } = current ?? {};
-            return [undefined, remaining];
+          bucket.mutate((current) => {
+            if (current === null || !Object.hasOwn(current, appId)) {
+              return Effect.succeed({ _tag: "Keep", result: undefined });
+            }
+            const { [appId]: _removed, ...remaining } = current;
+            return Effect.succeed({ _tag: "Set", value: remaining, result: undefined });
           }),
         ),
         mapFailures((cause) => error("remove", cause)),

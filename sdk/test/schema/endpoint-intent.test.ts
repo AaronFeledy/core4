@@ -26,7 +26,7 @@ describe("endpoint publication intent", () => {
 
   test.each(["tcp", "udp"] as const)("accepts published %s endpoints", (protocol) => {
     const result = decodePlan({
-      _tag: "published",
+      kind: "published",
       protocol,
       port: 53,
       publication: { bindAddress: "127.0.0.1", hostPort: 5353 },
@@ -38,7 +38,7 @@ describe("endpoint publication intent", () => {
   test("preserves optional application protocol metadata", () => {
     // Given / When
     const result = decodePlan({
-      _tag: "published",
+      kind: "published",
       protocol: "tcp",
       port: 8080,
       appProtocol: "http/1.1",
@@ -48,8 +48,8 @@ describe("endpoint publication intent", () => {
     // Then
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isSuccess(result)) {
-      expect(result.success._tag).toBe("published");
-      if (result.success._tag === "published") expect(result.success.appProtocol).toBe("http/1.1");
+      expect(result.success.kind).toBe("published");
+      if (result.success.kind === "published") expect(result.success.appProtocol).toBe("http/1.1");
     }
   });
 

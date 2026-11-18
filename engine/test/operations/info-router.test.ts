@@ -158,8 +158,8 @@ test.each([
         }
       : {}),
     endpoints: [
-      { _tag: "published", protocol: "tcp", port: 15432, primary: true, publication: { bindAddress: "::1" } },
-      { _tag: "internal", protocol: "tcp", port: 9000 },
+      { kind: "published", protocol: "tcp", port: 15432, primary: true, publication: { bindAddress: "::1" } },
+      { kind: "internal", protocol: "tcp", port: 9000 },
     ],
   };
   const result = await infoOf(service, {

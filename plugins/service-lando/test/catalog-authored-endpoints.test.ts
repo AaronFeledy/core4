@@ -10,7 +10,7 @@ for (const [wire, expected] of [
   [[], []],
   [
     [{ kind: "internal", name: "authored", protocol: "http", port: 18080 }],
-    [{ _tag: "internal", name: "authored", protocol: "http", port: 18080 }],
+    [{ kind: "internal", name: "authored", protocol: "http", port: 18080 }],
   ],
 ] as const) {
   test.each(catalog)(

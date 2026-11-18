@@ -38,6 +38,13 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
   readonly routes: ReadonlyMap<string, readonly NormalizedRoute[] | undefined>;
 }) {
   const rows = new Map<string, ServiceEndpointProjection>();
+  const featureOwners = new Map(
+    input.manifests.flatMap((manifest) =>
+      (manifest.contributes?.serviceFeatures ?? []).map(
+        (ref) => [typeof ref === "string" ? ref : ref.id, manifest.name] as const,
+      ),
+    ),
+  );
   const issues: PlannerIssue[] = [];
   const record = (error: LandofileValidationError) => {
     const reasons = error.issues.map((issue) =>
@@ -66,6 +73,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
     }
     const prepared = prepareServiceComposition({
       ...loaded.success,
+      featureOwners,
       base: {
         name: ServiceName.make(name),
         type: resolution.normalizedConfig.type ?? serviceType.id,

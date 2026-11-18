@@ -107,7 +107,7 @@ describe("minio ServiceType", () => {
       "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :19002",
     ]);
     expect(plan.endpoints).toContainEqual({
-      _tag: "internal",
+      kind: "internal",
       port: 19002,
       protocol: "http",
       name: "console",
@@ -124,14 +124,14 @@ describe("minio ServiceType", () => {
     ]);
     expect(plan.endpoints).toEqual([
       {
-        _tag: "internal",
+        kind: "internal",
         port: 9001,
         protocol: "http",
         name: "storage",
         primary: true,
         scan: { path: "/minio/health/live" },
       },
-      { _tag: "internal", port: 19001, protocol: "http", name: "console", scan: { path: "/" } },
+      { kind: "internal", port: 19001, protocol: "http", name: "console", scan: { path: "/" } },
     ]);
     expect(plan.environment?.MC_HOST_local).toEndWith("@127.0.0.1:9001");
   });
@@ -179,14 +179,14 @@ describe("minio ServiceType", () => {
     ]);
     expect(plan.endpoints).toEqual([
       {
-        _tag: "internal",
+        kind: "internal",
         port: 9000,
         protocol: "http",
         name: "storage",
         primary: true,
         scan: { path: "/minio/health/live" },
       },
-      { _tag: "internal", port: 9001, protocol: "http", name: "console", scan: { path: "/" } },
+      { kind: "internal", port: 9001, protocol: "http", name: "console", scan: { path: "/" } },
     ]);
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
@@ -234,14 +234,14 @@ describe("minio ServiceType", () => {
     ]);
     expect(plan.endpoints).toEqual([
       {
-        _tag: "internal",
+        kind: "internal",
         port: 19000,
         protocol: "http",
         name: "storage",
         primary: true,
         scan: { path: "/minio/health/live" },
       },
-      { _tag: "internal", port: 9001, protocol: "http", name: "console", scan: { path: "/" } },
+      { kind: "internal", port: 9001, protocol: "http", name: "console", scan: { path: "/" } },
     ]);
     expect(plan.environment?.MC_HOST_local).toBe(`http://lando:${MINIO_DEFAULT_PASSWORD}@127.0.0.1:19000`);
     expect(plan.healthcheck).toEqual({

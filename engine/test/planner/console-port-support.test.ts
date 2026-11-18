@@ -187,7 +187,7 @@ test("a differently named MinIO child inherits executable console support", asyn
   ]);
   expect(service?.endpoints).toContainEqual(
     expect.objectContaining({
-      _tag: "internal",
+      kind: "internal",
       port: 19001,
       protocol: "http",
       name: "console",

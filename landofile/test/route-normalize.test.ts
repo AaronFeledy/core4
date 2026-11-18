@@ -52,7 +52,7 @@ describe("route normalization", () => {
     { hostname: "app.lndo.site", scheme: "both", endpoint: "web", pathPrefix: "/api" },
     {
       hostname: "app.lndo.site",
-      filters: [{ type: "requestHeader", name: "identity", header: "X-Test", value: "yes" }],
+      filters: [{ kind: "requestHeader", name: "identity", header: "X-Test", value: "yes" }],
     },
   ] satisfies ReadonlyArray<RouteInput>)(
     "passes object routes through with filters defaulting to []: %j",

@@ -296,7 +296,7 @@ describe("desired immutable create config", () => {
       },
     ],
     ["healthcheck", { healthcheck: { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 3 } }],
-    ["exposed port", { endpoints: [{ _tag: "internal", port: 8080, protocol: "tcp" }] }],
+    ["exposed port", { endpoints: [{ kind: "internal", port: 8080, protocol: "tcp" }] }],
     ["host alias", { hostAliases: [{ hostname: "gateway", ip: "192.0.2.1" }] }],
     ["user labels", { extensions: { compose: { labels: { role: "web" } } } }],
     ["host config knob", { extensions: { compose: { privileged: true } } }],
@@ -374,7 +374,7 @@ describe("desired immutable create config", () => {
       ...service,
       endpoints: [
         {
-          _tag: "published",
+          kind: "published",
           port: 80,
           protocol: "http",
           publication: { bindAddress, hostPort: 8080 },
@@ -391,7 +391,7 @@ describe("desired immutable create config", () => {
 
   test("ignores map order, metadata, runtime host ports, and unrelated extensions", () => {
     // Given identical desired create config with different runtime observations.
-    const endpoint = { _tag: "published" as const, port: 8080, protocol: "http" as const, publication: {} };
+    const endpoint = { kind: "published" as const, port: 8080, protocol: "http" as const, publication: {} };
     const observedBefore = { ...endpoint, materialization: { hostPort: 32001, bindAddress: "127.0.0.1" } };
     const observedAfter = { ...endpoint, materialization: { hostPort: 32002, bindAddress: "127.0.0.1" } };
     const before: ServicePlan = { ...service, endpoints: [observedBefore] };

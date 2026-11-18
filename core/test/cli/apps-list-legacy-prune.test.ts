@@ -325,3 +325,191 @@ test.each(["lando", "podman"])(
     expect((await readAppliedPlansFromUserData(f.root)).map((entry) => entry.appId)).toEqual(["other"]);
   },
 );
+
+const podmanRecordPath = (root: string, paths: ReturnType<typeof makeLandoPaths>) =>
+  join(paths.pluginStateDir("@lando/provider-podman"), "applied-plans.json");
+
+const writePodmanRecord = async (path: string, version: number, data: unknown) => {
+  await mkdir(join(path, ".."), { recursive: true });
+  const body = `${JSON.stringify({ version, data }, null, 2)}\n`;
+  await writeFile(path, body);
+  return body;
+};
+
+const prunePodman = (f: Awaited<ReturnType<typeof fixture>>, appRoot: string) =>
+  Effect.runPromise(
+    pruneAppliedPlanState(f.paths, f.store, {
+      appId: "alpha",
+      appName: "alpha",
+      providerId: "podman",
+      appRoot,
+      services: [],
+    }).pipe(Effect.provide(BunFileSystem.layer), Effect.result),
+  );
+
+test.each([
+  {
+    name: "future version",
+    version: APPLIED_STATE_VERSION + 1,
+    data: {
+      alpha: {
+        id: "alpha",
+        name: "alpha",
+        slug: "alpha",
+        root: "/missing",
+        provider: "podman",
+        services: {},
+        routes: [],
+        stores: [],
+        fileSync: [],
+        extensions: {},
+        metadata: { resolvedAt: "2026-09-15T00:00:00.000Z", source: "applied-state", runtime: 4 },
+      },
+    },
+  },
+  {
+    name: "legacy map with mixed endpoint discriminators",
+    version: 7,
+    data: {
+      alpha: {
+        id: "alpha",
+        name: "alpha",
+        slug: "alpha",
+        root: "/missing",
+        provider: "podman",
+        services: {
+          web: {
+            name: "web",
+            type: "lando",
+            provider: "podman",
+            primary: true,
+            artifact: { kind: "ref", ref: "busybox:1.37" },
+            environment: {},
+            mounts: [],
+            endpoints: [{ _tag: "internal", kind: "internal", protocol: "http", port: 80 }],
+            routes: [],
+            dependsOn: [],
+            hostAliases: [],
+            metadata: { resolvedAt: "2026-09-15T00:00:00.000Z", source: "applied-state", runtime: 4 },
+            extensions: {},
+          },
+        },
+        routes: [],
+        stores: [],
+        fileSync: [],
+        extensions: {},
+        metadata: { resolvedAt: "2026-09-15T00:00:00.000Z", source: "applied-state", runtime: 4 },
+      },
+    },
+  },
+  {
+    name: "current map still carrying old endpoint keys",
+    version: APPLIED_STATE_VERSION,
+    data: {
+      alpha: {
+        id: "alpha",
+        name: "alpha",
+        slug: "alpha",
+        root: "/missing",
+        provider: "podman",
+        services: {
+          web: {
+            name: "web",
+            type: "lando",
+            provider: "podman",
+            primary: true,
+            artifact: { kind: "ref", ref: "busybox:1.37" },
+            environment: {},
+            mounts: [],
+            endpoints: [{ _tag: "internal", protocol: "http", port: 80 }],
+            routes: [],
+            dependsOn: [],
+            hostAliases: [],
+            metadata: { resolvedAt: "2026-09-15T00:00:00.000Z", source: "applied-state", runtime: 4 },
+            extensions: {},
+          },
+        },
+        routes: [],
+        stores: [],
+        fileSync: [],
+        extensions: {},
+        metadata: { resolvedAt: "2026-09-15T00:00:00.000Z", source: "applied-state", runtime: 4 },
+      },
+    },
+  },
+] as const)("podman prune leaves an unreadable $name map byte-identical", async ({ version, data }) => {
+  // Given: a shared Podman record the strict opener cannot trust.
+  const f = await fixture("podman");
+  const record = podmanRecordPath(f.root, f.paths);
+  const payload = await writePodmanRecord(record, version, data);
+  await rm(f.legacyPath);
+
+  // When: prune would previously discard unreadable bytes to {}.
+  const result = await prunePodman(f, "/missing");
+
+  // Then: mutation fails and the durable bytes are untouched.
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isSuccess(result)) throw new Error("expected prune failure");
+  expect(result.failure).toMatchObject({ _tag: "StateStoreError" });
+  expect(await readFile(record, "utf8")).toBe(payload);
+});
+
+test("podman prune keeps a valid map when the selected root does not match", async () => {
+  // Given: a readable current-version map whose alpha entry lives at another root.
+  const f = await fixture("podman");
+  const record = podmanRecordPath(f.root, f.paths);
+  const plan = {
+    id: "alpha",
+    name: "alpha",
+    slug: "alpha",
+    root: f.root,
+    provider: "podman",
+    services: {},
+    routes: [],
+    stores: [],
+    fileSync: [],
+    extensions: {},
+    metadata: { resolvedAt: "2026-09-15T00:00:00.000Z", source: "applied-state", runtime: 4 },
+  };
+  const payload = await writePodmanRecord(record, APPLIED_STATE_VERSION, { alpha: plan });
+  await rm(f.legacyPath);
+
+  // When
+  const result = await prunePodman(f, f.plan.root);
+
+  // Then: Keep, no write, lost match is not treated as empty inventory.
+  expect(Result.isSuccess(result)).toBe(true);
+  if (Result.isFailure(result)) throw result.failure;
+  expect(result.success).toBe(false);
+  expect(await readFile(record, "utf8")).toBe(payload);
+});
+
+test("podman prune keeps an absent app entry without rewriting the map", async () => {
+  // Given: a readable map that never recorded alpha.
+  const f = await fixture("podman");
+  const record = podmanRecordPath(f.root, f.paths);
+  const other = {
+    id: "other",
+    name: "other",
+    slug: "other",
+    root: f.root,
+    provider: "podman",
+    services: {},
+    routes: [],
+    stores: [],
+    fileSync: [],
+    extensions: {},
+    metadata: { resolvedAt: "2026-09-15T00:00:00.000Z", source: "applied-state", runtime: 4 },
+  };
+  const payload = await writePodmanRecord(record, APPLIED_STATE_VERSION, { other });
+  await rm(f.legacyPath);
+
+  // When
+  const result = await prunePodman(f, f.plan.root);
+
+  // Then
+  expect(Result.isSuccess(result)).toBe(true);
+  if (Result.isFailure(result)) throw result.failure;
+  expect(result.success).toBe(false);
+  expect(await readFile(record, "utf8")).toBe(payload);
+});

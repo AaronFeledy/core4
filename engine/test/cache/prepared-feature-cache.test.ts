@@ -69,7 +69,7 @@ test("cache hits prepare declarations but skip apply and application-only decodi
     declareEndpoints: (ctx) =>
       Effect.sync(() => {
         calls.declarations++;
-        return [{ _tag: "internal", protocol: "http", port: Number(ctx.config.port) }];
+        return [{ kind: "internal", protocol: "http", port: Number(ctx.config.port) }];
       }),
     apply: (ctx) =>
       Effect.sync(() => {

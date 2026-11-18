@@ -5,14 +5,14 @@ import { Schema } from "effect";
 const PREFIX_PATTERN = /^\//;
 const HEADER_PATTERN = /^[A-Za-z0-9-]+$/;
 
-export const RouteFilterType = Schema.Literals([
+export const RouteFilterKind = Schema.Literals([
   "stripPrefix",
   "addPrefix",
   "requestHeader",
   "responseHeader",
   "redirect",
 ]);
-export type RouteFilterType = typeof RouteFilterType.Type;
+export type RouteFilterKind = typeof RouteFilterKind.Type;
 
 const name = Schema.optionalKey(Schema.String).annotate({
   description: "Layer-merge identity of this filter, not an HTTP header name.",
@@ -41,29 +41,29 @@ const value = Schema.String.annotate({ description: "HTTP header value to set." 
 
 const filterArms = [
   Schema.Struct({
-    type: Schema.Literal("stripPrefix").annotate({ description: "Remove a request path prefix." }),
+    kind: Schema.Literal("stripPrefix").annotate({ description: "Remove a request path prefix." }),
     name,
     prefix,
   }),
   Schema.Struct({
-    type: Schema.Literal("addPrefix").annotate({ description: "Prepend a request path prefix." }),
+    kind: Schema.Literal("addPrefix").annotate({ description: "Prepend a request path prefix." }),
     name,
     prefix,
   }),
   Schema.Struct({
-    type: Schema.Literal("requestHeader").annotate({ description: "Set a request header." }),
+    kind: Schema.Literal("requestHeader").annotate({ description: "Set a request header." }),
     name,
     header,
     value,
   }),
   Schema.Struct({
-    type: Schema.Literal("responseHeader").annotate({ description: "Set a response header." }),
+    kind: Schema.Literal("responseHeader").annotate({ description: "Set a response header." }),
     name,
     header,
     value,
   }),
   Schema.Struct({
-    type: Schema.Literal("redirect").annotate({ description: "Redirect the request." }),
+    kind: Schema.Literal("redirect").annotate({ description: "Redirect the request." }),
     name,
     to: Schema.NonEmptyString.annotate({ description: "Non-empty redirect destination." }),
     permanent: Schema.optionalKey(Schema.Boolean).annotate({ description: "Use a permanent redirect." }),
@@ -71,16 +71,6 @@ const filterArms = [
 ] as const;
 
 export const RouteFilter = Schema.Union(filterArms).annotate({
-  expected: "a filter with type stripPrefix, addPrefix, requestHeader, responseHeader, or redirect",
-});
-export type RouteFilter = typeof RouteFilter.Type;
-
-export const RouteFilterInput = Schema.Union([
-  filterArms[0].pipe(Schema.encodeKeys({ type: "kind" })),
-  filterArms[1].pipe(Schema.encodeKeys({ type: "kind" })),
-  filterArms[2].pipe(Schema.encodeKeys({ type: "kind" })),
-  filterArms[3].pipe(Schema.encodeKeys({ type: "kind" })),
-  filterArms[4].pipe(Schema.encodeKeys({ type: "kind" })),
-]).annotate({
   expected: "a filter with kind stripPrefix, addPrefix, requestHeader, responseHeader, or redirect",
 });
+export type RouteFilter = typeof RouteFilter.Type;

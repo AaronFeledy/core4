@@ -58,6 +58,15 @@ export interface ServicePlanErrorInput {
 
 export const servicePlanError = ({ appRoot, serviceName, cause, projectFiles }: ServicePlanErrorInput) => {
   if (cause instanceof LandofileValidationError) return cause;
+  if (cause instanceof ServiceFeatureError && cause.endpointDeclaration !== undefined) {
+    return new LandofileValidationError({
+      message: cause.message,
+      remediation: cause.remediation,
+      file: `${appRoot}/.lando.yml`,
+      cause,
+      issues: cause.issues ?? [],
+    });
+  }
   const remediation =
     cause instanceof ServiceTypeError ||
     cause instanceof ServiceFeatureError ||

@@ -73,7 +73,7 @@ test("limits optional recovery to shared-only loopback TCP publications", () => 
     sharedCrossAppNetwork: true,
   });
   const endpoint = {
-    _tag: "published" as const,
+    kind: "published" as const,
     protocol: "http",
     port: 80,
     publication: { bindAddress: "127.0.0.1" },
@@ -121,13 +121,13 @@ test("treats internal facets of a published listener as the same physical public
     sharedCrossAppNetwork: true,
   });
   const published = {
-    _tag: "published",
+    kind: "published",
     protocol: "http",
     port: 80,
     publication: { bindAddress: "127.0.0.1" },
   } as const;
-  const facet = { _tag: "internal", protocol: "http", port: 80, name: "web" } as const;
-  const internalOnly = { _tag: "internal", protocol: "tcp", port: 9000 } as const;
+  const facet = { kind: "internal", protocol: "http", port: 80, name: "web" } as const;
+  const internalOnly = { kind: "internal", protocol: "tcp", port: 9000 } as const;
   // When / Then only an unpublished physical listener disables recovery.
   const attachments = [{ name: "shared", aliases: [] }];
   expect(supportsWindowsPublishedRecovery({ networking, attachments, endpoints: [facet, published] })).toBe(

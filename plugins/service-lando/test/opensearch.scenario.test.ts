@@ -211,7 +211,7 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
     });
     expect(search.endpoints).toEqual([
       {
-        _tag: "internal",
+        kind: "internal",
         port: 9200,
         protocol: "http",
         name: "search",

@@ -23,7 +23,7 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "redis:7-alpine" },
   environment: {},
   mounts: [],
-  endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+  endpoints: [{ kind: "internal", protocol: "tcp", port: 6380, primary: true }],
   routes: [],
   dependsOn: [],
   hostAliases: [],
@@ -108,7 +108,7 @@ test("selects a probe target before a deduplicated primary endpoint", () => {
       ...service,
       endpoints: [
         ...service.endpoints,
-        { _tag: "published", protocol: "tcp", port: 6380, publication: {}, primary: true },
+        { kind: "published", protocol: "tcp", port: 6380, publication: {}, primary: true },
       ],
     }),
   ).toEqual(expected);
@@ -116,10 +116,10 @@ test("selects a probe target before a deduplicated primary endpoint", () => {
 
 test.each([
   { ...service, endpoints: [] },
-  { ...service, endpoints: [{ _tag: "internal", protocol: "udp", port: 6380, primary: true }] },
+  { ...service, endpoints: [{ kind: "internal", protocol: "udp", port: 6380, primary: true }] },
   {
     ...service,
-    endpoints: [...service.endpoints, { _tag: "internal", protocol: "http", port: 80, primary: true }],
+    endpoints: [...service.endpoints, { kind: "internal", protocol: "http", port: 80, primary: true }],
   },
   {
     ...service,

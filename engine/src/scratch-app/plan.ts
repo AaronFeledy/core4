@@ -3,13 +3,16 @@ import { AbsolutePath, AppPlan } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
 import { Effect } from "effect";
 
+/** Desired-plan cache frame; bumps discard incompatible executable scratch plans. */
+export const SCRATCH_DESIRED_PLAN_VERSION = 2;
+
 export const openScratchPlan = Effect.fn("ScratchAppService.openPlan")(function* (planCache: AbsolutePath) {
   const store = yield* StateStore;
   return yield* store.open({
     root: { path: AbsolutePath.make(dirname(planCache)) },
     key: "plan.bin",
     schema: AppPlan,
-    version: 1,
+    version: SCRATCH_DESIRED_PLAN_VERSION,
     codec: "binary",
     mode: 0o600,
     onCorrupt: "quarantine",

@@ -9,27 +9,27 @@ export const table = {
     {
       name: "shorthand http",
       input: "http:8080",
-      expected: { _tag: "internal", protocol: "http", port: 8080 },
+      expected: { kind: "internal", protocol: "http", port: 8080 },
     },
     {
       name: "named shorthand",
       input: "ui=https:443",
-      expected: { _tag: "internal", protocol: "https", port: 443, name: "ui" },
+      expected: { kind: "internal", protocol: "https", port: 443, name: "ui" },
     },
     {
       name: "internal http object",
       input: { kind: "internal", protocol: "http", port: 8080 },
-      expected: { _tag: "internal", protocol: "http", port: 8080 },
+      expected: { kind: "internal", protocol: "http", port: 8080 },
     },
     {
       name: "internal unix",
       input: { kind: "internal", protocol: "unix", socketPath: "/run/app.sock" },
-      expected: { _tag: "internal", protocol: "unix", socketPath: "/run/app.sock" },
+      expected: { kind: "internal", protocol: "unix", socketPath: "/run/app.sock" },
     },
     {
       name: "published with empty publication",
       input: { kind: "published", protocol: "http", port: 8080, publication: {} },
-      expected: { _tag: "published", protocol: "http", port: 8080, publication: {} },
+      expected: { kind: "published", protocol: "http", port: 8080, publication: {} },
     },
     {
       name: "published tcp with host port",
@@ -40,7 +40,7 @@ export const table = {
         publication: { bindAddress: "127.0.0.1", hostPort: 5353 },
       },
       expected: {
-        _tag: "published",
+        kind: "published",
         protocol: "tcp",
         port: 53,
         publication: { bindAddress: "127.0.0.1", hostPort: 5353 },

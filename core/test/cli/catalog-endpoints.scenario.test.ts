@@ -18,7 +18,7 @@ const wireEndpoint = (protocol: "http" | "tcp", port: number, name: string) => (
   name,
 });
 const planEndpoint = (protocol: "http" | "tcp", port: number, name: string) => ({
-  _tag: "internal" as const,
+  kind: "internal" as const,
   protocol,
   port,
   name,

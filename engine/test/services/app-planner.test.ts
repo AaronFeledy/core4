@@ -395,7 +395,7 @@ const socketOnlyServiceType = makeLegacyServiceTypeFake({
       mounts: [],
       endpoints: [
         {
-          _tag: "internal",
+          kind: "internal",
           protocol: "unix",
           socketPath: PortablePath.make("/var/run/socket-only.sock"),
           name,
@@ -420,7 +420,7 @@ const publishedEndpointServiceType = makeLegacyServiceTypeFake({
       primary,
       environment: {},
       mounts: [],
-      endpoints: [{ _tag: "published", protocol: "http", port: 8080, name, publication: {} }],
+      endpoints: [{ kind: "published", protocol: "http", port: 8080, name, publication: {} }],
       routes: [],
       dependsOn: [],
       hostAliases: [],
@@ -2860,7 +2860,7 @@ describe("AppPlannerLayer.layer", () => {
       ).toEqual([]);
       expect(web?.endpoints).toEqual([
         {
-          _tag: "internal",
+          kind: "internal",
           port: 3000,
           protocol: "http",
           primary: true,
@@ -2868,7 +2868,7 @@ describe("AppPlannerLayer.layer", () => {
           scan: { path: "/", okCodes: [] },
         },
         {
-          _tag: "published",
+          kind: "published",
           port: 3000,
           protocol: "http",
           primary: true,
@@ -2887,9 +2887,9 @@ describe("AppPlannerLayer.layer", () => {
       expect(db?.environment.POSTGRES_DB).toBe("myapp");
       expect(db?.environment.POSTGRES_PASSWORD).toBe("lando");
       expect(db?.endpoints).toEqual([
-        { _tag: "internal", port: 5432, protocol: "tcp", primary: true, name: "db" },
+        { kind: "internal", port: 5432, protocol: "tcp", primary: true, name: "db" },
         {
-          _tag: "published",
+          kind: "published",
           port: 5432,
           protocol: "tcp",
           primary: true,
@@ -2926,9 +2926,9 @@ describe("AppPlannerLayer.layer", () => {
 
       const proxy = appPlan.services[ServiceName.make("proxy")];
       expect(proxy?.endpoints).toEqual([
-        { _tag: "published", port: 80, protocol: "tcp", publication: {} },
-        { _tag: "published", port: 443, protocol: "tcp", publication: {} },
-        { _tag: "published", port: 8080, protocol: "tcp", publication: {} },
+        { kind: "published", port: 80, protocol: "tcp", publication: {} },
+        { kind: "published", port: 443, protocol: "tcp", publication: {} },
+        { kind: "published", port: 8080, protocol: "tcp", publication: {} },
       ]);
     });
   });
@@ -3535,7 +3535,7 @@ describe("AppPlannerLayer.layer", () => {
       });
       expect(appPlan.services[ServiceName.make("web")]?.endpoints).toEqual([
         {
-          _tag: "published",
+          kind: "published",
           port: 80,
           protocol: "tcp",
           publication: { bindAddress: "127.0.0.1", hostPort: 8080 },
@@ -3560,7 +3560,7 @@ describe("AppPlannerLayer.layer", () => {
       const socket = appPlan.services[ServiceName.make("socket")];
       expect(socket?.endpoints).toEqual([
         {
-          _tag: "internal",
+          kind: "internal",
           protocol: "unix",
           socketPath: PortablePath.make("/var/run/socket-only.sock"),
           name: "socket",

@@ -1,4 +1,4 @@
-import { type EndpointPlan, PortNumber, type ServiceConfig } from "@lando/sdk/schema";
+import { type EndpointDeclaration, PortNumber, type ServiceConfig } from "@lando/sdk/schema";
 import { MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../mailpit-constants.ts";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import {
@@ -49,14 +49,14 @@ export const resolveMailListeners = (service: ServiceConfig, type: "mailpit" | "
       { port: api.port, use: "HTTP API listener" },
     ],
   });
-  const endpoints: readonly EndpointPlan[] = [
-    { _tag: "internal", port: PortNumber.make(smtpPort), protocol: "tcp", name: "smtp", primary: true },
-    { _tag: "internal", port: ui.port, protocol: "http", name: "ui", scan: { path: "/" } },
+  const endpoints: readonly (typeof EndpointDeclaration.Encoded)[] = [
+    { kind: "internal", port: PortNumber.make(smtpPort), protocol: "tcp", name: "smtp", primary: true },
+    { kind: "internal", port: ui.port, protocol: "http", name: "ui", scan: { path: "/" } },
     ...(ui.address === api.address
       ? []
       : [
           {
-            _tag: "internal" as const,
+            kind: "internal" as const,
             port: api.port,
             protocol: "http" as const,
             name: "api",

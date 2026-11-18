@@ -79,7 +79,7 @@ test("carries v4 plans forward unchanged", () => {
 
   if (result === null) throw new Error("v4 plan did not migrate");
   expect(Schema.encodeSync(AppPlan)(result)).toEqual(encoded);
-  expect(migrateAppliedPlansRecord({ example: encoded }, 4)).not.toBeNull();
+  expect(migrateAppliedPlansRecord({ [encoded.id]: encoded }, 4)).not.toBeNull();
 });
 
 test("carries v5 plans forward unchanged", () => {
@@ -87,7 +87,7 @@ test("carries v5 plans forward unchanged", () => {
 
   if (result === null) throw new Error("v5 plan did not migrate");
   expect(Schema.encodeSync(AppPlan)(result)).toEqual(encoded);
-  expect(migrateAppliedPlansRecord({ example: encoded }, 5)).not.toBeNull();
+  expect(migrateAppliedPlansRecord({ [encoded.id]: encoded }, 5)).not.toBeNull();
 });
 
 test("refuses a v4 service that pairs a SQLite file with a database connection", () => {

@@ -450,7 +450,7 @@ test("reconnects all after-create attachments after a host-port retry", async ()
         ...web,
         endpoints: [
           {
-            _tag: "published" as const,
+            kind: "published" as const,
             port: 80,
             protocol: "http",
             publication: { bindAddress: "127.0.0.1" },

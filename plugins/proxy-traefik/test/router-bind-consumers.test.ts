@@ -245,7 +245,7 @@ test("helper unit forwarding retains a private backend", () => {
   );
   expect(
     config.endpoints
-      ?.filter((endpoint) => endpoint._tag === "published")
+      ?.filter((endpoint) => endpoint.kind === "published")
       .map((endpoint) => endpoint.publication),
   ).toEqual([
     { bindAddress: "127.0.0.1", hostPort: 38080 },

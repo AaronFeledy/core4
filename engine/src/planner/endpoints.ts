@@ -501,7 +501,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
 
     const publicationError = publicationCapabilityError(input.provider, input.providerCapabilities, {
       name,
-      published: servicePlanWithRoutes.endpoints.some((endpoint) => endpoint._tag === "published"),
+      published: servicePlanWithRoutes.endpoints.some((endpoint) => endpoint.kind === "published"),
     });
     if (publicationError !== undefined) yield* Effect.fail(publicationError);
 

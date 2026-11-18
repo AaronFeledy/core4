@@ -25,6 +25,19 @@ export class ServiceTypeError extends Schema.TaggedError<ServiceTypeError>()("Se
 export class ServiceFeatureError extends Schema.TaggedError<ServiceFeatureError>()("ServiceFeatureError", {
   message: Schema.String,
   feature: Schema.String,
+  endpointDeclaration: Schema.optionalKey(
+    Schema.Struct({
+      pluginId: Schema.String.annotate({ description: "Plugin that contributed the feature." }),
+      service: Schema.optionalKey(Schema.String).annotate({
+        description: "Service that received the declaration, when known.",
+      }),
+      index: Schema.optionalKey(Schema.Number).annotate({
+        description: "Zero-based declaration index, when known.",
+      }),
+    }),
+  ).annotate({
+    description: "Identifies invalid plugin endpoint output rather than authored configuration.",
+  }),
   cause: Schema.optional(Schema.Unknown),
   issues: Schema.optional(Schema.Array(ValidationIssue)).annotate({
     description:
@@ -129,6 +142,7 @@ export class AppFeatureCloneError extends Schema.TaggedError<AppFeatureCloneErro
 }) {}
 
 export type AppFeatureError =
+  | ServiceFeatureError
   | AppFeatureSelectorMatchedNothingError
   | AppFeatureMutationConflictError
   | AppFeatureCycleError

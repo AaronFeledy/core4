@@ -25,7 +25,7 @@ const published = (input: {
   readonly bindAddress?: string;
   readonly hostPort?: number;
 }): PublishedEndpoint => ({
-  _tag: "published",
+  kind: "published",
   port: input.port ?? 8080,
   protocol: input.protocol ?? "http",
   publication: {
@@ -175,7 +175,7 @@ describe("probeUnpinnedServicePublishPorts", () => {
     expect(calls.map((call) => call.host)).toEqual(["0.0.0.0", "127.0.0.1"]);
     expect(calls.map((call) => call.port)).toEqual([SERVICE_PUBLISH_PORT_MIN, SERVICE_PUBLISH_PORT_MIN + 1]);
     expect(
-      assigned.map((endpoint) => (endpoint._tag === "published" ? endpoint.publication.hostPort : undefined)),
+      assigned.map((endpoint) => (endpoint.kind === "published" ? endpoint.publication.hostPort : undefined)),
     ).toEqual([SERVICE_PUBLISH_PORT_MIN, SERVICE_PUBLISH_PORT_MIN + 1]);
   });
 

@@ -11,7 +11,7 @@ import { plan, web } from "./start-progress-topology-support.ts";
 const lowPortService = {
   ...web,
   user: "www-data",
-  endpoints: [{ _tag: "internal" as const, protocol: "http" as const, port: 80 }],
+  endpoints: [{ kind: "internal" as const, protocol: "http" as const, port: 80 }],
 };
 const lowPortPlan = { ...plan, services: { web: lowPortService } };
 
@@ -52,7 +52,7 @@ for (const port of [1024, 8080, 65535]) {
         web: {
           ...lowPortService,
           endpoints: [
-            { _tag: "published" as const, protocol: "http" as const, port, publication: { hostPort: 80 } },
+            { kind: "published" as const, protocol: "http" as const, port, publication: { hostPort: 80 } },
           ],
         },
       },
@@ -72,18 +72,18 @@ test("deduplicates aliases and publications per service port, not across service
       web: {
         ...lowPortService,
         endpoints: [
-          { _tag: "internal" as const, protocol: "http" as const, port: 80, name: "http" },
-          { _tag: "internal" as const, protocol: "http" as const, port: 80, name: "alias" },
+          { kind: "internal" as const, protocol: "http" as const, port: 80, name: "http" },
+          { kind: "internal" as const, protocol: "http" as const, port: 80, name: "alias" },
           {
-            _tag: "published" as const,
+            kind: "published" as const,
             protocol: "http" as const,
             port: 80,
             publication: { hostPort: 8080 },
           },
-          { _tag: "internal" as const, protocol: "udp" as const, port: 80 },
-          { _tag: "internal" as const, protocol: "tcp" as const, port: 1023 },
+          { kind: "internal" as const, protocol: "udp" as const, port: 80 },
+          { kind: "internal" as const, protocol: "tcp" as const, port: 1023 },
           {
-            _tag: "internal" as const,
+            kind: "internal" as const,
             protocol: "unix" as const,
             socketPath: PortablePath.make("/run/web.sock"),
           },

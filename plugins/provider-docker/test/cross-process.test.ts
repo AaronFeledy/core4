@@ -50,7 +50,7 @@ const web: ServicePlan = {
   command: ["node", "-e", "setInterval(() => {}, 1000)"],
   environment: {},
   mounts: [],
-  endpoints: [{ _tag: "internal", port: 31082, protocol: "http", name: "http" }],
+  endpoints: [{ kind: "internal", port: 31082, protocol: "http", name: "http" }],
   routes: [],
   dependsOn: [],
   hostAliases: [],

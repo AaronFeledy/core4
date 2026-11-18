@@ -148,8 +148,8 @@ test("carries filters onto RoutePlan unchanged and omits the key when empty", as
     { kind: "addPrefix", prefix: "/v1" },
   ] as const;
   const decodedFilters = [
-    { type: "stripPrefix", prefix: "/api" },
-    { type: "addPrefix", prefix: "/v1" },
+    { kind: "stripPrefix", prefix: "/api" },
+    { kind: "addPrefix", prefix: "/v1" },
   ] as const;
   const input = {
     name: "routes-app",

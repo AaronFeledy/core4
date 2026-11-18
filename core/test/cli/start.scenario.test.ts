@@ -145,7 +145,7 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
     name === "web"
       ? [
           {
-            _tag: "published",
+            kind: "published",
             port: 3000,
             protocol: "http",
             name: "http",
@@ -154,7 +154,7 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
         ]
       : [
           {
-            _tag: "published",
+            kind: "published",
             port: 5432,
             protocol: "tcp",
             name: "database",
@@ -203,7 +203,7 @@ const routedPlan: AppPlan = {
   ...plan,
   services: {
     ...plan.services,
-    [web.name]: { ...web, endpoints: [{ _tag: "internal", port: 3000, protocol: "http", name: "http" }] },
+    [web.name]: { ...web, endpoints: [{ kind: "internal", port: 3000, protocol: "http", name: "http" }] },
   },
   routes: [
     {
@@ -446,7 +446,7 @@ const recordAppliedServices = (observed: Map<string, ServiceRuntimeInfo>, appPla
       publications: {
         status: "present",
         bindings: service.endpoints.flatMap((endpoint) =>
-          endpoint._tag === "published" && endpoint.publication.hostPort !== undefined
+          endpoint.kind === "published" && endpoint.publication.hostPort !== undefined
             ? [
                 {
                   port: endpoint.port,
@@ -673,7 +673,7 @@ const makeStartLayer = (
                         status: "present",
                         bindings: (plannedApp.services[target.service]?.endpoints ?? []).flatMap(
                           (endpoint) =>
-                            endpoint._tag === "published" && endpoint.publication.hostPort !== undefined
+                            endpoint.kind === "published" && endpoint.publication.hostPort !== undefined
                               ? [
                                   {
                                     port: endpoint.port,
@@ -847,7 +847,7 @@ const globalServiceType = makeLegacyServiceTypeFake({
     primary,
     endpoints: [
       {
-        _tag: "published",
+        kind: "published",
         protocol: "http",
         port: 8080,
         name: "http",
@@ -897,7 +897,7 @@ const globalPlan = (serviceIds: ReadonlyArray<string>): AppPlan => {
         primary: false,
         endpoints: [
           {
-            _tag: "published" as const,
+            kind: "published" as const,
             protocol: "http" as const,
             port: 8080,
             name: "http",

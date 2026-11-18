@@ -9,8 +9,8 @@ const defaults: ServiceFeatureDefinition = {
   priority: 600,
   declareEndpoints: () =>
     Effect.succeed([
-      { _tag: "internal", name: "web", protocol: "http", port: 80 },
-      { _tag: "internal", name: "admin", protocol: "http", port: 9000 },
+      { kind: "internal", name: "web", protocol: "http", port: 80 },
+      { kind: "internal", name: "admin", protocol: "http", port: 9000 },
     ]),
   apply: () => Effect.void,
 };
@@ -19,15 +19,15 @@ test.each([
   { wire: [], expected: [] },
   {
     wire: [{ kind: "internal", name: "web", protocol: "http", port: 8080 }],
-    expected: [{ _tag: "internal", name: "web", protocol: "http", port: 8080 }],
+    expected: [{ kind: "internal", name: "web", protocol: "http", port: 8080 }],
   },
   {
     wire: [{ kind: "published", protocol: "udp", port: 53, publication: { hostPort: 5353 } }],
-    expected: [{ _tag: "published", protocol: "udp", port: 53, publication: { hostPort: 5353 } }],
+    expected: [{ kind: "published", protocol: "udp", port: 53, publication: { hostPort: 5353 } }],
   },
   {
     wire: [{ kind: "internal", protocol: "unix", socketPath: PortablePath.make("/run/app.sock") }],
-    expected: [{ _tag: "internal", protocol: "unix", socketPath: PortablePath.make("/run/app.sock") }],
+    expected: [{ kind: "internal", protocol: "unix", socketPath: PortablePath.make("/run/app.sock") }],
   },
 ])("replaces all feature endpoints when an endpoint list is supplied: $wire", async ({ wire, expected }) => {
   // Given

@@ -99,6 +99,7 @@ export * from "./downloader.ts";
 export * from "./editor.ts";
 export * from "./embedding-plugin-policy.ts";
 export {
+  EndpointDeclaration,
   EndpointPublication,
   EndpointRef,
   EndpointScan,
@@ -175,7 +176,7 @@ export * from "./renderer-capabilities.ts";
 export * from "./renderer-mode.ts";
 export * from "./renderer-panel.ts";
 export * from "./resource-ownership.ts";
-export { RouteFilter, RouteFilterType } from "./route-filter.ts";
+export { RouteFilter, RouteFilterKind } from "./route-filter.ts";
 export * from "./schedule.ts";
 export * from "./service-connection.ts";
 export * from "./service-dependency.ts";

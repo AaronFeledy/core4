@@ -63,7 +63,7 @@ test.each([
   withEndpoints(endpoints, async (root) => {
     const loaded = await Effect.runPromise(loadLandofileLayers(root, join(root, ".lando.yml"), inputs(root)));
     expect(loaded.document.services?.[ServiceName.make("web")]?.endpoints).toEqual([
-      { _tag: "internal", protocol: "http", port: 80 },
+      { kind: "internal", protocol: "http", port: 80 },
     ]);
     expect((await Effect.runPromise(lintLandofile({ cwd: root }, inputs(root)))).violations).toEqual([]);
   }),
@@ -73,13 +73,13 @@ test.each([
   { overlay: "!reset []", expected: undefined },
   {
     overlay: "!override [admin=http:8080]",
-    expected: [{ _tag: "internal", name: "admin", protocol: "http", port: 8080 }],
+    expected: [{ kind: "internal", name: "admin", protocol: "http", port: 8080 }],
   },
   {
     overlay: "\n      - name: ui\n        port: !override 8080\n        primary: !reset null",
     expected: [
-      { _tag: "internal", name: "ui", protocol: "http", port: 8080 },
-      { _tag: "internal", name: "metrics", protocol: "tcp", port: 9000 },
+      { kind: "internal", name: "ui", protocol: "http", port: 8080 },
+      { kind: "internal", name: "metrics", protocol: "tcp", port: 9000 },
     ],
   },
 ])("applies endpoint directives before decoding $overlay", ({ overlay, expected }) =>

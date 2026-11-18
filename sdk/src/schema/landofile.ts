@@ -44,7 +44,7 @@ import {
 import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
-import { RouteFilterInput } from "./route-filter.ts";
+import { RouteFilter } from "./route-filter.ts";
 import { ScheduleConfig } from "./schedule.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
 import { SqliteTargetConfig } from "./sqlite.ts";
@@ -93,7 +93,7 @@ export const RouteObjectInput = Schema.Struct({
     description: "Request path prefix to match, beginning with / and without a query string or fragment.",
   }),
   filters: Schema.optionalKey(
-    layerMerge(Schema.Array(RouteFilterInput), {
+    layerMerge(Schema.Array(RouteFilter), {
       kind: "keyed",
       identity: "filter-name-or-kind",
       whenUnkeyed: "replace",

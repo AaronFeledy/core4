@@ -20,7 +20,7 @@ const lateHttp: AppFeatureDefinition = {
           service.serviceName,
           [
             {
-              _tag: "internal" as const,
+              kind: "internal" as const,
               protocol: "http" as const,
               port: 7000,
               name: "late",
@@ -93,7 +93,7 @@ test("classifies an earlier publication from a late app-feature HTTP declaration
   // Then
   expect(result.services[ServiceName.make("web")]?.endpoints).toEqual([
     {
-      _tag: "internal",
+      kind: "internal",
       protocol: "http",
       port: 7000,
       name: "late",
@@ -101,7 +101,7 @@ test("classifies an earlier publication from a late app-feature HTTP declaration
       scan: { path: "/", okCodes: [] },
     },
     {
-      _tag: "published",
+      kind: "published",
       protocol: "http",
       port: 7000,
       name: "late",
@@ -141,7 +141,7 @@ test("retains typed credentials and exact declaration identity while replaying l
   });
   expect(database?.environment.CLIENT_PASSWORD).toEqual({ _tag: "SecretRef", reference: "ENDPOINT_DB" });
   expect(database?.endpoints).toContainEqual({
-    _tag: "published",
+    kind: "published",
     protocol: "http",
     port: 7000,
     name: "late",
@@ -149,14 +149,14 @@ test("retains typed credentials and exact declaration identity while replaying l
     scan: { path: "/", okCodes: [] },
   });
   expect(database?.endpoints).toContainEqual({
-    _tag: "internal",
+    kind: "internal",
     protocol: "tcp",
     port: 5432,
     name: "web",
     primary: true,
   });
   expect(database?.endpoints).toContainEqual({
-    _tag: "published",
+    kind: "published",
     protocol: "tcp",
     port: 5432,
     name: "web",
@@ -169,7 +169,7 @@ test.each([
   { wire: [], expected: [] as const },
   {
     wire: [{ kind: "internal" as const, protocol: "http" as const, port: 8000 }],
-    expected: [{ _tag: "internal" as const, protocol: "http" as const, port: 8000 }],
+    expected: [{ kind: "internal" as const, protocol: "http" as const, port: 8000 }],
   },
 ])("replays explicit endpoint authority after app features: $wire", async ({ wire, expected }) => {
   // Given
@@ -291,6 +291,6 @@ test("plans equivalent short and long endpoint spellings identically", async () 
   expect(shortWeb?.endpoints).toEqual(longWeb?.endpoints);
   expect(shortPlan.routes).toEqual(longPlan.routes);
   // Canonical execution payload: same endpoints/routes without host publication.
-  expect(shortWeb?.endpoints?.some((endpoint) => endpoint._tag === "published")).toBe(false);
+  expect(shortWeb?.endpoints?.some((endpoint) => endpoint.kind === "published")).toBe(false);
   expect(shortPlan.routes).toMatchObject([{ scheme: "https", backend: { protocol: "http", port: 80 } }]);
 });

@@ -25,7 +25,7 @@ describe("lando endpoint intent", () => {
   test("preserves an internal HTTP endpoint when no ports are authored", async () => {
     // Given
     const wire = [{ kind: "internal", protocol: "http", port: 80 }] as const;
-    const expected = [{ _tag: "internal", protocol: "http", port: 80 }] as const;
+    const expected = [{ kind: "internal", protocol: "http", port: 80 }] as const;
 
     // When
     const plan = await planService({ type: "lando", image: "traefik/whoami", endpoints: wire });
@@ -39,7 +39,7 @@ describe("lando endpoint intent", () => {
 
     expect(plan.endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         protocol: "udp",
         port: 53,
         publication: { bindAddress: "127.0.0.1", hostPort: 5353 },
@@ -58,15 +58,15 @@ describe("lando endpoint intent", () => {
   test.each([
     {
       wire: [{ kind: "internal", protocol: "http", port: 80, name: "web" }],
-      expected: [{ _tag: "internal", protocol: "http", port: 80, name: "web" }],
+      expected: [{ kind: "internal", protocol: "http", port: 80, name: "web" }],
     },
     {
       wire: [{ kind: "published", protocol: "https", port: 443, publication: { hostPort: 8443 } }],
-      expected: [{ _tag: "published", protocol: "https", port: 443, publication: { hostPort: 8443 } }],
+      expected: [{ kind: "published", protocol: "https", port: 443, publication: { hostPort: 8443 } }],
     },
     {
       wire: [{ kind: "internal", protocol: "unix", socketPath: PortablePath.make("/run/worker.sock") }],
-      expected: [{ _tag: "internal", protocol: "unix", socketPath: PortablePath.make("/run/worker.sock") }],
+      expected: [{ kind: "internal", protocol: "unix", socketPath: PortablePath.make("/run/worker.sock") }],
     },
     { wire: [], expected: [] },
   ])(

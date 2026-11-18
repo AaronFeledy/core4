@@ -273,6 +273,7 @@ import {
 import { EmbeddingPluginPolicy } from "./embedding-plugin-policy.ts";
 import {
   BindAddress,
+  EndpointDeclaration,
   EndpointRef,
   EndpointScan,
   InternalEndpoint,
@@ -523,7 +524,7 @@ import {
   StyledSpanTone,
 } from "./renderer-panel.ts";
 import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-ownership.ts";
-import { RouteFilter, RouteFilterType } from "./route-filter.ts";
+import { RouteFilter, RouteFilterKind } from "./route-filter.ts";
 import { CronExpression, ScheduleConfig, ScheduleJob, ScheduleJobName } from "./schedule.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
@@ -760,10 +761,11 @@ const basePublicSchemaRegistry = schemaRegistry({
   InternalEndpoint,
   PublishedEndpoint,
   EndpointPlan,
+  EndpointDeclaration,
   RouteRef,
   RoutePlan,
   ProxyCapabilities,
-  RouteFilterType,
+  RouteFilterKind,
   RouteFilter,
   RouteInputError,
   RouteProviderMismatchError,
@@ -1238,7 +1240,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PortNumber: "Integer network port in the inclusive range 1 through 65535.",
   InternalEndpoint: "Service-facing endpoint that is never published on the host.",
   PublishedEndpoint: "Service endpoint carrying explicit nested host-publication intent.",
-  RouteFilterType: "Supported provider-neutral route filter types.",
+  RouteFilterKind: "Supported provider-neutral route filter kinds.",
   RouteFilter:
     "Provider-neutral plan representation discriminated by type. In a Landofile route, author filters with kind instead.",
   RouteInputError: "Invalid authored route with its key path and remediation.",
@@ -1253,7 +1255,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   AppRouteOwner: "Rename-stable owner of durable router artifacts for one application.",
   ProxyApplyResult: "Durable route-application result returned by a proxy implementation.",
   ProxyStatus: "Current ingress and configured-app status reported by a proxy implementation.",
-  EndpointScan: "Sparse plan-only startup scan defaults for a logical listener.",
+  EndpointScan: "Sparse startup scan defaults for a logical listener.",
   ServiceFeatureValidationResult: "Successful effective service feature validation claims.",
   AuthoredNetworkPlan:
     "A top-level Landofile network that services join in addition to the app and shared networks.",
@@ -1759,7 +1761,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "EndpointPlan.port",
   "EndpointPlan.protocol",
   "EndpointPlan.socketPath",
-  "EndpointPlan._tag",
   "ExpressionNode.kind",
   "ExpressionTemplate.segments",
   "ExpressionTemplate.whole",

@@ -83,7 +83,7 @@ describe("runAppFeatureContract", () => {
             default:
               field satisfies never;
           }
-          return { php: [{ _tag: "internal" as const, protocol: "http" as const, port: 8080 }] };
+          return { php: [{ kind: "internal" as const, protocol: "http" as const, port: 8080 }] };
         });
       // When / Then
       await expectDeclarationFailure(declare, "app feature endpoint declaration facts are immutable");
@@ -96,7 +96,7 @@ describe("runAppFeatureContract", () => {
     const declare: DeclareEndpoints = (ctx) =>
       Effect.sync(() => {
         if (++invocation === 2) Reflect.set(ctx.config, "port", 9000);
-        return { php: [{ _tag: "internal" as const, protocol: "http" as const, port: 8080 }] };
+        return { php: [{ kind: "internal" as const, protocol: "http" as const, port: 8080 }] };
       });
     // When / Then
     await expectDeclarationFailure(declare, "app feature endpoint declaration facts are immutable");
@@ -106,21 +106,18 @@ describe("runAppFeatureContract", () => {
     // Given
     const declare: DeclareEndpoints = () =>
       Effect.succeed({
-        php: [{ _tag: "published", protocol: "http", port: 8080, publication: { hostPort: 0 } }],
+        php: [{ kind: "published", protocol: "http", port: 8080, publication: { hostPort: 0 } }],
       });
     // When / Then
-    await expectDeclarationFailure(declare, "app feature endpoint declarations match EndpointPlan");
+    await expectDeclarationFailure(declare, "app feature endpoint declarations match EndpointDeclaration");
   });
 
   test("rejects app declaration realization metadata", async () => {
     // Given
     const declare: DeclareEndpoints = () =>
-      Effect.succeed({ php: [{ _tag: "internal", protocol: "http", port: 8080, realization: "host" }] });
+      Effect.succeed({ php: [{ kind: "internal", protocol: "http", port: 8080, realization: "host" }] });
     // When / Then
-    await expectDeclarationFailure(
-      declare,
-      "app feature emits endpoint intent without realization decisions",
-    );
+    await expectDeclarationFailure(declare, "app feature endpoint declarations match EndpointDeclaration");
   });
 
   test.each(["throw", "defect"] as const)(
@@ -143,7 +140,7 @@ describe("runAppFeatureContract", () => {
       selectors: { types: ["php"] },
       declareEndpoints: (ctx) => {
         expect("forEachSelected" in ctx).toBe(false);
-        return Effect.succeed({ php: [{ _tag: "internal", protocol: "http", port: 8080 }] });
+        return Effect.succeed({ php: [{ kind: "internal", protocol: "http", port: 8080 }] });
       },
       apply: () => Effect.void,
     };
@@ -157,7 +154,7 @@ describe("runAppFeatureContract", () => {
     // Given
     let port = 8080;
     const declare: DeclareEndpoints = () =>
-      Effect.sync(() => ({ php: [{ _tag: "internal", protocol: "http", port: port++ }] }));
+      Effect.sync(() => ({ php: [{ kind: "internal", protocol: "http", port: port++ }] }));
     // When / Then
     await expectDeclarationFailure(declare, "app feature endpoint declarations are deterministic");
   });
@@ -165,7 +162,7 @@ describe("runAppFeatureContract", () => {
   test("rejects app endpoint declarations for unselected services", async () => {
     // Given
     const declare: DeclareEndpoints = () =>
-      Effect.succeed({ node: [{ _tag: "internal", protocol: "http", port: 8080 }] });
+      Effect.succeed({ node: [{ kind: "internal", protocol: "http", port: 8080 }] });
     // When / Then
     await expectDeclarationFailure(declare, "app feature declares endpoints only for selected services");
   });

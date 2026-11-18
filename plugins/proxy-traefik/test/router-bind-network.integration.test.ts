@@ -77,7 +77,7 @@ isolated("narrows live owned wildcard ports through prepare, recreation, readine
             readAcquisitionState(harness.dependencies.fileSystem, harness.dependencies.paths),
           );
           const config = buildTraefikServiceConfig(resolveTraefikPublication(desired, "127.0.0.1"));
-          const publications = config.endpoints?.filter((endpoint) => endpoint._tag === "published");
+          const publications = config.endpoints?.filter((endpoint) => endpoint.kind === "published");
           expect(publications?.map((endpoint) => endpoint.publication.bindAddress)).toEqual([
             "127.0.0.1",
             "127.0.0.1",

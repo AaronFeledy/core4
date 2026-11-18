@@ -112,7 +112,7 @@ export const matchesLiveRoute = (
       return false;
     const filters = route.filters ?? [];
     const middlewareNames = filters.map(
-      (filter, filterIndex) => `${serviceName}-f${filterIndex}-${filter.type}@file`,
+      (filter, filterIndex) => `${serviceName}-f${filterIndex}-${filter.kind}@file`,
     );
     if (!isDeepStrictEqual((router.middlewares ?? []).map(reference), middlewareNames)) return false;
     return filters.every((filter, filterIndex) => {

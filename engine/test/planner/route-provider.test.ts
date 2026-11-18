@@ -64,10 +64,10 @@ describe("route provider placement", () => {
       // Then: HTTP endpoints never become implicit host publications.
       expect(result.provider).toBe(ProviderId.make("docker"));
       expect(result.services[ServiceName.make("web")]?.endpoints).toMatchObject([
-        { _tag: "internal", port: 80 },
+        { kind: "internal", port: 80 },
       ]);
       expect(
-        result.services[ServiceName.make("web")]?.endpoints.every((endpoint) => endpoint._tag === "internal"),
+        result.services[ServiceName.make("web")]?.endpoints.every((endpoint) => endpoint.kind === "internal"),
       ).toBe(true);
     },
   );
@@ -85,7 +85,7 @@ describe("route provider placement", () => {
       port: 80,
     });
     expect(
-      result.services[ServiceName.make("web")]?.endpoints.every((endpoint) => endpoint._tag === "internal"),
+      result.services[ServiceName.make("web")]?.endpoints.every((endpoint) => endpoint.kind === "internal"),
     ).toBe(true);
     expect(result.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toContain(
       "web.route-provider.internal",

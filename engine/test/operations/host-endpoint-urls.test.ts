@@ -14,15 +14,15 @@ test.each([
     const service = {
       ...web,
       endpoints: [
-        { _tag: "internal", protocol: "tcp", port: 15432 },
+        { kind: "internal", protocol: "tcp", port: 15432 },
         {
-          _tag: "published",
+          kind: "published",
           protocol: "tcp",
           port: 15432,
           publication: { bindAddress: BindAddress.make("::1") },
         },
-        { _tag: "internal", protocol: "udp", port: 15432 },
-        { _tag: "internal", protocol: "unix", socketPath: PortablePath.make("/run/db.sock") },
+        { kind: "internal", protocol: "udp", port: 15432 },
+        { kind: "internal", protocol: "unix", socketPath: PortablePath.make("/run/db.sock") },
       ],
     } satisfies typeof web;
     const rows = projectServiceConnections({
@@ -45,7 +45,7 @@ test.each([
 
 test.each(["::1"])("brackets %s once in scalar configured URL formatting", (address) => {
   const url = publishedEndpointUrl({
-    _tag: "published",
+    kind: "published",
     protocol: "http",
     port: 8080,
     publication: { bindAddress: BindAddress.make(address), hostPort: 49152 },

@@ -78,7 +78,7 @@ const planWithHostPort = (hostPort: number): AppPlan => {
     mounts: [],
     endpoints: [
       {
-        _tag: "published",
+        kind: "published",
         port: 8080,
         protocol: "http",
         name: "http",
@@ -1055,7 +1055,7 @@ const assignedHostPortPlan = (): AppPlan => {
       [serviceName]: {
         ...service,
         endpoints: service.endpoints.map((endpoint) =>
-          endpoint._tag === "published"
+          endpoint.kind === "published"
             ? { ...endpoint, publication: { bindAddress: "127.0.0.1" } }
             : endpoint,
         ),

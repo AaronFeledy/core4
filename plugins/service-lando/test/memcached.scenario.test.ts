@@ -208,7 +208,7 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
     expect(cache.type).toBe("memcached");
     expect(cache.artifact).toEqual({ kind: "ref", ref: "memcached:1.6" });
     expect(cache.endpoints).toEqual([
-      { _tag: "internal", port: 11211, protocol: "tcp", name: "cache", primary: true },
+      { kind: "internal", port: 11211, protocol: "tcp", name: "cache", primary: true },
     ]);
     expect(cache.mounts.filter((mount) => mount.type === "volume")).toEqual([]);
     expect(cache.healthcheck?.kind).toBe("command");

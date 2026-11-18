@@ -47,7 +47,7 @@ export const normalizeEndpoints = (
       const appProtocol = entry.appProtocol ?? (hints.length === 1 ? hints[0] : undefined);
       const scan = scans.get(identity);
       endpoints.push({
-        _tag: "published",
+        kind: "published",
         port: entry.target,
         protocol,
         ...(declarations.some((endpoint) => endpoint.protocol !== "unix" && endpoint.primary === true)
@@ -64,7 +64,7 @@ export const normalizeEndpoints = (
     }
     for (const port of config.expose ?? []) {
       if (!endpoints.some((endpoint) => logicalEndpointIdentity(endpoint) === `${port}/tcp`)) {
-        endpoints.push({ _tag: "internal", port, protocol: "tcp" });
+        endpoints.push({ kind: "internal", port, protocol: "tcp" });
       }
     }
   }

@@ -15,7 +15,7 @@ test.each([{}, { path: "/" }, { okCodes: [] }, { path: "/health", okCodes: [100,
   (scan) => {
     // Given / When
     const endpoint = Schema.decodeUnknownSync(EndpointPlan)({
-      _tag: "internal",
+      kind: "internal",
       protocol: "http",
       port: 9000,
       scan,
@@ -36,7 +36,7 @@ test.each([{ path: "health" }, { okCodes: [99] }, { okCodes: [600] }, { okCodes:
 
 test("keeps scan metadata out of authored endpoints and old plans", () => {
   // Given
-  const plan = { _tag: "internal", protocol: "http", port: 80 } as const;
+  const plan = { kind: "internal", protocol: "http", port: 80 } as const;
   const wire = { kind: "internal", protocol: "http", port: 80 } as const;
   // When / Then
   expect(Schema.decodeUnknownSync(EndpointPlan)(plan)).toEqual(plan);
@@ -56,8 +56,8 @@ test.each([
 ])("rejects contradictory logical scan defaults %j", (first, second) => {
   // Given
   const endpoints = Schema.decodeUnknownSync(Schema.Array(EndpointPlan))([
-    { _tag: "internal", protocol: "http", port: 80, scan: first },
-    { _tag: "published", protocol: "http", port: 80, publication: {}, scan: second },
+    { kind: "internal", protocol: "http", port: 80, scan: first },
+    { kind: "published", protocol: "http", port: 80, publication: {}, scan: second },
   ]);
   // When / Then
   expect(endpointInvariantIssues(endpoints)).toEqual([{ kind: "scan-conflict", identities: ["80/tcp"] }]);
@@ -66,9 +66,9 @@ test.each([
 test("allows omitted scan fields to inherit and compares status codes as sets", () => {
   // Given
   const endpoints = Schema.decodeUnknownSync(Schema.Array(EndpointPlan))([
-    { _tag: "internal", protocol: "http", port: 80, scan: { path: "/live", okCodes: [200, 204] } },
-    { _tag: "published", protocol: "http", port: 80, publication: {}, scan: { okCodes: [204, 200, 200] } },
-    { _tag: "published", protocol: "http", port: 80, publication: { hostPort: 8080 }, scan: {} },
+    { kind: "internal", protocol: "http", port: 80, scan: { path: "/live", okCodes: [200, 204] } },
+    { kind: "published", protocol: "http", port: 80, publication: {}, scan: { okCodes: [204, 200, 200] } },
+    { kind: "published", protocol: "http", port: 80, publication: { hostPort: 8080 }, scan: {} },
   ]);
   // When / Then
   expect(endpointInvariantIssues(endpoints)).toEqual([]);

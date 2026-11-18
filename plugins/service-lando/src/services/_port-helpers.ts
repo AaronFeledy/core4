@@ -1,4 +1,4 @@
-import { type EndpointPlan, type ListenerAuthority, PortNumber, type ServiceConfig } from "@lando/sdk/schema";
+import { type ListenerAuthority, PortNumber, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceEndpointContext } from "@lando/sdk/services";
 import { Schema } from "effect";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
@@ -164,12 +164,12 @@ const assertListenerVariable = (
 export const servicePortEndpoints = (
   ctx: Pick<ServiceEndpointContext, "serviceName">,
   fallback: { readonly port: number; readonly protocol: "http" | "https" | "tcp" },
-): readonly EndpointPlan[] => [
+) => [
   {
-    _tag: "internal",
+    kind: "internal" as const,
     port: Schema.decodeUnknownSync(PortNumber)(fallback.port),
     protocol: fallback.protocol,
     name: ctx.serviceName,
-    primary: true,
+    primary: true as const,
   },
 ];

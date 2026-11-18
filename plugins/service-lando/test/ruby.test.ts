@@ -106,7 +106,7 @@ describe("ruby:3.3 ServiceType", () => {
     ).toEqual([]);
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 3000, protocol: "http", name: "web", primary: true },
     ]);
 
     expect(plan.healthcheck).toBeUndefined();
@@ -137,7 +137,7 @@ describe("ruby:3.3 ServiceType", () => {
     const plan = await composeRubyPlan(ruby33ServiceType, { type: "ruby:3.3", framework: "rails" });
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 3000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(String(plan.workingDirectory)).toBe("/app");
@@ -237,7 +237,7 @@ describe("ruby:3.3 ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/ruby:3.3-custom" });
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 4000, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 4000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.extensions["lando-service-ruby"]).toMatchObject({ port: 4000 });

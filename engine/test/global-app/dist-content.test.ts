@@ -46,13 +46,13 @@ test("encodes global dist endpoints and filters as kind and reloads them through
 
     // Then decoded endpoints and filters round-trip without a second codec.
     expect(loaded.document.services?.[ServiceName.make("mail")]?.endpoints).toEqual([
-      { _tag: "internal", protocol: "http", port: 8025 },
-      { _tag: "internal", protocol: "tcp", port: 1025, name: "smtp" },
+      { kind: "internal", protocol: "http", port: 8025 },
+      { kind: "internal", protocol: "tcp", port: 1025, name: "smtp" },
     ]);
     expect(loaded.document.services?.[ServiceName.make("edge")]?.routes?.[0]).toMatchObject({
       filters: [
-        { type: "stripPrefix", prefix: "/api" },
-        { type: "addPrefix", prefix: "/v1" },
+        { kind: "stripPrefix", prefix: "/api" },
+        { kind: "addPrefix", prefix: "/v1" },
       ],
     });
   } finally {

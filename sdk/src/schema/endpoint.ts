@@ -54,10 +54,10 @@ const applicationProtocolField = {
   }),
 };
 
-const internalTag = Schema.Literal("internal").annotateKey({
+const internalKind = Schema.Literal("internal").annotateKey({
   description: "Discriminates a service-only endpoint.",
 });
-const publishedTag = Schema.Literal("published").annotateKey({
+const publishedKind = Schema.Literal("published").annotateKey({
   description: "Discriminates an explicitly host-published endpoint.",
 });
 const networkProtocol = EndpointNetworkProtocol.annotateKey({
@@ -70,40 +70,37 @@ const publicationField = EndpointPublication.annotateKey({
   description: "Explicit host-publication intent and policy overrides.",
 });
 
-const InternalNetworkEndpointInput = Schema.Struct({
-  _tag: internalTag,
+const InternalNetworkObject = Schema.Struct({
+  kind: internalKind,
   protocol: networkProtocol,
   port: PortNumber.annotateKey({ description: "Container listener port." }),
   ...commonFields,
   ...applicationProtocolField,
 });
-const InternalUnixEndpointInput = Schema.Struct({
-  _tag: internalTag,
+const InternalUnixObject = Schema.Struct({
+  kind: internalKind,
   protocol: unixProtocol,
-  socketPath: Schema.String.annotateKey({ description: "Path to the Unix socket inside the service." }),
+  socketPath: PortablePath.annotateKey({ description: "Path to the Unix socket inside the service." }),
   ...commonFields,
 });
-const InternalNetworkObject = InternalNetworkEndpointInput.pipe(Schema.encodeKeys({ _tag: "kind" }));
-const InternalUnixObject = InternalUnixEndpointInput.pipe(Schema.encodeKeys({ _tag: "kind" }));
 export const InternalEndpointInput = Schema.Union([InternalNetworkObject, InternalUnixObject]);
 export type InternalEndpointInput = typeof InternalEndpointInput.Type;
 
-const PublishedEndpointFields = Schema.Struct({
-  _tag: publishedTag,
+export const PublishedEndpointInput = Schema.Struct({
+  kind: publishedKind,
   protocol: networkProtocol,
   port: PortNumber.annotateKey({ description: "Container listener port." }),
   publication: publicationField,
   ...commonFields,
   ...applicationProtocolField,
 });
-export const PublishedEndpointInput = PublishedEndpointFields.pipe(Schema.encodeKeys({ _tag: "kind" }));
 export type PublishedEndpointInput = typeof PublishedEndpointInput.Type;
 
 const EndpointWire = Schema.Union([
   EndpointShorthand,
-  Schema.toEncoded(InternalNetworkObject),
+  InternalNetworkObject,
   Schema.toEncoded(InternalUnixObject),
-  Schema.toEncoded(PublishedEndpointInput),
+  PublishedEndpointInput,
 ]).annotate({
   identifier: "EndpointInput",
   description: "Explicit service listener, authored as shorthand or as a kind-discriminated object.",
@@ -132,20 +129,33 @@ export type EndpointInput = typeof EndpointInput.Type;
 
 export const EndpointScan = Schema.Struct(scanFields).annotate({
   identifier: "EndpointScan",
-  description:
-    "Sparse plan-only startup scan defaults for a logical listener; omitted fields inherit policy.",
+  description: "Sparse startup scan defaults for a logical listener; omitted fields inherit policy.",
   examples: [{}, { path: "/health", okCodes: [200, 204] }],
 });
 export type EndpointScan = typeof EndpointScan.Type;
 
 const scanField = {
   scan: Schema.optionalKey(EndpointScan).annotate({
-    description: "Plan-only startup HTTP scan defaults; not endpoint authoring or readiness settings.",
+    description: "Startup HTTP scan defaults; not Landofile endpoint authoring or readiness settings.",
   }),
 };
 
+const httpProtocol = Schema.Literals(["http", "https"]).annotateKey({
+  description: "HTTP protocol of the listener to scan.",
+});
+
+export const EndpointDeclaration = Schema.Union([
+  Schema.Struct({ ...InternalNetworkObject.fields, protocol: httpProtocol, ...scanField }),
+  Schema.Struct({ ...PublishedEndpointInput.fields, protocol: httpProtocol, ...scanField }),
+  EndpointInput,
+]).annotate({
+  identifier: "EndpointDeclaration",
+  description: "Plugin listener declaration, with optional scan defaults on HTTP and HTTPS objects.",
+});
+export type EndpointDeclaration = typeof EndpointDeclaration.Type;
+
 const InternalNetworkEndpoint = Schema.Struct({
-  _tag: internalTag,
+  kind: internalKind,
   protocol: networkProtocol,
   port: PortNumber,
   ...commonFields,
@@ -153,7 +163,7 @@ const InternalNetworkEndpoint = Schema.Struct({
   ...scanField,
 });
 const InternalUnixEndpoint = Schema.Struct({
-  _tag: internalTag,
+  kind: internalKind,
   protocol: unixProtocol,
   socketPath: PortablePath,
   ...commonFields,
@@ -163,7 +173,7 @@ export const InternalEndpoint = Schema.Union([InternalNetworkEndpoint, InternalU
 export type InternalEndpoint = typeof InternalEndpoint.Type;
 
 export const PublishedEndpoint = Schema.Struct({
-  _tag: publishedTag,
+  kind: publishedKind,
   protocol: networkProtocol,
   port: PortNumber,
   publication: publicationField,

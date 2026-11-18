@@ -5,17 +5,17 @@ import { resolveRoute } from "../../src/planner/endpoints.ts";
 import { stampGeneratedBackendTls } from "../../src/planner/route-certificate-defaults.ts";
 
 const endpoints: readonly EndpointPlan[] = [
-  { _tag: "internal", protocol: "http", port: 9000, name: "admin" },
-  { _tag: "published", protocol: "udp", port: 8080, publication: {} },
+  { kind: "internal", protocol: "http", port: 9000, name: "admin" },
+  { kind: "published", protocol: "udp", port: 8080, publication: {} },
   {
-    _tag: "published",
+    kind: "published",
     protocol: "http",
     port: 8080,
     name: "browser",
     primary: true,
     publication: { hostPort: 18080 },
   },
-  { _tag: "internal", protocol: "http", port: 8080, name: "web", primary: true },
+  { kind: "internal", protocol: "http", port: 8080, name: "web", primary: true },
 ];
 
 const certificate: CertificatePlan = { cn: "web.app.internal", sans: ["web.app.internal"], caId: "mkcert" };
@@ -62,8 +62,8 @@ test("selects a named secondary instead of the marked HTTP primary", async () =>
 test("uses the unique HTTP listener when a non-HTTP listener is primary", async () => {
   // Given
   const facets: readonly EndpointPlan[] = [
-    { _tag: "internal", protocol: "tcp", port: 1025, primary: true },
-    { _tag: "internal", protocol: "http", port: 8025 },
+    { kind: "internal", protocol: "tcp", port: 1025, primary: true },
+    { kind: "internal", protocol: "http", port: 8025 },
   ];
   // When
   const resolved = await Effect.runPromise(
@@ -78,8 +78,8 @@ test.each([
   { facets: [] },
   {
     facets: [
-      { _tag: "internal", protocol: "http", port: 80 },
-      { _tag: "internal", protocol: "http", port: 90 },
+      { kind: "internal", protocol: "http", port: 80 },
+      { kind: "internal", protocol: "http", port: 90 },
     ],
   },
 ])("rejects unresolved HTTP selection: %j", async ({ facets }) => {
@@ -97,8 +97,8 @@ test.each([
 });
 
 const dualListener = (): readonly EndpointPlan[] => [
-  { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
-  { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+  { kind: "internal", protocol: "http", port: 80, name: "web", primary: true },
+  { kind: "internal", protocol: "https", port: 443, name: "web-https" },
 ];
 
 const defaultRoute = { hostname: "app.test", filters: [] };
@@ -135,7 +135,7 @@ test("an authored HTTP selector ignores the HTTPS preference on both plans", asy
 test("never partially publishes both when one half cannot select", async () => {
   // Given
   const onlyHttp: readonly EndpointPlan[] = [
-    { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
+    { kind: "internal", protocol: "http", port: 80, name: "web", primary: true },
   ];
   // When
   const resolved = await Effect.runPromise(
@@ -155,9 +155,9 @@ test("never partially publishes both when one half cannot select", async () => {
 test("fails both when the HTTPS half is ambiguous", async () => {
   // Given
   const ambiguous: readonly EndpointPlan[] = [
-    { _tag: "internal", protocol: "http", port: 80, primary: true },
-    { _tag: "internal", protocol: "https", port: 443 },
-    { _tag: "internal", protocol: "https", port: 8443 },
+    { kind: "internal", protocol: "http", port: 80, primary: true },
+    { kind: "internal", protocol: "https", port: 443 },
+    { kind: "internal", protocol: "https", port: 8443 },
   ];
   // When
   const resolved = await Effect.runPromise(
@@ -191,8 +191,8 @@ test("binds an HTTPS route to the HTTPS listener when the service holds a genera
 test("reports ambiguity for unmarked HTTP and HTTPS listeners without a generated certificate", async () => {
   // Given
   const unmarked: readonly EndpointPlan[] = [
-    { _tag: "internal", protocol: "http", port: 80 },
-    { _tag: "internal", protocol: "https", port: 443 },
+    { kind: "internal", protocol: "http", port: 80 },
+    { kind: "internal", protocol: "https", port: 443 },
   ];
   // When: an HTTPS route takes the unrestricted set, while an HTTP route prefers HTTP.
   const https = await Effect.runPromise(

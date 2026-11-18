@@ -76,7 +76,7 @@ describe("mysql ServiceType", () => {
     expect(volumes[0]?.store).toBe("lando-myapp--db--mysql-data");
     expect(String(volumes[0]?.target)).toBe("/var/lib/mysql");
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 3306, protocol: "tcp", name: "db", primary: true },
+      { kind: "internal", port: 3306, protocol: "tcp", name: "db", primary: true },
     ]);
   });
 
@@ -99,7 +99,7 @@ describe("mysql ServiceType", () => {
     });
     expect(plan.environment.MYSQL_USER).not.toBe("uid");
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 13306, protocol: "tcp", name: "db", primary: true },
+      { kind: "internal", port: 13306, protocol: "tcp", name: "db", primary: true },
     ]);
   });
 

@@ -59,7 +59,7 @@ describe("solr ServiceType", () => {
     expect(String(volumes[0]?.target)).toBe("/var/solr");
     expect(volumes[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 8983, protocol: "http", name: "search", primary: true },
+      { kind: "internal", port: 8983, protocol: "http", name: "search", primary: true },
     ]);
   });
 

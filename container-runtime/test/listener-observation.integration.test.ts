@@ -43,7 +43,7 @@ test.skipIf(socket === undefined)(
       hostAliases: [],
       extensions: {},
       metadata,
-      endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+      endpoints: [{ kind: "internal", protocol: "tcp", port: 6380, primary: true }],
     };
     const plan: AppPlan = {
       id: AppId.make(`listener-${crypto.randomUUID().slice(0, 8)}`),
