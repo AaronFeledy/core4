@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { Transcript } from "@lando/sdk/docs/components";
@@ -48,7 +48,8 @@ for (const { name, before, teardown, commands } of cases) {
     async () => {
       const root = await mkdtemp(join(tmpdir(), "guide-cleanup-"));
       const id = basename(root).toLowerCase();
-      const file = join(repo, `${id}.test.ts`);
+      // The generated test lives in the temp root, so an interrupted run leaves nothing in the repo.
+      const file = join(root, "cleanup.test.ts");
       const transcriptDir = join(repo, "dist", "transcripts", "guides", id);
       const binary = join(root, "lando");
       const calls = join(root, "calls");
@@ -68,6 +69,7 @@ esac
 `,
         );
         await chmod(binary, 0o755);
+        await symlink(join(repo, "node_modules"), join(root, "node_modules"), "dir");
         const guide = parseGuideScenarioAst(
           "cleanup.mdx",
           `---
@@ -129,7 +131,6 @@ timeout: 10000
         listener.stop(true);
         await Promise.all([
           rm(root, { recursive: true, force: true }),
-          rm(file, { force: true }),
           rm(transcriptDir, { recursive: true, force: true }),
         ]);
       }
