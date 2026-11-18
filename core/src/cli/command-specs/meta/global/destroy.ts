@@ -34,7 +34,7 @@ const globalDestroyConfirmation = (deletes: {
     ...(deletes.volumes ? ["global data volumes"] : []),
     ...(deletes.images ? ["built images"] : []),
   ];
-  const list = items.length === 1 ? items[0] : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+  const list = `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
   return `Delete the global Lando app's ${list}?${deletes.volumes ? "" : " Global data volumes are kept."}`;
 };
 
