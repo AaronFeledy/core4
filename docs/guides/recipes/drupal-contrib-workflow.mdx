@@ -89,8 +89,9 @@ lando composer show psr/clock
 
 `lando drupal-contrib-sync` brings the site in line with your `.lando.yml` and
 your extension's `composer.json`. It adds, changes, and removes only the
-requirements it manages, and leaves packages you added with `lando composer`
-alone. When nothing changed, it reports that the site is up to date without
+requirements it manages. Packages already in the site's `composer.json` that it
+didn't add, including ones you added with `lando composer`, keep their
+constraint. When nothing changed, it reports that the site is up to date without
 contacting Composer.
 
 ## Change the Drupal core constraint
@@ -109,9 +110,10 @@ lando drupal-contrib-sync
 lando composer show drupal/core-recommended
 ```
 
-The sync updates `drupal/core-recommended`, `drupal/core-dev`, and Drush
-together. `lando start` also syncs when the constraint changed, so restarting
-the app works too. This changes packages, not the database schema of an
+The sync moves `drupal/core-recommended` and `drupal/core-dev` to the new
+constraint and updates the rest of the site with them, because Drush and the
+test tools share Drupal's Symfony packages. `lando start` also syncs when the
+constraint changed. This changes packages, not the database schema of an
 installed site.
 
 ## Inspect the generated services

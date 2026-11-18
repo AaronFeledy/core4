@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 )
 
@@ -44,7 +45,12 @@ func convergeDrupalContrib(o drupalContribOptions, s *scaffold) error {
 	args := []string{"--working-dir=" + o.appRoot, "install", "--no-interaction"}
 	if len(changes.names) > 0 {
 		step = "update"
-		args = append([]string{"--working-dir=" + o.appRoot, "update", "--with-all-dependencies", "--no-interaction"}, changes.names...)
+		args = []string{"--working-dir=" + o.appRoot, "update", "--with-all-dependencies", "--no-interaction"}
+		// A core change moves the Symfony stack every tool shares, so the whole
+		// site resolves again; anything else updates only what changed.
+		if !slices.ContainsFunc(changes.names, isManagedContribCore) {
+			args = append(args, changes.names...)
+		}
 	}
 	restore, err := unlockInstalledSiteDirectory(filepath.Join(o.appRoot, "web", "sites", "default"))
 	if err != nil {

@@ -54,7 +54,7 @@ func TestDrupalContribSyncChangesCoreConstraint(t *testing.T) {
 			wd := "--working-dir=" + f.appRoot
 			prod := []string{wd, "require", "--no-update", "--no-interaction", "drupal/core-composer-scaffold:^10", "drupal/core-project-message:^10", "drupal/core-recommended:^10"}
 			dev := []string{wd, "require", "--dev", "--no-update", "--no-interaction", "drupal/core-dev:^10"}
-			update := []string{wd, "update", "--with-all-dependencies", "--no-interaction", "drupal/core-composer-scaffold", "drupal/core-dev", "drupal/core-project-message", "drupal/core-recommended"}
+			update := []string{wd, "update", "--with-all-dependencies", "--no-interaction"}
 			if mode == "fail-update" {
 				f.env["LANDO_TEST_COMPOSER_MODE"] = mode
 				code := f.run(t, contribSyncCommand, "module", "example", "^10")
@@ -163,8 +163,8 @@ func TestDrupalContribSyncTreatsUnusableRecordAsEmpty(t *testing.T) {
 			f, _ := completedContrib(t, `{}`)
 			writeContribTestFile(t, contribMarker(f), tc.content)
 			runContribSync(t, f, "^11")
-			assertContribCalls(t, f, []string{"--working-dir=" + f.appRoot, "update", "--with-all-dependencies", "--no-interaction",
-				"drupal/coder", "drupal/core-composer-scaffold", "drupal/core-dev", "drupal/core-project-message", "drupal/core-recommended", "drush/drush"})
+			// Nothing proves which core the site has, so it resolves the whole site again.
+			assertContribCalls(t, f, []string{"--working-dir=" + f.appRoot, "update", "--with-all-dependencies", "--no-interaction"})
 			if record := loadContribSyncRecord(contribMarker(f)); record.Version != 1 || record.Require["drupal/core-recommended"] != "^11" {
 				t.Fatalf("record was not recovered: %+v", record)
 			}
