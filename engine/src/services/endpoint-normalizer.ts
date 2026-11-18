@@ -9,26 +9,47 @@ import {
   validationIssue,
 } from "@lando/sdk/schema";
 import { endpointScanPolicies } from "./endpoint-scan.ts";
+import { routeEndpointDeclarations } from "./route-endpoint-declarations.ts";
 
 /** Replay original declarations, never a previous normalization's synthesized facets. */
-export const normalizeEndpoints = (
-  contributions: readonly EndpointPlan[],
+export const normalizeEndpointFacts = (
+  contributions: readonly EndpointPlan[] | undefined,
   config: ServiceConfig,
-): EndpointPlan[] => {
+  authored?: { readonly service: string; readonly routes: readonly NormalizedRoute[] },
+) => {
   const endpoints: EndpointPlan[] =
     config.endpoints === undefined
-      ? contributions.map((endpoint) => ({ ...endpoint }))
+      ? (contributions ?? []).map((endpoint) => ({ ...endpoint }))
       : config.endpoints.map((endpoint) =>
           endpoint.protocol === "unix"
             ? { ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) }
             : { ...endpoint },
         );
+  const routeDeclarations =
+    authored === undefined
+      ? undefined
+      : routeEndpointDeclarations({
+          ...authored,
+          effective: endpoints,
+          replaced: config.endpoints === undefined ? [] : (contributions ?? []),
+          allowImplication: contributions !== undefined,
+        });
+  if (routeDeclarations !== undefined) endpoints.push(...routeDeclarations.implied);
 
   if (config.endpoints === undefined) {
-    const scans = endpointScanPolicies(contributions);
+    const declarationsByIdentity = new Map<string, EndpointPlan[]>();
+    if (config.ports?.length) {
+      for (const endpoint of endpoints) {
+        const identity = logicalEndpointIdentity(endpoint);
+        const declarations = declarationsByIdentity.get(identity);
+        if (declarations === undefined) declarationsByIdentity.set(identity, [endpoint]);
+        else declarations.push(endpoint);
+      }
+    }
+    const scans = endpointScanPolicies(contributions ?? []);
     for (const entry of config.ports ?? []) {
       const identity = `${entry.target}/${entry.protocol}`;
-      const declarations = contributions.filter((endpoint) => logicalEndpointIdentity(endpoint) === identity);
+      const declarations = declarationsByIdentity.get(identity) ?? [];
       const protocols = [...new Set(declarations.map((endpoint) => endpoint.protocol))];
       const declaredProtocol = protocols.length === 1 ? protocols[0] : undefined;
       const protocol =
@@ -70,13 +91,19 @@ export const normalizeEndpoints = (
   }
 
   const seen = new Set<string>();
-  return endpoints.filter((endpoint) => {
+  const unique = endpoints.filter((endpoint) => {
     const key = canonicalJson(endpoint);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+  return { endpoints: unique, conflicts: routeDeclarations?.conflicts };
 };
+
+export const normalizeEndpoints = (
+  contributions: readonly EndpointPlan[],
+  config: ServiceConfig,
+): EndpointPlan[] => normalizeEndpointFacts(contributions, config).endpoints;
 
 export const endpointValidationError = (
   endpoints: readonly EndpointPlan[],
@@ -108,3 +135,5 @@ export const endpointValidationError = (
     ),
   });
 };
+
+import type { NormalizedRoute } from "@lando/landofile/route-normalize";

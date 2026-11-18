@@ -2,10 +2,16 @@ import type { LandofileProvenance } from "@lando/landofile/provenance";
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { type LandofileShape, type PluginManifest, type ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  type LandofileShape,
+  type PluginManifest,
+  type ProviderId,
+  ServiceName,
+  type ValidationIssue,
+} from "@lando/sdk/schema";
 import type { PluginRegistry, ServiceTypeHostFacts } from "@lando/sdk/services";
 import { type Context, Effect, Result } from "effect";
-import { endpointValidationError, normalizeEndpoints } from "../services/endpoint-normalizer.ts";
+import { endpointValidationError, normalizeEndpointFacts } from "../services/endpoint-normalizer.ts";
 import {
   declarePreparedServiceEndpoints,
   prepareServiceComposition,
@@ -13,7 +19,7 @@ import {
 import { declareAppEndpoints } from "./app-endpoint-projection.ts";
 import { planServicePrimary } from "./effective-events.ts";
 import { type ServiceEndpointProjection, unavailable } from "./endpoint-availability.ts";
-import { bindRoute } from "./endpoint-routes.ts";
+import { bindRoute, endpointsForRoutes } from "./endpoint-routes.ts";
 import { type PlannerIssue, attributePlannerIssue } from "./resolved-validation.ts";
 import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { declaredServiceFeatures, loadServiceFeatures } from "./service-feature-input.ts";
@@ -162,6 +168,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
   }
   const app = yield* declareAppEndpoints({ ...input, rows });
   issues.push(...app.issues);
+  const conflicts = new Map<NormalizedRoute, ValidationIssue>();
   for (const [name, row] of rows) {
     const config = input.landofile.services?.[ServiceName.make(name)];
     if (config === undefined) continue;
@@ -171,14 +178,23 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
       rows.set(name, { ...row, endpoints: row.contributions });
       continue;
     }
-    const normalized = normalizeEndpoints(
-      row.contributions._tag === "Available" ? row.contributions.value : [],
+    const routes = input.routes.get(name);
+    const normalized = normalizeEndpointFacts(
+      row.contributions._tag === "Available" ? row.contributions.value : undefined,
       normalizedConfig,
+      routes === undefined ? undefined : { service: name, routes },
     );
-    const error = endpointValidationError(normalized, { appRoot: input.appRoot, serviceName: name });
+    const error = endpointValidationError(normalized.endpoints, {
+      appRoot: input.appRoot,
+      serviceName: name,
+    });
+    if (error === undefined) {
+      for (const [route, issue] of normalized.conflicts ?? []) conflicts.set(route, issue);
+    }
     rows.set(name, {
       ...row,
-      endpoints: error === undefined ? { _tag: "Available", value: normalized } : unavailable(record(error)),
+      endpoints:
+        error === undefined ? { _tag: "Available", value: normalized.endpoints } : unavailable(record(error)),
     });
   }
   // Bind exactly as planning will: only a service holding a generated certificate
@@ -186,12 +202,20 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
   const generatedCertificates = new Set(
     input.services.filter((seed) => seed.resolution.normalizedConfig.certs === true).map((seed) => seed.name),
   );
+  const reported = new Set<ValidationIssue>();
   for (const [name, routes] of input.routes) {
     const row = rows.get(name);
     if (row === undefined || row.endpoints._tag === "Unavailable") continue;
+    const facetsFor = endpointsForRoutes(row.endpoints.value);
     for (const route of routes ?? []) {
-      const binding = bindRoute(name, row.endpoints.value, route, generatedCertificates.has(name));
-      if (Result.isFailure(binding)) issues.push({ ...binding.failure, rule: "landofile.route" });
+      const binding = bindRoute(name, row.endpoints.value, route, generatedCertificates.has(name), {
+        conflict: conflicts.get(route),
+        numericFacets: facetsFor(route),
+      });
+      if (Result.isFailure(binding) && !reported.has(binding.failure)) {
+        reported.add(binding.failure);
+        issues.push(attributePlannerIssue(input.provenance, { ...binding.failure, rule: "landofile.route" }));
+      }
     }
   }
   return { services: rows, preparedApp: app.prepared, issues };

@@ -38,12 +38,12 @@ import {
 } from "../plugins/file-sync-policy.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { sortRecord } from "../services/draft.ts";
-import { endpointValidationError, normalizeEndpoints } from "../services/endpoint-normalizer.ts";
+import { endpointValidationError, normalizeEndpointFacts } from "../services/endpoint-normalizer.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
 import { missingCapability } from "./compose-capabilities.ts";
 import { dataTreeOwnershipStep, projectUserVolumeTrees, resolveDataTreeOwnership } from "./data-tree.ts";
-import { resolveRoute } from "./endpoint-routes.ts";
+import { endpointsForRoutes, resolveRoute } from "./endpoint-routes.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-host-checks.ts";
@@ -396,7 +396,11 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         ...redirectSteps,
       ],
     };
-    const endpoints = normalizeEndpoints(draft.endpoints, draft.normalizedConfig);
+    const { endpoints, conflicts } = normalizeEndpointFacts(
+      draft.endpoints,
+      draft.normalizedConfig,
+      authoredRoutes === undefined ? undefined : { service: name, routes: authoredRoutes },
+    );
     const endpointError = endpointValidationError(endpoints, { appRoot: input.appRoot, serviceName: name });
     if (endpointError !== undefined) return yield* Effect.fail(endpointError);
     const planned = applyHostReachability(
@@ -438,6 +442,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     const tls = { certificate: draft.certs, generated: generatedCertificate };
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
     if (authoredRoutes !== undefined) {
+      const facetsFor = endpointsForRoutes(servicePlanWithHome.endpoints);
       for (const [routeIndex, route] of authoredRoutes.entries()) {
         for (const plan of stampGeneratedBackendTls(
           yield* resolveRoute(
@@ -446,6 +451,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
             servicePlanWithHome.endpoints,
             route,
             generatedCertificate,
+            { conflict: conflicts?.get(route), numericFacets: facetsFor(route) },
           ),
           tls,
         )) {

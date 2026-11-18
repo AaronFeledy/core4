@@ -145,7 +145,7 @@ test("source cache refresh preserves authored catalog endpoints, layer merging, 
   }
 }, 30_000);
 
-test("source cache refresh rejects routes to explicitly removed catalog endpoints", async () => {
+test("source cache refresh rejects portless routes to explicitly removed catalog endpoints", async () => {
   // Given
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-catalog-endpoints-error-")));
   try {
@@ -154,7 +154,7 @@ test("source cache refresh rejects routes to explicitly removed catalog endpoint
       stringify({
         name,
         services: { web: { type: "nginx", endpoints: [] } },
-        proxy: { web: [{ hostname: "removed.lndo.site", endpoint: 80 }] },
+        proxy: { web: [{ hostname: "removed.lndo.site" }] },
       }),
     );
     // When
