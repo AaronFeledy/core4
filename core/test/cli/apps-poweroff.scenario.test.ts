@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { withScenarioContext } from "@lando/core/testing";
 import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 import {
@@ -63,6 +64,47 @@ beforeAll(async () => {
 });
 
 describe("apps:poweroff command", () => {
+  test("exits zero and carries a failed post-stop step in the JSON app result", async () => {
+    const result = await Effect.runPromise(
+      withScenarioContext({ guideId: "poweroff", scenarioId: "failed-post-stop" }, (context) =>
+        Effect.gen(function* () {
+          const root = yield* context.fixtures.use("poweroff-demo");
+          const file = Bun.file(join(root, ".lando.yml"));
+          yield* Effect.tryPromise(async () => {
+            await Bun.write(
+              file,
+              `${await file.text()}\nevents:\n  post-stop:\n    - service: ':host'\n      cmd: exit 7\n`,
+            );
+          });
+          const started = yield* context.runCli(["start"]);
+          expect(started.exitCode).toBe(0);
+          return yield* context.runCli(["poweroff", "--format=json"]);
+        }),
+      ),
+    );
+
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      result: {
+        apps: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "user",
+            outcome: "stopped",
+            landofileEvents: {
+              status: "failed",
+              event: "post-stop",
+              stepFailure: {
+                _tag: "LandofileEventStepFailedError",
+                message: expect.stringContaining("7"),
+                remediation: expect.stringContaining("post-stop"),
+              },
+            },
+          }),
+        ]),
+      },
+    });
+    expect(result.exitCode).toBe(0);
+  });
   test("stops user apps, destroys scratch apps, then stops the global app", async () => {
     const fixture = await makePoweroffFixture({
       dataRoot,

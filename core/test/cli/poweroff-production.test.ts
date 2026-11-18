@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { taggedErrorJson } from "@lando/sdk/command-result";
+import { encodeCommandResult, taggedErrorJson } from "@lando/sdk/command-result";
 import {
   AbsolutePath,
   AppId,
@@ -11,10 +11,16 @@ import {
   ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import type { AppliedOrphanGroup, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 import { poweroffSpec } from "../../src/cli/command-specs/apps/poweroff";
-import { poweroff, renderPoweroffResult } from "../../src/cli/commands/poweroff";
+import {
+  PoweroffResultSchema,
+  PoweroffStopError,
+  poweroff,
+  renderPoweroffResult,
+} from "../../src/cli/commands/poweroff";
 import { makePoweroffFixture } from "./poweroff-support";
 
 const providerId = ProviderId.make("lando");
@@ -138,7 +144,17 @@ test("aggregates a failed app and skips runtime shutdown", async () => {
   });
 });
 
-test("renders duplicate ids with their roots and the runtime line only when stopped", () => {
+const failedPostStop = {
+  status: "failed",
+  event: "post-stop",
+  stepFailure: {
+    _tag: "LandofileEventStepFailedError",
+    message: "Cleanup script exited 7.",
+    remediation: "Fix the cleanup script.",
+  },
+} as const;
+
+test("renders the hook diagnostic on one line for the affected root when app ids repeat", () => {
   const rendered = renderPoweroffResult({
     apps: [
       {
@@ -156,6 +172,7 @@ test("renders duplicate ids with their roots and the runtime line only when stop
         providerId: "lando",
         outcome: "stopped",
         servicesStopped: [],
+        landofileEvents: failedPostStop,
       },
       {
         kind: "global",
@@ -170,9 +187,60 @@ test("renders duplicate ids with their roots and the runtime line only when stop
     runtimeServiceStopped: true,
     runtimeServicePid: 1234,
   });
-  expect(rendered).toBe(
-    ["Powered off: twin (/one), twin (/two), global", "Stopped Lando runtime service"].join("\n"),
+  const lines = rendered.split("\n");
+  expect(lines.filter((line) => !line.includes(failedPostStop.event))).toEqual([
+    "Powered off: twin (/one), twin (/two), global",
+    "Stopped Lando runtime service",
+  ]);
+  expect(lines.filter((line) => line.includes(failedPostStop.event))).toEqual([
+    expect.stringContaining("twin (/two)"),
+  ]);
+  const diagnostic = lines.find((line) => line.includes(failedPostStop.event));
+  expect(diagnostic).toContain(failedPostStop.stepFailure.message);
+  expect(diagnostic).toContain(failedPostStop.stepFailure.remediation);
+});
+
+test("encodes the failed hook on a stopped app even when another app fails to stop", async () => {
+  const error = new PoweroffStopError({
+    message: "Some apps could not stop.",
+    remediation: "Restore provider access.",
+    apps: [
+      {
+        kind: "user",
+        appId: "stopped",
+        appRoot: "/one",
+        providerId: "lando",
+        outcome: "stopped",
+        landofileEvents: failedPostStop,
+      },
+      { kind: "user", appId: "blocked", appRoot: "/two", providerId: "lando", outcome: "skipped" },
+    ],
+    failures: [
+      {
+        kind: "user",
+        appId: "blocked",
+        appRoot: "/two",
+        providerId: "lando",
+        ...taggedErrorJson(new Error("Provider not reachable.")),
+      },
+    ],
+  });
+  const encoded = await Effect.runPromise(
+    encodeCommandResult({
+      command: poweroffSpec.id,
+      resultSchema: PoweroffResultSchema,
+      outcome: { _tag: "failure", error, additionalErrors: [] },
+      redactor: createRedactor("secrets", { values: [] }),
+    }),
   );
+
+  expect(JSON.parse(encoded)).toMatchObject({
+    ok: false,
+    error: {
+      _tag: "PoweroffStopError",
+      apps: [{ appId: "stopped", landofileEvents: failedPostStop }, { appId: "blocked" }],
+    },
+  });
 });
 
 test("provides the scratch bootstrap tier through command metadata", () => {

@@ -99,6 +99,17 @@ export const makeScenarioProvider = () => {
         .pipe(Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlanCache, target.app, options))),
   };
   const registry = RuntimeProviderRegistry.of({
+    observeRuntime: Effect.all({ appliedPlans, services: provider.list({}) }).pipe(
+      Effect.map(({ appliedPlans, services }) => [
+        {
+          providerId: ProviderId.make(provider.id),
+          runtimeObserved: true,
+          appliedPlans,
+          services,
+          volumes: [],
+        },
+      ]),
+    ),
     appliedPlansFor: (root) =>
       resolveExactPlan(root).pipe(Effect.map((plan) => (plan === undefined ? [] : [plan]))),
     resolveAppliedPlan: (root, _app, lookup) =>
