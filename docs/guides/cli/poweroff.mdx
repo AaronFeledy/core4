@@ -23,7 +23,9 @@ lando poweroff -y
 
 Each app stops through the same lifecycle as `lando stop` from its own app root, so its Landofile stop steps, file-sync drain, and route withdrawal still run. An app whose applied record is gone is stopped anyway: Lando removes the containers it can prove belong to that root and keeps their named volumes. Apps whose containers have already exited are skipped, so their stop steps do not run again.
 
-If one app fails, poweroff still stops the others and then reports every failure with its remediation. It also reports a provider that cannot be observed while it still records apps, and an accelerated-start journal it cannot read. Every failure leaves the global app and the managed runtime running, so you can fix the problem and run `lando poweroff` again.
+The summary lists apps that stopped under `Powered off`. If Lando checked an app and found nothing to stop, it lists that app under `Nothing to stop`.
+
+If one app fails, poweroff still attempts the remaining user and scratch apps and reports each failure with its remediation. It also reports a provider it cannot observe if that provider has recorded resources or reports a runtime that isn't idle. An unreadable accelerated-start journal is also a failure. A failure before the global stop skips it, and Lando leaves the managed runtime available so you can fix the problem and retry.
 
 A failed `post-stop` step does not prevent poweroff from continuing or change its exit code. The summary names the affected app, event, failure, and remediation. With `--format=json`, look for `landofileEvents.status: "failed"` on the affected app in `result.apps`, or in `error.apps` if another app could not stop. `landofileEvents.stepFailure` carries the error tag, redacted message, and remediation.
 
@@ -37,8 +39,8 @@ A failed `post-stop` step does not prevent poweroff from continuing or change it
       <Verify event="post-start" />
     </Step>
     <Step name="poweroff">
-      <Run command="lando poweroff -y" />
-      <Verify command="lando poweroff -y" expect={{ stdout: { regex: "Powered off|No Lando apps to power off" } }} />
+      <Run command="lando poweroff -y --format=json" />
+      <Verify command="lando poweroff -y --format=json" expect={{ stdout: { regex: "\"outcome\":\\s*\"stopped\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -52,6 +54,9 @@ A failed `post-stop` step does not prevent poweroff from continuing or change it
 Skip the shared global app with `--keep-global`, so host-wide services such
 as the proxy keep running. Skip scratch apps with `--keep-scratch`, so
 disposable throwaway apps stay up while every other app stops.
+Use both flags to keep both kinds of app. The command reports what it kept
+even if another app fails to stop. With `--format=json`, look for
+`keptGlobalApp` and `keptScratchApps` in `result` on success or `error` on failure.
 
 Poweroff does not prompt for confirmation. `-y`/`--yes` is accepted, but is
 not required for scripts.
