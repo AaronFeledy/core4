@@ -15,9 +15,11 @@ import {
   ProviderId,
   type ResourceOwnership,
   ServiceName,
+  type VolumeInfo,
+  type VolumeRef,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import type { AppliedOrphanGroup, ListFilter, ServiceRuntimeInfo } from "@lando/sdk/services";
+import type { AppliedOrphanGroup, DestroyOptions, ListFilter, ServiceRuntimeInfo } from "@lando/sdk/services";
 import {
   AppPlanner,
   EventService,
@@ -82,11 +84,15 @@ const acceleratedPlanAt = (root: string): AppPlan =>
     excludes: [],
   });
 
-const orphanGroup = (root: string, services: ReadonlyArray<string>): AppliedOrphanGroup => ({
+const orphanGroup = (
+  root: string,
+  services: ReadonlyArray<string>,
+  appId = AppId.make("orphan-app"),
+): AppliedOrphanGroup => ({
   providerId,
-  appId: AppId.make("orphan-app"),
+  appId,
   services: services.map((name) => ({
-    app: AppId.make("orphan-app"),
+    app: appId,
     appRoot: AbsolutePath.make(root),
     service: ServiceName.make(name),
     providerId,
@@ -115,6 +121,7 @@ const makeHarness = (input: {
   readonly appliedPlan?: AppPlan;
   readonly orphans?: ReadonlyArray<AppliedOrphanGroup>;
   readonly ownership?: ReadonlyArray<ResourceOwnership>;
+  readonly volumes?: readonly VolumeInfo[];
 }) => {
   const destroyCalls: AppPlan[] = [];
   const calls: string[] = [];
@@ -126,7 +133,8 @@ const makeHarness = (input: {
   const statusReads: string[] = [];
   const cleanupRoots: string[] = [];
   const published: LandoEvent[] = [];
-  const appliedPlan = input.appliedPlan;
+  let appliedPlan = input.appliedPlan;
+  const volumes = new Map(input.volumes?.map((volume) => [volume.ref.store, volume]));
   const provider = {
     ...TestRuntimeProvider,
     id: "lando",
@@ -135,27 +143,33 @@ const makeHarness = (input: {
       return { state: "running" as const };
     }),
     list: (_filter: ListFilter) => Effect.succeed([]),
-    listVolumes: () => Effect.succeed([]),
-    destroy: (target: { readonly app: string; readonly plan?: AppPlan }) =>
+    listVolumes: () => Effect.sync(() => [...volumes.values()]),
+    destroy: (target: { readonly app: string; readonly plan?: AppPlan }, options: DestroyOptions) =>
       Effect.sync(() => {
-        calls.push("destroy");
+        calls.push(`destroy(volumes:${options.volumes})`);
         if (target.plan !== undefined) destroyCalls.push(target.plan);
+        if (options.removeState) appliedPlan = undefined;
+        if (options.volumes) volumes.clear();
         return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     removeObservedService: (service: ServiceRuntimeInfo) =>
       Effect.sync(() => {
+        calls.push(`removeObservedService:${service.service}`);
         removalAttempts.push({
           service: String(service.service),
           containerId: service.containerId,
         });
         return { kind: "removed" as const };
       }),
-    removeVolume: (ref: { readonly store: string }) =>
+    removeVolume: (ref: VolumeRef) =>
       Effect.sync(() => {
+        volumes.delete(ref.store);
         removedVolumes.push(ref.store);
       }),
-    cleanupOwnedResources: (root: AbsolutePath) =>
+    cleanupOwnedResources: (root: AbsolutePath, options: DestroyOptions) =>
       Effect.sync(() => {
+        calls.push(`cleanupOwnedResources(volumes:${options.volumes})`);
+        if (options.volumes) volumes.clear();
         cleanupRoots.push(root);
         return { servicesRemoved: ["owned-web"], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } };
       }),
@@ -175,7 +189,7 @@ const makeHarness = (input: {
     list: Effect.succeed([providerId, otherProviderId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),
-    resolveAppliedPlan: () => Effect.succeed(appliedPlan),
+    resolveAppliedPlan: () => Effect.sync(() => appliedPlan),
     resolveTeardownEvidence: (root: AbsolutePath) =>
       Effect.gen(function* () {
         const scope = yield* TeardownProvider;
@@ -199,6 +213,7 @@ const makeHarness = (input: {
     ...makeTestRouterService(),
     removeRoutes: (owner) =>
       Effect.sync(() => {
+        calls.push(`withdrawOwnerRoutes:${owner.id}`);
         routeRemovals.push(String(owner.id));
       }),
   });
@@ -251,6 +266,8 @@ const makeHarness = (input: {
   );
   return {
     layer,
+    listVolumes: provider.listVolumes,
+    readAppliedPlan: registry.resolveAppliedPlan,
     calls,
     destroyCalls,
     removalAttempts,
@@ -384,138 +401,136 @@ describe("stopAppAtRoot", () => {
     });
   });
 
-  test("stops verified writers before terminating a missing-root unfinished start", async () => {
-    await withTempRoot(async (root) => {
-      const plan = acceleratedPlanAt(root);
-      const app = { kind: "user" as const, id: plan.id, root: plan.root };
-      const terminations: string[] = [];
-      const paths = makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" });
-      const workerDirs = [
-        paths.hostProxyRunDir(app.id, app.root),
-        paths.agentRelayRunDir("ssh", app.id, app.root),
-        paths.agentRelayRunDir("gpg", app.id, app.root),
-      ];
-      for (const directory of workerDirs) {
-        await mkdir(directory, { recursive: true, mode: 0o700 });
-        await writeFile(join(directory, "credentials"), "stale", { mode: 0o600 });
-      }
-      const engine = {
-        ...TestFileSyncEngine,
-        id: "mutagen",
-        listSessions: (filter: { readonly app?: { readonly id?: string; readonly root?: string } }) =>
-          Effect.succeed(
-            plan.fileSync
-              .filter(
-                (entry) =>
+  test.each([
+    { kind: "applied", writers: ["destroy(volumes:false)"], services: ["web"] },
+    { kind: "orphans", writers: ["removeObservedService:web", "cleanupAppWorkers"], services: ["web"] },
+    { kind: "owned", writers: ["cleanupOwnedResources(volumes:false)"], services: ["owned-web"] },
+    { kind: "absent", writers: [], services: [] },
+  ])(
+    "stops a missing-root unfinished start in order and keeps its data ($kind evidence)",
+    async ({ kind, writers, services }) => {
+      await withTempRoot(async (root) => {
+        const plan = acceleratedPlanAt(root);
+        const app = {
+          kind: "user" as const,
+          id: kind === "absent" ? AppId.make(basename(root)) : plan.id,
+          root: plan.root,
+        };
+        const startPlan =
+          app.id === plan.id
+            ? plan
+            : {
+                ...plan,
+                id: app.id,
+                fileSync: plan.fileSync.map((entry) => ({ ...entry, session: { ...entry.session, app } })),
+              };
+        const targetNames = startPlan.fileSync.flatMap(({ session }) =>
+          session.target._tag === "volume" ? [session.target.name] : [],
+        );
+        expect(targetNames).toHaveLength(1);
+        const volumes: VolumeInfo[] = ["database-data", ...targetNames].map((name) => ({
+          ref: { app: app.id, store: name },
+          identity: {
+            coordinationKey: `test:${name}`,
+            nativeName: name,
+            generation: `first:${name}`,
+            ownerRoot: app.root,
+            origin: "created",
+          },
+        }));
+        const harness = makeHarness({
+          volumes,
+          ...(kind === "applied" ? { appliedPlan: plan } : {}),
+          ...(kind === "orphans" ? { orphans: [{ ...orphanGroup(root, ["web"], app.id), volumes }] } : {}),
+          ...(kind === "owned" ? { ownership: [{ ...ownershipAt(root), appIds: [app.id] }] } : {}),
+        });
+        const paths = makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" });
+        const workerDirs = [
+          paths.hostProxyRunDir(app.id, app.root),
+          paths.agentRelayRunDir("ssh", app.id, app.root),
+          paths.agentRelayRunDir("gpg", app.id, app.root),
+        ];
+        for (const directory of workerDirs) {
+          await mkdir(directory, { recursive: true, mode: 0o700 });
+          await writeFile(join(directory, "credentials"), "stale", { mode: 0o600 });
+        }
+        const workerRecord = join(paths.hostProxyRunDir(app.id, app.root), "worker.json");
+        const sessions = startPlan.fileSync.map(({ session }) => ({
+          ...session,
+          ref: FileSyncSessionRef.make(`${session.service}-${session.mountKey}`),
+          spec: session,
+          status: "running" as const,
+          lastUpdatedAt: DateTime.makeUnsafe("2026-08-01T00:00:00.000Z"),
+        }));
+        const engine = {
+          ...TestFileSyncEngine,
+          id: "mutagen",
+          listSessions: (filter: { readonly app?: { readonly id?: string; readonly root?: string } }) =>
+            Effect.sync(() => {
+              harness.calls.push("verifyJournal");
+              return sessions.filter(
+                (session) =>
                   filter.app === undefined ||
-                  (entry.session.app.id === filter.app.id && entry.session.app.root === filter.app.root),
-              )
-              .map((entry) => ({
-                ...entry.session,
-                ref: FileSyncSessionRef.make(`${entry.session.service}-${entry.session.mountKey}`),
-                spec: entry.session,
-                status: "running" as const,
-                lastUpdatedAt: DateTime.makeUnsafe("2026-08-01T00:00:00.000Z"),
-              })),
-          ),
-        terminateSession: (ref: unknown) =>
-          Effect.sync(() => {
-            harness.calls.push("terminate");
-            terminations.push(String(ref));
+                  (session.app.id === filter.app.id && session.app.root === filter.app.root),
+              );
+            }),
+          flushSession: (ref: FileSyncSessionRef) =>
+            Effect.sync(() => {
+              harness.calls.push(`flush:${ref}`);
+            }),
+          terminateSession: (ref: FileSyncSessionRef) =>
+            Effect.sync(() => {
+              harness.calls.push(`terminate:${ref}`);
+            }),
+        };
+        const layer = Layer.mergeAll(
+          harness.layer,
+          Layer.succeed(PrivateFileAccessService, {
+            enforce: async () => undefined,
+            verify: async (path) => {
+              if (path === workerRecord) harness.calls.push("cleanupAppWorkers");
+            },
           }),
-      };
-      const harness = makeHarness({ appliedPlan: plan });
-      const layer = Layer.merge(
-        harness.layer,
-        Layer.succeed(FileSyncResolver, {
-          candidates: [],
-          select: () => Effect.succeed(undefined),
-          acquire: () => Effect.succeed(engine),
-        }),
-      );
-      await Effect.runPromise(
-        beginOrResumeAcceleratedStart(plan, app).pipe(
-          Effect.flatMap((pending) =>
-            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
-          ),
-          Effect.provide(layer),
-        ),
-      );
-      await rm(root, { recursive: true, force: true });
-
-      const result = await Effect.runPromise(stopAppAtRoot(root).pipe(Effect.provide(layer)));
-
-      expect(result).toMatchObject({ app: "stop-at-root", outcome: "stopped", servicesStopped: ["web"] });
-      expect(harness.destroyCalls).toEqual([plan]);
-      expect(harness.routeRemovals).toEqual(["stop-at-root"]);
-      expect(terminations).toHaveLength(1);
-      expect(harness.calls).toEqual(["destroy", "terminate"]);
-      for (const directory of workerDirs)
-        await expect(stat(directory)).rejects.toMatchObject({ code: "ENOENT" });
-      expect(harness.removedVolumes).toEqual([]);
-      const journal = await Effect.runPromise(readJournal(app).pipe(Effect.provide(layer)));
-      expect(journal.pending).not.toBeNull();
-      expect(journal.pending?.phase).not.toBe("completed");
-    });
-  });
-
-  test("terminates a missing-root unfinished start and keeps its journal, targets, and volumes", async () => {
-    await withTempRoot(async (root) => {
-      const plan = acceleratedPlanAt(root);
-      const app = { kind: "user" as const, id: plan.id, root: plan.root };
-      const terminations: string[] = [];
-      const engine = {
-        ...TestFileSyncEngine,
-        id: "mutagen",
-        listSessions: (filter: { readonly app?: { readonly id?: string; readonly root?: string } }) =>
-          Effect.succeed(
-            plan.fileSync
-              .filter(
-                (entry) =>
-                  filter.app === undefined ||
-                  (entry.session.app.id === filter.app.id && entry.session.app.root === filter.app.root),
-              )
-              .map((entry) => ({
-                ...entry.session,
-                ref: FileSyncSessionRef.make(`${entry.session.service}-${entry.session.mountKey}`),
-                spec: entry.session,
-                status: "running" as const,
-                lastUpdatedAt: DateTime.makeUnsafe("2026-08-01T00:00:00.000Z"),
-              })),
-          ),
-        terminateSession: (ref: unknown) =>
-          Effect.sync(() => {
-            terminations.push(String(ref));
+          Layer.succeed(FileSyncResolver, {
+            candidates: [],
+            select: () => Effect.succeed(undefined),
+            acquire: () => Effect.succeed(engine),
           }),
-      };
-      const harness = makeHarness({});
-      const layer = Layer.merge(
-        harness.layer,
-        Layer.succeed(FileSyncResolver, {
-          candidates: [],
-          select: () => Effect.succeed(undefined),
-          acquire: () => Effect.succeed(engine),
-        }),
-      );
-      await Effect.runPromise(
-        beginOrResumeAcceleratedStart(plan, app).pipe(
-          Effect.flatMap((pending) =>
-            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+        );
+        await Effect.runPromise(
+          beginOrResumeAcceleratedStart(startPlan, app).pipe(
+            Effect.flatMap((pending) =>
+              pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+            ),
+            Effect.provide(layer),
           ),
-          Effect.provide(layer),
-        ),
-      );
-      await rm(root, { recursive: true, force: true });
+        );
+        await rm(root, { recursive: true, force: true });
+        const before = await Effect.runPromise(readJournal(app).pipe(Effect.provide(layer)));
+        expect(before.pending?.targets.map((target) => target.volumeName)).toEqual(targetNames);
 
-      const result = await Effect.runPromise(stopAppAtRoot(root).pipe(Effect.provide(layer)));
-      expect(result).toMatchObject({ app: "stop-at-root", outcome: "stopped", servicesStopped: [] });
-      expect(terminations).toHaveLength(1);
-      expect(harness.destroyCalls).toEqual([]);
-      expect(harness.statusReads).toEqual([]);
-      expect(harness.removedVolumes).toEqual([]);
-      const journal = await Effect.runPromise(readJournal(app).pipe(Effect.provide(layer)));
-      expect(journal.pending).not.toBeNull();
-      expect(journal.pending?.phase).not.toBe("completed");
-    });
-  });
+        const result = await Effect.runPromise(stopAppAtRoot(root).pipe(Effect.provide(layer)));
+
+        expect(result).toMatchObject({ app: String(app.id), outcome: "stopped", servicesStopped: services });
+        expect(harness.calls).toEqual([
+          "verifyJournal",
+          ...writers,
+          "cleanupAppWorkers",
+          `withdrawOwnerRoutes:${app.id}`,
+          "terminate:web-app-mount",
+        ]);
+        expect(harness.destroyCalls).toEqual(kind === "applied" ? [plan] : []);
+        if (kind === "absent") expect(harness.statusReads).toEqual([]);
+        for (const directory of workerDirs)
+          await expect(stat(directory)).rejects.toMatchObject({ code: "ENOENT" });
+        const after = await Effect.runPromise(readJournal(app).pipe(Effect.provide(layer)));
+        expect(after.pending).toEqual(before.pending);
+        expect(await Effect.runPromise(harness.listVolumes())).toEqual(volumes);
+        expect(harness.removedVolumes).toEqual([]);
+        expect(await Effect.runPromise(harness.readAppliedPlan())).toEqual(
+          kind === "applied" ? plan : undefined,
+        );
+      });
+    },
+  );
 });
