@@ -136,6 +136,26 @@ const artifactBuildStepInput = (step: unknown): unknown => {
     user: typeof step.user === "string" ? step.user : undefined,
     dependsOn: step.dependsOn,
     buildKeyInputs: step.buildKeyInputs,
+    acquisitions: Array.isArray(step.acquisitions)
+      ? step.acquisitions.map((value) => {
+          if (!Predicate.isObject(value)) return undefined;
+          const integrity = Predicate.isObject(value.integrity)
+            ? {
+                algorithm: value.integrity.algorithm,
+                hex: value.integrity.hex,
+                file: value.integrity.file,
+              }
+            : undefined;
+          return {
+            kind: value.kind,
+            name: value.name,
+            version: value.version,
+            contextName: value.contextName,
+            destination: value.destination,
+            integrity,
+          };
+        })
+      : undefined,
     caFiles: Array.isArray(step.caFiles)
       ? step.caFiles
           .map((descriptor) =>
