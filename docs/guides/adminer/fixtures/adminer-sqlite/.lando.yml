@@ -6,12 +6,4 @@ services:
     sqlite:
       path: data/site.sqlite
   adminer:
-    type: compose
-    image: adminer:6
-    volumes:
-      - ./adminer-password.php:/var/www/html/plugins-enabled/adminer-password.php
-    endpoints:
-      - _tag: internal
-        name: ui
-        protocol: http
-        port: 8080
+    type: adminer

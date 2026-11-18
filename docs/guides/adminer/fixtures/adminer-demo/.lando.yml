@@ -3,11 +3,4 @@ services:
   db:
     type: postgres
   adminer:
-    type: compose
-    image: adminer:6
-    appMount: false
-    endpoints:
-      - _tag: internal
-        name: ui
-        protocol: http
-        port: 8080
+    type: adminer
