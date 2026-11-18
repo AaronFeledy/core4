@@ -121,15 +121,13 @@ test("renders a project-file field path next to the Landofile issue path", () =>
   const report = buildBugReport({
     error: {
       _tag: "LandofileValidationError",
-      message:
-        "package.json has invalid values: services.app: packageManager in package.json is not a valid package manager spec.",
+      message: "Invalid configuration.",
       file: "/app/package.json",
-      remediation: 'Set packageManager to an exact "<name>@<version>" spec.',
+      remediation: "Fix each listed value.",
       issues: [
         {
           path: ["services", "app"],
-          message: "packageManager in package.json is not a valid package manager spec.",
-          suggestion: 'Set packageManager to an exact "<name>@<version>" spec.',
+          message: "Invalid manager.",
           source: { layer: "project-file", file: "/app/package.json", path: ["packageManager"] },
         },
       ],
@@ -138,7 +136,5 @@ test("renders a project-file field path next to the Landofile issue path", () =>
   });
   const output = renderPlainBugReport(report);
 
-  expect(output).toContain("package.json has invalid values");
-  expect(output).toContain("/app/package.json: services.app:");
-  expect(output).toContain("(authored packageManager)");
+  expect(output).toMatch(/\/app\/package\.json: services\.app:[^\n]*\(authored packageManager\)/u);
 });
