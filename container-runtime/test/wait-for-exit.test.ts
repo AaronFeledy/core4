@@ -262,6 +262,27 @@ describe("waitNativeContainer", () => {
     ]);
   });
 
+  test("returns to an uninterruptible caller that passes a live abort signal", async () => {
+    // Given
+    const fake = makeFakeApi([{ status: 200, body: JSON.stringify({ StatusCode: 0 }) }]);
+    const controller = new AbortController();
+
+    // When
+    const result = await Effect.runPromise(
+      Effect.uninterruptible(
+        waitNativeContainer("abc123", {
+          api: fake.api,
+          ctx,
+          dialect: dockerWaitDialect,
+          signal: controller.signal,
+        }),
+      ),
+    );
+
+    // Then
+    expect(result).toEqual({ _tag: "Returned", exitCode: 0 });
+  });
+
   test("returns Missing for 404 at the wait endpoint", async () => {
     // Given
     const fake = makeFakeApi([{ status: 404, body: '{"message":"No such container: abc123"}' }]);
