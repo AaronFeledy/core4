@@ -225,7 +225,8 @@ export const raceJoined = <A, E, R, B, E2, R2>(
 export const withDeadline = <A, E, R>(attempt: Effect.Effect<A, E, R>, duration: Duration.Input) =>
   raceJoined(
     attempt.pipe(Effect.map((value) => ({ _tag: "Completed" as const, value }))),
-    Effect.sleep(duration).pipe(Effect.as({ _tag: "TimedOut" as const })),
+    // The timer only waits, so it stays cancellable when the caller is uninterruptible.
+    Effect.interruptible(Effect.sleep(duration)).pipe(Effect.as({ _tag: "TimedOut" as const })),
   );
 
 /** Typed failures become defects so an infallible finalizer can still surface them. */
