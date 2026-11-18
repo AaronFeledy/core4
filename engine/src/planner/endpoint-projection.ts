@@ -174,10 +174,6 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
     if (config === undefined) continue;
     const normalizedConfig =
       row.preparation._tag === "Available" ? row.preparation.value.facts.normalizedConfig : config;
-    if (normalizedConfig.endpoints === undefined && row.contributions._tag === "Unavailable") {
-      rows.set(name, { ...row, endpoints: unavailable(row.contributions.reasons) });
-      continue;
-    }
     const routes = input.routes.get(name);
     const normalized = normalizeEndpointFacts(
       row.contributions.value,
@@ -186,17 +182,24 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
         ? undefined
         : { service: name, routes, allowImplication: row.contributions._tag === "Available" },
     );
-    const error = endpointValidationError(normalized.endpoints, {
-      appRoot: input.appRoot,
-      serviceName: name,
-    });
+    const incomplete =
+      normalizedConfig.endpoints === undefined && row.contributions._tag === "Unavailable"
+        ? unavailable(row.contributions.reasons)
+        : undefined;
+    const error =
+      incomplete === undefined
+        ? endpointValidationError(normalized.endpoints, { appRoot: input.appRoot, serviceName: name })
+        : undefined;
     if (error === undefined) {
       for (const [route, issue] of normalized.conflicts ?? []) conflicts.set(route, issue);
     }
     rows.set(name, {
       ...row,
       endpoints:
-        error === undefined ? { _tag: "Available", value: normalized.endpoints } : unavailable(record(error)),
+        incomplete ??
+        (error === undefined
+          ? { _tag: "Available", value: normalized.endpoints }
+          : unavailable(record(error))),
     });
   }
   // Bind exactly as planning will: only a service holding a generated certificate
@@ -207,14 +210,19 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
   const reported = new Set<ValidationIssue>();
   for (const [name, routes] of input.routes) {
     const row = rows.get(name);
-    if (row === undefined || row.endpoints._tag === "Unavailable") continue;
-    const facetsFor = endpointsForRoutes(row.endpoints.value);
+    if (row === undefined) continue;
+    const endpoints = row.endpoints._tag === "Available" ? row.endpoints.value : [];
+    const facetsFor = endpointsForRoutes(endpoints);
     for (const route of routes ?? []) {
       const conflict = conflicts.get(route);
       const numericFacets = facetsFor(route);
-      if (row.contributions._tag === "Unavailable" && numericFacets?.length === 0 && conflict === undefined)
+      if (
+        conflict === undefined &&
+        (row.endpoints._tag === "Unavailable" ||
+          (row.contributions._tag === "Unavailable" && numericFacets?.length === 0))
+      )
         continue;
-      const binding = bindRoute(name, row.endpoints.value, route, generatedCertificates.has(name), {
+      const binding = bindRoute(name, endpoints, route, generatedCertificates.has(name), {
         conflict,
         numericFacets,
       });

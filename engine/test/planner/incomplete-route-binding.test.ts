@@ -11,7 +11,10 @@ import { bundledPluginModules } from "../../src/composition.ts";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import * as Registry from "../../src/plugins/registry.ts";
 
-test("incomplete contributions retain numeric route conflicts without inventing missing listeners", async () => {
+test.each([
+  { label: "explicit endpoints", endpoints: ["http:8080", "udp:8080", "udp:8082"], conflicts: [2, 3] },
+  { label: "omitted endpoints", endpoints: undefined, conflicts: [2] },
+])("reports only known route conflicts with $label", async ({ endpoints, conflicts }) => {
   const feature: AppFeatureDefinition = {
     id: "test.listeners",
     priority: 100,
@@ -34,16 +37,17 @@ test("incomplete contributions retain numeric route conflicts without inventing 
     }),
   ]);
   const root = await mkdtemp(join(tmpdir(), "lando-incomplete-bindings-"));
+  const file = join(root, ".lando.yml");
   try {
     await writeFile(
-      join(root, ".lando.yml"),
+      file,
       emitYamlDocument({
         name: "incomplete-bindings",
         services: {
           web: {
             type: "php:8.3",
             via: "fpm",
-            endpoints: ["http:8080", "udp:8080", "udp:8082"],
+            ...(endpoints === undefined ? {} : { endpoints }),
             routes: [
               "web.lndo.site:8080",
               "unknown.lndo.site:8081",
@@ -56,18 +60,14 @@ test("incomplete contributions retain numeric route conflicts without inventing 
       }),
     );
     const lint = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registry)));
-    expect(lint.violations.map(({ rule, path, reason }) => ({ rule, path, reason }))).toEqual([
-      { rule: "landofile.service", path: ["services", "missing", "type"], reason: undefined },
-      {
+    expect(lint.violations).toMatchObject([
+      { rule: "landofile.service", path: ["services", "missing", "type"] },
+      ...conflicts.map((index) => ({
         rule: "landofile.route",
-        path: ["services", "web", "routes", 2],
+        path: ["services", "web", "routes", index],
         reason: "route-endpoint-protocol-conflict",
-      },
-      {
-        rule: "landofile.route",
-        path: ["services", "web", "routes", 3],
-        reason: "route-endpoint-protocol-conflict",
-      },
+        source: { file, path: ["services", "web", "routes", index] },
+      })),
     ]);
   } finally {
     await rm(root, { recursive: true, force: true });
