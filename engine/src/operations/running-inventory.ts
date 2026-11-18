@@ -37,11 +37,10 @@ type ScratchTarget = {
 };
 type JournalRecord = Effect.Success<ReturnType<typeof readAcceleratedStartInventory>>["records"][number];
 
-const ACTIVE_SERVICE_STATUSES: ReadonlySet<ServiceRuntimeInfo["status"]> = new Set([
-  "running",
-  "paused",
-  "restarting",
-  "created",
+const QUIESCENT_SERVICE_STATUSES: ReadonlySet<ServiceRuntimeInfo["status"]> = new Set([
+  "absent",
+  "exited",
+  "dead",
 ]);
 
 const readProviderSnapshots = Effect.fnUntraced(function* (journalProviders: ReadonlySet<string>) {
@@ -80,15 +79,15 @@ const readProviderSnapshots = Effect.fnUntraced(function* (journalProviders: Rea
       Effect.provideService(TeardownProvider, id),
       Effect.result,
     );
-    if (Result.isFailure(observed)) {
-      if (hasRecordedHoldings) failures.push(providerInventoryFailure(String(id), observed.failure));
+    if (Result.isFailure(observed) && hasRecordedHoldings) {
+      failures.push(providerInventoryFailure(String(id), observed.failure));
       continue;
     }
-    const providerSnapshots = observed.success.filter((snapshot) => snapshot.providerId === id);
-    snapshots.push(...providerSnapshots);
-    if (providerSnapshots.some((snapshot) => snapshot.runtimeObserved)) continue;
-    // A failed status observation is indistinguishable from idle in the snapshot. Classify it
-    // without launching, and fail only when this provider has recorded holdings to protect.
+    if (Result.isSuccess(observed)) {
+      const providerSnapshots = observed.success.filter((snapshot) => snapshot.providerId === id);
+      snapshots.push(...providerSnapshots);
+      if (providerSnapshots.some((snapshot) => snapshot.runtimeObserved)) continue;
+    }
     const status = yield* registry.select(id).pipe(
       Effect.flatMap((provider) => provider.getStatus),
       Effect.result,
@@ -97,7 +96,9 @@ const readProviderSnapshots = Effect.fnUntraced(function* (journalProviders: Rea
       if (hasRecordedHoldings) failures.push(providerInventoryFailure(String(id), status.failure));
       continue;
     }
-    if (status.success.state !== "idle" && hasRecordedHoldings)
+    if (status.success.state === "idle") continue;
+    if (Result.isFailure(observed)) failures.push(providerInventoryFailure(String(id), observed.failure));
+    else if (hasRecordedHoldings)
       failures.push(providerInventoryFailure(String(id), unobservedRuntimeError(id)));
   }
 
@@ -117,16 +118,15 @@ export const deriveRunningTargets = (
   for (const snapshot of snapshots) {
     for (const service of snapshot.services) {
       if (service.app === "global") continue;
+      if (QUIESCENT_SERVICE_STATUSES.has(service.status)) continue;
       if (service.labels?.[SCRATCH_LABEL] === "TRUE") {
-        if (ACTIVE_SERVICE_STATUSES.has(service.status))
-          scratchObserved.set(String(service.app), {
-            id: String(service.app),
-            appRoot: service.appRoot ?? AbsolutePath.make(""),
-            providerId: service.providerId,
-          });
+        scratchObserved.set(String(service.app), {
+          id: String(service.app),
+          appRoot: service.appRoot ?? AbsolutePath.make(""),
+          providerId: service.providerId,
+        });
         continue;
       }
-      if (!ACTIVE_SERVICE_STATUSES.has(service.status)) continue;
       if (service.appRoot === undefined) {
         failures.push({
           kind: "user",

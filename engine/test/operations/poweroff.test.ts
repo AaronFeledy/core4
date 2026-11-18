@@ -83,6 +83,7 @@ const makeHarness = async (input: {
   readonly quiescent?: { readonly root: string; readonly plan: AppPlan };
   readonly failRoot?: string;
   readonly runtimeObserved?: boolean;
+  readonly observationFailure?: ProviderUnavailableError;
   readonly statusFailure?: boolean;
   readonly idle?: boolean;
   readonly holdingPlans?: ReadonlyArray<AppPlan>;
@@ -142,7 +143,10 @@ const makeHarness = async (input: {
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     appliedStateInventory: () => Effect.succeed({ plans: input.holdingPlans ?? [], unreadable: [] }),
-    observeRuntime: Effect.succeed([snapshot]),
+    observeRuntime:
+      input.observationFailure === undefined
+        ? Effect.succeed([snapshot])
+        : Effect.fail(input.observationFailure),
     appliedPlansFor: (root: AbsolutePath, scope?: ProviderId) => {
       const user =
         (scope === undefined || scope === providerId) && plans.has(root) ? [plans.get(root) as AppPlan] : [];
@@ -262,10 +266,10 @@ describe("poweroff operation", () => {
     });
   });
 
-  test("skips a quiescent persisted app so its stop hook never runs", async () => {
+  test("stops an unknown container while skipping a confirmed quiescent app", async () => {
     await withRoots(async ({ a, quiet }) => {
       const harness = await makeHarness({
-        roots: [{ root: a, plan: planAt(a), status: "running" }],
+        roots: [{ root: a, plan: planAt(a), status: "unknown" }],
         quiescent: { root: quiet, plan: planAt(quiet, "quiet") },
       });
       const result = await Effect.runPromise(poweroff().pipe(Effect.provide(harness.layer)));
@@ -377,6 +381,36 @@ describe("poweroff operation", () => {
       expect(harness.calls).toEqual(["runtime"]);
     });
   });
+
+  test.each(["running", "idle", "unavailable"] as const)(
+    "classifies failed inventory without holdings when provider status is %s",
+    async (status) => {
+      const harness = await makeHarness({
+        roots: [],
+        idle: status === "idle",
+        statusFailure: status === "unavailable",
+        observationFailure: new ProviderUnavailableError({
+          providerId,
+          operation: "observeRuntime",
+          message: "The container inventory could not be read.",
+          remediation: "Restore provider access and retry.",
+        }),
+      });
+      const result = await Effect.runPromise(poweroff().pipe(Effect.result, Effect.provide(harness.layer)));
+      if (status === "running") {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "PoweroffStopError",
+            failures: [{ providerId, _tag: "ProviderUnavailableError" }],
+          },
+        });
+        expect(harness.calls).not.toContain("runtime");
+      } else {
+        expect(result).toMatchObject({ _tag: "Success" });
+      }
+    },
+  );
 
   test("reports every unreadable accelerated-start journal and keeps the runtime running", async () => {
     await withRoots(async () => {
