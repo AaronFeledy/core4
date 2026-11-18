@@ -65,7 +65,6 @@ export const source = {
       },
       composer: composerTool,
       "create-project": createProjectTool,
-      npm: { service: "node", description: "Run npm inside the node service.", cmds: ["npm"], wrapper: true },
     },
   },
   variants: [
