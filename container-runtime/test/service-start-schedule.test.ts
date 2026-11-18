@@ -9,7 +9,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { Clock, DateTime, Effect, Fiber } from "effect";
+import { Cause, Clock, DateTime, Effect, Exit, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
 import {
@@ -95,6 +95,82 @@ const recordingHandlers = (record: Array<string>, overrides: Record<string, unkn
       return { exitCode: 0 };
     }),
   ...overrides,
+});
+
+for (const startPeriodSeconds of [0, 15]) {
+  test(`verified exit settles the ${startPeriodSeconds > 0 ? "grace" : "regular"} phase and only blocks required consumers`, async () => {
+    const calls: string[] = [];
+    const plan = planOf([
+      service("db", {
+        readiness: { ...commandHealthcheck, intervalSeconds: 5, retries: 40, startPeriodSeconds },
+      }),
+      service("cache", { dependsOn: [dependency("db", "service_healthy", false)] }),
+      service("web", { dependsOn: [dependency("db", "service_healthy")] }),
+    ]);
+    const dependencyExit = { containerId: "db-container", status: "exited", exitCode: 7 } as const;
+    const result = await Effect.runPromise(
+      runServiceStartSchedule(plan, {
+        ...recordingHandlers(calls),
+        execHealthcheck: () =>
+          Effect.sync(() => {
+            calls.push("health:db");
+            return { exitCode: 125 };
+          }),
+        observeHealthyDependency: () => Effect.succeed({ _tag: "Exited", exit: dependencyExit }),
+      }).pipe(Effect.provide(TestClock.layer()), Effect.timeout("1 second")),
+    );
+    expect(calls).toEqual(["start:db", "health:db", "start:cache"]);
+    expect(result).toEqual({
+      _tag: "Settled",
+      changed: true,
+      blocked: [{ service: "web", unmetGate: "db:healthy", dependency: "db", dependencyExit }],
+    });
+  });
+}
+
+test("a restarting dependency can pass on the last allowed attempt without another inspect on service-green", async () => {
+  let attempts = 0;
+  const calls: string[] = [];
+  const plan = planOf([
+    service("db", { readiness: { ...commandHealthcheck, retries: 3 } }),
+    service("web", { dependsOn: [dependency("db", "service_healthy")] }),
+  ]);
+  const result = await Effect.runPromise(
+    runServiceStartSchedule(plan, {
+      ...recordingHandlers(calls),
+      execHealthcheck: () => Effect.sync(() => ({ exitCode: ++attempts === 3 ? 0 : 1 })),
+      observeHealthyDependency: () =>
+        Effect.sync(() => {
+          calls.push("inspect:db");
+          return { _tag: "Restarting" };
+        }),
+    }),
+  );
+  expect(result).toMatchObject({ blocked: [] });
+  expect(attempts).toBe(3);
+  expect(calls).toEqual(["start:db", "inspect:db", "inspect:db", "start:web"]);
+});
+
+test("an exceptional readiness cause cannot admit an optional consumer or leak its payload", async () => {
+  const calls: string[] = [];
+  const plan = planOf([
+    service("db", { healthcheck: commandHealthcheck }),
+    service("cache", { dependsOn: [dependency("db", "service_healthy", false)] }),
+  ]);
+  const mixed = Cause.combine(Cause.fail("sensitive fail"), Cause.die("sensitive defect"));
+  for (const [execHealthcheck, reasons] of [
+    [() => Effect.failCause(mixed), ["Fail", "Die"]],
+    [() => Effect.interrupt, ["Interrupt"]],
+  ] as const) {
+    calls.length = 0;
+    const exit = await Effect.runPromiseExit(
+      runServiceStartSchedule(plan, { ...recordingHandlers(calls), execHealthcheck }),
+    );
+    expect(calls).toEqual(["start:db"]);
+    if (!Exit.isFailure(exit)) throw new Error("Expected the gate to fail");
+    expect(exit.cause.reasons.map((reason) => reason._tag)).toEqual([...reasons]);
+    expect(Cause.pretty(exit.cause)).not.toContain("sensitive");
+  }
 });
 
 test("retains bounded redacted stderr when a readiness executable exits nonzero", async () => {

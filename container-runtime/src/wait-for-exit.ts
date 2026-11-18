@@ -13,6 +13,7 @@ export interface WaitForExitOptions {
   readonly ctx: ProviderErrorContext;
   readonly dialect: WaitDialect;
   readonly signal?: AbortSignal;
+  readonly nativeId?: string;
 }
 
 const containerName = (plan: AppPlan, service: ServicePlan): string =>
@@ -47,7 +48,9 @@ export const waitForExit = Effect.fn("RuntimeProvider.waitForExit")(function* (
     );
   }
 
-  const response = yield* request(options.dialect.request(containerName(plan, service), options.signal));
+  const response = yield* request(
+    options.dialect.request(options.nativeId ?? containerName(plan, service), options.signal),
+  );
   if (response.status < 200 || response.status >= 300) {
     return yield* Effect.fail(
       new ProviderUnavailableError({

@@ -12,8 +12,17 @@ export const runHealthcheckProbe = Effect.fn("HealthcheckProbe.run")(function* <
     duration: Duration.seconds(plan.timeoutSeconds),
     orElse: () => onTimeout,
   });
+  return yield* runHealthcheckPhases({ id, plan }, bounded, (value) => value === "green");
+});
+
+/** The probe primitive's green means settled here; the caller decides whether settlement is readiness. */
+export const runHealthcheckPhases = Effect.fnUntraced(function* <A, E, R>(
+  { id, plan }: { readonly id: string; readonly plan: HealthcheckPlan },
+  attempt: Effect.Effect<A, E, R>,
+  settled: (value: unknown) => boolean,
+): Effect.fn.Return<ProbeResult, ProbeError, R> {
   const classify = {
-    success: (value: unknown) => (value === "green" ? ("green" as const) : ("red" as const)),
+    success: (value: unknown): "green" | "red" => (settled(value) ? "green" : "red"),
     failure: () => "red" as const,
   };
   const startPeriod = plan.startPeriodSeconds ?? 0;
@@ -31,7 +40,7 @@ export const runHealthcheckProbe = Effect.fn("HealthcheckProbe.run")(function* <
             },
             classify,
           },
-          bounded,
+          attempt,
         )
       : undefined;
   if (grace?.outcome === "green") return grace;
@@ -45,7 +54,7 @@ export const runHealthcheckProbe = Effect.fn("HealthcheckProbe.run")(function* <
       },
       classify,
     },
-    bounded,
+    attempt,
   );
   return {
     ...retried,

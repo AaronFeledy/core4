@@ -62,7 +62,7 @@ Service startup also honors each Landofile `depends_on` condition: `service_star
 waits for the dependency to start, `service_healthy` requires enabled command readiness and waits for it, and
 `service_completed_successfully` waits for a zero exit code. An optional dependency
 declared with `required: false` does not block the remaining services when it is absent
-or fails.
+or fails. A confirmed terminal exit during a healthy dependency gate ends the wait. A required gate fails with `ServiceStartError`. Read `details.dependencyExit` for the process state and the exit code, when available.
 
 Author `readiness` independently of native `healthcheck`. Omitted readiness keeps a type's contributed probe, otherwise falls back to effective native health. `readiness: false` blocks fallback but not process/completion supervision; `healthcheck: false` disables native monitoring without disabling explicit or contributed readiness. Disabling readiness does not relax a `service_healthy` gate.
 

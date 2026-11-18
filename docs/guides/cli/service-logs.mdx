@@ -171,7 +171,7 @@ lando logs -s appserver --tail 50
 lando info
 ```
 
-When a readiness check or healthy dependency gate fails on a TCP port, the error also reports which ports the service is actually listening on, and a dependency failure names the dependency's logs command. See [Inspect a failed start](../services/wait-for-your-app.mdx#inspect-a-failed-start) for what each finding means.
+When a healthy dependency exits without a restart, Lando stops retrying the gate. The error includes the dependency's exit code and log tail when available and names its logs command. For a failed probe on a running service, the error may include which TCP ports the service is listening on. See [Inspect a failed start](../services/wait-for-your-app.mdx#inspect-a-failed-start) for what each finding means.
 
 Fix the service and run `lando start` again. For a readiness failure, correct its command or timing; set `readiness: false` only when you want process supervision without a lifecycle command gate. Native `healthcheck: false` does not disable authored or contributed readiness. A `service_healthy` dependency still requires enabled command readiness. Post-start steps run only after readiness succeeds. URL-scan warnings do not fail start.
 

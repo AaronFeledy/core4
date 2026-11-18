@@ -104,7 +104,7 @@ If you are looking for a public surface or policy:
 | Current/recorded app names, retained data name, and planned/applied project-file policy in info | 06 | §6.10 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
 | Logical endpoint identity, mandatory endpoint normalization, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
-| Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
+| Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, terminal dependency evidence, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
 | Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
 | Native-health observations and readiness configuration metadata, without last-proof inference | 06 | §6.10 |
 | Certificates and trust injection | 06 | §6.8 |

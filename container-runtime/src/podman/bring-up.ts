@@ -1,4 +1,5 @@
-import { mapFailures } from "@lando/sdk/command-result";
+import { redactProviderError } from "@lando/redaction/provider-error";
+import { mapDefectCause, mapFailures, mergeFailure } from "@lando/sdk/command-result";
 import {
   EnvironmentValueResolutionError,
   PlanReplanRequiredError,
@@ -25,7 +26,7 @@ import {
   landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
 import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
-import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
+import { Cause, type Context, DateTime, Duration, Effect, Exit, Option, Stream } from "effect";
 import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import { removeRuntimeContainer } from "../container-removal.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
@@ -75,7 +76,11 @@ import {
   prepareCreatePublishEndpoints,
   shouldProbeServicePublishPort,
 } from "../service-publish-ports.ts";
-import { runServiceStartSchedule } from "../service-start-schedule.ts";
+import {
+  type DependencyExit,
+  type DependencyObservation,
+  runServiceStartSchedule,
+} from "../service-start-schedule.ts";
 import { isServiceRestartExpected } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
@@ -92,12 +97,13 @@ import {
 } from "./bring-up-recreate.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { type ExecOptions, exec, execStream } from "./exec.ts";
-import { logs } from "./logs.ts";
+import { containerConsoleLogs } from "./logs.ts";
 import {
   listLabeledServiceContainers,
   removeStaleServiceContainers,
   selectStaleServiceContainers,
 } from "./stale-service-containers.ts";
+import { startObservation } from "./start-observation.ts";
 
 export { scratchLabelsForPlan } from "../labels.ts";
 
@@ -147,6 +153,7 @@ interface InspectResult {
 
 interface StartResult {
   readonly changed: boolean;
+  readonly nativeId?: string;
 }
 
 /**
@@ -914,30 +921,16 @@ const startService = Effect.fnUntraced(function* (
   }
 
   const after = yield* inspectContainer(deps, name);
-  const state =
-    after.body !== undefined && typeof after.body === "object" && after.body !== null
-      ? Reflect.get(after.body, "State")
-      : undefined;
-  const engineStatus = typeof state === "object" && state !== null ? Reflect.get(state, "Status") : undefined;
-  const terminal = engineStatus === "exited" || engineStatus === "dead";
-  const completed =
-    completionIntentServices(deps.options.completionPlan ?? plan).has(String(service.name)) &&
-    after.exists &&
-    typeof state === "object" &&
-    state !== null &&
-    Reflect.get(state, "ExitCode") === 0 &&
-    terminal;
+  const observed = startObservation(after.body);
   const completionIntent = completionIntentServices(deps.options.completionPlan ?? plan).has(
     String(service.name),
   );
-  const exitCode = typeof state === "object" && state !== null ? Reflect.get(state, "ExitCode") : undefined;
+  const completed = completionIntent && observed.status === "exited" && observed.exitCode === 0;
   const supervised =
     !completionIntent &&
-    after.exists &&
-    (terminal || engineStatus === "restarting") &&
-    typeof exitCode === "number" &&
-    isServiceRestartExpected(service, exitCode);
-  if (!after.running && !completed && !supervised) {
+    (observed.status === "restarting" ||
+      (observed.status === "exited" && isServiceRestartExpected(service, observed.exitCode)));
+  if ((!after.running || observed.status === "restarting") && !completed && !supervised) {
     yield* Effect.fail(
       podmanFailure(deps, {
         service,
@@ -973,8 +966,89 @@ const startService = Effect.fnUntraced(function* (
     }),
   );
 
-  return { changed };
+  const nativeId =
+    Object.values(plan.services).some((dependent) =>
+      dependent.dependsOn.some(
+        (edge) => edge.condition !== "service_started" && edge.service === service.name,
+      ),
+    ) && after.exists
+      ? yield* verifiedStartId(deps, plan, service, after.body)
+      : undefined;
+  return { changed, ...(nativeId === undefined ? {} : { nativeId }) };
 });
+
+const verifiedStartId = (deps: BringUpDeps, plan: AppPlan, service: ServicePlan, body: unknown) =>
+  verifiedNativeId(JSON.stringify(body), containerOwnershipLabels(plan, service.name), deps.options.ctx).pipe(
+    Effect.catchTag("ProviderUnavailableError", () => Effect.succeed(undefined)),
+  );
+
+const dependencyExitDetails = (service: string, gate: string, exit: DependencyExit) => ({
+  dependencyExit:
+    exit.status === "dead"
+      ? { service, gate, status: exit.status }
+      : {
+          service,
+          gate,
+          status: exit.status,
+          ...(exit.exitCode === undefined ? {} : { exitCode: exit.exitCode }),
+        },
+});
+
+/** Snapshot of the container this apply started; undefined when the planned name now resolves to another container. */
+const inspectStartedContainer = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  target: { readonly plan: AppPlan; readonly service: ServicePlan; readonly nativeId: string },
+) {
+  const { plan, service, nativeId } = target;
+  const inspected = yield* inspectContainer(deps, containerName(plan, service));
+  if (!inspected.exists || (yield* verifiedStartId(deps, plan, service, inspected.body)) !== nativeId) {
+    return undefined;
+  }
+  return startObservation(inspected.body);
+});
+
+const sanitizeInspectCause = <E>(cause: Cause.Cause<E>) =>
+  mapDefectCause(cause, () => "Dependency inspect defect.");
+
+/** Best-effort sample for a retrying gate: a slow or failed inspect is inconclusive, never terminal. */
+const observeStartedContainer = (
+  deps: BringUpDeps,
+  target: { readonly plan: AppPlan; readonly service: ServicePlan; readonly nativeId: string },
+) =>
+  interruptOnAbort(
+    inspectStartedContainer(deps, target).pipe(
+      Effect.timeoutOrElse({
+        duration: Duration.seconds(1),
+        orElse: () => Effect.succeed(undefined),
+      }),
+      Effect.catchCause((cause) => {
+        const [reason] = cause.reasons;
+        return cause.reasons.length === 1 &&
+          reason?._tag === "Fail" &&
+          (reason.error instanceof ProviderUnavailableError || reason.error instanceof ProviderInternalError)
+          ? Effect.succeed(undefined)
+          : Effect.failCause(sanitizeInspectCause(cause));
+      }),
+      mapFailures((error) => redactProviderError(error, deps.redactor, { cause: "omit" })),
+    ),
+    deps.options.signal,
+  );
+
+/**
+ * Final verdict after a completed wait: the gate does not retry, so an inspect failure is reported
+ * as itself rather than read as an unmet completion gate.
+ */
+const verifyCompletedContainer = (
+  deps: BringUpDeps,
+  target: { readonly plan: AppPlan; readonly service: ServicePlan; readonly nativeId: string },
+) =>
+  interruptOnAbort(
+    inspectStartedContainer(deps, target).pipe(
+      Effect.catchCause((cause) => Effect.failCause(sanitizeInspectCause(cause))),
+      mapFailures((error) => redactProviderError(error, deps.redactor, { cause: "omit" })),
+    ),
+    deps.options.signal,
+  );
 
 const SERVICE_START_LOG_TAIL_LINES = 50;
 const SERVICE_START_LOG_TAIL_MAX_CHARS = 4000;
@@ -1012,14 +1086,15 @@ const captureServiceLogTail = Effect.fnUntraced(
     deps: BringUpDeps,
     plan: AppPlan,
     service: ServicePlan,
-    extras?: { readonly exitCode?: number; readonly timedOut?: boolean },
+    extras?: { readonly containerId?: string; readonly exitCode?: number; readonly timedOut?: boolean },
   ): Effect.fn.Return<ServiceStartLogTail | undefined, ProviderError> {
     const collected = yield* Stream.runCollect(
-      logs(
-        plan,
-        { app: plan.id, service: service.name },
+      containerConsoleLogs(
+        deps.api,
+        deps.options.ctx,
+        extras?.containerId ?? containerName(plan, service),
+        service.name,
         { follow: false, tail: SERVICE_START_LOG_TAIL_LINES, sources: [] },
-        { api: deps.api, ctx: deps.options.ctx },
       ),
     );
     if (collected.length === 0) return undefined;
@@ -1035,10 +1110,14 @@ const captureServiceLogTail = Effect.fnUntraced(
       ...(extras?.timedOut === true ? { timedOut: true } : {}),
     };
   },
-  Effect.timeout(SERVICE_START_LOG_TAIL_TIMEOUT),
+  Effect.timeoutOrElse({ duration: SERVICE_START_LOG_TAIL_TIMEOUT, orElse: () => Effect.succeed(undefined) }),
   Effect.catchCause((cause) =>
-    Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.succeed(undefined),
+    cause.reasons.length === 1 && !Cause.hasInterrupts(cause)
+      ? Effect.succeed(undefined)
+      : Effect.failCause(mapDefectCause(cause, () => "Start log capture defect.")),
   ),
+  (effect, deps) =>
+    effect.pipe(mapFailures((error) => redactProviderError(error, deps.redactor, { cause: "omit" }))),
 );
 
 export const withServiceStartLogTail = (
@@ -1071,6 +1150,7 @@ const captureStartFailure = (
       : undefined;
   const capture = named === undefined ? Effect.succeed(undefined) : captureServiceLogTail(deps, plan, named);
   return capture.pipe(
+    Effect.catchCause((cause) => Effect.failCause(mergeFailure(Cause.fail(error), cause, "cleanup"))),
     Effect.flatMap((logTail) =>
       deps.options.signal?.aborted === true
         ? Effect.interrupt
@@ -1141,6 +1221,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       createdVolumes.push(fact);
     }
   }
+  const startedIds = new Map<ServiceName, string>();
   const result = yield* runServiceStartSchedule(plan, {
     redactProbeError: (error) =>
       deps.redactor.redactString(
@@ -1157,9 +1238,40 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       if (options.signal?.aborted === true) {
         return yield* Effect.interrupt;
       }
-      return yield* startService(deps, plan, service).pipe(
+      const started = yield* startService(deps, plan, service).pipe(
         Effect.catch((error) => (options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
       );
+      if (started.nativeId !== undefined) startedIds.set(service.name, started.nativeId);
+      return started;
+    }),
+    observeHealthyDependency: Effect.fnUntraced(function* (service): Effect.fn.Return<
+      DependencyObservation,
+      ProviderError
+    > {
+      const nativeId = startedIds.get(service.name);
+      if (nativeId === undefined) return { _tag: "Inconclusive" };
+      const observed = yield* observeStartedContainer(deps, { plan, service, nativeId });
+      if (observed === undefined || observed.status === "unknown") return { _tag: "Inconclusive" };
+      if (
+        observed.status === "restarting" ||
+        !(
+          observed.policy === "no" ||
+          observed.policy === "" ||
+          (observed.policy === "on-failure" && observed.exitCode === 0)
+        )
+      )
+        return { _tag: "Restarting" };
+      return {
+        _tag: "Exited",
+        exit:
+          observed.status === "dead"
+            ? { status: "dead", containerId: nativeId }
+            : {
+                status: "exited",
+                containerId: nativeId,
+                ...(observed.exitCode === undefined ? {} : { exitCode: observed.exitCode }),
+              },
+      };
     }),
     execHealthcheck: (service, probe) =>
       interruptOnAbort(
@@ -1203,18 +1315,33 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
             ),
         options.signal,
       ),
-    waitForExit: (service) =>
-      waitForExit(
+    waitForExit: Effect.fnUntraced(function* (service) {
+      const nativeId = startedIds.get(service.name);
+      if (nativeId === undefined) return {};
+      yield* waitForExit(
         plan,
         { app: plan.id, service: service.name },
         {
           api,
           ctx: options.ctx,
+          nativeId,
           dialect: (options.dialect ?? libpodLifecycleDialect).wait,
           ...(options.signal === undefined ? {} : { signal: options.signal }),
         },
-      ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
-  }).pipe(Effect.catch((error) => captureStartFailure(deps, plan, error)));
+      );
+      const observed = yield* verifyCompletedContainer(deps, { plan, service, nativeId });
+      return observed?.status === "exited" && observed.exitCode !== undefined
+        ? { exitCode: observed.exitCode }
+        : {};
+    }),
+  }).pipe(
+    Effect.catchCause((cause) => {
+      const [reason] = cause.reasons;
+      return cause.reasons.length === 1 && reason?._tag === "Fail"
+        ? captureStartFailure(deps, plan, reason.error)
+        : Effect.failCause(cause);
+    }),
+  );
 
   if (result._tag === "Cycle") {
     return yield* Effect.fail(
@@ -1232,15 +1359,19 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     const aborted = options.signal?.aborted === true;
     const service = plan.services[ServiceName.make(blocked.service)];
     const dependency = plan.services[ServiceName.make(blocked.dependency)];
+    const exit = blocked.dependencyExit;
+    const exitCode = exit === undefined ? blocked.lastExitCode : exit.exitCode;
+    const diagnoseListener = exit === undefined && blocked.unmetGate.endsWith(":healthy");
     const capture =
       aborted || dependency === undefined
         ? Effect.succeed(undefined)
         : captureServiceLogTail(deps, plan, dependency, {
-            ...(blocked.lastExitCode === undefined ? {} : { exitCode: blocked.lastExitCode }),
+            ...(exit === undefined ? {} : { containerId: exit.containerId }),
+            ...(exitCode === undefined ? {} : { exitCode }),
             ...(blocked.timedOut === true ? { timedOut: true } : {}),
           });
     const observation =
-      aborted || dependency === undefined || !blocked.unmetGate.endsWith(":healthy")
+      aborted || dependency === undefined || !diagnoseListener
         ? Effect.succeed(undefined)
         : observeTcpListener(dependency, (command) =>
             execStream(plan, { app: plan.id, service: dependency.name, plan }, command, {
@@ -1248,8 +1379,8 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
               ctx: options.ctx,
             }),
           );
-    return yield* Effect.all([capture, observation], { concurrency: "unbounded" }).pipe(
-      Effect.flatMap(([logTail, listener]): Effect.Effect<never, BringUpError> => {
+    return yield* Effect.all([Effect.exit(capture), observation], { concurrency: "unbounded" }).pipe(
+      Effect.flatMap(([captured, listener]): Effect.Effect<never, BringUpError> => {
         if (options.signal?.aborted === true) return Effect.interrupt;
         if (service === undefined) {
           return Effect.fail(
@@ -1267,19 +1398,30 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
             ? listenerDiagnostic(listener, dependency)
             : undefined;
         const action =
-          diagnostic?.action ??
-          (blocked.unmetGate.endsWith(":healthy") ? listenerAuthorityAction(dependency) : undefined);
-        return Effect.fail(
-          podmanFailure(deps, {
-            service,
-            operation: "bringUp.schedule",
-            message: `${diagnostic === undefined ? "" : `Dependency ${blocked.dependency}: ${diagnostic.finding}. `}Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
-            remediation: `${action === undefined ? "" : `${deps.redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${deps.redactor.redactString(diagnostic.authority)}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
-            ...(listener === undefined ? {} : { listener }),
-            ...(blocked.lastError === undefined ? {} : { details: { readinessFailure: blocked.lastError } }),
-            ...(logTail === undefined ? {} : { logTail }),
-          }),
-        );
+          diagnostic?.action ?? (diagnoseListener ? listenerAuthorityAction(dependency) : undefined);
+        const exitMessage =
+          exit === undefined
+            ? ""
+            : `Dependency ${blocked.dependency} ${exit.status === "dead" ? "is dead" : "exited"}${exit.exitCode === undefined ? "" : ` with code ${exit.exitCode}`}. `;
+        const logTail = Exit.isSuccess(captured) ? captured.value : undefined;
+        const error = podmanFailure(deps, {
+          service,
+          operation: "bringUp.schedule",
+          message: `${exitMessage}${diagnostic === undefined ? "" : `Dependency ${blocked.dependency}: ${diagnostic.finding}. `}Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+          remediation: `${action === undefined ? "" : `${deps.redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${deps.redactor.redactString(diagnostic.authority)}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
+          ...(listener === undefined ? {} : { listener }),
+          ...(exit !== undefined
+            ? {
+                details: dependencyExitDetails(blocked.dependency, blocked.unmetGate, exit),
+              }
+            : blocked.lastError === undefined
+              ? {}
+              : { details: { readinessFailure: blocked.lastError } }),
+          ...(logTail === undefined ? {} : { logTail }),
+        });
+        return Exit.isFailure(captured)
+          ? Effect.failCause(mergeFailure(Cause.fail(error), captured.cause, "cleanup"))
+          : Effect.fail(error);
       }),
     );
   }

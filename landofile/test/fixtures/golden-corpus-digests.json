@@ -1422,6 +1422,10 @@
       "digest": "9856d6c4108ce53b022b2b7b3fa7ab1c81c9113c757ce3755f9037ed8b5d70d9"
     },
     {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/terminal-dependency",
+      "digest": "09a1d3e97f706e101cc5fcd41977a04b433dfe2992ddf4350e3c84a8d9b66d53"
+    },
+    {
       "fixture": "docs/guides/wordpress-multisite/fixtures/wp-network",
       "digest": "e4bbfc4f74462706b4fc5d16758b17e5c8b02d71d1004d679e25e983d56fd1e6"
     },

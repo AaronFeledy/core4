@@ -8,7 +8,8 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Fiber, Option, Result, Schema, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 import { installSupervisedExecFixture, supervisedExecFixtureOptions } from "./support/exec-supervision.ts";
@@ -322,6 +323,108 @@ test("internal health probes work without supervision assets", async () => {
   expect(requests).toContain("POST /containers/lando-bring-up-order-app--web/start");
 });
 
+const healthyObservationCases: ReadonlyArray<{
+  readonly scenario: string;
+  readonly policy: string | undefined;
+  readonly host: boolean;
+  readonly terminal?: "exited" | "dead";
+}> = [
+  { scenario: "stopped", policy: "no", host: false, terminal: "exited" },
+  { scenario: "replacement", policy: "no", host: false },
+  { scenario: "restarting", policy: "no", host: false },
+  { scenario: "dead", policy: "no", host: false, terminal: "dead" },
+  { scenario: "dead", policy: "always", host: false },
+  { scenario: "dead", policy: undefined, host: false },
+  { scenario: "dead", policy: "unknown-policy", host: false },
+  { scenario: "dead", policy: "on-failure", host: false },
+  { scenario: "stopped", policy: "no", host: true, terminal: "exited" },
+  { scenario: "restarting", policy: "no", host: true },
+];
+for (const { scenario, policy, host, terminal } of healthyObservationCases) {
+  test(`the ${host ? "host" : "service"} healthy gate uses current owned identity: ${scenario}, restart=${policy}`, async () => {
+    const base = planWithDependency(dependentNames.web, true);
+    const db = base.services[dbName];
+    if (db?.healthcheck === undefined) throw new Error("Expected database healthcheck");
+    const plan = {
+      ...base,
+      services: {
+        ...base.services,
+        [dbName]: {
+          ...db,
+          readiness: { ...db.healthcheck, retries: 2, ...(host ? { executionTarget: "host" as const } : {}) },
+        },
+      },
+    };
+    const { api, requests, ids } = makePodmanApi(0);
+    const request = api.request;
+    if (request === undefined) throw new Error("Expected an inspect transport");
+    let attempts = 0;
+    const dbPath = "/containers/lando-bring-up-order-app--db/json";
+    const result = await Effect.runPromise(
+      Effect.result(
+        bringUp(plan, {
+          ctx,
+          api: {
+            ...api,
+            request: (input) =>
+              request(input).pipe(
+                Effect.map((response) => {
+                  const originalId = ids.get("lando-bring-up-order-app--db");
+                  if (
+                    (input.path !== dbPath && input.path !== `/containers/${originalId}/json`) ||
+                    response.status !== 200
+                  )
+                    return response;
+                  if (
+                    attempts === 0 &&
+                    (scenario !== "restarting" ||
+                      !requests.includes("POST /containers/lando-bring-up-order-app--db/start"))
+                  )
+                    return response;
+                  const data = JSON.parse(response.body);
+                  if (policy !== undefined) data.HostConfig = { RestartPolicy: { Name: policy } };
+                  const replacementByName = scenario === "replacement" && input.path === dbPath;
+                  if (replacementByName) data.Id = "healthy-replacement";
+                  data.State =
+                    replacementByName || (host && scenario === "restarting" && attempts > 1)
+                      ? { Status: "running", Running: true }
+                      : scenario === "restarting"
+                        ? { Status: "exited", Restarting: true, Running: false }
+                        : scenario === "dead"
+                          ? { Status: "dead", Dead: true, Running: false, ExitCode: 0 }
+                          : { Status: "stopped", Running: false, ExitCode: 7 };
+                  return { ...response, body: JSON.stringify(data) };
+                }),
+              ),
+          },
+          executeReadinessAttempt: () =>
+            Effect.sync(() => {
+              attempts++;
+              return { exitCode: host || attempts > 1 ? 0 : 125, stdout: "", stderr: "" };
+            }),
+        }),
+      ),
+    );
+    if (terminal !== undefined) {
+      if (!Result.isFailure(result) || !(result.failure instanceof ServiceStartError))
+        throw new Error("Expected an exited dependency to block startup with ServiceStartError");
+      expect(result.failure.details).toEqual({
+        dependencyExit: {
+          service: "db",
+          gate: "db:healthy",
+          status: terminal,
+          ...(terminal === "exited" ? { exitCode: 7 } : {}),
+        },
+      });
+      expect(attempts).toBe(1);
+    } else {
+      expect(Result.isSuccess(result)).toBe(true);
+      expect(attempts).toBe(2);
+      expect(requests).toContain("POST /containers/lando-bring-up-order-app--web/start");
+    }
+  });
+}
+
 test("selected apply accepts a fast exit-0 job identified by the full completion plan", async () => {
   const original = planWithDependency(dependentNames.web, true);
   const dependent = original.services[dependentNames.web];
@@ -367,6 +470,130 @@ test("selected apply accepts a fast exit-0 job identified by the full completion
   );
   expect(result.changed).toBe(true);
   expect(fake.requests.some((path) => path.endsWith("/stop"))).toBe(false);
+});
+
+for (const scenario of ["completed", "dead", "replacement"] as const) {
+  test(`a zero wait result only opens the completion gate for the same exited container: ${scenario}`, async () => {
+    const base = planWithDependency(dependentNames.web, true);
+    const web = base.services[dependentNames.web];
+    if (web === undefined) throw new Error("Expected dependent service");
+    const plan = {
+      ...base,
+      services: {
+        ...base.services,
+        [web.name]: {
+          ...web,
+          dependsOn: [
+            { service: dbName, condition: "service_completed_successfully" as const, required: true },
+          ],
+        },
+      },
+    };
+    const fake = makePodmanApi(0);
+    const request = fake.api.request;
+    if (request === undefined) throw new Error("Expected request transport");
+    const name = "lando-bring-up-order-app--db";
+    let waitedFor: string | undefined;
+    const result = await Effect.runPromise(
+      Effect.result(
+        bringUp(plan, {
+          ctx,
+          api: {
+            ...fake.api,
+            request: (input) => {
+              if (input.path.endsWith("/wait")) {
+                waitedFor = input.path.split("/").at(-2);
+                return Effect.succeed({ status: 200, body: "0" });
+              }
+              return request(input).pipe(
+                Effect.map((response) => {
+                  if (waitedFor === undefined || input.path !== `/containers/${name}/json`) return response;
+                  const original = JSON.parse(response.body);
+                  return {
+                    ...response,
+                    body: JSON.stringify({
+                      ...original,
+                      ...(scenario === "replacement" ? { Id: "replacement" } : {}),
+                      State: { Running: false, Status: scenario === "dead" ? "dead" : "exited", ExitCode: 0 },
+                    }),
+                  };
+                }),
+              );
+            },
+          },
+        }),
+      ),
+    );
+    expect(waitedFor).toBe(fake.ids.get(name));
+    expect(Result.isSuccess(result)).toBe(scenario === "completed");
+    expect(fake.requests.includes("POST /containers/lando-bring-up-order-app--web/start")).toBe(
+      scenario === "completed",
+    );
+  });
+}
+
+test("a slow inspect after a completed wait still opens the completion gate", async () => {
+  const base = planWithDependency(dependentNames.web, true);
+  const web = base.services[dependentNames.web];
+  if (web === undefined) throw new Error("Expected dependent service");
+  const plan = {
+    ...base,
+    services: {
+      ...base.services,
+      [web.name]: {
+        ...web,
+        dependsOn: [
+          { service: dbName, condition: "service_completed_successfully" as const, required: true },
+        ],
+      },
+    },
+  };
+  const fake = makePodmanApi(0);
+  const request = fake.api.request;
+  if (request === undefined) throw new Error("Expected request transport");
+  const name = "lando-bring-up-order-app--db";
+  let waited = false;
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(
+        Effect.result(
+          bringUp(plan, {
+            ctx,
+            api: {
+              ...fake.api,
+              request: (input) => {
+                if (input.path.endsWith("/wait")) {
+                  waited = true;
+                  return Effect.succeed({ status: 200, body: "0" });
+                }
+                const response = request(input).pipe(
+                  Effect.map((answer) =>
+                    waited && input.path === `/containers/${name}/json`
+                      ? {
+                          ...answer,
+                          body: JSON.stringify({
+                            ...JSON.parse(answer.body),
+                            State: { Running: false, Status: "exited", ExitCode: 0 },
+                          }),
+                        }
+                      : answer,
+                  ),
+                );
+                return waited && input.path === `/containers/${name}/json`
+                  ? Effect.delay(response, "5 seconds")
+                  : response;
+              },
+            },
+          }),
+        ),
+      );
+      yield* TestClock.adjust("10 seconds");
+      return yield* Fiber.join(fiber);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+  expect(waited).toBe(true);
+  expect(Result.isSuccess(result)).toBe(true);
+  expect(fake.requests.includes("POST /containers/lando-bring-up-order-app--web/start")).toBe(true);
 });
 
 test("apply retains a supervised worker that exits before the immediate running check", async () => {

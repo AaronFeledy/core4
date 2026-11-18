@@ -188,6 +188,8 @@ services:
 
 ## Inspect a failed start
 
+If a `service_healthy` dependency exits and the runtime confirms it won't restart, Lando stops retrying that gate. `ServiceStartError` names the blocked service and the dependency. With `--format=json`, `error.details.dependencyExit` reports the dependency's state and its process exit code when available, even if the container logged nothing. Read the dependency's logs before changing its probe timing.
+
 Start, restart, and rebuild normally wait for effective readiness. If it exhausts its attempts, the command fails with `ServiceNotReadyError` and retains the applied app, routes, and volumes. When a restart policy allows recovery, an exit or observed restart can instead produce a warning and a `restarting` result before the probe passes.
 
 When the failing check targets a TCP port, Lando looks at the ports the service is actually listening on and leads the error with what it found:
@@ -196,7 +198,7 @@ When the failing check targets a TCP port, Lando looks at the ports the service 
 - **Loopback only.** The daemon listens on `127.0.0.1`, so other services can't reach it. Bind it to `0.0.0.0`.
 - **Port is bound.** Something listens on the expected port, but the check still failed. The error's `lastStatus` shows the check's last output.
 
-The same report appears when a `service_healthy` dependency or an app-build step waits on a service that never becomes healthy. With `--format=json`, it's on `error.listener` (`port`, `state`, and the observed `listening` addresses). The observation covers the container's network namespace, which pod siblings can share, so it shows which ports are bound, not which process bound them. If Lando can't read the container's socket table, the error leaves the report out rather than guess.
+The same report can appear when a `service_healthy` dependency or an app-build step waits on a service that never becomes healthy. If the provider verifies a terminal dependency exit, Lando reports the exit and skips both the listener check and its configuration advice. With `--format=json`, a listener report appears on `error.listener` (`port`, `state`, and the observed `listening` addresses). The observation covers the container's network namespace, which pod siblings can share, so it shows which ports are bound, not which process bound them. If Lando can't read the container's socket table, the error leaves the report out rather than guess.
 
 For a missing or loopback-only listener, the first remediation line gives one diagnostic action. When the service type records who must configure that port, a second line gives that owner's configuration advice. Your application may need to use Lando's port variables, an authored command or entrypoint may need a launcher argument, or your custom image may need a daemon setting. For an application-owned Node listener on port 3000 with no observed listeners, those lines read:
 
@@ -233,6 +235,16 @@ When present, the service's `listenerAuthority` records who must configure its p
 Info never executes probes or reports a durable last-readiness proof. `not-observed` means configured but not proved by this inspection, even after a successful start. The `ready` result returned by start is the observed gate success for that invocation; a running container or healthy native check is not a substitute.
 
 <Guide>
+  <Scenario id="terminal-dependency" layer="e2e" tags={["@smoke"]} render={false} reason="Check that a terminal dependency stops the gate and reports the process exit">
+    <Step name="observe-dependency-exit">
+      <UseFixture name="terminal-dependency" />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "\"_tag\":\\s*\"ServiceStartError\"[^\\n]*\"dependencyExit\":\\s*\\{[^}]*\"exitCode\":\\s*7" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
   <Scenario id="execution-metadata" render={false} reason="Check canonical execution metadata and real planning without starting containers">
     <Step name="inspect-user-and-host">
       <UseFixture name="execution-metadata" />
