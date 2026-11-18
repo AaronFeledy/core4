@@ -203,8 +203,8 @@ for (const selection of [
       const result = await Effect.runPromise(cleanup(root, selection));
       // Then
       expect(result.volumesRemoved).toEqual({
-        data: selection.removed.filter((name) => name === "data").length,
-        cache: selection.removed.filter((name) => name === "cache").length,
+        data: stores.filter(({ kind, name }) => kind === "data" && selection.removed.includes(name)).length,
+        cache: stores.filter(({ kind, name }) => kind === "cache" && selection.removed.includes(name)).length,
       });
       expect(calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual(
         selection.removed.map((name): `/${string}` => `/volumes/${name}`),
