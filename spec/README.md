@@ -219,13 +219,13 @@ If you are looking for a public surface or policy:
 | `StateStore`, buckets, app/worker locks, consumers, and plugin access | 12 | §12.7 |
 | Source store: layout, integrity, publication and leases, offline reuse, and `meta:sources:gc` | 12 | §12.8 |
 | Test and contract-suite layers | 13 | §13.1 |
-| Schema, documentation, type, and PR gates | 13 | §13.2 + §13.4 |
+| Schema, documentation, type, and PR gates, including merge-gate job results | 13 | §13.2 + §13.4 |
 | Distribution forms, CI matrix, and release channels | 13 | §13.5 + §13.7 |
 | Startup and TTY renderer process-exit overhead gates | 13 | §13.6 |
 | Boundary gate policy | 13 | §13.8 |
 | Provider-neutral vocabulary, forbidden dependencies, acceptance, glossary | 14 | §15 |
 | Release pipeline, codegen ownership, and embedded assets | 15 | §17.1 + §17.3 |
-| Paired Tomcat image/config maintenance and offline catalog generation | 15 | §17.2 |
+| Paired Tomcat image/config maintenance, offline catalog generation, and automation failure reporting | 15 | §17.2 |
 | Signing, supply chain, update, and installation | 15 | §17.4 + §17.7 |
 | Release workflow and shipping criteria | 15 | §17.8 + §17.9 |
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |

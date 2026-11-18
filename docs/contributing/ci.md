@@ -256,9 +256,9 @@ Normal codegen is offline: it checks local hashes and template invariants and de
 
 ## Extend the internal maintenance workflows
 
-`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts` and `build-compose-vendor-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts`, `build-compose-vendor-bump-workflow.ts`, and `build-node-releases-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
 
-When a run fails, the failure job searches open issues in `GH_REPO` for the title `<workflow name> automation failure` and keeps only exact title matches. It comments on the oldest match and files a new issue only when none is open.
+When a job fails, is cancelled (including by its own `timeout-minutes`), or is abandoned after GitHub loses its runner, the failure job searches open issues in `GH_REPO` for the title `<workflow name> automation failure` and keeps only exact title matches. It comments on the oldest match and files a new issue only when none is open. A run cancelled as a whole files nothing.
 
 The automation owns the PR title and the body text between `<!-- maintenance-report:start -->` and `<!-- maintenance-report:end -->`. A marker counts only when it starts a line, so a sentence can quote one. Text outside the markers survives every run, so put review notes and `Closes #N` lines there. The section ends at the first end marker and starts at the nearest start marker above it. If no start marker comes before the first end marker, the next run replaces the whole body with the marked report.
 
@@ -673,7 +673,7 @@ LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun run test:selection nightly-provide
 
 Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. The job has a 90-minute timeout, including room for six additional Composer install scenarios at about three minutes each.
 
-On scheduled nightly runs on `main`, `report-failure` waits for every other job and reports any failed jobs, even when other dependencies were skipped. GitHub reports a job stopped by its `timeout-minutes` as cancelled, so the reporter also lists cancelled jobs, marked as timed out or cancelled. A run cancelled as a whole files nothing. It searches open issues for the exact title `nightly automation failure`, comments on the oldest match, and creates an issue assigned to `AaronFeledy` only when none is open. The issue or comment names the failed jobs and links the workflow run. Only the reporter receives `issues: write`; the workflow keeps `contents: read`. Manual dispatches and runs on other branches do not file reports.
+On scheduled nightly runs on `main`, `report-failure` waits for every other job and reports any failed jobs, even when other dependencies were skipped. GitHub reports a job stopped by its `timeout-minutes` as cancelled and a job whose runner was lost as `abandoned`, so the reporter lists those jobs too, marking them `(timed out or cancelled)` or `(abandoned)`. A run cancelled as a whole files nothing. It searches open issues for the exact title `nightly automation failure`, comments on the oldest match, and creates an issue assigned to `AaronFeledy` only when none is open. The issue or comment names the failed jobs and links the workflow run. Only the reporter receives `issues: write`; the workflow keeps `contents: read`. Manual dispatches and runs on other branches do not file reports.
 
 ## Nightly source-store acceptance
 
@@ -835,7 +835,7 @@ Protect `main` in GitHub with required status checks enabled. Require this singl
 
 When adopting this workflow, replace the previous per-job required status checks with `ci` in the repository's branch protection or ruleset. Workflow edits do not change GitHub settings. Legacy job names remain visible, but an intentionally skipped legacy check is not proof that the selection passed.
 
-The final `ci` job always runs. It requires successful selection and every selected gate; a selected job that fails, is cancelled, or is unexpectedly skipped fails `ci`. Only policy-excluded jobs may be skipped. The dependency-audit workflow and scheduled self-hosted evidence workflows are not PR merge gates.
+The final `ci` job always runs. It requires successful selection and every selected gate. Any other result fails `ci`, including a failure, a cancellation, an unexpected skip, or GitHub's undocumented `abandoned` result for a job whose runner was lost. The gate prints one `<job>: <result>` line per unsuccessful job. Only policy-excluded jobs may be skipped. The dependency-audit workflow and scheduled self-hosted evidence workflows are not PR merge gates.
 
 ## Bun upgrade smoke checks
 

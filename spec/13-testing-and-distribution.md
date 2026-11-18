@@ -138,7 +138,7 @@ Every public schema MUST have canonical annotations, stable JSON Schema output, 
 
 ### 13.4 Quality gates
 
-Every PR runs the static gates (typecheck, lint, codegen drift, test ownership and boundaries) and the docs checks, tests and build. CI selects every other job from the profile its changed paths require (§13.6). Every selected required job MUST pass, and a required job MAY skip only when the profile excludes it. An explicitly advisory experiment reports its result without blocking the merge. For the jobs its profile requires, a PR cannot merge unless:
+Every PR runs the static gates (typecheck, lint, codegen drift, test ownership and boundaries) and the docs checks, tests and build. CI selects every other job from the profile its changed paths require (§13.6). Every selected required job MUST pass, and a required job MAY skip only when the profile excludes it. The merge gate MUST read each job result as an open string and fail on every result other than `success` or a profile-excluded skip, including GitHub's undocumented `abandoned`, naming each such job and its result. An explicitly advisory experiment reports its result without blocking the merge. For the jobs its profile requires, a PR cannot merge unless:
 
 - `bun test`, `bun run typecheck`, `bun run docs:check`, and Biome checks pass.
 - Codegen pure drift, schema compatibility, schema/docs generation, and the Starlight build pass.

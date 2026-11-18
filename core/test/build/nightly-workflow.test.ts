@@ -147,6 +147,7 @@ test.each([
   ["schedule", "refs/heads/main", ["success", "failure"], false, true],
   // GitHub reports a job stopped by timeout-minutes as cancelled, not failed.
   ["schedule", "refs/heads/main", ["success", "skipped", "cancelled"], false, true],
+  ["schedule", "refs/heads/main", ["abandoned"], false, true],
   ["schedule", "refs/heads/main", ["success", "skipped"], false, false],
   // A run cancelled by hand cancels its jobs too, and files nothing.
   ["schedule", "refs/heads/main", ["success", "cancelled"], true, false],
@@ -159,7 +160,7 @@ test.each([
     const { jobs } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
     const condition = jobs["report-failure"]?.if;
     expect(condition).toBe(
-      "${{ !cancelled() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}",
+      "${{ !cancelled() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'abandoned')) }}",
     );
     if (condition === undefined) throw new TypeError("Missing reporter condition");
     // This expression uses the common JavaScript/GitHub boolean subset once the
@@ -191,6 +192,7 @@ test.skipIf(process.platform === "win32").each([true, false])(
       NEEDS_JSON: JSON.stringify({
         "container-helper": { result: "failure" },
         "file-sync-contract-linux-x64": { result: "failure" },
+        "file-sync-contract-darwin-arm64": { result: "abandoned" },
         "provider-lando-e2e-linux-x64": { result: "skipped" },
         "refresh-test-timings-linux-x64": { result: "cancelled" },
         "runtime-bundle-manifest-live": { result: "success" },
@@ -202,7 +204,7 @@ test.skipIf(process.platform === "win32").each([true, false])(
       existing ? "gh issue comment 42 --body" : `gh issue create --title ${title} --body`,
     );
     expect(commands).toContain(
-      "Failed jobs: container-helper, file-sync-contract-linux-x64, refresh-test-timings-linux-x64 (timed out or cancelled)",
+      "Failed jobs: container-helper, file-sync-contract-linux-x64, file-sync-contract-darwin-arm64 (abandoned), refresh-test-timings-linux-x64 (timed out or cancelled)",
     );
     expect(commands).toContain("https://example.invalid/fork/core4/actions/runs/42");
     expect(commands).toContain("repo=fork/core4");

@@ -50,6 +50,7 @@ test.each([
   [["failure"], false, true],
   // GitHub reports a job stopped by timeout-minutes as cancelled, not failed.
   [["cancelled"], false, true],
+  [["abandoned"], false, true],
   [["success"], false, false],
   // A run cancelled by hand cancels its jobs too, and files nothing.
   [["cancelled"], true, false],

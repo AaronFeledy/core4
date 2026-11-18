@@ -4,13 +4,16 @@ type FailureIssue = {
   readonly assignee?: string;
 };
 
+export const UNSUCCESSFUL_NEEDS_RESULTS = ["failure", "cancelled", "abandoned"] as const;
+
 /**
- * A job stopped by `timeout-minutes` reaches its dependents as `cancelled`, not
- * `failure`, so a reporter treats both as failed. Pair it with `!cancelled()`
- * so a run cancelled as a whole files nothing.
+ * A job stopped by `timeout-minutes` reaches its dependents as `cancelled`;
+ * a job whose runner was lost reaches them as the undocumented `abandoned`.
+ * Pair with `!cancelled()` so a run cancelled as a whole files nothing.
  */
-export const NEEDS_FAILED_OR_TIMED_OUT =
-  "(contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))";
+export const NEEDS_UNSUCCESSFUL = `(${UNSUCCESSFUL_NEEDS_RESULTS.map(
+  (result) => `contains(needs.*.result, '${result}')`,
+).join(" || ")})`;
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\"'\"'")}'`;
 
