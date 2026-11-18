@@ -37,7 +37,7 @@ extension as a Composer package. Rerun an interrupted scaffold to resume.
 
 If the scaffold reports a mismatch, set `recipe.options.project` and
 `recipe.options.type` in `.lando.yml` to match the root info file, run
-`lando rebuild`, then rerun `lando drupal-contrib-scaffold`.
+`lando restart`, then rerun `lando drupal-contrib-scaffold`.
 
 ## Generated services
 
