@@ -154,7 +154,7 @@ The output shows the split that `KC_HOSTNAME_BACKCHANNEL_DYNAMIC` sets up:
 
 ## Fix a Keycloak start failure
 
-When Keycloak can't start, `lando start` waits for the readiness probe until its retries run out, then fails with `dependency gate keycloak:healthy was not satisfied` and prints the end of the Keycloak log. If that log ends with `hostname-backchannel-dynamic must be set to false if hostname is not provided as full URL`, `KC_HOSTNAME` is missing its `https://` scheme. Set the full URL and start again:
+If Keycloak exits before it is ready and won't restart, `lando start` stops waiting for it. The error names the `keycloak:healthy` dependency gate, shows Keycloak's exit code, and includes the end of its log. If the log says `hostname-backchannel-dynamic must be set to false if hostname is not provided as full URL`, set `KC_HOSTNAME` to the full HTTPS URL and start again:
 
 ```sh
 lando app:config:set services.keycloak.environment.KC_HOSTNAME https://keycloak.keycloak-demo.lndo.site
@@ -213,16 +213,12 @@ The `happy-path` scenario checks the planned image, endpoint, and dependency gat
     <Step name="scaffold">
       <UseFixture name="keycloak-demo" />
     </Step>
-    <Hidden reason="Shorten the readiness wait and break KC_HOSTNAME so start fails quickly, then restore the wait">
+    <Hidden reason="Break the hostname, verify the startup failure, and restore the full URL.">
       <Step name="break-hostname">
-        <Run command="lando app:config:set --type number services.keycloak.readiness.retries 6" />
         <Run command="lando app:config:set services.keycloak.environment.KC_HOSTNAME keycloak.keycloak-demo.lndo.site" />
       </Step>
       <Step name="failed-start">
-        <Verify command="lando start" expectExit={1} expect={{ stderr: { regex: "dependency gate keycloak:healthy was not satisfied[\\s\\S]*hostname-backchannel-dynamic must be set to false if hostname is not provided as full URL" } }} />
-      </Step>
-      <Step name="restore-wait">
-        <Run command="lando app:config:set --type number services.keycloak.readiness.retries 40" />
+        <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "^(?=[\\s\\S]*\"_tag\":\\s*\"ServiceStartError\")(?=[\\s\\S]*\"dependencyExit\":\\s*\\{(?=[^}]*\"service\":\\s*\"keycloak\")(?=[^}]*\"gate\":\\s*\"keycloak:healthy\")(?=[^}]*\"status\":\\s*\"exited\")(?=[^}]*\"exitCode\":\\s*1\\b))(?=[\\s\\S]*hostname-backchannel-dynamic must be set to false if hostname is not provided as full URL)" } }} />
       </Step>
     </Hidden>
     <Step name="fix">
