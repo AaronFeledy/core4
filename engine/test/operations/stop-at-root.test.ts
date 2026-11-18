@@ -474,10 +474,7 @@ describe("stopAppAtRoot", () => {
                   (session.app.id === filter.app.id && session.app.root === filter.app.root),
               );
             }),
-          flushSession: (ref: FileSyncSessionRef) =>
-            Effect.sync(() => {
-              harness.calls.push(`flush:${ref}`);
-            }),
+          flushSession: () => Effect.die("Missing roots must not flush file-sync sessions"),
           terminateSession: (ref: FileSyncSessionRef) =>
             Effect.sync(() => {
               harness.calls.push(`terminate:${ref}`);
