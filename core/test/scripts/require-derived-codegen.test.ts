@@ -24,7 +24,7 @@ const writeSentinel = async (root: string, relative: string): Promise<void> => {
 };
 
 describe("require-derived-codegen", () => {
-  test("missing list names the absent sentinel when 6 of 7 exist", async () => {
+  test("missing list names the one absent sentinel", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-derived-codegen-"));
     roots.push(root);
     const absent = "container-runtime/src/generated/provider-images.ts";
@@ -37,10 +37,10 @@ describe("require-derived-codegen", () => {
     expect(missing).toEqual([absent]);
     expect(message).toContain("bun run codegen");
     expect(message).toContain(absent);
-    expect(message).toContain("1 of 7");
+    expect(message).toContain(`1 of ${DERIVED_CODEGEN_SENTINELS.length}`);
   });
 
-  test("assertDerivedCodegen does not throw when all 7 sentinels exist", async () => {
+  test("assertDerivedCodegen does not throw when every sentinel exists", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-derived-codegen-"));
     roots.push(root);
     for (const relative of DERIVED_CODEGEN_SENTINELS) {
@@ -102,7 +102,9 @@ describe("require-derived-codegen", () => {
       expect(exitCode).not.toBe(0);
       const combined = `${stderr}\n${stdout}`;
       expect(combined).toContain("Run `bun run codegen`");
-      expect(combined).toContain("(7 of 7)");
+      expect(combined).toContain(
+        `(${DERIVED_CODEGEN_SENTINELS.length} of ${DERIVED_CODEGEN_SENTINELS.length})`,
+      );
     },
     { timeout: 30_000 },
   );

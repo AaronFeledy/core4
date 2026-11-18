@@ -85,7 +85,11 @@ test("failed apply leaves durable ownership hints for verified later cleanup wit
     // When: later ownership-inventory cleanup removes retained resources.
     const removed = await Effect.runPromise(cleanup(root, { volumes: false }));
     // Then
-    expect(removed).toEqual({ servicesRemoved: [], networksRemoved: 1, volumesRemoved: 0 });
+    expect(removed).toEqual({
+      servicesRemoved: [],
+      networksRemoved: 1,
+      volumesRemoved: { data: 0, cache: 0 },
+    });
     expect(networks.has(privateNetwork)).toBe(false);
     expect(networks.size).toBe(1);
     expect(await Effect.runPromise(store.summary(root))).toBeUndefined();
@@ -216,7 +220,7 @@ test("destroy of a partial apply is a no-op and ownership inventory removes reta
     expect(removed).toEqual({
       servicesRemoved: [ServiceName.make("web")],
       networksRemoved: 1,
-      volumesRemoved: 0,
+      volumesRemoved: { data: 0, cache: 0 },
     });
     expect(containers.has(containerName)).toBe(false);
     expect(networks.has(privateNetwork)).toBe(false);

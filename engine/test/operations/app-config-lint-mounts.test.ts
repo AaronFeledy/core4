@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Effect } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 
 const lint = async (service: string) => {
   const root = await mkdtemp(join(tmpdir(), "lando-mount-lint-"));
@@ -14,7 +15,10 @@ const lint = async (service: string) => {
       `name: mounts\nservices:\n  web:\n    type: node:22\n${service}`,
     );
     return await Effect.runPromise(
-      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+      appConfigLint({ cwd: root }).pipe(
+        Effect.provide(PluginRegistryLayer.layer),
+        Effect.provide(BunFileSystem.layer),
+      ),
     );
   } finally {
     await rm(root, { recursive: true, force: true });

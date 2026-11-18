@@ -512,6 +512,10 @@ jobs:
       - name: Regenerate paired Tomcat catalog
         run: bun run codegen:tomcat-catalog
 
+      # Gitignored output that the Node service type imports, so bundled plugins need it first.
+      - name: Regenerate Node release table
+        run: bun run codegen:node-releases
+
       # Gitignored output that container-runtime imports, so bundled plugins need it first.
       - name: Regenerate provider images manifest
         run: bun run codegen:provider-images
@@ -1004,9 +1008,12 @@ jobs:
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:24
-          pull_image docker.io/library/node:22-alpine
+          # Every supported Node major is pre-pulled from the service-type table.
           pull_image docker.io/library/node:22
+          pull_image docker.io/library/node:24
+          pull_image docker.io/library/node:26
+          pull_image docker.io/library/node:22-alpine
+          pull_image docker.io/library/adminer:6
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -2267,9 +2274,12 @@ jobs:
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:24
-          pull_image docker.io/library/node:22-alpine
+          # Every supported Node major is pre-pulled from the service-type table.
           pull_image docker.io/library/node:22
+          pull_image docker.io/library/node:24
+          pull_image docker.io/library/node:26
+          pull_image docker.io/library/node:22-alpine
+          pull_image docker.io/library/adminer:6
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18

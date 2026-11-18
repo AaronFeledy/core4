@@ -718,8 +718,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
                     : { purgeCaches: destroyOptions.purgeCaches }),
                 }).pipe(
                   Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
-                  Effect.map(({ shutdownObservations }) => ({
+                  Effect.map(({ shutdownObservations, volumesRemoved }) => ({
                     kind: "destroyed" as const,
+                    volumesRemoved,
                     shutdownObservations,
                   })),
                 ),

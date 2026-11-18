@@ -99,10 +99,14 @@ describe("ci workflow", () => {
     expect(signalTests).toBeGreaterThan(signalCodegen);
     const bundledCodegen = findIndentedBlock(findIndentedBlock(workflow, "jobs"), "bundled-codegen", 2);
     const catalog = bundledCodegen.indexOf("run: bun run codegen:tomcat-catalog");
+    const nodeReleases = bundledCodegen.indexOf("run: bun run codegen:node-releases");
     const providerImages = bundledCodegen.indexOf("run: bun run codegen:provider-images");
     const plugins = bundledCodegen.indexOf("run: bun run codegen:bundled-plugins");
     expect(catalog).toBeGreaterThanOrEqual(0);
     expect(plugins).toBeGreaterThan(catalog);
+    // The Node service type imports the gitignored release table.
+    expect(nodeReleases).toBeGreaterThanOrEqual(0);
+    expect(plugins).toBeGreaterThan(nodeReleases);
     // Bundled plugins import container-runtime, which imports the gitignored provider-images output.
     expect(providerImages).toBeGreaterThanOrEqual(0);
     expect(plugins).toBeGreaterThan(providerImages);
@@ -122,6 +126,7 @@ describe("ci workflow", () => {
       "drupal-journey.yml",
       "install-lifecycle.yml",
       "nightly.yml",
+      "node-releases-bump.yml",
       "platform-readiness.yml",
       "provider-matrix.yml",
       "rails-journey.yml",
@@ -1280,7 +1285,12 @@ describe("ci workflow", () => {
     }
     expect(providerIntegration).toContain("      - name: Pre-pull container images");
     expect(providerIntegration).toContain("          for attempt in 1 2 3; do");
+    expect(providerIntegration).toContain(
+      "          # Every supported Node major is pre-pulled from the service-type table.",
+    );
+    expect(providerIntegration).toContain("          pull_image docker.io/library/node:22");
     expect(providerIntegration).toContain("          pull_image docker.io/library/node:24");
+    expect(providerIntegration).toContain("          pull_image docker.io/library/node:26");
     expect(providerIntegration).toContain("          pull_image docker.io/library/node:22-alpine");
     expect(providerIntegration).toContain("          pull_image docker.io/library/postgres:16");
     expect(providerIntegration).toContain("          pull_image docker.io/library/postgres:16-alpine");

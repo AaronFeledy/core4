@@ -1863,7 +1863,11 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                 Effect.tap(() => reapRemovedExecConmons(runtimeBinDir, physicalPlan)),
                 Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
               );
-              return { kind: "destroyed" as const, shutdownObservations: result.shutdownObservations };
+              return {
+                kind: "destroyed" as const,
+                volumesRemoved: result.volumesRemoved,
+                shutdownObservations: result.shutdownObservations,
+              };
             }),
           ),
         removeObservedService: (observed) =>

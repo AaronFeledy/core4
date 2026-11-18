@@ -1,4 +1,5 @@
 export { assertConnectionProjections } from "./_connection-helpers.ts";
+export { adminer6ServiceType, adminerServiceType } from "./adminer.ts";
 export { apacheServiceType } from "./apache.ts";
 export { composeServiceType } from "./compose.ts";
 export { dotnet80ServiceType, dotnet90ServiceType, dotnetServiceType } from "./dotnet.ts";

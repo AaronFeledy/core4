@@ -31,6 +31,7 @@ import {
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import * as BunFileSystemLayer from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { DateTime, Effect, Layer, Stream } from "effect";
 import { layerTransactionGuard } from "../_support/landofile-layer.ts";
@@ -249,7 +250,7 @@ const makeStopLayer = (
       Effect.sync(() => {
         destroyCalls.push({ target, options });
         for (const service of Object.values(plannedApp.services)) stopped.add(service.name);
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -268,6 +269,7 @@ const makeStopLayer = (
 
   const layer = Layer.mergeAll(
     PrivateFileAccessService.layer,
+    BunFileSystemLayer.layer,
     testStateStoreLayer,
     Layer.succeed(
       LandofileService,
@@ -526,7 +528,7 @@ describe("lando stop", () => {
       destroy: () =>
         Effect.sync(() => {
           callLog.push("provider.destroy");
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -545,6 +547,7 @@ describe("lando stop", () => {
     const layer = Layer.mergeAll(
       testStateStoreLayer,
       PrivateFileAccessService.layer,
+      BunFileSystemLayer.layer,
       Layer.succeed(
         LandofileService,
         LandofileService.of({
@@ -811,7 +814,7 @@ describe("lando stop", () => {
       destroy: () =>
         Effect.sync(() => {
           callLog.push("provider.destroy");
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -830,6 +833,7 @@ describe("lando stop", () => {
     const layer = Layer.mergeAll(
       testStateStoreLayer,
       PrivateFileAccessService.layer,
+      BunFileSystemLayer.layer,
       Layer.succeed(
         LandofileService,
         LandofileService.of({

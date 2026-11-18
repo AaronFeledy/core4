@@ -20,6 +20,7 @@ import { buildService } from "./build-artifact-service.ts";
 import { BuildOwner } from "./build-owner.ts";
 import { registerBuildRedaction } from "./build-redaction.ts";
 import { buildResultsError } from "./build-results.ts";
+import { BuildSourceStore } from "./build-source-store.ts";
 import { makeBuildTaskProgress } from "./build-task-progress.ts";
 import { sweepAppBuildTranscripts } from "./build-transcript-cleanup.ts";
 
@@ -53,6 +54,7 @@ export const layer = Layer.effect(
     const paths = yield* PathsService;
     const registry = yield* RuntimeProviderRegistry;
     const stateStore = yield* StateStore;
+    const sourceStore = yield* Effect.serviceOption(BuildSourceStore);
     const hostProbeRunners = yield* captureHostProbeRunners;
 
     return BuildOrchestrator.of({
@@ -88,6 +90,7 @@ export const layer = Layer.effect(
                   redaction,
                   service,
                   stateStore,
+                  sourceStore,
                   storeKey,
                   cachedArtifacts,
                   activity,

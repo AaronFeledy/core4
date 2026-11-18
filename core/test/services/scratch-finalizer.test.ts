@@ -206,7 +206,7 @@ const makeRecordingLayer = (
           volumes: options.volumes,
           removeState: options.removeState,
         });
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     exec: () => die("exec"),
     execStream: () => Stream.die("scratch finalizer test provider should not call execStream"),

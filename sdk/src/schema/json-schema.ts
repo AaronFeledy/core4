@@ -538,6 +538,7 @@ import {
   ServiceShutdownObservation,
 } from "./service-shutdown.ts";
 import {
+  AdminerServiceConfig,
   DotnetServiceConfig,
   LocalStackServiceConfig,
   MailhogServiceConfig,
@@ -586,12 +587,14 @@ import {
 } from "./update-manifest.ts";
 import { VolumeIdentity } from "./volume-identity.ts";
 import { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";
+import { VolumeRemovalCounts } from "./volume-removal.ts";
 
 const schemaRegistry = <const Name extends string>(
   schemas: Readonly<Record<Name, PublicSchema>>,
 ): Readonly<Record<Name, PublicSchema>> => schemas;
 
 const catalogServiceSchemaRegistry = schemaRegistry({
+  AdminerServiceConfig,
   DotnetServiceConfig,
   LocalStackServiceConfig,
   MailhogServiceConfig,
@@ -866,6 +869,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   VolumeInfo,
   VolumeLocator,
   VolumeIdentity,
+  VolumeRemovalCounts,
   ResourceOwnership,
   OwnedResourcesCleanupResult,
   VolumeCreationFact,
@@ -1260,6 +1264,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ResourceOwnership: "Provider cleanup inventory hints, not readiness evidence.",
   OwnedResourcesCleanupResult: "Verified physical resource cleanup counts.",
   VolumeIdentity: "Owner-bound observed physical volume generation.",
+  VolumeRemovalCounts: "Named volumes a teardown actually removed, by storage class.",
   VolumeCreationFact: "Daemon-confirmed volume creation during one apply.",
   VolumeInitializationRecord: "Generation-bound durable initialization claim and outcome.",
   VolumeSnapshotArtifact: "Provider-observed native snapshot image metadata.",
@@ -1313,6 +1318,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ScheduleConfig: "Scheduled jobs for a service.",
 } satisfies Partial<Record<keyof typeof rawPublicSchemaRegistry, string>>;
 const CATALOG_SERVICE_SCHEMA_DESCRIPTIONS = {
+  AdminerServiceConfig: "Landofile configuration accepted by the Adminer catalog service.",
   DotnetServiceConfig: "Landofile configuration accepted by the .NET catalog service.",
   LocalStackServiceConfig: "Landofile configuration accepted by the LocalStack catalog service.",
   MailhogServiceConfig: "Landofile configuration accepted by the deprecated MailHog catalog service.",

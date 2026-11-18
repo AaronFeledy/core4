@@ -72,8 +72,11 @@ export const PreGlobalDestroyEvent = Schema.Struct({
     description:
       "Teardown evidence: an applied plan, observed orphans, or ownership inventory. Absent evidence emits no bracket.",
   }),
+  volumes: Schema.Boolean.annotate({
+    description: "Whether this destroy removes global service- and app-scoped data volumes.",
+  }),
   purge: Schema.Boolean.annotate({
-    description: "Whether app-owned volumes are removed. Global purge does not remove snapshots or caches.",
+    description: "Whether --purge requested built-image removal in addition to data volumes.",
   }),
   timestamp: Timestamp.annotate({
     description: "Time the global destroy bracket opened, before destructive work.",
@@ -88,6 +91,7 @@ export const PostGlobalDestroyEvent = Schema.Struct({
   scope: PreGlobalDestroyEvent.fields.scope,
   app: AppRef.annotate({ description: "Global app identity whose teardown completed." }),
   evidence: PreGlobalDestroyEvent.fields.evidence,
+  volumes: PreGlobalDestroyEvent.fields.volumes,
   purge: PreGlobalDestroyEvent.fields.purge,
   outcome: Schema.Literals(["destroyed", "unchanged"]).annotate({
     description:

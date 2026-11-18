@@ -136,6 +136,13 @@ export interface ProviderVersions {
   readonly bundle?: string;
 }
 
+export interface ArtifactBuildContextTree {
+  readonly contextName: string;
+  readonly destination: string;
+  readonly root: string;
+  readonly digest: string;
+}
+
 export interface ArtifactBuildRequest {
   readonly app: AppId;
   readonly service: ServiceName;
@@ -148,6 +155,7 @@ export interface ArtifactBuildRequest {
   readonly ref: string;
   /** Engine-chosen labels the provider sets on every image the build produces. */
   readonly labels: Readonly<Record<string, string>>;
+  readonly contextTrees?: ReadonlyArray<ArtifactBuildContextTree>;
   /**
    * Receives the build's output text in arrival order: unredacted and not aligned to lines. The provider
    * awaits each call before reading further, delivers every call before `buildArtifact` returns, and

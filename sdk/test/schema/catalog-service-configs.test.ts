@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ServiceConfig, ServiceCreds, ServiceCredsConfig } from "@lando/sdk/schema";
+import { AdminerServiceConfig } from "@lando/sdk/schema/services/adminer";
 import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
 import { MAILHOG_DEPRECATION_NOTICE, MailhogServiceConfig } from "@lando/sdk/schema/services/mailhog";
@@ -160,6 +161,24 @@ describe("catalog service config schemas", () => {
     },
   );
 
+  test.each(["adminer", "adminer:6"] as const)(
+    "Given Adminer type %s, when decoding shared service fields, then it succeeds",
+    (type) => {
+      // Given
+      const input = {
+        type,
+        image: "adminer:6",
+        port: 8080,
+      };
+
+      // When
+      const result = strictDecode(AdminerServiceConfig, input);
+
+      // Then
+      expect(result._tag).toBe("Success");
+    },
+  );
+
   test("Given phpMyAdmin hosts as a single string, when decoding, then it succeeds", () => {
     // Given / When
     const result = strictDecode(PhpMyAdminServiceConfig, {
@@ -218,6 +237,7 @@ describe("catalog service config schemas", () => {
     ["MssqlServiceConfig", MssqlServiceConfig, { type: "mysql" }],
     ["MysqlServiceConfig", MysqlServiceConfig, { type: "mssql" }],
     ["PhpMyAdminServiceConfig", PhpMyAdminServiceConfig, { type: "php" }],
+    ["AdminerServiceConfig", AdminerServiceConfig, { type: "phpmyadmin" }],
   ] as const)("Given %s with another catalog type, when decoding, then it fails", (_name, schema, input) => {
     // Given / When
     const result = strictDecode(schema, input);
@@ -268,6 +288,8 @@ describe("catalog service config schemas", () => {
     ["MssqlServiceConfig", MssqlServiceConfig, { type: "mssql", saPassword: "secret" }],
     ["MysqlServiceConfig", MysqlServiceConfig, { type: "mysql", socket: "/tmp/mysql.sock" }],
     ["PhpMyAdminServiceConfig", PhpMyAdminServiceConfig, { type: "phpmyadmin", uploadLimit: "64M" }],
+    ["AdminerServiceConfig", AdminerServiceConfig, { type: "adminer", uploadLimit: "64M" }],
+    ["AdminerServiceConfig", AdminerServiceConfig, { type: "adminer", certs: true }],
   ] as const)(
     "Given %s with an unknown key, when strictly decoding, then it fails",
     (_name, schema, input) => {

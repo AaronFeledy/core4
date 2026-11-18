@@ -26,6 +26,7 @@ import { validateHostShellSteps } from "../services/host-shell-validation.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
 import type { ToolingShellBindings } from "../tooling/task-shape.ts";
+import { publishNodePackageManagerWarning } from "./node-package-manager-warning.ts";
 import type { AdmittedToolingInput } from "./tooling-input-admission.ts";
 import { withToolingOutput } from "./tooling-output.ts";
 
@@ -217,6 +218,7 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
   const appliedPlan = input.requiresProvider
     ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => appliedAppPlan(registry, input.plan))
     : undefined;
+  const compared = new Set<string>();
   for (const typedInvocation of input.invocations) {
     let invocation = {
       ...typedInvocation,
@@ -231,6 +233,14 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
           ? undefined
           : Object.values(services).find((service) => String(service.name) === serviceName);
       const service = findService(appliedPlan?.services ?? {});
+      if (
+        serviceName !== undefined &&
+        appliedPlan?.provider === input.plan.provider &&
+        !compared.has(serviceName)
+      ) {
+        compared.add(serviceName);
+        yield* publishNodePackageManagerWarning(findService(input.plan.services), service);
+      }
       const identity = selectCommandIdentity({ taskUser: typedInvocation.user, service });
       if (identity.user !== undefined || Object.keys(identity.environment).length > 0) {
         invocation = {

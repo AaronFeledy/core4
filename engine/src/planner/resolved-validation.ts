@@ -28,6 +28,9 @@ export const attributePlannerIssue = (
   provenance: LandofileProvenance | undefined,
   issue: PlannerIssue,
 ): PlannerIssue => {
+  // A producer that already knows the physical source (for example a service type's project
+  // file) is more specific than the Landofile value origin for the issue's destination path.
+  if (issue.source !== undefined) return issue;
   const source = getLandofileValueSource(provenance, issue.path);
   return { ...issue, ...(source === undefined ? {} : { source }) };
 };

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import { FileSyncEngine } from "@lando/sdk/services";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import {
   beginOrResumeAcceleratedStart,
@@ -15,6 +15,7 @@ import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { applyTreeId } from "../../src/operations/start-progress.ts";
 import { stopApp } from "../../src/operations/stop.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { acceleratedPlan, app, recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
 import { makeHarness } from "./start-progress-topology-support.ts";
@@ -51,7 +52,11 @@ test.each(
         providerOverrides: {
           getStatus: Effect.succeed({ state: "running" as const }),
           cleanupOwnedResources: () =>
-            Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
+            Effect.succeed({
+              servicesRemoved: [],
+              networksRemoved: 0,
+              volumesRemoved: { data: 0, cache: 0 },
+            }),
         },
       },
     }),
@@ -60,7 +65,7 @@ test.each(
     withResolvedCwd(
       app.root,
       operation === "stop" ? stopApp().pipe(Effect.asVoid) : destroyApp().pipe(Effect.asVoid),
-    ).pipe(Effect.provide(harness.layer)),
+    ).pipe(Effect.provide(Layer.merge(harness.layer, BunFileSystem.layer))),
   );
   expect(Exit.isSuccess(result)).toBe(true);
   expect(harness.calls).toContain("drain");
@@ -289,7 +294,11 @@ test.each(phases.flatMap((phase) => (["owned", "absent"] as const).map((evidence
           providerOverrides: {
             getStatus: Effect.succeed({ state: "running" as const }),
             cleanupOwnedResources: () =>
-              Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
+              Effect.succeed({
+                servicesRemoved: [],
+                networksRemoved: 0,
+                volumesRemoved: { data: 0, cache: 0 },
+              }),
           },
         },
       }),

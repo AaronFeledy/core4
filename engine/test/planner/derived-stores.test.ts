@@ -7,6 +7,7 @@ import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 
@@ -17,7 +18,13 @@ const plan = async (name: string, services: Record<string, unknown>) => {
     return await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) =>
         planner.plan(literalTestLandofile(document, root), TestRuntimeProvider.capabilities),
-      ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer)))),
+      ).pipe(
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(
+            Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
+          ),
+        ),
+      ),
     );
   } finally {
     await rm(root, { recursive: true, force: true });

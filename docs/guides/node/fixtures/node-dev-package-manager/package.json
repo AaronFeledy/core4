@@ -1,0 +1,10 @@
+{
+  "name": "node-dev-package-manager",
+  "private": true,
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "9.15.0"
+    }
+  }
+}

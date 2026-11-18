@@ -1,14 +1,23 @@
 import { basename } from "node:path";
+import { findAppRoot } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 import {
   type ComposeKeyRejectedError,
   FileSyncStopError,
   type LandofileLoadExpressionError,
 } from "@lando/sdk/errors";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import {
+  type AbsolutePath,
+  type AppPlan,
+  type AppRef,
+  type ProviderId,
+  noVolumesRemoved,
+} from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type EventService,
+  type FileSystem,
   type LandofileService,
   type ManagedFileTransactionGuard,
   type PathsService,
@@ -16,9 +25,13 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 
-import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
+import {
+  type ResolvedAppTarget,
+  resolveDesiredAppTarget,
+  resolveDesiredAppTargetAtRoot,
+} from "../landofile/app-resolution.ts";
 import { routeOwnerFromPlan, routeOwnerFromRoot } from "../lifecycle/route-owner.ts";
 import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import {
@@ -26,15 +39,18 @@ import {
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
 import { TeardownProvider, resolveAppPlacement } from "../providers/app-placement.ts";
+import { shellArg } from "../services/shell-quote.ts";
 import { readDiscardableStart } from "./accelerated-start-disposal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
+  appliedStateTarget,
+  missingRootAppliedTarget,
   teardownDesiredOrUnchanged,
+  teardownResolutionAtRoot,
   validateResolvedAppTarget,
-  withTeardownResolution,
 } from "./applied-state-target.ts";
-import { tearDownOrphans } from "./orphan-teardown.ts";
+import { landofilePresentAt } from "./landofile-events.ts";
 import {
   ownedCleanupChanged,
   prepareOwnedResourceCleanup,
@@ -43,10 +59,14 @@ import {
 import { withShutdownObservations } from "./shutdown-observations.ts";
 import { stopIdleApp } from "./stop-idle.ts";
 import { preflightStopApp, stopAppWithPlanUnlocked } from "./stop-internal.ts";
+import { journalPending, stopMissingRootStart, stopOrphans } from "./stop-missing-root.ts";
+import { appRootExists, canonicalStopRoot } from "./stop-root.ts";
 import { type RetirementReceipt, retireSupersededRealizations } from "./superseded-realizations.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
+
+export type StopAppAtRootOptions = StopAppOptions & { readonly providerId?: ProviderId };
 
 type StopAppServices =
   | ManagedFileTransactionGuard
@@ -63,6 +83,18 @@ type StopExecution = {
   readonly requireAppliedEvidence: boolean;
   readonly runInitEvents?: boolean;
   readonly cleanupOwnership?: boolean;
+  /** No project folder exists, so there is no retained writer to verify or drain. */
+  readonly missingRoot?: boolean;
+};
+
+type StopScope = {
+  readonly root: AbsolutePath;
+  readonly rootExists: boolean;
+  readonly retryCommand: string;
+  readonly options: StopAppOptions;
+  readonly desired: Effect.Effect<ResolvedAppTarget, StopAppError, StopAppServices>;
+  /** The cwd command keeps its missing-Landofile error; an explicit root reports unchanged. */
+  readonly loadDesiredOnAbsent: boolean;
 };
 
 const unchangedResult = (app: string): StopAppResult => ({
@@ -119,7 +151,8 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
   }
   const owningProvider = yield* registry.select(validatedTarget.plan);
   yield* registry.assertAppliedStateReadable?.(validatedTarget.plan) ?? Effect.void;
-  const { pending } = yield* readDiscardableStart(validatedTarget.app);
+  const pending =
+    execution.missingRoot === true ? null : (yield* readDiscardableStart(validatedTarget.app)).pending;
   const runtimeState = (yield* owningProvider.getStatus).state;
   if (runtimeState === "running" && placement.superseded.length > 0) {
     // Preserve cross-provider ambiguity and validate inventories before retirement.
@@ -127,7 +160,7 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
       ...validatedTarget.app,
       id: placement.plan?.id ?? placement.superseded[0]?.id ?? validatedTarget.app.id,
     });
-    yield* preflightStopApp(validatedTarget, runtimeState);
+    yield* preflightStopApp(validatedTarget, runtimeState, execution.missingRoot === true);
     retired = yield* retireSupersededRealizations(validatedTarget, placement.superseded, {
       provider: yield* registry.select(placement.plan ?? placement.superseded[0] ?? validatedTarget.plan),
       narration: "teardown",
@@ -143,7 +176,7 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
           },
           "stop",
         )
-      : Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 });
+      : Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: { ...noVolumesRemoved } });
   if ((pending === null || pending.phase === "completed") && (execution.requireAppliedEvidence || retired)) {
     const evidence =
       execution.cleanupOwnership === false
@@ -197,7 +230,7 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
         options ?? {},
         validatedTarget,
         execution.runInitEvents !== false,
-        yield* preflightStopApp(validatedTarget, runtimeState),
+        yield* preflightStopApp(validatedTarget, runtimeState, execution.missingRoot === true),
       )
     : withPlanVolumeCoordination({
         plan: validatedTarget.plan,
@@ -205,7 +238,11 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
         stateStore,
         body: Effect.fnUntraced(function* () {
           yield* verifyActiveVolumeCoordination(provider);
-          const preflight = yield* preflightStopApp(validatedTarget, runtimeState);
+          const preflight = yield* preflightStopApp(
+            validatedTarget,
+            runtimeState,
+            execution.missingRoot === true,
+          );
           return yield* stopAppWithPlanUnlocked(
             options ?? {},
             validatedTarget,
@@ -296,143 +333,167 @@ export const stopAppForTarget = Effect.fn("AppOperation.stopForTarget")(function
   );
 });
 
-const stopOrphans = (
-  resolution: Extract<TeardownResolution, { readonly kind: "orphans" }>,
-): Effect.Effect<StopAppResult, SdkStopAppError, StopAppServices> =>
-  tearDownOrphans({
-    root: resolution.root,
-    groups: resolution.groups,
-    options: { volumes: false, purgeCaches: false },
-  }).pipe(
-    Effect.map((removed): StopAppResult => {
-      const base: StopAppResult =
-        removed.services.length === 0 && !removed.ownedChanged
-          ? unchangedResult(removed.app)
-          : { app: removed.app, outcome: "stopped", servicesStopped: removed.services };
-      return withShutdownObservations(base, removed.shutdownObservations);
+/** Stop a root whose unfinished accelerated start means the desired plan must be the same app. */
+const stopRetainedStart = Effect.fnUntraced(function* (
+  scope: StopScope,
+  pending: NonNullable<Effect.Success<ReturnType<typeof journalPending>>>,
+  resolution: TeardownResolution,
+): Effect.fn.Return<StopAppResult, StopAppError, StopAppServices> {
+  if (!scope.rootExists) return yield* stopMissingRootStart(scope, pending, resolution);
+  const desired = yield* scope.desired;
+  if (desired.root !== scope.root) {
+    return yield* Effect.fail(
+      new FileSyncStopError({
+        engineId: pending.engineId,
+        sessionRef: pending.appId,
+        message: "The desired app root differs from the pending stop target.",
+        remediation: "Restore the matching Landofile and run `lando stop` in the recorded app root.",
+      }),
+    );
+  }
+  if (resolution.kind === "applied" && desired.app.id !== resolution.target.app.id) {
+    return yield* Effect.fail(
+      new FileSyncStopError({
+        engineId: pending.engineId,
+        sessionRef: pending.appId,
+        message: "The desired app identity differs from pending applied runtime state.",
+        remediation: "Restore the matching Landofile and retry `lando stop` in the recorded app root.",
+      }),
+    );
+  }
+  return (yield* stopAppWithResolvedPlan(scope.options, desired, {
+    revalidate: false,
+    requireAppliedEvidence: false,
+  })).result;
+});
+
+const stopResolution = (
+  scope: StopScope,
+  resolution: TeardownResolution,
+): Effect.Effect<StopAppResult, StopAppError, StopAppServices> => {
+  const body = Effect.gen(function* () {
+    switch (resolution.kind) {
+      case "applied": {
+        const target = resolution.target;
+        const pending = yield* journalPending(scope.root, String(target.app.id));
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution);
+        return (yield* stopAppWithResolvedPlan(scope.options, target, {
+          revalidate: false,
+          requireAppliedEvidence: false,
+          missingRoot: !scope.rootExists,
+          ...(resolution.reconcileApp === undefined ? {} : { reconcileApp: resolution.reconcileApp }),
+        })).result;
+      }
+      case "orphans": {
+        const app = resolution.groups[0]?.appId ?? scope.root;
+        const pending = yield* journalPending(scope.root, String(app));
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution);
+        const result = yield* stopOrphans(resolution);
+        yield* withdrawOwnerRoutes(routeOwnerFromRoot(result.app, scope.root));
+        return result;
+      }
+      case "owned": {
+        const app = resolution.ownership[0]?.appIds[0] ?? basename(scope.root);
+        const pending = yield* journalPending(scope.root, String(app));
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution);
+        const removed = yield* tearDownOwnedResources(
+          scope.root,
+          { volumes: false, purgeCaches: false },
+          "stop",
+        );
+        yield* withdrawOwnerRoutes(routeOwnerFromRoot(String(app), scope.root));
+        return {
+          app: String(app),
+          outcome: ownedCleanupChanged(removed) ? ("stopped" as const) : ("unchanged" as const),
+          servicesStopped: removed.servicesRemoved,
+        } satisfies StopAppResult;
+      }
+      case "absent": {
+        const app = basename(scope.root);
+        const pending = yield* journalPending(scope.root, app);
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution);
+        if (!scope.loadDesiredOnAbsent) return unchangedResult(app);
+        return yield* teardownDesiredOrUnchanged(
+          resolution,
+          (desired) =>
+            stopAppWithResolvedPlan(scope.options, desired, {
+              revalidate: false,
+              requireAppliedEvidence: true,
+            }).pipe(Effect.map(({ result }) => result)),
+          unchangedResult,
+          scope.desired,
+        );
+      }
+      default: {
+        const unreachable: never = resolution;
+        return unreachable;
+      }
+    }
+  });
+  return body.pipe(
+    Effect.map(
+      (result): StopAppResult =>
+        result.outcome === "unchanged" ? result : { ...result, outcome: "stopped" },
+    ),
+  );
+};
+
+const stopAtRoot = Effect.fnUntraced(function* <E, R>(
+  requested: string,
+  options: StopAppOptions,
+  mode: "cwd" | "root" | "poweroff",
+  rootExistsAt: (root: AbsolutePath) => Effect.Effect<boolean, E, R>,
+) {
+  const root = yield* canonicalStopRoot(requested);
+  return yield* withAppMutationLock(
+    { kind: "user", id: root, root },
+    Effect.gen(function* () {
+      const rootExists = yield* rootExistsAt(root);
+      const present = yield* landofilePresentAt(root);
+      // Both authored forms present is still a Landofile at this root; the loader decides.
+      const landofilePresent = Result.isSuccess(present) ? present.success : true;
+      const targetFor = rootExists
+        ? appliedStateTarget
+        : (plan: AppPlan) => missingRootAppliedTarget(plan, root);
+      const resolution = yield* teardownResolutionAtRoot(root, landofilePresent, targetFor);
+      return yield* stopResolution(
+        {
+          root,
+          rootExists,
+          retryCommand: mode === "poweroff" ? "lando poweroff" : `lando stop --root ${shellArg(root)}`,
+          options,
+          desired: mode === "cwd" ? resolveDesiredAppTarget : resolveDesiredAppTargetAtRoot(root),
+          loadDesiredOnAbsent: mode === "cwd",
+        },
+        resolution,
+      );
     }),
   );
-
-const stopDesiredOrUnchanged = (
-  options: StopAppOptions,
-  resolution: Extract<TeardownResolution, { readonly kind: "absent" }>,
-): Effect.Effect<StopAppResult, StopAppError, StopAppServices> =>
-  teardownDesiredOrUnchanged(
-    resolution,
-    (desired) =>
-      stopAppWithResolvedPlan(options, desired, {
-        revalidate: false,
-        requireAppliedEvidence: true,
-      }).pipe(Effect.map(({ result }) => result)),
-    unchangedResult,
-  );
+});
 
 export const stopApp = Effect.fn("AppOperation.stop")(function* (
   options: StopAppOptions = {},
   target?: ResolvedAppTarget,
 ): Effect.fn.Return<StopAppResult, StopAppError, StopAppServices> {
-  return yield* target !== undefined
-    ? stopAppForTarget(options, target)
-    : withTeardownResolution({
-        owned: Effect.fnUntraced(function* (resolution) {
-          const { pending } = yield* readDiscardableStart({
-            kind: "user",
-            id: resolution.ownership[0]?.appIds[0] ?? "unknown",
-            root: resolution.root,
-          });
-          if (pending !== null && pending.phase !== "completed") {
-            const desired = yield* resolveDesiredAppTarget;
-            if (desired.root !== resolution.root)
-              return yield* Effect.fail(
-                new FileSyncStopError({
-                  engineId: pending.engineId,
-                  sessionRef: pending.appId,
-                  message: "The desired app root differs from the pending stop target.",
-                  remediation:
-                    "Restore the matching Landofile and run `lando stop` in the recorded app root.",
-                }),
-              );
-            return (yield* stopAppWithResolvedPlan(options, desired, {
-              revalidate: false,
-              requireAppliedEvidence: false,
-            })).result;
-          }
-          const app = resolution.ownership[0]?.appIds[0] ?? resolution.root;
-          return yield* withAppMutationLock(
-            { id: resolution.ownership[0]?.appIds[0] ?? basename(resolution.root), root: resolution.root },
-            tearDownOwnedResources(resolution.root, { volumes: false, purgeCaches: false }, "stop").pipe(
-              Effect.map(
-                (removed): StopAppResult => ({
-                  app,
-                  outcome: ownedCleanupChanged(removed) ? "stopped" : "unchanged",
-                  servicesStopped: removed.servicesRemoved,
-                }),
-              ),
-              Effect.tap(() => withdrawOwnerRoutes(routeOwnerFromRoot(app, resolution.root))),
-            ),
-          );
-        }),
-        applied: Effect.fnUntraced(function* (resolved, reconcileApp?: AppRef) {
-          const { pending } = yield* readDiscardableStart(resolved.app);
-          if (pending !== null && pending.phase !== "completed") {
-            const desired = yield* resolveDesiredAppTarget;
-            if (desired.root !== resolved.root || desired.app.id !== resolved.app.id)
-              return yield* Effect.fail(
-                new FileSyncStopError({
-                  engineId: pending.engineId,
-                  sessionRef: pending.appId,
-                  message: "The desired app identity differs from pending applied runtime state.",
-                  remediation:
-                    "Restore the matching Landofile and retry `lando stop` in the recorded app root.",
-                }),
-              );
-            return (yield* stopAppWithResolvedPlan(options, desired, {
-              revalidate: false,
-              requireAppliedEvidence: false,
-            })).result;
-          }
-          return yield* stopAppWithResolvedPlan(options, resolved, {
-            revalidate: false,
-            requireAppliedEvidence: false,
-            ...(reconcileApp === undefined ? {} : { reconcileApp }),
-          }).pipe(Effect.map(({ result }) => result));
-        }),
-        orphans: Effect.fnUntraced(function* (resolution) {
-          const first = resolution.groups[0];
-          const { pending } = yield* readDiscardableStart({
-            kind: "user",
-            id: first?.appId ?? "unknown",
-            root: resolution.root,
-          });
-          if (pending !== null && pending.phase !== "completed") {
-            const desired = yield* resolveDesiredAppTarget;
-            if (desired.root !== resolution.root)
-              return yield* Effect.fail(
-                new FileSyncStopError({
-                  engineId: pending.engineId,
-                  sessionRef: pending.appId,
-                  message: "The desired app root differs from the pending stop target.",
-                  remediation:
-                    "Restore the matching Landofile and run `lando stop` in the recorded app root.",
-                }),
-              );
-            return (yield* stopAppWithResolvedPlan(options, desired, {
-              revalidate: false,
-              requireAppliedEvidence: false,
-            })).result;
-          }
-          return yield* withAppMutationLock(
-            { id: first?.appId ?? resolution.root, root: resolution.root },
-            stopOrphans(resolution).pipe(
-              Effect.tap((result) => withdrawOwnerRoutes(routeOwnerFromRoot(result.app, resolution.root))),
-            ),
-          );
-        }),
-        absent: (resolution) => stopDesiredOrUnchanged(options, resolution),
-      }).pipe(
-        Effect.map(
-          (result): StopAppResult =>
-            result.outcome === "unchanged" ? result : { ...result, outcome: "stopped" },
-        ),
-      );
+  if (target !== undefined) return yield* stopAppForTarget(options, target);
+  const discovered = yield* findAppRoot();
+  // A discovered root, or the working directory, exists by construction.
+  return yield* stopAtRoot(discovered ?? (yield* discoveryCwd()), options, "cwd", () => Effect.succeed(true));
+});
+
+/**
+ * Stop the app recorded at one canonical root. The root lock is acquired before any provider
+ * evidence is read, so a concurrent start or stop at the same root cannot invalidate the evidence
+ * between resolution and mutation. `providerId` restricts every evidence read to that provider.
+ */
+export const stopAppAtRoot = Effect.fn("AppOperation.stopAtRoot")(function* (
+  root: string,
+  options: StopAppAtRootOptions = {},
+  mode: "root" | "poweroff" = "root",
+): Effect.fn.Return<StopAppResult, StopAppError, StopAppServices | FileSystem> {
+  const { providerId, ...stopOptions } = options;
+  const effect = stopAtRoot(root, stopOptions, mode, appRootExists);
+  return yield* providerId === undefined
+    ? effect
+    : effect.pipe(Effect.provideService(TeardownProvider, providerId));
 });

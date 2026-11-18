@@ -1,8 +1,12 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { planApp } from "../plan-app.ts";
 
@@ -14,35 +18,40 @@ for (const type of ["nginx", "node:22"]) {
     { scenario: "publications are explicitly empty", ports: [] },
   ])(`${type} default route targets the primary listener when $scenario`, async ({ ports }) => {
     // Given
-    const landofile = await Effect.runPromise(
-      compileTestLandofile(
-        {
-          name: "primary-port",
-          services: { web: { type, port: 3187, ports, home: false } },
-        },
-        "/srv/apps/primary-port",
-      ),
-    );
-    // When
-    const plan = await Effect.runPromise(
-      Effect.gen(function* () {
-        const registry = yield* PluginRegistry;
-        return yield* planApp(
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-primary-port-"));
+    try {
+      const landofile = await Effect.runPromise(
+        compileTestLandofile(
           {
-            landofile,
-            providerCapabilities: TestRuntimeProvider.capabilities,
-            appRoot: "/srv/apps/primary-port",
+            name: "primary-port",
+            services: { web: { type, port: 3187, ports, home: false } },
           },
-          Layer.succeed(PluginRegistry, registry),
-        );
-      }).pipe(Effect.provide(PluginRegistryLayer.layer)),
-    );
-    // Then
-    expect(plan.routes).toEqual([
-      expect.objectContaining({
-        hostname: "web.primary-port.lndo.site",
-        backend: { service: "web", protocol: "http", port: 3187 },
-      }),
-    ]);
+          appRoot,
+        ),
+      );
+      // When
+      const plan = await Effect.runPromise(
+        Effect.gen(function* () {
+          const registry = yield* PluginRegistry;
+          return yield* planApp(
+            {
+              landofile,
+              providerCapabilities: TestRuntimeProvider.capabilities,
+              appRoot,
+            },
+            Layer.succeed(PluginRegistry, registry),
+          );
+        }).pipe(Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer))),
+      );
+      // Then
+      expect(plan.routes).toEqual([
+        expect.objectContaining({
+          hostname: "web.primary-port.lndo.site",
+          backend: { service: "web", protocol: "http", port: 3187 },
+        }),
+      ]);
+    } finally {
+      await rm(appRoot, { recursive: true, force: true });
+    }
   });
 }

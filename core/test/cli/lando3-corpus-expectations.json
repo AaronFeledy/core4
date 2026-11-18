@@ -2437,7 +2437,7 @@
         {
           "rule": "landofile.service",
           "path": ["services", "cli"],
-          "message": "Node inference found neither .nvmrc nor package.json. Add .nvmrc or package.json engines.node, then retry."
+          "message": "Node inference found neither .nvmrc nor package.json."
         }
       ]
     },
@@ -2487,7 +2487,7 @@
         {
           "rule": "landofile.service",
           "path": ["services", "cli"],
-          "message": "Node inference found neither .nvmrc nor package.json. Add .nvmrc or package.json engines.node, then retry."
+          "message": "Node inference found neither .nvmrc nor package.json."
         }
       ]
     },
@@ -2537,7 +2537,7 @@
         {
           "rule": "landofile.service",
           "path": ["services", "cli"],
-          "message": "Node inference found neither .nvmrc nor package.json. Add .nvmrc or package.json engines.node, then retry."
+          "message": "Node inference found neither .nvmrc nor package.json."
         }
       ]
     },

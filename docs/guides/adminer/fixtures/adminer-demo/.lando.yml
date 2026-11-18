@@ -1,0 +1,6 @@
+name: adminer-demo
+services:
+  db:
+    type: postgres
+  adminer:
+    type: adminer

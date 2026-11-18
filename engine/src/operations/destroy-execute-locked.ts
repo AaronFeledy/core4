@@ -1,6 +1,13 @@
 import type { DestroyAppError, DestroyAppResult } from "@lando/sdk/app";
 import { PreDestroyEvent } from "@lando/sdk/events";
-import { type ServiceShutdownObservation, appIdentityKey } from "@lando/sdk/schema";
+import {
+  type ServiceShutdownObservation,
+  type VolumeRemovalCounts,
+  addVolumeRemovalCounts,
+  appIdentityKey,
+  noVolumesRemoved,
+  volumesRemovedAny,
+} from "@lando/sdk/schema";
 import { EventService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
@@ -31,7 +38,8 @@ const unchanged = (app: string): DestroyAppResult => ({
   app,
   outcome: "unchanged",
   servicesDestroyed: [],
-  volumesRemoved: false,
+  dataVolumesRemoved: false,
+  cacheVolumesRemoved: false,
   snapshotsRemoved: 0,
 });
 
@@ -131,7 +139,7 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
         retired?.shutdownObservations,
         quiesced?.shutdownObservations,
       ];
-      let volumesRemoved = retired?.volumesRemoved === true;
+      let volumesRemoved: VolumeRemovalCounts = retired?.volumesRemoved ?? noVolumesRemoved;
       let changed = retired !== undefined || snapshotsRemoved > 0;
       let skipped: NonNullable<import("@lando/sdk/schema").OwnedResourcesCleanupResult["skipped"]> = [];
       const ownedCleanup = cleanup.pipe(
@@ -151,7 +159,7 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
               case "destroyed":
                 for (const service of Object.values(target.plan.services).reverse())
                   services.add(String(service.name));
-                volumesRemoved ||= plan.options.volumes === true || plan.options.purgeCaches === true;
+                volumesRemoved = addVolumeRemovalCounts(volumesRemoved, outcome.volumesRemoved);
                 changed = true;
                 break;
               case "no-op":
@@ -174,12 +182,15 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
             });
             observationSources.push(removed.shutdownObservations);
             for (const service of removed.services) services.add(service);
-            volumesRemoved ||= removed.volumesRemoved;
-            changed ||= removed.services.length > 0 || removed.volumesRemoved || removed.ownedChanged;
+            volumesRemoved = addVolumeRemovalCounts(volumesRemoved, removed.volumesRemoved);
+            changed ||=
+              removed.services.length > 0 ||
+              volumesRemovedAny(removed.volumesRemoved) ||
+              removed.ownedChanged;
           } else {
             const removed = yield* ownedCleanup;
             for (const service of removed.servicesRemoved) services.add(service);
-            volumesRemoved ||= removed.volumesRemoved > 0;
+            volumesRemoved = addVolumeRemovalCounts(volumesRemoved, removed.volumesRemoved);
             changed ||= ownedCleanupChanged(removed);
           }
           yield* tree.completeTask("provider");
@@ -194,7 +205,7 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
       }
       if (fileSync !== undefined && !targetRetired) yield* fileSync.complete;
       if (plan.missingStart !== undefined) {
-        yield* plan.missingStart.removeTargets;
+        volumesRemoved = addVolumeRemovalCounts(volumesRemoved, yield* plan.missingStart.removeTargets);
         yield* plan.missingStart.complete;
         changed = true;
       }
@@ -211,8 +222,9 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
           });
           observationSources.push(removed.shutdownObservations);
           for (const service of removed.services) services.add(service);
-          volumesRemoved ||= removed.volumesRemoved;
-          changed ||= removed.ownedChanged || removed.services.length > 0 || removed.volumesRemoved;
+          volumesRemoved = addVolumeRemovalCounts(volumesRemoved, removed.volumesRemoved);
+          changed ||=
+            removed.ownedChanged || removed.services.length > 0 || volumesRemovedAny(removed.volumesRemoved);
         }
       }
       // Reached only when every removal step succeeded; a failed teardown keeps the leaf material.
@@ -228,12 +240,13 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
           app: plan.name,
           outcome: changed ? ("destroyed" as const) : ("unchanged" as const),
           servicesDestroyed: [...services],
-          volumesRemoved,
+          dataVolumesRemoved: volumesRemoved.data > 0,
+          cacheVolumesRemoved: volumesRemoved.cache > 0,
           snapshotsRemoved,
         },
         ...observationSources,
       );
-      // Never trust volumesRemoved: clear only with complete evidence volumes are gone.
+      // Never trust the removal booleans: clear only with complete evidence volumes are gone.
       if (ownsUserData) {
         yield* clearAppDataIdentityWhenComplete({
           root: plan.root,
@@ -245,6 +258,6 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
     }),
   });
   const builtImages = yield* removeBuildOutput;
-  yield* publishDestroyCompletion({ ...plan, evidence }, result);
-  return { ...result, builtImages, ...(hooks === undefined ? {} : { landofileEvents: hooks.outcome }) };
+  const landofileEvents = yield* publishDestroyCompletion({ ...plan, evidence }, result);
+  return { ...result, builtImages, ...(landofileEvents === undefined ? {} : { landofileEvents }) };
 });

@@ -162,10 +162,13 @@ const makeRetentionDouble = (): {
           containers.delete(containerName(plan, service.name));
         }
         networks.delete(networkName(plan));
+        const volumesRemoved = { data: 0, cache: 0 };
         if (destroyOptions?.volumes === true) {
-          for (const store of plan.stores) volumes.delete(store.name);
+          for (const store of plan.stores) {
+            if (volumes.delete(store.name)) volumesRemoved[store.kind === "cache" ? "cache" : "data"] += 1;
+          }
         }
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved };
       }),
   };
 

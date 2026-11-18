@@ -80,6 +80,7 @@ for (const fixture of cases) {
           State,
           Labels: {
             "dev.lando.app": appId,
+            "dev.lando.app-root": root,
             "dev.lando.provider": "lando",
             "dev.lando.service": `service-${index}`,
           },
@@ -94,7 +95,7 @@ for (const fixture of cases) {
               discoverContainersEvidence: async () => ({
                 apps: appsFromContainerList(containers),
                 confirmedProviderIds: fixture.providers,
-                ownedAppIds: containers.length > 0 ? [appId] : [],
+                ownedResources: containers.length > 0 ? [{ appId, appRoot: root }] : [],
                 idleProviderIds: "idle" in fixture ? ["lando"] : [],
               }),
             }),
@@ -178,13 +179,14 @@ const mixedStatusInventory = async (
                 State: "running",
                 Labels: {
                   "dev.lando.app": "alpha",
+                  "dev.lando.app-root": root,
                   "dev.lando.provider": "lando",
                   "dev.lando.service": "web",
                 },
               },
             ]),
             confirmedProviderIds: ["lando"],
-            ownedAppIds: ["alpha"],
+            ownedResources: [{ appId: "alpha" }],
           };
         },
         ...options,

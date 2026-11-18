@@ -226,7 +226,7 @@ export const removeObservedContainer = (
 };
 
 /** The `destroy` answer when the provider tore resources down. */
-export const DESTROYED: DestroyOutcome = { kind: "destroyed" };
+export const DESTROYED: DestroyOutcome = { kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } };
 
 /** The `destroy` answer when the provider was handed no plan and holds no applied record. */
 export const DESTROY_NO_OP: DestroyOutcome = { kind: "no-op", reason: "no-applied-plan" };

@@ -7,7 +7,7 @@ import {
   type RuntimeProviderShape,
   type StateStore,
 } from "@lando/sdk/services";
-import { Cause, type Context, DateTime, Effect, Exit } from "effect";
+import { Cause, type Context, DateTime, Effect, Exit, type Option } from "effect";
 import {
   buildStepFor,
   producedImagePresent,
@@ -35,6 +35,7 @@ import { artifactBuildStepsFor } from "./build-key.ts";
 import { BuildOwner } from "./build-owner.ts";
 import type { BuildRedaction } from "./build-redaction.ts";
 import { buildResultsError } from "./build-results.ts";
+import { type BuildSourceStore, acquireBuildTrees } from "./build-source-store.ts";
 import { openBuildStepOutput } from "./build-step-output.ts";
 import type { BuildTaskProgress } from "./build-task-progress.ts";
 import { buildTranscriptExists, makeBuildTranscriptPath } from "./build-transcript.ts";
@@ -62,6 +63,7 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
   readonly redaction: BuildRedaction;
   readonly service: ServicePlan;
   readonly stateStore: Context.Service.Shape<typeof StateStore>;
+  readonly sourceStore: Option.Option<Context.Service.Shape<typeof BuildSourceStore>>;
   readonly storeKey: string;
   readonly cachedArtifacts: readonly ArtifactBuildResult[];
   readonly activity: { dispatched: boolean; dropped: boolean };
@@ -163,6 +165,12 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
         timestamp: yield* timestamp,
       });
 
+      const contextTrees = builds
+        ? yield* acquireBuildTrees(resolvedService, input.sourceStore, {
+            providerId: provider.id,
+            redact: (text) => redaction.redactor.redactString(text),
+          })
+        : [];
       if (builds) yield* recording.dispatch;
       const artifact = yield* runProviderBuild({
         labels: { [BUILT_ARTIFACT_STORE_LABEL]: input.storeKey },
@@ -171,6 +179,7 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
         service: resolvedService,
         buildKey: step.buildKey,
         ref,
+        ...(contextTrees.length === 0 ? {} : { contextTrees }),
         ...(sourceArtifact === undefined ? {} : { resolvedSource: sourceArtifact }),
         onOutput: (text) =>
           output.write("stdout", encoder.encode(text)).pipe(

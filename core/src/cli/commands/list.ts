@@ -15,6 +15,8 @@ import { type RenderContext, contextAllowsHyperlinks } from "../renderer-boundar
 import {
   type AppsDiscoveryEvidence,
   type AppsListEntry,
+  type OwnedAppResource,
+  appsListIdentity,
   containerSocketCandidates,
   discoverRunningAppsEvidenceFromSockets,
   mergeAppsListEntries,
@@ -55,7 +57,7 @@ export interface ListServicesOptions {
   readonly discoverContainersEvidence?: (userDataRoot: string) => Promise<{
     readonly apps: ReadonlyArray<AppsListEntry>;
     readonly confirmedProviderIds: ReadonlyArray<string>;
-    readonly ownedAppIds?: ReadonlyArray<string>;
+    readonly ownedResources?: ReadonlyArray<OwnedAppResource>;
     readonly idleProviderIds?: ReadonlyArray<string>;
   }>;
   readonly prune?: boolean;
@@ -138,6 +140,13 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
     }
   });
 
+  const ownedFromApps = (apps: ReadonlyArray<AppsListEntry>): ReadonlyArray<OwnedAppResource> =>
+    apps.map(
+      (app): OwnedAppResource => ({
+        appId: app.appId,
+        ...(app.appRoot === "" ? {} : { appRoot: app.appRoot }),
+      }),
+    );
   const discoverEvidence = (): Effect.Effect<AppsDiscoveryEvidence> =>
     Effect.tryPromise(async () => {
       if (options.discoverContainersEvidence !== undefined) {
@@ -145,7 +154,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
         return {
           ...discovered,
           providerConfirmed: discovered.confirmedProviderIds.length > 0,
-          ownedAppIds: discovered.ownedAppIds ?? discovered.apps.map((app) => app.appId),
+          ownedResources: discovered.ownedResources ?? ownedFromApps(discovered.apps),
         };
       }
       if (options.discoverContainers !== undefined) {
@@ -154,7 +163,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
           apps,
           providerConfirmed: true,
           confirmedProviderIds: [...new Set(apps.map((app) => app.providerId))],
-          ownedAppIds: apps.map((app) => app.appId),
+          ownedResources: ownedFromApps(apps),
         };
       }
       return discoverRunningAppsEvidenceFromSockets(
@@ -168,19 +177,23 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
       );
     }).pipe(
       Effect.catch(() =>
-        Effect.succeed({ apps: [], providerConfirmed: false, confirmedProviderIds: [], ownedAppIds: [] }),
+        Effect.succeed({
+          apps: [],
+          providerConfirmed: false,
+          confirmedProviderIds: [],
+          ownedResources: [],
+        }),
       ),
     );
   const evidence = yield* discoverEvidence();
   const running = evidence.apps;
 
   const merged = mergeAppsListEntries([...persisted, ...running]);
+  const runningIdentities = new Set(running.map(appsListIdentity));
   const apps = yield* Effect.promise(() =>
     Promise.all(
       merged.map(async (app) => {
-        const status = running.some(
-          (entry) => entry.appId === app.appId && entry.providerId === app.providerId,
-        )
+        const status = runningIdentities.has(appsListIdentity(app))
           ? "active"
           : evidence.confirmedProviderIds.includes(app.providerId) ||
               evidence.idleProviderIds?.includes(app.providerId) === true
@@ -198,14 +211,18 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
     ),
   );
 
+  const ownedBy = (entry: AppsListEntry): boolean =>
+    evidence.ownedResources.some(
+      (resource) =>
+        resource.appId === entry.appId &&
+        (resource.appRoot === undefined || resource.appRoot === entry.appRoot),
+    );
   const pruned: Array<typeof AppsListEntrySchema.Type> = [];
   if (options.prune === true && evidence.providerConfirmed && pruneCandidate !== undefined) {
-    const ownedAppIds = new Set(evidence.ownedAppIds);
     const confirmedProviderIds = new Set(evidence.confirmedProviderIds);
     const candidates = apps
       .filter(
-        (entry) =>
-          entry.stale === true && confirmedProviderIds.has(entry.providerId) && !ownedAppIds.has(entry.appId),
+        (entry) => entry.stale === true && confirmedProviderIds.has(entry.providerId) && !ownedBy(entry),
       )
       .slice(0, options.pruneLimit ?? 100);
     for (const entry of candidates) {
@@ -227,7 +244,13 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
     if (statusFilter !== undefined && !statusFilter.includes(app.status)) return false;
     return true;
   });
-  filtered.sort((a, b) => a.appName.localeCompare(b.appName));
+  // Same-named apps at different roots get a stable order instead of filesystem read order.
+  filtered.sort(
+    (a, b) =>
+      a.appName.localeCompare(b.appName) ||
+      a.appRoot.localeCompare(b.appRoot) ||
+      a.providerId.localeCompare(b.providerId),
+  );
   const visible =
     pruneCandidate === undefined ? filtered : filtered.filter((entry) => !pruned.includes(entry));
   return { apps: visible, ...(pruneCandidate === undefined ? {} : { pruned }) };
@@ -262,7 +285,11 @@ export const listServicesWithPrune = Effect.fn("AppsList.listServicesWithPrune")
         const currentEvidence = yield* discoverEvidence();
         if (
           !currentEvidence.confirmedProviderIds.includes(entry.providerId) ||
-          currentEvidence.ownedAppIds.includes(entry.appId)
+          currentEvidence.ownedResources.some(
+            (resource) =>
+              resource.appId === entry.appId &&
+              (resource.appRoot === undefined || resource.appRoot === entry.appRoot),
+          )
         ) {
           return false;
         }

@@ -21,6 +21,16 @@ export const ValidationIssueSource = Schema.Union([
     }),
   }),
   Schema.Struct({
+    layer: Schema.Literal("project-file"),
+    file: Schema.String.annotate({
+      description:
+        "Project file a service type declared and the planner read, as an absolute path inside the app root.",
+    }),
+    path: ValidationIssuePath.annotate({
+      description: "Location within the project file; empty for the file root.",
+    }),
+  }),
+  Schema.Struct({
     layer: Schema.Literals(["config-file", "config-drop-in"]),
     file: Schema.String,
     path: ValidationIssuePath,

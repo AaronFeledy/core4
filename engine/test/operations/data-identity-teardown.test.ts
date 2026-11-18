@@ -124,7 +124,7 @@ test.each([undefined, "inventory", "orphans"] as const)(
       providerOverrides: {
         getStatus: Effect.succeed({ state: "running" as const }),
         cleanupOwnedResources: () =>
-          Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
+          Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } }),
       },
     });
     await Effect.runPromise(executeTeardown(teardown).pipe(Effect.provide(harness.layer)));
@@ -170,7 +170,7 @@ test.each([
           Effect.succeed({
             servicesRemoved: [],
             networksRemoved: 0,
-            volumesRemoved: 0,
+            volumesRemoved: { data: 0, cache: 0 },
             ...(skipped
               ? { skipped: [{ appId: plan.id, resource: "db", reason: "unreadable" as const }] }
               : {}),

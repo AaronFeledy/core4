@@ -1,15 +1,26 @@
+import {
+  type FollowLogsAppOptions,
+  type LogsAppError,
+  type LogsAppResult,
+  followLogsForPlan,
+  logsForPlan,
+  validateSince,
+} from "@lando/engine/operations/logs";
 import { emitOptionalStdout } from "@lando/renderer/output";
 import { type SummaryDocument, formatSummary, worstSummaryTone } from "@lando/renderer/summary";
 import type {
   AppPlacementError,
+  AppResolveError,
   DebuggerHostUnavailableError,
   LandofileVersionConstraintError,
+  NoProviderInstalledError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
 } from "@lando/sdk/errors";
 import { ScratchAppError, ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
 import { AbsolutePath, type IsolateMode } from "@lando/sdk/schema";
 import type {
+  ProviderError,
   ScratchGcOptions,
   ScratchGcReport,
   ScratchHandle,
@@ -17,12 +28,13 @@ import type {
   ScratchSource,
   ScratchSummary,
 } from "@lando/sdk/services";
-import { ScratchAppService } from "@lando/sdk/services";
+import { RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { extractSpecAbortSignal } from "../spec/command-base";
 import { formatFlag, specArgsOf, specFlagsOf, stringFlag } from "../spec/input-coercion";
+import { renderLogsAppResult } from "./logs";
 import { SCRATCH_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 
 export interface ScratchStartOptions {
@@ -63,11 +75,6 @@ export interface ScratchStartResult {
   readonly handle: ScratchHandle;
   readonly detached: boolean;
   readonly rendered?: boolean;
-}
-
-export interface ScratchLogsResult {
-  readonly handle: ScratchHandle;
-  readonly lines: ReadonlyArray<string>;
 }
 
 export const ScratchSourceResultSchema = Schema.Union([
@@ -144,11 +151,6 @@ export const ScratchGcReportResultSchema = Schema.Struct({
   candidates: Schema.Array(Schema.String),
   reaped: Schema.Array(Schema.String),
   errors: Schema.Array(Schema.String),
-});
-
-export const ScratchLogsResultSchema = Schema.Struct({
-  handle: ScratchHandleResultSchema,
-  lines: Schema.Array(Schema.String),
 });
 
 export type ScratchListFormat = "json" | "table";
@@ -453,12 +455,52 @@ export const scratchDestroy = (
 
 export const renderScratchDestroyResult = (result: ScratchHandle): string => `destroyed: ${result.id}`;
 
-export const scratchLogs = (
-  id: string,
-): Effect.Effect<ScratchLogsResult, ScratchIdCommandError, ScratchAppService> =>
-  Effect.map(scratchResolve(id), (handle) => ({ handle, lines: [] }));
+export type ScratchLogsOptions = Pick<FollowLogsAppOptions, "service" | "tail" | "since" | "source">;
+export type ScratchLogsError =
+  | ScratchIdCommandError
+  | LogsAppError
+  | AppResolveError
+  | ProviderError
+  | NoProviderInstalledError;
+type ScratchLogsServices = ScratchAppService | RuntimeProviderRegistry;
 
-export const renderScratchLogsResult = (result: ScratchLogsResult): string => {
-  if (result.lines.length === 0) return `${result.handle.id} (no log lines)`;
-  return result.lines.join("\n");
-};
+/**
+ * Resolves applied log evidence exactly, never the acquisition plan cache: the scratch registry
+ * handle names the root, and only that root's recorded plan proves what actually runs.
+ */
+const scratchAppliedPlan = Effect.fnUntraced(function* (id: string) {
+  const handle = yield* scratchResolve(id);
+  const registry = yield* RuntimeProviderRegistry;
+  const plan = yield* registry.resolveAppliedPlan(
+    handle.app.root,
+    { kind: "scratch", id: handle.id },
+    "exact",
+  );
+  return { handle, plan };
+});
+
+export const scratchLogs = Effect.fn("Scratch.logs")(function* (
+  id: string,
+  options: ScratchLogsOptions = {},
+): Effect.fn.Return<LogsAppResult, ScratchLogsError, ScratchLogsServices> {
+  const { handle, plan } = yield* scratchAppliedPlan(id);
+  if (plan === undefined) {
+    yield* validateSince(options.since);
+    return { app: handle.id, lines: [] };
+  }
+  return yield* logsForPlan(plan, options);
+});
+
+export const followScratchLogs = Effect.fn("Scratch.followLogs")(function* (
+  id: string,
+  options: FollowLogsAppOptions = {},
+): Effect.fn.Return<LogsAppResult, ScratchLogsError, ScratchLogsServices> {
+  const { handle, plan } = yield* scratchAppliedPlan(id);
+  if (plan === undefined) {
+    yield* validateSince(options.since);
+    return { app: handle.id, lines: [] };
+  }
+  return yield* followLogsForPlan(plan, options);
+});
+
+export const renderScratchLogsResult = renderLogsAppResult;

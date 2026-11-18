@@ -98,6 +98,7 @@ test.each(["accelerated", "ordinary", "no-observations"] as const)(
           calls.push("destroy");
           return {
             kind: "destroyed" as const,
+            volumesRemoved: { data: 0, cache: 0 },
             ...(mode === "no-observations"
               ? {}
               : {

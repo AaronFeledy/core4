@@ -1,5 +1,35 @@
 [
   {
+    "surface": "command:app:destroy",
+    "changeKind": "union-widened",
+    "path": "$.landofileEvents.anyOf",
+    "justification": "A failed post-destroy step now carries its event and tagged diagnostic in the completed destroy result instead of incorrectly reporting ran. The ran and skipped variants remain unchanged."
+  },
+  {
+    "surface": "command:app:stop",
+    "changeKind": "union-widened",
+    "path": "$.landofileEvents.anyOf",
+    "justification": "A failed post-stop step now carries its event and tagged diagnostic in the completed stop result instead of incorrectly reporting ran. The ran and skipped variants remain unchanged."
+  },
+  {
+    "surface": "schema:DestroyAppResult",
+    "changeKind": "union-widened",
+    "path": "$.landofileEvents.anyOf",
+    "justification": "The SDK destroy result distinguishes a failed post-destroy step from successful cleanup. A post-step failure does not undo the teardown or make the operation fail."
+  },
+  {
+    "surface": "schema:LandofileEventsOutcome",
+    "changeKind": "union-widened",
+    "path": "$.anyOf",
+    "justification": "Consumers can distinguish a failed post-event step from one that ran cleanly without parsing warnings. The existing ran and skipped variants remain unchanged, and the new failed variant carries the event and a tagged diagnostic with remediation."
+  },
+  {
+    "surface": "schema:StopAppResult",
+    "changeKind": "union-widened",
+    "path": "$.landofileEvents.anyOf",
+    "justification": "The SDK stop result distinguishes a failed post-stop step from successful teardown so direct callers and poweroff can report the failure without treating the app as still running."
+  },
+  {
     "surface": "command:meta:doctor",
     "changeKind": "unsupported-construct",
     "path": "$.checks.items.details.anyOf",
@@ -69,7 +99,7 @@
     "surface": "command:app:config:lint",
     "changeKind": "union-widened",
     "path": "$.violations.items.source.anyOf",
-    "justification": "#2169 adds a distinct script provenance arm carrying file and front-matter path. Lint findings retain physical script locations; all existing provenance arms remain unchanged."
+    "justification": "#2169 adds a distinct script provenance arm carrying file and front-matter path. Lint findings retain physical script locations; all existing provenance arms remain unchanged. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "command:meta:doctor",
@@ -81,7 +111,7 @@
     "surface": "schema:ConfigLintResult",
     "changeKind": "union-widened",
     "path": "$.violations.items.source.anyOf",
-    "justification": "#2169 intentionally extends lint output with the script provenance arm. Physical script files and front-matter paths become observable without changing existing source arms or persisted state."
+    "justification": "#2169 intentionally extends lint output with the script provenance arm. Physical script files and front-matter paths become observable without changing existing source arms or persisted state. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "command:app:config:lint",
@@ -99,7 +129,7 @@
     "surface": "command:app:includes:verify",
     "changeKind": "union-widened",
     "path": "$.failures.items.additionalErrors.items.issues.items.source.anyOf",
-    "justification": "#2169 adds script file provenance to the shared ValidationIssueSource contract. Existing Landofile and global-config arms remain valid; only the script layer is newly admitted."
+    "justification": "#2169 adds script file provenance to the shared ValidationIssueSource contract. Existing Landofile and global-config arms remain valid; only the script layer is newly admitted. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "command:app:includes:verify",
@@ -111,7 +141,7 @@
     "surface": "command:app:includes:verify",
     "changeKind": "union-widened",
     "path": "$.failures.items.issues.items.source.anyOf",
-    "justification": "#2169 adds script file provenance to the shared ValidationIssueSource contract. Existing Landofile and global-config arms remain valid; only the script layer is newly admitted."
+    "justification": "#2169 adds script file provenance to the shared ValidationIssueSource contract. Existing Landofile and global-config arms remain valid; only the script layer is newly admitted. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "command:meta:doctor",
@@ -153,37 +183,37 @@
     "surface": "schema:ComposedCompiledLandofile",
     "changeKind": "unsupported-construct",
     "path": "$.pendingSites.items.source.anyOf",
-    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "schema:IdentityScopedLandofile",
     "changeKind": "unsupported-construct",
     "path": "$.pendingSites.items.source.anyOf",
-    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "schema:LoadScopedLandofile",
     "changeKind": "unsupported-construct",
     "path": "$.pendingSites.items.source.anyOf",
-    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "schema:ParsedPendingSite",
     "changeKind": "unsupported-construct",
     "path": "$.source.anyOf",
-    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "schema:ServiceScopedLandofile",
     "changeKind": "unsupported-construct",
     "path": "$.pendingSites.items.source.anyOf",
-    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "schema:SourceCompiledLandofile",
     "changeKind": "unsupported-construct",
     "path": "$.pendingSites.items.source.anyOf",
-    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid."
+    "justification": "#2169 adds script file provenance to ValidationIssueSource, reused by pending sites. LandofileLayer and compiled-site producers are unchanged; all previous source arms remain valid. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "command:meta:plugin:unlink",
@@ -4451,13 +4481,13 @@
     "surface": "schema:CommandResultEnvelope",
     "changeKind": "unsupported-construct",
     "path": "$.error.issues.items.source.anyOf",
-    "justification": "Reviewed Phase 1 global-config provenance extension: the existing Landofile source arm is unchanged, and optional issue sources additionally admit config-file/config-drop-in file paths, exact env variable names, host options, and defaults. LandofileLayer is not widened; all previously accepted issue sources remain valid. The conservative checker cannot classify the struct-to-union extension."
+    "justification": "Reviewed Phase 1 global-config provenance extension: the existing Landofile source arm is unchanged, and optional issue sources additionally admit config-file/config-drop-in file paths, exact env variable names, host options, and defaults. LandofileLayer is not widened; all previously accepted issue sources remain valid. The conservative checker cannot classify the struct-to-union extension. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "schema:CommandResultEnvelope",
     "changeKind": "unsupported-construct",
     "path": "$.error.additionalErrors.items.issues.items.source.anyOf",
-    "justification": "Reviewed Phase 1 global-config provenance extension for additional errors: the existing Landofile source arm is unchanged, and optional issue sources additionally admit config-file/config-drop-in file paths, exact env variable names, host options, and defaults. LandofileLayer is not widened; all previously accepted issue sources remain valid. The conservative checker cannot classify the struct-to-union extension."
+    "justification": "Reviewed Phase 1 global-config provenance extension for additional errors: the existing Landofile source arm is unchanged, and optional issue sources additionally admit config-file/config-drop-in file paths, exact env variable names, host options, and defaults. LandofileLayer is not widened; all previously accepted issue sources remain valid. The conservative checker cannot classify the struct-to-union extension. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "command:app:config:lint",
@@ -4481,7 +4511,7 @@
     "surface": "schema:ConfigLintViolation",
     "changeKind": "unsupported-construct",
     "path": "$.source.anyOf",
-    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "schema:NetworkingPlan",
@@ -6499,7 +6529,7 @@
     "surface": "schema:RegisteredCommand",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "The config-lint rule registry gains `service.projectUser` (project-user explanation) and `service.router-tls-termination` (GitHub #2184). Registered command metadata embeds that rule-id union, so the conservative checker reports the enclosing union as changed even though no command identity or accepted input shape changed."
+    "justification": "The config-lint rule registry gains `service.projectUser` (project-user explanation) and `service.router-tls-termination` (GitHub #2184). Registered command metadata embeds that rule-id union, so the conservative checker reports the enclosing union as changed even though no command identity or accepted input shape changed. #2229 widens the same union with a project-file arm naming the service-type project file that caused an issue; every earlier arm stays valid."
   },
   {
     "surface": "command:app:cache:refresh",
@@ -6512,5 +6542,131 @@
     "changeKind": "union-widened",
     "path": "$.diagnostics.items.issues.items.rule.anyOf",
     "justification": "The shared config-lint rule-id union gains `service.projectUser` and `service.router-tls-termination` (GitHub #2184). MCP diagnostics keep the same envelope and previous rule ids; the new members only name warnings."
+  },
+  {
+    "surface": "schema:DestroyAppResult",
+    "changeKind": "property-removed",
+    "path": "$.volumesRemoved",
+    "justification": "GitHub #2385 replaces the conflated volumesRemoved boolean/count with dataVolumesRemoved and cacheVolumesRemoved, or with per-class counts on the provider receipt. The replacement reports what a teardown actually removed instead of what its flags requested; this project is unreleased, so no compatibility shim keeps the old field."
+  },
+  {
+    "surface": "command:app:destroy",
+    "changeKind": "property-removed",
+    "path": "$.volumesRemoved",
+    "justification": "GitHub #2385 replaces the conflated volumesRemoved boolean/count with dataVolumesRemoved and cacheVolumesRemoved, or with per-class counts on the provider receipt. The replacement reports what a teardown actually removed instead of what its flags requested; this project is unreleased, so no compatibility shim keeps the old field."
+  },
+  {
+    "surface": "command:meta:global:destroy",
+    "changeKind": "property-removed",
+    "path": "$.volumesRemoved",
+    "justification": "GitHub #2385 replaces the conflated volumesRemoved boolean/count with dataVolumesRemoved and cacheVolumesRemoved, or with per-class counts on the provider receipt. The replacement reports what a teardown actually removed instead of what its flags requested; this project is unreleased, so no compatibility shim keeps the old field."
+  },
+  {
+    "surface": "schema:OwnedResourcesCleanupResult",
+    "changeKind": "type-changed",
+    "path": "$.volumesRemoved",
+    "justification": "GitHub #2385 replaces the conflated volumesRemoved boolean/count with dataVolumesRemoved and cacheVolumesRemoved, or with per-class counts on the provider receipt. The replacement reports what a teardown actually removed instead of what its flags requested; this project is unreleased, so no compatibility shim keeps the old field."
+  },
+  {
+    "surface": "command:apps:scratch:logs",
+    "changeKind": "property-removed",
+    "path": "$.handle",
+    "justification": "GitHub #2154 makes scratch:logs share the app and global logs result (LogsAppResult), so the scratch handle wrapper is gone and lines carry service, stream, source, and timestamp like every other logs command."
+  },
+  {
+    "surface": "command:apps:scratch:logs",
+    "changeKind": "type-changed",
+    "path": "$.lines.items",
+    "justification": "GitHub #2154 makes scratch:logs return LogsAppResult lines (objects with service, stream, line, and optional source/timestamp) instead of preformatted strings, matching app and global logs for text, JSON, and YAML output."
+  },
+  {
+    "surface": "command:apps:scratch:logs",
+    "changeKind": "property-optional",
+    "path": "$.lines",
+    "justification": "GitHub #2154 aligns scratch:logs with LogsAppResult, which omits lines when a live sink received the stream (--follow). Absent applied evidence still returns an explicit empty lines array."
+  },
+  {
+    "surface": "command:apps:poweroff",
+    "changeKind": "property-removed",
+    "path": "$.appsPoweredOff",
+    "justification": "GitHub #2118 reports every targeted app with its kind, id, root, provider, and outcome in `apps`, replacing the id-only `appsPoweredOff` list. The replacement carries the same successful apps plus exact identity and per-app outcome; this project is unreleased, so no compatibility shim keeps the old field."
+  },
+  {
+    "surface": "schema:PreGlobalDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.volumes",
+    "justification": "GitHub #2385 separates the effective data-volume removal a global destroy performs from the requested --purge flag. The payload now carries both `volumes` and `purge`, so a --volumes destroy no longer claims a purge request; this project is unreleased, and every producer supplies both fields."
+  },
+  {
+    "surface": "schema:PostGlobalDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.volumes",
+    "justification": "GitHub #2385 separates the effective data-volume removal a global destroy performs from the requested --purge flag. The payload now carries both `volumes` and `purge`, so a --volumes destroy no longer claims a purge request; this project is unreleased, and every producer supplies both fields."
+  },
+  {
+    "surface": "command:app:cache:refresh",
+    "changeKind": "union-widened",
+    "path": "$.unavailableTasks.items.issues.items.related.items.source.anyOf",
+    "justification": "PR #2229 adds a project-file arm { layer: \"project-file\", file, path } to ValidationIssueSource so a service type's inference failure names the .nvmrc or package.json that caused it instead of the Landofile. Every existing source arm is unchanged and LandofileLayer is not widened; the new arm is produced only for issues whose service type declared and read that project file. Consumers that switch on source.layer must accept the new value; SDK schema round-trip, planner attribution, and CLI rendering tests cover it."
+  },
+  {
+    "surface": "command:app:cache:refresh",
+    "changeKind": "union-widened",
+    "path": "$.unavailableTasks.items.issues.items.source.anyOf",
+    "justification": "PR #2229 adds a project-file arm { layer: \"project-file\", file, path } to ValidationIssueSource so a service type's inference failure names the .nvmrc or package.json that caused it instead of the Landofile. Every existing source arm is unchanged and LandofileLayer is not widened; the new arm is produced only for issues whose service type declared and read that project file. Consumers that switch on source.layer must accept the new value; SDK schema round-trip, planner attribution, and CLI rendering tests cover it."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "union-widened",
+    "path": "$.violations.items.related.items.source.anyOf",
+    "justification": "PR #2229 adds a project-file arm { layer: \"project-file\", file, path } to ValidationIssueSource so a service type's inference failure names the .nvmrc or package.json that caused it instead of the Landofile. Every existing source arm is unchanged and LandofileLayer is not widened; the new arm is produced only for issues whose service type declared and read that project file. Consumers that switch on source.layer must accept the new value; SDK schema round-trip, planner attribution, and CLI rendering tests cover it."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "union-widened",
+    "path": "$.failures.items.additionalErrors.items.issues.items.related.items.source.anyOf",
+    "justification": "PR #2229 adds a project-file arm { layer: \"project-file\", file, path } to ValidationIssueSource so a service type's inference failure names the .nvmrc or package.json that caused it instead of the Landofile. Every existing source arm is unchanged and LandofileLayer is not widened; the new arm is produced only for issues whose service type declared and read that project file. Consumers that switch on source.layer must accept the new value; SDK schema round-trip, planner attribution, and CLI rendering tests cover it."
+  },
+  {
+    "surface": "command:app:includes:verify",
+    "changeKind": "union-widened",
+    "path": "$.failures.items.issues.items.related.items.source.anyOf",
+    "justification": "PR #2229 adds a project-file arm { layer: \"project-file\", file, path } to ValidationIssueSource so a service type's inference failure names the .nvmrc or package.json that caused it instead of the Landofile. Every existing source arm is unchanged and LandofileLayer is not widened; the new arm is produced only for issues whose service type declared and read that project file. Consumers that switch on source.layer must accept the new value; SDK schema round-trip, planner attribution, and CLI rendering tests cover it."
+  },
+  {
+    "surface": "command:meta:mcp",
+    "changeKind": "union-widened",
+    "path": "$.diagnostics.items.issues.items.related.items.source.anyOf",
+    "justification": "PR #2229 adds a project-file arm { layer: \"project-file\", file, path } to ValidationIssueSource so a service type's inference failure names the .nvmrc or package.json that caused it instead of the Landofile. Every existing source arm is unchanged and LandofileLayer is not widened; the new arm is produced only for issues whose service type declared and read that project file. Consumers that switch on source.layer must accept the new value; SDK schema round-trip, planner attribution, and CLI rendering tests cover it."
+  },
+  {
+    "surface": "command:meta:mcp",
+    "changeKind": "union-widened",
+    "path": "$.diagnostics.items.issues.items.source.anyOf",
+    "justification": "PR #2229 adds a project-file arm { layer: \"project-file\", file, path } to ValidationIssueSource so a service type's inference failure names the .nvmrc or package.json that caused it instead of the Landofile. Every existing source arm is unchanged and LandofileLayer is not widened; the new arm is produced only for issues whose service type declared and read that project file. Consumers that switch on source.layer must accept the new value; SDK schema round-trip, planner attribution, and CLI rendering tests cover it."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.additionalErrors.items.issues.items.related.items.source.anyOf",
+    "justification": "PR #2229 adds a project-file arm { layer: \"project-file\", file, path } to ValidationIssueSource so a service type's inference failure names the .nvmrc or package.json that caused it instead of the Landofile. Every existing source arm is unchanged and LandofileLayer is not widened; the new arm is produced only for issues whose service type declared and read that project file. Consumers that switch on source.layer must accept the new value; SDK schema round-trip, planner attribution, and CLI rendering tests cover it."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.issues.items.related.items.source.anyOf",
+    "justification": "PR #2229 adds a project-file arm { layer: \"project-file\", file, path } to ValidationIssueSource so a service type's inference failure names the .nvmrc or package.json that caused it instead of the Landofile. Every existing source arm is unchanged and LandofileLayer is not widened; the new arm is produced only for issues whose service type declared and read that project file. Consumers that switch on source.layer must accept the new value; SDK schema round-trip, planner attribution, and CLI rendering tests cover it."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "union-widened",
+    "path": "$.violations.items.related.items.source.anyOf",
+    "justification": "PR #2229 adds a project-file arm { layer: \"project-file\", file, path } to ValidationIssueSource so a service type's inference failure names the .nvmrc or package.json that caused it instead of the Landofile. Every existing source arm is unchanged and LandofileLayer is not widened; the new arm is produced only for issues whose service type declared and read that project file. Consumers that switch on source.layer must accept the new value; SDK schema round-trip, planner attribution, and CLI rendering tests cover it."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "unsupported-construct",
+    "path": "$.related.items.source.anyOf",
+    "justification": "PR #2229 adds a project-file arm { layer: \"project-file\", file, path } to ValidationIssueSource so a service type's inference failure names the .nvmrc or package.json that caused it instead of the Landofile. Every existing source arm is unchanged and LandofileLayer is not widened; the new arm is produced only for issues whose service type declared and read that project file. Consumers that switch on source.layer must accept the new value; SDK schema round-trip, planner attribution, and CLI rendering tests cover it."
   }
 ]

@@ -28,12 +28,6 @@ export const source = {
         cmds: ["hugo"],
         wrapper: true,
       },
-      npm: {
-        service: "builder",
-        description: "Run npm inside the builder service.",
-        cmds: ["npm"],
-        wrapper: true,
-      },
     },
   },
   files: [

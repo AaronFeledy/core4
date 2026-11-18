@@ -237,6 +237,43 @@ Run `lando build -- --help` or `lando build -- --format=csv`. Lando consumes onl
 
 A lone `lando build --version` fails with `ToolingInputError` before execution because a project task has no version of its own. Run `lando version` for Lando's version, or `lando build -- --version` to pass the option to the command. A declared flag named `version` owns that input instead. `--version` with other tokens is ordinary input. `.bun.sh` scripts follow the same help and lone-version rules; `wrapper` is not a front-matter key.
 
+## Run a project's local Node binary
+
+A Node project installs CLIs such as `vite` or `next` into the project, and
+each package manager has its own way to run them. Start an argv-list `cmd`
+with `:node-local` and Lando picks the right one for the task's service:
+
+```yaml
+services:
+  web:
+    type: node:lts
+    primary: true
+tooling:
+  vite:
+    service: web
+    cmd: [":node-local", "vite"]
+    wrapper: true
+```
+
+`lando vite build` then runs one of these inside `web`, depending on the
+package manager that service's `package.json` declares:
+
+| `package.json` declares | Command |
+| --- | --- |
+| pnpm | `pnpm exec vite build` |
+| Yarn | `yarn run vite build`, which also works with Plug'n'Play |
+| npm, Bun, or nothing | `npm exec --no -- vite build` |
+
+All three run the binary your project already installed. None of them
+downloads a missing package, so run your install first.
+
+Two rules apply. Set `service:` on the task itself, because Lando reads the
+package manager from that service. And write `cmd` as a list: `:node-local`
+isn't recognized in a command string or under `cmds`. The bundled Next.js,
+Astro, SvelteKit, and Eleventy recipes define their framework commands this
+way. [Use your project's package manager](../services/node.mdx#use-your-projects-package-manager)
+covers how a Node service selects its manager.
+
 ## Pick the service from a flag
 
 Set `service: ":<flag-name>"` and the task runs in whichever service the flag names. Lando resolves the target from the validated value, so `choices` and `default` apply before anything runs.
@@ -445,6 +482,24 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
       <Cleanup />
     </Step>
   </Scenario>
+  <Scenario id="node-local-follows-package-manager" render={false} reason="A :node-local task resolves through the package manager its service declares">
+    <Step name="write-pnpm-project">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: node-local-demo\nservices:\n  web:\n    type: node:lts\n    primary: true\ntooling:\n  vite:\n    service: web\n    cmd: [\":node-local\", \"vite\"]\n    wrapper: true\n"));
+yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "node-local-demo", private: true, packageManager: "pnpm@9.15.0" })));`} displayCode={`await Bun.write("package.json", JSON.stringify({ name: "node-local-demo", private: true, packageManager: "pnpm@9.15.0" }));`} />
+    </Step>
+    <Step name="runs-through-pnpm">
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando help vite --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"name":\s*"web"[\s\S]*"program":\s*"pnpm"/);`} displayCode={`lando help vite --format=json`} />
+    </Step>
+    <Step name="switch-to-yarn">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "node-local-demo", private: true, packageManager: "yarn@4.18.1" })));
+lastRun = yield* context.runCli("lando help vite --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"program":\s*"yarn"/);`} displayCode={`lando help vite --format=json`} />
+    </Step>
+  </Scenario>
+
   <Scenario id="reject-invalid-wrapper" render={false} reason="A wrapper cannot execute multiple commands">
     <Step name="prepare-invalid-wrapper">
       <UseFixture name="invalid-wrapper" />

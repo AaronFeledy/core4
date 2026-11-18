@@ -12,7 +12,6 @@ import type {
   PluginRegistry,
   ServiceType,
   ServiceTypeHostFacts,
-  ServiceTypeProjectFileInput,
   ServiceTypeResolution,
 } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
@@ -185,7 +184,7 @@ export interface ResolvedService {
   readonly applicationConfigs: ReadonlyMap<number, ApplicationConfig>;
   readonly resolvedArtifactTag: string | undefined;
   readonly envFileInputs: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
-  readonly projectFiles: ReadonlyArray<ServiceTypeProjectFileInput>;
+  readonly projectFiles: readonly import("./project-files.ts").PlannedProjectFile[];
   readonly configSourceInputs: ReadonlyArray<ServiceConfigSource>;
 }
 

@@ -39,7 +39,11 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
-import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
+import {
+  type ResolvedAppTarget,
+  resolveDesiredAppTarget,
+  withResolvedCwd,
+} from "../../src/landofile/app-resolution.ts";
 import {
   serviceCertificatePaths,
   serviceCertificatesOwnerDir,
@@ -61,6 +65,7 @@ import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { compileAuthoredEventPlan } from "../authored-invocations.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
 import { layerTransactionGuard } from "../services/landofile-layer.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 import { emptySnapshotsLayer } from "./data-mover-support.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
@@ -118,6 +123,7 @@ for (const landofilePresent of [true, false]) {
             return "desired";
           }),
         (app) => `unchanged:${app}`,
+        resolveDesiredAppTarget,
       );
       // When
       const result = await Effect.runPromise(
@@ -147,6 +153,7 @@ test("calls onDesired when desired resolution succeeds", async () => {
           { kind: "absent", root: AbsolutePath.make(root), landofilePresent: true },
           (desired) => Effect.succeed(desired.plan),
           () => planAt("/tmp/wrong"),
+          resolveDesiredAppTarget,
         ),
       ).pipe(Effect.provide(harness.layer)),
     );
@@ -282,7 +289,7 @@ const makeLayer = (input: {
                 appliedPlan = undefined;
               }),
         ),
-        Effect.as({ kind: "destroyed" } as const),
+        Effect.as({ kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } } as const),
       ),
     removeVolume: (ref: { readonly store: string }, expectedGeneration: string) =>
       Effect.sync(() => {
@@ -712,7 +719,15 @@ describe("applied-state teardown", () => {
     { volumes: true, purgeCaches: true, removed: ["database", "cache"] },
   ])(
     "destroy at a missing root honors orphan storage options %j",
-    async ({ volumes, purgeCaches, removed }) => {
+    async ({
+      volumes,
+      purgeCaches,
+      removed,
+    }: {
+      readonly volumes: boolean;
+      readonly purgeCaches: boolean;
+      readonly removed: ReadonlyArray<string>;
+    }) => {
       await withTempRoot(async (parent) => {
         const root = join(parent, "gone");
         const harness = makeLayer({
@@ -724,7 +739,8 @@ describe("applied-state teardown", () => {
         expect(result).toMatchObject({
           outcome: "destroyed",
           servicesDestroyed: ["web"],
-          volumesRemoved: removed.length > 0,
+          dataVolumesRemoved: removed.includes("database"),
+          cacheVolumesRemoved: removed.includes("cache"),
         });
         expect(harness.removedVolumes.map((volume) => volume.store)).toEqual([...removed]);
         expect(harness.destroyCalls).toEqual([]);
@@ -742,7 +758,8 @@ describe("applied-state teardown", () => {
         app: "gone",
         outcome: "unchanged",
         servicesDestroyed: [],
-        volumesRemoved: false,
+        dataVolumesRemoved: false,
+        cacheVolumesRemoved: false,
         snapshotsRemoved: 0,
         builtImages: { removed: 0, released: 0, inUse: [] },
       });
@@ -768,7 +785,8 @@ describe("applied-state teardown", () => {
       expect(result).toMatchObject({
         outcome: "destroyed",
         servicesDestroyed: ["leftover"],
-        volumesRemoved: true,
+        dataVolumesRemoved: false,
+        cacheVolumesRemoved: true,
       });
       expect(harness.evidenceRoots).toEqual([root, root, root]);
     });
@@ -887,7 +905,8 @@ describe("applied-state teardown", () => {
         app: desiredPlan.name,
         outcome: "unchanged",
         servicesDestroyed: [],
-        volumesRemoved: false,
+        dataVolumesRemoved: false,
+        cacheVolumesRemoved: false,
         snapshotsRemoved: 0,
         builtImages: { removed: 0, released: 0, inUse: [] },
       });
@@ -947,7 +966,8 @@ describe("applied-state teardown", () => {
         app: "applied-teardown",
         outcome: "destroyed",
         servicesDestroyed: [],
-        volumesRemoved: true,
+        dataVolumesRemoved: true,
+        cacheVolumesRemoved: false,
         snapshotsRemoved: 0,
         builtImages: { removed: 0, released: 0, inUse: [] },
       });
@@ -1158,7 +1178,8 @@ describe("applied-state teardown", () => {
         withResolvedCwd(root, destroyApp({ purgeCaches: true })).pipe(Effect.provide(harness.layer)),
       );
 
-      expect(result.volumesRemoved).toBe(true);
+      expect(result.cacheVolumesRemoved).toBe(true);
+      expect(result.dataVolumesRemoved).toBe(false);
       expect(harness.removedVolumes).toEqual([{ store: "cache", generation: "generation-cache" }]);
     });
   });
@@ -1197,7 +1218,8 @@ describe("applied-state teardown", () => {
 
       // Then only an explicitly purged cache is removed; global data always survives.
       expect(harness.removedVolumes).toEqual([...removed]);
-      expect(result.volumesRemoved).toBe(purgeCaches);
+      expect(result.cacheVolumesRemoved).toBe(purgeCaches);
+      expect(result.dataVolumesRemoved).toBe(false);
     });
   });
 
@@ -1393,7 +1415,7 @@ describe("Landofile events on applied-state teardown", () => {
       const harness = makeLayer({ appliedPlan, desiredPlan });
 
       // When
-      await Effect.runPromise(
+      const result = await Effect.runPromise(
         withResolvedCwd(
           root,
           teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
@@ -1402,6 +1424,7 @@ describe("Landofile events on applied-state teardown", () => {
 
       // Then every Landofile step ran, in lifecycle order, and nothing was skipped
       expect(executed).toEqual(events.map((event) => `echo ${event}`));
+      expect(result.landofileEvents).toEqual({ status: "ran" });
       expect(notices(harness.published)).toEqual([]);
       expect(harness.destroyCalls).toEqual([appliedPlan]);
     });
@@ -1436,23 +1459,43 @@ describe("Landofile events on applied-state teardown", () => {
   );
 
   test.each(["stop", "destroy"] as const)(
-    "%s reports in its result that Landofile events ran",
+    "%s completes teardown and reports a failed post-step",
     async (operation) => {
       await withTempRoot(async (root) => {
         // Given
         const appliedPlan = withWeb(planAt(root));
-        const harness = makeLayer({ appliedPlan, desiredPlan: appliedPlan });
+        const event = `post-${operation}` as const;
+        const desiredPlan = withProjectEvents(appliedPlan, {
+          [event]: [{ service: ":host", cmd: "exit 7" }],
+        });
+        const harness = makeLayer({ appliedPlan, desiredPlan });
+        const shell = BunShellRunner.layer(() => {
+          throw new TypeError("Interactive shell IO was not expected in this test.");
+        });
 
         // When
         const result = await Effect.runPromise(
           withResolvedCwd(
             root,
-            teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime([]), harness.layer))),
+            teardown(operation).pipe(Effect.provide(Layer.mergeAll(eventRuntime([]), harness.layer, shell))),
           ),
         );
 
         // Then
-        expect(result.landofileEvents).toEqual({ status: "ran" });
+        expect(harness.destroyCalls).toEqual([appliedPlan]);
+        const outcome = result.landofileEvents;
+        expect(outcome).toEqual({
+          status: "failed",
+          event,
+          stepFailure: {
+            _tag: "LandofileEventStepFailedError",
+            message: expect.stringMatching(/\S/u),
+            remediation: expect.stringMatching(/\S/u),
+          },
+        });
+        expect(
+          harness.published.filter((notice) => notice._tag === "message.warn" && notice.body.includes(event)),
+        ).toHaveLength(1);
       });
     },
   );

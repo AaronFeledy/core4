@@ -1,0 +1,226 @@
+---
+id: adminer
+provider: test
+timeout: 600000
+tags: [docs, adminer, service, database, postgres, mariadb, sqlite]
+---
+
+# Browse your database in Adminer
+
+Add `type: adminer` to browse and edit your local app's database in a browser. Run the commands below from the app directory on your host.
+
+## Add Adminer next to Postgres
+
+Save this as `.lando.yml` in an empty directory. In an existing app, add only the `adminer` service under `services:`.
+
+```yaml
+name: adminer-demo
+services:
+  db:
+    type: postgres
+  adminer:
+    type: adminer
+```
+
+```sh
+lando start
+lando info
+```
+
+Open the HTTPS URL listed for `adminer`. Adminer signs you into the only database in the app with its configured credentials, so there is no login form to fill in. The database page shows your tables once you've created or imported them. If the browser warns about the certificate, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
+
+If you see `password authentication failed`, follow [Recover when credentials don't match](./postgres.mdx#recover-when-credentials-dont-match) to bring the running Postgres password back in sync with your Landofile.
+
+## Use MariaDB or MySQL
+
+Use the same `adminer` service next to `type: mariadb` or `type: mysql`. After `lando start`, open the Adminer URL from `lando info` as before.
+
+```yaml
+name: adminer-mariadb
+services:
+  db:
+    type: mariadb
+  adminer:
+    type: adminer
+```
+
+## Choose among several databases
+
+```yaml
+name: adminer-multiple
+services:
+  reports:
+    type: postgres
+  store:
+    type: mariadb
+  adminer:
+    type: adminer
+```
+
+Run `lando start` and open the Adminer URL from `lando info`. Choose `reports (PostgreSQL)` or `store (MariaDB)` from **Server**, then click **Login**. Adminer uses the credentials and default database for the service you chose. Adminer doesn't list `mssql` services yet.
+
+## Open and edit a SQLite file
+
+Declare `sqlite.path` on the service that owns the file. Adminer lists the owning service and path when there are several database choices.
+
+```yaml
+name: adminer-sqlite
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    sqlite:
+      path: data/site.sqlite
+  adminer:
+    type: adminer
+```
+
+If your app hasn't created the file yet, save this as `notes.sql` in the app directory:
+
+```sql
+CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);
+INSERT INTO notes (body) VALUES ('hello from lando');
+```
+
+```sh
+lando start
+lando db:import notes.sql --yes
+lando info
+```
+
+Open Adminer, select `notes`, and check that the imported row appears. On Linux with the default provider, the `podman` provider, or a local rootful Docker engine, Adminer saves your edits as your host user, the same way your app's own writes land. Elsewhere, run `lando info`, read the `project user` row for `adminer`, and see [Who owns your app files](./file-ownership.mdx).
+
+## Remove it
+
+Remove the service from your Landofile and apply the change:
+
+```sh
+lando app:config:unset services.adminer
+lando start
+```
+
+`lando info` no longer lists the Adminer URL. Your database service and its data remain.
+
+<Guide>
+  <Scenario id="postgres-browse" layer="e2e" tags={['@smoke']} render>
+    <Step name="scaffold"><UseFixture name="adminer-demo" /></Step>
+    <Hidden reason="Check the Adminer HTTPS probe and a fresh deep link">
+      <Step name="route">
+        <Verify command="lando start --format=json" expect={{ stdout: { regex: '"checks"[\\s\\S]*"service":"adminer","url":"https://adminer[.][^"]+","verdict":"ready","statusCode":200' } }} />
+      </Step>
+      <Step name="browse">
+        <Run command={`lando psql -c "CREATE TABLE notes (body text); INSERT INTO notes VALUES ('hello from Postgres');"`} />
+        <Verify command={`lando exec adminer -- curl -fsSL -c /tmp/j -b /tmp/j "http://127.0.0.1:8080/?pgsql=db&username=lando&db=adminer-demo&select=notes"`} expect={{ stdout: { regex: "hello from Postgres" } }} />
+      </Step>
+      <Step name="stale-password">
+        <Run command="lando app:config:set services.db.creds.password changed-later" />
+        <Run command="lando start" />
+        <Verify command={`lando exec adminer -- curl -sSL -c /tmp/stale -b /tmp/stale "http://127.0.0.1:8080/"`} expect={{ stdout: { regex: "password authentication failed" } }} />
+      </Step>
+    </Hidden>
+    <Step name="info"><Verify command="lando info --format=json" expect={{ stdout: { regex: "https://adminer[.]adminer-demo[.]lndo[.]site" } }} /></Step>
+    <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
+  </Scenario>
+
+  <Scenario id="mariadb-browse" layer="e2e" tags={['@smoke']} render>
+    <Step name="scaffold"><UseFixture name="adminer-mariadb" /></Step>
+    <Step name="start"><Run command="lando start" /></Step>
+    <Hidden reason="Verify Adminer reads the MariaDB default database">
+      <Step name="browse">
+        <Run command={`lando mariadb -e "CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('hello from MariaDB');"`} />
+        <Verify command={`lando exec adminer -- curl -fsSL -c /tmp/j -b /tmp/j "http://127.0.0.1:8080/?server=db&username=lando&db=adminer-mariadb&select=notes"`} expect={{ stdout: { regex: "hello from MariaDB" } }} />
+      </Step>
+    </Hidden>
+    <Step name="info"><Verify command="lando info --format=json" expect={{ stdout: { regex: "https://adminer[.]adminer-mariadb[.]lndo[.]site" } }} /></Step>
+    <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
+  </Scenario>
+
+  <Scenario id="mysql-browse" layer="e2e" tags={['@smoke']} render>
+    <Step name="scaffold"><UseFixture name="adminer-mariadb" /></Step>
+    <Hidden reason="Run the MariaDB example with MySQL in place of MariaDB">
+      <Step name="switch-engine">
+        <Run command="lando app:config:set name adminer-mysql" />
+        <Run command="lando app:config:set services.db.type mysql" />
+      </Step>
+      <Step name="browse">
+        <Run command="lando start" />
+        <Run command={`lando mysql -e "CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('hello from MySQL');"`} />
+        <Verify command={`lando exec adminer -- curl -fsSL -c /tmp/j -b /tmp/j "http://127.0.0.1:8080/?server=db&username=lando&db=adminer-mysql&select=notes"`} expect={{ stdout: { regex: "hello from MySQL" } }} />
+      </Step>
+    </Hidden>
+    <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
+  </Scenario>
+
+  <Scenario id="choose-server" layer="e2e" tags={['@smoke']} render>
+    <Step name="scaffold"><UseFixture name="adminer-multiple" /></Step>
+    <Step name="start"><Run command="lando start" /></Step>
+    <Hidden reason="Verify the dropdown and one sign-in deep link per database">
+      <Step name="dropdown">
+        <Run command={`lando psql -c "CREATE TABLE notes (body text); INSERT INTO notes VALUES ('reports row');"`} />
+        <Run command={`lando mariadb -e "CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('store row');"`} />
+        <Verify command="lando exec adminer -- curl -fsSL http://127.0.0.1:8080/" expect={{ stdout: { regex: "reports [(]PostgreSQL[)][\\s\\S]*store [(]MariaDB[)]" } }} />
+        <Verify command={`lando exec adminer -- curl -fsSL -c /tmp/r -b /tmp/r "http://127.0.0.1:8080/?pgsql=reports&username=lando&db=adminer-multiple&select=notes"`} expect={{ stdout: { regex: "reports row" } }} />
+        <Verify command={`lando exec adminer -- curl -fsSL -c /tmp/s -b /tmp/s "http://127.0.0.1:8080/?server=store&username=lando&db=adminer-multiple&select=notes"`} expect={{ stdout: { regex: "store row" } }} />
+      </Step>
+    </Hidden>
+    <Step name="info"><Verify command="lando info --format=json" expect={{ stdout: { regex: "https://adminer[.]adminer-multiple[.]lndo[.]site" } }} /></Step>
+    <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
+  </Scenario>
+
+  <Scenario id="sqlite-browse" layer="e2e" tags={['@smoke']} render>
+    <Step name="scaffold"><UseFixture name="adminer-sqlite" /></Step>
+    <Step name="start"><Run command="lando start" /></Step>
+    <Step name="import"><Run command="lando db:import notes.sql --yes" /></Step>
+    <Step name="info"><Verify command="lando info --format=json" expect={{ stdout: { regex: "https://adminer[.]adminer-sqlite[.]lndo[.]site" } }} /></Step>
+    <Hidden reason="Verify Adminer can write SQLite and reads the saved rows">
+      <Step name="browse">
+        <Run command={`lando exec adminer -- php -r '(new PDO("sqlite:/app/data/site.sqlite"))->exec("INSERT INTO notes (body) VALUES (42)");'`} />
+        <Verify command={`lando exec adminer -- curl -fsSL -c /tmp/j -b /tmp/j "http://127.0.0.1:8080/?sqlite=&username=&db=%2Fapp%2Fdata%2Fsite.sqlite&select=notes"`} expect={{ stdout: { regex: "hello from lando" } }} />
+      </Step>
+    </Hidden>
+    <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
+  </Scenario>
+
+  <Scenario id="remove-it" layer="e2e" tags={['@smoke']} render>
+    <Step name="scaffold"><UseFixture name="adminer-demo" /></Step>
+    <Step name="start"><Run command="lando start" /></Step>
+    <Hidden reason="Seed data to check that removing Adminer preserves it">
+      <Step name="seed"><Run command={`lando psql -c "CREATE TABLE notes (body text); INSERT INTO notes VALUES ('retained note');"`} /></Step>
+    </Hidden>
+    <Step name="remove-adminer">
+      <Run command="lando app:config:unset services.adminer" />
+      <Run command="lando start" />
+    </Step>
+    <Step name="verify">
+      <Verify command="lando info --format=json" expect={{ stdout: { not: { regex: "https://adminer[.]adminer-demo[.]lndo[.]site" } } }} />
+      <Verify command={`lando psql -c "SELECT body FROM notes"`} expect={{ stdout: { regex: "retained note" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
+  </Scenario>
+
+  <Scenario id="postgres-plan" render={false} reason="Plan the Postgres example without a container runtime">
+    <Step name="scaffold"><UseFixture name="adminer-demo" /></Step>
+    <Step name="plan"><Run command="lando app:cache:refresh --format=json" /></Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="mariadb-plan" render={false} reason="Plan the MariaDB example without a container runtime">
+    <Step name="scaffold"><UseFixture name="adminer-mariadb" /></Step>
+    <Step name="plan"><Run command="lando app:cache:refresh --format=json" /></Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="multiple-plan" render={false} reason="Plan both database targets without a container runtime">
+    <Step name="scaffold"><UseFixture name="adminer-multiple" /></Step>
+    <Step name="plan"><Run command="lando app:cache:refresh --format=json" /></Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="sqlite-plan" render={false} reason="Plan the SQLite example without a container runtime">
+    <Step name="scaffold"><UseFixture name="adminer-sqlite" /></Step>
+    <Step name="plan"><Run command="lando app:cache:refresh --format=json" /></Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Import and export app databases](../tooling/db-import-export.mdx) to bring your data into Lando.
+- [Use SQLite with db commands](../tooling/sqlite-database.mdx) to manage the file from the terminal.

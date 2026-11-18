@@ -73,7 +73,6 @@ const expected = {
       wrapper: true,
     },
     "create-project": createProjectTool,
-    npm: { service: "node", description: "Run npm inside the node service.", cmds: ["npm"], wrapper: true },
   },
 };
 

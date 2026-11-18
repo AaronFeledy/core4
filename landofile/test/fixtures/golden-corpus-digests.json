@@ -1,6 +1,22 @@
 {
   "fixtures": [
     {
+      "fixture": "docs/guides/adminer/fixtures/adminer-demo",
+      "digest": "47a4bcb8517004a3bd42153163275dfcc1e590b31f7497272be7e5a2f22b7d4b"
+    },
+    {
+      "fixture": "docs/guides/adminer/fixtures/adminer-mariadb",
+      "digest": "05a94cffe5d9daf9f30eb217e26bda1244c6e930fda83229a7f61233067d0012"
+    },
+    {
+      "fixture": "docs/guides/adminer/fixtures/adminer-multiple",
+      "digest": "8dec1b97bbcb410e839441c8bc35a93544fae4d912aa903e0817c256853a8342"
+    },
+    {
+      "fixture": "docs/guides/adminer/fixtures/adminer-sqlite",
+      "digest": "f1529c301a11b57f0de2c6e8ff3de2f64f7db6f363f5fcc8a4c7574d151e6e9d"
+    },
+    {
       "fixture": "docs/guides/apache/fixtures/apache-demo",
       "digest": "0570a254096a54de8402f0ed2aaa7458a8fb978e8f2d29607763bcf91626c3ae"
     },
@@ -842,12 +858,16 @@
       "digest": "7e1d4e88e109f8fd0aa8cd8cd07882668fa0c517465190ec803983911bcd8fbf"
     },
     {
+      "fixture": "docs/guides/node/fixtures/node-dev-package-manager",
+      "digest": "325804d288243d069ddc953df3512cb7648365d611765789acd4789446d30345"
+    },
+    {
       "fixture": "docs/guides/node/fixtures/node-globals-invalid",
       "digest": "39d385ee49b32daf59bd73d3484e7a9a2920018ee991c4185a46851835282a34"
     },
     {
       "fixture": "docs/guides/node/fixtures/node-globals",
-      "digest": "5e954f1839a6a33e3498d7f6f7d2c86213cd0af35db5cd1f9de25fdadd3fe8e8"
+      "digest": "12a08f60c471a3cd56be49728007482a73816f7f95db8be85c5e214e1dc51d09"
     },
     {
       "fixture": "docs/guides/node/fixtures/node-inference",
@@ -863,6 +883,18 @@
     {
       "fixture": "docs/guides/node/fixtures/node-init-off",
       "digest": "795cfc700131d5e05f3132b1b440405a6bd8f5bfbc7e6ad3158743a1588fe224"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-lts",
+      "digest": "702a4a3b26097c32ba1d3f21edc2889102afd3abd50daf5c18676031f8bcbdcd"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-package-manager-range",
+      "digest": "97d15843c406363e80ff9d8061c9e38cad4dee1086d145b5d65d28a07ba2c204"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-package-manager",
+      "digest": "33eeded3de030827297bb9a70348a72b032959ff39b82240724fa84f0f3254df"
     },
     {
       "fixture": "docs/guides/node/fixtures/node-port",

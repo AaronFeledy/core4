@@ -7,6 +7,7 @@ import { appFeatures } from "./app-features/index.ts";
 import { SERVICE_FEATURE_IDS, serviceFeatures as bundledServiceFeatures } from "./features/index.ts";
 import mailpitGlobalService from "./global-services/mailpit.ts";
 import { buildServiceTypeFacts } from "./service-type-facts.ts";
+import { adminer6ServiceType, adminerServiceType } from "./services/adminer.ts";
 import { apacheServiceType } from "./services/apache.ts";
 import { composeServiceType } from "./services/compose.ts";
 import { dotnet80ServiceType, dotnet90ServiceType, dotnetServiceType } from "./services/dotnet.ts";
@@ -111,6 +112,8 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["php:8.4", php84ServiceType],
   ["php:8.5", php85ServiceType],
   ["php:8.6", php86ServiceType],
+  ["adminer", adminerServiceType],
+  ["adminer:6", adminer6ServiceType],
   ["phpmyadmin", phpmyadminServiceType],
   ["phpmyadmin:5", phpmyadmin5ServiceType],
   ["phpmyadmin:latest", phpmyadminLatestServiceType],
@@ -184,6 +187,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
     appFeatures: [
       "service-lando.mailpit.wire",
       "service-lando.php.db-client",
+      "service-lando.adminer.wire",
       "service-lando.phpmyadmin.wire",
       "service-lando.nginx.php-fpm.wire",
     ],

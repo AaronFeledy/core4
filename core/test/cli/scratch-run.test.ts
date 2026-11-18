@@ -213,7 +213,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
         const call = { app: String(target.app), volumes: destroyOptions.volumes };
         if (destroyOptions.removeState === false) options.stopCalls?.push(call);
         else recorded.destroyCalls.push(call);
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
     readAppEnvironment: () => Effect.succeed([]),

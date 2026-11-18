@@ -97,7 +97,7 @@ for (const operation of ["stop", "destroy"] as const) {
       cleanupOwnedResources: () =>
         Effect.sync(() => {
           mutations += 1;
-          return { servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 };
+          return { servicesRemoved: [], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const harness = makeHarness({
@@ -131,7 +131,7 @@ for (const operation of ["stop", "destroy"] as const) {
       cleanupOwnedResources: () =>
         Effect.sync(() => {
           cleaned = true;
-          return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: 0 };
+          return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const harness = makeHarness({
@@ -172,7 +172,7 @@ for (const operation of ["stop", "destroy"] as const) {
       destroy: () =>
         Effect.sync(() => {
           calls.push("a");
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const b = {
@@ -190,7 +190,7 @@ for (const operation of ["stop", "destroy"] as const) {
       cleanupOwnedResources: () =>
         Effect.sync(() => {
           calls.push("b");
-          return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: 0 };
+          return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const harness = makeHarness({
@@ -230,7 +230,7 @@ for (const operation of ["stop", "destroy"] as const) {
       cleanupOwnedResources: () =>
         Effect.sync(() => {
           retired = true;
-          return { servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 };
+          return { servicesRemoved: [], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const harness = makeHarness({

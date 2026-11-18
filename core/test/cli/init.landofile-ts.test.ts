@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { ServiceName } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { InitTargetExistsError } from "@lando/sdk/errors";
 import type { LoadScopedLandofile } from "@lando/sdk/schema";
@@ -120,6 +121,7 @@ const planLandofile = (landofile: LoadScopedLandofile) =>
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
+      Effect.provide(BunFileSystem.layer),
     ),
   );
 
@@ -227,7 +229,7 @@ describe("lando init — canonical Landofile (node-ts)", () => {
         expect(landofile.document.name).toBe("discovered-ts-app");
         const web = landofile.document.services?.[ServiceName.make("web")];
         expect(web).toBeDefined();
-        expect(web?.image).toBe("node:24");
+        expect(web?.type).toBe("node:lts");
         expect(web?.environment).toEqual({ NODE_ENV: "development" });
       });
     });
@@ -247,7 +249,7 @@ describe("lando init — canonical Landofile (node-ts)", () => {
       await withEnv({ LANDO_NODE_VERSION: "22", NODE_ENV: "production" }, async () => {
         const landofile = await discoverFrom(result.directory);
         const web = landofile.document.services?.[ServiceName.make("web")];
-        expect(web?.image).toBe("node:22");
+        expect(web?.type).toBe("node:22");
         expect(web?.environment).toEqual({ NODE_ENV: "production" });
       });
     });

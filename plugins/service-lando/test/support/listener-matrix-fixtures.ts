@@ -78,6 +78,7 @@ func main() { log.Fatal(http.ListenAndServe("0.0.0.0:" + os.Getenv("PORT"), http
     },
   },
   { contract: "opensearch", service: { type: "opensearch:2" } },
+  { contract: "adminer", service: { type: "adminer:6" } },
   { contract: "php", service: { type: "php:8.4", appMount: "/app" } }, // php:8.4-apache-bookworm
   { contract: "php/fpm", service: { type: "php:8.4", via: "fpm", appMount: "/app" } },
   {
