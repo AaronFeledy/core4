@@ -35,9 +35,10 @@ lando phpcs --standard=Drupal,DrupalPractice .
 ```
 
 The site requires your extension's `require` and `require-dev` entries but
-never installs the extension as a Composer package. After you change your
-extension's `composer.json` or `recipe.options.drupal` in `.lando.yml`, run
-`lando drupal-contrib-sync`.
+never installs the extension as a Composer package. Every `lando start` brings
+the site in line with your extension's `composer.json` and
+`recipe.options.drupal` in `.lando.yml`; run `lando drupal-contrib-sync` to do it
+without restarting.
 
 ## Choose stack options
 

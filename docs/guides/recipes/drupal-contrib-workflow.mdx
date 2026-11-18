@@ -24,7 +24,9 @@ lando drush status
 ```
 
 The first `lando start` builds the Drupal site around your extension, which
-takes a few minutes while Composer downloads Drupal. Later starts reuse it.
+takes a few minutes while Composer downloads Drupal. Every later `lando start`,
+`lando restart`, and `lando rebuild` checks the site against your `.lando.yml`
+and `composer.json` and updates it only when something changed.
 `lando drush status` reports the Drupal version once the site is ready.
 
 `--yes` keeps Drupal `^11`, PHP 8.4, Apache, MariaDB 11.4, Composer 2, type
@@ -77,9 +79,9 @@ Without a PHP_CodeSniffer config, name the standard and path:
 
 ## Add a dependency to your extension
 
-Add the package to your extension's `composer.json`, then sync the site. If
-Composer isn't installed on your host, run it in `appserver` from the extension
-root:
+Add the package to your extension's `composer.json`. The next `lando start`
+installs it, or sync the site now. If Composer isn't installed on your host, run
+it in `appserver` from the extension root:
 
 ```sh
 lando exec appserver -- composer require --no-update psr/clock:^1.0
@@ -89,14 +91,17 @@ lando composer show psr/clock
 
 `lando drupal-contrib-sync` brings the site in line with your `.lando.yml` and
 your extension's `composer.json`. It adds, changes, and removes only the
-requirements it manages. Packages already in the site's `composer.json` that it
-didn't add, including ones you added with `lando composer`, keep their
-constraint. When nothing changed, it reports that the site is up to date without
-contacting Composer.
+requirements it manages: Drupal core, your extension's requirements, and Drush
+and Drupal Coder. Packages you add to the site with `lando composer` keep their
+constraint. To pin Drush or Coder, require them in your extension's
+`composer.json`, because the sync puts a hand-edited managed package back. When
+nothing changed, it reports that the site is up to date without contacting
+Composer.
 
 ## Change the Drupal core constraint
 
-Set `recipe.options.drupal` in `.lando.yml` to a Composer constraint, then sync:
+Set `recipe.options.drupal` in `.lando.yml` to a Composer constraint, then
+restart or sync:
 
 ```yaml
 recipe:
@@ -112,15 +117,15 @@ lando composer show drupal/core-recommended
 
 The sync moves `drupal/core-recommended` and `drupal/core-dev` to the new
 constraint and updates the rest of the site with them, because Drush and the
-test tools share Drupal's Symfony packages. `lando start` also syncs when the
-constraint changed. This changes packages, not the database schema of an
-installed site.
+test tools share Drupal's Symfony packages. This changes packages, not the
+database schema of an installed site.
 
 ## Inspect the generated services
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.4`, `framework: drupal`, webroot `/app/web`, the `site` volume at `/app`, your checkout at `/app/web/<type>s/custom/<project>`, Composer `2`, Apache on port `80`, SIMPLETEST env, and a site sync on start; depends on `database` and `chrome` |
+| `appserver` | `php:8.4`, `framework: drupal`, webroot `/app/web`, the `site` volume at `/app`, your checkout at `/app/web/<type>s/custom/<project>`, Composer `2`, Apache on port `80`, and SIMPLETEST env; depends on `database` and `chrome` |
+| Events | `post-start` runs `lando drupal-contrib-sync` |
 | `database` | `type: mariadb:11.4` |
 | `chrome` | Selenium standalone Chromium for FunctionalJavascript tests |
 | Site tooling | `lando drush`, `lando composer`, and `lando drupal-contrib-sync`, working directory `/app` |
@@ -159,8 +164,8 @@ not `127.0.0.1`. For Postgres answers, use `pgsql://` and the password
 
 ## Fix a failed sync
 
-If `lando start` or `lando drupal-contrib-sync` reports a missing or mismatched
-extension, check that the checkout has exactly one root `*.info.yml`. In
+`lando start` keeps the app running when the sync fails and prints a warning
+with the sync's output. If it reports a missing or mismatched extension, check that the checkout has exactly one root `*.info.yml`. In
 `.lando.yml`, set `recipe.options.project` to the filename without `.info.yml`
 and `recipe.options.type` to the file's `type` (`module`, `theme`, or
 `profile`). Keep the `recipe:` block, then move the mount and sync:
@@ -202,7 +207,8 @@ service, site sync, and tooling. They do not download Drupal:
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/web/modules/custom/example" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "selenium/standalone-chromium:155.0-20261010" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "SIMPLETEST_DB" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "lando-drupal-contrib-sync module example .\\^11." } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"lando-drupal-contrib-sync\",\\s*\"module\",\\s*\"example\",\\s*\"\\^11\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"post-start\":\\s*\\[\\s*\\{\\s*\"task\":\\s*\"drupal-contrib-sync\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/vendor/bin/phpstan" } }} />
     </Step>
     <Step name="cleanup">
@@ -270,7 +276,7 @@ service, site sync, and tooling. They do not download Drupal:
       </Step>
     </Hidden>
     <Step name="change-core-version">
-      <Run command="lando drupal-contrib-sync" />
+      <Run command="lando restart" />
       <Verify command="lando composer show drupal/core-recommended --format=json" expect={{ stdout: { regex: "\"versions\":\\s*\\[\\s*\"v?10\\." } }} />
     </Step>
     <Step name="cleanup">

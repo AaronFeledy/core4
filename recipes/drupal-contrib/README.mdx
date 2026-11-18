@@ -42,9 +42,10 @@ lando phpcs --standard=Drupal,DrupalPractice .
 ```
 
 The site requires your extension's `require` and `require-dev` entries but
-never installs the extension as a Composer package. After you change your
-extension's `composer.json` or `recipe.options.drupal` in `.lando.yml`, run
-`lando drupal-contrib-sync`.
+never installs the extension as a Composer package. Every `lando start` brings
+the site in line with your extension's `composer.json` and
+`recipe.options.drupal` in `.lando.yml`; run `lando drupal-contrib-sync` to do it
+without restarting.
 
 ## Choose stack options
 
@@ -80,7 +81,7 @@ For dependency changes, switching Drupal core, and fixing a failed sync, see
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/web\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/web/modules/custom/example" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "selenium/standalone-chromium:155.0-20261010" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "lando-drupal-contrib-sync module example" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"lando-drupal-contrib-sync\",\\s*\"module\",\\s*\"example\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/vendor/bin/phpunit" } }} />
     </Step>
     <Step name="cleanup">

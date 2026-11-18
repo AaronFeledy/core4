@@ -14,17 +14,20 @@ volume at `/app` around the extension, which Lando mounts at
 
 ## The Drupal site
 
-`lando start` runs `lando-drupal-contrib-sync` as an app build step, so the
-first start downloads Drupal and later starts reuse the site. The site's
+The Landofile's `post-start` event runs the `drupal-contrib-sync` task, so the
+first start downloads Drupal and every later start, restart, and rebuild
+updates the site only when its inputs changed. The site's
 `composer.json` lives in the volume. It requires `drupal/core-recommended` and
 `drupal/core-dev` at the `drupal` constraint, Drush and Drupal Coder, and the
 extension's own `require` and `require-dev` with their constraints. The site
 never installs the extension as a Composer package, and the extension's
 `composer.json` is never changed.
 
-After editing the extension's `composer.json` or `recipe.options.drupal`, run
-`lando drupal-contrib-sync`. It changes only the requirements it manages and
-reports that the site is up to date when nothing changed.
+Run `lando drupal-contrib-sync` to apply an edit to the extension's
+`composer.json` or `recipe.options.drupal` without restarting. It changes only
+the requirements it manages and reports that the site is up to date when
+nothing changed. Pin Drush or Coder in the extension's `composer.json`; a
+hand-edited managed package returns to its managed constraint.
 
 If the sync reports a mismatch, set `recipe.options.project` and
 `recipe.options.type` in `.lando.yml` to match the root info file, run

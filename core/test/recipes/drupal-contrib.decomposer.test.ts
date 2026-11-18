@@ -9,7 +9,6 @@ import {
   DRUPAL_CONTRIB_MINK_DRIVER_ARGS,
   contribMountTarget,
   contribSyncArgv,
-  contribSyncStep,
   mysqlSimpletestDb,
   pgsqlSimpletestDb,
 } from "../../src/recipes/builtin/drupal-contrib/stack.ts";
@@ -93,6 +92,7 @@ describe("drupal-contrib decomposition", () => {
     };
     expect(config).toEqual({
       runtime: 4,
+      events: { "post-start": [{ task: "drupal-contrib-sync" }] },
       services: {
         appserver: {
           type: "php:{{ recipe.php }}",
@@ -104,7 +104,6 @@ describe("drupal-contrib decomposition", () => {
           dependsOn: ["database", "chrome"],
           appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
           mounts: ["site:/app"],
-          build: { app: [contribSyncStep] },
           environment: {
             SIMPLETEST_BASE_URL: "http://appserver",
             SIMPLETEST_DB: mysqlSimpletestDb,

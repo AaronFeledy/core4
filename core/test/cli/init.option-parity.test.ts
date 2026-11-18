@@ -304,7 +304,7 @@ describe("recipe option parity", () => {
       expect(landofile.services?.[ServiceName.make("chrome")]?.image).toBe(
         "selenium/standalone-chromium:155.0-20261010",
       );
-      expect(appserver?.build).toEqual({ app: ["lando-drupal-contrib-sync module example '^11'"] });
+      expect(landofile.events).toEqual({ "post-start": [{ task: "drupal-contrib-sync" }] });
       expect(landofile.tooling?.["drupal-contrib-sync"]).toMatchObject({
         arguments: false,
         cmd: ["lando-drupal-contrib-sync", "module", "example", "^11"],

@@ -19,10 +19,3 @@ export const contribSyncArgv = [
   "{{ recipe.project }}",
   "{{ recipe.drupal }}",
 ] as const;
-
-/**
- * The same call as a `build.app` shell step. The `drupal` option's pattern
- * admits no quote characters, so single quotes keep the constraint one word.
- */
-export const contribSyncStep =
-  "lando-drupal-contrib-sync {{ recipe.type }} {{ recipe.project }} '{{ recipe.drupal }}'";

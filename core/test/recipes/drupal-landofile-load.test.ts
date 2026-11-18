@@ -161,9 +161,7 @@ describe("the decomposed Drupal contrib Landofile on the native load path", () =
         "hello_theme",
         ">=10 <11 || ^11",
       ]);
-      expect(services.appserver?.build).toEqual({
-        app: ["lando-drupal-contrib-sync theme hello_theme '>=10 <11 || ^11'"],
-      });
+      expect(landofile.document.events).toEqual({ "post-start": [{ task: "drupal-contrib-sync" }] });
       expect(tooling.composer?.dir).toBe("/app");
       expect(tooling.phpunit?.user).toBe("www-data");
       expect(services.appserver?.webroot).toBe("/app/web");

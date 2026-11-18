@@ -6,7 +6,6 @@ import {
   DRUPAL_CONTRIB_MINK_DRIVER_ARGS,
   contribMountTarget,
   contribSyncArgv,
-  contribSyncStep,
   mysqlSimpletestDb,
   pgsqlSimpletestDb,
 } from "./stack.ts";
@@ -32,8 +31,6 @@ const contribAppserver = {
   dependsOn: ["database", "chrome"],
   appMount: contribAppMount,
   mounts: [contribSiteVolume],
-  // Every start whose container or core constraint is new brings the site in line.
-  build: { app: [contribSyncStep] },
   environment: {
     SIMPLETEST_BASE_URL: "http://appserver",
     SIMPLETEST_DB: mysqlSimpletestDb,
@@ -83,6 +80,8 @@ export const source = {
   },
   config: {
     runtime: 4,
+    // Every start, restart, and rebuild brings the site in line; an unchanged one costs no Composer call.
+    events: { "post-start": [{ task: "drupal-contrib-sync" }] },
     services: {
       appserver: contribAppserver,
       database: { type: "{{ recipe.database }}" },

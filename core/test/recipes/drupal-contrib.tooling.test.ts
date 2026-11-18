@@ -66,10 +66,11 @@ test("contrib start syncs the site and tooling delivers argv from the right dire
       "--answer=drupal=>=10 <11 || ^11",
     );
     await invoke("start");
-    // The app phase runs the sync step with the constraint quoted as one shell word.
-    expect(commands.map(({ command }) => command.join(" ")).join("\n")).toContain(
-      "lando-drupal-contrib-sync module my_module '>=10 <11 || ^11'",
-    );
+    // post-start runs the sync task with the constraint as one argument.
+    expect(commands).toContainEqual({
+      command: ["lando-drupal-contrib-sync", "module", "my_module", ">=10 <11 || ^11"],
+      cwd: "/app",
+    });
     commands.length = 0;
 
     await invoke("drupal-contrib-sync");
