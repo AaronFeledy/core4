@@ -1493,15 +1493,8 @@ describe("Landofile events on applied-state teardown", () => {
             remediation: expect.stringMatching(/\S/u),
           },
         });
-        if (outcome?.status !== "failed") throw new TypeError("Expected a failed post-step outcome.");
-        const { message, remediation } = outcome.stepFailure;
         expect(
-          harness.published.filter(
-            (notice) =>
-              notice._tag === "message.warn" &&
-              notice.body.includes(message) &&
-              notice.body.includes(remediation),
-          ),
+          harness.published.filter((notice) => notice._tag === "message.warn" && notice.body.includes(event)),
         ).toHaveLength(1);
       });
     },

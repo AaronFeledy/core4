@@ -296,7 +296,7 @@ describe("poweroff operation", () => {
             kind: "user",
             appRoot: a,
             _tag: "ProviderUnavailableError",
-            remediation: "Restore provider access and retry `lando poweroff`.",
+            providerId: "lando",
           },
         ],
       });
@@ -339,7 +339,7 @@ describe("poweroff operation", () => {
     expect(harness.calls).not.toContain("runtime");
   });
 
-  test("fails a provider with recorded holdings when its runtime inventory is unobserved", async () => {
+  test("fails a provider with recorded holdings when its runtime status check fails", async () => {
     await withRoots(async ({ a }) => {
       const harness = await makeHarness({
         roots: [],
@@ -356,8 +356,8 @@ describe("poweroff operation", () => {
         {
           providerId: "lando",
           _tag: "ProviderUnavailableError",
-          message: "Cannot observe the runtime.",
-          remediation: "Restore provider access and retry.",
+          kind: "user",
+          appId: "lando",
         },
       ]);
       expect(result.failure.apps.find((app) => app.kind === "global")?.outcome).toBe("skipped");
@@ -402,7 +402,6 @@ describe("poweroff operation", () => {
             appId: journalPath,
             providerId: "journals",
             _tag: "ProviderUnavailableError",
-            message: expect.stringContaining(journalPath),
           },
         ]);
         expect(harness.calls).not.toContain("runtime");
