@@ -1,12 +1,6 @@
 import type { RecipeSource } from "@lando/sdk/schema";
 import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
-import {
-  composerTool,
-  drupalOptions,
-  drupalWebVariants,
-  phpAppserver,
-  webrootOption,
-} from "../source-php.ts";
+import { composerTool, drupalOptions, drupalWebVariantsFor, phpAppserver } from "../source-php.ts";
 import {
   DRUPAL_CONTRIB_CHROME_IMAGE,
   DRUPAL_CONTRIB_MINK_DRIVER_ARGS,
@@ -16,6 +10,9 @@ import {
 } from "./stack.ts";
 
 const contribDir = "/app";
+/** The scaffold installs drupal/recommended-project, whose docroot is always web/. */
+const contribWebroot = `${contribDir}/web`;
+const { webroot: _siteWebroot, ...contribStackOptions } = drupalOptions;
 /**
  * One app-scoped volume holds the Drupal site, so the nginx edge serves the
  * same tree the appserver scaffolds. Each service nests the checkout in it.
@@ -28,7 +25,7 @@ const contribAppMount = {
 
 const contribAppserver = {
   ...phpAppserver("drupal"),
-  webroot: "{{ recipe.webroot }}",
+  webroot: contribWebroot,
   workingDirectory: contribDir,
   dependsOn: ["database", "chrome"],
   appMount: contribAppMount,
@@ -70,8 +67,7 @@ export const source = {
       default: "^11",
       prompt: { message: "Drupal core constraint" },
     },
-    ...drupalOptions,
-    webroot: webrootOption("/app/web"),
+    ...contribStackOptions,
   },
   config: {
     runtime: 4,
@@ -158,7 +154,7 @@ export const source = {
     },
   },
   variants: [
-    ...drupalWebVariants,
+    ...drupalWebVariantsFor(contribWebroot),
     {
       when: '{{ eq(options.webserver, "nginx") }}',
       config: {

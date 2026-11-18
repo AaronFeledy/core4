@@ -21,10 +21,10 @@ lando info
 ```
 
 `--yes` keeps Drupal `^11`, PHP 8.4, Apache, MariaDB 11.4, Composer 2, type
-`module`, machine name `example`, and webroot `/app/web`. Change the machine
-name with `--answer=project=my_module` so it matches `my_module.info.yml`.
-Use `--answer=type=theme` or `--answer=type=profile` when the info file says
-so.
+`module`, and machine name `example`. The site's webroot is always `/app/web`.
+Change the machine name with `--answer=project=my_module` so it matches
+`my_module.info.yml`. Use `--answer=type=theme` or `--answer=type=profile` when
+the info file says so.
 
 `lando start` prints the app URL. `lando info` repeats it. The Drupal site is
 not on the host. It lives in an app-scoped named volume at `/app`. Your

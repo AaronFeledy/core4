@@ -33,7 +33,6 @@ const alternatives = {
   webserver: "nginx",
   database: "postgres:16",
   composer: "2.7.7",
-  webroot: "/app/docroot",
 };
 const validInput: RecipeDecomposeInput = { producer: drupalContribProducer, options: defaults, secrets: {} };
 const decomposer = drupalContribDecomposer({ redactor: createStandaloneRedactor("secrets") });
@@ -94,7 +93,7 @@ describe("drupal-contrib decomposition", () => {
           type: "php:{{ recipe.php }}",
           primary: true,
           framework: "drupal",
-          webroot: "{{ recipe.webroot }}",
+          webroot: "/app/web",
           composer: "{{ recipe.composer }}",
           workingDirectory: contribDir,
           dependsOn: ["database", "chrome"],
@@ -200,7 +199,7 @@ describe("drupal-contrib decomposition", () => {
     expect(authoring.services.edge).toEqual({
       type: "nginx",
       backend: "appserver",
-      webroot: "{{ recipe.webroot }}",
+      webroot: "/app/web",
       uploadDirs: ["sites/*/files"],
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
       appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
@@ -218,7 +217,6 @@ describe("drupal-contrib decomposition", () => {
     { options: { ...defaults, webserver: "caddy" }, path: "options.webserver" },
     { options: { ...defaults, database: "sqlite" }, path: "options.database" },
     { options: { ...defaults, composer: "false" }, path: "options.composer" },
-    { options: { ...defaults, webroot: "unsafe path" }, path: "options.webroot" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
       Effect.result(
