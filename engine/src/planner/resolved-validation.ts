@@ -91,7 +91,7 @@ export const validateResolvedLandofile = (input: {
       if (Result.isFailure(result)) {
         for (const issue of result.failure)
           if (!isBlocked(issue.path)) issues.push({ ...issue, rule: "landofile.route" });
-      } else if (!isBlocked(path)) normalized.push(result.success);
+      } else if (coverage === undefined && !isBlocked(path)) normalized.push(result.success);
     }
     return normalized;
   };
