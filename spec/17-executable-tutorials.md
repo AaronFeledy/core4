@@ -55,7 +55,7 @@ Prop schemas live in `@lando/sdk/docs/components`; implementations and AST helpe
 | `<Inspect>` | Captures and optionally renders files, JSON, events, or output. |
 | `<Variable>` | Binds an execution value and optional short display substitution; every variable MUST be interpolated. |
 | `<Hidden>` | Performs support work for the current behavior only and requires a reason. |
-| `<Cleanup>` | Registers its step before scenario actions begin. The step runs once after the other steps on success, failure, or interruption, and MAY render a collapsed reader block at its authored position. |
+| `<Cleanup>` | Registers its step before scenario actions begin. On scope exit, registered cleanup steps are attempted once in reverse registration order, with their actions in authored order, on success, failure, interruption, or a scenario that runs out of time; a generated test stops its body before the test runner's deadline so cleanup can finish. The first SIGINT or SIGTERM requests that interruption; a second terminates as usual. It MAY render a collapsed reader block at its authored position. |
 | `<Skip>` | Marks contained coverage skipped with a reason and optional expiry. |
 | `<Inline>` | Injects justified TypeScript only when declarative components cannot express the assertion. |
 | `<UseFixture>` | Copies an immutable named fixture into the scenario workspace. |
