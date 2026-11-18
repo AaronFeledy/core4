@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { Buffer } from "node:buffer";
+
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
+import { CADDY_CONFIG_PATH, caddyLauncherCommand } from "../src/services/caddy-config.ts";
+import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
 import { NGINX_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/nginx-config.ts";
 import {
   STATIC_FEATURE_ID,
@@ -53,11 +57,32 @@ const composeStaticPlan = (
 const redirectTargets = (script: string): ReadonlyArray<string> =>
   [...script.matchAll(/>\s*(\S+)/gu)].map((match) => match[1] ?? "");
 
-const buildStepIds = (plan: ServicePlan): ReadonlyArray<string> => {
+interface PlannedBuildStep {
+  readonly id?: string;
+  readonly user?: string;
+  readonly command: string | ReadonlyArray<string>;
+}
+
+const buildStepsOf = (plan: ServicePlan): ReadonlyArray<PlannedBuildStep> => {
   const features = plan.extensions["@lando/core/service-features"] as
-    | { readonly buildSteps?: ReadonlyArray<{ readonly id?: string }> }
+    | { readonly buildSteps?: ReadonlyArray<PlannedBuildStep> }
     | undefined;
-  return (features?.buildSteps ?? []).map((step) => step.id ?? "");
+  return features?.buildSteps ?? [];
+};
+
+const buildStepIds = (plan: ServicePlan): ReadonlyArray<string> =>
+  buildStepsOf(plan).map((step) => step.id ?? "");
+
+/** The exact Caddyfile bytes the shared image build step writes. */
+const caddyConfigFrom = (plan: ServicePlan): string => {
+  const step = buildStepsOf(plan).find((candidate) => candidate.id === LANDO_ERROR_PAGES_BUILD_STEP_ID);
+  if (step === undefined) throw new Error("Caddy plan is missing the shared image build step");
+  const command = typeof step.command === "string" ? step.command : step.command.join("\n");
+  const match = new RegExp(`printf '%s' '([A-Za-z0-9+/=]+)' \\| base64 -d > ${CADDY_CONFIG_PATH}`, "u").exec(
+    command,
+  );
+  if (match?.[1] === undefined) throw new Error(`Caddyfile write not found in: ${command}`);
+  return Buffer.from(match[1], "base64").toString("utf8");
 };
 
 const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
@@ -207,7 +232,7 @@ describe("static ServiceType", () => {
     expect(buildStepIds(plan)).not.toContain(NGINX_DEFAULT_SITE_BUILD_STEP_ID);
   });
 
-  test("caddy-backed static server picks caddy image", async () => {
+  test("caddy-backed static server bakes the generated Caddyfile into the derived image", async () => {
     const plan = await composeStaticPlan({ type: "static:caddy" }, staticCaddyServiceType);
 
     expect(plan.type).toBe("static:caddy");
@@ -216,7 +241,16 @@ describe("static ServiceType", () => {
       LANDO_SERVICE_TYPE: "static:caddy",
       LANDO_WEBROOT: "/app",
     });
-    expect(plan.command).toEqual(["caddy", "file-server", "--listen", ":80", "--root", "/app"]);
+    expect(plan.command).toEqual(caddyLauncherCommand());
+    expect(buildStepIds(plan)).toContain(LANDO_ERROR_PAGES_BUILD_STEP_ID);
+    const config = caddyConfigFrom(plan);
+    expect(config).toContain("admin off");
+    expect(config).toContain("auto_https off");
+    expect(config).toContain("http://:80 {");
+    expect(config).toContain('root * "/app"');
+    expect(config).toContain('root * "/usr/share/lando/errors"');
+    expect(config).toContain("error @hidden 403");
+    expect(config).not.toContain("file-server");
     expect(serviceAppMount(plan)?.readOnly).toBe(true);
     expect(
       plan.mounts.filter(
@@ -260,10 +294,79 @@ describe("static ServiceType", () => {
       staticCaddyServiceType,
     );
 
-    expect(plan.command).toEqual(["caddy", "file-server", "--listen", ":80", "--root", "/app/_site"]);
+    expect(plan.command).toEqual(caddyLauncherCommand());
+    expect(caddyConfigFrom(plan)).toContain('root * "/app/_site"');
     expect(plan.environment.LANDO_WEBROOT).toBe("/app/_site");
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "caddy", webroot: "/app/_site" });
   });
+
+  test("caddy follows an authored port in the baked site address and probe", async () => {
+    const plan = await composeStaticPlan({ type: "static:caddy", port: 8080 }, staticCaddyServiceType);
+
+    expect(caddyConfigFrom(plan)).toContain("http://:8080 {");
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
+    ]);
+    expect(plan.healthcheck).toEqual(tcpProbe(8080, 10));
+  });
+
+  test("caddy keeps its generated configuration with additive build steps", async () => {
+    const plan = await composeStaticPlan(
+      { type: "static:caddy", build: { artifact: ["echo extra > /tmp/extra"] } },
+      staticCaddyServiceType,
+    );
+
+    expect(buildStepIds(plan)).toContain(LANDO_ERROR_PAGES_BUILD_STEP_ID);
+    expect(caddyConfigFrom(plan)).toContain("http://:80 {");
+    expect(plan.command).toEqual(caddyLauncherCommand());
+  });
+
+  test("caddy starts non-root from the baked read-only configuration", async () => {
+    const plan = await composeStaticPlan(
+      { type: "static:caddy", user: "1000", home: false },
+      staticCaddyServiceType,
+    );
+
+    expect(plan.user).toBe("1000");
+    expect(plan.command).toEqual(caddyLauncherCommand());
+  });
+
+  test.each([
+    {
+      label: "an authored command",
+      config: { command: ["caddy", "file-server"] },
+      owner: "launcher",
+      command: ["caddy", "file-server"],
+    },
+    {
+      label: "an authored entrypoint",
+      config: { entrypoint: ["/bin/sh", "-c"] },
+      owner: "image",
+      command: undefined,
+    },
+    {
+      label: "a pinned image",
+      config: { image: "caddy:2.8-alpine" },
+      owner: "image",
+      command: undefined,
+    },
+    {
+      label: "a replacement build",
+      config: { build: { context: "." } },
+      owner: "image",
+      command: undefined,
+    },
+  ] as const)(
+    "caddy leaves its own server configuration alone for $label",
+    async ({ config, owner, command }) => {
+      const plan = await composeStaticPlan({ type: "static:caddy", ...config }, staticCaddyServiceType);
+
+      expect(buildStepIds(plan)).not.toContain(LANDO_ERROR_PAGES_BUILD_STEP_ID);
+      expect(() => caddyConfigFrom(plan)).toThrow(/missing the shared image build step/u);
+      expect(plan.command).toEqual(command);
+      expect(plan.listenerAuthority?.owner).toBe(owner);
+    },
+  );
 
   test("rejects unsafe webroots during service-type resolution", async () => {
     for (const webroot of ["", "/app/my site", '/app/bad"quote'] as const) {

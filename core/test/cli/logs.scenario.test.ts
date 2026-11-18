@@ -17,14 +17,23 @@ import {
 } from "@lando/core/schema";
 import {
   AppPlanner,
+  FileSystem,
+  GlobalAppService,
   LandofileService,
   PathsService,
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
+import { makeGlobalAppServiceForRoot } from "@lando/engine/global-app/service";
 import { LogsAppResult, logsAppForTarget } from "@lando/engine/operations/logs";
-import { BuildOwner, openAppBuildResults, recordBuildResult } from "@lando/engine/services/build-results";
+import { HostProviderOverride } from "@lando/engine/providers/host-provider";
+import {
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "@lando/engine/services/build-artifact-results";
+import { BuildOwner } from "@lando/engine/services/build-results";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
@@ -32,6 +41,7 @@ import type { LogChunk, LogOptions, LogTarget, RuntimeProviderShape } from "@lan
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream, Struct } from "effect";
 import { logsSpec } from "../../src/cli/command-specs/app/logs.ts";
+import { globalLogsSpec } from "../../src/cli/command-specs/meta/global/logs.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -139,6 +149,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 const makeLogsLayer = (
   overrides: {
     readonly appPlan?: AppPlan;
+    readonly applied?: boolean;
     readonly serviceLogs?: boolean;
     readonly serviceLogSources?: boolean;
     readonly defaultProviderServiceLogs?: boolean;
@@ -188,7 +199,8 @@ const makeLogsLayer = (
           remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
-    removeArtifact: () => Effect.void,
+    removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+    listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
     stop: () => Effect.void,
@@ -227,6 +239,8 @@ const makeLogsLayer = (
     removeVolume: () => Effect.void,
     copyToService: () => Effect.die("not used"),
     copyFromService: () => Stream.die("not used"),
+    exportVolume: () => Stream.empty,
+    importVolume: () => Effect.void,
     exportArtifact: () => Stream.die("not used"),
     importArtifact: () => Effect.die("not used"),
   };
@@ -243,7 +257,7 @@ const makeLogsLayer = (
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+        appliedPlansFor: () => Effect.succeed(overrides.applied ? [currentPlan] : []),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(defaultProviderCapabilities),
@@ -273,6 +287,60 @@ describe("lando logs", () => {
     expect(rendered).toContain("web stdout: web line 1");
     expect(rendered).toContain("database stderr: database warn");
   });
+
+  test.each([
+    ["decorated TTY text", "lando", "text", true, logsSpec],
+    ["plain text", "plain", "text", false, logsSpec],
+    ["JSON frames", "json", "json", false, logsSpec],
+    ["global JSON frames", "json", "json", false, globalLogsSpec],
+  ] as const)(
+    "masks a secret that spans collected log lines in %s",
+    async (_label, mode, format, isTTY, spec) => {
+      // Given a quoted password that a service writes across three log lines.
+      const harness = makeLogsLayer({
+        applied: spec === globalLogsSpec,
+        logs: (target) =>
+          Stream.fromIterable(
+            ['password="first', "canary-spanning-log-secret", 'last"', "after"].map((line) => ({
+              service: target.service,
+              stream: "stdout" as const,
+              line,
+            })),
+          ),
+      });
+      const io = createBufferedRendererIO({ isTTY, stdoutIsTTY: isTTY });
+      const input = { flags: { service: "web" } };
+      const globalApp = Layer.effect(
+        GlobalAppService,
+        Effect.gen(function* () {
+          return makeGlobalAppServiceForRoot(Effect.succeed(plan.root), yield* FileSystem);
+        }),
+      ).pipe(Layer.provide(BunFileSystem.layer));
+
+      // When the logs spec runs through the CLI boundary.
+      await runWithRendererHandling(
+        spec.run(input).pipe(Effect.provideService(HostProviderOverride, providerId)),
+        {
+          runtime: Layer.merge(harness.layer, globalApp) as Layer.Layer<unknown>,
+          rendererMode: mode,
+          resultFormat: format,
+          command: spec.id,
+          resultSchema: LogsAppResult,
+          streaming: StreamFrame,
+          ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
+          render: (result, context) => spec.render?.(result, input, context),
+          formatError: ({ error }) => String(error),
+          io,
+        },
+      );
+
+      // Then every surface shows the masked value and keeps the following line.
+      const output = io.stdout() + io.stderr();
+      expect(output).not.toContain("canary-spanning-log-secret");
+      expect(output).toContain("password=[redacted]");
+      expect(output).toContain("after");
+    },
+  );
 
   test("bound-target logs preserve the requested follow option", async () => {
     const harness = makeLogsLayer();
@@ -873,9 +941,12 @@ describe("lando logs", () => {
       );
       await mkdir(dirname(transcript), { recursive: true });
       await writeFile(transcript, "built image\n");
-      const bucket = await Effect.runPromise(openAppBuildResults(state.service, BuildOwner.fromPlan(plan)));
+      const bucket = await Effect.runPromise(openArtifactBuildResults(state.service));
       await Effect.runPromise(
-        recordBuildResult(bucket, {
+        recordArtifactBuildResult(bucket, {
+          owner: BuildOwner.fromPlan(plan).key,
+          providerId: String(plan.provider),
+          artifactRef: "web:built",
           buildKey: "image",
           service: web.name,
           phase: "artifact",

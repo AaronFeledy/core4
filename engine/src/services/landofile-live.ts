@@ -38,6 +38,7 @@ import { Context, Effect, Layer, Option, type Scope } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { landofileRuntimeInputs, landofileSourcePorts } from "../composition.ts";
 import { hostConfigReadPolicy } from "./config.ts";
+import { HostExecutionDefaults } from "./host-execution-context.ts";
 
 const ReadOnlyLandofile = Context.Reference<boolean>("@lando/engine/ReadOnlyLandofile", {
   defaultValue: () => false,
@@ -50,6 +51,7 @@ export const withReadOnlyLandofile = <A, E, R>(
 
 export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs> = Effect.gen(function* () {
   const inputs = landofileRuntimeInputs();
+  const host = yield* HostExecutionDefaults;
   const paths = yield* Effect.serviceOption(PathsService);
   const stateStore = yield* Effect.serviceOption(StateStore);
   const client = yield* Effect.serviceOption(HttpClient.HttpClient);
@@ -59,7 +61,7 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
   const readPolicy = yield* hostConfigReadPolicy;
   const requestContext = yield* Effect.context<never>();
   const injectedTrust = Context.get(requestContext, NetworkTrust);
-  const trustEnv = readPolicy?.env ?? { ...process.env };
+  const trustEnv = readPolicy?.env ?? host?.env ?? { ...process.env };
   const resolveNetworkTrust = () => Effect.runPromise(resolveTrust(requestContext, injectedTrust, trustEnv));
   const runtime = {
     requestContext,
@@ -75,6 +77,17 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
   };
   return {
     ...inputs,
+    templates: {
+      ...inputs.templates,
+      context: {
+        ...(inputs.templates.context ?? { bootstrapLevel: "app", scope: "landofile" }),
+        env: Object.fromEntries(
+          Object.entries(host?.env ?? inputs.templates.context?.env ?? process.env).filter(
+            (entry): entry is [string, string] => entry[1] !== undefined,
+          ),
+        ),
+      },
+    },
     readOnly: yield* ReadOnlyLandofile,
     ...(Option.isNone(stateStore) ? {} : { stateStore: stateStore.value }),
     ports: {

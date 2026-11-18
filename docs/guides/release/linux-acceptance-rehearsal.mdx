@@ -42,11 +42,11 @@ and update spot checks that prove criteria 1-9 pass on the reference
 
   The release compile stamps the real release version into the binary;
   unstamped builds report the `@lando/core` workspace package version.
-- **Criterion 17:** AOT bootstrap layers are committed as generated
-  per-level modules at `core/src/runtime/generated/layers/<level>.ts` and
-  consumed by the runtime layer factory. The factory is guarded against
-  hand-written `Layer.mergeAll` or `Layer.provide` composition
-  (`core/test/runtime/generated-bootstrap-layers.test.ts`).
+- **Criterion 17:** bootstrap layers are committed as per-level modules at
+  `core/src/runtime/layers/<level>.ts`, which own all Layer composition.
+  The runtime layer factory only consumes them and never calls
+  `Layer.mergeAll` or `Layer.provide` itself
+  (`core/test/runtime/bootstrap-layers.test.ts`).
 
 ## Criteria 18-19  performance and level-none
 

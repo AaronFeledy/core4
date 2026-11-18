@@ -67,6 +67,7 @@ export type GlobalStartResult = typeof GlobalStartResultSchema.Type;
 
 export type GlobalStartError =
   | import("@lando/sdk/errors").CaError
+  | import("@lando/sdk/services").FileSystemError
   | Effect.Error<ReturnType<typeof installAndLoadGlobalPlan>>
   | Effect.Error<ReturnType<typeof reconcileGlobalSiblings>>
   | ServiceNotReadyError
@@ -212,7 +213,10 @@ export const globalStart = Effect.fn("GlobalStart.start")(
         });
         const planOrder = new Map(Object.keys(loaded.plan.services).map((id, index) => [id, index]));
         const servicesStarted = [
-          ...startedServices(yield* collectObservedConnections(outcome.builtPlan, outcome.ready)),
+          ...startedServices(
+            yield* collectObservedConnections(outcome.builtPlan, outcome.ready),
+            applied.changes,
+          ),
         ].sort((left, right) => (planOrder.get(left.name) ?? 0) - (planOrder.get(right.name) ?? 0));
         return { app: loaded.plan.name, servicesStarted };
       }),

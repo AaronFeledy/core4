@@ -3,12 +3,12 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
-import { type LandofileIncludeSource, getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
-import {
-  type LandofileReferencedFile,
-  getLandofileReferencedFiles,
-} from "@lando/landofile/load-expression-provenance";
+import type {
+  LandofileIncludeSource,
+  LandofileProvenance,
+  LandofileReferencedFile,
+} from "@lando/landofile/provenance";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
@@ -29,6 +29,7 @@ import type { Context } from "effect";
 import { Clock, Effect, Schema } from "effect";
 import { GitHostCheck, readGitDirectories, sameGitDirectories } from "../planner/git-host-checks.ts";
 import { ShadowHostCheck, canShadowHostPath } from "../planner/shadow-host-checks.ts";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { CORE_VERSION } from "../version.ts";
 import { canonicalCacheJson, compareFingerprintText } from "./canonical.ts";
 import { appPlanCachePath } from "./paths.ts";
@@ -37,7 +38,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 52n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 56n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -55,6 +56,8 @@ export interface AppPlanCacheKeyInput {
   readonly kind?: "user" | "scratch" | "global";
   readonly hostProvider: string;
   readonly appRoot: string;
+  /** Invoking host identity; its ids enter the key only when planning renumbers to them. */
+  readonly host?: { readonly uid: string; readonly gid: string } | undefined;
   readonly landofile: LandofileShape;
   readonly providerCapabilities?: ProviderCapabilities;
   readonly pluginManifests: ReadonlyArray<PluginManifest>;
@@ -111,7 +114,7 @@ const readIncludeLockChecksums = (path: string): Promise<ReadonlyArray<string>> 
 
 export const readAppPlanSourceFingerprint = (
   appRoot: string,
-  landofile?: LandofileShape,
+  provenance?: LandofileProvenance | undefined,
 ): Effect.Effect<AppPlanSourceFingerprint, CacheError | LandofileFormConflictError> =>
   presentLandofileLayers(appRoot).pipe(
     Effect.flatMap((layers) =>
@@ -127,8 +130,8 @@ export const readAppPlanSourceFingerprint = (
             ),
             includeLockfileHash: await readOptionalHash(includeLockfilePath),
             includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
-            referencedFiles: landofile === undefined ? [] : getLandofileReferencedFiles(landofile),
-            includeSources: landofile === undefined ? [] : getLandofileIncludeSources(landofile),
+            referencedFiles: provenance?.referencedFiles ?? [],
+            includeSources: provenance?.includeSources ?? [],
           };
         },
         catch: (cause) =>
@@ -174,6 +177,17 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       kind: input.kind ?? "user",
       hostProvider: input.hostProvider,
       landofile: input.landofile,
+      providerProjectUserFacts:
+        input.providerCapabilities === undefined
+          ? null
+          : {
+              projectUserMapping: input.providerCapabilities.projectUserMapping,
+              bindOwnership: input.providerCapabilities.bindOwnership,
+              ...(input.providerCapabilities.projectUserMapping === "image-renumber" &&
+              input.host !== undefined
+                ? { hostUid: input.host.uid, hostGid: input.host.gid }
+                : {}),
+            },
       sourceFingerprint:
         input.sourceFingerprint === undefined
           ? null
@@ -234,13 +248,17 @@ const decode = (bytes: Uint8Array): AppPlanCachePayload | null => {
   }
 };
 
-const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry>): boolean => {
+const versionConstraintsUsable = (
+  entries: ReadonlyArray<VersionConstraintEntry>,
+  env: Readonly<Record<string, string | undefined>>,
+): boolean => {
   const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
   if (evaluation.invalid.length > 0) return false;
-  return evaluation.unsatisfied.length === 0 || isVersionConstraintSkipped(process.env);
+  return evaluation.unsatisfied.length === 0 || isVersionConstraintSkipped(env);
 };
 
 export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly fileSystem?: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly cacheRoot: string;
   readonly appName: string;
@@ -269,7 +287,13 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
   if (payload === null) return null;
   if (payload.landoVersion !== CORE_VERSION || payload.key !== input.key) return null;
   if (!isVersionConstraintEntryArray(payload.versionConstraints)) return null;
-  if (!versionConstraintsUsable(payload.versionConstraints)) return null;
+  if (
+    !versionConstraintsUsable(
+      payload.versionConstraints,
+      input.env ?? (yield* HostExecutionDefaults)?.env ?? { ...process.env },
+    )
+  )
+    return null;
   if (!Schema.is(Schema.Array(ShadowHostCheck))(payload.shadowHostChecks)) return null;
   for (const check of payload.shadowHostChecks) {
     if ((yield* canShadowHostPath(check.path, input.fileSystem)) !== check.shadowed) return null;

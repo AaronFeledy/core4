@@ -1,7 +1,7 @@
 ---
 id: symfony
 provider: test
-timeout: 60000
+timeout: 900000
 tags: [recipe, symfony, php]
 ---
 
@@ -42,6 +42,15 @@ lando init --recipe symfony --name=my-symfony-app --yes \
 
 `lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
+Create the Symfony application in the app root with the bundled `create-project` tool. It stages `symfony/skeleton` outside the app root, then moves it into place without overwriting `.lando.yml`. It installs `vendor` in place and runs the project's Composer hooks:
+
+```sh
+lando create-project symfony/skeleton
+lando console --version
+```
+
+Pass a version or constraint as the second argument, and `--no-scripts` to skip the project's Composer hooks and install scripts.
+
 <Guide>
   <Scenario id="reader-path" render>
     <Step name="scaffold">
@@ -72,6 +81,23 @@ lando init --recipe symfony --name=my-symfony-app --yes \
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="install-path" layer="e2e" render={false} reason="Live Symfony installation and welcome page verification">
+    <Step name="init">
+      <Run command="lando init --recipe symfony --name=symfony-install --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+    </Step>
+    <Step name="install-symfony">
+      <Run command="lando create-project symfony/skeleton" />
+      <Verify command="lando console --version" />
+      <Verify command="lando exec appserver -- curl -s http://127.0.0.1/" expect={{ stdout: { regex: "Welcome to Symfony" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --purge" />
     </Step>
   </Scenario>
 </Guide>

@@ -5,15 +5,14 @@ import type { ResolveContext } from "./include-context.ts";
 import { attributeIncludeError } from "./include-guard.ts";
 import { reserveIncludeSelector } from "./include-selector.ts";
 import { classify, parseGitInclude, parseNpmInclude } from "./include-source.ts";
-import { getOrigins } from "./pipeline/origins.ts";
-import type { AuthoredOrigin } from "./pipeline/prepare.ts";
+import type { AuthoredDocument, AuthoredOrigin } from "./provenance.ts";
 
 export const reserveConditionalSelectors = Effect.fnUntraced(function* (
-  document: Record<string, unknown>,
+  document: AuthoredDocument,
   ctx: ResolveContext,
   source: AuthoredOrigin,
 ) {
-  const includes = mergeLandofiles([document]).includes;
+  const includes = mergeLandofiles([document.value]).includes;
   if (!Array.isArray(includes)) return;
   for (const [index, value] of includes.entries()) {
     if (
@@ -67,7 +66,7 @@ export const reserveConditionalSelectors = Effect.fnUntraced(function* (
     });
     if (Result.isFailure(parsed) || parsed.success === undefined) continue;
     const request = parsed.success;
-    const origin = getOrigins(document)?.children.get("includes")?.children.get(index)?.source ?? {
+    const origin = document.provenance.origins.children.get("includes")?.children.get(index)?.source ?? {
       ...source,
       path: ["includes", index],
     };

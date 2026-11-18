@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { HOST_EVENT_NAMES } from "@lando/sdk/schema";
 import { compileEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { reservedEventCollisions, validEventNames } from "../../src/planner/event-names.ts";
@@ -41,30 +40,27 @@ test("hostEvents covers the ten start/stop/restart/rebuild/destroy brackets", ()
 
 test("enumerates lifecycle names and remote sync hooks when tooling is empty", () => {
   // Given / When
-  const valid = validEventNames({});
+  const valid = validEventNames({}, []);
   // Then
   expect(valid).toEqual(staticNames);
 });
 
 test("includes authored, contributed, namespaced and disabled tasks but excludes internal tasks", () => {
   // Given
-  const landofile = rememberInternalToolingTasks(
-    {
-      tooling: {
-        "docs:build": { cmd: "build" },
-        hidden: { cmd: "hidden" },
-        disabled: { cmd: "disabled", disabled: true },
-        mysql: { cmd: "authored" },
-      },
+  const landofile = {
+    tooling: {
+      "docs:build": { cmd: "build" },
+      hidden: { cmd: "hidden" },
+      disabled: { cmd: "disabled", disabled: true },
+      mysql: { cmd: "authored" },
     },
-    ["hidden"],
-  );
+  };
   const tooling = compileEffectiveTooling({
     landofile,
     services: [{ name: "db", tooling: { mysql: { cmd: "mysql" }, sql: { cmd: "sql" } } }],
   });
   // When
-  const valid = validEventNames(tooling);
+  const valid = validEventNames(tooling, ["hidden"]);
   // Then
   expect(valid).toEqual([
     ...staticNames,
@@ -77,11 +73,7 @@ test("includes authored, contributed, namespaced and disabled tasks but excludes
     "pre-mysql",
     "pre-sql",
   ]);
-  expect(
-    validEventNames(
-      rememberInternalToolingTasks(Object.fromEntries(Object.entries(tooling).reverse()), ["hidden"]),
-    ),
-  ).toEqual(valid);
+  expect(validEventNames(Object.fromEntries(Object.entries(tooling).reverse()), ["hidden"])).toEqual(valid);
 });
 
 test("omits brackets for reserved tooling names", () => {
@@ -93,7 +85,7 @@ test("omits brackets for reserved tooling names", () => {
     "scratch:gc": { cmd: "gc" },
   };
   // When
-  const valid = validEventNames(tooling);
+  const valid = validEventNames(tooling, []);
   // Then
   expect(valid).toEqual([...staticNames, "post-prepare", "pre-prepare"]);
 });

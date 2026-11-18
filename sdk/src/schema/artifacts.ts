@@ -1,7 +1,47 @@
 import { Schema } from "effect";
 
 import { layerMerge } from "./layer-merge.ts";
-import { AbsolutePath, ContainerUser, PortablePath } from "./primitives.ts";
+import { AbsolutePath, ContainerUser, PortablePath, ProviderId } from "./primitives.ts";
+
+// ==== Provider artifacts
+// Runtime image identities and reclamation requests.
+
+export const ProviderArtifactRef = Schema.Struct({
+  providerId: ProviderId.annotate({ description: "Provider holding the artifact." }),
+  ref: Schema.String.annotate({ description: "Provider-local artifact name or image ID." }),
+  digest: Schema.optionalKey(Schema.String).annotate({ description: "Artifact content digest, when known." }),
+}).annotate({ description: "An artifact held by a runtime provider." });
+export type ProviderArtifactRef = typeof ProviderArtifactRef.Type;
+
+export const ArtifactSelector = Schema.Struct({
+  labels: Schema.Record(Schema.String, Schema.String).annotate({
+    description: "Labels that must all match the image.",
+  }),
+}).annotate({ description: "Selects provider artifacts by matching every label." });
+export type ArtifactSelector = typeof ArtifactSelector.Type;
+
+export const ArtifactListing = Schema.Struct({
+  id: Schema.String.annotate({ description: "Runtime image ID exactly as reported by the runtime." }),
+  refs: Schema.Array(Schema.String).annotate({
+    description:
+      "Image names normalized to build-request tags, without docker.io/library/, localhost/, or :latest; excludes <none>:<none>.",
+  }),
+}).annotate({ description: "A runtime image and its normalized names." });
+export type ArtifactListing = typeof ArtifactListing.Type;
+
+export const ArtifactRemovalRequest = Schema.Struct({
+  providerId: ProviderId.annotate({ description: "Provider holding the artifact." }),
+  ref: Schema.String.annotate({ description: "Image name or runtime image ID to remove." }),
+  pruneParents: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Allow removal of parents left dangling; absent or false keeps untagged parents.",
+  }),
+}).annotate({
+  description: "Non-forced removal of a provider artifact with explicit parent-pruning intent.",
+});
+export type ArtifactRemovalRequest = typeof ArtifactRemovalRequest.Type;
+
+// ==== Planned artifacts
+// Artifact sources carried by service plans.
 
 /**
  * Reference to a pre-built artifact (image, template, etc.) the provider
@@ -26,6 +66,31 @@ export const ArtifactRef = Schema.Struct({
   ),
 });
 export type ArtifactRef = typeof ArtifactRef.Type;
+
+/** What `RuntimeProvider.removeArtifact` did with the artifact it was asked to remove. */
+export const ArtifactRemoval = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("removed").annotate({
+      description: "The provider removed the artifact, or an intermediate artifact its build created.",
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("absent").annotate({ description: "The provider holds no artifact by that name." }),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("in-use").annotate({
+      description:
+        "The provider kept the artifact because a container or another artifact still depends on it.",
+    }),
+    reason: Schema.String.annotate({
+      description: "The runtime's explanation of what still uses the artifact.",
+    }),
+    containers: Schema.Array(Schema.String).annotate({
+      description: "Names of containers using the image; may be empty.",
+    }),
+  }),
+]).annotate({ description: "What removing a provider artifact did; removal never forces." });
+export type ArtifactRemoval = typeof ArtifactRemoval.Type;
 
 const ArtifactBuildSpecCommon = Schema.Struct({
   kind: Schema.Literal("build"),

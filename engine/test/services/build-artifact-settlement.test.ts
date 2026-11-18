@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { ProviderInternalError } from "@lando/sdk/errors";
-import { AppPlan, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   BuildOrchestrator,
   EventService,
@@ -14,8 +14,10 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema } from "effect";
+import { openArtifactBuildResults } from "../../src/services/build-artifact-results.ts";
 import * as BuildLayer from "../../src/services/build-orchestrator.ts";
+import { BuildOwner } from "../../src/services/build-owner.ts";
 import * as Events from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -108,8 +110,11 @@ test.each(cases)("settles every declared artifact task once for %s", async (_nam
   const root = await mkdtemp(join(tmpdir(), "artifact-settlement-"));
   const siblingStarted = Deferred.makeUnsafe<void>();
   const calls: string[] = [];
+  const removed: string[] = [];
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
+    removeArtifact: (ref) =>
+      Effect.sync(() => removed.push(ref.ref)).pipe(Effect.as({ kind: "absent" as const })),
     buildArtifact: (spec) =>
       Effect.gen(function* () {
         calls.push(String(spec.service));
@@ -128,8 +133,29 @@ test.each(cases)("settles every declared artifact task once for %s", async (_nam
           const events = yield* EventService;
           const queue = yield* events.subscribeQueue;
           const builder = yield* BuildOrchestrator;
+          const bucket = yield* openArtifactBuildResults(yield* StateStore);
+          yield* bucket.set({
+            claims: [],
+            results: Array.from({ length: 5 }, (_, index) => ({
+              owner: BuildOwner.fromPlan(plan).key,
+              providerId: "test",
+              service: ServiceName.make("web"),
+              phase: "artifact" as const,
+              buildKey: `old-${index}`,
+              artifactRef: `old-${index}`,
+              artifactOrigin: "build" as const,
+              outcome: "complete" as const,
+              durationMs: 1,
+              transcriptPath: AbsolutePath.make(`/tmp/old-${index}.log`),
+              completedAt: DateTime.makeUnsafe("2026-11-14T00:00:00Z"),
+            })),
+          });
           const exit = yield* Effect.exit(builder.build(plan));
-          return { exit, events: [...(yield* Queue.clear(queue))] };
+          return {
+            exit,
+            events: [...(yield* Queue.clear(queue))],
+            entries: (yield* bucket.get)?.results ?? [],
+          };
         }),
       ).pipe(Effect.provide(dependencies(provider, root))),
     );
@@ -140,6 +166,11 @@ test.each(cases)("settles every declared artifact task once for %s", async (_nam
       expect(result.exit.cause.reasons.slice(cause.reasons.length).every(Cause.isInterruptReason)).toBe(true);
     }
     expect(calls.sort()).toEqual(["sibling", "web"]);
+    expect(removed).toEqual([]);
+    expect(result.entries.filter((entry) => entry.service === "web").at(-1)).toMatchObject({
+      outcome: outcome === "interrupted" ? "complete" : "fail",
+      artifactOrigin: "build",
+    });
     expect(result.events.filter((event) => event._tag === "task.tree.start")).toHaveLength(1);
     expect(
       result.events

@@ -5,9 +5,8 @@ import { join } from "node:path";
 import { valueOriginAt } from "@lando/sdk/landofile";
 import { Effect } from "effect";
 import { lintLandofileSnapshot } from "../src/lint.ts";
-import { getOrigins } from "../src/pipeline/origins.ts";
-import { getSourceDocuments } from "../src/pipeline/source-table.ts";
 import { composeLandofileRootLayers, loadLandofileLayers } from "../src/service.ts";
+import { provenanceIn } from "./provenance-support.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 let root = "";
@@ -97,8 +96,7 @@ describe("tooling include attribution", () => {
     // When
     const { merged } = await Effect.runPromise(compose());
     // Then
-    const origins = getOrigins(merged);
-    if (origins === undefined) throw new Error("Missing composed origins");
+    const origins = merged.provenance.origins;
     expect([0, 1, 2].map((index) => valueOriginAt(origins, ["includes", index]).source)).toEqual([
       origin("frag.yml", "canonical", ["includes", 0]),
       origin(".lando.yml", "canonical", ["includes", 1]),
@@ -123,7 +121,7 @@ describe("tooling include attribution", () => {
     const result = await Effect.runPromise(load());
     // Then
     expect(
-      getSourceDocuments(result)
+      (provenanceIn(result)?.documents ?? [])
         .filter(({ file }) => /\/[abcf]\.yml$/.test(file))
         .map(({ file, layer }) => [file, layer]),
     ).toEqual([
@@ -255,7 +253,9 @@ describe("tooling include attribution", () => {
       const result = await Effect.runPromise(load());
       // Then
       expect(Object.keys(result.document.tooling ?? {})).toEqual(tasks);
-      expect(getSourceDocuments(result).find(({ file }) => file === join(root, "b.yml"))?.layer).toBe(layer);
+      expect(
+        (provenanceIn(result)?.documents ?? []).find(({ file }) => file === join(root, "b.yml"))?.layer,
+      ).toBe(layer);
     });
   }
 
@@ -269,7 +269,7 @@ describe("tooling include attribution", () => {
     // When
     const { merged } = await Effect.runPromise(compose());
     // Then
-    expect(merged.includes).toMatchObject([
+    expect(merged.value.includes).toMatchObject([
       {
         source: "./b.yml",
         namespace: "docs",
@@ -280,8 +280,7 @@ describe("tooling include attribution", () => {
         vars: { mode: "inherited" },
       },
     ]);
-    const origins = getOrigins(merged);
-    if (origins === undefined) throw new Error("Missing composed origins");
+    const origins = merged.provenance.origins;
     expect(valueOriginAt(origins, ["includes", 0]).source).toEqual(
       origin(".lando.local.yml", "local", ["includes", 0]),
     );
@@ -317,7 +316,7 @@ describe("tooling include attribution", () => {
     // Then
     expect(Object.keys(result.document.tooling ?? {})).toEqual(["a:task", "b:task"]);
     expect(
-      getSourceDocuments(result)
+      (provenanceIn(result)?.documents ?? [])
         .filter(({ file }) => file === join(root, "tasks.yml"))
         .map(({ layer }) => layer),
     ).toEqual(["canonical", "local"]);

@@ -299,6 +299,52 @@ describe("mergeResolutionOverParent", () => {
     expect(metrics !== undefined && "port" in metrics ? metrics.port : undefined).toBe(9090);
   });
 
+  test.each([
+    { label: "inherits", child: { normalizedConfig: {} as ServiceConfig }, expected: { port: 443 } },
+    {
+      label: "preserves an explicit child association",
+      child: {
+        normalizedConfig: {} as ServiceConfig,
+        generatedCertificateEndpoint: { port: 8443 },
+      },
+      expected: { port: 8443 },
+    },
+    {
+      label: "drops the association when the child changes image",
+      child: { normalizedConfig: { image: "registry.example.com/php:custom" } as ServiceConfig },
+      expected: undefined,
+    },
+    {
+      label: "drops the association when the child authors a command",
+      child: { normalizedConfig: { command: ["start"] } as ServiceConfig },
+      expected: undefined,
+    },
+    {
+      label: "drops the association when the child supplies a replacement build",
+      child: { normalizedConfig: { build: { context: "." } } as ServiceConfig },
+      expected: undefined,
+    },
+    {
+      label: "keeps the association for additive build steps",
+      child: { normalizedConfig: { build: { artifact: ["echo extra"] } } as ServiceConfig },
+      expected: { port: 443 },
+    },
+    {
+      label: "keeps the association for an authored user",
+      child: { normalizedConfig: { user: "www-data" } as ServiceConfig },
+      expected: { port: 443 },
+    },
+  ])("merges the generated-listener association: $label", ({ child, expected }) => {
+    const parent: ServiceTypeResolution = {
+      base: "lando",
+      normalizedConfig: {} as ServiceConfig,
+      features: [],
+      generatedCertificateEndpoint: { port: 443 },
+    };
+    const merged = mergeResolutionOverParent(parent, { base: "lando", features: [], ...child });
+    expect(merged.generatedCertificateEndpoint).toEqual(expected);
+  });
+
   test("deep-merges a same-id feature's config rather than replacing it wholesale", () => {
     const parent: ServiceTypeResolution = {
       base: "lando",

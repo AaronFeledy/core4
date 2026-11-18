@@ -19,6 +19,7 @@ includes:
   - ./fragments/extra.yml
 services:
   appserver:
+    allowOverride: true
     composer: "{{ recipe.composer }}"
     dependsOn:
       - database
@@ -33,9 +34,11 @@ tooling:
     cmds:
       - composer
     description: "Run Composer inside the appserver service."
+    wrapper: true
     service: appserver
   php:
     cmds:
       - php
     description: "Run the PHP CLI inside the appserver service."
+    wrapper: true
     service: appserver

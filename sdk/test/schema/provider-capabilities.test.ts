@@ -33,6 +33,8 @@ const LITERAL_FIELDS = {
   composeSpec: ["none", "portable", "native"],
   volumeSnapshot: ["native", "none"],
   serviceFileCopy: ["native", "exec", "none"],
+  projectUserMapping: ["userns-keep-id", "image-renumber", "unsupported"],
+  bindOwnership: ["root-is-host-user", "host-ids", "userns-remap", "unknown"],
 } as const;
 
 const ARRAY_FIELDS = ["providerExtensions"] as const;
@@ -48,6 +50,7 @@ const OPTIONAL_FIELDS = [
   "fileSyncTargets",
   "hostProxy",
   "serviceInit",
+  "volumeArchive",
 ] as const;
 
 const COMPOSE_PRESERVED_PATH_KEYS = ["depends_on.*.restart", "healthcheck.start_interval"] as const;
@@ -110,6 +113,8 @@ const providerLandoFixture: typeof ProviderCapabilities.Encoded = {
   routeProvider: true,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "userns-keep-id",
+  bindOwnership: "root-is-host-user",
   privilegedServices: false,
   composeSpec: "native",
   providerExtensions: ["compose", "labels", "registryCredentials"],
@@ -141,6 +146,8 @@ const providerDockerFixture: typeof ProviderCapabilities.Encoded = {
   routeProvider: false,
   tlsCertificates: "none",
   rootless: false,
+  projectUserMapping: "unsupported",
+  bindOwnership: "host-ids",
   privilegedServices: true,
   composeSpec: "native",
   providerExtensions: ["compose", "labels", "registryCredentials"],
@@ -164,7 +171,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the documented capability fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(38);
+    expect(actual).toHaveLength(41);
   });
 
   test("defaults architectureEmulation to false when omitted", () => {

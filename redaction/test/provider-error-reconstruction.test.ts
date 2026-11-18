@@ -23,7 +23,6 @@ const errors = [
   }),
   new Errors.ServiceExecError({ ...base, service: canary }),
   new Errors.ServiceNotFoundError({ ...base, service: canary }),
-  new Errors.ServiceRestartWouldRecreateError({ ...base, service: canary, reason: "config" }),
   new Errors.ServiceStartError({
     ...base,
     service: canary,

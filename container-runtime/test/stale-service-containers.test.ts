@@ -280,7 +280,7 @@ describe("bringUp stale-name convergence", () => {
     expect(dbCreated).toBe(true);
   });
 
-  test("does not sweep stale containers when forbidRecreate is set", async () => {
+  test("sweeps stale containers for an in-place apply too", async () => {
     // Given an owned old-named container and an already running planned container.
     const plan = singleServicePlan();
     const expected = serviceContainerName(plan, "web");
@@ -305,14 +305,12 @@ describe("bringUp stale-name convergence", () => {
       },
     });
     // When
-    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, forbidRecreate: true }));
-    // Then restart neither discovers nor mutates stale containers.
-    expect(
-      fake.calls
-        .filter((call) => call.path.startsWith("/containers/"))
-        .every((call) => call.method === "GET"),
-    ).toBe(true);
-    expect(fake.calls.filter((call) => call.path.startsWith("/containers/json?"))).toEqual([]);
+    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, reconcile: false }));
+    // Then the sweep is not limited to creation: the old-named container is removed.
+    expect(fake.calls).toContainEqual({
+      method: "DELETE",
+      path: "/containers/stale-id?force=true&v=true",
+    });
   });
 });
 

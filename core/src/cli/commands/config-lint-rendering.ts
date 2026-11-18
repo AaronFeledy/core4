@@ -27,10 +27,7 @@ const renderViolation = (violation: ConfigLintViolation, landofilePath?: string)
     const column =
       violation.line === undefined || violation.column === undefined ? "" : `:${violation.column}`;
     const authored = formatPath(source.path);
-    const authoredText =
-      authored === where || (source.layer === "script" && source.path.length === 0)
-        ? ""
-        : `, authored as ${authored}`;
+    const authoredText = authored === where || source.path.length === 0 ? "" : `, authored as ${authored}`;
     const details = scopeText.length === 0 ? `${source.layer} layer` : `${source.layer} layer; ${scopeText}`;
     const sourceFile = "file" in source ? source.file : undefined;
     if (sourceFile !== undefined)

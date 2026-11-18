@@ -144,7 +144,11 @@ const fakeRedactValue = (value: unknown): unknown => {
   return value;
 };
 
-const fakeRedactor: Redactor = { redactString: fakeRedactString, redactValue: fakeRedactValue };
+const fakeRedactor: Redactor = {
+  redactString: fakeRedactString,
+  redactPrefix: fakeRedactString,
+  redactValue: fakeRedactValue,
+};
 
 const fakeRedactionService = {
   ...makeRedactionService(),

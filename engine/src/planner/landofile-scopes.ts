@@ -1,5 +1,5 @@
 import { compiledValueError, consumeSites } from "@lando/landofile/compiled-sites";
-import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
+import { provenanceOf } from "@lando/landofile/provenance";
 import {
   PLAN_IDENTITY_EXPRESSION_SCOPES,
   PLAN_SERVICE_EXPRESSION_SCOPES,
@@ -60,19 +60,18 @@ export const materializeLandofileScopes = Effect.fn("Landofile.identityScope")(f
       },
     }),
   );
-  const document = copyLandofileProvenance(
-    compiled.document,
-    yield* decodeDocument(result.document, input.landofilePath, compiled.pendingSites),
-  );
+  const document = yield* decodeDocument(result.document, input.landofilePath, compiled.pendingSites);
+  const provenance = provenanceOf(compiled);
   const carrier = IdentityScopedLandofile.make({
     ...result,
     document,
     stage: "identity-scoped",
     context: compiled.context,
+    provenance,
   });
-  copyLandofileProvenance(document, carrier.document);
   return {
     landofile: document,
+    provenance,
     compiled: carrier,
     context: carrier.context,
     pendingSites: carrier.pendingSites,
@@ -144,6 +143,7 @@ export const materializeLandofileScopesForPlan = Effect.fn("Landofile.planScopes
     document,
     stage: "service-scoped",
     context: identity.context,
+    provenance: identity.provenance,
   });
 });
 

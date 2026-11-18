@@ -1,5 +1,9 @@
 /** Rejections and failure envelopes a dispatched call can end with before or instead of running. */
-import { type CommandResultOutcome, buildCommandResultEnvelope } from "@lando/sdk/command-result";
+import {
+  type CommandResultOutcome,
+  buildCommandResultEnvelope,
+  commandResultEnvelopePolicy,
+} from "@lando/sdk/command-result";
 import { McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Predicate, Schema } from "effect";
@@ -40,7 +44,12 @@ export const encodeFailureEnvelope = Effect.fnUntraced(function* (
     outcome,
     redactor: output.redactor,
   });
-  const safeEnvelope = yield* redactBoundedJsonValue(encoded, output.redactor, "MCP tool failure");
+  const safeEnvelope = yield* redactBoundedJsonValue(
+    encoded,
+    output.redactor,
+    "MCP tool failure",
+    commandResultEnvelopePolicy(Schema.Unknown),
+  );
   if (!Predicate.isObject(safeEnvelope))
     return yield* Effect.fail(
       new McpTransportError({

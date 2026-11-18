@@ -1,0 +1,10 @@
+tooling:
+  sync:
+    description: A hidden task whose flags share one alias
+    service: ":host"
+    flags:
+      source:
+        alias: s
+      scope:
+        alias: s
+    cmd: echo sync

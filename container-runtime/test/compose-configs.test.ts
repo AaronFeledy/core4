@@ -260,10 +260,10 @@ describe("planned config binds", () => {
       labels: commonContainerLabels(first, f.preparedService(first)),
     };
     expect(inspected.labels[CREATE_CONFIG_LABEL]).toBeDefined();
-    expect(bringUpRecreateReasons(f.plan, f.service, inspected, { skipAbsentFields: true })).toEqual([]);
+    expect(bringUpRecreateReasons(f.plan, f.service, inspected)).toEqual([]);
     await writeFile(f.source, "changed\n");
     // When
-    const reasons = bringUpRecreateReasons(f.plan, f.service, inspected, { skipAbsentFields: true });
+    const reasons = bringUpRecreateReasons(f.plan, f.service, inspected);
     // Then
     expect(reasons).toEqual(["config"]);
   });

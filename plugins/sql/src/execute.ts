@@ -4,6 +4,8 @@ import { DateTime, Effect, Stream, absurd, flow } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
+import { planCredentialClassification } from "@lando/redaction/plan-values";
+import { databaseClientEnvironment } from "@lando/sdk/database-creds";
 import {
   SqlConfirmRequiredError,
   SqlRecoveryOperationError,
@@ -25,11 +27,10 @@ import {
   validateExportCompression,
 } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
-import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
+import { currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
 import { ensureDumpFile, prepareImportDump } from "./dump-file.ts";
 import {
   SqlEnvironmentSession,
-  classifySqlPlan,
   protectSqlEnvironment,
   registerSqlLiteralCredentials,
 } from "./environment.ts";
@@ -85,7 +86,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     providerId: rawDeps.providerId,
   });
   const creds = resolveSqlCreds(connection);
-  const env = credsEnv(target.family, creds);
+  const env = databaseClientEnvironment(target.family, creds);
   const selectedCredentials =
     target.family === "mssql"
       ? [creds.rootPassword ?? creds.password]
@@ -138,7 +139,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     const file = hostFile(deps.plan, { ...input, service: target.name });
     const action = input.action;
     if (action === "snapshots" || action === "prune")
-      yield* registerSqlLiteralCredentials(classifySqlPlan(deps.plan), selectedCredentials);
+      yield* registerSqlLiteralCredentials(planCredentialClassification(deps.plan), selectedCredentials);
     let restoreSource: SnapshotInfo | undefined;
     const steps: DbCommandStep[] = [
       {

@@ -1,4 +1,8 @@
-import { planRedactionValues } from "@lando/redaction/plan-values";
+import {
+  type CredentialLiteralClassification,
+  classifyCredentialLiterals,
+  planCredentialClassification,
+} from "@lando/redaction/plan-values";
 import { RedactionService } from "@lando/redaction/service";
 import {
   EnvironmentValueResolutionError,
@@ -7,7 +11,7 @@ import {
   SecretStoreUnavailableError,
 } from "@lando/sdk/errors";
 import type { DataEndpoint, Environment, EnvironmentValue } from "@lando/sdk/schema";
-import { isPublicDefaultCredential, isUsableExactRedactionValue } from "@lando/sdk/secrets";
+import { isUsableExactRedactionValue } from "@lando/sdk/secrets";
 import type { EnvironmentValueResolverSession } from "@lando/sdk/services";
 import { Context, Effect, Schema } from "effect";
 import type { SqlPlan } from "./views.ts";
@@ -36,39 +40,12 @@ export type SqlCredentialSecrets = NonNullable<
   Extract<DataEndpoint, { readonly _tag: "serviceCmd" }>["secrets"]
 >;
 
-export type SqlPlanClassification = {
-  readonly substring: ReadonlySet<string>;
-  readonly wholeToken: ReadonlySet<string>;
-  readonly publicValues: ReadonlySet<string>;
-};
-
-export const classifySqlPlan = (plan: SqlPlan): SqlPlanClassification => {
-  const values = planRedactionValues(plan);
-  return {
-    substring: new Set(values.substring),
-    wholeToken: values.wholeTokenValues,
-    publicValues: values.publicValues,
-  };
-};
-
 export const registerSqlLiteralCredentials = Effect.fn("Sql.registerLiteralCredentials")(function* (
-  classified: SqlPlanClassification,
+  classified: CredentialLiteralClassification,
   selected: ReadonlyArray<EnvironmentValue>,
 ) {
   const redaction = yield* RedactionService;
-  const substring: string[] = [];
-  const wholeToken: string[] = [];
-  for (const value of selected) {
-    if (typeof value !== "string") continue;
-    if (!isUsableExactRedactionValue(value)) continue;
-    if (classified.publicValues.has(value) || isPublicDefaultCredential(value)) continue;
-    // Only proven authored literals may use whole-token matching.
-    if (classified.wholeToken.has(value) && !classified.substring.has(value)) {
-      if (!wholeToken.includes(value)) wholeToken.push(value);
-    } else if (!substring.includes(value)) {
-      substring.push(value);
-    }
-  }
+  const { substring, wholeToken } = classifyCredentialLiterals(classified, selected);
   yield* redaction.registerValues(substring);
   yield* redaction.registerValues(wholeToken, { match: "whole-token" });
   return { substring, wholeToken };
@@ -80,7 +57,7 @@ export const registerSqlCredentials = Effect.fn("Sql.registerCredentials")(funct
 ) {
   const redaction = yield* RedactionService;
   const session = yield* SqlEnvironmentSession;
-  const classified = classifySqlPlan(plan);
+  const classified = planCredentialClassification(plan);
   const { substring, wholeToken } = yield* registerSqlLiteralCredentials(classified, selected);
   const raw = yield* session.resolveEnvironment(
     Object.fromEntries(selected.map((value, index) => [`credential${index}`, value])),

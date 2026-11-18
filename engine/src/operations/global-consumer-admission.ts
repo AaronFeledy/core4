@@ -94,7 +94,7 @@ export interface GlobalConsumerAdmission {
   readonly plan: AppPlan;
   readonly signal?: AbortSignal;
   readonly landofileRouter?: RouterConfig;
-  /** Selected restart/rebuild do not run the normal route-publication lifecycle. */
+  /** Selected restart/rebuild set up the router before publishing their composed route table. */
   readonly setupRouter?: boolean;
 }
 

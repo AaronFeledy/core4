@@ -76,8 +76,9 @@ describe("stdio live byte progress", () => {
             serverLayer(
               {
                 commandEntries: [
-                  { spec },
+                  { kind: "command" as const, spec },
                   {
+                    kind: "command" as const,
                     spec: {
                       id: "app:info",
                       summary: "Info",
@@ -159,7 +160,10 @@ describe("stdio live byte progress", () => {
           };
           const client = yield* startServer().pipe(
             Effect.provide(
-              serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }, ["held final"]),
+              serverLayer(
+                { commandEntries: [{ kind: "command" as const, spec }], defaultAllowlist: [spec.id] },
+                ["held final"],
+              ),
             ),
           );
           yield* client.sendRequest(

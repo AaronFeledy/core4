@@ -94,6 +94,8 @@ const capabilities: ProviderCapabilities = {
   routeProvider: false,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
@@ -211,7 +213,6 @@ const makeRestartLayer = (
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const applyCalls: Array<{
     readonly reconcile: boolean;
-    readonly forbidRecreate?: boolean;
     readonly services: ReadonlyArray<string>;
     readonly recordedServices: ReadonlyArray<string>;
   }> = [];
@@ -224,7 +225,7 @@ const makeRestartLayer = (
       Effect.sync(() => {
         routeApplies.push(routes.length);
       }).pipe(Effect.andThen(TestRouterService.applyRoutes(routes, app))),
-    removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app))),
+    removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app.id))),
   };
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
@@ -236,9 +237,6 @@ const makeRestartLayer = (
       Effect.sync(() => {
         applyCalls.push({
           reconcile: applyOptions.reconcile ?? false,
-          ...(applyOptions.forbidRecreate === undefined
-            ? {}
-            : { forbidRecreate: applyOptions.forbidRecreate }),
           services: Object.keys(appliedPlan.services),
           recordedServices: Object.keys((applyOptions.recordedPlan ?? appliedPlan).services),
         });
@@ -457,7 +455,7 @@ describe("lando restart", () => {
     expect(harness.events).not.toContain("post-restart");
   });
 
-  test("restarts one named service without destroying others or applying routes", async () => {
+  test("restarts one named service without destroying others and publishes its composed route set", async () => {
     const redis: ServicePlan = {
       ...web,
       name: ServiceName.make("redis"),
@@ -475,10 +473,11 @@ describe("lando restart", () => {
     expect(harness.destroyCalls).toEqual([]);
     expect(harness.stopCalls).toEqual([redis.name]);
     expect(harness.applyCalls).toEqual([
-      { reconcile: false, forbidRecreate: true, services: ["redis"], recordedServices: ["web", "redis"] },
+      { reconcile: false, services: ["redis"], recordedServices: ["redis"] },
     ]);
+    // The composed table is empty, so publication withdraws this owner's route set.
     expect(harness.routeApplies).toEqual([]);
-    expect(harness.routeRemovals).toEqual([]);
+    expect(harness.routeRemovals).toEqual([String(plan.id)]);
     expect(harness.events.filter((event) => event === "pre-stop" || event === "pre-start")).toEqual([]);
     expect(result.servicesStarted.map((service) => service.name)).toEqual(["redis"]);
   });

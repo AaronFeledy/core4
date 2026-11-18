@@ -5,13 +5,15 @@ import {
   type ValueOrigins,
   isLandofileOverride,
   isPlainRecord,
-  mergeLandofiles,
+  mergeValuesWithOrigins,
   override,
+  valueOriginAt,
   withValueOrigins,
 } from "@lando/sdk/landofile";
+import { LandofileShape } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { authoredSiteId } from "./compiled-sites.ts";
-import { copyLandofileProvenance } from "./copy-provenance.ts";
+import { recordExpressionEnvironment } from "./environment-dependencies.ts";
 import {
   hasIncludeConditions,
   includeConditionPath,
@@ -20,16 +22,10 @@ import {
 import type { ResolveLandofileIncludesOptions } from "./include-context.ts";
 import { resolveLandofileLoadExpressions } from "./load-expression.ts";
 import type { LandofileLoadPolicy, LandofileLoadSource } from "./load-expression-file.ts";
-import {
-  getLandofileReferencedFiles,
-  rememberLandofileReferencedFiles,
-} from "./load-expression-provenance.ts";
 import { createLoadFailureRecorder, finishLoadStage, loadPathBlocked } from "./load-failures.ts";
 import { type LandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
-import { getOrigins, rememberOrigins } from "./pipeline/origins.ts";
-import type { AuthoredOrigin } from "./pipeline/prepare.ts";
+import { type AuthoredDocument, type AuthoredOrigin, normalizeReferencedFiles } from "./provenance.ts";
 import { unsupportedSecretReferenceError } from "./unsupported-secret-reference.ts";
-import { validationErrorFromCause } from "./validation.ts";
 
 export interface IncludeMaterializationContext {
   readonly source: LandofileLoadSource;
@@ -39,55 +35,66 @@ export interface IncludeMaterializationContext {
 }
 
 export const materializeIncludeConditions = Effect.fnUntraced(function* (
-  document: Record<string, unknown>,
+  source: AuthoredDocument,
   context: IncludeMaterializationContext,
 ) {
-  if (!hasIncludeConditions(document)) return document;
+  const document = source.value;
+  if (!hasIncludeConditions(document)) return source;
   const recorder = context.scope.recorder ?? createLoadFailureRecorder();
   const scope = { ...context.scope, recorder, pendingSites: context.scope.pendingSites ?? [] };
-  const origins =
-    getOrigins(document) ??
-    withValueOrigins(document, (path) => ({
-      file: context.source.sourcePath,
-      layer: context.source.layer,
-      path,
-    })).origins;
-  const projection = mergeLandofiles([
-    Object.fromEntries(
-      ["includes", "toolingIncludes"].flatMap((key) =>
-        Object.hasOwn(document, key) ? [[key, document[key]]] : [],
+  const origins = source.provenance.origins;
+  const projection = mergeValuesWithOrigins(
+    LandofileShape,
+    withValueOrigins({}, () => origins.source),
+    {
+      value: Object.fromEntries(
+        ["includes", "toolingIncludes"].flatMap((key) =>
+          Object.hasOwn(document, key) ? [[key, document[key]]] : [],
+        ),
       ),
-    ),
-  ]);
+      origins: {
+        ...origins,
+        children: new Map(
+          (["includes", "toolingIncludes"] as const).flatMap((key) => {
+            const node = origins.children.get(key);
+            return node === undefined ? [] : [[key, node] as const];
+          }),
+        ),
+      },
+    },
+  );
+  const projected = isPlainRecord(projection.value) ? projection.value : {};
   const targets: {
     readonly key: "includes" | "toolingIncludes";
     readonly part: string | number;
     readonly value: unknown;
   }[] = [
-    ...(Array.isArray(projection.includes)
-      ? projection.includes.map((value: unknown, index) => ({ key: "includes" as const, part: index, value }))
+    ...(Array.isArray(projected.includes)
+      ? projected.includes.map((value: unknown, index) => ({
+          key: "includes" as const,
+          part: index,
+          value,
+        }))
       : []),
-    ...(isPlainRecord(projection.toolingIncludes)
-      ? Object.entries(projection.toolingIncludes).map(([part, value]) => ({
+    ...(isPlainRecord(projected.toolingIncludes)
+      ? Object.entries(projected.toolingIncludes).map(([part, value]) => ({
           key: "toolingIncludes" as const,
           part,
           value,
         }))
       : []),
   ];
-  if (!targets.some(({ value }) => isPlainRecord(value) && Object.hasOwn(value, "when"))) return document;
-  const candidates = copyLandofileProvenance(document, {
-    ...document,
-    ...(projection.includes === undefined ? {} : { includes: projection.includes }),
-    ...(projection.toolingIncludes === undefined ? {} : { toolingIncludes: projection.toolingIncludes }),
-  });
+  if (!targets.some(({ value }) => isPlainRecord(value) && Object.hasOwn(value, "when"))) return source;
+  const candidates: AuthoredDocument = {
+    value: {
+      ...document,
+      ...(projected.includes === undefined ? {} : { includes: projected.includes }),
+      ...(projected.toolingIncludes === undefined ? {} : { toolingIncludes: projected.toolingIncludes }),
+    },
+    provenance: { ...source.provenance, origins: projection.origins },
+  };
   const nodeAt = (target: (typeof targets)[number]): ValueOrigins<AuthoredOrigin> =>
-    origins.children.get(target.key)?.children.get(target.part) ??
-    withValueOrigins(target.value, (path) => ({
-      file: context.source.sourcePath,
-      layer: context.source.layer,
-      path: [target.key, target.part, ...path],
-    })).origins;
+    valueOriginAt(projection.origins, [target.key, target.part]);
   const conditionIds = new Set<string>();
   if (scope.includeMode !== "all") {
     for (const target of targets) {
@@ -119,6 +126,8 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
         );
         continue;
       }
+      if (scope.environmentRecorder !== undefined)
+        recordExpressionEnvironment(scope.environmentRecorder, parsed.success);
       const references = parsed.success.segments.flatMap((segment) =>
         segment.kind === "SecretRefSegment" ? [segment.name] : [],
       );
@@ -140,23 +149,22 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
   const materialized =
     scope.includeMode === "all"
       ? candidates
-      : yield* materializeLandofileLayer(context.source.sourcePath, rememberOrigins(candidates, origins), {
+      : yield* materializeLandofileLayer(context.source.sourcePath, candidates, {
           ...scope,
           siteFilter: (site) => includeConditionPath(site.path),
         });
   for (let index = scope.pendingSites.length - 1; index >= 0; index--)
     if (conditionIds.has(scope.pendingSites[index]?.id ?? "")) scope.pendingSites.splice(index, 1);
-  if (!isPlainRecord(materialized))
-    return yield* Effect.fail(validationErrorFromCause(context.source.sourcePath, materialized, undefined));
+  const materializedValue = materialized.value;
   const children = new Map(origins.children);
   const includes: unknown[] = [];
   const toolingIncludes: Record<string, unknown> = {};
   const includeOrigins = new Map<string | number, ValueOrigins<AuthoredOrigin>>();
   const toolingOrigins = new Map<string | number, ValueOrigins<AuthoredOrigin>>();
-  const dependencies = [...getLandofileReferencedFiles(document)];
+  const dependencies = [...source.provenance.referencedFiles];
   for (const target of targets) {
     const node = nodeAt(target);
-    const container = materialized[target.key];
+    const container = materializedValue[target.key];
     const entry: unknown = Array.isArray(container)
       ? container[Number(target.part)]
       : isPlainRecord(container)
@@ -206,6 +214,7 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
         recorder,
         pendingSites: scope.pendingSites,
         pathPrefix: node.source.path,
+        environmentRecorder: scope.environmentRecorder,
       });
       accepted = resolved.value;
       dependencies.push(...resolved.dependencies);
@@ -227,20 +236,24 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
       toolingIncludes[String(target.part)] = accepted;
     }
   }
-  const result = { ...materialized };
-  if (Array.isArray(projection.includes)) {
+  const result = { ...materializedValue };
+  if (Array.isArray(projected.includes)) {
     result.includes = isLandofileOverride(document.includes) ? override(includes) : includes;
     const node = origins.children.get("includes");
     if (node !== undefined) children.set("includes", { ...node, children: includeOrigins });
   }
-  if (isPlainRecord(projection.toolingIncludes)) {
+  if (isPlainRecord(projected.toolingIncludes)) {
     result.toolingIncludes = toolingIncludes;
     const node = origins.children.get("toolingIncludes");
     if (node !== undefined) children.set("toolingIncludes", { ...node, children: toolingOrigins });
   }
   if (context.scope.recorder === undefined) yield* finishLoadStage(context.source.sourcePath, recorder);
-  return rememberLandofileReferencedFiles(
-    rememberOrigins(copyLandofileProvenance(document, result), { ...origins, children }),
-    dependencies,
-  );
+  return {
+    value: result,
+    provenance: {
+      ...materialized.provenance,
+      origins: { ...origins, children },
+      referencedFiles: normalizeReferencedFiles(dependencies),
+    },
+  };
 });

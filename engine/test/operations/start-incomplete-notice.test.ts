@@ -166,6 +166,29 @@ describe("incomplete start notice", () => {
     ]);
   });
 
+  test("defers to an error whose remedy names a different command", async () => {
+    // Given a selected restart refused before any change, with a remedy that names another command.
+    const refused = Effect.fail({
+      _tag: "ProviderUnavailableError" as const,
+      remediation: "Run `lando start` to start the app.",
+    });
+    // When the footer is written.
+    const { notices } = await run(refused, { command: { verb: "restart", services: ["web"] } });
+    // Then it confirms nothing changed without telling the user to rerun the refused command.
+    expect(notices).toEqual(["Restart did not complete. No app resources changed."]);
+  });
+
+  test("keeps the rerun advice when the remedy names the same command", async () => {
+    // Given a refusal whose remedy itself says to rerun the command that failed.
+    const refused = Effect.fail({ _tag: "AppResolveError" as const, remediation: "Then run `lando start`." });
+    // When the footer is written.
+    const { notices } = await run(refused);
+    // Then the rerun advice stays.
+    expect(notices).toEqual([
+      "Start did not complete. No app resources changed. Fix the reported error, then run `lando start`.",
+    ]);
+  });
+
   test.each(["created", "paused", "exited", "dead"] as const)(
     "classifies known %s alongside running and unverified services",
     async (status) => {

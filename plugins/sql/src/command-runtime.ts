@@ -12,9 +12,9 @@ import {
   RuntimeProviderRegistry,
   ServiceReadiness,
   StateStore,
-  physicalVolumeLockKey,
 } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
 import { Effect } from "effect";
 
 import { requireAppliedSqliteTargets } from "./applied-sqlite.ts";
@@ -38,7 +38,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
   const privateFileAccess = yield* PrivateFileAccessService;
   const landofile = yield* landofiles.discover;
   const authored = toSqlLandofile(landofile.document);
-  const planned = yield* registry.resolveAppliedPlan(landofile.context.appRoot);
+  const planned = yield* registry.resolveAppliedPlan(landofile.context.appRoot, undefined, "exact");
   if (planned === undefined)
     return yield* Effect.fail(
       new PlanReplanRequiredError({
@@ -189,7 +189,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
         },
         stateStore,
       },
-      withVolumeLock: (instanceId, body) => stateStore.withLock(physicalVolumeLockKey(instanceId), body),
+      withVolumeLock: (instanceId, body) => withPhysicalVolumeLock(stateStore, instanceId, body),
       initialization: (identity) =>
         mover.volumeInitialization === undefined
           ? Effect.fail(

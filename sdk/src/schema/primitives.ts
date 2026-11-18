@@ -36,6 +36,16 @@ export const CONTAINER_USER_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]*(?::[A-Za-z0-
 
 export const isContainerUser = (value: string): boolean => CONTAINER_USER_PATTERN.test(value);
 
+/**
+ * Whether a container identity names the root principal. `root`, `0`, and any
+ * numeric spelling of uid 0 count; a group suffix does not change the user.
+ * An omitted identity is not root: callers decide their own default.
+ */
+export const isRootContainerUser = (value: string): boolean => {
+  const user = value.split(":", 1)[0] ?? "";
+  return user === "root" || (/^[0-9]+$/u.test(user) && Number(user) === 0);
+};
+
 export const ContainerUser = Schema.String.pipe(
   Schema.check(
     Schema.isPattern(CONTAINER_USER_PATTERN, {
@@ -47,6 +57,49 @@ export const ContainerUser = Schema.String.pipe(
     'Container identity as "<name|uid>" or "<name|uid>:<group|gid>". Letters, digits, underscores, dots, and hyphens only, and each part must start with a letter, digit, or underscore.',
 });
 export type ContainerUser = typeof ContainerUser.Type;
+
+/**
+ * The in-container identity whose files belong to the host user on a provider
+ * that maps one container id to the host user. The name is the identity a
+ * service type declares (for PHP, `www-data`); numeric ids are what an exec
+ * request and a `chown` use, because a custom image may not carry the name.
+ */
+export const ServiceProjectUser = Schema.Struct({
+  name: Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
+    description: "Principal name the service type declares, or the numeric uid when only ids are known.",
+  }),
+  uid: Schema.Number.pipe(
+    Schema.check(Schema.isInt()),
+    Schema.check(Schema.isBetween({ minimum: 0, maximum: 4_294_967_295 })),
+  ).annotate({ description: "Numeric user id inside the container." }),
+  gid: Schema.Number.pipe(
+    Schema.check(Schema.isInt()),
+    Schema.check(Schema.isBetween({ minimum: 0, maximum: 4_294_967_295 })),
+  ).annotate({ description: "Numeric primary group id inside the container." }),
+}).annotate({
+  identifier: "ServiceProjectUser",
+  description: "Container identity that owns files a service creates on the host.",
+});
+export type ServiceProjectUser = typeof ServiceProjectUser.Type;
+
+/**
+ * Why a service has no realized project user. Kept beside the plan so info and
+ * lint can explain an absence instead of leaving it implicit.
+ */
+export const ProjectUserExplanation = Schema.Struct({
+  state: Schema.Literals(["opted-out", "provider-unsupported", "unresolved", "not-applicable"]).annotate({
+    description:
+      "opted-out means projectUser: false; provider-unsupported means the provider cannot map an id; unresolved means no identity could be chosen; not-applicable means the service is not a user app with an app-source bind.",
+  }),
+  explicit: Schema.Boolean.annotate({
+    description: "Whether the Landofile authored projectUser instead of relying on resolution.",
+  }),
+  detail: Schema.String.annotate({ description: "Human-readable reason for the resolved plan." }),
+}).annotate({
+  identifier: "ProjectUserExplanation",
+  description: "Structured explanation for a service plan with no realized project user.",
+});
+export type ProjectUserExplanation = typeof ProjectUserExplanation.Type;
 
 /**
  * An absolute path inside a container. The leading slash is required so a

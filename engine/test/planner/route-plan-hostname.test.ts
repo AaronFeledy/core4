@@ -67,6 +67,46 @@ test("final plan validation rejects an HTTPS route no certificate can cover, fro
   expect(Result.isSuccess(await decode("http"))).toBe(true);
 });
 
+test("final plan validation rejects verified backend TLS intent only on a plain backend", async () => {
+  const landofile = Schema.decodeUnknownSync(LandofileShape)({
+    name: "route-plan",
+    services: { web: { type: "nginx", routes: ["app.lndo.site"] } },
+  });
+  const plan = await Effect.runPromise(
+    Effect.flatMap(AppPlanner, (planner) =>
+      planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
+    ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer)))),
+  );
+  const encoded = Schema.encodeSync(CurrentExecutableAppPlan)(plan);
+  const route = encoded.routes[0];
+  if (route === undefined) throw new Error("expected a planned route");
+  const decode = (scheme: "http" | "https", protocol: "http" | "https") =>
+    Effect.runPromise(
+      decodeAppPlan(plan.root, {
+        ...encoded,
+        routes: [
+          {
+            ...route,
+            scheme,
+            backend: {
+              ...route.backend,
+              protocol,
+              tls: { caId: "mkcert", serverName: "web.route-plan.internal" },
+            },
+          },
+        ],
+      }).pipe(Effect.result),
+    );
+
+  const plain = await decode("https", "http");
+  if (Result.isSuccess(plain)) throw new Error("Expected TLS intent on a plain backend to fail");
+  expect(plain.failure.issues).toMatchObject([
+    { rule: "landofile.route", path: ["routes", 0, "backend", "tls"] },
+  ]);
+  expect(Result.isSuccess(await decode("https", "https"))).toBe(true);
+  expect(Result.isSuccess(await decode("http", "https"))).toBe(true);
+});
+
 test("a cached plan whose HTTPS route no certificate can cover is rejected on the cache hit", async () => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "route-plan",

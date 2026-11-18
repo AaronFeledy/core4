@@ -1,16 +1,16 @@
 import type { LandofileIncludeError } from "@lando/sdk/errors";
 import {
   type ValueOrigins,
+  type ValueWithOrigins,
   isMergeDirective,
-  mergeValues,
+  isPlainRecord,
   mergeValuesWithOrigins,
   valueOriginAt,
 } from "@lando/sdk/landofile";
 import { IncludeEntry, type LandofileShape, type ToolingVarLiteral } from "@lando/sdk/schema";
 import { includeError } from "./include-guard.ts";
 import { includeAcquisitionView } from "./include-layer-overlays.ts";
-import { getOrigins } from "./pipeline/origins.ts";
-import type { AuthoredOrigin } from "./pipeline/prepare.ts";
+import type { AuthoredOrigin } from "./provenance.ts";
 
 type ObjectIncludeEntry = Exclude<IncludeEntry, string>;
 
@@ -62,21 +62,19 @@ export { resolveToolingIncludeSourceRoots } from "./tooling-include-source-roots
 
 interface ComposedToolingInclude {
   readonly value: ObjectIncludeEntry;
-  readonly origins?: ValueOrigins<AuthoredOrigin> | undefined;
+  readonly origins: ValueOrigins<AuthoredOrigin>;
 }
 
 const groupByNamespace = (
-  source: Record<string, unknown>,
+  source: ValueWithOrigins<AuthoredOrigin>,
 ): ReadonlyMap<string, ReadonlyArray<ComposedToolingInclude>> => {
   const declared = new Map<string, ComposedToolingInclude[]>();
-  const origins = getOrigins(source);
-  for (const [index, entry] of (includeAcquisitionView(source).includes ?? []).entries()) {
+  const origins = source.origins;
+  if (!isPlainRecord(source.value)) return declared;
+  for (const [index, entry] of (includeAcquisitionView(source.value).includes ?? []).entries()) {
     if (typeof entry === "string" || entry.kind !== "tooling") continue;
-    const child = origins?.children.get("includes")?.children.get(index);
-    const composed = {
-      value: entry,
-      ...(child === undefined ? {} : { origins: child }),
-    };
+    const child = origins.children.get("includes")?.children.get(index);
+    const composed = { value: entry, origins: child ?? origins };
     const key = entry.namespace ?? entry.source;
     const group = declared.get(key);
     if (group === undefined) declared.set(key, [composed]);
@@ -104,11 +102,11 @@ const groupByNamespace = (
  * a higher layer that only redirects its source.
  */
 export const composeToolingIncludeEntries = (
-  sources: ReadonlyArray<Record<string, unknown>>,
+  sources: ReadonlyArray<ValueWithOrigins<AuthoredOrigin>>,
 ): ReadonlyArray<ComposedToolingInclude> => {
   const composed = new Map<string, ReadonlyArray<ComposedToolingInclude>>();
   for (const source of sources) {
-    if (isMergeDirective(source.includes)) composed.clear();
+    if (isPlainRecord(source.value) && isMergeDirective(source.value.includes)) composed.clear();
     for (const [key, declared] of groupByNamespace(source)) {
       const existing = composed.get(key);
       const overridden = existing?.length === 1 && declared.length === 1 ? existing[0] : undefined;
@@ -117,17 +115,11 @@ export const composeToolingIncludeEntries = (
         composed.set(key, declared);
         continue;
       }
-      const merged =
-        overridden.origins === undefined || override.origins === undefined
-          ? {
-              value: mergeValues(IncludeEntry, overridden.value, override.value),
-              origins: override.origins ?? overridden.origins,
-            }
-          : mergeValuesWithOrigins(
-              IncludeEntry,
-              { value: overridden.value, origins: overridden.origins },
-              { value: override.value, origins: override.origins },
-            );
+      const merged = mergeValuesWithOrigins(
+        IncludeEntry,
+        { value: overridden.value, origins: overridden.origins },
+        { value: override.value, origins: override.origins },
+      );
       composed.set(key, [{ value: merged.value as ObjectIncludeEntry, origins: merged.origins }]);
     }
   }
@@ -214,15 +206,15 @@ const normalizeEntry = (input: {
 
 const fromIncludesArray = (
   entries: ReadonlyArray<IncludeEntry>,
-  origins?: ValueOrigins<AuthoredOrigin>,
+  origins: ValueOrigins<AuthoredOrigin>,
 ): ReadonlyArray<NormalizedToolingInclude> =>
   entries.flatMap((entry, index) =>
     typeof entry === "string" || entry.kind !== "tooling"
       ? []
       : [
           normalizeEntry({
-            varOrigins: origins?.children.get("includes")?.children.get(index)?.children.get("vars"),
-            origin: origins === undefined ? undefined : valueOriginAt(origins, ["includes", index]).source,
+            varOrigins: origins.children.get("includes")?.children.get(index)?.children.get("vars"),
+            origin: valueOriginAt(origins, ["includes", index]).source,
             source: entry.source,
             namespace: entry.namespace,
             flatten: entry.flatten,
@@ -237,13 +229,12 @@ const fromIncludesArray = (
 
 const fromShorthandMap = (
   map: NonNullable<LandofileShape["toolingIncludes"]>,
-  origins?: ValueOrigins<AuthoredOrigin>,
+  origins: ValueOrigins<AuthoredOrigin>,
 ): ReadonlyArray<NormalizedToolingInclude> =>
   Object.entries(map).map(([namespace, entry]) =>
     normalizeEntry({
-      varOrigins: origins?.children.get("toolingIncludes")?.children.get(namespace)?.children.get("vars"),
-      origin:
-        origins === undefined ? undefined : valueOriginAt(origins, ["toolingIncludes", namespace]).source,
+      varOrigins: origins.children.get("toolingIncludes")?.children.get(namespace)?.children.get("vars"),
+      origin: valueOriginAt(origins, ["toolingIncludes", namespace]).source,
       source: entry.file,
       namespace,
       flatten: entry.flatten,
@@ -257,7 +248,7 @@ const fromShorthandMap = (
 
 export const normalizeToolingIncludes = (
   landofile: ToolingIncludeSurface,
-  origins?: ValueOrigins<AuthoredOrigin>,
+  origins: ValueOrigins<AuthoredOrigin>,
 ): ReadonlyArray<NormalizedToolingInclude> => [
   ...fromIncludesArray(landofile.includes ?? [], origins),
   ...fromShorthandMap(landofile.toolingIncludes ?? {}, origins),

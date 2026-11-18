@@ -1,7 +1,8 @@
-import { redactProviderError } from "@lando/redaction/provider-error";
+import { isProviderError, redactProviderError } from "@lando/redaction/provider-error";
 import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
 import type { Redactor } from "@lando/sdk/secrets";
-import type { ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
+import type { ProviderError, RuntimeProviderShape, VolumeArchiveImportSpec } from "@lando/sdk/services";
+import type { Effect } from "effect";
 import type { ProviderErrorMember } from "./output-policy.ts";
 
 export const withProviderErrorRedaction = (
@@ -63,6 +64,8 @@ export const withProviderErrorRedaction = (
     buildArtifact: (spec) => effect(runtime.buildArtifact(spec)),
     pullArtifact: (spec) => effect(runtime.pullArtifact(spec)),
     removeArtifact: (ref) => effect(runtime.removeArtifact(ref)),
+    listArtifacts: (selector) =>
+      runtime.listArtifacts(selector).pipe(mapFailures((error) => redactProviderError(error, redactor))),
     ...(inspectAppliedFileSync === undefined
       ? {}
       : { inspectAppliedFileSync: (plan) => effect(inspectAppliedFileSync.call(runtime, plan)) }),
@@ -96,6 +99,14 @@ export const withProviderErrorRedaction = (
     execStream: (target, command) => stream(runtime.execStream(target, command)),
     run: (spec) => effect(runtime.run(spec)),
     runStream: (spec) => stream(runtime.runStream(spec)),
+    // The archive and beforeCommit failures belong to the caller (E); only canonical
+    // provider failures are reconstructed and redacted, with every cause reason kept.
+    importVolume: <E, R>(spec: VolumeArchiveImportSpec<E, R>) =>
+      runtime
+        .importVolume(spec)
+        .pipe(
+          mapFailures((error) => (isProviderError(error) ? redactProviderError(error, redactor) : error)),
+        ),
     logs: (target, options) => stream(runtime.logs(target, options)),
     inspect: (target) => effect(runtime.inspect(target)),
     list: (filter) => effect(runtime.list(filter)),
@@ -104,7 +115,15 @@ export const withProviderErrorRedaction = (
     ...(listVolumeSnapshots === undefined
       ? {}
       : { listVolumeSnapshots: () => effect(listVolumeSnapshots.call(runtime)) }),
-    restoreVolume: (spec) => effect(runtime.restoreVolume(spec)),
+    restoreVolume: <E = never>(
+      spec: Parameters<RuntimeProviderShape["restoreVolume"]>[0],
+      options?: { readonly beforeCommit?: Effect.Effect<void, E> },
+    ) =>
+      runtime
+        .restoreVolume(spec, options)
+        .pipe(
+          mapFailures((error) => (isProviderError(error) ? redactProviderError(error, redactor) : error)),
+        ),
     listVolumes: (filter) => effect(runtime.listVolumes(filter)),
     locateVolume: (ref) => effect(runtime.locateVolume(ref)),
     ...(inspectResourceNames === undefined
@@ -119,6 +138,7 @@ export const withProviderErrorRedaction = (
     removeVolume: (ref, generation) => effect(runtime.removeVolume(ref, generation)),
     copyToService: (target, spec) => effect(runtime.copyToService(target, spec)),
     copyFromService: (target, spec) => stream(runtime.copyFromService(target, spec)),
+    exportVolume: (ref) => stream(runtime.exportVolume(ref)),
     exportArtifact: (ref) => stream(runtime.exportArtifact(ref)),
     importArtifact: (data) => effect(runtime.importArtifact(data)),
   } satisfies Pick<RuntimeProviderShape, ProviderErrorMember>;

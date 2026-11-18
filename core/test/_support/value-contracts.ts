@@ -15,12 +15,17 @@ export const currentTestPlan = (
 ): CurrentExecutableAppPlan => CurrentExecutableAppPlan.make({ ...input, valueModel: 1 });
 
 /** Already-loaded literal data only; authored expressions must use the real compiler. */
-export const literalLandofile = (document: LandofileShape, root: string): LoadScopedLandofile =>
+export const literalLandofile = (
+  document: LandofileShape,
+  root: string,
+  provenance?: import("@lando/landofile/provenance").LandofileProvenance,
+): LoadScopedLandofile =>
   LoadScopedLandofile.make({
     stage: "load-scoped",
     document,
     pendingSites: [],
     context: { appRoot: AbsolutePath.make(root), env: {} },
+    ...(provenance === undefined ? {} : { provenance }),
   });
 
 export const environmentResolverLayer = (

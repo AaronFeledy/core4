@@ -11,12 +11,14 @@ import type {
 import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
+import { listContainerArtifacts } from "@lando/container-runtime/image-list";
 import {
   type PullImageOptions,
   buildImagePullRequest,
   parseImagePullFrame,
   pullImage as runtimePullImage,
 } from "@lando/container-runtime/image-pull";
+import { removeContainerArtifact } from "@lando/container-runtime/image-remove";
 import {
   type ResolveContainerHelper,
   makeProviderLogSourceBinding,
@@ -33,7 +35,6 @@ import {
   bringUp as runtimeBringUp,
   scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
-import { presentLogicalCreateConfig } from "@lando/container-runtime/podman/bring-up-recreate";
 import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import {
   type ContainerDiedEventsOptions,
@@ -841,6 +842,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         );
       case "run":
       case "runStream":
+      case "exportVolume":
+      case "importVolume":
       case "snapshotVolume":
       case "restoreVolume":
       case "importArtifact":
@@ -1177,46 +1180,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               }),
         inspect: Effect.fnUntraced(function* (plan, target) {
           const physical = yield* physicalNetworkPlan(plan);
-          const runtime = yield* runtimeInspect(physical, target, {
-            ...apiOptions,
-            ctx: LANDO_CTX,
-            ...execHelper,
-          });
-          if (physical === plan) return runtime;
-          const logicalRuntime = {
-            ...runtime,
-            ...(runtime.labels === undefined
-              ? {}
-              : {
-                  labels: presentLogicalCreateConfig(runtime.labels, {
-                    physical,
-                    logical: plan,
-                    service: target.service,
-                  }),
-                }),
-          };
-          if (runtime.networkNames === undefined) return logicalRuntime;
-          const logicalNames = new Map<string, string>();
-          if (physical.networking !== undefined && plan.networking !== undefined) {
-            if (physical.networking.perAppBridge !== null && plan.networking.perAppBridge !== null) {
-              logicalNames.set(physical.networking.perAppBridge.name, plan.networking.perAppBridge.name);
-            }
-            const shared = physical.networking.sharedNetworkMembership;
-            const logicalShared = plan.networking.sharedNetworkMembership;
-            if (shared !== undefined && logicalShared !== undefined) {
-              logicalNames.set(shared.name, logicalShared.name);
-            }
-            for (const network of physical.networking.authoredNetworks ?? []) {
-              const logical = plan.networking.authoredNetworks?.find(
-                (candidate) => candidate.key === network.key,
-              );
-              if (logical !== undefined) logicalNames.set(network.name, logical.name);
-            }
-          }
-          return {
-            ...logicalRuntime,
-            networkNames: runtime.networkNames.map((name) => logicalNames.get(name) ?? name),
-          };
+          return yield* runtimeInspect(physical, target, { ...apiOptions, ctx: LANDO_CTX });
         }),
       },
     });
@@ -1796,7 +1760,14 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                     })),
                   ),
                 ),
-        removeArtifact: () => Effect.void,
+        removeArtifact: (request) =>
+          podmanApi === undefined
+            ? Effect.fail(makeUnavailable("removeArtifact"))
+            : removeContainerArtifact(podmanApi, request, LANDO_CTX),
+        listArtifacts: (selector) =>
+          podmanApi === undefined
+            ? Effect.fail(makeUnavailable("listArtifacts"))
+            : listContainerArtifacts(podmanApi, selector, LANDO_CTX),
         apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
           yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
           const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
@@ -1834,7 +1805,6 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                 : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
               reconcile: applyOptions.reconcile,
               onVolumeCreated: applyOptions.onVolumeCreated,
-              ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
               completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
             }).pipe(
               Effect.tap(() => planState.removeOrphanedNetworks(physicalPlan, previousPhysicalPlan)),

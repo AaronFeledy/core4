@@ -1,5 +1,7 @@
+import type { StructuralRedactionNode } from "@lando/sdk/command-result";
 import { McpTransportError } from "@lando/sdk/errors";
-import type { Redactor } from "@lando/sdk/secrets";
+import type { Redactor, SecretFieldRedaction } from "@lando/sdk/secrets";
+import { isSecretFieldName, redactSecretField } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 
 import { isRuntimeProxy } from "./runtime-proxy";
@@ -10,6 +12,7 @@ const STRING_CHUNK_CODE_UNITS = 1_024;
 const SEGMENT_CODE_UNITS = 64 * 1_024;
 const identityRedactor: Redactor = {
   redactString: (text) => text,
+  redactPrefix: (text) => text,
   redactStringBounded: (text) => text,
   redactValue: (value) => value,
 };
@@ -40,15 +43,17 @@ class BoundedJsonWriter {
   readonly #encoder = new TextEncoder();
   readonly #redactor: Redactor;
   readonly #context: string;
+  readonly #policy: StructuralRedactionNode | undefined;
   readonly #ancestors = new WeakSet<object>();
   readonly #segments: string[] = [];
   #pending = "";
   #bytes = 0;
   #inputBytes = 0;
 
-  constructor(redactor: Redactor, context: string) {
+  constructor(redactor: Redactor, context: string, policy?: StructuralRedactionNode) {
     this.#redactor = redactor;
     this.#context = context;
+    this.#policy = policy;
   }
 
   #append(text: string): void {
@@ -91,31 +96,42 @@ class BoundedJsonWriter {
     this.#append('"');
   }
 
-  #secretKeyReplacement(key: string, value: unknown): string | undefined {
-    const redacted = this.#redactor.redactValue({ [key]: null });
-    if (
-      redacted === null ||
-      typeof redacted !== "object" ||
-      Array.isArray(redacted) ||
-      isRuntimeProxy(redacted)
-    ) {
+  #secretDecision(value: unknown, scope: StructuralRedactionNode | undefined): SecretFieldRedaction {
+    // Classification must never run a proxy trap, so a proxy is rejected here
+    // for object fields and array elements alike.
+    if (typeof value === "object" && value !== null && isRuntimeProxy(value))
       throw serializationFailure(this.#context);
+    return redactSecretField((text) => this.#redactor.redactString(text), value, scope);
+  }
+
+  #writeSecretValue(value: unknown, scope: StructuralRedactionNode | undefined): void {
+    this.#writeDecision(this.#secretDecision(value, scope), value, scope);
+  }
+
+  #writeDecision(
+    decision: SecretFieldRedaction,
+    value: unknown,
+    scope: StructuralRedactionNode | undefined,
+  ): void {
+    if (decision.kind === "replace") {
+      this.#appendString(decision.text, false, false);
+      return;
     }
-    const descriptor = Object.getOwnPropertyDescriptor(redacted, key);
-    if (descriptor === undefined || !("value" in descriptor)) throw serializationFailure(this.#context);
-    const replacement = descriptor.value;
-    if (replacement === null) return undefined;
-    if (typeof replacement !== "string") throw serializationFailure(this.#context);
-    // A published default string survives the key rule; ask the same redactor
-    // about the real bytes so registrations and patterns still mask them.
-    if (typeof value !== "string") return replacement;
-    const actual = this.#redactor.redactValue({ [key]: value });
-    if (actual === null || typeof actual !== "object" || Array.isArray(actual) || isRuntimeProxy(actual))
-      return replacement;
-    const actualDescriptor = Object.getOwnPropertyDescriptor(actual, key);
-    if (actualDescriptor === undefined || !("value" in actualDescriptor))
-      throw serializationFailure(this.#context);
-    return typeof actualDescriptor.value === "string" ? actualDescriptor.value : replacement;
+    if (decision.kind === "ordinary") {
+      this.#writeValue(value, false, scope);
+      return;
+    }
+    // The rule keeps structure only for an array or an object whose every key
+    // the schema describes, so no other shape can reach this branch.
+    if (Array.isArray(value)) {
+      this.#writeArray(value, scope, true);
+      return;
+    }
+    if (typeof value === "object" && value !== null) {
+      this.#writeObject(value, scope, true);
+      return;
+    }
+    throw serializationFailure(this.#context);
   }
 
   #withAncestor(value: object, write: () => void): void {
@@ -128,7 +144,11 @@ class BoundedJsonWriter {
     }
   }
 
-  #writeArray(value: ReadonlyArray<unknown>): void {
+  #writeArray(
+    value: ReadonlyArray<unknown>,
+    scope: StructuralRedactionNode | undefined,
+    secret = false,
+  ): void {
     if (
       Object.getPrototypeOf(value) !== Array.prototype ||
       value.length > MAX_OUTBOUND_QUEUED_BYTES ||
@@ -150,14 +170,19 @@ class BoundedJsonWriter {
         } else if (isOmittedObjectValue(descriptor.value)) {
           this.#append("null");
         } else {
-          this.#writeValue(descriptor.value, false);
+          const elementScope = scope?.element(index, value.length);
+          if (secret) this.#writeSecretValue(descriptor.value, elementScope);
+          else this.#writeValue(descriptor.value, false, elementScope);
         }
       }
       this.#append("]");
     });
   }
 
-  #writeObject(value: object): void {
+  #writeObject(value: object, scope: StructuralRedactionNode | undefined, secret = false): void {
+    // A runtime proxy is not inspectable output, and its traps must never run
+    // during classification.
+    if (isRuntimeProxy(value)) throw serializationFailure(this.#context);
     const prototype = Object.getPrototypeOf(value);
     if (
       (prototype !== Object.prototype && prototype !== null) ||
@@ -173,29 +198,34 @@ class BoundedJsonWriter {
         const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (descriptor === undefined) throw serializationFailure(this.#context);
         this.#assertBoundedInputString(key);
-        const secretKeyReplacement = this.#secretKeyReplacement(key, descriptor.value);
-        if (secretKeyReplacement === undefined && !("value" in descriptor)) {
-          throw serializationFailure(this.#context);
-        }
-        if (secretKeyReplacement === undefined && isOmittedObjectValue(descriptor.value)) continue;
+        if (!("value" in descriptor)) throw serializationFailure(this.#context);
+        const fieldValue = descriptor.value;
+        const child = scope?.child(key, value);
+        const secretField = secret || isSecretFieldName(key);
+        const decision = secretField ? this.#secretDecision(fieldValue, child) : undefined;
+        // `JSON.stringify` never emits a key whose value it omits, and the rule
+        // keeps `undefined` under a secret key.
+        const omitted =
+          (decision === undefined || decision.kind === "ordinary") && isOmittedObjectValue(fieldValue);
+        if (omitted) continue;
         if (emitted > 0) this.#append(",");
-        this.#appendString(key, true, false);
+        this.#appendString(key, scope?.keyIsDeclared(key, value) !== true, false);
         this.#append(":");
-        if (secretKeyReplacement !== undefined) this.#appendString(secretKeyReplacement, false, false);
-        else this.#writeValue(descriptor.value, false);
+        if (decision !== undefined) this.#writeDecision(decision, fieldValue, child);
+        else this.#writeValue(fieldValue, false, child);
         emitted += 1;
       }
       this.#append("}");
     });
   }
 
-  #writeValue(value: unknown, root: boolean): void {
+  #writeValue(value: unknown, root: boolean, scope: StructuralRedactionNode | undefined): void {
     if (value === null) {
       this.#append("null");
       return;
     }
     if (typeof value === "string") {
-      this.#appendString(value, true);
+      this.#appendString(value, scope?.stringIsExempt(value) !== true);
       return;
     }
     if (typeof value === "number") {
@@ -214,30 +244,35 @@ class BoundedJsonWriter {
     if (typeof value !== "object") throw serializationFailure(this.#context);
     if (isRuntimeProxy(value)) throw serializationFailure(this.#context);
     if (Array.isArray(value)) {
-      this.#writeArray(value);
+      this.#writeArray(value, scope);
       return;
     }
-    this.#writeObject(value);
+    this.#writeObject(value, scope);
   }
 
   write(value: unknown): string {
-    this.#writeValue(value, true);
+    this.#writeValue(value, true, this.#policy);
     if (this.#segments.length === 0) return this.#pending;
     if (this.#pending.length > 0) this.#segments.push(this.#pending);
     return this.#segments.join("");
   }
 }
 
-const stringifyWithinLimit = (value: unknown, redactor: Redactor, context: string): string =>
-  new BoundedJsonWriter(redactor, context).write(value);
+const stringifyWithinLimit = (
+  value: unknown,
+  redactor: Redactor,
+  context: string,
+  policy: StructuralRedactionNode | undefined,
+): string => new BoundedJsonWriter(redactor, context, policy).write(value);
 
 export const stringifyBoundedJson = (
   value: unknown,
   context: string,
   redactor: Redactor = identityRedactor,
+  policy?: StructuralRedactionNode,
 ): Effect.Effect<string, McpTransportError> =>
   Effect.try({
-    try: () => stringifyWithinLimit(value, redactor, context),
+    try: () => stringifyWithinLimit(value, redactor, context, policy),
     catch: (cause) => (cause instanceof McpTransportError ? cause : serializationFailure(context)),
   });
 
@@ -245,8 +280,9 @@ export const redactBoundedJsonValue = (
   value: unknown,
   redactor: Redactor,
   context: string,
+  policy?: StructuralRedactionNode,
 ): Effect.Effect<import("effect").Schema.Json, McpTransportError> =>
-  stringifyBoundedJson(value, context, redactor).pipe(
+  stringifyBoundedJson(value, context, redactor, policy).pipe(
     Effect.flatMap((encoded) =>
       Effect.try({
         try: (): import("effect").Schema.Json => JSON.parse(encoded),

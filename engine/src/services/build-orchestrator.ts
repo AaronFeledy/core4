@@ -1,4 +1,4 @@
-import { annotateFailureRole } from "@lando/sdk/command-result";
+import { annotateFailureRole, mapFailures } from "@lando/sdk/command-result";
 import { type ServicePlan, clonedServiceParent } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import {
@@ -13,9 +13,13 @@ import { captureHostProbeRunners, validateHealthcheckExecution } from "../subsys
 import { runAppBuild } from "./build-app-runner.ts";
 import { buildStepFor } from "./build-artifact-cache.ts";
 import { publishArtifactBuildStepSkip, redactedBuildContext } from "./build-artifact-events.ts";
+import { artifactBuildStoreKey } from "./build-artifact-name.ts";
+import { sweepBuiltArtifacts } from "./build-artifact-reclamation.ts";
+import { openArtifactBuildResults } from "./build-artifact-results.ts";
 import { buildService } from "./build-artifact-service.ts";
 import { BuildOwner } from "./build-owner.ts";
 import { registerBuildRedaction } from "./build-redaction.ts";
+import { buildResultsError } from "./build-results.ts";
 import { makeBuildTaskProgress } from "./build-task-progress.ts";
 import { sweepAppBuildTranscripts } from "./build-transcript-cleanup.ts";
 
@@ -58,8 +62,18 @@ export const layer = Layer.effect(
         const provider = (yield* SelectedProvider) ?? (yield* registry.select(plan));
         const redaction = yield* registerBuildRedaction(plan);
         const progress = makeBuildTaskProgress(events, plan);
+        const storeKey = yield* artifactBuildStoreKey(paths.roots.userCacheRoot).pipe(
+          mapFailures((cause) => buildResultsError(provider.id, cause)),
+        );
+        const activity = { dispatched: false, dropped: false };
         return yield* Effect.gen(function* () {
           yield* progress.startTree;
+          const bucket = yield* openArtifactBuildResults(stateStore).pipe(
+            mapFailures((cause) => buildResultsError(provider.id, cause)),
+          );
+          const cachedArtifacts =
+            (yield* bucket.get.pipe(mapFailures((cause) => buildResultsError(provider.id, cause))))
+              ?.results ?? [];
           const buildBatch = (batch: ReadonlyArray<ServicePlan>) =>
             Effect.forEach(
               batch,
@@ -74,6 +88,9 @@ export const layer = Layer.effect(
                   redaction,
                   service,
                   stateStore,
+                  storeKey,
+                  cachedArtifacts,
+                  activity,
                 }),
               { concurrency: 2 },
             );
@@ -116,6 +133,16 @@ export const layer = Layer.effect(
               }
             });
           }),
+          Effect.onExit((exit) =>
+            (Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)) ||
+            (!activity.dispatched && !activity.dropped)
+              ? Effect.void
+              : sweepBuiltArtifacts([provider.id], (text) => redaction.redactor.redactString(text)).pipe(
+                  Effect.provideService(PathsService, paths),
+                  Effect.provideService(StateStore, stateStore),
+                  Effect.provideService(RuntimeProviderRegistry, registry),
+                ),
+          ),
         );
       }),
       buildApp: Effect.fn("BuildOrchestrator.buildApp")(function* (plan, options) {

@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
-import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { AbsolutePath, AppId, AppPlan, LandofileShape, PortablePath, ProviderId } from "@lando/sdk/schema";
 import { DateTime, Effect, Schema } from "effect";
 import { runAppEvent } from "../../src/operations/events.ts";
@@ -13,6 +12,7 @@ import {
 import * as toolingForPlan from "../../src/planner/effective-tooling.ts";
 import { compileEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { validEventNames } from "../../src/planner/event-names.ts";
+import { provenanceIn } from "../provenance-support.ts";
 
 const eventPlan = (): AppPlan => ({
   id: AppId.make("same-app"),
@@ -39,19 +39,17 @@ describe("compileEffectiveTooling", () => {
           file,
         }),
       );
-      const tasks = compileEffectiveTooling({
+      const resolved = toolingForPlan.resolveEffectiveTooling({
         landofile: compiled.document,
+        provenance: provenanceIn(compiled),
         services: [{ name: "web", tooling: { inspect: { cmd: "service-type" } } }],
       });
-      const plan = toolingForPlan.attachEffectiveTooling(
-        eventPlan(),
-        tasks,
-        {},
-        toolingForPlan.disabledToolingSources(compiled.document, tasks),
-      );
+      const plan = toolingForPlan.attachEffectiveTooling(eventPlan(), resolved.tasks, {
+        provenance: resolved.provenance,
+      });
       const roundTrip = Schema.decodeUnknownSync(AppPlan)(Schema.encodeSync(AppPlan)(plan));
       expect(toolingForPlan.effectiveToolingForPlan(roundTrip)?.inspect).toEqual({ disabled: true });
-      expect(toolingForPlan.disabledToolingSourceForPlan(roundTrip, "inspect")).toBe(file);
+      expect(toolingForPlan.toolingSourceResolverForPlan(roundTrip)("inspect").path).toBe(file);
     },
   );
   test("false drops a service-type task definition wholesale", () => {
@@ -69,19 +67,19 @@ describe("compileEffectiveTooling", () => {
   });
   test("attachment preserves internal include provenance", () => {
     // Given
-    const landofile = rememberInternalToolingTasks(
-      { tooling: { "ops:migrate": { cmd: "migrate" }, inspect: { cmd: "inspect" } } },
-      ["ops:migrate"],
-    );
+    const landofile = { tooling: { "ops:migrate": { cmd: "migrate" }, inspect: { cmd: "inspect" } } };
     const tooling = compileEffectiveTooling({ landofile, services: [] });
     // When
-    const plan = toolingForPlan.attachEffectiveTooling(eventPlan(), tooling);
+    const plan = toolingForPlan.attachEffectiveTooling(eventPlan(), tooling, {
+      internalNames: ["ops:migrate"],
+    });
     const attached = toolingForPlan.effectiveToolingForPlan(plan);
     // Then
     expect(attached).toEqual(tooling);
     if (attached === undefined) throw new Error("missing attached tooling");
-    expect(validEventNames(attached)).toEqual(validEventNames(tooling));
-    expect(validEventNames(attached)).not.toContain("pre-ops:migrate");
+    expect(toolingForPlan.internalToolingNamesForPlan(plan)).toEqual(["ops:migrate"]);
+    expect(validEventNames(attached, [])).toEqual(validEventNames(tooling, []));
+    expect(validEventNames(attached, ["ops:migrate"])).not.toContain("pre-ops:migrate");
   });
   test("returns attached effective tasks when tooling is attached to a plan", () => {
     // Given

@@ -549,22 +549,6 @@
     "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
   },
   {
-    "fixture": "core/examples/mounts",
-    "outcome": {
-      "stage": "lint",
-      "valid": false,
-      "violations": [
-        {
-          "message": "Route web1.lando-mounts.lndo.site for service web1 is ambiguous between HTTP listeners: 8080/tcp, 8443/tcp.",
-          "path": ["services", "web1", "routes"],
-          "rule": "landofile.validation"
-        }
-      ]
-    },
-    "category": "conversion-gap",
-    "reason": "Two translated HTTP listeners leave the default route ambiguous, which final planning rejects (#2061)."
-  },
-  {
     "fixture": "core/examples/networking",
     "outcome": {
       "stage": "lint",
@@ -2453,7 +2437,7 @@
         {
           "rule": "landofile.service",
           "path": ["services", "cli"],
-          "message": "Node inference found neither .nvmrc nor package.json. Add .nvmrc or package.json engines.node, then retry."
+          "message": "Node inference found neither .nvmrc nor package.json."
         }
       ]
     },
@@ -2503,7 +2487,7 @@
         {
           "rule": "landofile.service",
           "path": ["services", "cli"],
-          "message": "Node inference found neither .nvmrc nor package.json. Add .nvmrc or package.json engines.node, then retry."
+          "message": "Node inference found neither .nvmrc nor package.json."
         }
       ]
     },
@@ -2553,7 +2537,7 @@
         {
           "rule": "landofile.service",
           "path": ["services", "cli"],
-          "message": "Node inference found neither .nvmrc nor package.json. Add .nvmrc or package.json engines.node, then retry."
+          "message": "Node inference found neither .nvmrc nor package.json."
         }
       ]
     },

@@ -63,6 +63,7 @@ export const surfaceDeferredUpdateReceipts = async (argv: ReadonlyArray<string>)
         context: { commandId: "meta:update" },
         rendererMode: renderer.mode,
       }),
+    formatErrorAlreadyRedacted: true,
   });
   return true;
 };

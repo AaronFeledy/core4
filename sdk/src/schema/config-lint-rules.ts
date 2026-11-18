@@ -107,6 +107,13 @@ export const CONFIG_LINT_RULES = {
       "Service `networks:` keys are declared at the top level, no `networks.default`, `name` only with `external: true`, no `driver` on an external network, and valid keys.",
     examplePaths: ["services.web.networks.backend", "networks.backend.name"],
   },
+  "service.projectUser": {
+    stages: ["planning"],
+    severities: ["warning"],
+    summary:
+      "A project user the plan deliberately did not realize: an explicit `projectUser: false` opt-out, or a provider that cannot map one container id to the host user.",
+    examplePaths: ["services.web.projectUser"],
+  },
   "landofile.capability": {
     stages: ["resolve", "planning"],
     severities: ["error", "warning"],
@@ -139,7 +146,7 @@ export const CONFIG_LINT_RULES = {
     stages: ["resolve", "planning"],
     severities: ["error"],
     summary:
-      "No enabled tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-` or `post-` events Lando reserves, such as `start` or `pull`. Lint-only invocation checks require declared flags/args references, safe raw argument placement, and var definitions and task placement independent of shell-computed vars.",
+      "No enabled tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-` or `post-` events Lando reserves, such as `start` or `pull`. Lint-only declaration checks require valid flag aliases, defaults, positional ordering, wrappers, service selectors, and environments without reserved runtime keys. Lint-only invocation checks require declared flags/args references, safe raw argument placement, and var definitions and task placement independent of shell-computed vars.",
     examplePaths: ["tooling.run"],
   },
   "landofile.host-shell": {
@@ -161,6 +168,13 @@ export const CONFIG_LINT_RULES = {
     summary:
       "A Landofile `router.bindAddress` does not bind the shared router; the key is installation-wide.",
     examplePaths: ["router.bindAddress"],
+  },
+  "service.router-tls-termination": {
+    stages: ["resolve"],
+    severities: ["warning"],
+    summary:
+      "Generated Apache serves HTTPS routes while native TLS is off because `certs: false`, custom certificate material, or a non-root `user:`; TLS terminates at the router and an app force-HTTPS rule redirects in a loop.",
+    examplePaths: ["services.appserver.certs", "services.appserver.user"],
   },
   "healthcheck.bare-compose-marker": {
     stages: ["effective"],

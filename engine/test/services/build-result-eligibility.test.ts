@@ -2,6 +2,10 @@ import { expect, test } from "bun:test";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import {
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
+import {
   BuildOwner,
   findCompleteBuildResult,
   invalidateAppBuildResult,
@@ -25,6 +29,8 @@ test("dispatch of another key retires historical app eligibility without losing 
     durationMs: 1,
   } as const;
   const artifact = {
+    owner: BuildOwner.root(AbsolutePath.make("/tmp/eligibility")).key,
+    providerId: "test",
     phase: "artifact",
     service: app.service,
     buildKey: "image",
@@ -48,7 +54,7 @@ test("dispatch of another key retires historical app eligibility without losing 
         buildKey: "sibling",
         transcriptPath: AbsolutePath.make("/tmp/sibling.log"),
       });
-      yield* recordBuildResult(bucket, artifact);
+      yield* recordArtifactBuildResult(yield* openArtifactBuildResults(store.service), artifact);
     }),
   );
   const before = await Effect.runPromise(bucket.get);
@@ -57,7 +63,7 @@ test("dispatch of another key retires historical app eligibility without losing 
   await Effect.runPromise(invalidateAppBuildResult(bucket, { ...app, buildKey: "unrecorded" }));
 
   const after = (await Effect.runPromise(bucket.get)) ?? [];
-  expect(after).toHaveLength(7);
+  expect(after).toHaveLength(6);
   expect(after).toMatchObject(before ?? []);
   for (const buildKey of ["a", "b", "c", "d", "e"]) {
     expect(findCompleteBuildResult(after, { ...app, buildKey })).toBeUndefined();
@@ -65,7 +71,8 @@ test("dispatch of another key retires historical app eligibility without losing 
   expect(
     findCompleteBuildResult(after, { ...app, step: "web:app:sibling", buildKey: "sibling" }),
   ).toMatchObject({ step: "web:app:sibling", buildKey: "sibling", containerId: "native-1" });
-  expect(findCompleteBuildResult(after, artifact)).toEqual(
-    before?.find((entry) => entry.phase === "artifact"),
-  );
+  expect(
+    (await Effect.runPromise((await Effect.runPromise(openArtifactBuildResults(store.service))).get))
+      ?.results,
+  ).toMatchObject([artifact]);
 });

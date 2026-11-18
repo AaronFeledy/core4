@@ -103,13 +103,18 @@ export class FakeContainers {
     return json(204, {});
   }
 
-  list(filters: { readonly volume?: readonly string[]; readonly label?: readonly string[] }) {
+  list(filters: {
+    readonly volume?: readonly string[];
+    readonly label?: readonly string[];
+    readonly ancestor?: readonly string[];
+  }) {
     return json(
       200,
       [...this.entries.values()]
         .filter(
           (container) =>
             (filters.volume ?? []).every((name) => container.mounts.some((mount) => mount.Name === name)) &&
+            (filters.ancestor ?? []).every((ref) => container.config.Image === ref) &&
             matchesLabels(filters.label ?? [], container.config.Labels),
         )
         .map((container) => ({

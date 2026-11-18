@@ -39,7 +39,9 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
   const owner =
     plan.target === undefined ? BuildOwner.root(plan.root) : BuildOwner.fromPlan(plan.target.plan);
   const buildProviderId = String(plan.target?.plan.provider ?? plan.applied?.plan.provider ?? "lando");
-  const removeBuildOutput = removeAppBuildOutput(owner, buildProviderId);
+  const removeBuildOutput = removeAppBuildOutput(owner, buildProviderId, yield* TeardownProvider, {
+    images: plan.options.purgeCaches === true ? "remove" : "release",
+  });
   const evidence = plan.evidence;
   const ownsUserData = plan.refs.length === 0 || plan.refs.some((ref) => ref.kind === "user");
   if (evidence === undefined) {
@@ -53,8 +55,8 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
     // A start that failed after certificate preparation leaves only host-side leaf material.
     if ((yield* TeardownProvider) === undefined)
       yield* removeServiceCertificates(appIdentityKey("owner", plan.root));
-    yield* removeBuildOutput;
-    return unchanged(plan.name);
+    const builtImages = yield* removeBuildOutput;
+    return { ...unchanged(plan.name), builtImages };
   }
   const registry = yield* RuntimeProviderRegistry;
   const target = plan.target;
@@ -242,7 +244,7 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
       return result;
     }),
   });
-  yield* removeBuildOutput;
+  const builtImages = yield* removeBuildOutput;
   yield* publishDestroyCompletion({ ...plan, evidence }, result);
-  return hooks === undefined ? result : { ...result, landofileEvents: hooks.outcome };
+  return { ...result, builtImages, ...(hooks === undefined ? {} : { landofileEvents: hooks.outcome }) };
 });

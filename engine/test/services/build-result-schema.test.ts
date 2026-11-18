@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
+import { ArtifactBuildResult } from "../../src/services/build-artifact-results.ts";
 import {
+  AppBuildResult,
   BuildOwner,
   BuildResultEntry,
   openAppBuildResults,
@@ -42,16 +44,18 @@ test("artifact provenance round-trips without app fields", () => {
   const encoded = {
     ...common,
     phase: "artifact",
+    owner: "owner",
+    providerId: "test",
     artifactRef: "web:built",
     artifactOrigin: "build",
     sourceArtifactRef: "web:source",
     sourceArtifactDigest: "sha256:source",
   } as const;
-  const decoded = Schema.decodeUnknownSync(BuildResultEntry)(encoded);
-  expect(Schema.encodeSync(BuildResultEntry)(decoded)).toEqual(encoded);
+  const decoded = Schema.decodeUnknownSync(ArtifactBuildResult)(encoded);
+  expect(Schema.encodeSync(ArtifactBuildResult)(decoded)).toEqual(encoded);
 });
 
-test("StateStore discards a v3 payload at the current owner bucket location", async () => {
+test("StateStore discards a v4 mixed payload at the current owner bucket location", async () => {
   const store = makeTestStateStore();
   const owner = BuildOwner.root(AbsolutePath.make("/tmp/cache-owner"));
   const old = await Effect.runPromise(
@@ -60,7 +64,7 @@ test("StateStore discards a v3 payload at the current owner bucket location", as
       namespace: "build-results-owned",
       key: `root-${owner.key}.bin`,
       schema: Schema.Unknown,
-      version: 3,
+      version: 4,
       codec: "binary",
       lock: "advisory",
       onCorrupt: "quarantine",
@@ -72,7 +76,7 @@ test("StateStore discards a v3 payload at the current owner bucket location", as
 
   const current = await Effect.runPromise(openAppBuildResults(store.service, owner));
   expect(await Effect.runPromise(current.get)).toEqual([]);
-  const { completedAt: _, ...fresh } = Schema.decodeUnknownSync(BuildResultEntry)({
+  const { completedAt: _, ...fresh } = Schema.decodeUnknownSync(AppBuildResult)({
     ...common,
     phase: "app",
     step: "install",
@@ -81,5 +85,5 @@ test("StateStore discards a v3 payload at the current owner bucket location", as
   expect(await Effect.runPromise(current.get)).toMatchObject([{ phase: "app", step: "install" }]);
   const bytes = await Effect.runPromise(store.readRaw(current.path));
   if (bytes === null) throw new TypeError("Missing current cache bytes");
-  expect(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(4)).toBe(4);
+  expect(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(4)).toBe(5);
 });

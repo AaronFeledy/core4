@@ -17,6 +17,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer, Stream } from "effect";
 import {
@@ -34,6 +35,7 @@ import { plan, web } from "../operations/start-progress-topology-support.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 interface StartupFixtureOptions {
+  readonly onEvent?: (event: LandoEvent) => void;
   /** Runs before the registry records the scratch app as running. */
   readonly registration?: Effect.Effect<void, ScratchAppError>;
   /** Publishes a route for `web` and starts through this router. */
@@ -72,7 +74,7 @@ export const withStartupFixture = async (
 const makeFixture = async (
   root: string,
   overrides: Partial<RuntimeProviderShape>,
-  { registration = Effect.void, router }: StartupFixtureOptions,
+  { registration = Effect.void, router, onEvent }: StartupFixtureOptions,
 ) => {
   const sourceRoot = AbsolutePath.make(join(root, "source"));
   await mkdir(sourceRoot);
@@ -155,6 +157,7 @@ const makeFixture = async (
       }),
   });
   const dependencies = Layer.mergeAll(
+    PrivateFileAccessService.layer,
     router === undefined ? Layer.empty : Layer.succeed(RouterService, router),
     FileSystem.layer,
     Layer.succeed(PathsService, makeLandoPaths()),
@@ -203,6 +206,7 @@ const makeFixture = async (
         publish: (event) =>
           Effect.sync(() => {
             events.push(event);
+            onEvent?.(event);
           }),
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("unused"),

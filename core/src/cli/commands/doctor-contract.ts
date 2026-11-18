@@ -15,6 +15,7 @@ export const DOCTOR_SECTION_IDS = [
   "global-config",
   "provider",
   "app-listeners",
+  "database-credentials",
   "certificate-authority",
   "network-trust",
   "subsystems",

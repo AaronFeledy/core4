@@ -332,7 +332,7 @@ test("disable-first admission rejects user activation without provider apply", a
   });
 });
 
-test.each(["start", "selected-rebuild"] as const)(
+test.each(["start", "selected rebuild"] as const)(
   "%s rechecks disabled policy after its build",
   async (operation) => {
     await withFixture(async (f) => {
@@ -382,6 +382,8 @@ test("selected restart rechecks policy after its pre-restart hook before stoppin
           ...registry,
           resolveAppliedPlan: (root) =>
             root === f.plan.root ? Effect.succeed(f.plan) : registry.resolveAppliedPlan(root),
+          appliedPlansFor: (root, providerId) =>
+            root === f.plan.root ? Effect.succeed([f.plan]) : registry.appliedPlansFor(root, providerId),
           select: (target) =>
             registry.select(target).pipe(
               Effect.map((provider) => ({

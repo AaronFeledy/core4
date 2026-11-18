@@ -67,7 +67,7 @@ export const tryPluginCommandHelp = async (
           aliases,
           styled: shouldStyleHelp({
             isTTY: catalog.context?.io.stdoutIsTTY === true,
-            env: catalog.context?.env ?? process.env,
+            env: catalog.context?.env ?? {},
             rendererMode: activeRendererMode,
           }),
         }),
@@ -103,7 +103,7 @@ export const printPluginTopicHelp = async (
       renderPluginTopicHelp(token, topic.description, pluginHelpRows(listing.rows), {
         style: shouldStyleHelp({
           isTTY: catalog.context?.io.stdoutIsTTY === true,
-          env: catalog.context?.env ?? process.env,
+          env: catalog.context?.env ?? {},
           rendererMode: activeRendererMode,
         }),
       }),

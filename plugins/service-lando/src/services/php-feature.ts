@@ -15,7 +15,13 @@ import {
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
-import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
+import {
+  DEBIAN_APACHE_PORTS_CONF_PATH,
+  apacheDebianSslBuildStep,
+  apacheListenBuildStep,
+  authoredListenPort,
+} from "./apache.ts";
+import { generatedHttpsEndpoint, nativeTlsEligible, nativeTlsListener } from "./apache-native-tls.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
 import { phpBaselineBuildStep } from "./php-baseline.ts";
 import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
@@ -81,10 +87,12 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     case "apache":
       ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
       if (policy.processAuthority === "lando") {
+        const nativeTls = nativeTlsEligible({ owned: true, config: service });
         ctx.addBuildStep(apacheDefaultSiteRemovalBuildStep());
         ctx.addBuildStep(landoErrorPagesBuildStep());
         if (mode.authoredApachePort !== undefined)
           ctx.addBuildStep(apacheListenBuildStep(DEBIAN_APACHE_PORTS_CONF_PATH));
+        if (nativeTls) ctx.addBuildStep(apacheDebianSslBuildStep());
         ctx.setCommand([
           ...apacheStartCommand(
             webroot,
@@ -92,6 +100,14 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
             mode.authoredApachePort,
             service.user === undefined,
             uploadDirs,
+            nativeTls
+              ? nativeTlsListener({
+                  plainPort: mode.listener.port,
+                  serviceName: ctx.serviceName,
+                  appName: ctx.appName ?? "app",
+                  appRoot: ctx.appRoot,
+                })
+              : undefined,
           ),
           ...(service.environment?.BACKDROP_SETTINGS === undefined
             ? []
@@ -144,9 +160,14 @@ export const phpServiceFeature: ServiceFeatureDefinition = {
   }),
   declareEndpoints: (ctx) =>
     Effect.sync(() => {
-      const { via } = Schema.decodeUnknownSync(PhpFeatureConfig)(ctx.config);
+      const { via, policy } = Schema.decodeUnknownSync(PhpFeatureConfig)(ctx.config);
       const { listener } = phpServingMode(via, authoredListenPort(ctx.normalizedConfig.port));
-      return listener === undefined ? [] : servicePortEndpoints(ctx, listener);
+      if (listener === undefined) return [];
+      const endpoints = servicePortEndpoints(ctx, listener);
+      const owned = via === "apache" && policy.processAuthority === "lando";
+      return nativeTlsEligible({ owned, config: ctx.normalizedConfig })
+        ? [...endpoints, generatedHttpsEndpoint({ serviceName: ctx.serviceName, plainPort: listener.port })]
+        : endpoints;
     }),
   apply: serviceFeatureApply(PHP_FEATURE_ID, "service-lando.php failed to apply", applyPhpFeature),
 };

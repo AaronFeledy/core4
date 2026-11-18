@@ -148,7 +148,7 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
     const evidence =
       execution.cleanupOwnership === false
         ? yield* registry
-            .resolveAppliedPlan(validatedTarget.plan.root, validatedTarget.app)
+            .resolveAppliedPlan(validatedTarget.plan.root, validatedTarget.app, "exact")
             .pipe(
               Effect.map((plan) =>
                 plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },

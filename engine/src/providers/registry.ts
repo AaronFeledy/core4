@@ -12,6 +12,7 @@ import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { AbsolutePath, type AppPlan, type AppRef, type PluginManifest, ProviderId } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
+  type AppliedPlanLookup,
   ConfigService,
   ContainerHelperAssets,
   Downloader,
@@ -217,9 +218,9 @@ export const makeRuntimeProviderRegistry = (
       });
 
       const resolveAppliedPlan = Effect.fn("RuntimeProviderRegistry.resolveAppliedPlan")(
-        (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">) =>
+        (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">, lookup?: AppliedPlanLookup) =>
           appliedStateProviders.pipe(
-            Effect.flatMap((providers) => resolveAppliedPlanEvidence(root, providers, app)),
+            Effect.flatMap((providers) => resolveAppliedPlanEvidence(root, providers, app, lookup)),
           ),
       );
 

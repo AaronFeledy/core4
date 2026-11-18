@@ -17,8 +17,29 @@ export * from "./public-default-credentials.ts";
 export * from "./redactor.ts";
 export * from "./redactor-profiles.ts";
 export { type ParsedSecretReference, parseSecretReference } from "./reference.ts";
-export { isSecretEnvName, isSecretFieldName, isSecretStructuralName } from "./secret-names.ts";
+export type { OpenSecretConstruct } from "./secret-constructs.ts";
+export {
+  type ContinuationBoundary,
+  type ContinuationSuffix,
+  type SecretContinuation,
+  type SecretContinuationStep,
+  continueSecretValue,
+  startSecretContinuation,
+} from "./secret-continuation.ts";
+export {
+  isSecretEnvName,
+  isSecretFieldName,
+  isSecretStructuralName,
+  isSignedQueryName,
+} from "./secret-names.ts";
+export { findOpenSecretConstruct, maskOpenSecretConstruct } from "./secret-scanner.ts";
 export { encodeUriComponent } from "./uri-component.ts";
+export {
+  type SecretFieldRedaction,
+  type ValueRedactionScope,
+  redactSecretField,
+  redactValueWith,
+} from "./value-redaction.ts";
 
 /** Container transport credentials recovered only for app output redaction. */
 export const HOST_PROXY_CREDENTIAL_ENV_NAMES = [

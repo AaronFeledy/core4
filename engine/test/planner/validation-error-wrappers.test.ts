@@ -12,7 +12,7 @@ import { servicePlanError } from "../../src/planner/service-types.ts";
 const wrappers = [
   {
     name: "servicePlanError",
-    wrap: (cause: unknown) => servicePlanError("/app", "web", cause),
+    wrap: (cause: unknown) => servicePlanError({ appRoot: "/app", serviceName: "web", cause }),
     path: ["services", "web"],
     fallback: "Invalid service web.",
     remediation: "Correct the configuration of service web.",
@@ -68,7 +68,7 @@ test("service type field issues are prefixed without losing their suggestions", 
     ],
     remediation: "Set port: 5433",
   });
-  expect(servicePlanError("/app", "db", error).issues).toEqual([
+  expect(servicePlanError({ appRoot: "/app", serviceName: "db", cause: error }).issues).toEqual([
     { path: ["services", "db", "environment", "PGPORT"], message: "Use port", suggestion: "Set port: 5433" },
     { path: ["services", "db", "port"], message: "Reserved port", suggestion: "Set port: 5433" },
   ]);
@@ -84,7 +84,7 @@ test.each([{ issues: undefined }, { issues: [] }])(
       remediation:
         "Correct the `synthetic` service configuration in the Landofile (see the reported field path), then re-run.",
     });
-    expect(servicePlanError("/app", "db", error).issues).toEqual([
+    expect(servicePlanError({ appRoot: "/app", serviceName: "db", cause: error }).issues).toEqual([
       {
         path: ["services", "db"],
         message: "Bad service",
@@ -147,4 +147,82 @@ test.each(wrappers)("$name wraps a non-Error cause", ({ wrap, path, fallback, re
   expect(result.message).toBe(fallback);
   expect(result.remediation).toBe(remediation);
   expect(result.issues).toEqual([{ path, message: fallback }]);
+});
+
+const projectFileError = (file: string) =>
+  new ServiceTypeError({
+    serviceType: "node",
+    message: '.nvmrc constraint "lts/*" conflicts with package.json engines.node "^24".',
+    issues: [
+      {
+        path: [],
+        message: '.nvmrc constraint "lts/*" conflicts with package.json engines.node "^24".',
+        suggestion: "Make both project files describe compatible Node versions.",
+        source: { layer: "project-file", file, path: [] },
+      },
+    ],
+    remediation: "Make both project files describe compatible Node versions.",
+  });
+
+test("attributes a service type issue to the project file the planner read", () => {
+  // Given a service type that named the declared .nvmrc.
+  const cause = projectFileError(".nvmrc");
+  // When the planner boundary resolves project files under the app root.
+  const result = servicePlanError({
+    appRoot: "/app",
+    serviceName: "web",
+    cause,
+    projectFiles: [
+      { path: ".nvmrc", present: true, text: "lts/*", sha256: "sha256:nvmrc" },
+      { path: "package.json", present: true, text: "{}", sha256: "sha256:package" },
+    ],
+  });
+  // Then the issue and the error both name the absolute project file.
+  expect(result.file).toBe("/app/.nvmrc");
+  expect(result.issues).toEqual([
+    {
+      path: ["services", "web"],
+      message: '.nvmrc constraint "lts/*" conflicts with package.json engines.node "^24".',
+      suggestion: "Make both project files describe compatible Node versions.",
+      source: { layer: "project-file", file: "/app/.nvmrc", path: [] },
+    },
+  ]);
+});
+
+test("resolves a nested packageRoot project file under the app root", () => {
+  const result = servicePlanError({
+    appRoot: "/app",
+    serviceName: "web",
+    cause: projectFileError("apps/web/.nvmrc"),
+    projectFiles: [{ path: "apps/web/.nvmrc", present: false }],
+  });
+  expect(result.file).toBe("/app/apps/web/.nvmrc");
+  expect(result.issues[0]?.source).toEqual({
+    layer: "project-file",
+    file: "/app/apps/web/.nvmrc",
+    path: [],
+  });
+});
+
+test("keeps .lando.yml for an authored service issue", () => {
+  const cause = new ServiceTypeError({
+    serviceType: "synthetic",
+    message: "Bad listener",
+    issues: [{ path: ["port"], message: "Reserved port" }],
+    remediation: "Set port: 5433",
+  });
+  const result = servicePlanError({ appRoot: "/app", serviceName: "db", cause });
+  expect(result.file).toBe("/app/.lando.yml");
+  expect(result.issues[0]?.source).toBeUndefined();
+});
+
+test("does not name a project file the planner did not read", () => {
+  const result = servicePlanError({
+    appRoot: "/app",
+    serviceName: "web",
+    cause: projectFileError("secrets.txt"),
+    projectFiles: [{ path: ".nvmrc", present: false }],
+  });
+  expect(result.file).toBe("/app/.lando.yml");
+  expect(result.issues[0]?.source).toBeUndefined();
 });

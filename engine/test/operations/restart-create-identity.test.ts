@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, test } from "bun:test";
 import type { EngineHttpApi, EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { networkOwnershipLabels } from "@lando/container-runtime/native-ownership";
 import { bringUp } from "@lando/container-runtime/podman/bring-up";
@@ -9,14 +9,11 @@ import {
 } from "@lando/container-runtime/testing/exec-supervision";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import { ServiceName, landoAppNetworkName, landoSharedNetworkName } from "@lando/sdk/schema";
-import { BuildOrchestrator, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { restartApp } from "../../src/operations/restart.ts";
-import * as Gpg from "../../src/operations/start-gpg-agent.ts";
-import * as HostProxy from "../../src/operations/start-host-proxy.ts";
-import * as Ssh from "../../src/operations/start-ssh-agent.ts";
 import { serviceWithArtifact } from "../../src/services/build-artifact-runner.ts";
-import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
+import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const declared: ServicePlan = {
   ...web,
@@ -39,15 +36,21 @@ const realized = serviceWithArtifact(declared, {
 const applied: AppPlan = { ...desired, services: { ...desired.services, [web.name]: realized } };
 
 const runRestart = (
-  service: ServicePlan,
-  recorded = applied,
-  options: { readonly driftAtStop?: boolean; readonly initiallyStopped?: boolean } = {},
+  options: {
+    readonly driftAtStop?: boolean;
+    readonly initiallyStopped?: boolean;
+    readonly missingContainer?: boolean;
+    readonly allowsCreationValues?: boolean;
+  } = {},
 ) => {
   const mutations: string[] = [];
+  const secretReads: string[] = [];
   const requests: EngineHttpRequest[] = [];
   const inspections: (AppPlan | undefined)[] = [];
   let running = options.initiallyStopped !== true;
-  let labels = commonContainerLabels(applied, realized);
+  let exists = options.missingContainer !== true;
+  let containerId = "retained-container";
+  let labels = options.missingContainer === true ? {} : commonContainerLabels(applied, realized);
   const privateNetworkName = landoAppNetworkName(applied);
   const sharedNetworkName = landoSharedNetworkName(applied);
   if (privateNetworkName === undefined || sharedNetworkName === undefined)
@@ -73,30 +76,42 @@ const runRestart = (
           return { status: 200, body: "{}" };
         if (request.path.startsWith("/networks/") || request.path.startsWith("/libpod/networks/"))
           throw new Error(`Unexpected network request: ${request.method} ${request.path}`);
+        if (request.method === "GET" && request.path.startsWith("/containers/json"))
+          return { status: 200, body: "[]" };
         if (request.method === "GET" && request.path.endsWith("/json")) {
-          return {
-            status: 200,
-            body: JSON.stringify({
-              Id: "retained-container",
-              Config: { Labels: labels },
-              State: { Running: running },
-              Mounts: [
-                { Type: "volume", Name: "retained-anonymous-data", Destination: "/var/lib/postgresql/data" },
-              ],
-            }),
-          };
+          return exists
+            ? {
+                status: 200,
+                body: JSON.stringify({
+                  Id: containerId,
+                  Config: { Labels: labels },
+                  State: { Running: running },
+                  Mounts: [
+                    {
+                      Type: "volume",
+                      Name: "retained-anonymous-data",
+                      Destination: "/var/lib/postgresql/data",
+                    },
+                  ],
+                }),
+              }
+            : { status: 404, body: "{}" };
+        }
+        if (request.method === "POST" && request.path.startsWith("/containers/create")) {
+          containerId = "recreated-container";
+          exists = true;
+          return { status: 201, body: "{}" };
         }
         if (request.path.endsWith("/start")) running = true;
         return { status: 204, body: "" };
       }),
   };
-  const current = { ...desired, services: { ...desired.services, [web.name]: service } };
   const harness = makeHarness({
-    plannedApp: current,
+    plannedApp: desired,
     exec: () => Effect.die("Selected restart must not seed a GPG home"),
     inspect: (target) => {
       inspections.push(target.plan);
-      return inspect(target.plan ?? current, target, {
+      return inspect(target.plan ?? desired, target, {
         api,
         ctx: { providerId: "lando", remediation: "Retry.", env: {} },
         ...fixtureHelperOptions,
@@ -105,144 +120,119 @@ const runRestart = (
     onStop: () => {
       mutations.push("stop");
       running = false;
-      if (options.driftAtStop) labels = commonContainerLabels(applied, { ...realized, command: ["changed"] });
+      if (options.driftAtStop === true)
+        labels = commonContainerLabels(applied, { ...realized, command: ["changed"] });
     },
-    apply: (runtimePlan, options) => {
+    apply: (runtimePlan, runtimeOptions) => {
       mutations.push("apply");
-      expect(options.forbidRecreate).toBe(true);
-      expect(options.recordedPlan).toBe(recorded);
-      expect(options.completionPlan).toBe(current);
       expect(Object.keys(runtimePlan.services)).toEqual([web.name]);
+      // The build stamped the derived artifact before apply, and restart never re-resolved the base ref.
+      expect(runtimePlan.services[web.name]?.artifact).toEqual(realized.artifact);
       return bringUp(runtimePlan, {
         ...fixtureHelperOptions,
-        ...options,
+        ...runtimeOptions,
         api,
         ctx: { providerId: "lando", remediation: "Retry.", env: {} },
-        ensureImage: () => Effect.die("restart must not pull"),
-        resolveServiceEnvironment: () => Effect.die("restart must not resolve creation values"),
+        ensureImage:
+          options.allowsCreationValues === true
+            ? () => Effect.void
+            : () => Effect.die("restart must not pull"),
+        resolveServiceEnvironment:
+          options.allowsCreationValues === true
+            ? () => Effect.succeed({ PASSWORD: "resolved-secret" })
+            : () => Effect.die("restart must not resolve creation values"),
       });
     },
+    // The artifact build stamps the applied artifact onto the selected service.
+    buildResult: (buildPlan) =>
+      buildPlan.id !== desired.id
+        ? buildPlan
+        : { ...buildPlan, services: { ...buildPlan.services, [web.name]: realized } },
     providerOverrides: {
-      buildArtifact: () => Effect.die("restart must not build"),
+      buildArtifact: () => Effect.die("restart must not build an artifact"),
       pullArtifact: () => Effect.die("restart must not pull"),
     },
     secretStore: {
-      id: "unavailable",
-      get: () => Effect.die("restart must not resolve creation values"),
-      has: () => Effect.die("restart must not consult creation values"),
-      list: Effect.die("unused"),
+      id: "recording",
+      get: (reference) =>
+        Effect.sync(() => {
+          secretReads.push(reference);
+          return "resolved-secret";
+        }),
+      has: () => Effect.succeed(true),
+      list: Effect.succeed([]),
     },
   });
   const operation = restartApp(
     { services: [web.name] },
-    { plan: current, root: current.root, app: { kind: "user", id: current.id, root: current.root } },
+    { plan: desired, root: desired.root, app: { kind: "user", id: desired.id, root: desired.root } },
   ).pipe(
     Effect.provideService(RuntimeProviderRegistry, {
       ...harness.runtimeProviderRegistry,
-      resolveAppliedPlan: () => Effect.succeed(recorded),
-    }),
-    Effect.provideService(BuildOrchestrator, {
-      build: () => Effect.die("restart must not build"),
-      buildApp: () => Effect.die("restart must not build app"),
+      resolveAppliedPlan: () => Effect.succeed(applied),
     }),
     Effect.provide(harness.layer),
   );
-  return { operation, mutations, requests, inspections };
+  return { operation, mutations, secretReads, requests, inspections, harness };
 };
 
-test("selected restart retains a built container with unchanged descriptor intent and unavailable store", async () => {
+test("selected restart retains a built container with unchanged descriptor intent", async () => {
   // Given a container created from a derived artifact, not the authored base ref.
-  const restart = runRestart(declared);
+  const restart = runRestart();
   // When restarting only that service.
   await Effect.runPromise(restart.operation);
-  // Then it restarts in place without consulting the secret store.
+  // Then it restarts in place without consulting creation values or replacing the container.
   expect(restart.mutations).toEqual(["stop", "apply"]);
   expect(restart.requests.filter((request) => request.method !== "GET")).toMatchObject([
     { method: "POST", path: expect.stringContaining("/start") },
   ]);
-  expect(restart.inspections[0]?.services).toEqual(applied.services);
+  expect(restart.secretReads).toEqual([]);
+  expect(byTag(restart.harness.events, "message.info")).toEqual([]);
 });
 
-test("selected restart's actual apply guard rejects drift appearing after preflight", async () => {
+test("selected restart recreates a container whose create intent drifted after preflight", async () => {
   // Given matching preflight evidence that changes when the container is stopped.
-  const restart = runRestart(declared, applied, { driftAtStop: true });
-  // When actual apply re-inspects the stopped container.
-  const error = await Effect.runPromise(Effect.flip(restart.operation));
-  // Then the real forbid-recreate guard refuses without a create or start request.
-  expect(error).toMatchObject({ _tag: "ServiceRestartWouldRecreateError", reason: "config" });
+  const restart = runRestart({ driftAtStop: true, allowsCreationValues: true });
+  // When the apply re-inspects the stopped container.
+  await Effect.runPromise(restart.operation);
+  // Then it replaces the container and announces the replacement instead of refusing.
   expect(restart.mutations).toEqual(["stop", "apply"]);
-  expect(restart.requests.every((request) => request.method === "GET")).toBe(true);
+  expect(
+    restart.requests.some(
+      (request) => request.method === "POST" && request.path.startsWith("/containers/create"),
+    ),
+  ).toBe(true);
+  expect(byTag(restart.harness.events, "message.info").map((event) => event.body)).toEqual([
+    "Lando replaced web's container because its configuration changed. Its anonymous volume at /var/lib/postgresql/data went with it; declare that path under storage: to keep its data.",
+  ]);
 });
 
-test("selected restart starts a stopped container without acquiring overlays, seeding GPG, or replacing anonymous data", async () => {
+test("selected restart starts a stopped container without resolving creation values", async () => {
   // Given an existing stopped container whose anonymous volume must survive.
-  const restart = runRestart(declared, applied, { initiallyStopped: true });
-  const ssh = spyOn(Ssh, "startSshAgentSession").mockImplementation(() =>
-    Effect.die("Unexpected SSH acquisition"),
-  );
-  const gpg = spyOn(Gpg, "startGpgAgentSession").mockImplementation(() =>
-    Effect.die("Unexpected GPG acquisition"),
-  );
-  const proxy = spyOn(HostProxy, "startHostProxyRunLandoSession").mockImplementation(() =>
-    Effect.die("Unexpected host-proxy replay"),
-  );
-  try {
-    // When the actual bring-up path receives the selected restart.
-    await Effect.runPromise(restart.operation);
-    // Then its only engine mutation starts the existing container, retaining every mount.
-    expect(restart.requests.filter((request) => request.method !== "GET")).toMatchObject([
-      { method: "POST", path: expect.stringContaining("/start") },
-    ]);
-    expect(restart.mutations).toEqual(["stop", "apply"]);
-  } finally {
-    ssh.mockRestore();
-    gpg.mockRestore();
-    proxy.mockRestore();
-  }
+  const restart = runRestart({ initiallyStopped: true });
+  // When the apply runs.
+  await Effect.runPromise(restart.operation);
+  // Then its only engine mutation starts the existing container, retaining every mount.
+  expect(restart.requests.filter((request) => request.method !== "GET")).toMatchObject([
+    { method: "POST", path: expect.stringContaining("/start") },
+  ]);
+  expect(restart.mutations).toEqual(["stop", "apply"]);
+  expect(restart.secretReads).toEqual([]);
+  expect(byTag(restart.harness.events, "message.info")).toEqual([]);
 });
 
-const { artifact: _artifact, ...withoutArtifact } = declared;
-
-test.each([
-  {},
-  { [web.name]: withoutArtifact },
-  { [web.name]: { ...declared, artifact: { kind: "ref", ref: "" } } },
-  { [web.name]: { ...declared, artifact: { kind: "build", context: desired.root } } },
-] satisfies readonly AppPlan["services"][])(
-  "selected restart refuses unavailable applied artifact %# before stop",
-  async (services) => {
-    // Given ownership-matched state without a usable applied artifact.
-    const restart = runRestart(declared, { ...applied, services });
-    // When selected restart attempts projection.
-    const error = await Effect.runPromise(Effect.flip(restart.operation));
-    // Then no container mutation or provider inspect occurs.
-    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", operation: "restart" });
-    expect(restart.mutations).toEqual([]);
-    expect(restart.inspections).toEqual([]);
-  },
-);
-
-test.each([
-  { ...declared, environment: { PASSWORD: { _tag: "SecretRef", reference: "OTHER_DB" } } },
-  { ...declared, command: ["different-command"] },
-  { ...declared, artifact: { kind: "ref", ref: "postgres:18" } },
-  {
-    ...declared,
-    extensions: {
-      "@lando/core/service-features": {
-        buildSteps: [{ id: "scaffold", phase: "build", command: ["mkdir", "-p", "/changed"] }],
-      },
-    },
-  },
-] satisfies readonly ServicePlan[])(
-  "selected restart refuses changed create intent %# before stopping",
-  async (service) => {
-    // Given real immutable intent drift from the existing built container.
-    const restart = runRestart(service);
-    // When selected restart preflights that service.
-    const error = await Effect.runPromise(Effect.flip(restart.operation));
-    // Then it still refuses recreation before any mutation.
-    expect(error).toMatchObject({ _tag: "ServiceRestartWouldRecreateError", reason: "config" });
-    expect(restart.mutations).toEqual([]);
-  },
-);
+test("selected restart creates a missing container and announces it", async () => {
+  // Given the service lost its container between start and this restart.
+  const restart = runRestart({ missingContainer: true, allowsCreationValues: true });
+  // When the restart runs.
+  await Effect.runPromise(restart.operation);
+  // Then it creates the container and announces the creation.
+  expect(
+    restart.requests.some(
+      (request) => request.method === "POST" && request.path.startsWith("/containers/create"),
+    ),
+  ).toBe(true);
+  expect(byTag(restart.harness.events, "message.info").map((event) => event.body)).toEqual([
+    "web had no container, so Lando created one.",
+  ]);
+});

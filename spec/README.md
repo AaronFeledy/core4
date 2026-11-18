@@ -119,6 +119,7 @@ If you are looking for a public surface or policy:
 | Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Authored versus resolved service credentials and explicit credential claims | 06 | §6.11 + §6.12.4 |
+| Post-readiness database credential observation, the `LANDO_DATABASE_CREDENTIALS_REJECTED` and `LANDO_DATABASE_MISSING` warnings, and the `database-credentials` doctor section | 06 + 11 | §6.12.4 + §10.9.1 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
 | PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, and Mailpit sender diagnostics | 06 | §6.12.5 |
@@ -152,12 +153,14 @@ If you are looking for a public surface or policy:
 | App config, global config, shell, Bun, open, and MCP commands | 08 | §8.2.1 + §8.2.6 |
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
 | CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
-| Single native dispatch, help projection, and internal/disabled visibility | 08 | §8.4.1 + §8.4.2 |
+| Single native dispatch, help projection, unavailable rows, and internal/disabled visibility | 08 | §8.4.1 + §8.4.2 |
+| Structured tooling diagnostics, disclosure bounds, and tooling source provenance | 08 + 12 | §8.7 + §12.1 |
 | Token ownership between the dispatcher and a command: command tails for exec/ssh/run, plugin commands, wrappers, and `bun`/`x`; declared tooling flags; unknown-flag rejection | 08 | §8.3, §8.5 |
 | Tooling schemas, named-first binding, boolean projection, sensitivity, retained input revisions, and live MCP catalog replacement | 08 | §8.5.1 |
 | Tooling steps, expressions, events, and scripts | 08 | §8.5 |
 | Bun Shell script metadata, positional policy, sparse named inputs, data-only environment, and disabled refusal | 08 | §8.5.9 |
 | Automatic tooling metadata rebuild, failure reporting, and help recovery | 08 | §8.7 |
+| Strict load failures versus per-task normalization errors, unavailable tasks, and `LANDO_TOOLING_INVALID` | 07 + 08 + 12 | §7.8 + §8.2.1 + §8.5 + §8.7 + §12.2 |
 | Shared CLI cancellation tag, signal status, and cleanup failure preservation | 08 | §8.4.1 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
@@ -195,8 +198,8 @@ If you are looking for a public surface or policy:
 | Doctor diagnostics and resilience | 11 | §10.9 |
 | Host-proxy protocol and errors | 11 | §10.10 |
 | In-container helper: static Go client, Lando-built toolchain, embedding | 02 + 11 + 15 | §2.1 + §10.10.2 + §17.3 |
-| Host-proxy worker reuse, session recreation, and scoped rebuild | 11 | §10.10.1 + §12.4 |
-| `DataMover`, endpoints, role-aware host-file diagnostics, owner-keyed snapshot sidecars, handle-only mutations, and orphan GC | 11 | §10.11 |
+| Host-proxy worker reuse, session recreation, and selected restart and rebuild | 11 | §10.10.1 + §12.4 |
+| `DataMover`, endpoints, typed provider volume archives, role-aware host-file diagnostics, owner-keyed snapshot sidecars, handle-only mutations, and orphan GC | 11 | §10.11 |
 | Remote source and dataset contracts | 11 | §10.12 |
 | Code sync, post-processing, remote setup, and vendor tools | 11 | §10.12.1 + §10.12.4 |
 | Service tunnels, tethered sessions, and environment operations | 11 | §10.12.5 + §10.12.6 |
@@ -206,6 +209,7 @@ If you are looking for a public surface or policy:
 | Scope-owned per-service environment overrides | 06 | §6.9 |
 | Managed-file ownership, ledger, and errors | 11 | §10.13 |
 | MCP service, catalog, transport, and errors | 11 | §10.14 |
+| MCP `lando://diagnostics` resource, authorization filtering, and repair without reconnecting | 11 | §10.14 |
 | Cache catalog and encodings | 12 | §12.1 + §12.2 |
 | Atomic cache writes and persistent artifacts | 12 | §12.3 + §12.4 |
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |

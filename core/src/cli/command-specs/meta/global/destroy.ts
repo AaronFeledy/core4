@@ -35,7 +35,7 @@ export const metaGlobalDestroySpec = {
     provider: Flags.string({ description: "Destroy the global app only on this provider." }),
     yes: yesFlag("Confirm destruction of global app provider resources."),
     purge: Flags.boolean({
-      description: "Also remove global service data volumes.",
+      description: "Also remove global service data volumes and built images.",
       default: false,
     }),
   },

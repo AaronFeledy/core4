@@ -149,12 +149,12 @@ describe("recipe option parity", () => {
       expect(yaml).not.toContain("allowOverride:");
       expect(yaml).toContain('type: "{{ recipe.database }}"');
       expect(yaml).toContain('composer: "2"');
-      expect(yaml).toContain("recommended-project:^{{ recipe.drupal }}");
+      expect(yaml).toContain("lando-drupal-scaffold {{ recipe.drupal }}");
 
       const landofile = await discoverFrom(result.directory);
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.5");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
-      expect(landofile.tooling?.["drupal-scaffold"]?.cmd).toContain("recommended-project:^10");
+      expect(landofile.tooling?.["drupal-scaffold"]?.cmd).toBe("lando-drupal-scaffold 10");
       expect(landofile.services?.[ServiceName.make("appserver")]?.via).toBe("fpm");
       expect(landofile.services?.[ServiceName.make("edge")]?.type).toBe("nginx");
       expect(landofile.services?.[ServiceName.make("edge")]?.uploadDirs).toEqual(["sites/*/files"]);
@@ -272,7 +272,7 @@ describe("recipe option parity", () => {
       expect(yaml).toContain('php: "8.4"');
       expect(yaml).toContain("webroot: web");
       expect(yaml).toContain("vendor/bin/drush");
-      expect(yaml).toContain("drupal/cms");
+      expect(yaml).toContain("lando-drupal-cms-scaffold");
       expect(yaml).not.toContain("recommended-project");
     });
   });

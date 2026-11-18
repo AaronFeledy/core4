@@ -32,9 +32,10 @@ import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations
 import { runTooling } from "../../src/operations/tooling.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import {
+  type ToolingProvenance,
   attachEffectiveTooling,
   compileEffectiveTooling,
-  disabledToolingSources,
+  resolveEffectiveTooling,
 } from "../../src/planner/effective-tooling.ts";
 import { attachInvocationAuthority } from "../../src/planner/invocation-authority.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
@@ -43,6 +44,7 @@ import { outputRegisteredTestProvider } from "../../src/testing/output-provider.
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
+import { provenanceIn } from "../provenance-support.ts";
 
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"),
@@ -74,7 +76,7 @@ const executedLabel = (command: ReadonlyArray<string>, fallback: string): string
 
 const harness = (input: {
   readonly tooling: Readonly<Record<string, ToolingTaskShape>>;
-  readonly disabledSources?: Readonly<Record<string, string>>;
+  readonly provenance?: ToolingProvenance;
   readonly events?: LandofileEvents;
   readonly failOn?: string;
   readonly omitEventRuntime?: boolean;
@@ -105,8 +107,7 @@ const harness = (input: {
     attachEffectiveTooling(
       input.events === undefined ? basePlan : withProjectEvents(basePlan, input.events),
       input.tooling,
-      {},
-      input.disabledSources,
+      input.provenance === undefined ? {} : { provenance: input.provenance },
     ),
     { sites: authoredInvocationSites({ tooling: input.tooling }, "<test>") },
   );
@@ -299,7 +300,11 @@ test.each(["command", "task"] as const)(
     const tooling = compileEffectiveTooling({ landofile: compiled.document, services: [] });
     const h = harness({
       tooling,
-      disabledSources: disabledToolingSources(compiled.document, tooling),
+      provenance: resolveEffectiveTooling({
+        landofile: compiled.document,
+        provenance: provenanceIn(compiled),
+        services: [],
+      }).provenance,
       events: { "pre-build": [{ task: "off" }] },
     });
     const persisted = Schema.decodeUnknownSync(AppPlan)(Schema.encodeSync(AppPlan)(h.plan));

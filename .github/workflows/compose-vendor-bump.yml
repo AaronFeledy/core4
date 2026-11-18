@@ -113,7 +113,7 @@ jobs:
           gh workflow run ci.yml --ref "$BRANCH"
   report-failure:
     needs: [bump]
-    if: ${{ failure() }}
+    if: ${{ !cancelled() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:

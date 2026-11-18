@@ -35,12 +35,15 @@ const writeFreshCache = async (fixture: RouterFixture, taskName: string): Promis
   await Effect.runPromise(
     writeAppCommandCacheStrict({
       landofile: { name: `router-${taskName}` },
+      env: fixture.env,
       entries: [
         {
           id: `app:${taskName}`,
           summary: `Router test ${taskName}`,
-          hidden: false,
-          source: "bun-script",
+          _tag: "Ready",
+          sourceKind: "bun-script",
+          visibility: "public",
+          input: emptyToolingInput(),
         },
       ],
       cwd: fixture.root,
@@ -54,11 +57,14 @@ const writeFreshDeclaredInputCache = async (fixture: RouterFixture, taskName: st
   await Effect.runPromise(
     writeAppCommandCacheStrict({
       landofile: { name: `router-${taskName}` },
+      env: fixture.env,
       entries: [
         {
           id: `app:${taskName}`,
           summary: "Greet a target environment",
-          hidden: false,
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
           service: "web",
           input: {
             acceptsArguments: true,
@@ -570,6 +576,8 @@ test("Given a cached task that declares input, when help is in its tail, then bo
     await Promise.all([source.cleanup(), compiled.cleanup()]);
   }
 }, 30_000);
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";
 
 const writeFlagOwnershipTasks = async (fixture: RouterFixture): Promise<void> => {
   await writeFile(

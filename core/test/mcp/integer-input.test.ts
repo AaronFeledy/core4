@@ -99,7 +99,9 @@ test.each([7, 1.5, "7"])("validates real logsSpec tail %s through JSON-RPC trans
         Layer.succeed(
           McpRuntimeConfig,
           McpRuntimeConfig.of({
-            commandEntries: [{ spec }],
+            cwd: process.cwd(),
+            env: { ...process.env },
+            commandEntries: [{ kind: "command" as const, spec }],
             defaultAllowlist: [logsSpec.id],
             apps: testAppGenerations(),
           }),

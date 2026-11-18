@@ -3,7 +3,9 @@ import {
   RedactionService,
   createStandaloneRedactor,
 } from "@lando/redaction/service";
+import { redactValueWithPolicy, structuralRedaction } from "@lando/sdk/command-result";
 import type { EventError } from "@lando/sdk/errors";
+import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { ConfigService, type EventFor, EventService, type LandoEvent } from "@lando/sdk/services";
 import {
   Cause,
@@ -107,6 +109,12 @@ export const makeScopedEventDispatch = (): {
 
 const HISTORY_REDACTION_PROFILE = "secrets" as const;
 
+// Events are runtime values, so their policy comes from the type side: literal
+// discriminants and declared keys survive, free text is redacted. Redaction must
+// not rewrite `_tag` or `stream`, or delivery and later serializers cannot
+// recover the event schema.
+const HISTORY_REDACTION_POLICY = structuralRedaction(LandoEventSchema, "type");
+
 const redactForHistory = (
   redaction: Option.Option<Context.Service.Shape<typeof RedactionService>>,
   event: LandoEvent,
@@ -116,13 +124,17 @@ const redactForHistory = (
     return Option.match(redaction, {
       onNone: () =>
         Effect.sync(() => ({
-          ...(createStandaloneRedactor(HISTORY_REDACTION_PROFILE, options).redactValue(event) as LandoEvent),
+          ...(redactValueWithPolicy(
+            createStandaloneRedactor(HISTORY_REDACTION_PROFILE, options),
+            HISTORY_REDACTION_POLICY,
+            event,
+          ) as LandoEvent),
           timestamp: event.timestamp,
         })),
       onSome: (service) =>
         service.forProfile(HISTORY_REDACTION_PROFILE, options).pipe(
           Effect.map((redactor) => ({
-            ...(redactor.redactValue(event) as LandoEvent),
+            ...(redactValueWithPolicy(redactor, HISTORY_REDACTION_POLICY, event) as LandoEvent),
             timestamp: event.timestamp,
           })),
         ),

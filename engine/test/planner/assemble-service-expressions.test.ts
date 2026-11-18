@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getLandofileAppRoot, rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { planRedactionValues } from "@lando/redaction/plan-values";
 import { ConfigExpressionError } from "@lando/sdk/errors";
 import { type LandofileShape, PortNumber, ServiceName } from "@lando/sdk/schema";
@@ -20,6 +19,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { planApp } from "../plan-app.ts";
+import { appRootOf, withAppRoot as withAppRootProvenance } from "../provenance-support.ts";
 
 /** Publishes creds the way the catalog database types do: defaults, authored `creds:` wins. */
 const databaseType: ServiceType = {
@@ -91,7 +91,7 @@ const plan = Effect.fnUntraced(
     const fileSystem = withFileSystem ? yield* FileSystem : undefined;
     return yield* planApp(
       {
-        landofile: yield* compileTestLandofile(landofile, getLandofileAppRoot(landofile) ?? process.cwd()),
+        landofile: yield* compileTestLandofile(landofile, appRootOf(landofile) ?? process.cwd()),
         providerCapabilities: TestRuntimeProvider.capabilities,
       },
       Layer.mergeAll(
@@ -136,7 +136,7 @@ const failure = async (landofile: LandofileShape): Promise<ConfigExpressionError
 test("rejects non-string results in the deferred service-credential pass", () =>
   withAppRoot(async (root) => {
     // Given
-    const landofile = rememberLandofileAppRoot(
+    const landofile = withAppRootProvenance(
       {
         name: "typed",
         services: {
@@ -159,7 +159,7 @@ test("rejects non-string results in the deferred service-credential pass", () =>
 
 test("resolves services.<name>.creds.* before the reading service's type runs, whatever the declaration order", () =>
   withAppRoot(async (root) => {
-    const landofile = rememberLandofileAppRoot(
+    const landofile = withAppRootProvenance(
       {
         name: "Creds Demo",
         services: {
@@ -212,7 +212,7 @@ test("resolves services.<name>.creds.* before the reading service's type runs, w
 
 test("lets authored creds: win, including creds derived from another service's", () =>
   withAppRoot(async (root) => {
-    const landofile = rememberLandofileAppRoot(
+    const landofile = withAppRootProvenance(
       {
         name: "Creds Demo",
         services: {
@@ -255,7 +255,7 @@ test("lets authored creds: win, including creds derived from another service's",
 test("fails at the value path when the referenced service does not exist", () =>
   withAppRoot(async (root) => {
     const error = await failure(
-      rememberLandofileAppRoot(
+      withAppRootProvenance(
         {
           name: "Creds Demo",
           services: {
@@ -282,7 +282,7 @@ test("fails at the value path when the referenced service does not exist", () =>
 test("fails when the referenced service publishes no credentials", () =>
   withAppRoot(async (root) => {
     const error = await failure(
-      rememberLandofileAppRoot(
+      withAppRootProvenance(
         {
           name: "Creds Demo",
           services: {
@@ -307,7 +307,7 @@ test("fails when the referenced service publishes no credentials", () =>
 test("rejects a service that reads its own credentials and a pair that read each other's", () =>
   withAppRoot(async (root) => {
     const self = await failure(
-      rememberLandofileAppRoot(
+      withAppRootProvenance(
         {
           name: "Creds Demo",
           services: {
@@ -326,7 +326,7 @@ test("rejects a service that reads its own credentials and a pair that read each
     expect(self.message).toContain("Service connection reference cycle involving database");
 
     const mutual = await failure(
-      rememberLandofileAppRoot(
+      withAppRootProvenance(
         {
           name: "Creds Demo",
           services: {
@@ -354,7 +354,7 @@ test("rejects a service that reads its own credentials and a pair that read each
 test("requires a literal service name in a services reference", () =>
   withAppRoot(async (root) => {
     const error = await failure(
-      rememberLandofileAppRoot(
+      withAppRootProvenance(
         {
           name: "Creds Demo",
           services: {
@@ -375,7 +375,7 @@ test("requires a literal service name in a services reference", () =>
 
 test("keeps a literal credential that happens to contain an expression opener", () =>
   withAppRoot(async (root) => {
-    const landofile = rememberLandofileAppRoot(
+    const landofile = withAppRootProvenance(
       {
         name: "Creds Demo",
         services: {
@@ -402,7 +402,7 @@ test("keeps a literal credential that happens to contain an expression opener", 
 test("never interpolates values that arrive through env files, even when they equal an authored site", () =>
   withAppRoot(async (root) => {
     await writeFile(join(root, "web.env"), `FROM_FILE=${DATABASE_URL}\nAPP_FROM_FILE={{ app.name }}\n`);
-    const landofile = rememberLandofileAppRoot(
+    const landofile = withAppRootProvenance(
       {
         name: "Creds Demo",
         services: {
@@ -436,7 +436,7 @@ test("treats a value the identity pass produced as data, not as a second express
     process.env.LANDO_TEST_NESTED_EXPRESSION = "{{ services.database.creds.password }}";
     // Restore a value no test removes rather than deleting the key (see core/AGENTS.md).
     try {
-      const landofile = rememberLandofileAppRoot(
+      const landofile = withAppRootProvenance(
         {
           name: "Creds Demo",
           services: {

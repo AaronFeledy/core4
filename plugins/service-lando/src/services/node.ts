@@ -1,13 +1,6 @@
-import { causeMessage } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
-import type {
-  ServiceFeatureContext,
-  ServiceFeatureDefinition,
-  ServiceType,
-  ServiceTypeProjectFileInput,
-} from "@lando/sdk/services";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
-import { satisfies, subset, valid, validRange } from "semver";
 import {
   ServiceConfigIssue,
   rootIdentity,
@@ -25,29 +18,20 @@ import {
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-
-export const SUPPORTED_NODE_MAJORS = [
-  { major: 22, codename: "jod" },
-  { major: 24, codename: "krypton", lts: true },
-  { major: 26 },
-] as const;
-
-export type SupportedNodeMajor = (typeof SUPPORTED_NODE_MAJORS)[number]["major"];
-export const SUPPORTED_NODE_VERSIONS = ["lts", "22", "24", "26"] as const;
-export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
-
-const NODE_LTS_MAJOR = SUPPORTED_NODE_MAJORS.find((entry) => "lts" in entry && entry.lts)?.major ?? 24;
-
-const NODE_ARTIFACTS: Readonly<Record<SupportedNodeVersion, string>> = Object.fromEntries([
-  ["lts", `node:${NODE_LTS_MAJOR}`],
-  ...SUPPORTED_NODE_MAJORS.map((entry) => [String(entry.major), `node:${entry.major}`] as const),
-]) as Readonly<Record<SupportedNodeVersion, string>>;
-
-const NODE_MAJOR_IDS = SUPPORTED_NODE_MAJORS.map((entry) => String(entry.major));
-const NODE_CODENAMES = SUPPORTED_NODE_MAJORS.flatMap((entry) =>
-  "codename" in entry && entry.codename !== undefined ? [entry.codename] : [],
-);
-const NVMRC_REMEDIATION = `Use a supported Node major (${NODE_MAJOR_IDS.join(", ")}), an LTS codename (${NODE_CODENAMES.join(", ")}), lts/*, or an exact pin of a supported major.`;
+import { resolveNodeInference } from "./node-inference.ts";
+import {
+  COREPACK_HOME,
+  NODE_PACKAGE_MANAGER_STEP_ID,
+  NodePackageManagerConfig,
+  type NodePackageManagerSelection,
+  isProvisionedPackageManager,
+  packageManagerBuildKeyInputs,
+  packageManagerBuildStepCommand,
+  packageManagerConfigFor,
+  packageManagerProvenance,
+  resolveNodePackageManager,
+} from "./node-package-manager.ts";
+import { NODE_ARTIFACTS, SUPPORTED_NODE_VERSIONS, type SupportedNodeVersion } from "./node-versions.ts";
 
 export const NODE_FEATURE_ID = "service-lando.node" as const;
 export const NODE_FEATURE_PRIORITY = 600;
@@ -70,6 +54,7 @@ export const APP_MOUNT_TARGET = "/app";
 
 const NodeFeatureConfigSchema = Schema.Struct({
   version: Schema.String,
+  packageManager: Schema.optionalKey(NodePackageManagerConfig),
 });
 type NodeFeatureConfig = typeof NodeFeatureConfigSchema.Type;
 
@@ -77,197 +62,6 @@ const REMEDIATION_VERSION = (requested: string): string =>
   `Set type to one of: ${SUPPORTED_NODE_VERSIONS.map((v) => `node:${v}`).join(", ")} (got node:${requested}).`;
 
 const PROJECT_FILE_LIMIT = 1_048_576;
-
-export class NodeInferenceError extends Error {
-  readonly remediation: string;
-
-  constructor(message: string, remediation: string) {
-    super(`${message} ${remediation}`);
-    this.name = "NodeInferenceError";
-    this.remediation = remediation;
-  }
-}
-
-type NodeInferenceSelection = {
-  readonly artifact: string;
-  readonly normalizedConstraint: string;
-  readonly sourcePath: string;
-};
-
-type ParsedNvmrc = NodeInferenceSelection & {
-  readonly range: string | undefined;
-  readonly exactVersion: string | undefined;
-};
-
-const exactPinRemediation = "Add an exact pin in .nvmrc, or a channel-preserving Node pin, then retry.";
-
-const majorSelection = (
-  major: number,
-  sourcePath: string,
-  normalizedConstraint: string = String(major),
-): ParsedNvmrc => ({
-  artifact: `node:${major}`,
-  normalizedConstraint,
-  sourcePath,
-  range: String(major),
-  exactVersion: undefined,
-});
-
-const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: true }): ParsedNvmrc => {
-  const constraint = input.text
-    .split(/\r?\n/u)
-    .map((line) => line.replace(/#.*$/u, "").trim().toLowerCase())
-    .find((line) => line.length > 0);
-  if (constraint === undefined) {
-    throw new NodeInferenceError(`Unsupported Node version "" in ${input.path}.`, NVMRC_REMEDIATION);
-  }
-
-  if (constraint === "lts" || constraint === "lts/*") {
-    return majorSelection(NODE_LTS_MAJOR, input.path, constraint);
-  }
-
-  for (const entry of SUPPORTED_NODE_MAJORS) {
-    const major = entry.major;
-    const exact = new RegExp(`^v?${major}\\.(\\d+)\\.(\\d+)$`, "u").exec(constraint);
-    const minor = new RegExp(`^v?${major}\\.(\\d+)$`, "u").exec(constraint);
-    const isMajor = new RegExp(`^v?${major}$`, "u").test(constraint);
-    const codename = "codename" in entry ? entry.codename : undefined;
-
-    if (exact !== null) {
-      const normalized = constraint.replace(/^v/u, "");
-      if (valid(normalized) === null) {
-        throw new NodeInferenceError(
-          `Invalid Node version "${constraint}" in ${input.path}.`,
-          exactPinRemediation,
-        );
-      }
-      return {
-        artifact: `node:${normalized}`,
-        normalizedConstraint: normalized,
-        sourcePath: input.path,
-        range: undefined,
-        exactVersion: normalized,
-      };
-    }
-    if (minor !== null && valid(`${major}.${minor[1]}.0`) !== null) {
-      const normalized = `${major}.${minor[1]}`;
-      return {
-        artifact: `node:${normalized}`,
-        normalizedConstraint: normalized,
-        sourcePath: input.path,
-        range: normalized,
-        exactVersion: undefined,
-      };
-    }
-    if (
-      isMajor ||
-      (codename !== undefined && (constraint === codename || constraint === `lts/${codename}`))
-    ) {
-      return majorSelection(major, input.path);
-    }
-  }
-
-  throw new NodeInferenceError(
-    `Unsupported Node version "${constraint}" in ${input.path}.`,
-    NVMRC_REMEDIATION,
-  );
-};
-
-const packageEngine = (
-  input: ServiceTypeProjectFileInput & { readonly present: true },
-): string | undefined => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(input.text);
-  } catch (cause) {
-    throw new NodeInferenceError(
-      `Node inference could not parse ${input.path} as valid JSON: ${causeMessage(cause)}.`,
-      "Fix package.json or remove bare type: node.",
-    );
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new NodeInferenceError(
-      `${input.path} must contain a JSON object.`,
-      "Fix package.json or remove bare type: node.",
-    );
-  }
-  const engines = Reflect.get(parsed, "engines");
-  if (engines === undefined) return undefined;
-  if (engines === null || typeof engines !== "object" || Array.isArray(engines)) {
-    throw new NodeInferenceError(
-      `${input.path} engines must be an object.`,
-      "Set engines.node to a valid semver range.",
-    );
-  }
-  const node = Reflect.get(engines, "node");
-  if (node === undefined) return undefined;
-  if (typeof node !== "string") {
-    throw new NodeInferenceError(
-      `${input.path} engines.node must be a string.`,
-      "Set engines.node to a valid semver range.",
-    );
-  }
-  const constraint = node.trim();
-  if (validRange(constraint) === null) {
-    throw new NodeInferenceError(
-      `${input.path} engines.node is not a valid semver range: "${constraint}".`,
-      "Set engines.node to a valid semver range.",
-    );
-  }
-  return constraint;
-};
-
-const compatibleWithEngine = (selection: ParsedNvmrc, engine: string): boolean => {
-  if (selection.exactVersion !== undefined) return satisfies(selection.exactVersion, engine);
-  if (selection.range === undefined) return false;
-  return subset(selection.range, engine);
-};
-
-const selectMajorForEngine = (engine: string): SupportedNodeMajor | undefined => {
-  const compatible = SUPPORTED_NODE_MAJORS.filter((entry) => subset(String(entry.major), engine));
-  if (compatible.length === 0) return undefined;
-  const lts = compatible.find((entry) => "lts" in entry && entry.lts);
-  return (lts ?? compatible.at(-1))?.major;
-};
-
-export const resolveNodeInference = (
-  inputs: ReadonlyArray<ServiceTypeProjectFileInput>,
-): NodeInferenceSelection => {
-  const nvmrc = inputs.find((input) => /(?:^|[/\\])\.nvmrc$/u.test(input.path));
-  const packageJson = inputs.find((input) => /(?:^|[/\\])package\.json$/u.test(input.path));
-  const engine = packageJson?.present === true ? packageEngine(packageJson) : undefined;
-
-  if (nvmrc?.present === true) {
-    const selection = parseNvmrc(nvmrc);
-    if (engine !== undefined && !compatibleWithEngine(selection, engine)) {
-      throw new NodeInferenceError(
-        `${nvmrc.path} constraint "${selection.normalizedConstraint}" conflicts with package.json engines.node "${engine}".`,
-        "Make both project files describe compatible Node versions.",
-      );
-    }
-    return selection;
-  }
-  if (engine !== undefined) {
-    const major = selectMajorForEngine(engine);
-    if (major !== undefined) {
-      return {
-        artifact: `node:${major}`,
-        normalizedConstraint: engine,
-        sourcePath: packageJson?.path ?? "package.json",
-      };
-    }
-    throw new NodeInferenceError(
-      `package.json engines.node "${engine}" does not prove that a complete supported Node image channel (${NODE_MAJOR_IDS.join(", ")}) is compatible.`,
-      exactPinRemediation,
-    );
-  }
-  throw new NodeInferenceError(
-    packageJson?.present === true
-      ? "package.json has no Node constraint in engines.node."
-      : "Node inference found neither .nvmrc nor package.json.",
-    "Add .nvmrc or package.json engines.node, then retry.",
-  );
-};
 
 const validateVersion = (
   declaredType: string | undefined,
@@ -291,9 +85,9 @@ const artifactFor = (version: string): string =>
     ? NODE_ARTIFACTS[version as SupportedNodeVersion]
     : `node:${version}`;
 
-// Official Node images ship `yarn` as a Yarn 1 symlink; pnpm is absent.
-// Node 26 drops both that symlink and Corepack. --force lets authored globals
-// replace a Yarn 1 stub instead of failing EEXIST.
+// Node 22 and 24 images ship `yarn` as a Yarn 1 symlink and no pnpm; Node 26
+// drops both that symlink and Corepack. --force lets authored globals replace a
+// Yarn 1 stub instead of failing EEXIST.
 const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
   [
     "set -eux",
@@ -305,7 +99,7 @@ const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
 
 const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const { version } = ctx.config as NodeFeatureConfig;
+  const { version, packageManager } = ctx.config as NodeFeatureConfig;
   const port = plannedPort(service, NODE_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? artifactFor(version) });
@@ -323,6 +117,20 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
       command: nodeGlobalsCommandFor(globals),
       user: "root",
       buildKeyInputs: { globals },
+    });
+  }
+  // Runs after the globals step so an authored global cannot shadow the shim
+  // Corepack provides. The runtime env keeps the cached manager usable by a
+  // non-root `user:` without any container-start work.
+  if (packageManager !== undefined && isProvisionedPackageManager(packageManager.name)) {
+    ctx.addEnv("COREPACK_HOME", COREPACK_HOME);
+    ctx.addEnv("COREPACK_ENABLE_DOWNLOAD_PROMPT", "0");
+    ctx.addBuildStep({
+      id: NODE_PACKAGE_MANAGER_STEP_ID,
+      phase: "build",
+      command: packageManagerBuildStepCommand(packageManager),
+      user: "root",
+      buildKeyInputs: packageManagerBuildKeyInputs(packageManager),
     });
   }
 };
@@ -379,6 +187,21 @@ export const node22ServiceType: ServiceType = makeNodeServiceType("22");
 export const node24ServiceType: ServiceType = makeNodeServiceType("24");
 export const node26ServiceType: ServiceType = makeNodeServiceType("26");
 
+// package.json `packageManager` owns the provisioned manager's version, so a
+// duplicate globals entry would install a second copy the project cannot use.
+const assertPackageManagerNotInGlobals = (
+  globals: ReadonlyArray<PackageEntry>,
+  packageManager: NodePackageManagerSelection | undefined,
+): void => {
+  if (packageManager === undefined || !isProvisionedPackageManager(packageManager.name)) return;
+  if (!globals.some(([name]) => name === packageManager.name)) return;
+  throw new ServiceConfigIssue(
+    ["globals", packageManager.name],
+    `globals installs ${packageManager.name}, but ${packageManager.sourcePath} packageManager already provisions ${packageManager.name}@${packageManager.version}.`,
+    `Remove globals.${packageManager.name}; the packageManager field in ${packageManager.sourcePath} owns that version.`,
+  );
+};
+
 export const nodeServiceType: ServiceType = {
   id: "node",
   name: "node",
@@ -391,14 +214,26 @@ export const nodeServiceType: ServiceType = {
     return [
       { path: `${prefix}.nvmrc`, maxBytes: PROJECT_FILE_LIMIT },
       { path: `${prefix}package.json`, maxBytes: PROJECT_FILE_LIMIT },
+      // A workspace package normally inherits packageManager from the monorepo
+      // root, so the app-root manifest is a declared input only when the service
+      // points elsewhere. At "." the entry above already is the app-root file.
+      ...(packageRoot === "." ? [] : [{ path: "package.json", maxBytes: PROJECT_FILE_LIMIT }]),
     ];
   },
   resolve: (input) =>
     serviceTypeResolve("node", "Failed to infer a Node version.", () => {
-      const inference = resolveNodeInference(input.projectFiles ?? []);
+      const projectFiles = input.projectFiles ?? [];
+      // Version inference keeps its historical input set: the package-root
+      // manifests only. The app-root manifest is for packageManager fallback.
+      const inferenceFiles =
+        (input.service.packageRoot ?? ".") === "."
+          ? projectFiles
+          : projectFiles.filter((file) => file.path !== "package.json");
+      const inference = resolveNodeInference(inferenceFiles);
       const resolvedVersion = inference.artifact.slice("node:".length);
-      normalizeNpmGlobals(input.service.globals);
-      const files = (input.projectFiles ?? []).map((file) => ({
+      const packageManager = resolveNodePackageManager(projectFiles);
+      assertPackageManagerNotInGlobals(normalizeNpmGlobals(input.service.globals), packageManager);
+      const files = projectFiles.map((file) => ({
         path: file.path,
         present: file.present,
         ...(file.present ? { sha256: file.sha256 } : {}),
@@ -407,7 +242,15 @@ export const nodeServiceType: ServiceType = {
         base: "lando" as const,
         normalizedConfig: normalizedService(input.service, resolvedVersion),
         features: [
-          { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
+          {
+            id: NODE_FEATURE_ID,
+            config: {
+              version: resolvedVersion,
+              ...(packageManager === undefined
+                ? {}
+                : { packageManager: packageManagerConfigFor(packageManager) }),
+            },
+          },
           { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
         ],
         metadata: {
@@ -416,6 +259,9 @@ export const nodeServiceType: ServiceType = {
             normalizedConstraint: inference.normalizedConstraint,
             artifact: inference.artifact,
             files,
+            ...(packageManager === undefined
+              ? {}
+              : { packageManager: packageManagerProvenance(packageManager) }),
           },
         },
       };

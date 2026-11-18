@@ -45,7 +45,11 @@ test("db:import reports an unreachable runtime with the runtime's own tag and re
   );
 
   if (!Exit.isFailure(exit)) throw new Error("expected the import to fail");
-  expect(reached).toEqual(["GET /containers/json", "POST /containers/create"]);
+  expect(reached).toEqual([
+    "GET /containers/json",
+    "POST /containers/create",
+    expect.stringMatching(/^DELETE \/containers\/lando-lando-data-/),
+  ]);
   const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
   const encoded = await Effect.runPromise(
     encodeCommandResult({

@@ -225,12 +225,10 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           ...collectRecords(sources.input),
         ];
         yield* redactionOption.value.registerValues(redactionTokens);
-        return yield* redactionOption.value
-          .forProfile("secrets", {
-            sourceEnv: process.env,
-            redactionTokens,
-          })
-          .pipe(Effect.map((redactor) => ({ redactor, redactionTokens })));
+        const scopeOptions = { sourceEnv: process.env, redactionTokens };
+        const redactor = yield* redactionOption.value.forProfile("secrets", scopeOptions);
+        const payloadValues = yield* redactionOption.value.payloadValues(scopeOptions);
+        return { redactor, redactionTokens, payloadValues };
       });
       const commandExecutor = yield* Effect.serviceOption(EventCommandExecutor);
       const validate = Option.isSome(commandExecutor) ? commandExecutor.value.validate : undefined;

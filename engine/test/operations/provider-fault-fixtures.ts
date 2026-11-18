@@ -59,11 +59,6 @@ export const providerFaults = {
   ProviderUnavailableError: new Errors.ProviderUnavailableError(fields),
   ServiceExecError: new Errors.ServiceExecError({ ...fields, service: "web" }),
   ServiceNotFoundError: new Errors.ServiceNotFoundError({ ...fields, service: "web" }),
-  ServiceRestartWouldRecreateError: new Errors.ServiceRestartWouldRecreateError({
-    ...fields,
-    service: "web",
-    reason: "config",
-  }),
   ServiceStartError: new Errors.ServiceStartError({ ...fields, service: "web" }),
   VolumeOperationError: new Errors.VolumeOperationError(fields),
   ServiceCopyError: new Errors.ServiceCopyError({ ...fields, service: "web" }),

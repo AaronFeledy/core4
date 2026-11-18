@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import {
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
 import { BuildOwner } from "../../src/services/build-owner.ts";
 import { openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import {
@@ -60,6 +64,51 @@ describe("sweepAppBuildTranscripts", () => {
 
       // Then
       expect(await Bun.file(transcript).exists()).toBe(true);
+    });
+  });
+
+  test("keeps an artifact transcript another owner's reused record still points at", async () => {
+    await withRoot(async (root) => {
+      // Given owner A's transcripts, where only owner B's record (reused from A) names one of them.
+      const store = makeTestStateStore();
+      const owner = BuildOwner.root(AbsolutePath.make("/tmp/app-a"));
+      const other = BuildOwner.root(AbsolutePath.make("/tmp/app-b"));
+      const directory = join(root, "builds", "owners", owner.key, "artifact", "web");
+      const reused = join(directory, "shared.log");
+      const stale = join(directory, "stale.log");
+      await mkdir(directory, { recursive: true });
+      await writeFile(reused, "build output\n");
+      await writeFile(stale, "old output\n");
+      const bucket = await Effect.runPromise(openArtifactBuildResults(store.service));
+      await Effect.runPromise(
+        recordArtifactBuildResult(bucket, {
+          owner: other.key,
+          providerId: "podman",
+          phase: "artifact",
+          service: ServiceName.make("web"),
+          buildKey: "shared",
+          artifactRef: "lando-build-0000abcd-podman-web-shared",
+          artifactOrigin: "build",
+          outcome: "complete",
+          durationMs: 1,
+          transcriptPath: AbsolutePath.make(reused),
+        }),
+      );
+
+      // When A's artifact phase is swept.
+      await Effect.runPromise(
+        sweepAppBuildTranscripts({
+          stateStore: store.service,
+          owner,
+          phase: "artifact",
+          userDataRoot: root,
+          redact: (text) => text,
+        }),
+      );
+
+      // Then the transcript B's record shows stays, and the unreferenced one goes.
+      expect(await Bun.file(reused).exists()).toBe(true);
+      expect(await Bun.file(stale).exists()).toBe(false);
     });
   });
 

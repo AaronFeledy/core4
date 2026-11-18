@@ -49,12 +49,6 @@ const orderForLayer = (layer: unknown): VersionConstraintOrder | undefined => {
   }
 };
 
-const VERSION_CONSTRAINT_ENTRIES_SYMBOL = Symbol.for("lando.versionConstraintEntries");
-
-type VersionConstraintCarrier = {
-  readonly [VERSION_CONSTRAINT_ENTRIES_SYMBOL]?: ReadonlyArray<VersionConstraintEntry>;
-};
-
 export const isVersionConstraintEntryArray = (
   value: unknown,
 ): value is ReadonlyArray<VersionConstraintEntry> =>
@@ -74,40 +68,6 @@ export const hasSkippedUnsatisfiedVersionConstraint = (
 ): boolean =>
   isVersionConstraintSkipped(env) &&
   evaluateVersionConstraints(entries, runningVersion).unsatisfied.length > 0;
-
-const landofileVersionConstraintEntries = new WeakMap<object, ReadonlyArray<VersionConstraintEntry>>();
-
-export const hasVersionConstraintEntries = (landofile: object): boolean =>
-  landofileVersionConstraintEntries.has(landofile) ||
-  (landofile as VersionConstraintCarrier)[VERSION_CONSTRAINT_ENTRIES_SYMBOL] !== undefined;
-
-export const rememberVersionConstraintEntries = <T extends object>(
-  landofile: T,
-  entries: ReadonlyArray<VersionConstraintEntry>,
-): T => {
-  landofileVersionConstraintEntries.set(landofile, entries);
-  if (Object.isExtensible(landofile)) {
-    Object.defineProperty(landofile, VERSION_CONSTRAINT_ENTRIES_SYMBOL, {
-      value: entries,
-      enumerable: false,
-      configurable: true,
-    });
-  }
-  return landofile;
-};
-
-export const getVersionConstraintEntries = (
-  landofile: { readonly lando?: string | undefined },
-  fallbackSource: string,
-): ReadonlyArray<VersionConstraintEntry> => {
-  const remembered =
-    landofileVersionConstraintEntries.get(landofile) ??
-    (landofile as VersionConstraintCarrier)[VERSION_CONSTRAINT_ENTRIES_SYMBOL];
-  if (remembered !== undefined) return remembered;
-  return landofile.lando === undefined
-    ? []
-    : [{ range: landofile.lando, source: fallbackSource, layer: "canonical", order: 3 }];
-};
 
 /** Result of accumulating a set of constraint entries against a version. */
 export interface ConstraintEvaluation {

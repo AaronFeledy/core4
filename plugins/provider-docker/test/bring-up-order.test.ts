@@ -551,6 +551,16 @@ describe("provider-docker bringUp dependency order", () => {
     );
   });
 
+  test("returns what apply did to each service container", async () => {
+    // Given a plan whose containers do not exist yet.
+    const plan = planWith([service("web", { dependsOn: [] })]);
+    const fake = makeFakeApi(0);
+    // When the provider applies it.
+    const result = await apply(plan, fake.api);
+    // Then the provider's container outcome passes through unchanged.
+    expect(result.services).toEqual({ web: { action: "created" } });
+  });
+
   test("interrupts an aborted optional dependency instead of starting its dependent", async () => {
     // Given
     const cache = service("cache", {

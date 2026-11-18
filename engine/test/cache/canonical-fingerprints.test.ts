@@ -47,8 +47,22 @@ test("hashes canonical text when planning runtime keys have numeric names", () =
 
 test("preserves command entry order when fingerprinting a semantic array", () => {
   const entries = [
-    { id: "B", summary: "", hidden: false },
-    { id: "a", summary: "", hidden: false },
+    {
+      id: "B",
+      summary: "",
+      _tag: "Ready" as const,
+      sourceKind: "tooling" as const,
+      visibility: "public" as const,
+      input: emptyToolingInput,
+    },
+    {
+      id: "a",
+      summary: "",
+      _tag: "Ready" as const,
+      sourceKind: "tooling" as const,
+      visibility: "public" as const,
+      input: emptyToolingInput,
+    },
   ];
   const reversed = deriveAppCommandEntriesFingerprint([...entries].reverse());
   expect(reversed).not.toBe(deriveAppCommandEntriesFingerprint(entries));
@@ -72,10 +86,28 @@ test("shares native date and bigint normalization across app-plan and command ca
   });
   expect(native).toBe(normalized);
   const nativeEntries = [
-    { id: "app:test", hidden: false, summary: "", stamp: new Date("2026-10-02T00:00:00Z"), integer: 42n },
+    {
+      id: "app:test",
+      _tag: "Ready" as const,
+      sourceKind: "tooling" as const,
+      visibility: "public" as const,
+      input: emptyToolingInput,
+      summary: "",
+      stamp: new Date("2026-10-02T00:00:00Z"),
+      integer: 42n,
+    },
   ];
   const normalizedEntries = [
-    { id: "app:test", hidden: false, summary: "", stamp: "2026-10-02T00:00:00.000Z", integer: "42" },
+    {
+      id: "app:test",
+      _tag: "Ready" as const,
+      sourceKind: "tooling" as const,
+      visibility: "public" as const,
+      input: emptyToolingInput,
+      summary: "",
+      stamp: "2026-10-02T00:00:00.000Z",
+      integer: "42",
+    },
   ];
   expect(deriveAppCommandEntriesFingerprint(nativeEntries)).toBe(
     deriveAppCommandEntriesFingerprint(normalizedEntries),
@@ -103,7 +135,12 @@ test("sorts referenced-file sets by UTF-16 while omitting their modification tim
   const fingerprint = deriveAppPlanCacheKey(input);
   expect(fingerprint).toBe(
     sha256Hex(
-      `{"appFeatureEnv":{},"appRoot":"/app","cache":"app-plan","config":null,"dataName":"app","hostHome":"/home/fixed","hostProvider":"lando","includedFragmentShas":[],"kind":"user","landoVersion":${JSON.stringify(CORE_VERSION)},"landofile":{"name":"app"},"planningRuntime":"fixed","pluginManifests":[],"schemaVersion":${Number(APP_PLAN_CACHE_SCHEMA_VERSION)},"serviceInputs":{},"sourceFingerprint":{"includeLockfileHash":null,"includeSources":[],"includedFragmentShas":[],"landofileContentHashes":[],"referencedFiles":[{"absolutePath":"/B","sha256":"B","size":1},{"absolutePath":"/a","sha256":"a","size":1}]},"versionConstraints":[]}`,
+      `{"appFeatureEnv":{},"appRoot":"/app","cache":"app-plan","config":null,"dataName":"app","hostHome":"/home/fixed","hostProvider":"lando","includedFragmentShas":[],"kind":"user","landoVersion":${JSON.stringify(CORE_VERSION)},"landofile":{"name":"app"},"planningRuntime":"fixed","pluginManifests":[],"providerProjectUserFacts":null,"schemaVersion":${Number(APP_PLAN_CACHE_SCHEMA_VERSION)},"serviceInputs":{},"sourceFingerprint":{"includeLockfileHash":null,"includeSources":[],"includedFragmentShas":[],"landofileContentHashes":[],"referencedFiles":[{"absolutePath":"/B","sha256":"B","size":1},{"absolutePath":"/a","sha256":"a","size":1}]},"versionConstraints":[]}`,
     ),
   );
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

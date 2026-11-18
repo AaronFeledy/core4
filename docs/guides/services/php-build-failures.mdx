@@ -279,7 +279,7 @@ Lando masks:
 - values of build args with secret-looking names, such as `NPM_TOKEN`
 - credential-shaped text such as `scheme://user:pass@host` and `password=...`, even when Lando doesn't know the value
 
-Masking has limits. An ordinary build arg such as `NODE_MAJOR: "22"` is public and printed as written. Build args can also end up in image history, so a build arg is not a safe place for a secret, masked or not. Credential shapes are matched one output line at a time. A value Lando was never told about, with no recognizable shape, can't be masked.
+Masking has limits. An ordinary build arg such as `NODE_MAJOR: "22"` is public and printed as written. Build args can also end up in image history, so a build arg is not a safe place for a secret, masked or not. Credential shapes are matched across the lines of one output stream, not one line at a time, so a quoted value or a `Bearer` token that wraps onto the next line is still masked. Lando holds output only as long as it needs to decide, at most 64 lines or 16 KiB. If the value still has not closed when that limit or the end of the step arrives, Lando masks what it held and hides the rest of the value until its closing quote, for at most another 64 lines or 16 KiB, so only a value longer than both limits can show its tail. A value Lando was never told about, with no recognizable shape, can't be masked.
 
 ## Choose between `lando start` and `lando rebuild`
 
@@ -305,7 +305,7 @@ A service with `pull_policy: build` builds its image on every start. See [Contro
 
 ### After the containers are replaced
 
-A `build.app` step's result is good only for the container it ran in. `lando stop`, bare `lando restart`, and `lando destroy` all remove the app's containers, so the start that follows runs every `build.app` step again in the new ones. So does a `lando start` that recreates one service's container for a Landofile change, for that service. `lando restart -s <service>` keeps the container and runs no build steps. [When a step runs again](./build-steps.mdx#when-a-step-runs-again) has the full list.
+A `build.app` step's result is good only for the container it ran in. `lando stop`, bare `lando restart`, and `lando destroy` all remove the app's containers, so the start that follows runs every `build.app` step again in the new ones. So does a `lando start` that recreates one service's container for a Landofile change, for that service. `lando restart -s <service>` runs no build steps when it keeps the container. When it replaces the container, that service's `build.app` steps run again. [When a step runs again](./build-steps.mdx#when-a-step-runs-again) has the full list.
 
 A successful `lando destroy` also removes the app's saved build output. This is the start after a destroy:
 
@@ -317,7 +317,7 @@ A successful `lando destroy` also removes the app's saved build output. This is 
 ▶ App dependencies built (1 ✓ · 0 ✗) (136ms)
 ```
 
-Images are different. A built image that still exists is reused, not rebuilt, and start reports that step as cached.
+`destroy` keeps the newest image Lando built for each service for up to seven days, so this start reuses the image and runs only the `build.app` step. After `lando destroy --purge-caches`, the start builds the image again first.
 
 ## Read the failure from a script
 
@@ -330,7 +330,7 @@ lando start --format=json
 This is the result frame of the first example:
 
 ```json
-{"_tag":"result","envelope":{"apiVersion":"v4","command":"app:start","ok":false,"error":{"_tag":"ArtifactBuildError","message":"Container image build failed: building at STEP \"RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\": while running runtime: exit status 1","remediation":"Check the failing build step, correct it, and rebuild. The full build output for service app is in ~/.local/share/lando/builds/owners/7feeca09e0924f1964233a52f595450bc2b06d33f357fda857b2a0ad97a6fa04/artifact/app/e4dfd74bdcdf11cd77427f0e7607557aba8ecca4c9a6ada942ba29b434ae292d.log. Run \"lando logs --build --service app\" to print it.","service":"app","providerId":"lando","operation":"buildArtifact","details":{"message":"building at STEP \"RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\": while running runtime: exit status 1","tag":"lando-build-lando-app-e4dfd74bdcdf11cd77427f0e"},"transcriptPath":"~/.local/share/lando/builds/owners/7feeca09e0924f1964233a52f595450bc2b06d33f357fda857b2a0ad97a6fa04/artifact/app/e4dfd74bdcdf11cd77427f0e7607557aba8ecca4c9a6ada942ba29b434ae292d.log","outputTail":"STEP 1/2: FROM docker.io/library/alpine:3.20\nSTEP 2/2: RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\nsecond-line\nbuild-step-output-marker"},"warnings":[],"deprecations":[]}}
+{"_tag":"result","envelope":{"apiVersion":"v4","command":"app:start","ok":false,"error":{"_tag":"ArtifactBuildError","message":"Container image build failed: building at STEP \"RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\": while running runtime: exit status 1","remediation":"Check the failing build step, correct it, and rebuild. The full build output for service app is in ~/.local/share/lando/builds/owners/5cabf65fc2b42331a1a718e1d929856d59b0227ac98a79f8bed5391a6a1bf95c/artifact/app/2ae93c75c1e2808e45fb01198be392b58570bde0e3527458cc07dc4704ac3c4f.log. Run \"lando logs --build --service app\" to print it.","service":"app","providerId":"lando","operation":"buildArtifact","details":{"message":"building at STEP \"RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\": while running runtime: exit status 1","tag":"lando-build-80820d8f-lando-app-2ae93c75c1e2808e45fb0119"},"transcriptPath":"~/.local/share/lando/builds/owners/5cabf65fc2b42331a1a718e1d929856d59b0227ac98a79f8bed5391a6a1bf95c/artifact/app/2ae93c75c1e2808e45fb01198be392b58570bde0e3527458cc07dc4704ac3c4f.log","outputTail":"STEP 1/2: FROM docker.io/library/alpine:3.20\nSTEP 2/2: RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\nbuild-step-output-marker\nsecond-line"},"warnings":[],"deprecations":[]}}
 ```
 
 The error's shape depends on the phase:

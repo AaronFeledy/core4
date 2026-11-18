@@ -1,159 +1,127 @@
 import { sha256Hex } from "@lando/sdk/digest";
-import type { LandofileIncludeError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
-import { mergeValues } from "@lando/sdk/landofile";
-import { LandofileShape } from "@lando/sdk/schema";
+import type { ValueWithOrigins } from "@lando/sdk/landofile";
 import { Effect, Predicate } from "effect";
 import { rejectComposeKeys } from "./compose/rejections.ts";
-import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { composeIncludeDefaults } from "./include-compose-defaults.ts";
-import type { FragmentResult, ResolveContext, ResolveIncludesError } from "./include-context.ts";
+import type { FragmentResult, ResolveContext } from "./include-context.ts";
 import { includeError, realpathOrSelf } from "./include-guard.ts";
 import { resolveLandofileLoadExpressions } from "./load-expression.ts";
-import { rememberLandofileReferencedFiles } from "./load-expression-provenance.ts";
 import { parseLandofile } from "./parser.ts";
-import { rememberOrigins } from "./pipeline/origins.ts";
 import { prepareOverlay } from "./pipeline/prepare.ts";
-import { getSourceDocuments, rememberSourceDocuments } from "./pipeline/source-table.ts";
 import {
-  type VersionConstraintEntry,
-  getVersionConstraintEntries,
-  hasVersionConstraintEntries,
-} from "./version-constraint.ts";
+  type AuthoredDocument,
+  type AuthoredOrigin,
+  type SourceDocument,
+  emptyProvenance,
+  normalizeReferencedFiles,
+} from "./provenance.ts";
+import type { VersionConstraintEntry } from "./version-constraint.ts";
 
-export const parseFragment = (
+export const parseFragment = Effect.fnUntraced(function* (
   fragment: FragmentResult & { readonly kind: "landofile" | "compose" | "tooling" },
   ctx: ResolveContext,
   layer: VersionConstraintEntry["layer"],
-): Effect.Effect<Record<string, unknown>, ResolveIncludesError> =>
-  parseLandofile({ file: fragment.filePath, content: fragment.content, cwd: fragment.root }).pipe(
-    Effect.tap((parsed) => {
-      const check = rejectComposeKeys(fragment.authoredSource, parsed);
-      if (ctx.recorder === undefined) return check;
-      ctx.recorder.effectiveChecks.push(check);
-      return Effect.void;
-    }),
-    Effect.map((parsed) =>
-      Predicate.isObjectOrArray(parsed)
-        ? rememberSourceDocuments(parsed, [
-            {
-              file: fragment.filePath,
-              form: "yaml",
-              layer,
-              document: parsed,
-              content: fragment.content,
-              digest: sha256Hex(fragment.content),
-            },
-          ])
-        : parsed,
-    ),
-    Effect.flatMap((parsed) =>
-      resolveLandofileLoadExpressions({
-        value: parsed,
-        source: { appRoot: ctx.appRoot, sourcePath: fragment.filePath, sourceRoot: fragment.root, layer },
-        policy: fragment.userOwned ? { ...ctx.loadPolicy, allowFileAccess: false } : ctx.loadPolicy,
-        pendingSites: ctx.pendingSites,
-        recorder: ctx.recorder,
-        ...(fragment.kind === "compose" ? { defaultServiceType: "compose" } : {}),
-      }).pipe(
-        Effect.map((resolved) => ({
-          ...resolved,
-          value:
-            Predicate.isObjectOrArray(parsed) && Predicate.isObjectOrArray(resolved.value)
-              ? copyLandofileProvenance(parsed, resolved.value)
-              : resolved.value,
-        })),
-      ),
-    ),
-    Effect.tap(({ relaxedReads }) => {
-      const onRelaxedRead = ctx.onRelaxedRead;
-      return onRelaxedRead === undefined
-        ? Effect.void
-        : Effect.forEach(relaxedReads, (read) =>
-            onRelaxedRead({
-              sourcePath: fragment.filePath,
-              authoredPath: read.authoredPath,
-              absolutePath: read.absolutePath,
-              appRoot: ctx.appRoot,
-            }),
-          ).pipe(Effect.asVoid);
-    }),
-    Effect.map(({ value, dependencies }) =>
-      Predicate.isObjectOrArray(value) ? rememberLandofileReferencedFiles(value, dependencies) : value,
-    ),
-    Effect.flatMap(
-      (
-        parsed,
-      ): Effect.Effect<
-        Record<string, unknown>,
-        LandofileIncludeError | LandofileValidationError | LandofileParseError
-      > => {
-        if (!Predicate.isObject(parsed))
-          return Effect.fail(
-            includeError({
-              message: `Include ${fragment.sourceId} did not parse to a Landofile object.`,
-              source: fragment.sourceId,
-              kind: "parse-failed",
-            }),
-          );
-        if (
-          Object.hasOwn(parsed, "name") ||
-          Object.hasOwn(parsed, "runtime") ||
-          Object.hasOwn(parsed, "recipe")
-        )
-          return Effect.fail(
-            includeError({
-              message: `Include ${fragment.sourceId} must not declare top-level name:, runtime:, or recipe:.`,
-              source: fragment.sourceId,
-              kind: "forbidden-field",
-              remediation:
-                "Remove top-level name:, runtime:, and recipe: from the fragment; the including Landofile owns the app's identity and recipe options.",
-            }),
-          );
-        return Effect.gen(function* () {
-          // Remote snapshots live in a shared cache, not the app's bindable source tree.
-          // Canonicalize both roots so Windows 8.3 / symlink aliases still rebase to portable paths.
-          const composeRoots =
-            fragment.kind === "compose" && fragment.remoteOrigin === undefined && !fragment.userOwned
-              ? {
-                  appRoot: yield* Effect.promise(() => realpathOrSelf(ctx.appRoot)),
-                  sourceRoot: yield* Effect.promise(() => realpathOrSelf(fragment.root)),
-                }
-              : undefined;
-          const document =
-            fragment.kind === "compose" ? composeIncludeDefaults(parsed, composeRoots) : parsed;
-          const prepared = yield* prepareOverlay(
-            document,
-            { file: fragment.filePath, layer },
-            getSourceDocuments(parsed)[0]?.document ?? parsed,
-          );
-          return copyLandofileProvenance(parsed, rememberOrigins(prepared.value, prepared.origins));
-        });
-      },
-    ),
-  );
+) {
+  const parsed = yield* parseLandofile({
+    file: fragment.filePath,
+    content: fragment.content,
+    cwd: fragment.root,
+  });
+  const composeCheck = rejectComposeKeys(fragment.authoredSource, parsed);
+  if (ctx.recorder === undefined) yield* composeCheck;
+  else ctx.recorder.effectiveChecks.push(composeCheck);
+  const documents: readonly SourceDocument[] = Predicate.isObjectOrArray(parsed)
+    ? [
+        {
+          file: fragment.filePath,
+          form: "yaml",
+          layer,
+          document: parsed,
+          content: fragment.content,
+          digest: sha256Hex(fragment.content),
+        },
+      ]
+    : [];
+  const resolved = yield* resolveLandofileLoadExpressions({
+    value: parsed,
+    source: {
+      appRoot: ctx.appRoot,
+      sourcePath: fragment.filePath,
+      sourceRoot: fragment.root,
+      layer,
+    },
+    policy: fragment.userOwned ? { ...ctx.loadPolicy, allowFileAccess: false } : ctx.loadPolicy,
+    pendingSites: ctx.pendingSites,
+    recorder: ctx.recorder,
+    environmentRecorder: ctx.loadScope?.environmentRecorder,
+    ...(fragment.kind === "compose" ? { defaultServiceType: "compose" } : {}),
+  });
+  const onRelaxedRead = ctx.onRelaxedRead;
+  if (onRelaxedRead !== undefined)
+    yield* Effect.forEach(resolved.relaxedReads, (read) =>
+      onRelaxedRead({
+        sourcePath: fragment.filePath,
+        authoredPath: read.authoredPath,
+        absolutePath: read.absolutePath,
+        appRoot: ctx.appRoot,
+      }),
+    ).pipe(Effect.asVoid);
+  const value = resolved.value;
+  if (!Predicate.isObject(value))
+    return yield* Effect.fail(
+      includeError({
+        message: `Include ${fragment.sourceId} did not parse to a Landofile object.`,
+        source: fragment.sourceId,
+        kind: "parse-failed",
+      }),
+    );
+  if (Object.hasOwn(value, "name") || Object.hasOwn(value, "runtime") || Object.hasOwn(value, "recipe"))
+    return yield* Effect.fail(
+      includeError({
+        message: `Include ${fragment.sourceId} must not declare top-level name:, runtime:, or recipe:.`,
+        source: fragment.sourceId,
+        kind: "forbidden-field",
+        remediation:
+          "Remove top-level name:, runtime:, and recipe: from the fragment; the including Landofile owns the app's identity and recipe options.",
+      }),
+    );
+  // Remote snapshots live in a shared cache, not the app's bindable source tree.
+  // Canonicalize both roots so Windows 8.3 / symlink aliases still rebase to portable paths.
+  const composeRoots =
+    fragment.kind === "compose" && fragment.remoteOrigin === undefined && !fragment.userOwned
+      ? {
+          appRoot: yield* Effect.promise(() => realpathOrSelf(ctx.appRoot)),
+          sourceRoot: yield* Effect.promise(() => realpathOrSelf(fragment.root)),
+        }
+      : undefined;
+  const document = fragment.kind === "compose" ? composeIncludeDefaults(value, composeRoots) : value;
+  const prepared = yield* prepareOverlay(document, { file: fragment.filePath, layer }, parsed);
+  return {
+    value: prepared.value,
+    provenance: {
+      ...emptyProvenance(prepared.origins),
+      documents,
+      referencedFiles: normalizeReferencedFiles(resolved.dependencies),
+    },
+  } satisfies AuthoredDocument;
+});
 
-export const withoutIncludeArrays = (landofile: Record<string, unknown>): Record<string, unknown> => {
-  const { include: _include, includes: _includes, ...rest } = landofile;
-  return copyLandofileProvenance(landofile, rest);
+export const withoutIncludeArrays = (landofile: AuthoredDocument): ValueWithOrigins<AuthoredOrigin> => {
+  const { include: _include, includes: _includes, ...rest } = landofile.value;
+  return { value: rest, origins: landofile.provenance.origins };
 };
-export const withResolvedTooling = (
-  landofile: Record<string, unknown>,
-  included: Readonly<Record<string, unknown>>,
-): Record<string, unknown> => {
-  const { include: _include, includes: _includes, toolingIncludes: _toolingIncludes, ...inline } = landofile;
-  const own = Predicate.isObject(inline.tooling) ? inline.tooling : {};
-  const merged = mergeValues(LandofileShape, included, own, ["tooling"]);
-  if (!Predicate.isObject(merged) || Object.keys(merged).length === 0) return inline;
-  return { ...inline, tooling: merged };
-};
+
+/**
+ * The document's own `lando:` constraint, or the entries a resolved tree already
+ * recorded.
+ */
 export const ownVersionConstraintEntries = (
-  landofile: { readonly lando?: string | undefined },
+  document: AuthoredDocument,
   source: string,
   layer: VersionConstraintEntry["layer"],
   order: VersionConstraintEntry["order"],
 ): ReadonlyArray<VersionConstraintEntry> => {
-  // Remembered entries already name every source. The visible lando string is
-  // only the raw fallback, so re-deriving it must not drop or replay them.
-  if (hasVersionConstraintEntries(landofile)) return getVersionConstraintEntries(landofile, source);
-  return typeof landofile.lando !== "string" ? [] : [{ range: landofile.lando, source, layer, order }];
+  if (document.provenance.versionConstraints.length > 0) return document.provenance.versionConstraints;
+  const range = document.value.lando;
+  return typeof range !== "string" ? [] : [{ range, source, layer, order }];
 };

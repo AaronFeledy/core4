@@ -1,8 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  PortablePath,
+  ProviderId,
+  ServiceName,
+  type VolumeRestoreSpec,
+} from "@lando/sdk/schema";
+import type { VolumeArchiveImportSpec } from "@lando/sdk/services";
 import { Cause, DateTime, Effect, Exit, Option, Stream } from "effect";
-
 import type { ProviderDataPlane } from "../src/data-plane.ts";
 import { type ResolvedProviderOpsInput, makeResolvedProviderOps } from "../src/runtime-provider.ts";
 
@@ -102,9 +110,12 @@ const makeDataPlane = (calls: Call[]): ProviderDataPlane => ({
       format: "native" as const,
     });
   },
-  restoreVolume: (spec) => {
+  restoreVolume: <E = never>(
+    spec: VolumeRestoreSpec,
+    options?: { readonly beforeCommit?: Effect.Effect<void, E> },
+  ) => {
     calls.push({ name: "restoreVolume", args: [spec] });
-    return Effect.void;
+    return options?.beforeCommit ?? Effect.void;
   },
   removeVolumeSnapshot: (snapshot) => {
     calls.push({ name: "removeVolumeSnapshot", args: [snapshot] });
@@ -125,6 +136,14 @@ const makeDataPlane = (calls: Call[]): ProviderDataPlane => ({
   copyFromService: (selector, spec) => {
     calls.push({ name: "copyFromService", args: [selector, spec] });
     return Stream.make(new Uint8Array([1]));
+  },
+  exportVolume: (ref) => {
+    calls.push({ name: "exportVolume", args: [ref] });
+    return Stream.make(new Uint8Array([3]));
+  },
+  importVolume: <E, R>(spec: VolumeArchiveImportSpec<E, R>) => {
+    calls.push({ name: "importVolume", args: [spec] });
+    return Effect.void;
   },
   exportArtifact: (ref) => {
     calls.push({ name: "exportArtifact", args: [ref] });
@@ -203,6 +222,27 @@ describe("resolved provider operations", () => {
     expect(calls.map((call) => call.name)).toEqual(
       startRuntime === false ? ["removeVolumeSnapshot"] : ["before", "removeVolumeSnapshot"],
     );
+  });
+  test("native restore forwards the caller's pre-publication check to the data plane", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls));
+    const restore: VolumeRestoreSpec = {
+      snapshot: {
+        provider: ProviderId.make("test"),
+        id: "snap",
+        digest: "sha256:snap",
+        sizeBytes: 1,
+        format: "native",
+      },
+      target: { app, store: "data" },
+      expectedTargetGeneration: "00000000-0000-4000-8000-000000000001",
+    };
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(ops.restoreVolume(restore, { beforeCommit: Effect.fail("seed claim settled") })),
+    );
+
+    expect(exit).toStrictEqual(Exit.fail("seed claim settled"));
   });
   test("lists snapshot images without invoking the runtime-starting before hook", async () => {
     const calls: Call[] = [];

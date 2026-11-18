@@ -1,5 +1,12 @@
 import type { RecipeSource } from "@lando/sdk/schema";
-import { composerOption, composerTool, phpAppserver, phpOption, webrootOption } from "../source-php.ts";
+import {
+  composerOption,
+  composerTool,
+  createProjectTool,
+  phpAppserver,
+  phpOption,
+  webrootOption,
+} from "../source-php.ts";
 import { defaultRoutes, postgresUrl } from "../source-web.ts";
 
 export const source = {
@@ -44,6 +51,7 @@ export const source = {
         wrapper: true,
       },
       composer: composerTool,
+      "create-project": createProjectTool,
     },
   },
   variants: [

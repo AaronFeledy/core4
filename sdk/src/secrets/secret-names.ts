@@ -18,8 +18,34 @@ const KEY_QUALIFIERS = new Set([
 export const SECRET_WORD_SOURCE = STRONG_WORDS.map((word) => (word === "apikey" ? "api[_-]?key" : word)).join(
   "|",
 );
-export const SIGNED_QUERY_WORD_SOURCE = [SECRET_WORD_SOURCE, "signature", "sig"].join("|");
-export const SECRET_FIELD_PATTERN = new RegExp(`${SECRET_WORD_SOURCE}|^auth(?:token|orization)?$`, "iu");
+/** Keeps a query separator out of an assignment name (`?token=` is a query, not an assignment). */
+export const SECRET_ASSIGNMENT_LEFT_BOUNDARY_SOURCE = "(?<![?&A-Za-z0-9_.-])";
+/**
+ * Names that are secret only as a whole name: `auth`, `authorization`, and
+ * `authtoken`. As a substring `auth` would also match `oauth`, which is not a
+ * credential, so the recognizer and every name grammar share this source and
+ * accept it only as the complete name.
+ */
+const SECRET_WHOLE_NAME_SOURCE = "auth(?:token|orization)?";
+
+export const SECRET_FIELD_PATTERN = new RegExp(
+  `(?:${SECRET_WORD_SOURCE})|^(?:${SECRET_WHOLE_NAME_SOURCE})$`,
+  "iu",
+);
+
+/** Every character an assignment name may contain. */
+const NAME_CHAR_SOURCE = "A-Za-z0-9_.-";
+
+/**
+ * A whole assignment name that contains a secret word, consumed as one maximal
+ * run. Pair it with the left boundary above.
+ *
+ * The membership test is a zero-width lookahead and the name is then consumed
+ * once, so a long run of repeated secret words (`tokentokentoken…`) cannot
+ * backtrack through suffixes: only the run's start is a candidate after the
+ * left boundary, and each attempt costs at most one scan.
+ */
+export const SECRET_ASSIGNMENT_NAME_SOURCE = `(?=[${NAME_CHAR_SOURCE}]*(?:${SECRET_WORD_SOURCE})|${SECRET_WHOLE_NAME_SOURCE}(?![${NAME_CHAR_SOURCE}]))[${NAME_CHAR_SOURCE}]+`;
 
 // Whole segments only. Guessing suffixes (PGPASSWORD, MYSQL_PWD) collects host defaults such as GitHub's
 // Windows-image PGPASSWORD=root, which then masks "root" in every line of output.
@@ -36,6 +62,15 @@ const segments = (name: string): readonly string[] =>
 
 /** Broad substring matching: a false positive masks only its own structured field. */
 export const isSecretFieldName = (name: string): boolean => SECRET_FIELD_PATTERN.test(name);
+
+/**
+ * A signed-query key: the broad field vocabulary plus the signature words,
+ * which the field recognizer deliberately leaves out. The signature words count
+ * as a whole segment, so `?sig=` and `?X-Amz-Signature=` mask while `?design=`
+ * stays readable.
+ */
+export const isSignedQueryName = (name: string): boolean =>
+  isSecretFieldName(name) || segments(name).some((segment) => segment === "sig" || segment === "signature");
 
 /** Precise env/label discovery: a strong or weak whole segment, or a whole-name alias. */
 export const isSecretEnvName = (name: string): boolean =>

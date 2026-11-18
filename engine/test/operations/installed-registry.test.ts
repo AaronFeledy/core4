@@ -85,7 +85,6 @@ test.each(["direct", "alias"] as const)(
             Effect.acquireUseRelease(
               acquireAdvisoryLockAt(join(root, ".lando-plugin-mutation.lock"), "test", {
                 privateFileAccess: access,
-                expireLiveOwner: false,
               }),
               () =>
                 Deferred.succeed(held, undefined).pipe(

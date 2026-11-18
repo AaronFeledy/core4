@@ -10,14 +10,14 @@ import {
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
-import { getOrigins } from "./pipeline/origins.ts";
+import type { LandofileProvenance } from "./provenance.ts";
 import { landofileIssuesFromSchema, valueAtPath } from "./validation-suggestions.ts";
 import { isValidSemverRange } from "./version-constraint.ts";
 
-export const getLandofileValueSource = (value: object, path: ValidationIssuePath) => {
-  const origins = getOrigins(value);
-  return origins === undefined ? undefined : valueOriginAt(origins, path).source;
-};
+export const getLandofileValueSource = (
+  provenance: LandofileProvenance | undefined,
+  path: ValidationIssuePath,
+) => (provenance === undefined ? undefined : valueOriginAt(provenance.origins, path).source);
 const COMPOSE_REMEDIATION =
   "Compose compatibility is limited to the supported subset; move provider-native keys under providers.<provider-id> or use config translation.";
 
@@ -39,10 +39,15 @@ export const landofileValidationError = (
   });
 };
 
-export const validationErrorFromCause = (file: string, parsed: unknown, cause: unknown) => {
+export const validationErrorFromCause = (
+  file: string,
+  parsed: unknown,
+  cause: unknown,
+  provenance?: LandofileProvenance,
+) => {
   const leaves = Schema.isSchemaError(cause) ? schemaIssueLeaves(cause.issue, [], { input: parsed }) : [];
   const unknown = leaves.filter((issue) => issue._tag === "Unexpected");
-  const origins = isPlainRecord(parsed) ? getOrigins(parsed) : undefined;
+  const origins = provenance === undefined ? undefined : provenance.origins;
   const issues = (
     Schema.isSchemaError(cause)
       ? landofileIssuesFromSchema(cause.issue, parsed)
@@ -78,6 +83,7 @@ export const validationErrorFromCause = (file: string, parsed: unknown, cause: u
 export const validateLandofile = (
   file: string,
   parsed: unknown,
+  provenance?: LandofileProvenance,
 ): Effect.Effect<typeof LandofileShape.Type, LandofileParseError | LandofileValidationError> => {
   const range = isPlainRecord(parsed) ? parsed.lando : undefined;
   if (typeof range === "string" && !isValidSemverRange(range)) {
@@ -94,5 +100,5 @@ export const validateLandofile = (
   return Schema.decodeUnknownEffect(LandofileShape)(parsed, {
     onExcessProperty: "error",
     errors: "all",
-  }).pipe(mapFailures((cause) => validationErrorFromCause(file, parsed, cause)));
+  }).pipe(mapFailures((cause) => validationErrorFromCause(file, parsed, cause, provenance)));
 };

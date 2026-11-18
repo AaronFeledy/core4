@@ -18,7 +18,9 @@ const matchesRoute = (left: RoutePlan, right: RoutePlan): boolean =>
   left.backend.service === right.backend.service &&
   left.backend.port === right.backend.port &&
   left.backend.protocol === right.backend.protocol &&
-  left.backend.host === right.backend.host;
+  left.backend.host === right.backend.host &&
+  left.backend.tls?.caId === right.backend.tls?.caId &&
+  left.backend.tls?.serverName === right.backend.tls?.serverName;
 
 export const projectRouteConnections = (input: {
   readonly service: ServicePlan;

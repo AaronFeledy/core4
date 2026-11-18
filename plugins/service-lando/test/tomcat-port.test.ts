@@ -77,10 +77,26 @@ describe("Tomcat authored HTTP port", () => {
     // When: the provider serializes every derived build step into Dockerfile RUN instructions.
     const result = Effect.runPromise(
       buildContainerArtifact(
-        { app: plan.id, service: service.name, plan, buildKey: "tomcat-port" },
+        {
+          app: plan.id,
+          service: service.name,
+          plan,
+          buildKey: "tomcat-port",
+          labels: { "dev.lando.test": "tomcat-port" },
+          ref: "lando-build-test-tomcat-port",
+        },
         {
           providerId: service.provider,
-          api: { request: () => Effect.succeed({ status: 200, body: '{"Config":{"User":"root"}}' }) },
+          api: {
+            // Untagged base builds must report the image ID the derived stage builds FROM.
+            request: (input) =>
+              Effect.succeed({
+                status: 200,
+                body: input.path.startsWith("/build?")
+                  ? `{"aux":{"ID":"sha256:${"1".repeat(64)}"}}\n`
+                  : '{"Config":{"User":"root"}}',
+              }),
+          },
           sourceEnv: {},
         },
       ),

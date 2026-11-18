@@ -55,7 +55,7 @@ test.each([
   {
     label: "input conflict",
     content: "# ---\n# arguments: false\n# args:\n#   name:\n# ---\necho hi",
-    path: [],
+    path: ["arguments"],
     message: /contradict/,
   },
   {

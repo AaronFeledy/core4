@@ -19,6 +19,8 @@ lando info
 
 `lando start` prints the app URL. `lando info` repeats it.
 
+To add a Composer project to an initialized app, run `lando create-project <package> [<version>]`. It stages the package outside the app root, then moves it into the mounted `/app` without overwriting `.lando.yml` or files you added. It fills empty mounted directories, installs dependencies in place, and runs the project's Composer hooks. Pass `--no-scripts` to skip those hooks and install scripts.
+
 The `web` service serves `/app` through nginx and sends PHP requests to
 `appserver` on its internal PHP-FPM port. Both services use `.` as the webroot, resolving to the app mount at `/app`.
 Put your `index.php` in the project root. `appserver` remains the primary service

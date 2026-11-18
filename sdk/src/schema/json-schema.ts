@@ -163,6 +163,7 @@ import {
   ServicePlan,
 } from "./app-plan.ts";
 import {
+  BuiltImageCleanup,
   DestroyAppOutcome,
   DestroyAppResult,
   ExecAppResult,
@@ -177,7 +178,16 @@ import {
   StopAppResult,
   ToolingResult,
 } from "./app-results.ts";
-import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
+import {
+  ArtifactBuildSpec,
+  ArtifactListing,
+  ArtifactRef,
+  ArtifactRemoval,
+  ArtifactRemovalRequest,
+  ArtifactSelector,
+  BuildScript,
+  ProviderArtifactRef,
+} from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { CommandContribution } from "./command-contribution.ts";
 import { CommandTrace, CommandTraceSpan } from "./command-trace.ts";
@@ -239,7 +249,11 @@ import {
   VolumeSnapshotSpec,
 } from "./data-transfer.ts";
 import {
+  DatabaseClientCheckResult,
+  DatabaseClientCheckState,
+  DatabaseClientCreds,
   DatabaseConnection,
+  DatabaseLocalCheck,
   ServiceCreds,
   ServiceCredsConfig,
   ServiceCredsDisplay,
@@ -425,9 +439,11 @@ import {
   PluginName,
   PortNumber,
   PortablePath,
+  ProjectUserExplanation,
   ProviderExtensionConfig,
   ProviderId,
   ServiceName,
+  ServiceProjectUser,
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
 import { ProviderSetupPlan } from "./provider-setup.ts";
@@ -472,6 +488,7 @@ import {
   RecipeSourceOption,
   RecipeSourcePrompt,
 } from "./recipe-source.ts";
+import { RegisteredCommand } from "./registered-command.ts";
 import {
   AppRemoteEntry,
   AppRemoteMutationResult,
@@ -511,8 +528,9 @@ import { CronExpression, ScheduleConfig, ScheduleJob, ScheduleJobName } from "./
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceFeatureValidationResult } from "./service-feature-validation.ts";
-import { ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
+import { ServiceContainerChange, ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
 import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
+import { GeneratedCertificateEndpoint } from "./service-resolution.ts";
 import {
   DestroyOutcome,
   FileSyncQuiesceResult,
@@ -618,6 +636,8 @@ export type PublicSchemaReferencePage = {
 
 const basePublicSchemaRegistry = schemaRegistry({
   ConfigKeyDescription,
+  ServiceProjectUser,
+  ProjectUserExplanation,
   ExecutionSite,
   ExecutionSiteMatch,
   SecretReference,
@@ -629,6 +649,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceCreds,
   ServiceCredsConfig,
   DatabaseConnection,
+  DatabaseClientCreds,
+  DatabaseClientCheckState,
+  DatabaseClientCheckResult,
+  DatabaseLocalCheck,
   ServiceCredsDisplay,
   CurrentExecutableAppPlan,
   EventStepPlan,
@@ -694,6 +718,11 @@ const basePublicSchemaRegistry = schemaRegistry({
   HostTerminal,
   AppRef,
   ArtifactRef,
+  ArtifactRemoval,
+  ArtifactRemovalRequest,
+  ArtifactSelector,
+  ArtifactListing,
+  ProviderArtifactRef,
   ArtifactBuildSpec,
   ArtifactManifestEntry,
   BuildScript,
@@ -773,6 +802,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ToolingInputDeclaration,
   ToolingRunSummary,
   ToolingRunTarget,
+  RegisteredCommand,
   ToolingInputValues,
   ToolingInvocationInput,
   ServiceConfigInput,
@@ -901,6 +931,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ProviderExtensionConfig,
   HostPlatform,
   ServiceInfo,
+  ServiceContainerChange,
   ServiceInfoLogSource,
   ServiceShutdownObservation,
   FileSyncQuiesceResult,
@@ -914,6 +945,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   RestartAppResult,
   RebuildAppResult,
   DestroyAppResult,
+  BuiltImageCleanup,
   DestroyAppOutcome,
   InfoAppAgentEnv,
   InfoAppHostProxy,
@@ -929,6 +961,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   EndpointInvariantIssue,
   HttpEndpointSelection,
   LogicalEndpoint,
+  GeneratedCertificateEndpoint,
   ServiceConnection,
   ServiceState,
   RouteEvidence,
@@ -1243,6 +1276,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   EndpointInvariantIssue: "Logical listener alias, primary, protocol, or scan-default conflict.",
   HttpEndpointSelection: "Unambiguous HTTP listener selection without order-based fallback.",
   LogicalEndpoint: "Grouped facets of one logical network listener.",
+  GeneratedCertificateEndpoint:
+    "Owned launcher HTTPS listener that can serve the service's generated certificate.",
   ServiceConnection: "Scoped service connection with explicit binding and activity evidence.",
   ServiceState: "Shared observed and supervised service lifecycle vocabulary.",
   RouteEvidence: "Read-only configured ingress and live route publication evidence.",
@@ -1253,6 +1288,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
     "Durable app file-sync disposal progress, including restartable drain and resumed cleanup.",
   DestroyOutcome: "Provider destroy receipt with optional shutdown observations.",
   ObservedServiceRemoval: "Exact observed-container removal receipt with optional shutdown observations.",
+  ServiceContainerChange:
+    "What apply did to one service container, with the replacement reason and any anonymous volumes lost.",
   StartedService: "Service startup result with scoped connection evidence.",
   PluginDoctorReport: "Public Lando schema contract for plugin-contributed doctor results.",
   PreparedFileSyncTarget: "Public Lando schema contract for a prepared file-sync target.",

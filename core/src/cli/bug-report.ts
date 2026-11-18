@@ -1,7 +1,8 @@
 import { types } from "node:util";
 import { resolveLandoRoots } from "@lando/paths";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import { type ProjectedFailure, taggedErrorJson } from "@lando/sdk/command-result";
+import { type ProjectedFailure, projectToolingDiagnostic, taggedErrorJson } from "@lando/sdk/command-result";
+import { ToolingCompileError } from "@lando/sdk/errors";
 import { type FailureRole, ValidationIssue } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Schema } from "effect";
@@ -78,7 +79,13 @@ export const buildBugReport = (input: {
     createStandaloneRedactor("secrets", {
       sourceEnv: { ...(input.sourceEnv ?? process.env) },
     });
-  const error = taggedErrorJson(input.error);
+  const projectError = (error: unknown): ReturnType<typeof taggedErrorJson> => {
+    const diagnostic = taggedErrorJson(error);
+    return Schema.is(Schema.Struct(ToolingCompileError.fields))(diagnostic)
+      ? projectToolingDiagnostic(diagnostic, redactor)
+      : diagnostic;
+  };
+  const error = projectError(input.error);
   const causes: Array<ReturnType<typeof taggedErrorJson>> = [];
   const seen = new Set<unknown>([input.error]);
   let current = ownCause(input.error);
@@ -87,7 +94,7 @@ export const buildBugReport = (input: {
     const tag = Object.getOwnPropertyDescriptor(current, "_tag");
     if (tag === undefined || !("value" in tag) || typeof tag.value !== "string") break;
     seen.add(current);
-    causes.push(taggedErrorJson(current));
+    causes.push(projectError(current));
     current = ownCause(current);
   }
   const ctx = input.context;
@@ -133,14 +140,16 @@ export const buildBugReport = (input: {
     }
   }
   return {
+    // Every printed component takes the redactor, so the boundary may treat this
+    // report as already redacted instead of rescanning its labels as free text.
     code: redactor.redactString(error._tag),
-    commandId: ctx.commandId,
+    commandId: redactor.redactString(ctx.commandId),
     body: redactor.redactString(text.message.join("\n")),
     remediation: redactor.redactString(text.remediation.join(" ")),
-    appId,
-    providerId,
-    logsDir: `${cacheDir.replace(/\/+$/u, "")}/logs`,
-    cacheDir,
+    appId: appId === undefined ? undefined : redactor.redactString(appId),
+    providerId: providerId === undefined ? undefined : redactor.redactString(providerId),
+    logsDir: redactor.redactString(`${cacheDir.replace(/\/+$/u, "")}/logs`),
+    cacheDir: redactor.redactString(cacheDir),
     ...(issues.length === 0
       ? {}
       : { issues: Schema.decodeUnknownSync(Schema.Array(ValidationIssue))(redactor.redactValue(issues)) }),

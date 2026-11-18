@@ -13,10 +13,14 @@ export const resolveInfoTarget = resolveAppliedStateTarget.pipe(
         Effect.catch(() => Effect.fail(error)),
       );
       const root = AbsolutePath.make(landofile.context.appRoot);
-      const plan = yield* registry.resolveAppliedPlan(root, {
-        kind: "user",
-        id: normalizeAppSlug(landofile.document.name ?? "app", root),
-      });
+      const plan = yield* registry.resolveAppliedPlan(
+        root,
+        {
+          kind: "user",
+          id: normalizeAppSlug(landofile.document.name ?? "app", root),
+        },
+        "exact",
+      );
       if (plan === undefined) return undefined;
       return yield* validateResolvedAppTarget({ plan, root: plan.root, app: userAppRef(plan), landofile });
     });

@@ -50,6 +50,7 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - On how-to and tutorial pages only: numbered list that is not a sequence you can run
 - On how-to and tutorial pages only: heading that does not name the action or the command
 - Install, start, or config with no verify command (how-to / tutorial)
+- A guide teaches an app install that no `layer="e2e"` scenario runs anywhere in the docs tree (`guide.install.e2e-coverage`)
 - Copied Lando 3 product facts (recipes-as-the-product, Drupal 9 first-app, Docker-as-default, start Traefik)
 
 ## Before you write
@@ -219,6 +220,10 @@ See the illustrative [executable guide shape](examples.md#executable-guide-shape
 3. `bun run check:guide-coverage`.
 
 ## Verification
+
+Before calling a guide's app install verified, run the covering `layer="e2e"`
+scenario on the default `lando` provider (managed Podman), including cleanup.
+Passing structural lint or a test-provider scenario does not verify the install.
 
 ```bash
 bun run lint:guides

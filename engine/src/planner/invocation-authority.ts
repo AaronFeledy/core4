@@ -5,6 +5,7 @@ import {
   compileInvocationSites,
   compiledValueError,
 } from "@lando/landofile/compiled-sites";
+import { provenanceOf } from "@lando/landofile/provenance";
 import type {
   AppPlan,
   EventsPlan,
@@ -14,9 +15,11 @@ import type {
 } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import {
-  compileEffectiveTooling,
   connectionClientsForPlan,
   effectiveToolingForPlan,
+  resolveEffectiveTooling,
+  toolingSourceResolverForPlan,
+  toolingSourceResolverForResolution,
 } from "./effective-tooling.ts";
 import { serviceCredsScopeForPlan, serviceScopeContext } from "./landofile-scopes.ts";
 
@@ -99,7 +102,14 @@ export const invocationToolingForPlan = Effect.fnUntraced(function* (
   defaultDomain: string,
 ) {
   const landofile = compiled.document;
-  const authored = compileEffectiveTooling({ landofile, services: [] });
+  const resolution = resolveEffectiveTooling({
+    landofile,
+    provenance: provenanceOf(compiled),
+    services: [],
+  });
+  const authored = resolution.tasks;
+  const authoredSource = toolingSourceResolverForResolution(resolution, plan.metadata.source);
+  const planSource = toolingSourceResolverForPlan(plan);
   const names = new Set(Object.keys(authored));
   const refreshed = new Set([...names, ...Object.keys(connectionClientsForPlan(plan))]);
   const sites = effectiveInvocationSites({
@@ -118,6 +128,7 @@ export const invocationToolingForPlan = Effect.fnUntraced(function* (
     ),
   });
   return {
+    toolingSource: (name: string) => (names.has(name) ? authoredSource(name) : planSource(name)),
     tooling: { ...effectiveToolingForPlan(plan), ...authored },
     sites: [
       ...(invocationAuthorityForPlan(plan)?.sites ?? []).filter(

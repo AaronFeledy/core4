@@ -1,5 +1,4 @@
-import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
-import type { ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
+import type { ToolingInputDeclaration } from "@lando/sdk/schema";
 import { argStdioDescription } from "./arg-stdio";
 import type { OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
 import { commandOwnedLandoFlags, specOwnerPolicy } from "./flag-claims";
@@ -13,6 +12,7 @@ import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { bold, cyan, dim } from "./help-style";
 import { LANDO_FLAGS, type LandoFlag, type LandoFlagMatch, landoFlagFooterLabels } from "./lando-flags";
 import { resolveTopLevelAliases } from "./spec/command-base";
+import type { ToolingAvailability } from "./tooling-route";
 import { toolingRunHelp } from "./tooling-run-help";
 
 /** The last line of a command page: where Lando reads its own flags for this command's tail. */
@@ -78,12 +78,8 @@ export type ToolingHelpEntry = {
   readonly id: string;
   readonly summary: string;
   readonly hidden?: boolean;
-  readonly service?: string;
-  readonly input?: ToolingHelpInput;
-  readonly wrapper?: true;
+  readonly availability: ToolingAvailability;
   readonly source?: "bun-script";
-  readonly runs?: ToolingRunSummary;
-  readonly loadError?: NonNullable<CommandIndexEntry["loadError"]>;
 };
 
 type HelpStyle = {
@@ -296,27 +292,35 @@ const helpSection = (title: string, rows: readonly string[], style: HelpStyle): 
   rows.length === 0 ? [] : ["", style.heading(title), ...rows];
 
 export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelpOptions): string => {
+  const availability = entry.availability;
+  switch (availability._tag) {
+    case "Disabled":
+      return `Tooling command ${entry.id} is disabled.`;
+    case "Unavailable":
+      return availability.diagnostic.message;
+    case "Ready":
+      break;
+    default:
+      return availability satisfies never;
+  }
   const style = helpStyle(options?.styled === true);
   const names = typeableFor(entry.id, [], options?.aliasPolicy, true);
-  const input = entry.input;
-  const usage =
-    input === undefined || (input.acceptsArguments && input.flags.length + input.args.length === 0)
-      ? `lando ${names.primary} [args...]`
-      : `lando ${names.primary}${input.flags.length === 0 ? "" : " [flags]"}${
-          input.args.length === 0
-            ? ""
-            : ` ${input.args
-                .map((arg) => (arg.required ? `<${arg.name.toUpperCase()}>` : `[${arg.name.toUpperCase()}]`))
-                .join(" ")}`
-        }`;
-  const flagRows =
-    input === undefined
-      ? []
-      : input.flags.map((flag) => {
-          const alias = flag.alias === undefined ? "" : `, -${flag.alias}`;
-          return `  --${flag.name}${flag.boolean ? "[=true|false]" : "=<value>"}${alias}${helpItemMeta(flag)}`;
-        });
-  const argRows = input === undefined ? [] : input.args.map((arg) => `  ${arg.name}${helpItemMeta(arg)}`);
+  const input = availability.input;
+  const acceptsRawArguments = input.acceptsArguments && input.flags.length + input.args.length === 0;
+  const usage = acceptsRawArguments
+    ? `lando ${names.primary} [args...]`
+    : `lando ${names.primary}${input.flags.length === 0 ? "" : " [flags]"}${
+        input.args.length === 0
+          ? ""
+          : ` ${input.args
+              .map((arg) => (arg.required ? `<${arg.name.toUpperCase()}>` : `[${arg.name.toUpperCase()}]`))
+              .join(" ")}`
+      }`;
+  const flagRows = input.flags.map((flag) => {
+    const alias = flag.alias === undefined ? "" : `, -${flag.alias}`;
+    return `  --${flag.name}${flag.boolean ? "[=true|false]" : "=<value>"}${alias}${helpItemMeta(flag)}`;
+  });
+  const argRows = input.args.map((arg) => `  ${arg.name}${helpItemMeta(arg)}`);
   const lines = [
     entry.summary,
     "",
@@ -326,13 +330,13 @@ export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelp
     ...helpSection("FLAGS", flagRows, style),
     ...helpSection("ARGUMENTS", argRows, style),
   ];
-  if (entry.runs !== undefined) lines.push("", toolingRunHelp(entry.runs));
+  if (availability.runs !== undefined) lines.push("", toolingRunHelp(availability.runs));
   const sharedFlags = sharedFlagHint(input, names.primary);
   if (sharedFlags !== undefined) lines.push("", sharedFlags);
-  if (input === undefined || (input.acceptsArguments && input.flags.length + input.args.length === 0))
+  if (acceptsRawArguments)
     lines.push(
       "",
-      entry.wrapper
+      availability.wrapper
         ? `Arguments and flags after \`${names.primary}\` go to the command. Put Lando's own flags before it, as in \`lando --verbose ${names.primary}\`. Run \`lando help ${names.primary}\` to see this page.`
         : entry.source === "bun-script"
           ? `Run \`lando ${names.primary} -- --help\` to pass --help to the script.`

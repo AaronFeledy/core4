@@ -3,6 +3,7 @@ import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipe
 import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result } from "effect";
+import { createProjectTool } from "../../src/recipes/builtin/source-php.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
 
 const {
@@ -16,13 +17,14 @@ const defaults = { php: "8.4", database: "mariadb:11.4", composer: "2", webroot:
 const alternatives = { php: "8.1", database: "mysql:8.0", composer: false, webroot: "/app/web" };
 const validInput: RecipeDecomposeInput = { producer: lampProducer, options: defaults, secrets: {} };
 const decomposer = lampDecomposer({
-  redactor: { redactString: (text) => text, redactValue: (value) => value },
+  redactor: { redactString: (text) => text, redactPrefix: (text) => text, redactValue: (value) => value },
 });
 const expectedServices = {
   appserver: {
     type: "php:{{ recipe.php }}",
     primary: true,
     framework: "none",
+    allowOverride: true,
     webroot: "{{ recipe.webroot }}",
     composer: "{{ recipe.composer }}",
     port: 80,
@@ -72,6 +74,7 @@ describe("lamp decomposition", () => {
             cmds: ["composer"],
             wrapper: true,
           },
+          "create-project": createProjectTool,
           php: phpTool,
         },
       },

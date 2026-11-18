@@ -88,6 +88,8 @@ const makeCapabilities = (sharedCrossAppNetwork: boolean): ProviderCapabilities 
   routeProvider: false,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "native",
@@ -162,7 +164,8 @@ const makeLayer = (
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () => die("buildArtifact"),
     pullArtifact: () => die("pullArtifact"),
-    removeArtifact: () => Effect.void,
+    removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+    listArtifacts: () => Effect.succeed([]),
     apply: (plan) =>
       Effect.sync(() => {
         appliedPlans.push(plan);

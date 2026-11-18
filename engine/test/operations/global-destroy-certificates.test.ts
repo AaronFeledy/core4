@@ -8,51 +8,93 @@ import { GlobalAppService, StateStore } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { serviceCertificatePaths } from "../../src/lifecycle/service-certificate-paths.ts";
 import { globalDestroy } from "../../src/operations/global-destroy.ts";
+import {
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
 import { BuildOwner, openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
 
 for (const evidence of ["applied", "absent"] as const) {
   for (const scoped of [false, true]) {
-    test(`global destroy (${evidence}, scoped=${scoped}) removes leaf certificates only when unscoped`, async () => {
-      const root = await realpath(await mkdtemp(join(tmpdir(), "global-destroy-certificates-")));
-      try {
-        // Given: the global owner's leaf directory, with or without an applied global app.
-        const certsDir = makeLandoPaths({
-          userDataRoot: root,
-          userCacheRoot: join(root, "cache"),
-          userConfRoot: join(root, "conf"),
-          systemPluginRoot: join(root, "sys"),
-          env: {},
-          platform: "linux",
-        }).certsDir;
-        const appRoot = AbsolutePath.make(join(root, "global"));
-        const { certPath } = serviceCertificatePaths(certsDir, appIdentityKey("owner", appRoot), "ssh-agent");
-        await Bun.write(certPath, "certificate\n");
-        const harness = await globalTeardownHarness(
-          root,
-          evidence === "applied" ? { plan: globalPlanAt(appRoot) } : {},
-        );
+    for (const purge of [false, true])
+      test(`global destroy (${evidence}, scoped=${scoped}, purge=${purge}) removes leaf certificates only when unscoped`, async () => {
+        const root = await realpath(await mkdtemp(join(tmpdir(), "global-destroy-certificates-")));
+        try {
+          // Given: the global owner's leaf directory, with or without an applied global app.
+          const certsDir = makeLandoPaths({
+            userDataRoot: root,
+            userCacheRoot: join(root, "cache"),
+            userConfRoot: join(root, "conf"),
+            systemPluginRoot: join(root, "sys"),
+            env: {},
+            platform: "linux",
+          }).certsDir;
+          const appRoot = AbsolutePath.make(join(root, "global"));
+          const { certPath } = serviceCertificatePaths(
+            certsDir,
+            appIdentityKey("owner", appRoot),
+            "ssh-agent",
+          );
+          await Bun.write(certPath, "certificate\n");
+          const harness = await globalTeardownHarness(
+            root,
+            evidence === "applied" ? { plan: globalPlanAt(appRoot) } : {},
+          );
+          const readArtifacts = Effect.gen(function* () {
+            const bucket = yield* openArtifactBuildResults(yield* StateStore);
+            return (yield* bucket.get)?.results ?? [];
+          });
+          await Effect.runPromise(
+            Effect.gen(function* () {
+              const bucket = yield* openArtifactBuildResults(yield* StateStore);
+              for (const providerId of ["lando", "docker"])
+                yield* recordArtifactBuildResult(bucket, {
+                  owner: BuildOwner.root(appRoot).key,
+                  providerId,
+                  service: ServiceName.make("ssh-agent"),
+                  phase: "artifact",
+                  buildKey: providerId,
+                  artifactRef: `global-built-${providerId}`,
+                  artifactOrigin: "build",
+                  outcome: "complete",
+                  durationMs: 1,
+                  transcriptPath: AbsolutePath.make(join(root, `${providerId}.log`)),
+                });
+            }).pipe(Effect.provide(harness.layer)),
+          );
 
-        // When
-        const result = await Effect.runPromise(
-          globalDestroy({ yes: true, ...(scoped ? { providerId: ProviderId.make("lando") } : {}) }).pipe(
-            Effect.provide(harness.layer),
-          ),
-        );
+          // When
+          const result = await Effect.runPromise(
+            globalDestroy({
+              yes: true,
+              purge,
+              ...(scoped ? { providerId: ProviderId.make("lando") } : {}),
+            }).pipe(Effect.provide(harness.layer)),
+          );
 
-        // Then: a provider-scoped destroy keeps material another realization may mount, and the
-        // absent path reports unchanged without tearing anything down.
-        expect(result.outcome).toBe(evidence === "applied" ? "destroyed" : "unchanged");
-        if (evidence === "absent") {
-          expect(harness.calls).not.toContain("destroy");
-          expect(harness.calls).not.toContain("removeObservedService");
-          expect(harness.calls).not.toContain("ensureReady");
+          // Then: a provider-scoped destroy keeps material another realization may mount, and the
+          // absent path reports unchanged without tearing anything down.
+          expect(result.outcome).toBe(evidence === "applied" ? "destroyed" : "unchanged");
+          if (evidence === "absent") {
+            expect(harness.calls).not.toContain("destroy");
+            expect(harness.calls).not.toContain("removeObservedService");
+            expect(harness.calls).not.toContain("ensureReady");
+          }
+          expect(await Bun.file(certPath).exists()).toBe(scoped);
+          const remaining = await Effect.runPromise(readArtifacts.pipe(Effect.provide(harness.layer)));
+          expect(
+            remaining
+              .filter(
+                (entry) => entry.owner === BuildOwner.root(appRoot).key && entry.releasedAt === undefined,
+              )
+              .map((entry) => entry.providerId),
+          ).toEqual(scoped ? ["docker"] : []);
+          expect(result.builtImages?.released).toBe(purge ? 0 : scoped ? 1 : 2);
+        } finally {
+          await rm(root, { recursive: true, force: true });
         }
-        expect(await Bun.file(certPath).exists()).toBe(scoped);
-      } finally {
-        await rm(root, { recursive: true, force: true });
-      }
-    });
+      });
   }
 }
 

@@ -174,9 +174,17 @@ test.each([false, true])(
   },
 );
 
+test("exact applied-plan lookup never adopts an enclosing app's plan", async () => {
+  const nested = AbsolutePath.make(`${root}/nested`);
+  const modules = [moduleFor("lando", Effect.succeed([plan]), Effect.succeed(TestRuntimeProvider))];
+
+  expect(await run(modules, "exact", root)).toMatchObject({ _tag: "Success", success: plan });
+  expect(await run(modules, "exact", nested)).toMatchObject({ _tag: "Success", success: undefined });
+});
+
 const run = (
   modules: ReadonlyArray<LandoPluginModule>,
-  observe: boolean | "teardown" = false,
+  observe: boolean | "teardown" | "exact" = false,
   exactRoot?: AbsolutePath,
   selected?: ProviderId,
 ) => {
@@ -222,6 +230,8 @@ const run = (
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
       if (observe === "teardown") return yield* registry.resolveTeardownEvidence(exactRoot ?? root);
+      if (observe === "exact")
+        return yield* registry.resolveAppliedPlan(exactRoot ?? root, undefined, "exact");
       if (exactRoot !== undefined) {
         return yield* registry.appliedPlansFor(exactRoot, selected);
       }

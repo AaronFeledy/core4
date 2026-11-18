@@ -120,6 +120,7 @@ import type { LandoEvent } from "../services/events.ts";
 export type {
   AppRemoteEntry,
   AppRemoteMutationResult,
+  BuiltImageCleanup,
   DestroyAppResult,
   EndpointRef,
   ExecAppResult,
@@ -149,6 +150,7 @@ import type {
   Downloader,
   EventService,
   FileSystem,
+  FileSystemError,
   GlobalAppService,
   InteractionError,
   LandofileService,
@@ -244,6 +246,7 @@ export type StartAppError =
   | AppPlacementError
   | AppResolveError
   | CaError
+  | FileSystemError
   | ServiceNotReadyError
   | UserLandofileError
   | AppPlannerError

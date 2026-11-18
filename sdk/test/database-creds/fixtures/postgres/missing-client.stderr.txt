@@ -1,0 +1,2 @@
+Error: crun: executable file `lando-nope-client` not found in $PATH: No such file or directory: OCI runtime attempted to invoke a command that was not found
+Error: read unixpacket @->/proc/self/fd/13/attach: read: connection reset by peer

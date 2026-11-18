@@ -238,10 +238,13 @@ lando global:destroy --provider=lando --yes
 
 This reads and cleans up only the selected provider. Named volumes stay unless you pass `--purge`.
 
+Destroy also keeps the newest image Lando built for each global service for up to seven days, so the next `lando global:start` reuses it without building. The summary says how many images it kept and removed.
+
 To move the global app to another provider, do not destroy it by hand. See [Switch providers](../setup/provider-selection.mdx#switch-providers).
 
 To remove service- and app-scoped named volumes as well as provider resources,
-add `--purge`. This deletes their stored data. Volumes declared with
+add `--purge`. This deletes their stored data and removes the built images
+right away. Volumes declared with
 `scope: global` survive this operation:
 
 ```sh

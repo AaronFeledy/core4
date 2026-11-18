@@ -3,6 +3,7 @@ import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { GlobalConfigSnapshot } from "@lando/engine/services/config";
 import { EventPublicationObserver } from "@lando/engine/services/event-service";
 import { HostExecutionDefaults } from "@lando/engine/services/host-execution-context";
+import { redactLineText } from "@lando/redaction/line-stream";
 import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
 import {
   RendererHost,
@@ -21,7 +22,9 @@ import {
   failureOutcomeFromCause,
   normalizeDefect,
   primaryFailureReason,
+  redactValueWithPolicy,
   resolveCommandCompletion,
+  structuralRedaction,
 } from "@lando/sdk/command-result";
 import { CommandInputValidationError, JqExpressionError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
@@ -143,6 +146,13 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
     failure: import("@lando/sdk/command-result").ProjectedFailure,
     redactor: import("@lando/sdk/secrets").Redactor,
   ) => string;
+  /**
+   * The formatter already redacts every field it prints with the supplied
+   * redactor. The boundary must then not scan the assembled report as free
+   * text: the secret-assignment scanner would mask a diagnostic label such as
+   * `commandToken` and hide the remediation the report exists to carry.
+   */
+  readonly formatErrorAlreadyRedacted?: boolean;
   readonly setExitCode?: (code: number) => void;
   /**
    * Records the command's spans with this tracer. Without one, the CLI keeps
@@ -409,7 +419,9 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         return;
       }
       const redactor = yield* redaction.forProfile("secrets", { sourceEnv, redactionTokens: extraTokens });
-      let message = redactor.redactString(options.formatError({ error, additionalErrors }, redactor));
+      const formatted = options.formatError({ error, additionalErrors }, redactor);
+      let message =
+        options.formatErrorAlreadyRedacted === true ? formatted : redactor.redactString(formatted);
       // Failure notices (for example what an incomplete start left in place) follow the error.
       const notices = (yield* commandWarnings.failureNotices).map((notice) => redactor.redactString(notice));
       if (options.rendererMode === "lando" && io.isTTY === true) message = dimBugReportDetails(message);
@@ -613,28 +625,43 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         }
         const value = commandOutcome.value.value;
         const redaction = yield* Effect.serviceOption(RedactionService);
-        const redactor =
+        const resultRedaction = {
+          sourceEnv,
+          redactionTokens: [...extraTokens, ...(options.redactionTokens?.(value) ?? [])],
+        };
+        const scope =
           redaction._tag === "Some"
-            ? yield* redaction.value.forProfile("secrets", {
-                sourceEnv,
-                redactionTokens: [...extraTokens, ...(options.redactionTokens?.(value) ?? [])],
-              })
+            ? {
+                redactor: yield* redaction.value.forProfile("secrets", resultRedaction),
+                payloadValues: yield* redaction.value.payloadValues(resultRedaction),
+              }
             : undefined;
+        const redactor = scope?.redactor;
         if (redactor !== undefined) capture?.setRedactor(redactor);
-        // Redact command/result fields before the formatter paints SGR. Rewriting
-        // an already-styled string can splice `[redacted]` into CSI parameters.
-        const displayValue = redactor === undefined ? value : (redactor.redactValue(value) as A);
         const paintContext: RenderContext = {
           ...renderContext,
           proxyDefaultDomain: commandOutcome.value.proxyDefaultDomain,
           ...(redactor === undefined ? {} : { redact: (text) => redactor.redactString(text) }),
         };
+        // The decoded value takes the type-side policy, so text and machine output apply one
+        // secret-named-field rule. Plain text joins a result's line fragments into one stream, so it
+        // leaves an unterminated construct open for the line-stream to hold. Decorated output keeps
+        // complete-text values, because rewriting an already-styled string can splice `[redacted]`
+        // into CSI parameters.
+        const plainText = !isDecoratedContext(paintContext) && redactor !== undefined;
+        const displayValue =
+          redactor === undefined
+            ? value
+            : (redactValueWithPolicy(
+                plainText ? { redactString: redactor.redactPrefix } : redactor,
+                structuralRedaction(resultSchema, "type"),
+                value,
+              ) as A);
         const rendered = options.render?.(displayValue, paintContext);
         if (rendered !== undefined && rendered.length > 0) {
-          const output =
-            isDecoratedContext(paintContext) || redactor === undefined
-              ? rendered
-              : redactor.redactString(rendered);
+          // A rendered result can carry process output, so plain text gets the same value layer
+          // and line-stream as live output instead of one whole-string pass.
+          const output = plainText && scope !== undefined ? redactLineText(scope, rendered) : rendered;
           yield* writeResultLine(output);
         }
       }),

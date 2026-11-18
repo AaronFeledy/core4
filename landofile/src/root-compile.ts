@@ -4,7 +4,6 @@ import { LandofileLoadFailure } from "@lando/sdk/errors";
 import { LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { rejectComposeKeys } from "./compose/rejections.ts";
-import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { withoutIncludeConditions } from "./include-condition-shape.ts";
 import { type IncludeResolutionSession, createIncludeResolutionSession } from "./include-session.ts";
 import { presentLandofileLayers } from "./layers.ts";
@@ -13,8 +12,8 @@ import { assertReadableRoot, ensureConsistentRoot, loadContext } from "./load-co
 import { finishLoadStage } from "./load-failures.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import { classifyLoadFailure } from "./pipeline/legacy.ts";
-import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileEvaluationInputs, LandofileRuntimeInputs } from "./ports.ts";
+import type { SourceDocument } from "./provenance.ts";
 import { prepareLandofileSource, prepareLandofileValue } from "./source.ts";
 import { rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
 import { validationErrorFromCause } from "./validation.ts";
@@ -137,17 +136,14 @@ export const validatePreparedAuthoringLayers = Effect.fnUntraced(function* (
   includeMode: "conditional" | "all" = "conditional",
 ) {
   yield* Effect.forEach(root.prepared, ({ layer, landofile: authored }) => {
-    const landofile =
-      includeMode === "all"
-        ? copyLandofileProvenance(authored, withoutIncludeConditions(authored))
-        : authored;
-    return rejectUnsupportedToolingFeatures(layer.filePath, landofile).pipe(
-      Effect.flatMap((value) => rejectComposeKeys(layer.filePath, value)),
+    const value = includeMode === "all" ? withoutIncludeConditions(authored.value) : authored.value;
+    return rejectUnsupportedToolingFeatures(layer.filePath, value).pipe(
+      Effect.flatMap((candidate) => rejectComposeKeys(layer.filePath, candidate)),
       Effect.flatMap(() =>
-        Schema.decodeUnknownEffect(LandofileAuthoringFragmentNative)(landofile, {
+        Schema.decodeUnknownEffect(LandofileAuthoringFragmentNative)(value, {
           errors: "all",
           onExcessProperty: "error",
-        }).pipe(mapFailures((cause) => validationErrorFromCause(layer.filePath, landofile, cause))),
+        }).pipe(mapFailures((cause) => validationErrorFromCause(layer.filePath, value, cause))),
       ),
     );
   }).pipe(
@@ -172,7 +168,7 @@ export const evaluateLandofileRootLayers = Effect.fn("Landofile.evaluateLayers")
     prepared.runtime,
     evaluation,
   );
-  return { ...prepared, merged, scope, session: evaluation.session, documents: getSourceDocuments(merged) };
+  return { ...prepared, merged, scope, session: evaluation.session, documents: merged.provenance.documents };
 });
 
 export const composeLandofileRootLayers = Effect.fn("Landofile.composeLayers")(function* (

@@ -83,6 +83,8 @@ const providerLandoCapabilities: ProviderCapabilities = {
   routeProvider: true,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "native",
@@ -808,12 +810,13 @@ describe("AppPlannerLayer.layer", () => {
       )?.buildSteps;
       expect(buildSteps?.map(({ id }) => id)).toEqual([
         "lando.boot:scaffold",
+        "service-lando.apache:ssl-module",
         "lando-log-redirect-mkdir:access",
         "lando-log-redirect:access",
         "lando-log-redirect-mkdir:error",
         "lando-log-redirect:error",
       ]);
-      expect(buildSteps?.slice(1)).toEqual([
+      expect(buildSteps?.slice(2)).toEqual([
         {
           id: "lando-log-redirect-mkdir:access",
           phase: "build",
@@ -968,10 +971,12 @@ describe("AppPlannerLayer.layer", () => {
   for (const phase of ["artifact", "app"] as const) {
     for (const scenario of [
       {
-        name: "inherits the service user for a bare string",
+        // An image step inherits the service user; a bare app step keeps none and
+        // runs as the command identity (project user, else the container default).
+        name: "defaults the user of a bare string by phase",
         user: "node",
         scripts: "a",
-        entries: [{ run: "a", user: "node" }],
+        entries: [{ run: "a", user: "node", inherited: true }],
       },
       {
         name: "preserves an explicit root user on an object step",
@@ -990,9 +995,9 @@ describe("AppPlannerLayer.layer", () => {
         user: "node",
         scripts: ["a", { run: "b", user: "root" }, "c"],
         entries: [
-          { run: "a", user: "node" },
+          { run: "a", user: "node", inherited: true },
           { run: "b", user: "root" },
-          { run: "c", user: "node" },
+          { run: "c", user: "node", inherited: true },
         ],
       },
     ]) {
@@ -1024,7 +1029,7 @@ describe("AppPlannerLayer.layer", () => {
               id: `authored-${phase}:${index + 1}`,
               phase: phase === "artifact" ? "build" : "app",
               command: phase === "artifact" ? ["sh", "-c", entry.run] : { command: ["sh", "-c", entry.run] },
-              ...("user" in entry ? { user: entry.user } : {}),
+              ...("user" in entry && !(phase === "app" && "inherited" in entry) ? { user: entry.user } : {}),
             })),
           );
         });
@@ -2196,18 +2201,19 @@ describe("AppPlannerLayer.layer", () => {
         }),
       );
 
-      expect(appPlan.routes).toEqual([
-        {
+      // `both` binds once per scheme, HTTP first.
+      expect(appPlan.routes).toEqual(
+        (["http", "https"] as const).map((scheme) => ({
           hostname: "custom.example.test",
           priority: 65_543,
-          scheme: "both",
+          scheme,
           service: ServiceName.make("web"),
           endpoint: "web",
           pathPrefix: "/api",
           backend: { service: ServiceName.make("web"), protocol: "http", port: 3000 },
-        },
-      ]);
-      expect(appPlan.services[ServiceName.make("web")]?.routes).toEqual([{ index: 0 }]);
+        })),
+      );
+      expect(appPlan.services[ServiceName.make("web")]?.routes).toEqual([{ index: 0 }, { index: 1 }]);
     });
   });
 
@@ -3042,7 +3048,7 @@ describe("AppPlannerLayer.layer", () => {
   test.each([
     [
       { type: "node:22.11.0" },
-      /services.web.type: Service web requests version 22\.11\.0 of service type node, but that ServiceType does not publish any supported versions\. Use the bare type node or choose a ServiceType with shipped version metadata\./,
+      /services.web.type: Unsupported service type node:22\.11\.0 for service web\. Supported alternatives: node:22, node:24, node:26, node:lts\./,
     ],
     [{ type: "node", image: "node:22" }, /cannot combine bare type: node inference with image/i],
     [{ type: "node:22", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],

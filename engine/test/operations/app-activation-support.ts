@@ -69,6 +69,8 @@ export const secretRestartHarness = () => {
           };
         if (request.method === "GET" && request.path === `/networks/${encodeURIComponent(sharedNetwork)}`)
           return { status: 200, body: "{}" };
+        if (request.method === "GET" && request.path.startsWith("/containers/json"))
+          return { status: 200, body: "[]" };
         if (request.method === "GET" && request.path.endsWith("/json"))
           return {
             status: 200,

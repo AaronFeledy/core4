@@ -85,7 +85,7 @@ func main() { log.Fatal(http.ListenAndServe("0.0.0.0:" + os.Getenv("PORT"), http
     service: {
       type: "phpmyadmin:5",
       hosts: "database.invalid",
-      creds: { user: "matrix", password: "matrix", database: "matrix" },
+      creds: { user: "matrix", password: "matrix" },
     },
   },
   { contract: "postgres", service: { type: "postgres:16" } },

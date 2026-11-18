@@ -1,6 +1,8 @@
 import { inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import { provenanceOf } from "@lando/landofile/provenance";
+import { getLandofileValueSource } from "@lando/landofile/validation";
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import type { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
@@ -36,6 +38,7 @@ import { readFreshAppCommandCacheForCwd, writeAppCommandCache } from "../cache/c
 import { fingerprintsFromInspection } from "../cache/command-script-freshness.ts";
 import { loadUserLandofile } from "../landofile/app-resolution.ts";
 import { PluginContributionGraph } from "../plugins/contribution-graph.ts";
+import { HostExecutionDefaults } from "./host-execution-context.ts";
 
 const discoverScriptsForCwd = Effect.fnUntraced(function* (cwd: string) {
   const appRoot = yield* findAppRoot(cwd);
@@ -44,15 +47,28 @@ const discoverScriptsForCwd = Effect.fnUntraced(function* (cwd: string) {
 });
 
 const toRegisteredCommands = (entries: ReadonlyArray<CommandIndexEntry>): ReadonlyArray<RegisteredCommand> =>
-  entries
-    .filter((entry) => entry.loadError === undefined)
-    .map((entry) => ({
+  entries.map((entry): RegisteredCommand => {
+    const identity = {
       id: entry.id,
       summary: entry.summary,
-      hidden: entry.hidden,
-      ...(entry.input === undefined ? {} : { input: entry.input }),
-      ...(entry.runs === undefined ? {} : { runs: entry.runs }),
-    }));
+      hidden: entry.visibility === "internal",
+    };
+    switch (entry._tag) {
+      case "Ready":
+        return {
+          ...identity,
+          _tag: "Ready",
+          input: entry.input,
+          ...(entry.runs === undefined ? {} : { runs: entry.runs }),
+        };
+      case "Disabled":
+        return { ...identity, _tag: "Disabled", source: entry.source };
+      case "Unavailable":
+        return { ...identity, _tag: "Unavailable", diagnostic: entry.diagnostic };
+      default:
+        return entry satisfies never;
+    }
+  });
 
 export const layerWith = (
   registrationError: (
@@ -71,7 +87,10 @@ export const layerWith = (
       const cacheOptions = paths._tag === "Some" ? { cacheRoot: paths.value.roots.userCacheRoot } : {};
       return CommandRegistry.of({
         list: Effect.gen(function* () {
+          // Direct embedders without host defaults retain ambient discovery at this boundary.
+          const env = (yield* HostExecutionDefaults)?.env ?? { ...process.env };
           const cached = yield* readFreshAppCommandCacheForCwd({
+            env,
             ...cacheOptions,
             includeScriptInventory: true,
           }).pipe(Effect.catch(() => Effect.succeed(null)));
@@ -81,7 +100,10 @@ export const layerWith = (
             return toRegisteredCommands(cached.entries);
           }
 
-          const landofile = (yield* loadUserLandofile(landofileService)).document;
+          const loaded = yield* loadUserLandofile(landofileService, { env });
+          const landofile = loaded.document;
+          const provenance = provenanceOf(loaded);
+          const sourcePath = getLandofileValueSource(provenance, [])?.file ?? loaded.context.appRoot;
           const scripts = yield* discoverScriptsForCwd(yield* discoveryCwd());
           const hasServices = Object.keys(landofile.services ?? {}).length > 0;
           if (hasServices) {
@@ -90,18 +112,26 @@ export const layerWith = (
           const redaction = yield* Effect.serviceOption(RedactionService);
           const redactor =
             redaction._tag === "Some"
-              ? yield* redaction.value.forProfile("secrets")
-              : createRedactor("secrets", { values: collectSecretEnvValues(process.env) });
+              ? yield* redaction.value.forProfile("secrets", { sourceEnv: env })
+              : createRedactor("secrets", { values: collectSecretEnvValues(env) });
           const entries = compileInspectedAppCommands({
             landofile,
+            provenance,
+            sourcePath,
+            toolingSource: (name) => ({
+              path: getLandofileValueSource(provenance, ["tooling", name])?.file ?? sourcePath,
+              locate: (path) => getLandofileValueSource(provenance, path),
+            }),
             inspection: scripts,
             redact: redactor.redactString,
           });
           const error = registrationError(landofile.commandAliases, entries, pluginCommandIds);
           if (error !== undefined) return yield* Effect.fail(error);
           yield* writeAppCommandCache({
+            env,
             sourceScripts: fingerprintsFromInspection(scripts),
             landofile,
+            provenance,
             entries,
             ...cacheOptions,
           });

@@ -1,9 +1,7 @@
 import { resolveNetworkTrustPlan } from "@lando/http-client/network-trust";
+import { versionConstraintsFor } from "@lando/landofile/provenance";
 import { landofileValidationError } from "@lando/landofile/validation";
-import {
-  getVersionConstraintEntries,
-  hasSkippedUnsatisfiedVersionConstraint,
-} from "@lando/landofile/version-constraint";
+import { hasSkippedUnsatisfiedVersionConstraint } from "@lando/landofile/version-constraint";
 import { makeLandoPaths } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
@@ -30,7 +28,7 @@ import {
   PathsService,
   PluginRegistry,
 } from "@lando/sdk/services";
-import { DateTime, Effect, Option, Predicate } from "effect";
+import { DateTime, Effect, Option } from "effect";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -79,7 +77,7 @@ import {
 import { loadComposeConfigFiles } from "./config-files.ts";
 import { validateConnectionValues } from "./connection-values.ts";
 import { compileEffectiveEvents } from "./effective-events.ts";
-import { attachEffectiveTooling } from "./effective-tooling.ts";
+import { attachResolutionTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { environmentCacheInput } from "./environment-cache-input.ts";
 import { type ResolvedLandofile, resolveKnownEventSet } from "./event-set.ts";
@@ -90,6 +88,7 @@ import { normalizeNetworks } from "./networks.ts";
 import { assertRoutesCertificateCoverable, decodeAppPlan } from "./plan-decode.ts";
 import {
   agentSocketCapabilityErrors,
+  assertProjectUserSupported,
   assertRouteNetworkingSupported,
   assertServiceInitSupported,
 } from "./resource-capabilities.ts";
@@ -99,9 +98,8 @@ import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { hasServiceArtifacts } from "./service-artifact.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
 import { validateServiceProbes } from "./service-probes.ts";
-import { type ResolvedService, resolvedServiceCacheInput } from "./service-types.ts";
+import { type ResolvedService, resolveHostFacts, resolvedServiceCacheInput } from "./service-types.ts";
 import { authoredStorageScopes } from "./storage.ts";
-
 export interface PlanAppInput {
   readonly identity?: AppIdentity;
   readonly dataName?: string;
@@ -112,7 +110,6 @@ export interface PlanAppInput {
   readonly mode?: "validate";
   readonly resolution?: ResolvedLandofile;
 }
-
 export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   input: PlanAppInput,
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
@@ -130,9 +127,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     appSlug,
     defaultDomain,
     services: seeds,
-    effectiveTooling,
-    connectionClients,
-    disabledToolingSources,
+    toolingResolution,
+    provenance: landofileProvenance,
     invocationSites,
     appRoot,
     appName,
@@ -219,7 +215,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const sourceFingerprint =
     input.mode === "validate"
       ? undefined
-      : yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
+      : yield* readAppPlanSourceFingerprint(appRoot, landofileProvenance).pipe(
           Effect.catch(() => Effect.succeed(undefined)),
         );
   const certificateAuthority = selectContributedCertificateAuthority<CertificateAuthorityCandidateDefinition>(
@@ -236,7 +232,6 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   });
   const preparedApp = endpointProjection.preparedApp;
   const appFeatures = preparedApp.features;
-
   const composeConfigFileInputs = yield* loadComposeConfigFiles({
     appRoot,
     landofile,
@@ -336,7 +331,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       configSourceInputs,
     });
   }
-  const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
+  const versionConstraints = versionConstraintsFor(landofileProvenance, landofile, landofilePath);
   const hostEvents =
     AppDefaults.isExcludedFromUserAppDefaults(appName, appRoot, pathsService) ||
     globalConfig?.hostEvents === undefined
@@ -369,21 +364,16 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     hostEvents: hostEventCompileBase.skipHostEvents ? undefined : hostEvents,
     env: authoredLandofile.context.env,
   });
-  const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
+  const effectiveEventsFor = (services: Readonly<Record<string, unknown>>) =>
     compileEffectiveEvents({ ...hostEventCompileBase, services, invocationSites: executableSites });
-  const planServices = (services: Readonly<Record<string, unknown>>) =>
-    Object.fromEntries(
-      Object.entries(services).map(([name, service]) => [
-        name,
-        { primary: Predicate.isObject(service) && service.primary === true },
-      ]),
-    );
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
+  const host = resolveHostFacts();
   const cacheKey = deriveAppPlanCacheKey({
     dataName: input.dataName ?? appName,
     kind: input.kind ?? "user",
     hostProvider,
     appRoot,
+    ...(host === undefined ? {} : { host }),
     landofile: { ...cacheLandofile, provider },
     providerCapabilities,
     pluginManifests: manifests,
@@ -430,6 +420,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       appName: appSlug,
       appRoot,
       key: cacheKey,
+      env: authoredLandofile.context.env,
       fileSystem,
     }).pipe(Effect.catch(() => Effect.succeed(null)));
     if (cached !== null && hasServiceArtifacts(cached)) {
@@ -441,11 +432,12 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposeKnobsSupported(capabilityContext, cached.services);
       yield* assertServiceInitSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeFieldsSupported(capabilityContext, cached);
+      yield* assertProjectUserSupported(provider, providerCapabilities, cached.services);
       const proven = withCommittedLiteralDigests(cached, authoredLandofile);
       return attachCompiledInvocationPlan(
-        attachEffectiveTooling(proven, effectiveTooling, connectionClients, disabledToolingSources),
+        attachResolutionTooling(proven, toolingResolution),
         executableSites,
-        effectiveEventsFor(planServices(cached.services)),
+        effectiveEventsFor(cached.services),
       );
     }
   }
@@ -476,17 +468,18 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     );
     yield* Effect.fail(appFeatureCapabilityError(provider, offending?.id ?? "appFeatures", capability));
   }
-
   const finalized = yield* finalizeServices({
     manifests,
     configs: landofile.configs,
     plannedServiceDrafts: plannedWithClones,
     appId,
     appRoot,
+    appKind: input.kind ?? "user",
     appSlug,
     appName,
     dataSlug: normalizeAppSlug(input.dataName ?? appName, appRoot),
     defaultDomain,
+    host,
     provider,
     providerCapabilities,
     metadata,
@@ -508,6 +501,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const perAppBridge = appId !== "global";
   const authoredNetworking = yield* normalizeNetworks({
     landofile,
+    provenance: landofileProvenance,
     services: networkServicesWithClones(resolvedServices, cloned, serviceNames),
     appRoot,
     perAppBridge,
@@ -535,7 +529,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...appFeatureResult.requires.globalServices,
   ];
   const plan = attachCompiledInvocationPlan(
-    attachEffectiveTooling(
+    attachResolutionTooling(
       yield* decodeAppPlan(appRoot, {
         id: appId,
         valueModel: 1,
@@ -568,18 +562,17 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices)),
         Effect.map((decoded) => withCommittedLiteralDigests(decoded, authoredLandofile)),
       ),
-      effectiveTooling,
-      connectionClients,
-      disabledToolingSources,
+      toolingResolution,
     ),
     executableSites,
-    effectiveEventsFor(planServices(finalized.services)),
+    effectiveEventsFor(finalized.services),
   );
   yield* assertComposeKnobsSupported(capabilityContext, plan.services);
   yield* assertServiceInitSupported(provider, providerCapabilities, plan.services);
   yield* assertAuthoredNetworksSupported(provider, providerCapabilities, plan.networking);
   yield* validateServiceProbes(plan);
   yield* assertComposeFieldsSupported(capabilityContext, plan);
+  yield* assertProjectUserSupported(provider, providerCapabilities, plan.services);
   if (planCache !== undefined && !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) {
     yield* writeCachedAppPlan({
       cacheRoot,

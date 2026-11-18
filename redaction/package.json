@@ -20,6 +20,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./service": "./src/service.ts",
+    "./line-stream": "./src/line-stream.ts",
+    "./live-hold-timer": "./src/live-hold-timer.ts",
+    "./live-channel": "./src/live-channel.ts",
     "./plan-values": "./src/plan-values.ts",
     "./provider-error": "./src/provider-error.ts",
     "./provider-details": "./src/provider-details.ts"

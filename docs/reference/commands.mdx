@@ -216,7 +216,7 @@ Flags:
 | --- | --- |
 | `--provider` | Destroy only this provider's applied app and owned resources. |
 | `--purge` | Also remove app/service-scoped storage volumes and this folder's snapshots, including provider-stored data. |
-| `--purge-caches` | Remove cache storage volumes. |
+| `--purge-caches` | Remove cache storage volumes and built images. |
 | `--root` | Clean up an app whose folder no longer exists, using the path lando doctor prints. |
 | `--volumes` | Also remove app/service-scoped storage volumes. |
 | `--yes, -y` | Skip the confirmation prompt. |
@@ -583,7 +583,7 @@ Flags:
 | `--provider` | Inspect and clean up only this provider. |
 | `--prune` | Confirm once, then clean up the reported missing app roots. |
 | `--purge` | Delete data volumes, file-sync copies of app files, and snapshots. |
-| `--purge-caches` | Delete cache volumes. |
+| `--purge-caches` | Delete cache volumes and built images. |
 | `--volumes` | Delete data volumes and file-sync copies of app files. |
 | `--yes, -y` | Skip the confirmation prompt. |
 
@@ -970,7 +970,7 @@ Flags:
 | `--fix` | Re-run the setup step of each degraded subsystem whose recovery is safe to automate. |
 | `--limit` | Return at most this many checks (1 to 1000). |
 | `--provider` | Report what would be selected if `--provider=…` were used (e.g. lando, docker, podman). |
-| `--section` | Run only the selected diagnostic sections (repeatable); always report global config. (one of `global-config`, `provider`, `app-listeners`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, `app-config`) |
+| `--section` | Run only the selected diagnostic sections (repeatable); always report global config. (one of `global-config`, `provider`, `app-listeners`, `database-credentials`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, `app-config`) |
 | `--status` | Include checks with this status (repeatable). (one of `pass`, `warn`, `fail`) |
 
 ## `lando meta:events:follow`
@@ -1082,7 +1082,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--provider` | Destroy the global app only on this provider. |
-| `--purge` | Also remove global service data volumes. |
+| `--purge` | Also remove global service data volumes and built images. |
 | `--yes, -y` | Confirm destruction of global app provider resources. |
 
 ## `lando meta:global:disable`

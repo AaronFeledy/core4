@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { DeprecationNotice } from "./deprecation.ts";
+import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { ChoicesFrom, PromptChoice, PromptType, PromptValidate } from "./prompt.ts";
 import { RecipeId, RecipeOptionValue, RecipeVersion } from "./recipe-identity.ts";
 import { RecipeMigration, RecipeSnapshot } from "./recipe-snapshot.ts";
@@ -123,8 +124,12 @@ const secretSinkFields = {
     }),
   ),
   secretEnv: Schema.optionalKey(
-    Schema.Record(Schema.String, Schema.String).annotate({
+    Schema.Record(
+      Schema.String,
+      Schema.String.annotate({ [SchemaNotCredentialAnnotationId]: true }),
+    ).annotate({
       description: "Secret environment variable name to the prompt whose answer fills it.",
+      [SchemaNotCredentialAnnotationId]: true,
     }),
   ),
 } as const;

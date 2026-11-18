@@ -11,9 +11,21 @@
  *    pattern boundary.
  * 2. The **pattern layer**: a fixed catalog of pattern classes, selected by
  *    profile, that normalizes secrets and PII to deterministic sentinels and
- *    placeholders. Complete bare npm-style `${IDENT}` / `${IDENT?}` assignment
- *    and signed-query values are left intact so config examples stay readable;
- *    suffix, malformed, quoted, escaped, and truncated forms still mask.
+ *    placeholders. An assignment or signed-query value that is exactly one
+ *    complete environment-variable reference (`${IDENT}`, `${IDENT?}`,
+ *    `$${IDENT}`, `$${IDENT?}`, `$IDENT`, bare or double-quoted, with equal
+ *    backslash runs when escaped) is left intact at a verified terminator so
+ *    config examples and remediation stay readable; a suffix, a single-quoted
+ *    or escaped-dollar form, unequal backslash runs, and malformed or truncated
+ *    bodies still mask. Registered values win in the value layer below.
+ *
+ *    The secret classes recognize `name=value` (spaced or not), an unquoted key
+ *    with a colon and a quoted value anywhere in a line, a quoted-key member in
+ *    JSON/Python/escaped-JSON spelling, and a block-mapping key at line start
+ *    (whose bare value is the rest of the line). A quoted value may span
+ *    newlines; an escaped opener closes at the next quote. `redactString` treats
+ *    its input as complete text and masks an unterminated quoted value to the
+ *    end, while `redactPrefix` leaves it as written for a stream holder.
  *
  * Three profiles are published:
  *
@@ -32,27 +44,17 @@
  * docs build without constructing a runtime.
  */
 
-import { replacePatternsBounded } from "./bounded-redaction.ts";
-import {
-  ASSIGNMENT_STOP_CLASS,
-  QUERY_STOP_CLASS,
-  keepCompleteEnvPlaceholderOrRedact,
-  unquotedSecretValueSource,
-} from "./env-placeholder.ts";
+import { retainWithinBytes } from "./bounded-redaction.ts";
 import { redactedInspection } from "./inspection.ts";
-import { isPublicDefaultCredential } from "./public-default-credentials.ts";
 import { REDACTED, createSecretRedactor } from "./redactor.ts";
-import {
-  SECRET_FIELD_PATTERN,
-  SECRET_WORD_SOURCE,
-  SIGNED_QUERY_WORD_SOURCE,
-  isSecretFieldName,
-} from "./secret-names.ts";
+import { SECRET_FIELD_PATTERN, isSecretFieldName } from "./secret-names.ts";
+import { redactSecrets, redactSecretsBounded } from "./secret-scanner.ts";
 import {
   TRANSCRIPT_PATTERN_CLASSES,
   type TranscriptRedactionEnv,
   redactTranscriptString,
 } from "./transcript-redaction.ts";
+import { URL_USERINFO_PATTERN } from "./url-userinfo.ts";
 import { redactValueWith } from "./value-redaction.ts";
 
 export type { TranscriptRedactionEnv } from "./transcript-redaction.ts";
@@ -76,8 +78,16 @@ export interface CreateRedactorOptions {
 
 /** A composed redactor returned by {@link createRedactor}. */
 export interface Redactor {
-  /** Redact a single string with the value layer then the profile patterns. */
+  /**
+   * Redact a complete string: the value layer, then the profile patterns, then
+   * the value of an unterminated quoted construct to the end of the input.
+   */
   readonly redactString: (text: string) => string;
+  /**
+   * The same layers without closing an unterminated construct, for a caller
+   * holding a stream until its closer arrives.
+   */
+  readonly redactPrefix: (text: string) => string;
   readonly redactStringBounded?: (text: string, maxBytes: number) => string | undefined;
   /**
    * Redact an arbitrary value, preserving array/object/`Error` shape, masking
@@ -97,60 +107,6 @@ const URL = "[url]";
 const EMAIL = "[email]";
 const ID = "[id]";
 const HOST = "[host]";
-
-const QUOTED_VALUE_SOURCE = String.raw`\\+"[^"]*\\+"|\\+'[^']*\\+'|"[^"]*"|'[^']*'|`;
-const ASSIGNMENT_VALUE_SOURCE = QUOTED_VALUE_SOURCE + unquotedSecretValueSource(ASSIGNMENT_STOP_CLASS);
-
-const SECRET_ASSIGNMENT_PATTERN = new RegExp(
-  String.raw`(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*)=(${ASSIGNMENT_VALUE_SOURCE})`,
-  "giu",
-);
-
-const URL_USERINFO_PATTERN =
-  /\b([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)(?:\[redacted\]|[^/\s:@])+:(?:\[redacted\]|[^/\s@])+@/gu;
-
-const ENCODED_URL_USERINFO_PATTERN =
-  /\b([a-zA-Z][a-zA-Z0-9+.-]*%3A%2F%2F)(?:\[redacted\]|[^&\s"'\]}{])*?%3A(?:\[redacted\]|[^&\s"'\]}{])*?%40/giu;
-
-const BEARER_TOKEN_PATTERN = /\b(Bearer)\s+(?:\[redacted\]|[\w.~+/=-])+/giu;
-
-const QUERY_VALUE_SOURCE = QUOTED_VALUE_SOURCE + unquotedSecretValueSource(QUERY_STOP_CLASS);
-
-const SIGNED_QUERY_PARAM_PATTERN = new RegExp(
-  String.raw`([?&](?:[\w-]*[-_])?(?:${SIGNED_QUERY_WORD_SOURCE})=)(${QUERY_VALUE_SOURCE})`,
-  "giu",
-);
-
-const isQuotedOrBarePublishedDefault = (value: string): boolean => {
-  if (isPublicDefaultCredential(value)) return true;
-  const quote = value[0];
-  if (value.length < 2 || (quote !== '"' && quote !== "'") || value.at(-1) !== quote) return false;
-  return isPublicDefaultCredential(value.slice(1, -1));
-};
-
-const keepOrRedactAssignment = (match: string, _name: string, value: string): string =>
-  // The value layer ran first, so a registered or secret-store value is already
-  // masked here; only an authored published default keeps the whole assignment.
-  isQuotedOrBarePublishedDefault(value)
-    ? match
-    : keepCompleteEnvPlaceholderOrRedact(match, `${_name}=${REDACTED}`, value);
-
-const keepOrRedactQuery = (match: string, prefix: string, value: string): string =>
-  keepCompleteEnvPlaceholderOrRedact(match, `${prefix}${REDACTED}`, value);
-
-const SECRETS_REPLACEMENTS = [
-  { pattern: URL_USERINFO_PATTERN, replace: (_m: string, scheme: string) => `${scheme}${REDACTED}@` },
-  {
-    pattern: ENCODED_URL_USERINFO_PATTERN,
-    replace: (_m: string, scheme: string) => `${scheme}${REDACTED}%40`,
-  },
-  { pattern: SECRET_ASSIGNMENT_PATTERN, replace: keepOrRedactAssignment },
-  { pattern: BEARER_TOKEN_PATTERN, replace: (_m: string, scheme: string) => `${scheme} ${REDACTED}` },
-  { pattern: SIGNED_QUERY_PARAM_PATTERN, replace: keepOrRedactQuery },
-] as const;
-
-const redactSecretsString = (text: string): string =>
-  SECRETS_REPLACEMENTS.reduce((result, { pattern, replace }) => result.replace(pattern, replace), text);
 
 const TELEMETRY_URL_PATTERN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>`]+/giu;
 const UNC_PATH_PATTERN = /\\\\[A-Za-z0-9._$-]+(?:\\[^\s\\'"]+)*/gu;
@@ -183,16 +139,7 @@ const redactTelemetryString = (text: string): string =>
  * apply to string values.
  */
 export const PATTERN_CLASSES: Readonly<Record<string, PatternClass>> = Object.freeze({
-  secretAssignment: {
-    pattern: SECRET_ASSIGNMENT_PATTERN,
-    replace: keepOrRedactAssignment,
-  },
-  urlUserinfo: { pattern: URL_USERINFO_PATTERN, replace: (_m, scheme: string) => `${scheme}${REDACTED}@` },
-  bearerToken: { pattern: BEARER_TOKEN_PATTERN, replace: (_m, scheme: string) => `${scheme} ${REDACTED}` },
-  signedQueryParam: {
-    pattern: SIGNED_QUERY_PARAM_PATTERN,
-    replace: keepOrRedactQuery,
-  },
+  urlUserinfo: { pattern: URL_USERINFO_PATTERN, replace: `${REDACTED}@` },
   secretKeyedField: { pattern: SECRET_FIELD_PATTERN, replace: REDACTED },
   url: { pattern: TELEMETRY_URL_PATTERN, replace: URL },
   posixPath: { pattern: POSIX_PATH_PATTERN, replace: PATH },
@@ -210,6 +157,40 @@ export const PATTERN_CLASSES: Readonly<Record<string, PatternClass>> = Object.fr
 });
 
 /**
+ * A registered value that overlaps the sentinel (`"[redacted]"` registered with
+ * its quotes) can match text the pattern layer just produced, so for such a
+ * value set the composed layers repeat until the output stops changing and fail
+ * closed after a bounded number of passes. Other value sets reach a fixed point
+ * in one pass, so they skip the check.
+ */
+const MAX_CONVERGENCE_PASSES = 8;
+
+const convergeLayers =
+  (redact: (text: string) => string) =>
+  (text: string): string => {
+    let output = redact(text);
+    for (let pass = 1; pass < MAX_CONVERGENCE_PASSES; pass += 1) {
+      const next = redact(output);
+      if (next === output) return output;
+      output = next;
+    }
+    return REDACTED;
+  };
+
+const convergeBoundedLayers =
+  (redact: (text: string, maxBytes: number) => string | undefined) =>
+  (text: string, maxBytes: number): string | undefined => {
+    let output = redact(text, maxBytes);
+    for (let pass = 1; pass < MAX_CONVERGENCE_PASSES; pass += 1) {
+      if (output === undefined) return undefined;
+      const next = redact(output, maxBytes);
+      if (next === output) return output;
+      output = next;
+    }
+    return retainWithinBytes(REDACTED, maxBytes);
+  };
+
+/**
  * Build a {@link Redactor} for the given profile. The value layer (known secret
  * values) is always applied before the profile's pattern layer.
  */
@@ -224,34 +205,40 @@ export const createRedactor = (
   );
   const env = options.env ?? {};
 
-  let patternString: (text: string) => string;
-  switch (profile) {
-    case "telemetry":
-      patternString = (text) => redactTelemetryString(redactSecretsString(text));
-      break;
-    case "transcript":
-      patternString = (text) => redactTranscriptString(text, env, redactSecretsString);
-      break;
-    case "secrets":
-      patternString = redactSecretsString;
-      break;
-  }
+  // Telemetry and transcript normalization runs after the secrets stage closes an
+  // open value, so their placeholders never see an unproven tail.
+  const normalize = (secrets: string): string => {
+    switch (profile) {
+      case "telemetry":
+        return redactTelemetryString(secrets);
+      case "transcript":
+        return redactTranscriptString(secrets, env, (value) => value);
+      case "secrets":
+        return secrets;
+    }
+  };
 
-  const redactString = (text: string): string => patternString(valueLayer.redact(text));
+  const converge = valueLayer.crossesSentinel ? convergeLayers : (redact: (text: string) => string) => redact;
+  const redactPrefix = converge((text) => normalize(redactSecrets(valueLayer.redact(text), false)));
+  const redactString = converge((text) => normalize(redactSecrets(valueLayer.redact(text), true)));
+
   const boundedValueLayer = valueLayer.redactBounded;
-  const redactStringBounded =
+  const boundedOnce =
     profile === "secrets" && boundedValueLayer !== undefined
       ? (text: string, maxBytes: number): string | undefined => {
           const valueRedacted = boundedValueLayer(text, maxBytes);
-          return valueRedacted === undefined
-            ? undefined
-            : replacePatternsBounded(valueRedacted, SECRETS_REPLACEMENTS, maxBytes);
+          return valueRedacted === undefined ? undefined : redactSecretsBounded(valueRedacted, maxBytes);
         }
       : undefined;
+  const redactStringBounded =
+    boundedOnce === undefined || !valueLayer.crossesSentinel
+      ? boundedOnce
+      : convergeBoundedLayers(boundedOnce);
 
   return {
     ...redactedInspection,
     redactString,
+    redactPrefix,
     ...(redactStringBounded === undefined ? {} : { redactStringBounded }),
     redactValue: (value) => redactValueWith(redactString, isSecretFieldName, value),
   };

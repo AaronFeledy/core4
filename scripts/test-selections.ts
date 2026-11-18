@@ -179,7 +179,10 @@ export const TEST_SELECTIONS = [
   },
   {
     id: "proxy-traefik-certificate-live",
-    paths: ["plugins/proxy-traefik/test/router-certificate-publication.integration.test.ts"],
+    paths: [
+      "plugins/proxy-traefik/test/router-certificate-publication.integration.test.ts",
+      "plugins/proxy-traefik/test/backend-tls-live.integration.test.ts",
+    ],
     jobs: live,
     needs: "LANDO_TEST_PODMAN_SOCKET",
   },
@@ -308,6 +311,17 @@ export const TEST_SELECTIONS = [
       "core/test/build/tomcat-bump-workflow.test.ts",
     ],
     jobs: [{ workflow: "tomcat-bump.yml", job: "bump" }],
+  },
+  {
+    id: "node-releases-bump",
+    paths: [
+      "plugins/service-lando/test/node-versions.test.ts",
+      "plugins/service-lando/test/node-inference.test.ts",
+      "core/test/scripts/node-releases-update.test.ts",
+      "core/test/scripts/node-releases-catalog.test.ts",
+      "core/test/build/node-releases-bump-workflow.test.ts",
+    ],
+    jobs: [{ workflow: "node-releases-bump.yml", job: "bump" }],
   },
 ] as const satisfies readonly TestSelection[];
 

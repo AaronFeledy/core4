@@ -296,7 +296,10 @@ export const rotationHarness = Effect.fnUntraced(function* (
     Layer.succeed(RuntimeProviderRegistry, {
       ...harness.runtimeProviderRegistry,
       select: () => Effect.succeed(provider),
-      resolveAppliedPlan: () => Effect.sync(() => applied),
+      resolveAppliedPlan: (_root, _app, lookup) =>
+        lookup === "exact"
+          ? Effect.sync(() => applied)
+          : Effect.die("file-sync rotation must ask for the exact app"),
     }),
     Layer.succeed(FileSyncResolver, resolver),
   );

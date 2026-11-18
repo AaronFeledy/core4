@@ -63,3 +63,41 @@ test.each(["effect", "stream", "availability"] as const)(
     expect(third).toBe(interruptReason);
   },
 );
+
+test("native restore forwards the caller's pre-publication check and keeps its failure unredacted", async () => {
+  const secret = "restore-before-commit-canary";
+  let forwarded: unknown;
+  const provider = withProviderErrorRedaction(
+    {
+      ...TestRuntimeProvider,
+      restoreVolume: (_spec, options) => {
+        forwarded = options?.beforeCommit;
+        return options?.beforeCommit ?? Effect.void;
+      },
+    },
+    createStandaloneRedactor("secrets", { redactionTokens: [secret] }),
+  );
+  const beforeCommit = Effect.fail(secret);
+
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      provider.restoreVolume(
+        {
+          snapshot: {
+            provider: plan.provider,
+            id: "snap",
+            digest: "sha256:snap",
+            sizeBytes: 1,
+            format: "native",
+          },
+          target: { app: target.app, store: "data" },
+          expectedTargetGeneration: "00000000-0000-4000-8000-000000000001",
+        },
+        { beforeCommit },
+      ),
+    ),
+  );
+
+  expect(forwarded).toBe(beforeCommit);
+  expect(exit).toStrictEqual(Exit.fail(secret));
+});

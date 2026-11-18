@@ -13,9 +13,9 @@ import {
   sensitiveLandofileOccurrences,
 } from "../src/authored-literal.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
-import { rememberOrigins } from "../src/pipeline/origins.ts";
-import { rememberSourceDocuments } from "../src/pipeline/source-table.ts";
+import { type AuthoredDocument, authoredDocumentFrom, emptyProvenance } from "../src/provenance.ts";
 import { loadLandofileFile } from "../src/service.ts";
+import { provenanceIn } from "./provenance-support.ts";
 
 test.each(["base", "dist", "upstream", "canonical", "local", "user"] as const)(
   "proves occurrences only from eligible YAML layers: %s",
@@ -36,12 +36,22 @@ test.each(["base", "dist", "upstream", "canonical", "local", "user"] as const)(
           compilationContext: { appRoot: AbsolutePath.make(root), env: {} },
         }),
       );
-      expect(authoredLiteralAt(loaded.document, ["services", "db", "environment", "DB_PASSWORD"])).toBe(
-        layer === "local" || layer === "user" ? undefined : "wordpress",
-      );
-      expect(authoredLiteralAt(loaded.document, ["services", "db", "environment", "NUM_TOKEN"])).toBe(
-        layer === "local" || layer === "user" ? undefined : "12345",
-      );
+      expect(
+        authoredLiteralAt(loaded.document, provenanceIn(loaded), [
+          "services",
+          "db",
+          "environment",
+          "DB_PASSWORD",
+        ]),
+      ).toBe(layer === "local" || layer === "user" ? undefined : "wordpress");
+      expect(
+        authoredLiteralAt(loaded.document, provenanceIn(loaded), [
+          "services",
+          "db",
+          "environment",
+          "NUM_TOKEN",
+        ]),
+      ).toBe(layer === "local" || layer === "user" ? undefined : "12345");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -54,9 +64,14 @@ test("proves normalized env-list leaves using their own raw value part", async (
     const file = join(root, ".lando.yml");
     await writeFile(file, "services:\n  db:\n    environment:\n      - DB_PASSWORD=wordpress\n");
     const loaded = await Effect.runPromise(loadLandofileFile(file));
-    expect(authoredLiteralAt(loaded.document, ["services", "db", "environment", "DB_PASSWORD"])).toBe(
-      "wordpress",
-    );
+    expect(
+      authoredLiteralAt(loaded.document, provenanceIn(loaded), [
+        "services",
+        "db",
+        "environment",
+        "DB_PASSWORD",
+      ]),
+    ).toBe("wordpress");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -70,43 +85,53 @@ test.each([
   { form: "yaml", content: "", raw: "{{ load('./password') }}" },
   { form: "yaml", content: "", raw: "different" },
 ] as const)("rejects nonliteral source evidence: %j", ({ form, content, raw }) => {
-  const document = { password: "wordpress" };
-  rememberOrigins(
-    document,
-    withValueOrigins(document, (path) => ({ file: "/app/.lando.yml", layer: "canonical" as const, path }))
-      .origins,
+  const prepared: AuthoredDocument = authoredDocumentFrom(
+    { password: "wordpress" },
+    { file: "/app/.lando.yml", layer: "canonical", path: [] },
   );
-  rememberSourceDocuments(document, [
-    {
-      file: "/app/.lando.yml",
-      layer: "canonical",
-      form,
-      content,
-      document: { password: raw },
-      digest: sha256Hex(content),
+  const document = {
+    ...prepared,
+    provenance: {
+      ...prepared.provenance,
+      documents: [
+        {
+          file: "/app/.lando.yml",
+          layer: "canonical" as const,
+          form,
+          content,
+          document: { password: raw },
+          digest: sha256Hex(content),
+        },
+      ],
     },
-  ]);
-  expect(authoredLiteralAt(document, ["password"])).toBeUndefined();
+  };
+  expect(authoredLiteralAt(document.value, document.provenance, ["password"])).toBeUndefined();
 });
 
 test("does not turn missing or synthesized origins into occurrence evidence", () => {
   const document = { password: "wordpress" };
-  expect(authoredLiteralAt(document, ["password"])).toBeUndefined();
-  rememberOrigins(
-    document,
-    withValueOrigins({}, (path) => ({ file: "/app/.lando.yml", layer: "canonical" as const, path })).origins,
-  );
-  rememberSourceDocuments(document, [
-    {
-      file: "/app/.lando.yml",
-      layer: "canonical",
-      form: "yaml",
-      content: "",
-      document,
-      digest: sha256Hex(""),
+  expect(authoredLiteralAt(document, undefined, ["password"])).toBeUndefined();
+  // An empty origins tree describes no authored path, so it proves nothing.
+  const retained = {
+    value: document,
+    provenance: {
+      ...emptyProvenance(
+        withValueOrigins({}, () => ({ file: "/app/.lando.yml", layer: "canonical" as const, path: [] }))
+          .origins,
+      ),
+      documents: [
+        {
+          file: "/app/.lando.yml",
+          layer: "canonical" as const,
+          form: "yaml" as const,
+          content: "",
+          document,
+          digest: sha256Hex(""),
+        },
+      ],
     },
-  ]);
-  expect(authoredLiteralAt(document, ["password"])).toBeUndefined();
+  };
+  expect(authoredLiteralAt(retained.value, retained.provenance, ["password"])).toBeUndefined();
 });
 
 test("committed proof walks authored directives and list env without proving unrelated leaves", async () => {
@@ -138,7 +163,7 @@ test("committed proof walks authored directives and list env without proving unr
       digest: sha256Hex(""),
     }),
   );
-  expect(committedSensitiveLiterals(prepared)).toEqual(
+  expect(committedSensitiveLiterals(prepared.value, prepared.provenance)).toEqual(
     new Set([
       "wordpress",
       "list-private",
@@ -151,6 +176,6 @@ test("committed proof walks authored directives and list env without proving unr
     ]),
   );
   expect(
-    [...sensitiveLandofileOccurrences(prepared)].find(({ value }) => value === "list-private")?.path,
+    [...sensitiveLandofileOccurrences(prepared.value)].find(({ value }) => value === "list-private")?.path,
   ).toEqual(["services", "db", "environment", 0]);
 });

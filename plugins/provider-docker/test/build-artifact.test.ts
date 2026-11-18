@@ -99,10 +99,12 @@ test("buildArtifact sends Docker build requests for build specs", async () => {
     const artifact = await Effect.runPromise(
       Effect.scoped(
         provider.buildArtifact({
+          labels: { "dev.lando.test": crypto.randomUUID() },
           app: appId,
           service: serviceName,
           plan: plan(servicePlan),
           buildKey: "abc123",
+          ref: "lando-build-docker-web-abc123",
         }),
       ),
     );
@@ -117,6 +119,9 @@ test("buildArtifact sends Docker build requests for build specs", async () => {
       method: "GET",
       path: "/images/lando-build-docker-web-abc123/json",
     });
+    expect(await Effect.runPromise(provider.removeArtifact(artifact))).toEqual({ kind: "removed" });
+    expect(requests.at(-1)?.method).toBe("DELETE");
+    expect(requests).toHaveLength(3);
   } finally {
     await rm(context, { recursive: true, force: true });
   }
@@ -134,7 +139,7 @@ test("buildArtifact applies build steps after a context build", async () => {
         Effect.promise(async () => {
           requests.push(request);
           bodies.push(await collect(request.stdin));
-          return { status: 200, body: "" };
+          return { status: 200, body: '{"aux":{"ID":"sha256:base-image"}}' };
         }),
     };
     const provider = await Effect.runPromise(makeRuntimeProvider({ dockerApi, platform: "linux" }));
@@ -158,20 +163,22 @@ test("buildArtifact applies build steps after a context build", async () => {
     await Effect.runPromise(
       Effect.scoped(
         provider.buildArtifact({
+          labels: { "dev.lando.test": crypto.randomUUID() },
           app: appId,
           service: serviceName,
           plan: plan(servicePlan),
           buildKey: "derived-key",
+          ref: "lando-build-docker-web-derived-key",
         }),
       ),
     );
 
     expect(requests).toHaveLength(4);
-    expect(requests[0]?.path).toContain("t=lando-build-docker-web-derived-key-base");
+    expect(new URL(requests[0]?.path ?? "", "http://engine").searchParams.has("t")).toBe(false);
     expect(requests[0]?.path).toContain("target=runtime");
     expect(requests[1]).toEqual({
       method: "GET",
-      path: "/images/lando-build-docker-web-derived-key-base/json",
+      path: "/images/base-image/json",
     });
     expect(requests[2]?.path).toContain("t=lando-build-docker-web-derived-key");
     expect(requests[2]?.path).not.toContain("target=runtime");
@@ -179,7 +186,7 @@ test("buildArtifact applies build steps after a context build", async () => {
       method: "GET",
       path: "/images/lando-build-docker-web-derived-key/json",
     });
-    expect(bodies[2]).toContain("FROM lando-build-docker-web-derived-key-base");
+    expect(bodies[2]).toContain("FROM sha256:base-image");
     expect(bodies[2]).toContain(
       'RUN ["mkdir","-p","/logs"]\nRUN ["ln","-sf","/dev/stdout","/logs/access.log"]',
     );
@@ -214,10 +221,12 @@ test("buildArtifact derives a Dockerfile for ref builds with build steps", async
   await Effect.runPromise(
     Effect.scoped(
       provider.buildArtifact({
+        labels: { "dev.lando.test": crypto.randomUUID() },
         app: appId,
         service: serviceName,
         plan: plan(servicePlan),
         buildKey: "redirect-key",
+        ref: "lando-build-docker-web-redirect-key",
       }),
     ),
   );

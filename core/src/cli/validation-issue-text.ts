@@ -23,6 +23,8 @@ export const formatStructuredIssue = (issue: unknown): string | undefined => {
       : undefined;
   const location = typeof sourceFile === "string" ? `${escapeDiagnosticText(sourceFile)}: ` : "";
   const original =
-    authored !== undefined && authored !== where ? ` (authored ${escapeDiagnosticText(authored)})` : "";
+    authored !== undefined && authored.length > 0 && authored !== where
+      ? ` (authored ${escapeDiagnosticText(authored)})`
+      : "";
   return `${location}${where.length === 0 ? "" : `${where}: `}${message}${hint}${original}`;
 };

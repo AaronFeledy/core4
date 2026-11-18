@@ -49,10 +49,10 @@ An entry is either a plain string or an object:
 
 | Form | Example | Runs as |
 | --- | --- | --- |
-| String | `npm config set fund false` | The service's planned user |
+| String | `npm config set fund false` | The default for the step's phase |
 | Object | `{ run: "apt-get install -y jq", user: root }` | The `user` you named |
 
-A step with no `user` runs as the service's planned user, which is what `services.<name>.user` sets. Leave `services.<name>.user` out and an artifact step runs as the base image's own user, while an app step runs as the container's configured user.
+A step with no `user` gets a default that depends on its phase. An artifact step runs as the service's planned user, which is what `services.<name>.user` sets, or as the base image's own user when you leave that out. An app step runs as the service's project user when the service has one, the same account `lando exec` and tooling use. Without a project user, it runs as the container's default user. [Who owns your app files](./file-ownership.mdx) explains which services have a project user.
 
 Mixing root and non-root steps in one list is fine. The order is preserved, so `apt-get` as root followed by `npm config` as `node` does exactly that, in that sequence.
 
@@ -84,12 +84,21 @@ Lando doesn't repeat a step whose work is still there. What "still there" means 
 
 A `build.artifact` step is part of the image. While its inputs are unchanged and the built image still exists, `lando start` reports the image build as cached, however often the containers come and go.
 
+Lando keeps the images of each service's five most recent image builds, so switching back to a recent version of a Dockerfile or build step reuses its image. Older ones are removed automatically after a build or a teardown. Lando never removes an image a container still uses, and it never removes images you pulled.
+
+Built images are shared. Another app whose service has the same build inputs reuses the image instead of building it again. So does a scratch fork, and so does the same app after you rename it.
+
+The files in the build context are build inputs. When the context is the app folder, the Landofile is inside it, so editing the Landofile builds the image again. To keep unrelated files out of the build, point the build's `context` at a subfolder or list them in a `.dockerignore`, as you would for any Docker build.
+
+`lando destroy` keeps the newest image of each built service for up to seven days, so a `lando start` in that window reuses it without building. `lando destroy --purge-caches` removes those images right away. See [Tear down](../cli/everyday-commands.mdx#tear-down).
+
 A `build.app` step did its work inside one container, so its result counts only for that container. `lando start` reports the step as cached while the service still has the container the step ran in, and runs the step in every new container:
 
 | What you ran | `build.app` steps |
 | --- | --- |
 | `lando start` again, container kept | Cached |
-| `lando restart -s <service>` | Not run. The container stays, and so does the step's work |
+| `lando restart -s <service>`, container kept | Not run. The container stays, and so does the step's work |
+| `lando restart -s <service>` that replaces or creates the container | Run again, for that service only |
 | `lando stop`, then `lando start` | Run again |
 | `lando restart` | Run again |
 | `lando destroy`, then `lando start` | Run again |
@@ -109,7 +118,7 @@ Put anything that belongs to the image in `build.artifact`: system packages and 
 Two limits:
 
 - Lando doesn't read the files a `build.app` step uses. Editing `package-lock.json` doesn't rerun `npm ci` in a container that stayed. Run `lando rebuild` for that.
-- A `tmpfs` mount is emptied whenever its container stops, including `lando restart -s <service>`, and the step isn't rerun to fill it.
+- A `tmpfs` mount is emptied whenever its container stops, including a `lando restart -s <service>` that keeps the container, and the step isn't rerun to fill it.
 
 ## Read step output and failures
 
@@ -121,7 +130,7 @@ Lando also saves the full output of each step that runs. Print the output of the
 lando logs --build
 ```
 
-Image build lines are labeled `[build]` and `build.app` lines `[build:<step id>]`. Secrets Lando knows about are masked as `[redacted]` in the live lines and before the output is saved. A live line longer than 512 characters is cut there; the saved output keeps the line, up to 64 KiB.
+Image build lines are labeled `[build]` and `build.app` lines `[build:<step id>]`. Secrets Lando knows about, and text shaped like `password=...`, `password: "..."`, `{"token": "..."}`, `scheme://user:pass@host`, or `Bearer ...`, are masked as `[redacted]` in the live lines and before the output is saved. Masking follows a value across line breaks, so a quoted secret that wraps onto the next line is still hidden. Lando holds output only as long as it needs to decide, at most 64 lines or 16 KiB. If a value still has not closed at that limit or at the end of the step, Lando masks what it held and hides the rest of that value until its closing quote, for at most another 64 lines or 16 KiB, then shows later lines normally. A live line longer than 512 characters is cut there; the saved output keeps the line, up to 64 KiB.
 
 A step that `lando start` reports as cached prints nothing new, and `lando logs --build` still prints the output of the run that produced it. A successful `lando destroy` removes the app's saved build output along with its containers.
 

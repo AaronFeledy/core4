@@ -13,7 +13,6 @@ export interface CiPlatform {
  */
 export const LINUX_X64_TEST_RUNNER = "ubuntu-26.04";
 export const LINUX_X64_CI_RUNNERS = [LINUX_X64_TEST_RUNNER] as const;
-export type LinuxX64CiRunner = (typeof LINUX_X64_CI_RUNNERS)[number];
 
 /** Reference Linux x64 runner — older glibc for portable compiled binaries. */
 export const LINUX_X64_PRIMARY_RUNNER = "ubuntu-24.04";
@@ -58,8 +57,9 @@ export const CI_PLATFORMS: ReadonlyArray<CiPlatform> = [
     bunTarget: "bun-linux-x64",
     binaryName: "lando",
     timeoutMinutes: 30,
-    // The live setup-driven suite runs 20-25 minutes; keep headroom above it.
-    providerTimeoutMinutes: 35,
+    // The live services suite rebuilds every image it builds (suites clean up after themselves) and
+    // runs about 36 minutes; keep headroom above it.
+    providerTimeoutMinutes: 50,
     liveProviderIntegration: true,
   },
   {

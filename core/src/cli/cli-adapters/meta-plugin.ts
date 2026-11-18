@@ -7,7 +7,7 @@ import type { RedactionService } from "@lando/redaction/service";
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Layer } from "effect";
+import { Layer } from "effect";
 import { type CliInvocationContext, processInvocationContext } from "../../runtime/invocation-context";
 import { makeLandoGenerationRuntime, makeLandoRuntime } from "../../runtime/layer";
 import type { BuiltInCommandCatalog } from "../built-in-command-catalog-service";
@@ -30,7 +30,6 @@ import {
   setActiveCommandId,
 } from "../compiled-runtime";
 import type { CommandTokens } from "../invocation";
-import { readCliAppCommandCache } from "../tooling-command-cache";
 
 export const runMetaUninstall = async (
   tokens: CommandTokens,
@@ -82,11 +81,6 @@ export const runMetaMcp = async (
     ...(signal === undefined ? {} : { signal }),
     commandRuntime,
     sessionRuntime,
-    // Session start rebuilds a non-fresh index silently (stdout is the protocol); a failed
-    // rebuild keeps the registry's own fallback so the server still starts.
-    prepareTooling: Effect.ignore(
-      readCliAppCommandCache({ includeScriptInventory: true, rebuildNotice: false }),
-    ),
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
     invocation: getActiveCommandInvocation() ?? {

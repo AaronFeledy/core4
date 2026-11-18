@@ -67,7 +67,12 @@ test("stdio-never-reading-client-cannot-accumulate-unbounded-progress", async ()
             }),
         };
         const service = yield* McpService.pipe(
-          Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] })),
+          Effect.provide(
+            serverLayer({
+              commandEntries: [{ kind: "command" as const, spec }],
+              defaultAllowlist: [spec.id],
+            }),
+          ),
         );
         const stdio = Stdio.make({
           ...client.stdio,
@@ -120,7 +125,11 @@ test("stdio-outbound-byte-cap-rejects-progress-above-8-MiB-without-emitting-it",
         });
         return { response, notifications: yield* client.notifications };
       }),
-    ).pipe(Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }))),
+    ).pipe(
+      Effect.provide(
+        serverLayer({ commandEntries: [{ kind: "command" as const, spec }], defaultAllowlist: [spec.id] }),
+      ),
+    ),
   );
   expect(toolErrorObject(observed.response)).toMatchObject({
     _tag: "McpTransportError",
@@ -157,9 +166,10 @@ test("stdio-outstanding-request-cap-rejects-the-257th-as-busy-with-default-concu
         };
         const service = yield* McpService.pipe(
           Effect.provide(
-            serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }).pipe(
-              Layer.provide(eventLayer(events)),
-            ),
+            serverLayer({
+              commandEntries: [{ kind: "command" as const, spec }],
+              defaultAllowlist: [spec.id],
+            }).pipe(Layer.provide(eventLayer(events))),
           ),
         );
         const client = yield* startStdioClient(service.serve({ transport: "stdio" }));

@@ -42,6 +42,7 @@ export const CODEGEN_CATALOG = [
       "docker-cli-versions",
       "php-msmtp-pins",
       "tomcat-catalog",
+      "node-releases",
       "provider-images",
     ],
     id: "bundled-plugins",
@@ -85,6 +86,12 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    id: "node-releases",
+    ownership: "derived",
+    script: "build-node-releases.ts",
+    workspace: "repo",
+  },
+  {
     id: "provider-images",
     ownership: "derived",
     script: "build-provider-images.ts",
@@ -104,23 +111,13 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
-    // Imports `@lando/sdk/schema`, which re-exports generated/core-service-env.ts.
-    // Sharing a wave with that catalog writer lets the import observe a truncated
-    // file (`Bun.write` is not atomic), which surfaces as a syntax error on the
-    // slowest runner.
-    dependsOn: ["core-service-env-catalog"],
-    id: "bootstrap-layers",
-    ownership: "derived",
-    script: "build-bootstrap-layers.ts",
-    workspace: "repo",
-  },
-  {
     // Also imports every bundled plugin; see `bundled-plugins`.
     dependsOn: [
       "mutagen-versions",
       "docker-cli-versions",
       "php-msmtp-pins",
       "tomcat-catalog",
+      "node-releases",
       "provider-images",
     ],
     id: "setup-plugin-flags",
@@ -178,7 +175,9 @@ export const CODEGEN_CATALOG = [
     ],
   },
   {
-    // Imports `@lando/sdk/schema`; see `bootstrap-layers`.
+    // Imports `@lando/sdk/schema`, which re-exports generated/core-service-env.ts.
+    // Sharing a wave with that catalog writer lets the import observe a truncated
+    // file (`Bun.write` is not atomic).
     dependsOn: ["core-service-env-catalog"],
     id: "compiled-decoders",
     ownership: "derived",
@@ -194,7 +193,6 @@ export const CODEGEN_CATALOG = [
       "bundled-command-descriptors",
       "bundled-plugins",
       "bundled-recipes",
-      "bootstrap-layers",
       "setup-plugin-flags",
       "mcp-allowlist",
       "host-proxy-allowlist",
@@ -224,14 +222,14 @@ export const CODEGEN_CATALOG = [
   },
   {
     // Imports @lando/service-lando and its PHP msmtp pins; see `bundled-plugins`.
-    dependsOn: ["php-msmtp-pins", "tomcat-catalog"],
+    dependsOn: ["php-msmtp-pins", "tomcat-catalog", "node-releases"],
     id: "service-type-reference",
     ownership: "derived",
     script: "build-service-type-reference.ts",
     workspace: "repo",
   },
   {
-    dependsOn: ["php-msmtp-pins", "tomcat-catalog"],
+    dependsOn: ["php-msmtp-pins", "tomcat-catalog", "node-releases"],
     id: "service-listener-reference",
     ownership: "derived",
     script: "build-service-listener-reference.ts",
@@ -310,6 +308,12 @@ export const CODEGEN_CATALOG = [
     id: "tomcat-bump-workflow",
     ownership: "committed-workflow",
     script: "build-tomcat-bump-workflow.ts",
+    workspace: "repo",
+  },
+  {
+    id: "node-releases-bump-workflow",
+    ownership: "committed-workflow",
+    script: "build-node-releases-bump-workflow.ts",
     workspace: "repo",
   },
   {

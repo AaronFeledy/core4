@@ -16,8 +16,7 @@ export const buildResultsError = (providerId: string, cause: unknown) =>
       "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
-// Version 4 discards the former flat shape; no app receipt can carry artifact provenance.
-const BUILD_RESULTS_VERSION = 4;
+const BUILD_RESULTS_VERSION = 5;
 const KEEP_BUILD_KEYS = 5;
 const KEEP_ENTRIES = 500;
 
@@ -30,21 +29,9 @@ const commonFields = {
   completedAt: Schema.DateTimeUtcFromString,
 };
 
-export const ArtifactBuildResult = Schema.Struct({
-  ...commonFields,
-  phase: Schema.Literal("artifact"),
-  step: Schema.optionalKey(Schema.Never),
-  containerId: Schema.optionalKey(Schema.Never),
-  invalidated: Schema.optionalKey(Schema.Never),
-  exitCode: Schema.optionalKey(Schema.Never),
-  artifactRef: Schema.optionalKey(Schema.String),
-  artifactDigest: Schema.optionalKey(Schema.String),
-  /** `build` when the provider produced `artifactRef`; absent when the result is an acquired source ref. */
-  artifactOrigin: Schema.optionalKey(Schema.Literal("build")),
-  sourceArtifactRef: Schema.optionalKey(Schema.String),
-  sourceArtifactDigest: Schema.optionalKey(Schema.String),
-});
-export type ArtifactBuildResult = typeof ArtifactBuildResult.Type;
+import { ArtifactBuildResult } from "./build-artifact-results.ts";
+
+export { ArtifactBuildResult } from "./build-artifact-results.ts";
 
 export const AppBuildResult = Schema.Struct({
   ...commonFields,
@@ -63,27 +50,12 @@ export type AppBuildResult = typeof AppBuildResult.Type;
 export const BuildResultEntry = Schema.Union([ArtifactBuildResult, AppBuildResult]);
 export type BuildResultEntry = typeof BuildResultEntry.Type;
 
-const BuildResultEntries = Schema.Array(BuildResultEntry);
-
-export const openScratchBuildResults = (
-  stateStore: StateStoreShape,
-): Effect.Effect<StateBucket<ReadonlyArray<BuildResultEntry>>, StateStoreError> =>
-  stateStore.open({
-    root: "userCache",
-    key: "scratch-build-results.bin",
-    schema: BuildResultEntries,
-    version: BUILD_RESULTS_VERSION,
-    codec: "binary",
-    lock: "advisory",
-    onCorrupt: "quarantine",
-    onVersionMismatch: "discard",
-    default: [],
-  });
+const BuildResultEntries = Schema.Array(AppBuildResult);
 
 export const openAppBuildResults = (
   stateStore: StateStoreShape,
   owner: BuildOwner,
-): Effect.Effect<StateBucket<ReadonlyArray<BuildResultEntry>>, StateStoreError> =>
+): Effect.Effect<StateBucket<ReadonlyArray<AppBuildResult>>, StateStoreError> =>
   stateStore.open({
     root: "userCache",
     namespace: "build-results-owned",
@@ -97,22 +69,18 @@ export const openAppBuildResults = (
     default: [],
   });
 
-type ArtifactLookup = Pick<ArtifactBuildResult, "buildKey" | "service" | "phase">;
 type AppLookup = Pick<AppBuildResult, "buildKey" | "service" | "phase" | "step"> & {
   readonly containerId: string | undefined;
 };
 
 export const invalidateAppBuildResult = (
-  bucket: StateBucket<ReadonlyArray<BuildResultEntry>>,
+  bucket: StateBucket<ReadonlyArray<AppBuildResult>>,
   input: AppLookup,
 ): Effect.Effect<void, StateStoreError> =>
   bucket.mutate((current) => {
     const entries = current ?? [];
     const updated = entries.map((entry) =>
-      entry.phase === "app" &&
-      identityOf(entry) === identityOf(input) &&
-      entry.outcome === "complete" &&
-      !entry.invalidated
+      identityOf(entry) === identityOf(input) && entry.outcome === "complete" && !entry.invalidated
         ? { ...entry, invalidated: true as const }
         : entry,
     );
@@ -124,37 +92,17 @@ export const invalidateAppBuildResult = (
   });
 
 export function findCompleteBuildResult(
-  entries: ReadonlyArray<BuildResultEntry>,
-  input: ArtifactLookup,
-): ArtifactBuildResult | undefined;
-export function findCompleteBuildResult(
-  entries: ReadonlyArray<BuildResultEntry>,
+  entries: ReadonlyArray<AppBuildResult>,
   input: AppLookup,
-): AppBuildResult | undefined;
-export function findCompleteBuildResult(
-  entries: ReadonlyArray<BuildResultEntry>,
-  input: ArtifactLookup | AppLookup,
-): BuildResultEntry | undefined {
+): AppBuildResult | undefined {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    if (
-      entry !== undefined &&
-      (input.phase === "app" || entry.buildKey === input.buildKey) &&
-      identityOf(entry) === identityOf(input)
-    ) {
+    if (entry !== undefined && identityOf(entry) === identityOf(input)) {
       // Only the latest recorded attempt counts: a newer failure hides an older success.
       if (entry.outcome !== "complete" || entry.buildKey !== input.buildKey) return undefined;
-      switch (input.phase) {
-        case "artifact":
-          return entry;
-        case "app":
-          return entry.phase === "app" &&
-            !entry.invalidated &&
-            input.containerId &&
-            entry.containerId === input.containerId
-            ? entry
-            : undefined;
-      }
+      return !entry.invalidated && input.containerId && entry.containerId === input.containerId
+        ? entry
+        : undefined;
     }
   }
   return undefined;
@@ -165,21 +113,12 @@ export const clearAppBuildResults = Effect.fnUntraced(function* (
   owner: BuildOwner,
 ): Effect.fn.Return<void, StateStoreError> {
   const bucket = yield* openAppBuildResults(stateStore, owner);
-  yield* bucket.mutate((current) => {
-    const entries = current ?? [];
-    const kept = entries.filter((entry) => entry.phase !== "app");
-    if (kept.length === entries.length) return Effect.succeed({ _tag: "Keep" as const, result: undefined });
-    return Effect.succeed(
-      kept.length === 0
-        ? { _tag: "Remove" as const, result: undefined }
-        : { _tag: "Set" as const, value: kept, result: undefined },
-    );
-  });
+  yield* bucket.remove;
 });
 
-type BuildResultIdentity = Pick<BuildResultEntry, "service" | "phase" | "step" | "buildKey">;
+type BuildResultIdentity = Pick<AppBuildResult, "service" | "phase" | "step" | "buildKey">;
 const identityOf = (entry: BuildResultIdentity): string =>
-  `${entry.service}\u0000${entry.phase}\u0000${entry.step ?? ""}`;
+  `${entry.service}\u0000${entry.phase}\u0000${entry.step}`;
 
 const resultKeyOf = (entry: BuildResultIdentity): string => `${identityOf(entry)}\u0000${entry.buildKey}`;
 
@@ -187,7 +126,7 @@ const resultKeyOf = (entry: BuildResultIdentity): string => `${identityOf(entry)
  * Apply the overall backstop without evicting a step's newest entry while it still has older keys:
  * an unchanged step's only entry may be the oldest entry recorded.
  */
-const capBuildResults = (entries: ReadonlyArray<BuildResultEntry>): ReadonlyArray<BuildResultEntry> => {
+const capBuildResults = (entries: ReadonlyArray<AppBuildResult>): ReadonlyArray<AppBuildResult> => {
   if (entries.length <= KEEP_ENTRIES) return entries;
   // `entries` is in recording order, so scanning backwards finds each identity's newest entry.
   const newest = new Set<string>();
@@ -220,8 +159,8 @@ const capBuildResults = (entries: ReadonlyArray<BuildResultEntry>): ReadonlyArra
  * One entry per (service, phase, step, buildKey): a re-run replaces that key's earlier attempt.
  * Each step identity keeps its five most recently recorded build keys; 500 entries is the backstop.
  */
-const rotateBuildResults = (entries: ReadonlyArray<BuildResultEntry>): ReadonlyArray<BuildResultEntry> => {
-  const latest = new Map<string, BuildResultEntry>();
+const rotateBuildResults = (entries: ReadonlyArray<AppBuildResult>): ReadonlyArray<AppBuildResult> => {
+  const latest = new Map<string, AppBuildResult>();
   for (const entry of entries) {
     const key = resultKeyOf(entry);
     // Re-inserting moves the key to the end, so map order is recording order.
@@ -243,8 +182,8 @@ const rotateBuildResults = (entries: ReadonlyArray<BuildResultEntry>): ReadonlyA
 };
 
 export const recordBuildResult = Effect.fnUntraced(function* (
-  bucket: StateBucket<ReadonlyArray<BuildResultEntry>>,
-  entry: Omit<AppBuildResult, "completedAt"> | Omit<ArtifactBuildResult, "completedAt">,
+  bucket: StateBucket<ReadonlyArray<AppBuildResult>>,
+  entry: Omit<AppBuildResult, "completedAt">,
 ): Effect.fn.Return<void, StateStoreError> {
   const completedAt = yield* DateTime.now;
   yield* bucket.update((current) => rotateBuildResults([...(current ?? []), { ...entry, completedAt }]));
@@ -256,8 +195,8 @@ export const recordBuildResult = Effect.fnUntraced(function* (
  * already newest writes nothing.
  */
 export const markBuildResultUsed = (
-  bucket: StateBucket<ReadonlyArray<BuildResultEntry>>,
-  used: BuildResultEntry,
+  bucket: StateBucket<ReadonlyArray<AppBuildResult>>,
+  used: AppBuildResult,
 ): Effect.Effect<void, StateStoreError> =>
   bucket.mutate((current) => {
     const entries = current ?? [];

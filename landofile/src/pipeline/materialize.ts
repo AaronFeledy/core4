@@ -4,49 +4,52 @@ import {
   expressionScopeMembers,
   expressionTouchesOnlyScopes,
 } from "@lando/sdk/expressions";
-import { isPlainRecord, mergeLandofiles, withValueOrigins } from "@lando/sdk/landofile";
+import { isPlainRecord, mergeLandofiles } from "@lando/sdk/landofile";
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { consumeSites, survivingSites } from "../compiled-sites.ts";
-import { copyLandofileProvenance } from "../copy-provenance.ts";
 import { includeConditionPath } from "../include-condition-shape.ts";
 import { loadPathBlocked } from "../load-failures.ts";
 import { normalizeEnvironmentSites } from "../normalize-environment-sites.ts";
+import type { AuthoredDocument } from "../provenance.ts";
 import {
   type LandofileLoadScope,
   hostExpressionEnvironment,
   recipeOptionScope,
 } from "../recipe-expressions.ts";
-import { getOrigins, rememberOrigins } from "./origins.ts";
 
 export type { LandofileLoadScope } from "../recipe-expressions.ts";
 export const buildLandofileLoadScope = Effect.fnUntraced(function* (
   layers: readonly { readonly file: string; readonly value: unknown }[],
   env: Readonly<Record<string, string>> = hostExpressionEnvironment(),
   pendingSites: ParsedPendingSite[] = [],
+  environmentRecorder?: import("../environment-dependencies.ts").EnvironmentRecorder,
 ) {
   const merged = mergeLandofiles(
     layers.map(({ value }) =>
       isPlainRecord(value) && Object.hasOwn(value, "recipe") ? { recipe: value.recipe } : {},
     ),
   );
-  return { env, recipe: recipeOptionScope(merged), pendingSites };
+  return {
+    env,
+    recipe: recipeOptionScope(merged),
+    pendingSites,
+    ...(environmentRecorder === undefined ? {} : { environmentRecorder }),
+  };
 });
 
 export const materializeLandofileLayer = Effect.fnUntraced(function* (
   _file: string,
-  value: unknown,
+  document: AuthoredDocument,
   scope: LandofileLoadScope,
 ) {
-  if (!isPlainRecord(value)) return value;
+  const value = document.value;
   const normalized = yield* Effect.try({
     try: () =>
       normalizeEnvironmentSites({
         value,
         recorder: scope.recorder,
-        origins:
-          getOrigins(value) ??
-          withValueOrigins(value, (path) => ({ file: _file, layer: "canonical" as const, path })).origins,
+        origins: document.provenance.origins,
       }),
     catch: (cause) => {
       if (cause instanceof LandofileValidationError) return cause;
@@ -54,10 +57,14 @@ export const materializeLandofileLayer = Effect.fnUntraced(function* (
     },
   });
   const origins = normalized.origins;
+  const withValue = (materialized: Record<string, unknown>): AuthoredDocument => ({
+    value: materialized,
+    provenance: { ...document.provenance, origins },
+  });
   const surviving = survivingSites(origins, scope.pendingSites ?? []);
   const sites = scope.siteFilter === undefined ? surviving : surviving.filter(scope.siteFilter);
   if (scope.recorder !== undefined) {
-    let document: unknown = normalized.value;
+    let materialized: unknown = normalized.value;
     const consumed = new Set<string>();
     for (const site of sites) {
       if (loadPathBlocked(scope.recorder, site.source)) continue;
@@ -106,7 +113,7 @@ export const materializeLandofileLayer = Effect.fnUntraced(function* (
         continue;
       }
       const result = consumeSites({
-        document,
+        document: materialized,
         pendingSites: [site],
         context: { env: scope.env, recipe: scope.recipe },
         scopes: ["recipe", "env"],
@@ -150,15 +157,13 @@ export const materializeLandofileLayer = Effect.fnUntraced(function* (
           continue;
         }
       }
-      document = result.success.document;
+      materialized = result.success.document;
       if (result.success.pendingSites.length === 0) consumed.add(site.id);
     }
     if (scope.pendingSites !== undefined)
       for (let index = scope.pendingSites.length - 1; index >= 0; index--)
         if (consumed.has(scope.pendingSites[index]?.id ?? "")) scope.pendingSites.splice(index, 1);
-    return isPlainRecord(document)
-      ? rememberOrigins(copyLandofileProvenance(value, document), origins)
-      : document;
+    return withValue(isPlainRecord(materialized) ? materialized : value);
   }
   const unavailable =
     scope.recipe === undefined
@@ -192,7 +197,5 @@ export const materializeLandofileLayer = Effect.fnUntraced(function* (
   if (scope.pendingSites !== undefined)
     for (let index = scope.pendingSites.length - 1; index >= 0; index--)
       if (consumed.has(scope.pendingSites[index]?.id ?? "")) scope.pendingSites.splice(index, 1);
-  return isPlainRecord(result.document)
-    ? rememberOrigins(copyLandofileProvenance(value, result.document), normalized.origins)
-    : result.document;
+  return withValue(isPlainRecord(result.document) ? result.document : value);
 });

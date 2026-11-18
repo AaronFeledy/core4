@@ -3,11 +3,38 @@ import { CurrentExecutableAppPlan, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
-import { attachEffectiveTooling, connectionClientsForPlan } from "../../src/planner/effective-tooling.ts";
+import { runAppEvent } from "../../src/operations/events.ts";
+import {
+  attachEffectiveTooling,
+  connectionClientsForPlan,
+  effectiveToolingForPlan,
+  toolingIssueSourceForPlan,
+} from "../../src/planner/effective-tooling.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { inheritedServiceRegistry, planInherited } from "../planner/inherited-service-fixture.ts";
 import { appliedClientFixture } from "./applied-client-fixture.ts";
+
+test("an unversioned applied tooling extension still executes its recorded connection client", async () => {
+  const fixture = appliedClientFixture();
+  const legacy = {
+    tasks: effectiveToolingForPlan(fixture.plan),
+    internalNames: ["psql"],
+    connectionClients: connectionClientsForPlan(fixture.plan),
+    disabledSources: {},
+  };
+  const plan = Schema.decodeUnknownSync(CurrentExecutableAppPlan)({
+    ...Schema.encodeSync(CurrentExecutableAppPlan)(fixture.plan),
+    extensions: { ...fixture.plan.extensions, "@lando/core/effective-tooling": legacy },
+  });
+  const result = await Effect.runPromise(
+    runAppEvent(plan, "pre-start").pipe(Effect.provide(fixture.layer), Effect.result),
+  );
+  expect(result._tag).toBe("Success");
+  expect(fixture.calls[0]?.command).toEqual(["psql", "-p", "5433", "-U", "APPLIED-user", "-d", "APPLIED-db"]);
+  expect(toolingIssueSourceForPlan(plan, "psql", ["cmd"])).toBeUndefined();
+  expect(plan.extensions["@lando/core/effective-tooling"]).toEqual(legacy);
+});
 
 test("real inherited PostgreSQL client invokes with applied drift without resolving absent desired reference", async () => {
   const inherited = await Effect.runPromise(
@@ -114,7 +141,7 @@ test("a service that lost client precedence at creation retains its own applied 
     {
       psql: { service: "database", cmd: ["desired-client"] },
     },
-    { psql: database.name },
+    { connectionClients: { psql: database.name } },
   );
   const fixture = appliedClientFixture({ inherited: { ...inherited, plan: desired } });
   const result = await fixture.run();

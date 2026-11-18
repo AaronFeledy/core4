@@ -226,7 +226,7 @@ test("resolved secrets split across stdout and stderr never reach either IO stre
 test("captured redacted output remains bounded", () => {
   // Given
   const stream = makeStatefulShellRedactor(
-    { redactString: (text) => text, redactValue: (value) => value },
+    { redactString: (text) => text, redactPrefix: (text) => text, redactValue: (value) => value },
     [],
     () => {},
   );

@@ -151,12 +151,15 @@ test.each(["fresh", "missing", "stale"])(
       );
       const path = await Effect.runPromise(
         writeAppCommandCacheStrict({
+          env: f.env,
           landofile,
           entries: [
             {
               id: "app:db",
               summary: "Owned tooling DB",
-              hidden: false,
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "public",
               input: {
                 flags: [],
                 args: [],
@@ -228,6 +231,7 @@ test("cold root, built-in target and core topic help do not acquire plugin entri
     await Effect.runPromise(
       writeAppCommandCacheStrict({
         landofile: { name: "help-import" },
+        env: f.env,
         entries: [],
         cwd: f.root,
         cacheRoot: f.env.LANDO_USER_CACHE_ROOT,
@@ -364,6 +368,7 @@ test.each(["fresh", "missing"])(
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile: { name: "app-plugin" },
+            env: f.env,
             entries: [],
             cwd: f.root,
             cacheRoot: f.env.LANDO_USER_CACHE_ROOT,
@@ -429,11 +434,14 @@ test("full listings omit plugin rows owned by fresh app tooling", async () => {
     await Effect.runPromise(
       writeAppCommandCacheStrict({
         landofile: { name: "tooling-winner", tooling: { inspect: { cmd: "echo tooling" } } },
+        env: f.env,
         entries: [
           {
             id: "app:inspect",
             summary: "Winning tooling fixture",
-            hidden: false,
+            _tag: "Ready",
+            sourceKind: "tooling",
+            visibility: "public",
             input: {
               flags: [],
               args: [],

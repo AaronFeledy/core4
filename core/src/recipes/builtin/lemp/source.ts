@@ -1,5 +1,5 @@
 import type { RecipeSource } from "@lando/sdk/schema";
-import { composerTool, phpOption, phpTool } from "../source-php.ts";
+import { composerTool, createProjectTool, phpOption, phpTool } from "../source-php.ts";
 import { defaultRoutes } from "../source-web.ts";
 
 export const source = {
@@ -24,7 +24,7 @@ export const source = {
       },
       database: { type: "mariadb" },
     },
-    tooling: { composer: composerTool, php: phpTool },
+    tooling: { composer: composerTool, "create-project": createProjectTool, php: phpTool },
   },
   postInit: [
     { type: "message", text: "Run 'lando start' inside the new app directory to bring the LEMP stack up." },

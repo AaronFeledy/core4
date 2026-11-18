@@ -14,6 +14,7 @@ import type { LandofileIncludeDeps } from "../src/include-context.ts";
 import type { LandofileRuntimePorts } from "../src/ports.ts";
 import { loadLandofileFile, loadLandofileLayers } from "../src/service.ts";
 
+export { loadLandofileLayers as loadTestLandofileLayersCarrier };
 export const loadTestLandofileLayers = (...args: Parameters<typeof loadLandofileLayers>) =>
   loadLandofileLayers(...args).pipe(Effect.map((compiled) => compiled.document));
 export const loadTestLandofileFile = (...args: Parameters<typeof loadLandofileFile>) =>

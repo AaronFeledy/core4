@@ -3,6 +3,7 @@ import {
   type LogSource,
   LogSourceId,
   PortNumber,
+  type ServiceConfig,
   type ValidationIssuePath,
   sameImageReference,
 } from "@lando/sdk/schema";
@@ -25,6 +26,14 @@ import { imageAuthority, launcherAuthority, plannedPort, servicePortEndpoints } 
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
+import {
+  type ApacheNativeTls,
+  apacheGeneratedCertificateEndpoint,
+  generatedHttpsEndpoint,
+  nativeTlsEligible,
+  nativeTlsListener,
+  nativeTlsVirtualHosts,
+} from "./apache-native-tls.ts";
 import { apacheHiddenPathDirectives } from "./http-hidden-paths.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
@@ -37,6 +46,18 @@ export const APACHE_LISTENER = {
 } as const;
 export const DEFAULT_PORT = APACHE_LISTENER.port;
 export const APP_MOUNT_TARGET = "/app";
+
+/**
+ * Whether this standalone Apache service still uses Lando's own launcher. Only a
+ * replacement `build.context` takes over the image; additive build steps do not.
+ */
+export const apacheOwnedLauncher = (
+  service: Pick<ServiceConfig, "image" | "build" | "command" | "entrypoint">,
+): boolean =>
+  service.command === undefined &&
+  service.entrypoint === undefined &&
+  !(service.build !== undefined && "context" in service.build) &&
+  (service.image === undefined || sameImageReference(service.image, DEFAULT_IMAGE));
 
 const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -63,6 +84,8 @@ export const APACHE_FEATURE_ID = "service-lando.apache" as const;
 export const APACHE_FEATURE_PRIORITY = 600;
 
 export const APACHE_LISTEN_BUILD_STEP_ID = "service-lando.apache:listen" as const;
+export const APACHE_SSL_MODULE_BUILD_STEP_ID = "service-lando.apache:ssl-module" as const;
+export const APACHE_SSL_PORTS_BUILD_STEP_ID = "service-lando.apache:ssl-ports" as const;
 
 /** Where each bundled Apache family declares the listener Lando has to retire. */
 export const HTTPD_CONF_PATH = "/usr/local/apache2/conf/httpd.conf" as const;
@@ -105,6 +128,62 @@ export const apacheListenBuildStep = (configPath: string): ServiceBuildStepInten
   ],
 });
 
+/**
+ * Loads httpd Alpine's shipped SSL modules at image-build time and leaves the
+ * stock SSL sample virtual host disabled, so exactly the launcher's own TLS
+ * listener and virtual host exist. Fail-closed: both `LoadModule` lines must be
+ * present exactly once in their commented form before the edit.
+ */
+export const apacheSslModuleBuildStep = (configPath: string): ServiceBuildStepIntent => {
+  const modules = ["socache_shmcb_module modules/mod_socache_shmcb.so", "ssl_module modules/mod_ssl.so"];
+  return {
+    id: APACHE_SSL_MODULE_BUILD_STEP_ID,
+    phase: "build",
+    user: "root",
+    command: [
+      "sh",
+      "-c",
+      [
+        "set -eu",
+        `test -f ${configPath}`,
+        ...modules.flatMap((module) => [
+          `before=$(grep -c '^#LoadModule ${module}$' ${configPath} || true)`,
+          `test "$before" = "1" || { echo "lando: expected one commented LoadModule for ${module} in ${configPath}, found $before" >&2; exit 1; }`,
+          `sed -i 's|^#LoadModule ${module}$|LoadModule ${module}|' ${configPath}`,
+          `after=$(grep -c '^LoadModule ${module}$' ${configPath} || true)`,
+          `test "$after" = "1" || { echo "lando: LoadModule ${module} is not active exactly once in ${configPath}" >&2; exit 1; }`,
+        ]),
+        `included=$(grep -c '^Include conf/extra/httpd-ssl.conf$' ${configPath} || true)`,
+        `test "$included" = "0" || { echo "lando: the stock SSL virtual host is enabled in ${configPath}" >&2; exit 1; }`,
+      ].join("; "),
+    ],
+  };
+};
+
+/**
+ * Enables Debian Apache's `ssl` module (and the dependencies `a2enmod` pulls in)
+ * and retires the conditional `Listen 443` lines its `ports.conf` adds, so the
+ * launcher's own `Listen` remains the single definition of each planned
+ * listener. Fail-closed on any surviving active 443 listener.
+ */
+export const apacheDebianSslBuildStep = (): ServiceBuildStepIntent => ({
+  id: APACHE_SSL_PORTS_BUILD_STEP_ID,
+  phase: "build",
+  user: "root",
+  command: [
+    "sh",
+    "-c",
+    [
+      "set -eu",
+      `test -f ${DEBIAN_APACHE_PORTS_CONF_PATH}`,
+      "a2enmod ssl",
+      `sed -i '/<IfModule ssl_module>/,/<\\/IfModule>/d; /<IfModule mod_gnutls.c>/,/<\\/IfModule>/d' ${DEBIAN_APACHE_PORTS_CONF_PATH}`,
+      `left=$(grep -c '^[[:space:]]*Listen 443$' ${DEBIAN_APACHE_PORTS_CONF_PATH} || true)`,
+      `test "$left" = "0" || { echo "lando: ports.conf still declares Listen 443" >&2; exit 1; }`,
+    ].join("; "),
+  ],
+});
+
 export const apacheDirectivePath = (webroot: string, path: ValidationIssuePath = ["webroot"]): string => {
   if (/\r|\n/u.test(webroot)) {
     throw new ServiceConfigIssue(
@@ -125,25 +204,6 @@ export const apacheDirectivePath = (webroot: string, path: ValidationIssuePath =
 const PID_FILE = "/tmp/lando-httpd.pid";
 
 /**
- * Apache builds its directory trailing-slash redirect from its own scheme and
- * port, which behind the router are `http` and the container listener. For a
- * request the router forwarded, redirect with the browser's scheme and `Host`
- * instead. The condition admits only `http` and `https`, so the interpolated
- * header cannot inject anything else into the redirect.
- */
-export const apacheForwardedDirectoryRedirectDirectives = (
-  mechanism: "alias" | "rewrite",
-): ReadonlyArray<string> => [
-  `<If "%{HTTP:X-Forwarded-Proto} =~ /^https?$/ && -d %{REQUEST_FILENAME} && %{REQUEST_URI} !~ m#/$#">`,
-  // PHP's rewrite variant merges after .htaccess, so it wins over app rules that redirect the same request.
-  // Standalone httpd has no mod_rewrite; inside <If>, as in <Location>, mod_alias reads a lone target as an expression.
-  ...(mechanism === "rewrite"
-    ? ["RewriteEngine On", "RewriteRule ^ %{HTTP:X-Forwarded-Proto}://%{HTTP_HOST}%{REQUEST_URI}/ [R=301,L]"]
-    : ['Redirect permanent "%{HTTP:X-Forwarded-Proto}://%{HTTP_HOST}%{REQUEST_URI}/"']),
-  "</If>",
-];
-
-/**
  * The launcher for a service whose author declared no `command` or `entrypoint`.
  *
  * Every directive is handed to httpd as a repeated `-c` argument instead of
@@ -156,36 +216,58 @@ export const apacheForwardedDirectoryRedirectDirectives = (
  * unchanged as the planned service user rather than only as root.
  *
  * An authored `port:` becomes a `Listen` directive in that same stream, paired
- * with the build step that retires the image's own listener.
+ * with the build step that retires the image's own listener. With native TLS the
+ * same document-root, access, and hidden-path policy is rendered twice: a plain
+ * listener and one TLS listener whose virtual host is the only one for that
+ * port, because the stock SSL sample host stays disabled at build time.
  */
 const apacheStartCommand = (
   webroot: string,
   listenPort: number | undefined,
   issuePath: ValidationIssuePath,
+  tls?: ApacheNativeTls,
 ): ReadonlyArray<string> => {
   const path = apacheDirectivePath(webroot, issuePath);
-  return [
-    "httpd-foreground",
-    "-c",
-    "ServerName localhost",
-    ...(listenPort === undefined ? [] : ["-c", `Listen ${String(listenPort)}`]),
-    "-c",
-    `PidFile "${PID_FILE}"`,
-    "-c",
+  const site = [
     `DocumentRoot "${path}"`,
-    "-c",
     `<Directory "${path}">`,
-    "-c",
     "Options -Indexes +FollowSymLinks",
-    "-c",
     "AllowOverride None",
-    "-c",
     "Require all granted",
-    "-c",
     "</Directory>",
-    ...apacheForwardedDirectoryRedirectDirectives("alias").flatMap((directive) => ["-c", directive]),
-    ...apacheHiddenPathDirectives().flatMap((directive) => ["-c", directive]),
+    ...apacheHiddenPathDirectives(),
   ];
+  const flags = (directives: ReadonlyArray<string>) => directives.flatMap((directive) => ["-c", directive]);
+  const directives = ["httpd-foreground", "-c", "ServerName localhost"];
+  if (tls === undefined) {
+    directives.push(
+      ...(listenPort === undefined ? [] : ["-c", `Listen ${String(listenPort)}`]),
+      "-c",
+      `PidFile "${PID_FILE}"`,
+      ...flags(site),
+    );
+  } else {
+    // The image's own plain listener stays in its configuration; an authored
+    // port already retired it at build time, so it must be re-declared here.
+    directives.push(...(listenPort === undefined ? [] : ["-c", `Listen ${String(listenPort)}`]));
+    directives.push(
+      "-c",
+      `Listen ${String(tls.tlsPort)}`,
+      "-c",
+      `PidFile "${PID_FILE}"`,
+      ...flags(
+        nativeTlsVirtualHosts({
+          family: "standalone-apache",
+          plainPort: tls.plainPort,
+          tlsPort: tls.tlsPort,
+          serverName: tls.serverName,
+          plainSite: site,
+          tlsSite: site,
+        }),
+      ),
+    );
+  }
+  return directives;
 };
 
 const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
@@ -194,6 +276,8 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   const port = plannedPort(service, APACHE_LISTENER);
   const webroot = resolveWebroot("Apache", service.webroot, service.appMount);
   const documentRoot = service.environment?.APACHE_DOCUMENT_ROOT ?? webroot;
+  const owned = apacheOwnedLauncher(service);
+  const nativeTls = nativeTlsEligible({ owned, config: service });
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
@@ -201,19 +285,26 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setHealthcheck(tcpProbe(port, 10));
 
   if (service.command === undefined && service.entrypoint === undefined) {
-    const ownsImage = service.image === undefined || sameImageReference(service.image, DEFAULT_IMAGE);
-    const ownedListen = ownsImage ? listenPort : undefined;
     ctx.setCommand(
       apacheStartCommand(
         literalEnvironmentValue(documentRoot, ["environment", "APACHE_DOCUMENT_ROOT"]),
-        ownedListen,
+        owned ? listenPort : undefined,
         service.environment?.APACHE_DOCUMENT_ROOT === undefined
           ? ["webroot"]
           : ["environment", "APACHE_DOCUMENT_ROOT"],
+        nativeTls
+          ? nativeTlsListener({
+              plainPort: port,
+              serviceName: ctx.serviceName,
+              appName: ctx.appName ?? "app",
+              appRoot: ctx.appRoot,
+            })
+          : undefined,
       ),
     );
-    if (ownedListen !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
-    if (!ownsImage) ctx.setListenerAuthority(imageAuthority(APACHE_LISTENER, port));
+    if (owned && listenPort !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
+    if (nativeTls) ctx.addBuildStep(apacheSslModuleBuildStep(HTTPD_CONF_PATH));
+    if (!owned) ctx.setListenerAuthority(imageAuthority(APACHE_LISTENER, port));
   } else {
     ctx.setListenerAuthority(launcherAuthority(APACHE_LISTENER, port));
   }
@@ -229,12 +320,14 @@ export const apacheServiceFeature: ServiceFeatureDefinition = {
     return { handledServiceFields: ["webroot"] };
   }),
   declareEndpoints: (ctx) =>
-    Effect.sync(() =>
-      servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, APACHE_LISTENER),
-        protocol: "http",
-      }),
-    ),
+    Effect.sync(() => {
+      const port = plannedPort(ctx.normalizedConfig, APACHE_LISTENER);
+      const endpoints = servicePortEndpoints(ctx, { port, protocol: "http" });
+      const owned = apacheOwnedLauncher(ctx.normalizedConfig);
+      return nativeTlsEligible({ owned, config: ctx.normalizedConfig })
+        ? [...endpoints, generatedHttpsEndpoint({ serviceName: ctx.serviceName, plainPort: port })]
+        : endpoints;
+    }),
   apply: serviceFeatureApply(APACHE_FEATURE_ID, "service-lando.apache failed to apply", applyApacheFeature),
 };
 
@@ -251,10 +344,15 @@ export const apacheServiceType: ServiceType = {
   resolve: (input) =>
     serviceTypeResolve("apache", "Failed to resolve apache", () => {
       const webroot = resolveWebroot("Apache", input.service.webroot, input.service.appMount);
+      const endpoint = apacheGeneratedCertificateEndpoint({
+        plainPort: input.service.port ?? APACHE_LISTENER.port,
+        owned: apacheOwnedLauncher(input.service),
+      });
       return {
         base: "lando" as const,
         normalizedConfig: { ...input.service, type: "apache" },
         logSources: APACHE_LOG_SOURCES,
+        ...(endpoint === undefined ? {} : { generatedCertificateEndpoint: endpoint }),
         features: [
           { id: APACHE_FEATURE_ID },
           {

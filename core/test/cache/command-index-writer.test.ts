@@ -7,10 +7,9 @@ import {
   readFreshAppCommandCacheForCwd,
   writeAppCommandCacheStrict,
 } from "@lando/engine/cache/command-index-writer";
-
-import { rememberLocalIncludePaths } from "@lando/landofile/include-provenance";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import { fixtureProvenance } from "../provenance-support.ts";
 
 const withTempCacheRoot = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-command-index-writer-"));
@@ -32,17 +31,26 @@ describe("app command cache writer", () => {
       await mkdir(includesRoot, { recursive: true });
       await writeFile(join(appRoot, ".lando.yml"), "name: user-include-app\nincludes:\n  - user:corp.yml\n");
       await writeFile(includePath, "tooling:\n  test:\n    service: app\n");
-      const landofile = rememberLocalIncludePaths(
-        {
-          name: "user-include-app",
-          services: { [ServiceName.make("app")]: { type: "node" } },
-        },
-        [includePath],
-      );
+      const landofile = {
+        name: "user-include-app",
+        services: { [ServiceName.make("app")]: { type: "node" } },
+      };
+      const provenance = fixtureProvenance({ localIncludePaths: [includePath] });
       await Effect.runPromise(
         writeAppCommandCacheStrict({
           landofile,
-          entries: [{ id: "app:test", summary: "Test", hidden: false, service: "app" }],
+          provenance,
+          entries: [
+            {
+              id: "app:test",
+              summary: "Test",
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "public",
+              input: emptyToolingInput(),
+              service: "app",
+            },
+          ],
           cwd: appRoot,
           cacheRoot,
         }),
@@ -71,7 +79,17 @@ describe("app command cache writer", () => {
             name: "service-app",
             services: { [ServiceName.make("app")]: { type: "node" } },
           },
-          entries: [{ id: "app:node", summary: "Node tooling", hidden: false, service: "app" }],
+          entries: [
+            {
+              id: "app:node",
+              summary: "Node tooling",
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "public",
+              input: emptyToolingInput(),
+              service: "app",
+            },
+          ],
           cwd: appRoot,
           cacheRoot,
         }),
@@ -107,3 +125,5 @@ describe("app command cache writer", () => {
     });
   });
 });
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

@@ -62,6 +62,35 @@ test.each([
   });
 });
 
+test.each([
+  new McpToolInputError({
+    toolId: "app:info",
+    message: "Invalid input",
+    remediation: "Choose an app.",
+  }),
+  new McpToolNotAllowedError({
+    toolId: "app:info",
+    effectiveAllowlist: [],
+    message: "Denied",
+    remediation: "Allow the tool.",
+  }),
+  new McpTransportError({ message: "Transport failed", remediation: "Retry the call." }),
+])("keeps the closed dispatch-error tag when it is a registered value", async (error) => {
+  const result = await Effect.runPromise(
+    rejectionResult(error, {
+      toolId: "app:info",
+      redactor: createRedactor("secrets", { values: [error._tag, "app:info", error.message] }),
+    }),
+  );
+  const envelope = Schema.decodeUnknownSync(Schema.JsonObject)(result.structuredContent);
+  expect(envelope).toMatchObject({
+    error: {
+      _tag: error._tag,
+      message: "[redacted]",
+    },
+  });
+});
+
 const fixtures: readonly {
   readonly command: string;
   readonly schema: Schema.Codec<unknown, unknown>;

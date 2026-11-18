@@ -159,6 +159,7 @@ for (const expression of ["{{ env[env.LOOKUP] }}", "{{ keys(env) }}", '{{ get(en
     const snapshot = snapshotAppFeatureEnv([{ id: "test", definition: featureFor(expression) }], env);
     // Then
     expect(snapshot.bindings).toEqual(env);
+    expect(snapshot.dependencies).toEqual({ _tag: "Complete" });
     expect(Object.keys(snapshot.bindings)).toEqual(["LOOKUP", "TARGET", "UNRELATED"]);
   });
 }
@@ -175,6 +176,10 @@ test("selector cache unions static env reads with absent values and shell parame
   // Then
   expect(snapshot.bindings).toEqual({ MISSING: null, PAREN: null, SHELL_TARGET: null, TARGET: "web", Z: "" });
   expect(Object.keys(snapshot.bindings)).toEqual(["MISSING", "PAREN", "SHELL_TARGET", "TARGET", "Z"]);
+  expect(snapshot.dependencies).toEqual({
+    _tag: "Names",
+    names: ["MISSING", "PAREN", "SHELL_TARGET", "TARGET", "Z"],
+  });
 });
 
 import { compileTestLandofile } from "../compiled-landofile.ts";

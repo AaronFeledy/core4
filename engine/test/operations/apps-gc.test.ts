@@ -12,12 +12,22 @@ import {
   ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import { FileSystem, type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  FileSystem,
+  type ProviderRuntimeSnapshot,
+  RuntimeProviderRegistry,
+  StateStore,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as DiskStateStore from "@lando/state-store/service";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { prepareAppsGc } from "../../src/operations/apps-gc.ts";
 import { TeardownProvider } from "../../src/providers/app-placement.ts";
+import {
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
+import { BuildOwner } from "../../src/services/build-owner.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
@@ -44,9 +54,15 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
   const interrupt = new Set<string>();
   let launches = 0;
   let running = true;
+  let imageSweeps = 0;
   const provider = {
     ...TestRuntimeProvider,
     id: providerId,
+    listArtifacts: () =>
+      Effect.sync(() => {
+        imageSweeps += 1;
+        return [];
+      }),
     getStatus: Effect.sync(() => ({ state: running ? ("running" as const) : ("idle" as const) })),
     ensureReady: Effect.sync(() => {
       launches++;
@@ -128,6 +144,7 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
     fail,
     interrupt,
     launches: () => launches,
+    imageSweeps: () => imageSweeps,
     add: (name: string) => {
       plans.push(at(name));
     },
@@ -143,6 +160,53 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
     },
   };
 };
+
+test.each([
+  [false, 2],
+  [true, 2],
+  [false, 12],
+] as const)(
+  "GC coalesces sweeps and counts retained images (purge=%s, roots=%s)",
+  async (purgeCaches, count) => {
+    const names = Array.from({ length: count }, (_, index) => `gc-root-${index}`);
+    const f = fixture(names);
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const bucket = yield* openArtifactBuildResults(yield* StateStore);
+        for (const name of names)
+          yield* recordArtifactBuildResult(bucket, {
+            owner: BuildOwner.fromPlan(at(name)).key,
+            providerId: "lando",
+            phase: "artifact",
+            service: ServiceName.make("web"),
+            buildKey: name,
+            artifactRef: `built-${name}`,
+            artifactOrigin: "build",
+            outcome: "complete",
+            durationMs: 1,
+            transcriptPath: AbsolutePath.make("/tmp/gc.log"),
+          });
+        const prepared = yield* prepareAppsGc({ purgeCaches });
+        const report = yield* prepared.prune;
+        return { report, index: yield* bucket.get };
+      }).pipe(Effect.provide(f.layer)),
+    );
+    expect(f.imageSweeps()).toBe(1);
+    expect(result.report.builtImages).toEqual({
+      removed: 0,
+      released: purgeCaches ? 0 : Math.min(count, 10),
+      inUse: [],
+    });
+    expect(result.index?.results.map((entry) => [entry.buildKey, entry.releasedAt !== undefined])).toEqual(
+      purgeCaches
+        ? []
+        : names
+            .toSorted()
+            .slice(-10)
+            .map((name) => [name, true]),
+    );
+  },
+);
 
 test("report lists missing roots without preparing the runtime or destroying apps", async () => {
   const f = fixture();

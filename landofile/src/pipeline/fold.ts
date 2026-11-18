@@ -1,36 +1,36 @@
-import { isPlainRecord, mergeValuesWithOrigins, withValueOrigins } from "@lando/sdk/landofile";
+import {
+  type ValueWithOrigins,
+  isPlainRecord,
+  mergeValuesWithOrigins,
+  withValueOrigins,
+} from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
+import type { AuthoredOrigin } from "../provenance.ts";
 import { composeToolingIncludeEntries } from "../tooling-include-entries.ts";
-import { getOrigins, rememberOrigins } from "./origins.ts";
-import type { AuthoredOrigin } from "./prepare.ts";
 
+/**
+ * Only the empty fold root needs a generated origin; overlays retain their authored origins.
+ */
 export const foldAuthoredOverlays = (
-  overlays: readonly Record<string, unknown>[],
+  overlays: readonly ValueWithOrigins<AuthoredOrigin>[],
   fallback: AuthoredOrigin,
-): Record<string, unknown> => {
+): ValueWithOrigins<AuthoredOrigin> => {
   let merged = withValueOrigins<AuthoredOrigin>({}, () => fallback);
-  for (const value of overlays) {
-    const origins = getOrigins(value) ?? withValueOrigins(value, (path) => ({ ...fallback, path })).origins;
-    merged = mergeValuesWithOrigins(LandofileShape, merged, { value, origins });
-  }
+  for (const value of overlays) merged = mergeValuesWithOrigins(LandofileShape, merged, value);
   const tooling = composeToolingIncludeEntries(overlays);
   const children = new Map(merged.origins.children);
   if (tooling.length > 0) {
     children.set("includes", {
       source: children.get("includes")?.source ?? fallback,
       deleted: false,
-      children: new Map(
-        tooling.flatMap((entry, index) =>
-          entry.origins === undefined ? [] : [[index, entry.origins] as const],
-        ),
-      ),
+      children: new Map(tooling.map((entry, index) => [index, entry.origins] as const)),
     });
   }
-  return rememberOrigins(
-    {
+  return {
+    value: {
       ...(isPlainRecord(merged.value) ? merged.value : {}),
       ...(tooling.length === 0 ? {} : { includes: tooling.map((entry) => entry.value) }),
     },
-    { ...merged.origins, children },
-  );
+    origins: { ...merged.origins, children },
+  };
 };

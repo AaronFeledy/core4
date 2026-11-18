@@ -7,6 +7,7 @@ import { formatSummary } from "@lando/renderer/summary";
 import { sha256Hex } from "@lando/sdk/digest";
 import { AppPlan } from "@lando/sdk/schema";
 import { Effect, Layer, Schema } from "effect";
+import { formatBugReport } from "../../src/cli/bug-report.ts";
 import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-trust.ts";
 import { renderStartAppResult } from "../../src/cli/commands/start-result.ts";
 import { runWithRendererHandling, summaryPaintOptions } from "../../src/cli/renderer-boundary.ts";
@@ -173,7 +174,35 @@ describe("runWithRendererHandling redaction", () => {
     expect(io.stderr()).toContain("[redacted]");
     expect(io.stderr()).not.toContain("topsecret");
   });
-
+  test("keeps a canonical report's diagnostic label while masking a registered value", async () => {
+    // Given a canonical formatter that already redacts each field it prints.
+    const io = createBufferedRendererIO();
+    const error = {
+      _tag: "UnknownCommandError",
+      message: "Unknown command.",
+      remediation: "Run lando help.",
+      commandToken: "app:list:share",
+      note: "topsecret",
+    };
+    // When
+    await runWithRendererHandling(Effect.fail(error), {
+      runtime: redactionLayer,
+      rendererMode: "plain",
+      io,
+      formatError: (failure, redactor) =>
+        formatBugReport({
+          ...failure,
+          redactor,
+          context: { commandId: "cli:unknown-command" },
+          rendererMode: "plain",
+        }),
+      formatErrorAlreadyRedacted: true,
+      setExitCode: () => undefined,
+    });
+    // Then the report's own diagnostic label stays readable and the registered value masks.
+    expect(io.stderr()).toContain("commandToken: app:list:share");
+    expect(io.stderr()).not.toContain("topsecret");
+  });
   test("redacts proxy credentials embedded in SetupNetworkTrustError diagnostics", async () => {
     const io = createBufferedRendererIO();
     const failure = new SetupNetworkTrustError({
@@ -226,6 +255,46 @@ describe("runWithRendererHandling redaction", () => {
     expect(io.stderr()).not.toContain("outersecret");
   });
 
+  test("renders decoded results with the machine secret-named-field rule", async () => {
+    // Given a decoded result the command renders as text, with no registered values.
+    const io = createBufferedRendererIO();
+    // When
+    await runWithRendererHandling(
+      Effect.succeed({ password: "hunter2", note: "free text", secretRedaction: true }),
+      {
+        runtime: RedactionService.layer,
+        rendererMode: "plain",
+        resultSchema: Schema.Struct({
+          password: Schema.String,
+          note: Schema.String,
+          secretRedaction: Schema.Boolean,
+        }),
+        io,
+        render: (result) => `${result.password} ${result.note} ${String(result.secretRedaction)}`,
+        formatError: ({ error }) => String(error),
+        setExitCode: () => undefined,
+      },
+    );
+    // Then
+    expect(io.stdout()).toBe("[redacted] free text true\n");
+  });
+
+  test("keeps rendering a result when the command declares no result schema", async () => {
+    // Given the fallback empty result schema applies to a shape it cannot describe.
+    const io = createBufferedRendererIO();
+    // When
+    await runWithRendererHandling(Effect.succeed({ stdout: "plain text" }), {
+      runtime: RedactionService.layer,
+      rendererMode: "plain",
+      io,
+      render: (result) => result.stdout,
+      formatError: ({ error }) => String(error),
+      setExitCode: () => undefined,
+    });
+    // Then
+    expect(io.stdout()).toBe("plain text\n");
+  });
+
   test("redacts exact result tokens from plain command output", async () => {
     const io = createBufferedRendererIO();
     const secret = "bare-tooling-password";
@@ -242,6 +311,62 @@ describe("runWithRendererHandling redaction", () => {
 
     expect(io.stdout()).toContain("[redacted]");
     expect(io.stdout()).not.toContain(secret);
+  });
+
+  test("masks a multi-line value in rendered output without hiding lines after an unbalanced quote", async () => {
+    // Given saved build output lines, rendered as plain text the way `lando logs --build` joins them.
+    const io = createBufferedRendererIO();
+    const lines = [
+      'web stdout: RUN echo "token=" > f',
+      "web stdout: public-line",
+      'web stdout: next "quote"',
+      'web stdout: password="first',
+      "multi-line-canary",
+      'last"',
+      "web stdout: after-line",
+    ];
+
+    // When
+    await runWithRendererHandling(Effect.succeed({ lines }), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      io,
+      render: (result) => result.lines.join("\n"),
+      formatError: ({ error }) => String(error),
+      setExitCode: () => undefined,
+    });
+
+    // Then
+    expect(io.stdout()).toBe(
+      [
+        'web stdout: RUN echo "token=" > f',
+        "web stdout: public-line",
+        'web stdout: next "quote"',
+        "web stdout: password=[redacted]",
+        "web stdout: after-line",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("masks a result token that spans two rendered lines", async () => {
+    // Given a registered value that the renderer splits across two result lines.
+    const io = createBufferedRendererIO();
+    const lines = ["web stdout: before split-first", "split-second after"];
+
+    // When
+    await runWithRendererHandling(Effect.succeed({ lines }), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      io,
+      redactionTokens: () => ["split-first\nsplit-second"],
+      render: (result) => result.lines.join("\n"),
+      formatError: ({ error }) => String(error),
+      setExitCode: () => undefined,
+    });
+
+    // Then
+    expect(io.stdout()).toBe("web stdout: before [redacted] after\n");
   });
 
   test("redacts exact result tokens from JSON command output", async () => {
@@ -276,6 +401,7 @@ describe("runWithRendererHandling redaction", () => {
         forProfile: () =>
           Effect.succeed({
             redactString: (text: string) => text.split("32").join("[redacted]"),
+            redactPrefix: (text: string) => text.split("32").join("[redacted]"),
             redactValue: (value: unknown) => value,
           }),
       }),

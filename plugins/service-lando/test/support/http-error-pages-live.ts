@@ -29,7 +29,7 @@ import { apacheServiceType } from "../../src/services/apache.ts";
 import { landoErrorPageBytes } from "../../src/services/http-errors.ts";
 import { nginxServiceType } from "../../src/services/nginx.ts";
 import { php83ServiceType } from "../../src/services/php.ts";
-import { staticNginxServiceType } from "../../src/services/static.ts";
+import { staticCaddyServiceType, staticNginxServiceType } from "../../src/services/static.ts";
 import { composeServicePlan } from "./compose-harness.ts";
 import type { ErrorPageCase } from "./http-error-pages-cases.ts";
 
@@ -48,7 +48,8 @@ export type ErrorPageServer =
   | "apache"
   | "apache-static"
   | "apache-port"
-  | "apache-upload-dirs";
+  | "apache-upload-dirs"
+  | "caddy";
 
 const HOST_PORTS: Readonly<Record<ErrorPageServer, number>> = {
   static: 31088,
@@ -59,6 +60,7 @@ const HOST_PORTS: Readonly<Record<ErrorPageServer, number>> = {
   "apache-upload-dirs": 31093,
   "apache-static": 31094,
   "apache-port": 31095,
+  caddy: 31096,
 };
 
 interface ServiceSpec {
@@ -95,6 +97,14 @@ const serviceSpecs = (server: ErrorPageServer, hostPort: number): ReadonlyArray<
           name: "web",
           serviceType: nginxServiceType,
           config: { type: "nginx", webroot: "/app/dist", ports },
+        },
+      ];
+    case "caddy":
+      return [
+        {
+          name: "web",
+          serviceType: staticCaddyServiceType,
+          config: { type: "static:caddy", webroot: "/app/dist", ports },
         },
       ];
     case "nginx-fpm":
@@ -266,7 +276,9 @@ export const startErrorPageStack = async ({
   const stop = async () => {
     await Effect.runPromise(Effect.result(bringDown(activePlan, { api })));
     for (const artifact of built) {
-      await Effect.runPromise(Effect.result(provider.removeArtifact(artifact)));
+      expect(
+        (await Effect.runPromise(provider.removeArtifact({ ...artifact, pruneParents: true }))).kind,
+      ).toBe("removed");
     }
     await rm(root, { recursive: true, force: true });
   };
@@ -281,7 +293,16 @@ export const startErrorPageStack = async ({
     for (const service of services) {
       const buildKey = await Effect.runPromise(buildKeyForService(provider, service));
       const artifact = await Effect.runPromise(
-        Effect.scoped(provider.buildArtifact({ app: plan.id, service: service.name, plan, buildKey })),
+        Effect.scoped(
+          provider.buildArtifact({
+            labels: { "dev.lando.test": crypto.randomUUID() },
+            app: plan.id,
+            service: service.name,
+            plan,
+            buildKey,
+            ref: `lando-build-test-${crypto.randomUUID()}-${service.name}`,
+          }),
+        ),
       );
       built.push(artifact);
       derived.push({ ...service, artifact: { kind: "ref", ref: artifact.ref } });

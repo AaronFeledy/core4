@@ -1,20 +1,18 @@
 import { readFile, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { getLocalIncludePaths } from "@lando/landofile/include-provenance";
-import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
-import {
-  getVersionConstraintEntries,
-  hasSkippedUnsatisfiedVersionConstraint,
-} from "@lando/landofile/version-constraint";
+import { type LandofileProvenance, versionConstraintsFor } from "@lando/landofile/provenance";
+import { hasSkippedUnsatisfiedVersionConstraint } from "@lando/landofile/version-constraint";
 import { CacheError, type LandofileFormConflictError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { CORE_VERSION } from "../version.ts";
 import { writeFileAtomicViaRename } from "./atomic.ts";
 import {
   type AppCommandIndexPayload,
   COMMAND_INDEX_SCHEMA_VERSION,
   type CommandIndexEntry,
+  commandEnvironmentHash,
   decodeAppCommandIndex,
   deriveAppCommandEntriesFingerprint,
   deriveAppCommandToolingFingerprint,
@@ -64,8 +62,10 @@ export const invalidateAppToolingCaches = (
   }).pipe(Effect.ignore);
 
 export interface WriteAppCommandCacheOptions {
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly dataIdentityFingerprint?: string;
   readonly landofile: LandofileShape;
+  readonly provenance?: LandofileProvenance | undefined;
   readonly entries: ReadonlyArray<CommandIndexEntry>;
   readonly cwd?: string;
   readonly cacheRoot?: string;
@@ -74,6 +74,7 @@ export interface WriteAppCommandCacheOptions {
 }
 
 interface ReadAppCommandCacheTaskOptions extends WriteAppCommandCacheOptions {
+  readonly env: Readonly<Record<string, string | undefined>>;
   readonly toolingFingerprint?: string;
   readonly entriesFingerprint?: string;
   readonly source?: AppCommandCacheSource;
@@ -92,13 +93,15 @@ const readAppCommandCacheTask = async (
     const payload = decodeAppCommandIndex(new Uint8Array(await readFile(cachePath)));
     if (payload === null) return null;
     if (payload.landoVersion !== CORE_VERSION) return null;
+    if (payload.sourceEnvironment.hash !== commandEnvironmentHash(payload.sourceEnvironment, options.env))
+      return null;
     if (payload.sourceFile !== filePath) return null;
-    const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
+    const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile, options.provenance);
     if (JSON.stringify(payload.sourceLocalIncludePaths) !== JSON.stringify(sourceLocalIncludePaths))
       return null;
     if (
       JSON.stringify(payload.sourceReferencedFiles) !==
-      JSON.stringify(getLandofileReferencedFiles(options.landofile))
+      JSON.stringify(options.provenance?.referencedFiles ?? [])
     )
       return null;
     if (
@@ -106,19 +109,20 @@ const readAppCommandCacheTask = async (
       (await sourceContentHash(
         source,
         sourceLocalIncludePaths,
-        getLocalIncludePaths(options.landofile).length > 0,
+        (options.provenance?.localIncludePaths ?? []).length > 0,
       ))
     )
       return null;
     if (payload.sourceMtimeMs !== stats.mtimeMs || payload.sourceSize !== stats.size) return null;
     if (
       payload.toolingFingerprint !==
-      (options.toolingFingerprint ?? deriveAppCommandToolingFingerprint(options.landofile))
+      (options.toolingFingerprint ??
+        deriveAppCommandToolingFingerprint(options.landofile, options.provenance))
     )
       return null;
     if (
       JSON.stringify(payload.versionConstraints) !==
-      JSON.stringify(getVersionConstraintEntries(options.landofile, filePath))
+      JSON.stringify(versionConstraintsFor(options.provenance, options.landofile, filePath))
     )
       return null;
     if (
@@ -134,7 +138,7 @@ const readAppCommandCacheTask = async (
 };
 
 const writeAppCommandCacheTask = async (
-  options: WriteAppCommandCacheOptions,
+  options: WriteAppCommandCacheOptions & { readonly env: Readonly<Record<string, string | undefined>> },
   source: AppCommandCacheSource,
 ): Promise<string | undefined> => {
   const { filePath, stats } = source;
@@ -143,18 +147,23 @@ const writeAppCommandCacheTask = async (
   const appRoot = dirname(filePath);
   const cachePath = appCommandCachePath(cacheRoot, appName, appRoot);
   const toolingCompilationCachePath = appToolingCompilationCachePath(cacheRoot, appRoot);
-  const toolingFingerprint = deriveAppCommandToolingFingerprint(options.landofile);
+  const toolingFingerprint = deriveAppCommandToolingFingerprint(options.landofile, options.provenance);
+  const dependencies =
+    options.provenance === undefined
+      ? { _tag: "Complete" as const }
+      : options.provenance.environmentDependencies;
+  const sourceEnvironment = { ...dependencies, hash: commandEnvironmentHash(dependencies, options.env) };
   const entriesFingerprint = deriveAppCommandEntriesFingerprint(options.entries);
   const aliasPolicy = normalizeAppCommandAliasPolicy(options.landofile);
-  const versionConstraints = getVersionConstraintEntries(options.landofile, filePath);
-  if (hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) return undefined;
-  const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
-  const sourceReferencedFiles = getLandofileReferencedFiles(options.landofile);
+  const versionConstraints = versionConstraintsFor(options.provenance, options.landofile, filePath);
+  if (hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION, options.env)) return undefined;
+  const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile, options.provenance);
+  const sourceReferencedFiles = options.provenance?.referencedFiles ?? [];
   const sourceScripts = options.sourceScripts ?? (await commandScriptFingerprints(appRoot));
   const contentHash = await sourceContentHash(
     source,
     sourceLocalIncludePaths,
-    getLocalIncludePaths(options.landofile).length > 0,
+    (options.provenance?.localIncludePaths ?? []).length > 0,
   );
   const cached = await readAppCommandCacheTask({
     ...options,
@@ -166,6 +175,7 @@ const writeAppCommandCacheTask = async (
   if (cached !== null) {
     const payload: AppCommandIndexPayload = {
       ...cached,
+      sourceEnvironment,
       sourceFile: filePath,
       sourceContentHash: contentHash,
       sourceLocalIncludePaths,
@@ -186,6 +196,7 @@ const writeAppCommandCacheTask = async (
     landoVersion: CORE_VERSION,
     appName,
     sourceFile: filePath,
+    sourceEnvironment,
     sourceContentHash: contentHash,
     sourceLocalIncludePaths,
     sourceReferencedFiles,
@@ -207,50 +218,56 @@ const writeAppCommandCacheTask = async (
 export const readAppCommandCache = (
   options: WriteAppCommandCacheOptions,
 ): Effect.Effect<AppCommandIndexPayload | null, CacheError | LandofileFormConflictError> =>
-  resolveAppCommandCacheSource(options.cwd).pipe(
-    Effect.flatMap((source) =>
-      source === undefined
-        ? Effect.succeed(null)
-        : Effect.tryPromise({
-            try: () => readAppCommandCacheTask({ ...options, source }),
-            catch: (cause) =>
-              new CacheError({
-                message: "Failed to read app-command cache.",
-                key: "app-command",
-                cause,
-                remediation: "Delete the Lando cache entry `app-command` and re-run the command.",
-              }),
-          }),
-    ),
-  );
+  Effect.flatMap(HostExecutionDefaults, (host) => {
+    const scoped = { ...options, env: options.env ?? host?.env ?? { ...process.env } };
+    return resolveAppCommandCacheSource(scoped.cwd).pipe(
+      Effect.flatMap((source) =>
+        source === undefined
+          ? Effect.succeed(null)
+          : Effect.tryPromise({
+              try: () => readAppCommandCacheTask({ ...scoped, source }),
+              catch: (cause) =>
+                new CacheError({
+                  message: "Failed to read app-command cache.",
+                  key: "app-command",
+                  cause,
+                  remediation: "Delete the Lando cache entry `app-command` and re-run the command.",
+                }),
+            }),
+      ),
+    );
+  });
 
 export const writeAppCommandCacheStrict = (
   options: WriteAppCommandCacheOptions,
 ): Effect.Effect<string | undefined, CacheError | LandofileFormConflictError> =>
-  resolveAppCommandCacheSource(options.cwd).pipe(
-    Effect.flatMap((source) =>
-      source === undefined
-        ? Effect.succeed(undefined)
-        : Effect.tryPromise({
-            try: () =>
-              writeAppCommandCacheTask(
-                options,
-                options.dataIdentityFingerprint === undefined
-                  ? source
-                  : { ...source, dataIdentityFingerprint: options.dataIdentityFingerprint },
-              ),
-            catch: (cause) =>
-              cause instanceof CacheError
-                ? cause
-                : new CacheError({
-                    message: "Failed to write app-command cache.",
-                    key: "app-command",
-                    cause,
-                    remediation: "Delete the Lando cache entry `app-command` and re-run the command.",
-                  }),
-          }),
-    ),
-  );
+  Effect.flatMap(HostExecutionDefaults, (host) => {
+    const scoped = { ...options, env: options.env ?? host?.env ?? { ...process.env } };
+    return resolveAppCommandCacheSource(scoped.cwd).pipe(
+      Effect.flatMap((source) =>
+        source === undefined
+          ? Effect.succeed(undefined)
+          : Effect.tryPromise({
+              try: () =>
+                writeAppCommandCacheTask(
+                  scoped,
+                  options.dataIdentityFingerprint === undefined
+                    ? source
+                    : { ...source, dataIdentityFingerprint: options.dataIdentityFingerprint },
+                ),
+              catch: (cause) =>
+                cause instanceof CacheError
+                  ? cause
+                  : new CacheError({
+                      message: "Failed to write app-command cache.",
+                      key: "app-command",
+                      cause,
+                      remediation: "Delete the Lando cache entry `app-command` and re-run the command.",
+                    }),
+            }),
+      ),
+    );
+  });
 
 export const writeAppCommandCache = (
   options: WriteAppCommandCacheOptions,

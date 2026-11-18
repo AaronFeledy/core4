@@ -3,7 +3,7 @@ import type { IncludeEntry, LandofileShape } from "@lando/sdk/schema";
 import { gitCloneUrl, isGitSource, isLiteralGitRef, splitSourceRef } from "@lando/source-acquisition/locator";
 import type { NormalizedInclude } from "./include-context.ts";
 import { includeError } from "./include-guard.ts";
-import { getOrigins } from "./pipeline/origins.ts";
+import type { LandofileProvenance } from "./provenance.ts";
 import { hasToolingIncludes } from "./tooling-include-entries.ts";
 
 export const normalizeInclude = (entry: IncludeEntry): NormalizedInclude =>
@@ -17,13 +17,16 @@ export const normalizeInclude = (entry: IncludeEntry): NormalizedInclude =>
 export const authoredIncludeEntries = (
   landofile: Pick<LandofileShape, "include" | "includes">,
 ): ReadonlyArray<IncludeEntry> => authoredIncludeEntriesWithPaths(landofile).map(({ entry }) => entry);
-export const authoredIncludeEntriesWithPaths = (landofile: Pick<LandofileShape, "include" | "includes">) => [
+export const authoredIncludeEntriesWithPaths = (
+  landofile: Pick<LandofileShape, "include" | "includes">,
+  provenance?: LandofileProvenance | undefined,
+) => [
   ...(landofile.includes ?? []).flatMap((entry, index) =>
     typeof entry === "string" || entry.kind !== "tooling"
       ? [
           {
             entry,
-            path: getOrigins(landofile)?.children.get("includes")?.children.get(index)?.source.path ?? [
+            path: provenance?.origins.children.get("includes")?.children.get(index)?.source.path ?? [
               "includes",
               index,
             ],
@@ -33,10 +36,7 @@ export const authoredIncludeEntriesWithPaths = (landofile: Pick<LandofileShape, 
   ),
   ...(landofile.include ?? []).map((entry, index) => ({
     entry,
-    path: getOrigins(landofile)?.children.get("include")?.children.get(index)?.source.path ?? [
-      "include",
-      index,
-    ],
+    path: provenance?.origins.children.get("include")?.children.get(index)?.source.path ?? ["include", index],
   })),
 ];
 export const hasResolvableIncludes = (
