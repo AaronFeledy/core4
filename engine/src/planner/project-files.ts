@@ -5,14 +5,13 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import { validationIssue } from "@lando/sdk/schema";
-import type {
-  FileSystem,
-  ServiceTypeProjectFileDeclaration,
-  ServiceTypeProjectFileInput,
-} from "@lando/sdk/services";
+import type { FileSystem, ServiceTypeProjectFileDeclaration } from "@lando/sdk/services";
 import { type Context, Effect, Stream } from "effect";
+import { MAX_PROJECT_FILE_BYTES, type ProjectFileFingerprint } from "../cache/project-file-fingerprint.ts";
 
-const MAX_PROJECT_FILE_BYTES = 1_048_576;
+export type PlannedProjectFile =
+  | Extract<ProjectFileFingerprint, { present: false }>
+  | (Extract<ProjectFileFingerprint, { present: true }> & { readonly text: string });
 
 interface BoundedRead {
   readonly chunks: ReadonlyArray<Uint8Array>;
@@ -126,7 +125,10 @@ const readTextBounded = (
   input: ProjectFileRequest & { readonly fileSystem: Context.Service.Shape<typeof FileSystem> },
   absolute: string,
   limit: number,
-): Effect.Effect<{ readonly text: string; readonly sha256: string }, LandofileValidationError> =>
+): Effect.Effect<
+  { readonly text: string; readonly sha256: string; readonly size: number },
+  LandofileValidationError
+> =>
   Stream.runFoldEffect(
     input.fileSystem.read(absolute),
     (): BoundedRead => ({ chunks: [], bytes: 0 }),
@@ -154,6 +156,7 @@ const readTextBounded = (
       return {
         text: new TextDecoder().decode(content),
         sha256: sha256Hex(content),
+        size: state.bytes,
       };
     }),
     mapFailures((cause) =>
@@ -169,7 +172,7 @@ const readTextBounded = (
 
 export const loadServiceTypeProjectFiles = Effect.fnUntraced(function* (
   input: ProjectFileRequest,
-): Effect.fn.Return<ReadonlyArray<ServiceTypeProjectFileInput>, LandofileValidationError> {
+): Effect.fn.Return<readonly PlannedProjectFile[], LandofileValidationError> {
   if (input.declarations.length === 0) return [];
   for (const declaration of input.declarations) {
     if (
@@ -214,7 +217,7 @@ export const loadServiceTypeProjectFiles = Effect.fnUntraced(function* (
     );
   }
 
-  const files: ServiceTypeProjectFileInput[] = [];
+  const files: PlannedProjectFile[] = [];
   const seen = new Set<string>();
   for (const declaration of input.declarations) {
     const absolute = yield* containedPath(input, declaration.path);

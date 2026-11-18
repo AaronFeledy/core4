@@ -148,6 +148,7 @@
     "./planner/app-defaults": "./src/planner/app-defaults.ts",
     "./planner/effective-events": "./src/planner/effective-events.ts",
     "./planner/effective-tooling": "./src/planner/effective-tooling.ts",
+    "./planner/project-file-snapshot": "./src/planner/project-file-snapshot.ts",
     "./planner/home": "./src/planner/home.ts",
     "./planner/home-assessment": "./src/planner/home-assessment.ts",
     "./planner/home-expectations": "./src/planner/home-expectations.ts",

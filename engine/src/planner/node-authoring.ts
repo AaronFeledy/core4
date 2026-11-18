@@ -2,11 +2,11 @@ import { landofileValidationError } from "@lando/landofile/validation";
 import type { LandofileValidationError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
-import type { FileSystem, ServiceType, ServiceTypeProjectFileInput } from "@lando/sdk/services";
+import type { FileSystem, ServiceType } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 import { isComposeBuild } from "../services/compose-build-artifact.ts";
 import { hasCustomImage } from "./home.ts";
-import { loadServiceTypeProjectFiles } from "./project-files.ts";
+import { type PlannedProjectFile, loadServiceTypeProjectFiles } from "./project-files.ts";
 
 export type AuthorizedProjectFileRequest = {
   readonly appRoot: string;
@@ -34,7 +34,7 @@ const isNodeServiceType = (id: string): boolean => id === "node" || id.startsWit
 
 export const loadAuthorizedServiceProjectFiles = (
   input: AuthorizedProjectFileRequest,
-): Effect.Effect<ReadonlyArray<ServiceTypeProjectFileInput>, LandofileValidationError> => {
+): Effect.Effect<readonly PlannedProjectFile[], LandofileValidationError> => {
   const packageRoot = input.pinnedService.packageRoot;
   const node = isNodeServiceType(input.serviceType.id);
   if (packageRoot !== undefined && !node) {
