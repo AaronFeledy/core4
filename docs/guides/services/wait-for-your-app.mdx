@@ -98,7 +98,9 @@ services:
 
 `CMD` becomes an argv command. `CMD-SHELL` takes one shell string. `NONE` shows up as `false`. A duration such as `5s` becomes seconds. `lando app:config --format=json` prints that stored object, not the spelling you typed.
 
-Pick one dialect and keep it across layers. When the merged object holds a Lando field such as `command` or `intervalSeconds`, Lando reads only the Lando command/timing fields and ignores `test`, `interval`, `timeout`, and `start_period`. If one layer wrote the Lando side and another wrote the Compose side, `lando app:config:lint` warns with `readiness.mixed-dialects` (or `healthcheck.mixed-dialects` under native health) so you can see which timing survived. The shared `target` and `user` fields work with either dialect; neither makes an otherwise Compose object mixed-dialect.
+Use one dialect per probe. If you wrote `command:` with `interval: 1s` or `timeout: 1s` in the same Landofile, `lando app:config:lint` and `lando start` report the conflicting keys. Keep `command:` and replace those durations with `intervalSeconds: 1` and `timeoutSeconds: 1`. To keep the Compose durations instead, use `test:` with a `CMD` or `CMD-SHELL` marker in place of `command:`. Run `lando app:config:lint` again to check the edit.
+
+If the two dialects come from different files or layers, lint warns with `readiness.mixed-dialects` (or `healthcheck.mixed-dialects`). The Lando command and timing fields still take precedence in that case. Match the lower layer's dialect when overriding individual fields, or use `!override` to replace the whole probe. The shared `target`, `user`, and `retries` fields work with either dialect.
 
 Both keys accept `false`, a command string, argv, or a command/timing object. Probe HTTP through a command such as `curl`; the bundled runner does not execute `kind: http` or `kind: tcp`. Unsupported kinds fail planning with `LandofileValidationError` before Lando touches a container. Use `lando app:cache:refresh --format=json` to validate the plan without starting services.
 
@@ -177,7 +179,7 @@ Choose which policy to disable. `healthcheck: false` turns off native monitoring
 
 Put the override in `.lando.local.yml` when only this machine should skip that policy. Literal `false` replaces its base value instead of merging with it. Disable both keys only if you intend to keep process supervision without either command policy. For [MongoDB](./mongodb.mdx#what-ready-checks-and-what-it-doesnt), native health off alone still preserves the stronger startup check.
 
-Object spellings such as `disable: true`, `test: [NONE]`, or `kind: none` are not that barrier. They merge into an inherited object like any other mapping, and Lando still validates every sibling you wrote next to them: a bad `interval` or an empty `command` fails even though the probe is off. If the merged object keeps a Lando field such as `command`, `disable: true` loses to it and the probe stays on. Reach for literal `false` when you mean off.
+Object spellings such as `disable: true`, `test: [NONE]`, or `kind: none` are not that barrier. They merge into an inherited object like any other mapping. A bad `interval` or an empty `command` can still fail validation when the probe is off. If you layer `disable: true` over a Lando `command`, the inherited command wins and the probe stays on. Use literal `false` when you mean off.
 
 ```yaml
 services:
@@ -300,6 +302,37 @@ Info never executes probes or reports a durable last-readiness proof. `not-obser
     </Step>
   </Scenario>
 
+  <Scenario id="reject-mixed-timing" render={false} reason="Check the same timing diagnosis in lint and start, then verify the corrected probe">
+    <Step name="reject-mixed-timing">
+      <UseFixture name="mixed-timing-corrected" />
+      <Run runtime="library" displayCode="Set interval: 1s and timeout: 1s under readiness" code={`const file = Bun.file(join(context.testDir, "mixed-timing-corrected", ".lando.yml"));
+const corrected = yield* Effect.promise(() => file.text());
+yield* Effect.promise(() => Bun.write(file, corrected.replace("intervalSeconds: 1", "interval: 1s").replace("timeoutSeconds: 1", "timeout: 1s")));`} />
+      <Run runtime="library" displayCode="lando app:config:lint --format=json" code={`{
+const run = yield* context.runCli("lando app:config:lint --format=json");
+expect(run.exitCode).toBe(1);
+expect(JSON.parse(run.stdout).result.violations).toContainEqual(expect.objectContaining({ rule: "readiness.mixed-dialects", severity: "error", suggestion: expect.stringContaining("intervalSeconds: 1") }));
+}`} />
+      <Run runtime="library" displayCode="lando start --format=json" code={`{
+const run = yield* context.runCli("lando start --format=json");
+expect(run.exitCode).toBe(1);
+const frame = JSON.parse(run.stdout.trim().split("\n").at(-1) ?? "null");
+expect(frame.envelope.error).toMatchObject({ _tag: "LandofileValidationError", issues: expect.arrayContaining([expect.objectContaining({ rule: "readiness.mixed-dialects", path: ["services", "db", "readiness", "interval"], suggestion: expect.stringContaining("intervalSeconds: 1") })]) });
+}`} />
+      <Run runtime="library" displayCode="lando app:config --format=json" code={`lastRun = yield* context.runCli("lando app:config --format=json");`} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "services\\.db\\.readiness\\.interval[\\s\\S]*intervalSeconds: 1" }} />
+    </Step>
+    <Step name="verify-lando-timing">
+      <Run runtime="library" displayCode="Set intervalSeconds: 1 and timeoutSeconds: 1 under readiness" code={`const file = Bun.file(join(context.testDir, "mixed-timing-corrected", ".lando.yml"));
+const mixed = yield* Effect.promise(() => file.text());
+yield* Effect.promise(() => Bun.write(file, mixed.replace("interval: 1s", "intervalSeconds: 1").replace("timeout: 1s", "timeoutSeconds: 1")));`} />
+      <Run runtime="library" displayCode="lando app:config --format=json" code={`{
+const run = yield* context.runCli("lando app:config --format=json");
+expect(run.exitCode).toBe(0);
+expect(JSON.parse(run.stdout).result.landofile.services.db.readiness).toMatchObject({ intervalSeconds: 1, timeoutSeconds: 1 });
+}`} />
+    </Step>
+  </Scenario>
   <Scenario id="object-form" render>
     <Step name="inspect-timing">
       <UseFixture name="object-form" />

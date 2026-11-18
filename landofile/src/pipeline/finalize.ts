@@ -10,6 +10,8 @@ import { unionEnvironmentDependencies } from "../environment-dependencies.ts";
 import type { LandofileRelaxedRead } from "../include-context.ts";
 import { ownVersionConstraintEntries } from "../include-fragment.ts";
 import { includeAcquisitionView } from "../include-layer-overlays.ts";
+import { healthcheckDialectIssues } from "../lint-healthcheck.ts";
+import { attributeLintIssue } from "../lint-source.ts";
 import { prepareIncludeAcquisition } from "../load-acquisition.ts";
 import type { LandofileLoadPolicy } from "../load-expression-file.ts";
 import { type LoadFailureRecorder, createLoadFailureRecorder, finishLoadStage } from "../load-failures.ts";
@@ -24,7 +26,7 @@ import {
 import { applyToolingIncludeDefaults } from "../tooling-include-defaults.ts";
 import { resolveToolingIncludes, winningInternalToolingTasks } from "../tooling-includes.ts";
 import { rejectUnsupportedToolingFeatures, scanToolingForUnsupported } from "../tooling-unsupported.ts";
-import { validateLandofile, validationErrorFromCause } from "../validation.ts";
+import { landofileValidationError, validateLandofile, validationErrorFromCause } from "../validation.ts";
 import { type LandofileFinalizeOverrides, applyFinalizeOverrides } from "./finalize-overrides.ts";
 import { finishClassifiedLoadStage } from "./load-stage.ts";
 import {
@@ -197,6 +199,22 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
       composeKeyRejectedError({
         source: valueOriginAt(effectiveOrigins, compose.path).source.file,
         match: compose,
+      }),
+    );
+  }
+  const dialectIssues = healthcheckDialectIssues(assembled);
+  if (dialectIssues.length > 0) {
+    return yield* Effect.fail(
+      landofileValidationError(file, dialectIssues, {
+        headline: "Landofile mixes probe dialects within a source",
+        remediation:
+          "Use the replacement keys in each finding, or write the entire probe in Compose syntax with `test:`.",
+        location: (issue) => {
+          const { line } = attributeLintIssue(issue, "effective", assembled.provenance.documents);
+          return line === undefined || issue.source === undefined || !("file" in issue.source)
+            ? undefined
+            : `${issue.source.file}:${line}`;
+        },
       }),
     );
   }
