@@ -7,7 +7,7 @@ tags: [docs, node, typescript, tooling, service]
 
 # Run TypeScript on a Node service
 
-Pin `node:22`, add `npm` / `node` / `npx` tooling, then typecheck, test, and serve with the same CLIs you use on a laptop.
+Pin `node:22`, then typecheck, test, and serve with `lando npm`, `lando npx`, and `lando node`, the same CLIs you use on a laptop.
 
 You need Lando 4 with a ready runtime. Save this as `.lando.yml` in your app directory:
 
@@ -43,7 +43,7 @@ lando info
 
 With the default proxy domain, `lando info` lists `app` at `https://app.node-typescript-demo.lndo.site`. The default Node command keeps the container running without starting a server. The URL won't serve your app until something listens on `3000`.
 
-The image has Node, npm, and npx, but the Node service type doesn't add their Lando tooling aliases. Declare them as above. `service: app` selects the container; `dir: /app` runs at the mounted app root even when you invoke tooling from a subdirectory. `cmd: [npm]` executes npm directly, with caller arguments appended. `primary: true` makes `app` the default service for tasks without `service:`; it doesn't start a server or choose the proxy hostname.
+The Node service adds `lando npm` and `lando npx` without a tooling block. This Landofile declares them anyway for one reason: `dir: /app` runs them at the mounted app root even when you invoke them from a subdirectory. `lando node` isn't added for you, so it needs its entry. `service: app` selects the container. `cmd: [npm]` executes npm directly, with caller arguments appended. `primary: true` makes `app` the default service for tasks without `service:`; it doesn't start a server or choose the proxy hostname.
 
 If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it.
 
@@ -181,7 +181,8 @@ For watch mode during edits, keep the original idle service block and run `lando
 
 npm is the default path on this page. To use pnpm instead, declare the exact
 release in `package.json`. Lando installs it into the `app` image when it
-builds the service, so you don't run Corepack or add anything to the Landofile:
+builds the service and adds `lando pnpm` and `lando pnpx`, so you don't run
+Corepack or add anything to the Landofile:
 
 ```json
 {
@@ -203,28 +204,30 @@ Then run each of these from the app directory on your host. They're separate
 commands, and they prove different things:
 
 ```sh
-lando exec app -- pnpm --version
+lando pnpm --version
 ```
 
 That prints `9.15.0`. pnpm itself is in the image, so this works with no
 network.
 
 ```sh
-lando exec app -- pnpm install
+lando pnpm install
 ```
 
 This downloads your dependencies, so it needs network access.
 
 ```sh
-lando exec app -- pnpm test
+lando pnpm test
 ```
 
 Use pnpm as an alternative to the npm install path, not a second package
 manager for the same lockfile. To move to another pnpm release, edit
 `packageManager` and run `lando start` again.
 
-For `lando pnpm`, add a tooling entry with `service: app`, `dir: /app`, and
-`cmd: [pnpm]`.
+`lando pnpm` starts in the directory that matches where you ran it. To pin it
+to the app root like the npm entries above, add a `pnpm` tooling entry with
+`service: app`, `dir: /app`, `cmd: [pnpm]`, and `wrapper: true`. You can then
+delete the `npm` and `npx` entries.
 
 [Use your project's package manager](./node.mdx#use-your-projects-package-manager)
 covers Yarn, the `devEngines` form, and which `package.json` wins in a
@@ -278,7 +281,7 @@ lando destroy -y
 
 ## Keep developing with Node
 
-- [Add Node.js](./node.mdx) for version inference, `globals`, and `packageRoot`
+- [Add Node.js](./node.mdx) for version inference, package managers, `globals`, and `packageRoot`
 - [Run Playwright end-to-end tests against your app](./node-playwright.mdx) for browser tests from an `e2e` service
 - [Run the Node API recipe](../recipes/node-api-workflow.mdx) when you want Express, Fastify, or Hono with an optional database
 - [Run a TanStack Start app on Postgres](./node-tanstack-start.mdx) for a full-stack React app with Drizzle and a server function

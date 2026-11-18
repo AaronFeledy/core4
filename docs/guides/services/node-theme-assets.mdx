@@ -101,9 +101,11 @@ skips `dir:`.
 
 ## Point tooling at the theme
 
-Node does not register `lando npm` or `lando npx` by itself. Author the tasks
-and set `dir:` to the theme path inside the container. `/app` is the
-bind-mounted app root.
+The Node service adds `lando npm` and `lando npx` by itself, but those start
+in the directory that matches where you ran them. Author the two tasks so they
+always run in the theme, and set `dir:` to the theme path inside the
+container. `/app` is the bind-mounted app root. Your entries replace the ones
+Lando adds.
 
 A task `dir` supplies the working directory for the command. Use the absolute
 container path shown here; Lando can also remap absolute host paths beneath a
@@ -321,8 +323,17 @@ Check the plan without starting anything. The `node` entry under
 lando app:cache:refresh --format=json
 ```
 
-After `lando start`, run the manager in the theme with a tooling entry that
-sets `dir:`, for example `cmd: [pnpm]` with
+Because the theme declares pnpm, the `node` service adds `lando pnpm` and
+`lando pnpx` instead of `lando npm` and `lando npx`. After `lando start`, run
+them from the theme directory on your host:
+
+```sh
+cd web/themes/contrib/bootstrap5
+lando pnpm install
+```
+
+To run pnpm in the theme from anywhere in the app, add a `pnpm` tooling entry
+with `service: node`, `cmd: [pnpm]`, `wrapper: true`, and
 `dir: /app/web/themes/contrib/bootstrap5`.
 
   <Scenario id="pinned-package-root" render>
@@ -338,6 +349,7 @@ sets `dir:`, for example `cmd: [pnpm]` with
       <Run command="lando app:cache:refresh --format=json" />
       <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
       <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"node\",\\s*\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando help pnpm --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"node\"[\\s\\S]*\"program\":\\s*\"pnpm\"" } }} />
     </Step>
     <Step name="cleanup-pinned">
       <Cleanup />
