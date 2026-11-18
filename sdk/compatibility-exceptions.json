@@ -1,5 +1,35 @@
 [
   {
+    "surface": "command:app:destroy",
+    "changeKind": "union-widened",
+    "path": "$.landofileEvents.anyOf",
+    "justification": "A failed post-destroy step now carries its event and tagged diagnostic in the completed destroy result instead of incorrectly reporting ran. The ran and skipped variants remain unchanged."
+  },
+  {
+    "surface": "command:app:stop",
+    "changeKind": "union-widened",
+    "path": "$.landofileEvents.anyOf",
+    "justification": "A failed post-stop step now carries its event and tagged diagnostic in the completed stop result instead of incorrectly reporting ran. The ran and skipped variants remain unchanged."
+  },
+  {
+    "surface": "schema:DestroyAppResult",
+    "changeKind": "union-widened",
+    "path": "$.landofileEvents.anyOf",
+    "justification": "The SDK destroy result distinguishes a failed post-destroy step from successful cleanup. A post-step failure does not undo the teardown or make the operation fail."
+  },
+  {
+    "surface": "schema:LandofileEventsOutcome",
+    "changeKind": "union-widened",
+    "path": "$.anyOf",
+    "justification": "Consumers can distinguish a failed post-event step from one that ran cleanly without parsing warnings. The existing ran and skipped variants remain unchanged, and the new failed variant carries the event and a tagged diagnostic with remediation."
+  },
+  {
+    "surface": "schema:StopAppResult",
+    "changeKind": "union-widened",
+    "path": "$.landofileEvents.anyOf",
+    "justification": "The SDK stop result distinguishes a failed post-stop step from successful teardown so direct callers and poweroff can report the failure without treating the app as still running."
+  },
+  {
     "surface": "command:meta:doctor",
     "changeKind": "unsupported-construct",
     "path": "$.checks.items.details.anyOf",

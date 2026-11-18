@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { FileSyncInfo } from "./file-sync-policy.ts";
+import { AppLifecycleEventName } from "./landofile-events.ts";
 import { CheckResult } from "./networking.ts";
 import { ServiceInfo, StartedService } from "./service-info.ts";
 import { ServiceShutdownObservation } from "./service-shutdown.ts";
@@ -23,9 +24,27 @@ export const LandofileEventsOutcome = Schema.Union([
         "Why the steps were skipped: no Landofile at the applied root, a Landofile that failed to load, or one that describes another app or provider.",
     }),
   }),
+  Schema.Struct({
+    status: Schema.Literal("failed").annotate({
+      description: "The operation completed, but a Landofile step for this event failed.",
+    }),
+    event: AppLifecycleEventName.pick([
+      "post-init",
+      "post-start",
+      "post-stop",
+      "post-restart",
+      "post-rebuild",
+      "post-destroy",
+    ]).annotate({ description: "The lifecycle event whose Landofile step failed." }),
+    stepFailure: Schema.Struct({
+      _tag: Schema.String.annotate({ description: "Machine-readable error tag for the failed step." }),
+      message: Schema.String.annotate({ description: "Redacted explanation of why the step failed." }),
+      remediation: Schema.String.annotate({ description: "Suggested action to address the step failure." }),
+    }).annotate({ description: "The tagged diagnostic for the failed step." }),
+  }),
 ]).annotate({
   description:
-    "Whether the operation ran the Landofile's `events:` and `hostEvents` steps, or why it skipped them.",
+    "Whether the operation ran the Landofile's `events:` and `hostEvents` steps, skipped them, or completed with a failed post-event step.",
 });
 export type LandofileEventsOutcome = typeof LandofileEventsOutcome.Type;
 
