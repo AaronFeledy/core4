@@ -55,9 +55,6 @@ export const runWithProject = async (input: {
 /** Image ref suffix for package-manager artifact builds in the live suite. */
 export const NODE_PM_ARTIFACT_REF_SUFFIX = "-node-pm" as const;
 
-/** Image ref suffix for the intentional integrity-mismatch build. */
-export const NODE_PM_BAD_HASH_ARTIFACT_REF_SUFFIX = "-node-pm-bad-hash" as const;
-
 /** Image ref prefix shared with `runBuiltImage` container names. */
 export const BUILD_TEST_REF_PREFIX = "lando-build-test-" as const;
 
@@ -80,9 +77,3 @@ export const yarnBerryPathRc = (relativeScript = ".yarn/releases/yarn-vendored.c
 /** Yarn classic `.yarnrc` that points `yarn-path` at a real vendored script under `/app`. */
 export const yarnClassicPathRc = (relativeScript = ".yarn/releases/yarn-vendored.cjs"): string =>
   `yarn-path "${relativeScript}"\n`;
-
-/**
- * Corepack 0.34.x message when `COREPACK_ENABLE_NETWORK=0` blocks acquisition.
- * Pinned against the private Corepack the node build installs (`node-corepack-pins.json`).
- */
-export const COREPACK_NETWORK_DISABLED_PATTERN = /Network access disabled by the environment/;

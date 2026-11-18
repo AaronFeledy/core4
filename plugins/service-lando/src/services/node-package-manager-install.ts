@@ -1,95 +1,88 @@
-/**
- * Corepack installation and launcher publication for a selected Node package
- * manager. The install is private to the image: no global bin links are
- * created, and only the selected manager's aliases are published.
- */
-
-import { shellSingleQuote } from "./_package-specs.ts";
+import { ServiceBuildAcquisition, type ServiceBuildStepIntent } from "@lando/sdk/services";
+import { Schema } from "effect";
+import { NodeInferenceError } from "./node-inference.ts";
 import {
-  COREPACK_HOME,
-  COREPACK_PREFIX,
+  NODE_PACKAGE_MANAGER_STEP_ID,
   type NodePackageManagerConfig,
-  packageManagerSpec,
+  type NodePackageManagerSelection,
 } from "./node-package-manager.ts";
 
-export const packageManagerBuildKeyInputs = (
-  selection: NodePackageManagerConfig,
-): Readonly<Record<string, unknown>> => ({
-  packageManager: {
-    name: selection.name,
-    version: selection.version,
-    ...(selection.integrity === undefined ? {} : { integrity: selection.integrity }),
-  },
-  corepack: { version: selection.corepack.version, sha256: selection.corepack.sha256 },
-  launcher: selection.launcher,
-});
-
-interface PublishedLauncher {
-  readonly binary: string;
-  readonly request: string;
-  readonly yarnPathIgnore: boolean;
-}
-
-const publishedLaunchers = (selection: NodePackageManagerConfig): ReadonlyArray<PublishedLauncher> => {
-  const spec = packageManagerSpec(selection);
-  return selection.name === "yarn"
-    ? [
-        { binary: "yarn", request: spec, yarnPathIgnore: true },
-        { binary: "yarnpkg", request: spec, yarnPathIgnore: true },
-      ]
-    : [
-        { binary: "pnpm", request: spec, yarnPathIgnore: false },
-        {
-          binary: "pnpx",
-          request: packageManagerSpec(selection, "pnpx"),
-          yarnPathIgnore: false,
-        },
-      ];
+export const validatePackageManagerDistribution = (selection: NodePackageManagerSelection): void => {
+  const [major, minor, patch] = selection.version.split(/[.-]/u).map(Number);
+  if (selection.name === "yarn" && major === 2 && (Number(minor) < 4 || (minor === 4 && patch === 0))) {
+    throw new NodeInferenceError(
+      `Yarn ${selection.version} predates the supported npm CLI distribution.`,
+      "Upgrade Yarn to 2.4.1 or newer, or use an explicit Node type with a custom image.",
+      selection.sourcePath,
+      selection.sourceField.split("."),
+    );
+  }
 };
 
-const launcherScript = (launcher: PublishedLauncher): ReadonlyArray<string> => [
-  "#!/bin/sh",
-  `export COREPACK_HOME=${COREPACK_HOME}`,
-  "export COREPACK_ENABLE_PROJECT_SPEC=0 COREPACK_ENABLE_NETWORK=0 COREPACK_DEFAULT_TO_LATEST=0",
-  "export COREPACK_ENV_FILE=0 COREPACK_ENABLE_AUTO_PIN=0 COREPACK_ENABLE_DOWNLOAD_PROMPT=0",
-  ...(launcher.yarnPathIgnore ? ["export YARN_IGNORE_PATH=1"] : []),
-  `exec /usr/local/bin/node ${COREPACK_PREFIX}/node_modules/corepack/dist/corepack.js "${launcher.request}" "$@"`,
-];
+const publishScript = [
+  'const fs = require("node:fs");',
+  'const path = require("node:path");',
+  "const [root, manager, family, version, env] = process.argv.slice(1);",
+  'const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));',
+  'if (pkg.name !== manager || pkg.version !== version) throw new Error("Unexpected package identity");',
+  String.raw`const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";`,
+  'const binaries = family === "pnpm" ? ["pnpm", "pnpx"] : ["yarn", "yarnpkg"];',
+  "for (const binary of binaries) {",
+  "  const declared = pkg.bin?.[binary];",
+  '  if (typeof declared !== "string") throw new Error("Missing package bin: " + binary);',
+  "  const entry = path.resolve(root, declared);",
+  '  if (!entry.startsWith(root + "/") || fs.realpathSync(entry) !== entry || !fs.statSync(entry).isFile()) throw new Error("Invalid package bin: " + binary);',
+  '  const target = "/usr/local/bin/" + binary;',
+  '  const berry = manager === "@yarnpkg/cli-dist" ? "unset COREPACK_ROOT\\nexport YARN_YARN_PATH=" + quote(path.join(root, "bin/yarn.js")) + "\\n" : "";',
+  "  fs.rmSync(target, { force: true });",
+  String.raw`  fs.writeFileSync(target, "#!/bin/sh\n" + env + berry + "exec /usr/local/bin/node " + quote(entry) + " \"$@\"\n", { flag: "wx", mode: 0o755 });`,
+  "}",
+  'const smoke = require("node:child_process").spawnSync("/usr/local/bin/" + family, ["--version"], { cwd: "/", stdio: "inherit" });',
+  "if (smoke.error) throw smoke.error;",
+  "process.exitCode = smoke.status ?? 1;",
+].join(" ");
 
-const publishLauncher = (launcher: PublishedLauncher): string => {
-  const target = `/usr/local/bin/${launcher.binary}`;
-  return [
-    `rm -f ${shellSingleQuote(target)}`,
-    `printf '%s\\n' ${launcherScript(launcher).map(shellSingleQuote).join(" ")} > ${shellSingleQuote(target)}`,
-    `chmod 0755 ${shellSingleQuote(target)}`,
-  ].join(" && ");
-};
-
-/**
- * One artifact-phase command. It fetches Corepack with the image's npm (so the
- * registry, proxy, and CA settings configured for npm apply), verifies the
- * pinned tarball digest, installs it privately without touching global bin
- * links, seeds a fresh cache, and publishes launchers for the selected manager
- * and its aliases only.
- */
-export const packageManagerBuildStepCommand = (selection: NodePackageManagerConfig): string => {
-  const tarball = `corepack-${selection.corepack.version}.tgz`;
-  const corepackEntry = `${COREPACK_PREFIX}/node_modules/corepack/dist/corepack.js`;
-  const primaryLauncher = selection.name === "yarn" ? "yarn" : "pnpm";
-  return [
-    "set -eux",
-    `rm -rf ${shellSingleQuote(COREPACK_PREFIX)} ${shellSingleQuote(COREPACK_HOME)}`,
-    `mkdir -p ${shellSingleQuote(COREPACK_PREFIX)} ${shellSingleQuote(COREPACK_HOME)}`,
-    'PACK_DIR="$(mktemp -d)"',
-    'cd "$PACK_DIR"',
-    `npm pack corepack@${selection.corepack.version}`,
-    `printf '%s  %s\\n' ${shellSingleQuote(selection.corepack.sha256)} ${shellSingleQuote(tarball)} | sha256sum -c -`,
-    `npm install --prefix ${shellSingleQuote(COREPACK_PREFIX)} --no-fund --no-audit ${shellSingleQuote(`./${tarball}`)}`,
-    `COREPACK_HOME=${shellSingleQuote(COREPACK_HOME)} node ${shellSingleQuote(corepackEntry)} install -g ${shellSingleQuote(packageManagerSpec(selection))}`,
-    ...publishedLaunchers(selection).map(publishLauncher),
-    `chmod -R a+rX ${shellSingleQuote(COREPACK_PREFIX)} ${shellSingleQuote(COREPACK_HOME)}`,
-    "cd /",
-    `"/usr/local/bin/${primaryLauncher}" --version`,
-    'rm -rf "$PACK_DIR"',
-  ].join(" && ");
+export const packageManagerBuildStep = (selection: NodePackageManagerConfig): ServiceBuildStepIntent => {
+  const { name, version, launcher } = selection;
+  const major = Number(version.split(".")[0]);
+  const berry = name === "yarn" && major >= 2;
+  const npmName = berry ? "@yarnpkg/cli-dist" : name;
+  const destination = `/usr/local/lib/lando/package-managers/${name}/${version}`;
+  const [algorithm, hex] = selection.integrity?.split(".") ?? [];
+  const acquisition = Schema.decodeUnknownSync(ServiceBuildAcquisition)({
+    kind: "npm",
+    name: npmName,
+    version,
+    contextName: "node-package-manager",
+    destination,
+    ...(selection.integrity === undefined
+      ? {}
+      : { integrity: { algorithm, hex, ...(berry ? { file: "bin/yarn.js" } : {}) } }),
+  });
+  const exports =
+    name === "yarn"
+      ? berry
+        ? "export YARN_IGNORE_PATH=1"
+        : "export YARN_IGNORE_PATH=1 SKIP_YARN_COREPACK_CHECK=1"
+      : major >= 11
+        ? "export pnpm_config_pm_on_fail=ignore"
+        : "export npm_config_manage_package_manager_versions=false npm_config_package_manager_strict=false npm_config_package_manager_strict_version=false";
+  const env = `${exports}; `;
+  return {
+    id: NODE_PACKAGE_MANAGER_STEP_ID,
+    phase: "build",
+    user: "root",
+    acquisitions: [acquisition],
+    buildKeyInputs: { launcher, sourcePolicy: "npm-configured-registry-exact-v1" },
+    command: [
+      "/usr/local/bin/node",
+      "-e",
+      publishScript,
+      `${destination}/package`,
+      npmName,
+      name,
+      version,
+      env,
+    ],
+  };
 };

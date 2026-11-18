@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
 import { buildKeyForService } from "@lando/engine/services/build-key";
+import { acquireBuildTrees } from "@lando/engine/services/build-source-store";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { withRegistryBuildSources } from "@lando/engine/testing/build-source-store";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { makePodmanApiClient, layer as makeProviderLayer } from "@lando/provider-lando";
 import { sha256Hex } from "@lando/sdk/digest";
@@ -36,9 +38,7 @@ import { PHP_FEATURE_ID, php83ServiceType, phpServiceFeature } from "../src/serv
 import { composeServicePlan } from "./support/compose-harness.ts";
 import {
   BUILD_TEST_REF_PREFIX,
-  COREPACK_NETWORK_DISABLED_PATTERN,
   NODE_PM_ARTIFACT_REF_SUFFIX,
-  NODE_PM_BAD_HASH_ARTIFACT_REF_SUFFIX,
   VENDORED_YARN_MARKER,
   runWithProject,
   vendoredYarnScript,
@@ -272,15 +272,22 @@ const buildNodeArtifact = async (provider: LiveProvider, scenario: NodeManagerSc
     projectFiles: scenario.projectFiles,
   });
   const buildKey = await Effect.runPromise(buildKeyForService(provider, servicePlan));
-  return Effect.runPromise(
+  return withRegistryBuildSources((store) =>
     Effect.scoped(
-      provider.buildArtifact({
-        labels: { "dev.lando.test": crypto.randomUUID() },
-        app: appPlan.id,
-        service: serviceName,
-        plan: appPlan,
-        buildKey,
-        ref: `${BUILD_TEST_REF_PREFIX}${crypto.randomUUID()}${NODE_PM_ARTIFACT_REF_SUFFIX}`,
+      Effect.gen(function* () {
+        const contextTrees = yield* acquireBuildTrees(servicePlan, store, {
+          providerId,
+          redact: (text) => text,
+        });
+        return yield* provider.buildArtifact({
+          contextTrees,
+          labels: { "dev.lando.test": crypto.randomUUID() },
+          app: appPlan.id,
+          service: serviceName,
+          plan: appPlan,
+          buildKey,
+          ref: `${BUILD_TEST_REF_PREFIX}${crypto.randomUUID()}${NODE_PM_ARTIFACT_REF_SUFFIX}`,
+        });
       }),
     ),
   );
@@ -324,7 +331,11 @@ const runScenario = async (scenario: NodeManagerScenario) => {
 };
 
 const yarnModernProject = {
-  "package.json": JSON.stringify({ private: true, packageManager: "yarn@4.18.1" }),
+  "package.json": JSON.stringify({
+    private: true,
+    packageManager: "yarn@4.18.1",
+    scripts: { nested: "yarn --version && yarnpkg --version" },
+  }),
   ".yarnrc.yml": yarnBerryPathRc(),
   ".yarn/releases/yarn-vendored.cjs": vendoredYarnScript,
 } as const;
@@ -354,11 +365,11 @@ describe("node packageManager provisioning — live provider", () => {
         projectFiles: projectFilesFrom(yarnModernProject, false),
         user: "node",
         command:
-          "yarn --version && yarnpkg --version && grep -F 'YARN_IGNORE_PATH=1' /usr/local/bin/yarn && grep -F 'yarn@4.18.1' /usr/local/bin/yarn",
-        expected: ["4.18.1", "YARN_IGNORE_PATH=1"],
+          'export YARN_ENABLE_IMMUTABLE_INSTALLS=false && work=$(mktemp -d) && cp -R /app/. "$work" && cd "$work" && yarn install && yarn run nested && rm .yarnrc.yml && yarnpkg run nested',
+        expected: ["4.18.1"],
         forbidden: [VENDORED_YARN_MARKER],
       });
-      expect(shown?.stdout.split("\n").filter((line) => line === "4.18.1")).toHaveLength(2);
+      expect(shown?.stdout.split("\n").filter((line) => line === "4.18.1")).toHaveLength(4);
     },
     600_000,
   );
@@ -399,7 +410,7 @@ describe("node packageManager provisioning — live provider", () => {
         command: [
           'test "$(pnpm --version)" = 9.15.0',
           "NODE_DEBUG=module pnpx >/tmp/pnpx.log 2>&1 || true",
-          "grep -F 'load \"/usr/local/share/corepack/v1/pnpm/9.15.0/bin/pnpx.cjs\" for module' /tmp/pnpx.log",
+          "grep -F 'load \"/usr/local/lib/lando/package-managers/pnpm/9.15.0/package/bin/pnpx.cjs\" for module' /tmp/pnpx.log",
           "node -e 'console.log(process.getuid())'",
         ].join(" && "),
         expected: [],
@@ -511,7 +522,7 @@ describe("node packageManager provisioning — live provider", () => {
   );
 
   test.skipIf(resolveLiveProviderSocket() === undefined)(
-    "fails closed without downloading when the manager cache is missing",
+    "fails closed when the installed package tree is missing",
     async () => {
       const socket = resolveLiveProviderSocket();
       expect(socket).toBeDefined();
@@ -531,13 +542,12 @@ describe("node packageManager provisioning — live provider", () => {
           socketPath: socket.socketPath,
           image: artifact.ref,
           files: pnpmProject,
-          command:
-            "mv /usr/local/share/corepack /usr/local/share/corepack.off && mkdir /usr/local/share/corepack && pnpm --version",
+          command: "mv /usr/local/lib/lando/package-managers/pnpm/9.15.0 /tmp/removed-pnpm && pnpm --version",
           asRoot: true,
         });
         expect(shown.exitCode).not.toBe(0);
         expect(shown.stdout).not.toContain("9.15.0");
-        expect(`${shown.stdout}\n${shown.stderr}`).toMatch(COREPACK_NETWORK_DISABLED_PATTERN);
+        expect(shown.stderr).toContain("MODULE_NOT_FOUND");
       } finally {
         expect(
           (await Effect.runPromise(provider.removeArtifact({ ...artifact, pruneParents: true }))).kind,
@@ -553,14 +563,13 @@ describe("node packageManager provisioning — live provider", () => {
       const socket = resolveLiveProviderSocket();
       expect(socket).toBeDefined();
       if (socket === undefined) return;
-      const provider = await liveProvider(socket.socketPath);
       const files = {
         "package.json": JSON.stringify({
           private: true,
           packageManager: `pnpm@9.15.0+sha512.${"b".repeat(128)}`,
         }),
       };
-      const [appPlan, servicePlan] = await planFor({
+      const [, servicePlan] = await planFor({
         appId: AppId.make("node-pm-bad-integrity"),
         serviceType: node24ServiceType,
         featureId: NODE_FEATURE_ID,
@@ -568,19 +577,9 @@ describe("node packageManager provisioning — live provider", () => {
         raw: { type: "node:24" },
         projectFiles: projectFilesFrom(files, false),
       });
-      const buildKey = await Effect.runPromise(buildKeyForService(provider, servicePlan));
-      const result = await Effect.runPromise(
+      const result = await withRegistryBuildSources((store) =>
         Effect.result(
-          Effect.scoped(
-            provider.buildArtifact({
-              labels: { "dev.lando.test": crypto.randomUUID() },
-              app: appPlan.id,
-              service: serviceName,
-              plan: appPlan,
-              buildKey,
-              ref: `${BUILD_TEST_REF_PREFIX}${crypto.randomUUID()}${NODE_PM_BAD_HASH_ARTIFACT_REF_SUFFIX}`,
-            }),
-          ),
+          Effect.scoped(acquireBuildTrees(servicePlan, store, { providerId, redact: (text) => text })),
         ),
       );
       expect(result._tag).toBe("Failure");

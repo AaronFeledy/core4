@@ -13,8 +13,6 @@ import {
 } from "../src/services/node.ts";
 import { NodeInferenceError } from "../src/services/node-inference.ts";
 import {
-  COREPACK_PIN,
-  COREPACK_PREFIX,
   NODE_PACKAGE_MANAGER_STEP_ID,
   NodePackageManagerConfig,
   type NodePackageManagerName,
@@ -38,6 +36,7 @@ const BuildSteps = Schema.Struct({
         command: Schema.Unknown,
         user: Schema.optionalKey(Schema.String),
         buildKeyInputs: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+        acquisitions: Schema.optionalKey(Schema.Array(Schema.Unknown)),
       }),
     ),
   ),
@@ -364,7 +363,7 @@ describe("node project files", () => {
 });
 
 describe("node package manager provisioning", () => {
-  test("installs Corepack privately, seeds a fresh cache, and publishes only the selected launchers", async () => {
+  test("plans the nearest declaring Yarn Classic npm source", async () => {
     const projectFiles = [
       present("apps/web/.nvmrc", "26\n"),
       packageJson("apps/web/package.json", { name: "web" }),
@@ -372,52 +371,45 @@ describe("node package manager provisioning", () => {
     ];
     const plan = await composeNodePlan({ packageRoot: "apps/web" }, projectFiles);
     const step = packageManagerStep(plan);
-    const command = String(step?.command);
 
     expect(step?.phase).toBe("build");
     expect(step?.user).toBe("root");
-    expect(command).toContain(`npm pack corepack@${COREPACK_PIN.version}`);
-    expect(command).toContain(
-      `'${COREPACK_PIN.sha256}' 'corepack-${COREPACK_PIN.version}.tgz' | sha256sum -c -`,
-    );
-    expect(command.indexOf("sha256sum -c -")).toBeLessThan(
-      command.indexOf(`npm install --prefix '${COREPACK_PREFIX}'`),
-    );
-    expect(command).not.toContain("npm install -g");
-    expect(command).toContain("install -g 'yarn@1.22.22'");
-    expect(command).toContain("rm -f '/usr/local/bin/yarn'");
-    expect(command).toContain("rm -f '/usr/local/bin/yarnpkg'");
-    expect(command).not.toContain("/usr/local/bin/pnpm");
-    expect(command).toContain("YARN_IGNORE_PATH=1");
-    expect(command).toContain("--version");
-    expect(step?.buildKeyInputs).toEqual({
-      packageManager: { name: "yarn", version: "1.22.22" },
-      corepack: { version: COREPACK_PIN.version, sha256: COREPACK_PIN.sha256 },
-      launcher: PACKAGE_MANAGER_LAUNCHER_REVISION,
-    });
+    expect(step?.acquisitions).toEqual([
+      {
+        kind: "npm",
+        name: "yarn",
+        version: "1.22.22",
+        contextName: "node-package-manager",
+        destination: "/usr/local/lib/lando/package-managers/yarn/1.22.22",
+      },
+    ]);
     expect(plan.environment).toMatchObject({ PORT: "3000" });
-    expect(plan.environment.COREPACK_HOME).toBeUndefined();
-    expect(plan.environment.COREPACK_ENABLE_DOWNLOAD_PROMPT).toBeUndefined();
   });
 
-  test("publishes pnpm and pnpx launchers without touching the yarn family", async () => {
+  test.each([
+    ["pnpm", "9.15.0", "pnpm", {}],
+    ["yarn", "4.18.1", "@yarnpkg/cli-dist", { file: "bin/yarn.js" }],
+  ] as const)("plans the correct authenticated bytes for %s@%s", async (name, version, npmName, domain) => {
     const plan = await composeNodePlan({}, [
       present(".nvmrc", "26\n"),
-      packageJson("package.json", { packageManager: `pnpm@9.15.0+sha512.${SHA512}` }),
+      packageJson("package.json", { packageManager: `${name}@${version}+sha512.${SHA512}` }),
     ]);
-    const command = String(packageManagerStep(plan)?.command);
+    expect(packageManagerStep(plan)?.acquisitions).toMatchObject([
+      {
+        name: npmName,
+        version,
+        integrity: { algorithm: "sha512", hex: SHA512, ...domain },
+      },
+    ]);
+  });
 
-    expect(command).toContain(`install -g 'pnpm@9.15.0+sha512.${SHA512}'`);
-    expect(command).toContain("rm -f '/usr/local/bin/pnpm'");
-    expect(command).toContain("rm -f '/usr/local/bin/pnpx'");
-    expect(command).toContain(`"pnpx@9.15.0+sha512.${SHA512}"`);
-    expect(command).not.toContain("/usr/local/bin/yarn");
-    expect(command).not.toContain("YARN_IGNORE_PATH");
-    expect(packageManagerStep(plan)?.buildKeyInputs).toEqual({
-      packageManager: { name: "pnpm", version: "9.15.0", integrity: `sha512.${SHA512}` },
-      corepack: { version: COREPACK_PIN.version, sha256: COREPACK_PIN.sha256 },
-      launcher: PACKAGE_MANAGER_LAUNCHER_REVISION,
-    });
+  test.each(["2.0.0", "2.4.0"])("rejects Yarn %s during resolution", async (version) => {
+    await expect(
+      composeNodePlan({}, [
+        present(".nvmrc", "26\n"),
+        packageJson("package.json", { packageManager: `yarn@${version}` }),
+      ]),
+    ).rejects.toThrow(/predates the supported npm CLI distribution/u);
   });
 
   test("provisions an explicit node type from its manifest", async () => {
@@ -460,7 +452,6 @@ describe("node package manager provisioning", () => {
 
     const plan = await composeNodePlan({}, projectFiles);
     expect(packageManagerStep(plan)).toBeUndefined();
-    expect(plan.environment.COREPACK_HOME).toBeUndefined();
   });
 
   test("reports the provisioned manager, field, and declaring file as provenance", async () => {
@@ -528,7 +519,7 @@ describe("node package manager provisioning", () => {
       composeNodePlan({}, [
         present(".nvmrc", "26\n"),
         packageJson("package.json", { packageManager, ...extra }),
-      ]).then((plan) => packageManagerStep(plan)?.buildKeyInputs);
+      ]).then((plan) => packageManagerStep(plan));
 
     const first = await base({ name: "app", scripts: { test: "bun test" } }, "yarn@1.22.22");
     const samePackages = await base({ name: "renamed", private: true }, "yarn@1.22.22");
@@ -536,7 +527,7 @@ describe("node package manager provisioning", () => {
 
     expect(samePackages).toEqual(first);
     expect(newVersion).not.toEqual(first);
-    expect(newVersion).toMatchObject({ packageManager: { version: "1.22.23" } });
+    expect(newVersion).toMatchObject({ acquisitions: [{ version: "1.22.23" }] });
   });
 
   test("drops a globals entry that repeats the selected exact version", async () => {
@@ -589,14 +580,13 @@ describe("node package manager provisioning", () => {
 });
 
 describe("node feature config schema", () => {
-  test("accepts a packageManager field with Corepack and launcher identity", () => {
+  test("accepts a packageManager field with launcher identity", () => {
     expect(
       Schema.decodeUnknownSync(NodePackageManagerConfig)({
         name: "yarn",
         version: "1.22.22",
         sourcePath: "package.json",
         sourceField: "packageManager",
-        corepack: COREPACK_PIN,
         launcher: PACKAGE_MANAGER_LAUNCHER_REVISION,
       }),
     ).toEqual({
@@ -604,7 +594,6 @@ describe("node feature config schema", () => {
       version: "1.22.22",
       sourcePath: "package.json",
       sourceField: "packageManager",
-      corepack: COREPACK_PIN,
       launcher: PACKAGE_MANAGER_LAUNCHER_REVISION,
     });
   });

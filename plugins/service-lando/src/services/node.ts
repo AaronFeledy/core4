@@ -30,7 +30,6 @@ import {
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveNodeInference } from "./node-inference.ts";
 import {
-  NODE_PACKAGE_MANAGER_STEP_ID,
   NodePackageManagerConfig,
   applyProvisionedGlobals,
   isProvisionedPackageManager,
@@ -39,8 +38,8 @@ import {
 } from "./node-package-manager.ts";
 import { resolveNodePackageManager } from "./node-package-manager-declaration.ts";
 import {
-  packageManagerBuildKeyInputs,
-  packageManagerBuildStepCommand,
+  packageManagerBuildStep,
+  validatePackageManagerDistribution,
 } from "./node-package-manager-install.ts";
 import { NODE_ARTIFACTS, SUPPORTED_NODE_VERSIONS, type SupportedNodeVersion } from "./node-versions.ts";
 
@@ -99,9 +98,6 @@ const artifactFor = (version: string): string =>
     ? NODE_ARTIFACTS[version as SupportedNodeVersion]
     : `node:${version}`;
 
-// Node 22 and 24 images ship `yarn` as a Yarn 1 symlink and no pnpm; Node 26
-// drops both that symlink and Corepack. --force lets authored globals replace a
-// Yarn 1 stub instead of failing EEXIST.
 const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
   [
     "set -eux",
@@ -132,17 +128,8 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
       buildKeyInputs: { globals },
     });
   }
-  // Runs after the globals step so an authored global cannot shadow the launcher
-  // Lando publishes. The launchers carry their own Corepack environment, so a
-  // non-root `user:` runs the same exact release with no container-start work.
   if (packageManager !== undefined && isProvisionedPackageManager(packageManager.name)) {
-    ctx.addBuildStep({
-      id: NODE_PACKAGE_MANAGER_STEP_ID,
-      phase: "build",
-      command: packageManagerBuildStepCommand(packageManager),
-      user: "root",
-      buildKeyInputs: packageManagerBuildKeyInputs(packageManager),
-    });
+    ctx.addBuildStep(packageManagerBuildStep(packageManager));
   }
 };
 
@@ -197,6 +184,7 @@ const resolveCatalogNode = (
     const projectFiles = input.projectFiles ?? [];
     const selected = selectVersion(projectFiles);
     const packageManager = resolveNodePackageManager(projectFiles);
+    if (packageManager !== undefined) validatePackageManagerDistribution(packageManager);
     const globals = applyProvisionedGlobals(normalizeNpmGlobals(input.service.globals), packageManager);
     const files = projectFiles.map((file) => ({
       path: file.path,
