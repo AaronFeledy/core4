@@ -7,6 +7,7 @@ import type { BuildContextEntry } from "./build-context.ts";
 
 const MAX_BYTES = 128 * 1024 * 1024;
 const MAX_ENTRIES = 20_000;
+const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
 
 export const treeArchivePath = (contextName: string) => `.lando-trees/${contextName}/`;
 
@@ -15,7 +16,7 @@ export const packVerifiedBuildTrees = async (trees: readonly ArtifactBuildContex
   let remaining = MAX_BYTES;
   for (const tree of trees) {
     const prefix = treeArchivePath(tree.contextName);
-    const root = tree.root;
+    const { root } = tree;
     if (!isAbsolute(root) || (await realpath(root)) !== root || !(await lstat(root)).isDirectory()) {
       throw new TypeError("Invalid verified build context root.");
     }
@@ -51,10 +52,7 @@ export const packVerifiedBuildTrees = async (trees: readonly ArtifactBuildContex
         }
         if (!stat.isFile() || (await realpath(path)) !== path)
           throw new TypeError("Build context must contain only regular files and directories.");
-        await using handle = await open(
-          path,
-          constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
-        );
+        await using handle = await open(path, OPEN_FLAGS);
         const opened = await handle.stat();
         if (!opened.isFile() || opened.size > remaining)
           throw new RangeError("Build context byte limit exceeded.");
