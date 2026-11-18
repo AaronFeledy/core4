@@ -103,7 +103,7 @@ If you are looking for a public surface or policy:
 | Canonical file-sync execution bundle and retained flat session history | 06 | §6.4 |
 | Current/recorded app names, retained data name, and planned/applied project-file policy in info | 06 | §6.10 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
-| Logical endpoint identity, authored endpoint shorthand and `kind` objects, plan and applied `kind` discriminators, mandatory endpoint normalization, hostnames, routes, `RouteFilter.kind`, and cross-app priority | 06 | §6.6 |
+| Logical endpoint identity, authored endpoint shorthand and `kind` objects, plan and applied `kind` discriminators, mandatory endpoint normalization with route-declared numeric HTTP listeners, hostnames, routes, `RouteFilter.kind`, and cross-app priority | 06 | §6.6 |
 | Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, terminal dependency evidence, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
 | Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
 | Native-health observations and readiness configuration metadata, without last-proof inference | 06 | §6.10 |
@@ -111,7 +111,7 @@ If you are looking for a public surface or policy:
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
-| Provider-independent service/app endpoint declarations (`EndpointDeclaration.Encoded`, strict decode once, tagged feature failures), immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
+| Provider-independent service/app endpoint declarations (`EndpointDeclaration.Encoded`, strict decode once, tagged feature failures), effective numeric route declarations before application, finalization replay from original inputs, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
 | Read-only service-type resolution metadata in app-feature declaration and application | 06 | §6.11.4 |
 | Generated companion services: `addClonedService`, `AppFeatureCloneError`, shared and non-inherited parent facts, naming, provenance, selection, and removal | 06 | §6.11.4 + §6.11.5 |
 | In-build acquisition of pinned third-party artifacts by Lando-contributed build steps | 06 + 11 | §6.13.3 + §10.3.3 |
@@ -133,7 +133,7 @@ If you are looking for a public surface or policy:
 | Pathless console aliases, pipe selection, file followers, and PHP Apache/FPM routing | 06 | §6.10 + §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
 | Host-owned SDK and Effect modules for author code | 07 | §7.1.1 |
-| Six-layer Landofile merge, endpoint alias and filter identities, form and kind replacement, and empty-list clearing | 07 | §7.2 |
+| Six-layer Landofile merge, endpoint alias and filter-kind identities, form and kind replacement, empty-list clearing, and effective-only route listener derivation | 07 | §7.2 |
 | Compilation carrier and evaluation stages | 07 | §7.2.1 |
 | External file loading, expressions, and templates | 07 | §7.3 |
 | Top-level Landofile and Compose-subset keys, per-folder data identity, and rename reconciliation | 07 | §7.4 |
@@ -143,9 +143,9 @@ If you are looking for a public surface or policy:
 | Environment override naming | 07 | §7.6 |
 | Includes, fragments, lockfile, cache, and security | 07 | §7.7 |
 | Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
-| Schema and generated-reference publication, indexed endpoint diagnostics, and resolved `kind` encoding | 07 | §7.8 |
+| Schema and generated-reference publication, indexed endpoint diagnostics, resolved `kind` encoding, and shared provider-free route listener derivation | 07 | §7.8 |
 | Shared resolved-Landofile validation, typed lint rule registry, generated rule reference, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
-| Authored HTTP route binding, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
+| Authored HTTP route binding with route-declared listeners and TCP/UDP protocol conflicts, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
 | Node runtime inference versus package-manager selection, offline launchers, BYO toolchains, and project-file validation headlines | 06 + 07 + 12 + 13 | §6.11.0 + §6.12.1 + §6.13.3 + §7.8 + §12.1 + §13.1 |
 | Canonical Landofile parser and serializer | 07 | §7.8.1 |
 | Command kinds and namespaces | 08 | §8.1 |
