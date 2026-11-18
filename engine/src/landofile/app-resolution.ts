@@ -14,8 +14,8 @@ import {
   evaluateVersionConstraints,
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
-import { LandofileParseError, LandofileVersionConstraintError } from "@lando/sdk/errors";
-import type { LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
+import { AppResolveError, LandofileParseError, LandofileVersionConstraintError } from "@lando/sdk/errors";
+import type { AbsolutePath, LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, Renderer, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { HostExecutionDefaults } from "../services/host-execution-context.ts";
@@ -162,3 +162,35 @@ export const resolveDesiredAppTarget = Effect.map(
   ({ plan, landofile }) =>
     ({ plan, root: plan.root, app: userAppRef(plan), landofile }) satisfies ResolvedAppTarget,
 );
+
+/**
+ * Loads the Landofile at exactly `root` and plans it. A Landofile in a parent folder
+ * belongs to another app, so a loader that walks upward is refused.
+ */
+export const resolveDesiredAppTargetAtRoot = Effect.fn("AppPlanner.resolveDesiredTargetAtRoot")(function* (
+  root: AbsolutePath,
+) {
+  const landofile = yield* loadUserLandofileAt(yield* LandofileService, root);
+  if (landofile.context.appRoot !== root)
+    return yield* Effect.fail(
+      new AppResolveError({
+        reason: "mismatch",
+        detail: "canonical-root",
+        message: `The Landofile loaded for ${root} belongs to app root ${landofile.context.appRoot}.`,
+        remediation: "Run the command from the app root that owns this Landofile.",
+      }),
+    );
+  const planner = yield* AppPlanner;
+  const registry = yield* RuntimeProviderRegistry;
+  const plan = yield* planner.plan(landofile, yield* registry.capabilities);
+  if (plan.root !== root)
+    return yield* Effect.fail(
+      new AppResolveError({
+        reason: "mismatch",
+        detail: "canonical-root",
+        message: `The Landofile at ${root} resolves to app root ${plan.root}.`,
+        remediation: "Run the command from the app root that owns this Landofile.",
+      }),
+    );
+  return { plan, root: plan.root, app: userAppRef(plan), landofile } satisfies ResolvedAppTarget;
+});

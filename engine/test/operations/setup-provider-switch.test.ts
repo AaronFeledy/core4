@@ -104,7 +104,7 @@ const withSwitch = async (
         Effect.sync(() => {
           destroys.push(options);
           globalApplied = false;
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const layer = Layer.mergeAll(

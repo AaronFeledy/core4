@@ -246,7 +246,7 @@ export const rotationHarness = Effect.fnUntraced(function* (
         yield* trip("retire");
         applied = undefined;
         yield* trip("retire-after");
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     prepareFileSyncTargets: (plan: AppPlan) =>
       Effect.gen(function* () {

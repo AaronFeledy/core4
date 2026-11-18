@@ -2,6 +2,7 @@ import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
 import { makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
+import { scratchLabelsForPlan } from "@lando/container-runtime/labels";
 import { forgetAppliedPlanUnlessKept, rememberAppliedPlan } from "@lando/container-runtime/provider-assembly";
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -99,6 +100,24 @@ export const makeScenarioProvider = () => {
         .pipe(Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlanCache, target.app, options))),
   };
   const registry = RuntimeProviderRegistry.of({
+    observeRuntime: Effect.all({ appliedPlans, services: provider.list({}) }).pipe(
+      Effect.map(({ appliedPlans, services }) => [
+        {
+          providerId: ProviderId.make(provider.id),
+          runtimeObserved: true,
+          appliedPlans,
+          services: services.map((service) => {
+            const plan = appliedPlans.find(
+              (plan) => plan.id === service.app && planAppRoot(plan) === service.appRoot,
+            );
+            return plan === undefined
+              ? service
+              : { ...service, labels: { ...service.labels, ...scratchLabelsForPlan(plan) } };
+          }),
+          volumes: [],
+        },
+      ]),
+    ),
     appliedPlansFor: (root) =>
       resolveExactPlan(root).pipe(Effect.map((plan) => (plan === undefined ? [] : [plan]))),
     resolveAppliedPlan: (root, _app, lookup) =>

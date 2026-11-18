@@ -192,7 +192,8 @@ describe("destroy and global summary lines", () => {
         app: "shop",
         outcome: "unchanged" as const,
         servicesDestroyed: [],
-        volumesRemoved: false,
+        dataVolumesRemoved: false,
+        cacheVolumesRemoved: false,
         snapshotsRemoved: 0,
         builtImages,
       };
@@ -213,7 +214,8 @@ describe("destroy and global summary lines", () => {
       app: "shop",
       outcome: "destroyed",
       servicesDestroyed: ["database", "web"],
-      volumesRemoved: false,
+      dataVolumesRemoved: false,
+      cacheVolumesRemoved: false,
       snapshotsRemoved: 0,
       shutdownObservations: [exited("database", 0), exited("web", 143)],
     };
@@ -239,11 +241,12 @@ describe("destroy and global summary lines", () => {
       outcome: "destroyed",
       materialized: true,
       servicesDestroyed: ["ssh-agent"],
-      volumesRemoved: true,
+      dataVolumesRemoved: true,
+      cacheVolumesRemoved: false,
       shutdownObservations: [{ ...observation, exitCode: 143 }],
     });
     expect(renderGlobalDestroyResult(destroy)).toBe(
-      "destroyed: global - ssh-agent (exit 143) (volumes removed)",
+      "destroyed: global - ssh-agent (exit 143) (data volumes removed)",
     );
     expect(GlobalStopResultSchema.fields.shutdownObservations).toBe(
       StopAppResultSchema.fields.shutdownObservations,

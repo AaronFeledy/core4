@@ -31,7 +31,7 @@ lando poweroff -y
 lando setup --provider=docker --yes --no-interactive
 ```
 
-`--no-interactive` makes setup fail instead of waiting for a TTY when required input is missing. `start` and `poweroff` do not prompt; `poweroff` accepts `-y` but does not require it. Provider rules live in [Pick a container provider](../setup/provider-selection.mdx).
+`--no-interactive` makes setup fail instead of waiting for a TTY when required input is missing. `start` and `poweroff` do not prompt; `poweroff` accepts `-y` but does not require it. `poweroff` stops each app at its recorded root and keeps the global app and managed runtime running when any app fails, so the job reports the failing app instead of tearing down the runtime first. Provider rules live in [Pick a container provider](../setup/provider-selection.mdx).
 
 Do not scrape human text. Assert on JSON (`ok: true`) from `--format=json`.
 

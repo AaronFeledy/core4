@@ -286,7 +286,7 @@ describe("global service groups", () => {
         Effect.sync(() => {
           cleanup.push(String(target.app));
           created.clear();
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
       stop: (target) =>
         Effect.sync(() => {

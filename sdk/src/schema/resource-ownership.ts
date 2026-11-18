@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "./primitives.ts";
+import { VolumeRemovalCounts } from "./volume-removal.ts";
 
 // ============================================================================
 // Cleanup hints, never applied-state or readiness evidence
@@ -28,8 +29,6 @@ export const OwnedResourcesCleanupResult = Schema.Struct({
     description: "Services whose observed containers were removed.",
   }),
   networksRemoved: Schema.Number.annotate({ description: "Number of observed private networks removed." }),
-  volumesRemoved: Schema.Number.annotate({
-    description: "Number of policy-selected observed volumes removed.",
-  }),
+  volumesRemoved: VolumeRemovalCounts,
 });
 export type OwnedResourcesCleanupResult = typeof OwnedResourcesCleanupResult.Type;

@@ -17,12 +17,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import { Effect } from "effect";
-import {
-  type ResolvedAppTarget,
-  loadUserLandofileAt,
-  resolveDesiredAppTarget,
-  userAppRef,
-} from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofileAt, userAppRef } from "../landofile/app-resolution.ts";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 import { TeardownProvider } from "../providers/app-placement.ts";
 import { matchesAppPlanIdentity } from "../providers/app-plan-identity.ts";
@@ -64,7 +59,7 @@ export const validateResolvedAppTarget = Effect.fnUntraced(function* (target: Re
   return target;
 });
 
-const appliedStateTarget = (plan: AppPlan) =>
+export const appliedStateTarget = (plan: AppPlan) =>
   plan.identity === undefined
     ? Effect.fail(mismatch("identity"))
     : validateResolvedAppTarget({
@@ -163,36 +158,43 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
 });
 
 /**
- * Resolves the app root by discovery, which succeeds while the Landofile is unreadable, then asks
- * the providers what they hold for that root. Callers load the desired config only afterwards, and
- * only when this reports nothing to remove.
+ * Resolves what teardown may act on for one canonical root. The caller has already
+ * established `landofilePresent` at exactly that root; no ancestor walk happens here.
  */
+export const teardownResolutionAtRoot = <E, R>(
+  root: AbsolutePath,
+  landofilePresent: boolean,
+  targetFor: (plan: AppPlan) => Effect.Effect<ResolvedAppTarget, E, R>,
+) =>
+  teardownResolutionAt(root, landofilePresent, targetFor).pipe(
+    Effect.catchIf(
+      (error): error is AppResolveError => error instanceof AppResolveError,
+      (error) => {
+        if (error.reason !== "ambiguous" || !landofilePresent) return Effect.fail(error);
+        return Effect.gen(function* () {
+          const loaded = yield* loadUserLandofileAt(yield* LandofileService, root).pipe(
+            Effect.catch(() => Effect.fail(error)),
+          );
+          const app: AppRef = { kind: "user", id: normalizeAppSlug(loaded.document.name ?? "app", ""), root };
+          const registry = yield* RuntimeProviderRegistry;
+          const providerId = yield* TeardownProvider;
+          const plans = (yield* registry.appliedPlansFor(root, providerId)).filter(
+            (plan) =>
+              (providerId === undefined || plan.provider === providerId) && matchesAppPlanIdentity(plan, app),
+          );
+          const selected = plans.find((plan) => plan.id === app.id) ?? plans[0];
+          if (selected === undefined) return yield* Effect.fail(error);
+          const resolution = yield* teardownResolutionAt(root, true, targetFor, userAppRef(selected));
+          return resolution.kind === "applied" ? { ...resolution, reconcileApp: app } : resolution;
+        });
+      },
+    ),
+  );
+
 export const resolveTeardownResolution = Effect.gen(function* () {
   const discovered = yield* findAppRoot();
   const identity = yield* resolveAppIdentity(discovered ?? (yield* discoveryCwd()));
-  const root = identity.appRoot;
-  const landofilePresent = discovered !== undefined;
-  return yield* teardownResolutionAt(root, landofilePresent, appliedStateTarget).pipe(
-    Effect.catchTag("AppResolveError", (error) => {
-      if (error.reason !== "ambiguous" || !landofilePresent) return Effect.fail(error);
-      return Effect.gen(function* () {
-        const loaded = yield* loadUserLandofileAt(yield* LandofileService, root).pipe(
-          Effect.catch(() => Effect.fail(error)),
-        );
-        const app: AppRef = { kind: "user", id: normalizeAppSlug(loaded.document.name ?? "app", ""), root };
-        const registry = yield* RuntimeProviderRegistry;
-        const providerId = yield* TeardownProvider;
-        const plans = (yield* registry.appliedPlansFor(root, providerId)).filter(
-          (plan) =>
-            (providerId === undefined || plan.provider === providerId) && matchesAppPlanIdentity(plan, app),
-        );
-        const selected = plans.find((plan) => plan.id === app.id) ?? plans[0];
-        if (selected === undefined) return yield* Effect.fail(error);
-        const resolution = yield* teardownResolutionAt(root, true, appliedStateTarget, userAppRef(selected));
-        return resolution.kind === "applied" ? { ...resolution, reconcileApp: app } : resolution;
-      });
-    }),
-  );
+  return yield* teardownResolutionAtRoot(identity.appRoot, discovered !== undefined, appliedStateTarget);
 });
 
 export const withTeardownResolution = <A, E, R>(handlers: {
@@ -226,12 +228,13 @@ export const withTeardownResolution = <A, E, R>(handlers: {
     }),
   );
 
-export const teardownDesiredOrUnchanged = <A, E, R>(
+export const teardownDesiredOrUnchanged = <A, E, R, D, DR>(
   resolution: Extract<TeardownResolution, { readonly kind: "absent" }>,
   onDesired: (desired: ResolvedAppTarget) => Effect.Effect<A, E, R>,
   unchanged: (app: string) => A,
+  desired: Effect.Effect<ResolvedAppTarget, D, DR>,
 ) =>
-  resolveDesiredAppTarget.pipe(
+  desired.pipe(
     Effect.map((desired): ResolvedAppTarget | undefined => desired),
     Effect.catch((error) => (resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error))),
     Effect.flatMap((desired) =>

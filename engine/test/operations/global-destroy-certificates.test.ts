@@ -67,7 +67,6 @@ for (const evidence of ["applied", "absent"] as const) {
           // When
           const result = await Effect.runPromise(
             globalDestroy({
-              yes: true,
               purge,
               ...(scoped ? { providerId: ProviderId.make("lando") } : {}),
             }).pipe(Effect.provide(harness.layer)),
@@ -132,7 +131,7 @@ test("global destroy removes evidence at the applied root and preserves the conf
           buckets.push({ bucket, path });
         }
         const global = yield* GlobalAppService;
-        yield* globalDestroy({ yes: true }).pipe(
+        yield* globalDestroy({}).pipe(
           Effect.provideService(GlobalAppService, {
             ...global,
             root: Effect.succeed(applied.root),

@@ -1,6 +1,12 @@
 import { AppResolveError } from "@lando/sdk/errors";
 import { PostGlobalDestroyEvent, PreGlobalDestroyEvent } from "@lando/sdk/events";
-import { AbsolutePath, AppId, type ServiceShutdownObservation, isActiveRunStatus } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type ServiceShutdownObservation,
+  isActiveRunStatus,
+  noVolumesRemoved,
+} from "@lando/sdk/schema";
 import { EventService, FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 
@@ -223,14 +229,19 @@ export const globalTeardownAppRef = (resolved: GlobalTeardown) => ({
 
 export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
   resolved: GlobalTeardown,
-  options: { readonly intent: "stop" | "destroy"; readonly volumes: boolean; readonly removeState: boolean },
+  options: {
+    readonly intent: "stop" | "destroy";
+    readonly volumes: boolean;
+    readonly removeState: boolean;
+    readonly purge?: boolean;
+  },
 ) {
   const evidence = resolved.evidence.kind;
   if (evidence === "absent")
     return withShutdownObservations({
       changed: false,
       services: [],
-      volumesRemoved: false,
+      volumesRemoved: { ...noVolumesRemoved },
       cleanup: "routes" as const,
     });
   if (options.intent === "stop" && (yield* resolved.provider.getStatus).state === "idle") {
@@ -238,7 +249,7 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
       return withShutdownObservations({
         changed: false,
         services: [],
-        volumesRemoved: false,
+        volumesRemoved: { ...noVolumesRemoved },
         cleanup: "routes" as const,
       });
     const target = {
@@ -251,7 +262,7 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
     return withShutdownObservations({
       changed: true,
       services: [],
-      volumesRemoved: false,
+      volumesRemoved: { ...noVolumesRemoved },
       cleanup: "routes" as const,
       routes: withdrawal.kind,
     });
@@ -270,7 +281,13 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
   }
   const events = yield* EventService;
   const app = globalTeardownAppRef(resolved);
-  const payload = { scope: "global" as const, app, evidence, purge: options.volumes };
+  const payload = {
+    scope: "global" as const,
+    app,
+    evidence,
+    volumes: options.volumes,
+    purge: options.purge === true,
+  };
   yield* events.publish(PreGlobalDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
   const result = yield* withDestroyProgress({
     events,

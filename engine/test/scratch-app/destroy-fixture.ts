@@ -152,7 +152,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     destroy: (_target: unknown, request: { readonly volumes: boolean; readonly removeState?: boolean }) =>
       Effect.sync(() => {
         calls.push(request.removeState ? `destroy:${request.volumes}` : "stop");
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }).pipe(
         Effect.flatMap((outcome) =>
           options.fail && request.removeState

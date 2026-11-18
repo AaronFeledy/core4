@@ -1,6 +1,14 @@
 import { basename } from "node:path";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { AbsolutePath, OwnedResourcesCleanupResult, ResourceOwnership } from "@lando/sdk/schema";
+import {
+  type AbsolutePath,
+  type OwnedResourcesCleanupResult,
+  type ResourceOwnership,
+  type VolumeRemovalCounts,
+  addVolumeRemovalCounts,
+  noVolumesRemoved,
+  volumesRemovedAny,
+} from "@lando/sdk/schema";
 import { type DestroyOptions, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
@@ -43,7 +51,7 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
             Effect.succeed<OwnedResourcesCleanupResult>({
               servicesRemoved: [],
               networksRemoved: 0,
-              volumesRemoved: 0,
+              volumesRemoved: { ...noVolumesRemoved },
             });
         return yield* Effect.fail(
           new ProviderUnavailableError({
@@ -62,12 +70,12 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
     const result: {
       servicesRemoved: Array<OwnedResourcesCleanupResult["servicesRemoved"][number]>;
       networksRemoved: number;
-      volumesRemoved: number;
+      volumesRemoved: VolumeRemovalCounts;
       skipped: Array<NonNullable<OwnedResourcesCleanupResult["skipped"]>[number]>;
     } = {
       servicesRemoved: [],
       networksRemoved: 0,
-      volumesRemoved: 0,
+      volumesRemoved: { ...noVolumesRemoved },
       skipped: [],
     };
     yield* runAllAndMergeFailures(
@@ -77,7 +85,7 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
             Effect.sync(() => {
               result.servicesRemoved.push(...removed.servicesRemoved);
               result.networksRemoved += removed.networksRemoved;
-              result.volumesRemoved += removed.volumesRemoved;
+              result.volumesRemoved = addVolumeRemovalCounts(result.volumesRemoved, removed.volumesRemoved);
               result.skipped.push(...(removed.skipped ?? []));
             }),
           ),
@@ -107,4 +115,4 @@ export const tearDownOwnedResources = Effect.fnUntraced(function* (
 });
 
 export const ownedCleanupChanged = (result: OwnedResourcesCleanupResult): boolean =>
-  result.servicesRemoved.length > 0 || result.networksRemoved > 0 || result.volumesRemoved > 0;
+  result.servicesRemoved.length > 0 || result.networksRemoved > 0 || volumesRemovedAny(result.volumesRemoved);

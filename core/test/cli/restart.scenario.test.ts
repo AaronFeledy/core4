@@ -248,7 +248,7 @@ const makeRestartLayer = (
     destroy: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options });
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     inspect: (target) =>
       Effect.succeed({

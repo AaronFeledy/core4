@@ -9,7 +9,9 @@ import type {
   AppPlan,
   OwnedResourcesCleanupResult,
   ServiceShutdownObservation,
+  VolumeRemovalCounts,
 } from "@lando/sdk/schema";
+import { addVolumeRemovalCounts, noVolumesRemoved } from "@lando/sdk/schema";
 import {
   type AppliedOrphanGroup,
   EventService,
@@ -37,7 +39,7 @@ export interface OrphanTeardownResult {
   readonly app: string;
   /** Exactly the services whose container the provider stopped and removed. */
   readonly services: ReadonlyArray<string>;
-  readonly volumesRemoved: boolean;
+  readonly volumesRemoved: VolumeRemovalCounts;
   readonly ownedChanged: boolean;
   /** Provider-contributed shutdown facts; omitted when no removal supplied observations. */
   readonly shutdownObservations?: readonly ServiceShutdownObservation[];
@@ -96,7 +98,7 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
       const volumeClasses = teardownVolumeClasses(input.options);
       const services: string[] = [];
       const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [];
-      let volumesRemoved = false;
+      const volumesRemoved: { data: number; cache: number } = { ...noVolumesRemoved };
       for (const group of input.groups) {
         const plan = selectionPlan(group, input.root);
         const ref = { id: group.appId, root: input.root };
@@ -118,7 +120,7 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
               if (volumeClass === "data" && isGlobalScopedVolume(volume.labels)) continue;
               if (!volumeClasses.includes(volumeClass)) continue;
               yield* provider.removeVolume(volume.ref, generation);
-              volumesRemoved = true;
+              volumesRemoved[volumeClass] += 1;
             }
           }).pipe(
             Effect.tapError((error) =>
@@ -152,7 +154,7 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
         {
           app: String(input.groups[0]?.appId ?? ""),
           services: [...new Set([...services, ...owned.servicesRemoved])],
-          volumesRemoved: volumesRemoved || owned.volumesRemoved > 0,
+          volumesRemoved: addVolumeRemovalCounts(volumesRemoved, owned.volumesRemoved),
           ownedChanged: ownedCleanupChanged(owned),
         },
         ...observationSources,

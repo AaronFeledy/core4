@@ -19,7 +19,7 @@ test.each([false, true])(
       destroy: () =>
         Effect.sync(() => {
           mutations += 1;
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
       removeVolume: () =>
         Effect.sync(() => {

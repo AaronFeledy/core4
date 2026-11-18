@@ -148,7 +148,11 @@ const pruneAppsGc = Effect.fn("AppOperation.pruneAppsGc")(function* (
             outcome: "retained" as const,
             reason: "Evidence changed after confirmation; run apps:gc again.",
           };
-        const destroyed = yield* destroyAppAtRoot(candidate.root, { ...options, yes: true });
+        const destroyed = yield* destroyAppAtRoot(
+          candidate.root,
+          { ...options, yes: true },
+          "lando apps:gc --prune",
+        );
         const remaining = yield* scanMissingAppRoots();
         if (remaining.scans.some((scan) => candidate.providers.includes(scan.providerId) && !scan.complete))
           return {
