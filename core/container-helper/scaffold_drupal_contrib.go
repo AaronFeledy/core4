@@ -62,8 +62,7 @@ func (o drupalContribOptions) extensionPath(location string) string {
 }
 
 func runDrupalContribSync(args []string, streams helperIO, crash func(string)) int {
-	const command = drupalContribSyncCommand
-	o, err := parseDrupalContribArgs("lando-"+command, args, streams.env)
+	o, err := parseDrupalContribArgs("lando-"+drupalContribSyncCommand, args, streams.env)
 	if err != nil {
 		return scaffoldResult(err, streams)
 	}
@@ -76,9 +75,9 @@ func runDrupalContribSync(args []string, streams helperIO, crash func(string)) i
 	}
 	defer lock.release()
 	s := newScaffold(
-		command,
+		drupalContribSyncCommand,
 		"Drupal contrib",
-		command,
+		drupalContribSyncCommand,
 		fmt.Sprintf("Drupal site at %s is up to date.", o.appRoot),
 		drupalContribOutputs,
 		o.appRoot,
