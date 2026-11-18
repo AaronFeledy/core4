@@ -2,19 +2,12 @@ name: adminer-remove
 services:
   db:
     type: postgres
-    creds:
-      user: lando
-      database: adminer-remove
-      password: local-development-only
   adminer:
     type: compose
-    image: adminer:5
+    image: adminer:6
     appMount: false
     endpoints:
       - _tag: internal
         name: ui
         protocol: http
         port: 8080
-    dependsOn:
-      db:
-        condition: service_healthy

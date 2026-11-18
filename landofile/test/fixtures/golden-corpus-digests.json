@@ -2,19 +2,19 @@
   "fixtures": [
     {
       "fixture": "docs/guides/adminer/fixtures/adminer-demo",
-      "digest": "4c5fdcf2aed9e3c8bef83ee028e6a6cc034329113d19cb59986e314bfb3b2a10"
+      "digest": "c38e2e2e796eba4065ba69dc537296ca6d9f498c8cb37a4771ddce50d00befd4"
     },
     {
       "fixture": "docs/guides/adminer/fixtures/adminer-mariadb",
-      "digest": "c5876f3ec0fc7b699bc2f73d1203fc73102c48b5426689fcaa1d65c901245913"
+      "digest": "e092151f8c7005f11d2d659dad9c01e2d0d2164189a249a03f250f4fab1c89bb"
     },
     {
       "fixture": "docs/guides/adminer/fixtures/adminer-remove",
-      "digest": "1428add89ce80c0dc8ffef13324951fa53714377f102ead3cc168538316902d8"
+      "digest": "373477dd5d078c35d5f550cf78e54facb7929737ef355cfc0db6ad71cf151318"
     },
     {
       "fixture": "docs/guides/adminer/fixtures/adminer-sqlite",
-      "digest": "eae0a8279fddbc1ff3e106819eec5d99684781079699c4b5be71a0d08c7ab063"
+      "digest": "147110a55a8ff0e86af2178293d951c6d8ec9cc2e02e8e77b47e3a9629c48426"
     },
     {
       "fixture": "docs/guides/apache/fixtures/apache-demo",

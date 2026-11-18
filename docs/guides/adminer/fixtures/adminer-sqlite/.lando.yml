@@ -7,9 +7,9 @@ services:
       path: data/site.sqlite
   adminer:
     type: compose
-    image: adminer:5
+    image: adminer:6
     volumes:
-      - ./login-password-less.php:/var/www/html/plugins-enabled/login-password-less.php
+      - ./adminer-password.php:/var/www/html/plugins-enabled/adminer-password.php
     endpoints:
       - _tag: internal
         name: ui
