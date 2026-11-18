@@ -117,8 +117,7 @@ export const mergeAppsListEntries = (entries: ReadonlyArray<AppsListEntry>): App
   const cacheRows = [...byIdentity.entries()].filter(([, entry]) => entry.providerId === "cache");
   for (const [key, entry] of cacheRows) {
     const owner = [...byIdentity.entries()].find(
-      ([otherKey, other]) =>
-        otherKey !== key &&
+      ([, other]) =>
         other.providerId !== "cache" &&
         other.appId === entry.appId &&
         other.appRoot === entry.appRoot &&
@@ -128,17 +127,7 @@ export const mergeAppsListEntries = (entries: ReadonlyArray<AppsListEntry>): App
     byIdentity.set(owner[0], mergeEntries(owner[1], entry));
     byIdentity.delete(key);
   }
-  const merged = [...byIdentity.values()];
-  return merged.filter((entry) => {
-    if (entry.providerId !== "cache" || entry.appRoot === "") return true;
-    return !merged.some(
-      (other) =>
-        other.providerId !== "cache" &&
-        other.appId === entry.appId &&
-        other.appRoot === entry.appRoot &&
-        entryKind(other) === entryKind(entry),
-    );
-  });
+  return [...byIdentity.values()];
 };
 
 const planLikeToEntry = (value: unknown, fallbackProvider: string): AppsListEntry | undefined => {
