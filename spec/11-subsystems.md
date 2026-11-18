@@ -266,7 +266,7 @@ The bundled SSH sidecar declares a lifecycle readiness command through its runti
 
 `RetryPolicy`, `ProbeSpec`, `ProbeOutcome`, `ProbeResult`, `runProbe`, and `toSchedule` form a pure, non-pluggable SDK contract.
 
-The provider healthy-dependency consumer (§5.3, §6.7) may privately settle its retry loop on definitive termination or exceptional failure. Neither counts as readiness. The command timeout bounds execution and the start-period deadline bounds the full attempt including its observation. Propagate exceptional causes received by the gate. Timeout cancellation does not guarantee that losing attempts' cleanup failures reach the gate.
+The provider healthy-dependency consumer (§5.3, §6.7) may privately settle its retry loop on definitive termination or exceptional failure. Neither counts as readiness. The command timeout bounds execution and the start-period deadline bounds the full attempt including its observation. Deadlines initiate cancellation and MUST join the interrupted attempt before classifying a timeout. Cleanup failures and defects MUST propagate, as must independent interruption. The detailed probe runner classifies completed values and propagates the error channel; it does not return evidence from an attempt cut off by a deadline.
 
 - `runProbe` MUST be deterministic under Effect `TestClock`, stop on `green`, retry `yellow` and `red` by policy, and return the final `ProbeResult` when bounded attempts or deadline are exhausted. Consumers decide whether non-green is fatal.
 - The primitive performs no IO, logging, or redaction. Consumers MUST redact `ProbeResult.lastError` through `RedactionService` before events, transcripts, or info output.

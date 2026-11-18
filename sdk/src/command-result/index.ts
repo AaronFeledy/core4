@@ -19,6 +19,8 @@ export {
   mapStreamFailures,
   mergeFailure,
   primaryFailureReason,
+  raceJoined,
+  withDeadline,
 } from "./failure.ts";
 
 import type { CommandTrace, CommandWarning, DeprecationUse } from "@lando/sdk/schema";

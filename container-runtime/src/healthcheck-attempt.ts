@@ -1,3 +1,4 @@
+import { raceJoined } from "@lando/sdk/command-result";
 import { HealthcheckTargetUnsupportedError, ProviderConfigError } from "@lando/sdk/errors";
 import {
   type AppPlan,
@@ -61,7 +62,7 @@ export const validateHealthcheckExecution = Effect.fnUntraced(function* (
 export const interruptOnAbort = <A, E, R>(effect: Effect.Effect<A, E, R>, signal?: AbortSignal) => {
   if (signal === undefined) return effect;
   if (signal.aborted) return Effect.interrupt;
-  return Effect.raceFirst(
+  return raceJoined(
     effect,
     Effect.callback<never>((resume) => {
       const abort = () => resume(Effect.interrupt);

@@ -1,3 +1,4 @@
+import { withDeadline } from "@lando/sdk/command-result";
 import { type ProbeError, type ProbeResult, runProbe } from "@lando/sdk/probe";
 import type { HealthcheckPlan } from "@lando/sdk/schema";
 import { Duration, Effect } from "effect";
@@ -8,10 +9,9 @@ export const runHealthcheckProbe = Effect.fn("HealthcheckProbe.run")(function* <
   onTimeout: Effect.Effect<"red", never, R2>,
 ): Effect.fn.Return<ProbeResult, ProbeError, R | R2> {
   const { plan, id } = input;
-  const bounded = Effect.timeoutOrElse(attempt, {
-    duration: Duration.seconds(plan.timeoutSeconds),
-    orElse: () => onTimeout,
-  });
+  const bounded = withDeadline(attempt, Duration.seconds(plan.timeoutSeconds)).pipe(
+    Effect.flatMap((exit) => (exit._tag === "TimedOut" ? onTimeout : Effect.succeed(exit.value))),
+  );
   return yield* runHealthcheckPhases({ id, plan }, bounded, (value) => value === "green");
 });
 
