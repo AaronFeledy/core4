@@ -35,9 +35,9 @@ export const NpmIndexRecord = Schema.Struct({
   shasum: Schema.optionalKey(Schema.String),
   tarballDigests: Schema.optionalKey(
     Schema.Struct({
-      sha224: Schema.String,
-      sha384: Schema.String,
-      sha512: Schema.String,
+      sha224: Schema.String.check(Schema.isPattern(/^[a-f\d]{56}$/u)),
+      sha384: Schema.String.check(Schema.isPattern(/^[a-f\d]{96}$/u)),
+      sha512: Schema.String.check(Schema.isPattern(/^[a-f\d]{128}$/u)),
     }),
   ),
 });
