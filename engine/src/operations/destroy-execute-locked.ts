@@ -205,7 +205,7 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
       }
       if (fileSync !== undefined && !targetRetired) yield* fileSync.complete;
       if (plan.missingStart !== undefined) {
-        yield* plan.missingStart.removeTargets;
+        volumesRemoved = addVolumeRemovalCounts(volumesRemoved, yield* plan.missingStart.removeTargets);
         yield* plan.missingStart.complete;
         changed = true;
       }

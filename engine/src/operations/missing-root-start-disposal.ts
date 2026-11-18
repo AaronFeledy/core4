@@ -1,6 +1,12 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { FileSyncStopError } from "@lando/sdk/errors";
-import { AppId, type AppRef, ProviderId } from "@lando/sdk/schema";
+import {
+  AppId,
+  type AppRef,
+  ProviderId,
+  type VolumeRemovalCounts,
+  noVolumesRemoved,
+} from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { TeardownProvider } from "../providers/app-placement.ts";
@@ -111,28 +117,28 @@ export const prepareMissingRootStartDisposal = Effect.fn("AppOperation.prepareMi
       // re-observe every target and skip only explicit absence; removeVolume still pins the
       // generation, and a target that reappeared after preflight keeps the journal.
       removeTargets: options.volumes
-        ? Effect.forEach(
-            targets,
-            ({ target, volume }) =>
-              Effect.gen(function* () {
-                const located = yield* provider.locateVolume({
-                  app: AppId.make(record.appId),
-                  store: target.volumeName,
-                });
-                if (located.nativeName !== target.volumeName || located.presence === undefined)
-                  return yield* Effect.fail(
-                    failure(`The presence of file-sync target ${target.volumeName} cannot be verified.`),
-                  );
-                if (located.presence === "absent") return;
-                if (volume?.identity === undefined)
-                  return yield* Effect.fail(
-                    failure(`File-sync target ${target.volumeName} appeared after its absence was verified.`),
-                  );
-                yield* provider.removeVolume(volume.ref, volume.identity.generation);
-              }),
-            { discard: true },
-          )
-        : Effect.void,
+        ? Effect.gen(function* () {
+            let data = 0;
+            for (const { target, volume } of targets) {
+              const located = yield* provider.locateVolume({
+                app: AppId.make(record.appId),
+                store: target.volumeName,
+              });
+              if (located.nativeName !== target.volumeName || located.presence === undefined)
+                return yield* Effect.fail(
+                  failure(`The presence of file-sync target ${target.volumeName} cannot be verified.`),
+                );
+              if (located.presence === "absent") continue;
+              if (volume?.identity === undefined)
+                return yield* Effect.fail(
+                  failure(`File-sync target ${target.volumeName} appeared after its absence was verified.`),
+                );
+              yield* provider.removeVolume(volume.ref, volume.identity.generation);
+              data++;
+            }
+            return { data, cache: 0 } satisfies VolumeRemovalCounts;
+          })
+        : Effect.succeed(noVolumesRemoved),
       complete:
         !options.volumes && record.targets.length > 0
           ? Effect.void
