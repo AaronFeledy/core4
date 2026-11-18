@@ -630,6 +630,7 @@ A non-SQL type may publish `nonSqlCreds: ServiceCreds` instead of `connection`. 
 `via` is `apache` by default, `fpm`, or `cli`. Modes select compatible artifacts and reject incompatible keys at planning. FPM exposes its service endpoint for a sibling web server; CLI has no implicit HTTP server.
 
 `composer` accepts a version, `false`, or `{ version, packages }`; all forms remain supported. Versions and packages are validated, checksum-pinned, deterministically ordered, and included in `buildKey`.
+Stock PHP services with Composer enabled mount the shared `composer` cache store (`lando-cache-composer`) at `/var/lib/lando/composer-cache` and default `COMPOSER_CACHE_DIR` to that path unless the service environment sets it.
 
 `xdebug` accepts `false`, `true`, or modes. Enabled Xdebug contributes `lando xdebug on|off|status`, sets the managed client host to `debugger.lando.internal` (not `host.lando.internal`), and relies on global `debugger.host` (§7.5, §10.1) for the alias target; environment variables alone MUST NOT be documented as enabling it, and `environment.XDEBUG_CONFIG` MUST NOT be documented as the WSL-to-Windows fix.
 Explicit `lando xdebug status` MUST attempt a one-second PHP TCP connection and close immediately, reporting TCP reachability or the failure reason without claiming DBGp acceptance or changing exit status on connection failure; hostname resolution MUST be bounded, and `on`, `off`, ordinary execution, and lifecycle operations MUST NOT run this diagnostic.
