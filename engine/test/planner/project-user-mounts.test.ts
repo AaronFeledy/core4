@@ -38,6 +38,33 @@ const tmpfs = (options?: string): TmpfsMountPlan => ({
 });
 
 describe("projectUserVolumeTrees", () => {
+  test("seeds writable service caches with the realized project user ids", () => {
+    const cache = {
+      ...volume("/var/cache/packages", "lando-cache-packages"),
+      origin: "service",
+    } as const satisfies VolumeMountPlan;
+    const trees = projectUserVolumeTrees({
+      mounts: [
+        cache,
+        { ...cache, target: target("/var/cache/read-only"), readOnly: true },
+        { ...cache, target: target("/var/cache/authored"), origin: "authored" },
+        { ...volume("/var/lib/data", "service-data"), origin: "service" },
+      ],
+      cacheStores: new Set(["lando-cache-packages"]),
+      projectUser: { name: "app", uid: 1001, gid: 1002 },
+    });
+
+    expect(dataTreeOwnershipStep(trees)).toMatchObject({
+      phase: "build",
+      user: "root",
+      command: [
+        "sh",
+        "-c",
+        "set -eu; mkdir -p '/var/cache/packages'; chown -R '1001:1002' '/var/cache/packages'; chmod 0770 '/var/cache/packages'",
+      ],
+    });
+  });
+
   test("prepares a fresh derived volume for the project user ids", () => {
     expect(
       projectUserVolumeTrees({
