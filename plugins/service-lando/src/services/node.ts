@@ -2,75 +2,32 @@ import { resolve } from "node:path";
 import type { ServiceTypeError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type {
-  ServiceFeatureContext,
-  ServiceFeatureDefinition,
   ServiceType,
   ServiceTypeInput,
   ServiceTypeProjectFileDeclaration,
   ServiceTypeProjectFileInput,
   ServiceTypeResolution,
 } from "@lando/sdk/services";
-import { Effect, Schema } from "effect";
-import {
-  ServiceConfigIssue,
-  rootIdentity,
-  serviceFeatureApply,
-  serviceFeatureValidateEffective,
-  serviceTypeResolve,
-} from "./_feature-helpers.ts";
-
-import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
-import {
-  type ListenerContract,
-  applicationAuthority,
-  assertListenerConfig,
-  plannedPort,
-  servicePortEndpoints,
-} from "./_port-helpers.ts";
-import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { type Effect, Schema } from "effect";
+import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
+import { normalizeNpmGlobals } from "./_package-specs.ts";
+import { NODE_FEATURE_ID, artifactFor } from "./node-feature.ts";
 import { resolveNodeInference } from "./node-inference.ts";
-import {
-  NodePackageManagerConfig,
-  applyProvisionedGlobals,
-  isProvisionedPackageManager,
-  packageManagerConfigFor,
-  packageManagerProvenance,
-} from "./node-package-manager.ts";
+import { applyProvisionedGlobals, packageManagerConfigFor } from "./node-package-manager.ts";
 import { resolveNodePackageManager } from "./node-package-manager-declaration.ts";
-import {
-  packageManagerBuildStep,
-  validatePackageManagerDistribution,
-} from "./node-package-manager-install.ts";
+import { validatePackageManagerDistribution } from "./node-package-manager-install.ts";
 import { nodeManagerTooling } from "./node-tooling.ts";
 import { NODE_ARTIFACTS, SUPPORTED_NODE_VERSIONS, type SupportedNodeVersion } from "./node-versions.ts";
 
-export const NODE_FEATURE_ID = "service-lando.node" as const;
-export const NODE_FEATURE_PRIORITY = 600;
-export const NODE_GLOBALS_STEP_ID = "service-lando.node:globals" as const;
-
-// The kernel drops default-disposition signals to PID 1, so the idle process handles them itself.
-const DEFAULT_COMMAND = [
-  "node",
-  "-e",
-  'process.on("SIGTERM",()=>process.exit(0));process.on("SIGINT",()=>process.exit(0));setInterval(()=>{},2147483647);',
-] as const;
-export const DEFAULT_PORT = 3000;
-export const NODE_LISTENER = {
-  port: DEFAULT_PORT,
-  daemon: "Node.js",
-  when: "All Node.js services; application-owned listener",
-  variables: ["PORT"],
-} as const satisfies ListenerContract;
+export {
+  DEFAULT_PORT,
+  NODE_FEATURE_ID,
+  NODE_FEATURE_PRIORITY,
+  NODE_GLOBALS_STEP_ID,
+  NODE_LISTENER,
+  nodeServiceFeature,
+} from "./node-feature.ts";
 export const APP_MOUNT_TARGET = "/app";
-
-const PackageEntrySchema = Schema.Tuple([Schema.String, Schema.String]);
-
-const NodeFeatureConfigSchema = Schema.Struct({
-  version: Schema.String,
-  packageManager: Schema.optionalKey(NodePackageManagerConfig),
-  globals: Schema.Array(PackageEntrySchema),
-});
-type NodeFeatureConfig = typeof NodeFeatureConfigSchema.Type;
 
 const REMEDIATION_VERSION = (requested: string): string =>
   `Set type to one of: ${SUPPORTED_NODE_VERSIONS.map((v) => `node:${v}`).join(", ")} (got node:${requested}).`;
@@ -81,78 +38,16 @@ const validateVersion = (
   declaredType: string | undefined,
   fallback: SupportedNodeVersion,
 ): SupportedNodeVersion => {
-  if (declaredType === undefined) return fallback;
-  if (!declaredType.startsWith("node:")) return fallback;
+  if (!declaredType?.startsWith("node:")) return fallback;
   const version = declaredType.slice("node:".length);
-  if ((SUPPORTED_NODE_VERSIONS as ReadonlyArray<string>).includes(version)) {
-    return version as SupportedNodeVersion;
-  }
+  const supported = SUPPORTED_NODE_VERSIONS.find((candidate) => candidate === version);
+  if (supported !== undefined) return supported;
   throw new ServiceConfigIssue(
     ["type"],
     `Unsupported Node version "${version}".`,
     REMEDIATION_VERSION(version),
   );
 };
-
-const artifactFor = (version: string): string =>
-  Object.hasOwn(NODE_ARTIFACTS, version)
-    ? NODE_ARTIFACTS[version as SupportedNodeVersion]
-    : `node:${version}`;
-
-const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
-  [
-    "set -eux",
-    [
-      "npm install -g --force --no-fund --no-audit",
-      ...entries.map(([name, version]) => shellSingleQuote(`${name}@${version}`)),
-    ].join(" "),
-  ].join(" && ");
-
-const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
-  const service = ctx.normalizedConfig;
-  const { version, packageManager, globals } = ctx.config as NodeFeatureConfig;
-  const port = plannedPort(service, NODE_LISTENER);
-
-  ctx.setArtifact({ kind: "ref", ref: service.image ?? artifactFor(version) });
-  ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
-  ctx.addEnv("PORT", String(port));
-  ctx.setListenerAuthority(applicationAuthority(NODE_LISTENER, port));
-  applyAuthoredProcessFields(ctx, ["user"]);
-
-  applyAuthoredProcessFields(ctx, ["entrypoint"]);
-  if (globals.length > 0) {
-    ctx.addBuildStep({
-      id: NODE_GLOBALS_STEP_ID,
-      phase: "build",
-      command: nodeGlobalsCommandFor(globals),
-      user: "root",
-      buildKeyInputs: { globals },
-    });
-  }
-  if (packageManager !== undefined && isProvisionedPackageManager(packageManager.name)) {
-    ctx.addBuildStep(packageManagerBuildStep(packageManager));
-  }
-};
-
-export const nodeServiceFeature: ServiceFeatureDefinition = {
-  id: NODE_FEATURE_ID,
-  schema: NodeFeatureConfigSchema as Schema.Codec<unknown>,
-  priority: NODE_FEATURE_PRIORITY,
-  validateEffective: serviceFeatureValidateEffective(NODE_FEATURE_ID, (ctx) => {
-    assertListenerConfig(ctx.normalizedConfig, NODE_LISTENER);
-    return { handledServiceFields: [] };
-  }),
-  declareEndpoints: (ctx) =>
-    Effect.sync(() =>
-      servicePortEndpoints(ctx, { port: plannedPort(ctx.normalizedConfig, NODE_LISTENER), protocol: "http" }),
-    ),
-  apply: serviceFeatureApply(NODE_FEATURE_ID, "service-lando.node failed to apply", applyNodeFeature),
-};
-
-const normalizedService = (service: ServiceConfig, resolvedVersion: string): ServiceConfig => ({
-  ...service,
-  type: `node:${resolvedVersion}`,
-});
 
 /** Version inputs are declared only for bare `node`; every catalog type reads manifests for the manager. */
 const nodeProjectFiles = (
@@ -164,9 +59,7 @@ const nodeProjectFiles = (
   return [
     ...(includeVersionInputs ? [{ path: `${prefix}.nvmrc`, maxBytes: PROJECT_FILE_LIMIT }] : []),
     { path: `${prefix}package.json`, maxBytes: PROJECT_FILE_LIMIT },
-    // A workspace package normally inherits packageManager from the monorepo
-    // root, so the app-root manifest is a declared input only when the service
-    // points elsewhere. At "." the entry above already is the app-root file.
+    // A nested package can inherit its workspace root's manager.
     ...(packageRoot === "." ? [] : [{ path: "package.json", maxBytes: PROJECT_FILE_LIMIT }]),
   ];
 };
@@ -198,7 +91,7 @@ const resolveCatalogNode = (
     }));
     return {
       base: "lando" as const,
-      normalizedConfig: normalizedService(input.service, selected.version),
+      normalizedConfig: { ...input.service, type: `node:${selected.version}` },
       features: [
         {
           id: NODE_FEATURE_ID,
@@ -221,20 +114,7 @@ const resolveCatalogNode = (
               }),
           artifact: artifactFor(selected.version),
           files,
-          ...(catalogOwned
-            ? {
-                packageManager:
-                  packageManager === undefined || packageManagerConfig === undefined
-                    ? null
-                    : {
-                        ...packageManagerProvenance(packageManager),
-                        ...(packageManagerConfig.integrity === undefined
-                          ? {}
-                          : { integrity: packageManagerConfig.integrity }),
-                        launcher: packageManagerConfig.launcher,
-                      },
-              }
-            : {}),
+          ...(catalogOwned ? { packageManager: packageManagerConfig ?? null } : {}),
         },
       },
     };

@@ -39,21 +39,6 @@ export interface NodePackageManagerSelection {
   readonly sourceField: NodePackageManagerSourceField;
 }
 
-/** Provenance written to `metadata.node`; deliberately free of file contents. */
-export const packageManagerProvenance = (
-  selection: NodePackageManagerSelection,
-): {
-  readonly name: string;
-  readonly version: string;
-  readonly sourcePath: string;
-  readonly sourceField: NodePackageManagerSourceField;
-} => ({
-  name: selection.name,
-  version: selection.version,
-  sourcePath: selection.sourcePath,
-  sourceField: selection.sourceField,
-});
-
 export const packageManagerConfigFor = (
   selection: NodePackageManagerSelection,
 ): NodePackageManagerConfig => ({

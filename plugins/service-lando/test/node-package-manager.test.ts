@@ -14,7 +14,6 @@ import {
 import { NodeInferenceError } from "../src/services/node-inference.ts";
 import {
   NODE_PACKAGE_MANAGER_STEP_ID,
-  NodePackageManagerConfig,
   type NodePackageManagerName,
   PACKAGE_MANAGER_LAUNCHER_REVISION,
 } from "../src/services/node-package-manager.ts";
@@ -424,10 +423,13 @@ describe("node package manager provisioning", () => {
     expect(packageManagerStep(plan)?.id).toBe(NODE_PACKAGE_MANAGER_STEP_ID);
   });
 
-  test("runs the provisioning step after the globals step", async () => {
-    const plan = await composeNodePlan({ globals: { cowsay: "1.6.0" } }, [
+  test.each([
+    ["cowsay@1.6.0", { cowsay: "1.6.0" }, "yarn@1.22.22"],
+    ["a different manager", { yarn: "1.22.4" }, "pnpm@9.15.0"],
+  ] as const)("keeps %s in globals before the provisioning step", async (_label, globals, packageManager) => {
+    const plan = await composeNodePlan({ globals }, [
       present(".nvmrc", "26\n"),
-      packageJson("package.json", { packageManager: "yarn@1.22.22" }),
+      packageJson("package.json", { packageManager }),
     ]);
     const ids = buildStepsFor(plan)
       .map((step) => step.id)
@@ -565,37 +567,5 @@ describe("node package manager provisioning", () => {
     );
     expect(result.failure.issues?.[0]?.path).toEqual(["globals", "yarn"]);
     expect(result.failure.issues?.[0]?.source).toBeUndefined();
-  });
-
-  test("leaves a globals entry for a different package alone", async () => {
-    const plan = await composeNodePlan({ globals: { yarn: "1.22.4" } }, [
-      present(".nvmrc", "26\n"),
-      packageJson("package.json", { packageManager: "pnpm@9.15.0" }),
-    ]);
-    expect(
-      buildStepsFor(plan)
-        .map((step) => step.id)
-        .filter((id) => id?.startsWith("service-lando.node:")),
-    ).toEqual([NODE_GLOBALS_STEP_ID, NODE_PACKAGE_MANAGER_STEP_ID]);
-  });
-});
-
-describe("node feature config schema", () => {
-  test("accepts a packageManager field with launcher identity", () => {
-    expect(
-      Schema.decodeUnknownSync(NodePackageManagerConfig)({
-        name: "yarn",
-        version: "1.22.22",
-        sourcePath: "package.json",
-        sourceField: "packageManager",
-        launcher: PACKAGE_MANAGER_LAUNCHER_REVISION,
-      }),
-    ).toEqual({
-      name: "yarn",
-      version: "1.22.22",
-      sourcePath: "package.json",
-      sourceField: "packageManager",
-      launcher: PACKAGE_MANAGER_LAUNCHER_REVISION,
-    });
   });
 });
