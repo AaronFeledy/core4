@@ -1,0 +1,138 @@
+---
+id: drupal-production-copy
+provider: test
+timeout: 900000
+tags: [docs, recipes, drupal, drush, mariadb, sanitize]
+---
+
+# Copy a production Drupal database into Lando
+
+Debugging with real content beats guessing, but a production database also carries real users' email addresses and password hashes. Dump it with Drush on the server, import it with `lando db:import`, then scrub it with `lando drush sql:sanitize` before you do anything else.
+
+This page starts from a site on the Drupal recipe, such as the one [Run the Drupal recipe](./drupal-workflow.mdx) builds. Run the `lando` commands from the app directory on your host.
+
+## Dump the production database
+
+On the production server, run the site's own Drush from its project root:
+
+```sh
+vendor/bin/drush sql:dump --gzip --structure-tables-list='cache,cache_*,sessions,watchdog' --result-file=/tmp/prod.sql
+```
+
+`--gzip` compresses the dump and adds `.gz` to the name, so Drush writes `/tmp/prod.sql.gz`. `--structure-tables-list` keeps the table definitions for caches, sessions, and the log but skips their rows, which you don't need locally and which makes the dump smaller.
+
+Copy `/tmp/prod.sql.gz` from the server into your app directory, next to `.lando.yml`, then delete it from the server's `/tmp`.
+
+## Snapshot, then import
+
+Take a snapshot of your local database first, so you can go back to it:
+
+```sh
+lando db:snapshot --label before-prod
+lando db:import prod.sql.gz --yes
+```
+
+`db:import` gunzips the `.gz` file and runs it in the recipe's `database` service. A Drush dump drops and recreates every table it contains, so your local content in those tables is replaced. `--yes` answers the confirmation prompt.
+
+Bring the schema up to your local code and clear caches:
+
+```sh
+lando drush updatedb --yes
+lando drush cache:rebuild
+```
+
+`updatedb` runs any database updates your local code has that production hasn't applied yet. It prints `No pending updates.` when the two match.
+
+## Scrub user emails and passwords
+
+```sh
+lando drush sql:sanitize --yes
+lando drush sql:query "SELECT uid, mail FROM users_field_data"
+```
+
+Drush lists the operations before it runs them. By default it replaces every user's email with `user+<uid>@localhost.localdomain` and every password with the same random one, so no real address gets mail from your local site and no production password works. The query shows the new addresses, for example `user+1@localhost.localdomain` for the first account.
+
+`sql:sanitize` only knows about user data that Drush and your installed modules tell it about. A table your own code creates, such as a list of contact form leads, keeps its rows, so clear it yourself before you share the database.
+
+## Log in after sanitizing
+
+Nobody knows the new password, so log in with a one-time link:
+
+```sh
+lando drush user:login --name=admin
+```
+
+Drush prints a `/user/reset/1/...` link on your app's URL, including the fallback port, such as `:8443`, when Lando picked one. Open it in your browser to land on the admin account's edit page. Replace `admin` with the production admin's user name.
+
+## Go back to your local database
+
+```sh
+lando db:restore before-prod --yes
+```
+
+`db:restore` brings back the snapshot you took before the import. Lando stops the database while it copies the volume, then starts it again.
+
+<Guide>
+  <Scenario id="copy-and-sanitize" layer="e2e" tags={["@smoke"]} render={false} reason="Prove the dump, import, sanitize, one-time login, and restore steps on a real Drupal site">
+    <Step name="site">
+      <Run command="lando init --recipe drupal --name=drupal-prod-copy --yes" />
+      <Run command="lando start" />
+      <Run command="lando drupal-scaffold" />
+      <Run command="lando drush site:install standard --db-url=mysql://lando:lando@database/drupal-prod-copy --site-name=Prod --account-name=admin --account-mail=admin@example.com -y" />
+      <Run command="lando drush user:create editor --mail=editor@example.com --password=editor-e2e-only" />
+    </Step>
+    <Hidden reason="Add a custom table that sql:sanitize does not know about">
+      <Step name="custom-table">
+        <Run command={`lando drush sql:query "CREATE TABLE app_leads (email VARCHAR(64)); INSERT INTO app_leads VALUES ('lead@example.com')"`} />
+      </Step>
+    </Hidden>
+    <Hidden reason="Stand in for production: dump this site with the documented Drush flags, then change the local copy">
+      <Step name="production-dump">
+        <Run command="lando drush sql:dump --gzip --structure-tables-list='cache,cache_*,sessions,watchdog' --result-file=/app/prod.sql" />
+        <Verify command="lando exec appserver -- test -s prod.sql.gz" />
+        <Run command="lando drush user:cancel editor --delete-content -y" />
+      </Step>
+    </Hidden>
+    <Step name="import">
+      <Verify command="lando db:snapshot --label before-prod --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Verify command="lando db:import prod.sql.gz --yes --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Verify command={`lando drush sql:query "SELECT mail FROM users_field_data WHERE name='editor'"`} expect={{ stdout: { regex: "editor@example\\.com" } }} />
+      <Verify command="lando drush updatedb --yes" expect={{ stderr: { regex: "No pending updates" } }} />
+      <Verify command="lando drush cache:rebuild" />
+    </Step>
+    <Step name="sanitize">
+      <Run command="lando drush sql:sanitize --yes" />
+      <Verify command={`lando drush sql:query "SELECT uid, mail FROM users_field_data"`} expect={{ stdout: { regex: "user\\+1@localhost\\.localdomain[\\s\\S]*user\\+2@localhost\\.localdomain" } }} />
+      <Verify command={`lando drush sql:query "SELECT CONCAT('distinct=', COUNT(DISTINCT pass)) FROM users_field_data WHERE uid > 0"`} expect={{ stdout: { regex: "distinct=1" } }} />
+      <Verify command={`lando drush sql:query "SELECT email FROM app_leads"`} expect={{ stdout: { regex: "lead@example\\.com" } }} />
+    </Step>
+    <Step name="login">
+      <Verify command="lando drush user:login --name=admin" expect={{ stdout: { regex: "/user/reset/1/" } }} />
+    </Step>
+    <Hidden reason="Follow a one-time link inside appserver and read the admin edit page to prove the login works">
+      <Step name="login-request">
+        <Verify command={`lando exec appserver -- sh -c 'curl -s -o /dev/null -c /tmp/jar "$(vendor/bin/drush user:login --name=admin --uri=http://127.0.0.1 --no-browser)" && curl -s -b /tmp/jar http://127.0.0.1/user/1/edit'`} expect={{ stdout: { regex: "user\\+1@localhost\\.localdomain" } }} />
+      </Step>
+    </Hidden>
+    <Step name="restore">
+      <Verify command="lando db:restore before-prod --yes --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Verify command={`lando drush sql:query "SELECT CONCAT('editors=', COUNT(*)) FROM users_field_data WHERE name='editor'"`} expect={{ stdout: { regex: "editors=0" } }} />
+      <Verify command={`lando drush sql:query "SELECT mail FROM users_field_data WHERE uid=1"`} expect={{ stdout: { regex: "admin@example\\.com" } }} />
+    </Step>
+    <Hidden reason="Drupal's installer makes sites/default read-only, so give write back before the scenario dir is removed">
+      <Step name="writable-sites">
+        <Run command="lando exec appserver -- chmod -R u+w web/sites/default" />
+      </Step>
+    </Hidden>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --purge" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Import and export app databases](../tooling/db-import-export.mdx) for streaming dumps and snapshot details
+- [Run the Drupal recipe](./drupal-workflow.mdx)
+- [Capture outgoing mail](./drupal-workflow.mdx#capture-outgoing-mail) with Mailpit

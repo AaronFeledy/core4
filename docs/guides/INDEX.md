@@ -334,3 +334,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | local LLM with Ollama via Compose passthrough | `docs/guides/services/ollama.mdx` | Shipped |
 | - | - | profile PHP requests with XHProf and XHGui | `docs/guides/tooling/xhprof-xhgui.mdx` | Shipped |
 | - | - | Adminer service for Postgres, MySQL, MariaDB, and SQLite | `docs/guides/services/adminer.mdx` | Shipped |
+| - | - | copy a production Drupal database with Drush, sanitize it, and log in with a one-time link | `docs/guides/recipes/drupal-production-copy.mdx` | Shipped |
