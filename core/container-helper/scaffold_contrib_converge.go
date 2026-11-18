@@ -9,7 +9,9 @@ import (
 	"sort"
 )
 
-func convergeDrupalContrib(o drupalContribOptions, s *scaffold) error {
+// convergeDrupalContrib brings a built site in line with its inputs. It
+// reports an unchanged site unless this run just built it.
+func convergeDrupalContrib(o drupalContribOptions, s *scaffold, built bool) error {
 	streams := s.streams
 	site, err := readContribComposer(o.appRoot)
 	if err != nil {
@@ -26,6 +28,9 @@ func convergeDrupalContrib(o drupalContribOptions, s *scaffold) error {
 	}
 	changes := planContribChanges(previous, desired, site)
 	if len(changes.names) == 0 && drupalContribComplete(o.appRoot) {
+		if built {
+			return nil
+		}
 		_, err := fmt.Fprintln(streams.stdout, s.completeMessage)
 		return err
 	}
@@ -80,11 +85,14 @@ func planContribChanges(previous, desired contribSyncRecord, site contribCompose
 	changed := make(map[string]bool)
 	for _, dev := range []bool{false, true} {
 		for name, constraint := range desired.bucket(dev) {
-			if old, present := previous.bucket(dev)[name]; present && old == constraint {
+			// Unchanged means applied before and still declared that way, so an
+			// edit a failed update left in composer.json is reapplied too.
+			current, declared := site.bucket(dev)[name]
+			if old, applied := previous.bucket(dev)[name]; applied && old == constraint && declared && current == constraint {
 				continue
 			}
 			changed[name] = true
-			if current, present := site.bucket(dev)[name]; !present || current != constraint {
+			if !declared || current != constraint {
 				changes.require[dev] = append(changes.require[dev], name+":"+constraint)
 			}
 		}

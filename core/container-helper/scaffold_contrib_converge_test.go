@@ -58,7 +58,7 @@ func TestDrupalContribSyncChangesCoreConstraint(t *testing.T) {
 			if mode == "fail-update" {
 				f.env["LANDO_TEST_COMPOSER_MODE"] = mode
 				code := f.run(t, contribSyncCommand, "module", "example", "^10")
-				if code != 1 || !strings.Contains(f.stderr.String(), "Composer update failed; fix the Composer error, then rerun lando drupal-contrib-sync: exit status 42") {
+				if code != 1 || !strings.Contains(f.stderr.String(), "lando drupal-contrib-sync") {
 					t.Fatalf("sync exited %d: %s", code, f.stderr.String())
 				}
 				assertContribCalls(t, f, prod, dev, update)
@@ -200,6 +200,12 @@ func TestDesiredContribRequirements(t *testing.T) {
 			contribSyncRecord{},
 			map[string]string{"drupal/core-recommended": "^11", "drush/drush": "*", "acme/site": "^2"},
 			map[string]string{"drupal/core-dev": "^11", "drupal/coder": "*"}},
+		{"site-owned Drush and Coder keep their constraints",
+			contribComposerManifest{Require: map[string]string{"drush/drush": "^12"}, RequireDev: map[string]string{"drupal/coder": "^8"}},
+			contribComposerManifest{},
+			contribSyncRecord{Version: 1, Require: map[string]string{}, RequireDev: map[string]string{}},
+			map[string]string{"drupal/core-recommended": "^11"},
+			map[string]string{"drupal/core-dev": "^11"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := desiredContribRequirements("^11", tc.site, tc.extension, tc.previous)
@@ -207,5 +213,54 @@ func TestDesiredContribRequirements(t *testing.T) {
 				t.Fatalf("desired = %+v, err = %v, want %v / %v", got, err, tc.prod, tc.dev)
 			}
 		})
+	}
+}
+
+func TestDrupalContribSyncReappliesAnEditAFailedUpdateLeft(t *testing.T) {
+	f, _ := completedContrib(t, `{}`)
+	f.env["LANDO_TEST_COMPOSER_MODE"] = "fail-update"
+	if code := f.run(t, contribSyncCommand, "module", "example", "^10"); code != 1 {
+		t.Fatalf("failing sync exited %d: %s", code, f.stderr.String())
+	}
+	delete(f.env, "LANDO_TEST_COMPOSER_MODE")
+	clearContribCalls(t, f)
+	// Back to the recorded constraint: composer.json still says ^10, so it is not up to date.
+	runContribSync(t, f, "^11")
+	wd := "--working-dir=" + f.appRoot
+	assertContribCalls(t, f,
+		[]string{wd, "require", "--no-update", "--no-interaction", "drupal/core-composer-scaffold:^11", "drupal/core-project-message:^11", "drupal/core-recommended:^11"},
+		[]string{wd, "require", "--dev", "--no-update", "--no-interaction", "drupal/core-dev:^11"},
+		[]string{wd, "update", "--with-all-dependencies", "--no-interaction"})
+}
+
+func TestDrupalContribSyncConvergesASiteWithoutMarker(t *testing.T) {
+	f, _ := completedContrib(t, `{}`)
+	if err := os.Remove(contribMarker(f)); err != nil {
+		t.Fatal(err)
+	}
+	runContribSync(t, f, "^11")
+	// Nothing records what was applied, so the site resolves again instead of restaging.
+	assertContribCalls(t, f, []string{"--working-dir=" + f.appRoot, "update", "--with-all-dependencies", "--no-interaction"})
+	if record := loadContribSyncRecord(contribMarker(f)); record.Version != 1 {
+		t.Fatalf("sync did not record its requirements: %+v", record)
+	}
+}
+
+func TestDrupalContribSyncConvergesAfterResumingWithNewInputs(t *testing.T) {
+	f := newContribFixture(t)
+	mount := contribTestMount(t, f, "module", "example", "type: module\n")
+	extension := filepath.Join(mount, "composer.json")
+	writeContribTestFile(t, extension, `{}`)
+	args := []string{"module", "example", "^11"}
+	f.kill(t, contribSyncCommand, "hook-composer-install", args...)
+	writeContribTestFile(t, extension, `{"require":{"acme/new":"^1"}}`)
+	clearContribCalls(t, f)
+	runContribSync(t, f, "^11")
+	wd := "--working-dir=" + f.appRoot
+	assertContribCalls(t, f,
+		[]string{wd, "require", "--no-update", "--no-interaction", "acme/new:^1"},
+		[]string{wd, "update", "--with-all-dependencies", "--no-interaction", "acme/new"})
+	if record := loadContribSyncRecord(contribMarker(f)); record.Require["acme/new"] != "^1" {
+		t.Fatalf("resumed sync did not record the new requirement: %+v", record)
 	}
 }

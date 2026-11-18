@@ -84,19 +84,24 @@ func runDrupalContribSync(args []string, streams helperIO, crash func(string)) i
 		streams,
 		crash,
 	)
-	// A marked site with its manifest still on disk can repair missing
-	// outputs with Composer. A bare marker has no project to repair.
-	if pathExists(s.markerPath) && isRegularFile(filepath.Join(o.appRoot, "composer.json")) {
-		if pathExists(s.manifestPath) {
-			s.cleanup()
+	// A first build, or one resuming from its manifest, still converges
+	// afterwards: inputs may have changed since the generation it resumed.
+	// A site without a manifest always converges; with no usable marker
+	// record, that reapplies the extension's requirements in full.
+	built := false
+	if pathExists(s.manifestPath) || !isRegularFile(filepath.Join(o.appRoot, "composer.json")) {
+		var done *scaffoldAlreadyComplete
+		err := s.executeLocked(scaffoldOptions{
+			generate:     func(_ string, manifest *scaffoldManifest) error { return stageDrupalContrib(s, manifest, o) },
+			afterPromote: func(manifest *scaffoldManifest) error { return installDrupalContrib(s, manifest, o) },
+			complete:     drupalContribComplete,
+		})
+		if err != nil && !errors.As(err, &done) {
+			return scaffoldResult(err, streams)
 		}
-		return scaffoldResult(convergeDrupalContrib(o, s), streams)
+		built = err == nil
 	}
-	return scaffoldResult(s.executeLocked(scaffoldOptions{
-		generate:     func(_ string, manifest *scaffoldManifest) error { return stageDrupalContrib(s, manifest, o) },
-		afterPromote: func(manifest *scaffoldManifest) error { return installDrupalContrib(s, manifest, o) },
-		complete:     drupalContribComplete,
-	}), streams)
+	return scaffoldResult(convergeDrupalContrib(o, s, built), streams)
 }
 
 func (o drupalContribOptions) checkMount() error {

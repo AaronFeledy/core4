@@ -154,11 +154,11 @@ func desiredContribRequirements(constraint string, site, extension contribCompos
 			desired.bucket(dev)[key] = version
 		}
 	}
-	if !seen["drush/drush"] {
-		desired.Require["drush/drush"] = "*"
-	}
-	if !seen["drupal/coder"] {
-		desired.RequireDev["drupal/coder"] = "*"
+	for name, dev := range map[string]bool{"drush/drush": false, "drupal/coder": true} {
+		if seen[name] || previous.Version == 1 && site.declares(name) && !previous.manages(name) {
+			continue
+		}
+		desired.bucket(dev)[name] = "*"
 	}
 	return desired, nil
 }

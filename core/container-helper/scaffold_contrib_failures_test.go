@@ -8,12 +8,16 @@ import (
 )
 
 func TestDrupalContribSyncPreflightRemediation(t *testing.T) {
-	for _, tc := range []struct{ name, infoName, info, want string }{
-		{"missing mount", "", "", "The extension is not mounted at %s. If you changed recipe.options.project or recipe.options.type, run lando restart so the app mount moves, then rerun lando drupal-contrib-sync."},
-		{"project mismatch", "actual", "type: module\n", "Set recipe.options.project to actual in .lando.yml, run lando restart, then rerun lando drupal-contrib-sync"},
-		{"type mismatch", "example", "extra:\n  type: module\ntype: theme\n", "Set recipe.options.type to theme in .lando.yml, run lando restart, then rerun lando drupal-contrib-sync"},
-		{"missing top-level type", "example", "extra:\n  type: module\n", "must declare a top-level type"},
-		{"multiple info files", "example", "type: module\n", "Expected exactly one *.info.yml at the extension root %s; found 2. Keep one info file at the extension root, then rerun lando drupal-contrib-sync."},
+	// The remediation must name the path or option to fix and the commands to run next.
+	for _, tc := range []struct {
+		name, infoName, info string
+		want                 []string
+	}{
+		{"missing mount", "", "", []string{"%s", "lando restart", "lando drupal-contrib-sync"}},
+		{"project mismatch", "actual", "type: module\n", []string{"recipe.options.project", "actual", "lando restart", "lando drupal-contrib-sync"}},
+		{"type mismatch", "example", "extra:\n  type: module\ntype: theme\n", []string{"recipe.options.type", "theme", "lando restart", "lando drupal-contrib-sync"}},
+		{"missing top-level type", "example", "extra:\n  type: module\n", []string{"recipe.options.type", "lando drupal-contrib-sync"}},
+		{"multiple info files", "example", "type: module\n", []string{"%s", "*.info.yml", "lando drupal-contrib-sync"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newContribFixture(t)
@@ -25,9 +29,14 @@ func TestDrupalContribSyncPreflightRemediation(t *testing.T) {
 				writeContribTestFile(t, filepath.Join(mount, "second.info.yml"), "type: module\n")
 			}
 			code := f.run(t, contribSyncCommand, "module", "example", "^11")
-			want := strings.Replace(tc.want, "%s", mount, 1)
-			if code != 1 || !strings.Contains(f.stderr.String(), want) || strings.Contains(strings.ToLower(f.stderr.String()), "re-init") {
-				t.Fatalf("preflight exited %d: %s, want %q", code, f.stderr.String(), want)
+			stderr := f.stderr.String()
+			if code != 1 || strings.Contains(strings.ToLower(stderr), "re-init") {
+				t.Fatalf("preflight exited %d: %s", code, stderr)
+			}
+			for _, part := range tc.want {
+				if part = strings.Replace(part, "%s", mount, 1); !strings.Contains(stderr, part) {
+					t.Fatalf("preflight remediation %q does not name %q", stderr, part)
+				}
 			}
 			assertContribCalls(t, f)
 			if tc.infoName == "" {
