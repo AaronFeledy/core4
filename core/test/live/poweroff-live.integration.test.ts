@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { APP_LABEL, APP_ROOT_LABEL } from "@lando/container-runtime/labels";
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, appIdentityKey } from "@lando/sdk/schema";
@@ -9,7 +9,7 @@ import { quoteYamlScalar } from "@lando/sdk/yaml";
 import { Schema } from "effect";
 import { AppsListResultSchema } from "../../src/cli/commands/list.ts";
 import { requestJsonOnSocket } from "../../src/cli/commands/list-runtime-observation.ts";
-import { PoweroffResultSchema } from "../../src/cli/commands/poweroff.ts";
+import { PoweroffResultSchema, PoweroffStopError } from "../../src/cli/commands/poweroff.ts";
 import { ScratchListResultSchema, ScratchStartResultSchema } from "../../src/cli/commands/scratch.ts";
 import { decodeStart } from "./route-cli-live-support.ts";
 import { liveEnabled } from "./scanner-live-fixture.ts";
@@ -111,13 +111,7 @@ const failure = Schema.decodeUnknownSync(
       ok: Schema.Literal(false),
       error: Schema.Struct({
         _tag: Schema.Literal("PoweroffStopError"),
-        failures: Schema.Array(
-          Schema.Struct({
-            _tag: Schema.NonEmptyString,
-            message: Schema.String,
-            remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-          }),
-        ),
+        failures: PoweroffStopError.fields.failures,
       }),
     }),
   ),
@@ -132,6 +126,13 @@ const containers = Schema.decodeUnknownSync(
 test.skipIf(!liveEnabled)(
   "poweroff stops active apps with their hooks, removes scratch and orphan resources, and continues after a failed stop",
   async () => {
+    // The managed socket is tied to the test data root provisioned by the live job.
+    for (const key of ["LANDO_USER_DATA_ROOT", "LANDO_USER_CONF_ROOT", "LANDO_USER_CACHE_ROOT"] as const) {
+      const value = process.env[key];
+      if (value === undefined || !isAbsolute(value)) {
+        throw new TypeError(`Set ${key} to an absolute root dedicated to the live provider test.`);
+      }
+    }
     const paths = makeLandoPaths();
     const root = await realpath(await mkdtemp(join(tmpdir(), "lando-poweroff-live-")));
     const name = `poweroff-${crypto.randomUUID().slice(0, 12)}`;
@@ -268,10 +269,9 @@ test.skipIf(!liveEnabled)(
       const failed = await poweroff();
       expect(failed.exitCode, failed.stdout + failed.stderr).toBeGreaterThan(0);
       const errors = failure(failed.stdout).error.failures;
-      expect(
-        errors.some(({ message }) => message.includes(d.id) && message.includes(d.root)),
-        failed.stdout,
-      ).toBe(true);
+      expect(errors, failed.stdout).toMatchObject([
+        { kind: "user", appId: d.id, appRoot: d.root, _tag: "LandofileEventStepFailedError" },
+      ]);
       expect((await listApps(root)).find(({ appId }) => appId === a.id)?.status).toBe("stopped");
       expect(await hookCount(aLog)).toBe(aBefore + 2);
     } finally {
