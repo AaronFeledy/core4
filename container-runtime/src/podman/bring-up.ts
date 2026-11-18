@@ -1186,19 +1186,30 @@ const inspectStartedContainer = Effect.fnUntraced(function* (
   return { _tag: "Observed" as const, state: startObservation(inspected.body) };
 });
 
-const inspectDependency = (
+const sanitizeDependencyInspect = <A, E extends ProviderError>(
   deps: BringUpDeps,
-  target: { readonly plan: AppPlan; readonly service: ServicePlan; readonly nativeId: string },
+  inspect: Effect.Effect<A, E>,
 ) =>
   interruptOnAbort(
-    withDeadline(inspectStartedContainer(deps, target), Duration.seconds(1)).pipe(
-      Effect.map((checked) => (checked._tag === "Completed" ? checked.value : { _tag: "TimedOut" as const })),
+    inspect.pipe(
       Effect.catchCause((cause) =>
         Effect.failCause(mapDefectCause(cause, () => "Dependency inspect defect.")),
       ),
       mapFailures((error) => redactProviderError(error, deps.redactor, { cause: "omit" })),
     ),
     deps.options.signal,
+  );
+
+/** A sample taken while the gate still retries: a slow inspect is inconclusive, never fatal. */
+const inspectDependency = (
+  deps: BringUpDeps,
+  target: { readonly plan: AppPlan; readonly service: ServicePlan; readonly nativeId: string },
+) =>
+  sanitizeDependencyInspect(
+    deps,
+    withDeadline(inspectStartedContainer(deps, target), Duration.seconds(1)).pipe(
+      Effect.map((checked) => (checked._tag === "Completed" ? checked.value : { _tag: "TimedOut" as const })),
+    ),
   );
 
 const terminalDependency = (
@@ -1527,17 +1538,12 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       });
       if (waited._tag === "Missing") return { dependencyUnavailable: { reason: "missing" } };
-      const inspected = yield* inspectDependency(deps, { plan, service, nativeId });
+      // The completion verdict is final, so a slow engine gets the whole inspect rather than a sampling bound.
+      const inspected = yield* sanitizeDependencyInspect(
+        deps,
+        inspectStartedContainer(deps, { plan, service, nativeId }),
+      );
       if (inspected._tag === "Unavailable") return { dependencyUnavailable: { reason: inspected.reason } };
-      if (inspected._tag === "TimedOut")
-        return yield* Effect.fail(
-          new ProviderUnavailableError({
-            providerId: options.ctx.providerId,
-            operation: "waitForExit.inspect",
-            message: "Timed out verifying the dependency after its container wait.",
-            remediation: deps.remediation,
-          }),
-        );
       const observed = inspected.state;
       if (observed.status === "dead") {
         return { dependencyExit: { status: "dead", containerId: nativeId } };

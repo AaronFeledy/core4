@@ -652,14 +652,14 @@ test("a slow inspect after a completed wait still opens the completion gate", as
                   ),
                 );
                 return waited && input.path === `/containers/${name}/json`
-                  ? Effect.delay(response, "200 millis")
+                  ? Effect.delay(response, "5 seconds")
                   : response;
               },
             },
           }),
         ),
       );
-      yield* TestClock.adjust("1 second");
+      yield* TestClock.adjust("10 seconds");
       return yield* Fiber.join(fiber);
     }).pipe(Effect.provide(TestClock.layer())),
   );
