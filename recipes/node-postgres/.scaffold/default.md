@@ -21,6 +21,23 @@ The scaffold writes three files: `.lando.yml`, `package.json`, and `server.js`. 
 
 `lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it.
 
+## Use Yarn or pnpm
+
+The scaffolded `package.json` declares no package manager, so the service uses the npm that ships with the Node image. If you replace the sample with a project that uses Yarn or pnpm, keep that choice in the project. Declare the exact release once in `package.json`, for example
+`"packageManager": "pnpm@9.15.0"`. The `web` service installs that release
+when Lando builds its image on `lando start`. You don't declare it again in
+the Landofile, and you don't run Corepack.
+
+```sh
+lando start
+lando exec web -- pnpm --version
+lando exec web -- pnpm install
+```
+
+The first `exec` prints the pinned version and needs no network. The second
+downloads your dependencies, so it does. See
+[Use your project's package manager](https://aaronfeledy.github.io/core4/guides/services/node/#use-your-projects-package-manager).
+
 `lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 ## 1. scaffold

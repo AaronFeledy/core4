@@ -3,14 +3,49 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
-import { FileSystem } from "@lando/sdk/services";
-import { Effect, Result } from "effect";
+import { FileSystem, type ServiceType } from "@lando/sdk/services";
+import { Effect, Result, Schema } from "effect";
 
+import { loadAuthorizedServiceProjectFiles } from "../../src/planner/node-authoring.ts";
 import { loadServiceTypeProjectFiles } from "../../src/planner/project-files.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 
 // Backslashes are separators only on Windows for this native-path loader.
 const separators = sep === "\\" ? ["/", "\\"] : ["/"];
+
+test("a non-Node service with a custom image still receives declared project files", async () => {
+  const appRoot = await mkdtemp(join(tmpdir(), "lando-project-custom-image-"));
+  try {
+    const service = { type: "example", image: "example:custom" };
+    const serviceType: ServiceType = {
+      id: "example",
+      name: "Example",
+      base: "lando",
+      schema: Schema.Unknown,
+      projectFiles: () => [{ path: "example.toml", maxBytes: 64 }],
+      resolve: () => Effect.die("Not used during project-file acquisition"),
+    };
+    await writeFile(join(appRoot, "example.toml"), "enabled = true\n");
+
+    const files = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* loadAuthorizedServiceProjectFiles({
+          appRoot,
+          name: "web",
+          service,
+          serviceType,
+          pinnedService: service,
+          resolvedArtifactTag: undefined,
+          fileSystem: yield* FileSystem,
+        });
+      }).pipe(Effect.provide(BunFileSystem.layer)),
+    );
+
+    expect(files).toMatchObject([{ path: "example.toml", present: true, text: "enabled = true\n" }]);
+  } finally {
+    await rm(appRoot, { recursive: true, force: true });
+  }
+});
 
 for (const separator of separators) {
   test.each(["packageRoot", "candidate"] as const)(
@@ -229,5 +264,69 @@ test("fingerprints original file bytes including a UTF-8 BOM", async () => {
     });
   } finally {
     await rm(appRoot, { recursive: true, force: true });
+  }
+});
+
+test("reads each canonical candidate path once and keeps declaration order", async () => {
+  const appRoot = await mkdtemp(join(tmpdir(), "lando-project-dedupe-"));
+  try {
+    await writeFile(join(appRoot, "package.json"), JSON.stringify({ packageManager: "pnpm@9.15.0" }));
+    const files = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem;
+        return yield* loadServiceTypeProjectFiles({
+          appRoot,
+          serviceName: "web",
+          packageRoot: ".",
+          declarations: [
+            { path: "./package.json", maxBytes: 1_048_576 },
+            { path: "package.json", maxBytes: 1_048_576 },
+            { path: ".nvmrc", maxBytes: 1_048_576 },
+          ],
+          fileSystem,
+        });
+      }).pipe(Effect.provide(BunFileSystem.layer)),
+    );
+
+    expect(files.map((file) => file.path)).toEqual(["package.json", ".nvmrc"]);
+    expect(files[0]).toMatchObject({ present: true, sha256: expect.any(String) });
+  } finally {
+    await rm(appRoot, { recursive: true, force: true });
+  }
+});
+
+test("attributes a symlinked candidate to the contained path, never the link target", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "lando-project-candidate-link-"));
+  const appRoot = join(directory, "app");
+  try {
+    await mkdir(appRoot);
+    await writeFile(join(directory, "real-package.json"), JSON.stringify({ packageManager: "pnpm@9.15.0" }));
+    await symlink(join(directory, "real-package.json"), join(appRoot, "package.json"));
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem;
+        return yield* Effect.result(
+          loadServiceTypeProjectFiles({
+            appRoot,
+            serviceName: "web",
+            packageRoot: ".",
+            declarations: [{ path: "package.json", maxBytes: 1_048_576 }],
+            fileSystem,
+          }),
+        );
+      }).pipe(Effect.provide(BunFileSystem.layer)),
+    );
+
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      const file = join(appRoot, "package.json");
+      expect(result.failure.file).toBe(file);
+      expect(result.failure.issues).toMatchObject([
+        { path: ["services", "web"], source: { layer: "project-file", file, path: [] } },
+      ]);
+      expect(result.failure.message).toContain("package.json is a symbolic link");
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });

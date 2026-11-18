@@ -1,0 +1,5 @@
+{
+  "name": "node-package-manager-range",
+  "private": true,
+  "packageManager": "pnpm@^9"
+}

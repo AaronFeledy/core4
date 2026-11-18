@@ -116,3 +116,29 @@ test("renders a project-file issue source ahead of its Landofile path", () => {
   );
   expect(output).not.toContain("(authored )");
 });
+
+test("renders a project-file field path next to the Landofile issue path", () => {
+  const report = buildBugReport({
+    error: {
+      _tag: "LandofileValidationError",
+      message:
+        "package.json has invalid values: services.app: packageManager in package.json is not a valid package manager spec.",
+      file: "/app/package.json",
+      remediation: 'Set packageManager to an exact "<name>@<version>" spec.',
+      issues: [
+        {
+          path: ["services", "app"],
+          message: "packageManager in package.json is not a valid package manager spec.",
+          suggestion: 'Set packageManager to an exact "<name>@<version>" spec.',
+          source: { layer: "project-file", file: "/app/package.json", path: ["packageManager"] },
+        },
+      ],
+    },
+    context: { commandId: "app:start", cacheRoot: "/tmp/lando-cache" },
+  });
+  const output = renderPlainBugReport(report);
+
+  expect(output).toContain("package.json has invalid values");
+  expect(output).toContain("/app/package.json: services.app:");
+  expect(output).toContain("(authored packageManager)");
+});

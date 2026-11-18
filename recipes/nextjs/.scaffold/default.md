@@ -21,7 +21,9 @@ lando info
 
 For a new project, start the services and make sure the app root has no
 `package.json`. If you already have a project, skip this scaffold command and
-use `lando npm install` instead. To create the new project, run:
+install with the package manager that project declares, as described under
+[Already have a project?](#already-have-a-project). To create the new project,
+run:
 
 ```sh
 lando nextjs-scaffold
@@ -34,17 +36,67 @@ Any existing `package.json` in the app root stops the scaffold before it generat
 
 If `npm install` fails, the generated sources stay. Fix the npm error, then run `lando npm install`.
 
-Already have a project? Skip the scaffold:
+### Already have a project?
+
+Skip the scaffold and use the package manager your project declares. If
+`package.json` declares none, or declares npm, run:
 
 ```sh
 lando npm install
 ```
 
+### Projects that use Yarn or pnpm
+
+The scaffold installs with npm. A project you checked out may declare Yarn or pnpm instead. Declare the exact release once in `package.json`, for example
+`"packageManager": "pnpm@9.15.0"`. The `web` service installs that release
+when Lando builds its image on `lando start`. You don't declare it again in
+the Landofile, and you don't run Corepack.
+
+Don't run `lando npm install` or `lando next dev` in these projects.
+`lando npm` is npm, and `lando next` runs `npx next`, so both go around the
+manager your project declares. Run that manager through `lando exec` instead.
+
+For pnpm, start the app and check the release:
+
+```sh
+lando start
+lando exec web -- pnpm --version
+```
+
+That prints the pinned version and needs no network. Then install
+dependencies, which does need the network:
+
+```sh
+lando exec web -- pnpm install
+```
+
+Start the development server:
+
+```sh
+lando exec web -- pnpm exec next dev
+```
+
+For Yarn, use your project's own scripts, for example:
+
+```sh
+lando exec web -- yarn install
+lando exec web -- yarn dev
+```
+
+That matters most with Plug'n'Play, where there is no `node_modules` for
+`npx next` to find. See
+[Use your project's package manager](https://aaronfeledy.github.io/core4/guides/services/node/#use-your-projects-package-manager).
+
 ## Run the development server
+
+On the scaffolded app, or any project that installs with npm:
 
 ```sh
 lando next dev
 ```
+
+A pnpm project runs `lando exec web -- pnpm exec next dev` instead, and a Yarn
+project runs its own script, such as `lando exec web -- yarn dev`.
 
 Next listens on all interfaces by default and reads `PORT`, which Lando derives from `port:` (default `3000`). No hostname or port flags are needed for the stock recipe. Change `port:` to move both the endpoint and listener; an unequal or malformed authored `environment.PORT` fails planning. The command stays in the foreground; `lando start` brings up the services but doesn't launch Next.
 
@@ -76,7 +128,7 @@ Three tooling commands ship with the Landofile, all running inside the `web` ser
 
 | Command | What it runs |
 | --- | --- |
-| `lando next` | `npx next`, so `lando next dev` and `lando next build` run in the container |
+| `lando next` | `npx next`, so `lando next dev` and `lando next build` run in the container. For npm projects; a Yarn or pnpm project runs its manager through `lando exec web` |
 | `lando npm` | npm in `/app` |
 | `lando nextjs-scaffold` | `create-next-app@16.4.0` into the app root, then `npm install` |
 

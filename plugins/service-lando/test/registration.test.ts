@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { MSSQL_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
@@ -50,7 +51,7 @@ const providerCapabilities = {
   providerExtensions: ["compose", "labels", "registryCredentials"],
 } as const;
 
-const registryLayer = Layer.merge(services, PluginRegistryLayer.layer);
+const registryLayer = Layer.mergeAll(services, PluginRegistryLayer.layer, BunFileSystem.layer);
 
 const plan = (landofile: LandofileShape) =>
   Effect.runPromise(

@@ -15,7 +15,8 @@ import { AppPlanner, LandofileService, PluginRegistry, RuntimeProviderRegistry }
 import { appCommandCachePath } from "@lando/engine/cache/paths";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { CacheError } from "@lando/sdk/errors";
-import { Cause, DateTime, Effect, Layer, Result } from "effect";
+import { ValidationIssue } from "@lando/sdk/schema";
+import { Cause, DateTime, Effect, Layer, Result, Schema } from "effect";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -304,3 +305,72 @@ describe("lando app:cache:refresh", () => {
 });
 
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";
+
+describe("node package-manager planning", () => {
+  const landofile = (type: string) =>
+    `name: node-package-manager\nservices:\n  app:\n    type: "${type}"\n    primary: true\n    endpoints: []\n`;
+
+  test("refreshes the cache for an explicit Node type with a devEngines-only pin", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), landofile("node:lts"));
+      await writeFile(
+        join(dir, "package.json"),
+        JSON.stringify({
+          private: true,
+          devEngines: { packageManager: { name: "pnpm", version: "9.15.0", onFail: "error" } },
+        }),
+      );
+
+      const result = await runCli(["app:cache:refresh", "--format=json"], dir);
+
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(result.stdout).toContain('"ok":true');
+      expect(result.stdout).toContain('"app":"node-package-manager"');
+    });
+  });
+
+  test("names the manifest in the summary when its declaration is invalid", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), landofile("node:22"));
+      await writeFile(join(dir, "package.json"), JSON.stringify({ packageManager: "pnpm@^9" }));
+
+      const json = await runCli(["app:cache:refresh", "--format=json"], dir);
+
+      expect(json.exitCode).toBe(1);
+      expect(json.stdout).toContain("package.json has invalid values");
+      expect(json.stdout).not.toContain("Landofile has invalid values");
+      expect(json.stdout).toContain("LandofileValidationError");
+      expect(json.stdout).toContain(join(dir, "package.json").replaceAll("\\", "\\\\"));
+      expect(json.stdout).toContain('"packageManager"');
+      expect(json.stdout).toContain("must pin an exact version");
+      expect(json.stdout).not.toContain("packageManager in package.json");
+    });
+  });
+
+  test("attributes a conflicting pnpm global to the authored Landofile key", async () => {
+    await withTempCwd(async (dir) => {
+      const file = join(dir, ".lando.yml");
+      await writeFile(file, `${landofile("node:lts")}    globals:\n      pnpm: "10.19.0"\n`);
+      await writeFile(join(dir, "package.json"), JSON.stringify({ packageManager: "pnpm@9.15.0" }));
+
+      const result = await runCli(["app:cache:refresh", "--format=json"], dir);
+
+      expect(result.exitCode).toBe(1);
+      const envelope = Schema.decodeUnknownSync(
+        Schema.Struct({
+          error: Schema.Struct({ message: Schema.String, issues: Schema.Array(ValidationIssue) }),
+        }),
+      )(JSON.parse(result.stdout));
+      expect(envelope.error).toMatchObject({
+        issues: [
+          {
+            path: ["services", "app", "globals", "pnpm"],
+            source: { layer: "canonical", file, path: ["services", "app", "globals", "pnpm"] },
+          },
+        ],
+      });
+      expect(envelope.error.message).toStartWith("Landofile has invalid values");
+      expect(envelope.error.message).toContain("package.json packageManager pins pnpm@9.15.0");
+    });
+  });
+});

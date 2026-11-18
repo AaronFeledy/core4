@@ -858,12 +858,16 @@
       "digest": "7e1d4e88e109f8fd0aa8cd8cd07882668fa0c517465190ec803983911bcd8fbf"
     },
     {
+      "fixture": "docs/guides/node/fixtures/node-dev-package-manager",
+      "digest": "325804d288243d069ddc953df3512cb7648365d611765789acd4789446d30345"
+    },
+    {
       "fixture": "docs/guides/node/fixtures/node-globals-invalid",
       "digest": "39d385ee49b32daf59bd73d3484e7a9a2920018ee991c4185a46851835282a34"
     },
     {
       "fixture": "docs/guides/node/fixtures/node-globals",
-      "digest": "5e954f1839a6a33e3498d7f6f7d2c86213cd0af35db5cd1f9de25fdadd3fe8e8"
+      "digest": "12a08f60c471a3cd56be49728007482a73816f7f95db8be85c5e214e1dc51d09"
     },
     {
       "fixture": "docs/guides/node/fixtures/node-inference",
@@ -885,8 +889,12 @@
       "digest": "702a4a3b26097c32ba1d3f21edc2889102afd3abd50daf5c18676031f8bcbdcd"
     },
     {
+      "fixture": "docs/guides/node/fixtures/node-package-manager-range",
+      "digest": "97d15843c406363e80ff9d8061c9e38cad4dee1086d145b5d65d28a07ba2c204"
+    },
+    {
       "fixture": "docs/guides/node/fixtures/node-package-manager",
-      "digest": "4558bff0b619635f63bd9fb3d84b14618d81b34cef1683ff635e46cc525ea324"
+      "digest": "33eeded3de030827297bb9a70348a72b032959ff39b82240724fa84f0f3254df"
     },
     {
       "fixture": "docs/guides/node/fixtures/node-port",

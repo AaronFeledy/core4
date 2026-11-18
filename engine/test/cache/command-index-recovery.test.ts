@@ -241,3 +241,15 @@ test.each(["cache", "reference", "forms"] as const)(
     });
   },
 );
+
+test("stays fresh when only a Node manifest changes, because it does not own command availability", async () => {
+  await withApp(async (fixture) => {
+    // Given a fresh index written from a Landofile whose tooling is the only command source,
+    await cache(fixture);
+    await writeFile(join(fixture.cwd, "package.json"), JSON.stringify({ packageManager: "pnpm@9.15.0" }));
+    // When the warm reader checks it,
+    const receipt = await Effect.runPromise(readAppCommandCacheForCwdDetailed(fixture));
+    // Then the manager declaration remains a plan and image input, not a dispatch input.
+    expect(receipt.status).toBe("fresh");
+  });
+});

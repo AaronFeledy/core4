@@ -179,19 +179,56 @@ For watch mode during edits, keep the original idle service block and run `lando
 
 ## Prefer pnpm
 
-Node 22 bundles [Corepack](https://nodejs.org/docs/latest-v22.x/api/corepack.html), but pnpm isn't installed as a ready-to-use command in the official image. Use Corepack directly so you don't need to enable shims:
+npm is the default path on this page. To use pnpm instead, declare the exact
+release in `package.json`. Lando installs it into the `app` image when it
+builds the service, so you don't run Corepack or add anything to the Landofile:
 
-```sh
-lando exec app -- corepack pnpm@9.15.0 --version
-lando exec app -- corepack pnpm@9.15.0 install
-lando exec app -- corepack pnpm@9.15.0 test
+```json
+{
+  "name": "node-typescript-demo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.0"
+}
 ```
 
-Run those commands from the app root. Corepack downloads and caches the selected pnpm release, so the first invocation needs network access. Use this as an alternative to the npm install path, not a second package manager for the same lockfile. If your project sets `packageManager`, keep it aligned with `pnpm@9.15.0`.
+Keep your existing `scripts` and `devDependencies`; only the `packageManager`
+line is new. Run `lando start` so Lando rebuilds the image with that release:
 
-For `lando pnpm`, add a tooling entry with `service: app`, `dir: /app`, and `cmd: [corepack, pnpm@9.15.0]`.
+```sh
+lando start
+```
 
-`corepack enable pnpm` is another option, but it writes shims beside the Node binaries. The default Node service runs as root, so it can write there; an authored `user: node` cannot. Those container changes are lost on rebuild. Corepack is no longer bundled in Node 25 and later, so don't assume it exists if you override the image.
+Then run each of these from the app directory on your host. They're separate
+commands, and they prove different things:
+
+```sh
+lando exec app -- pnpm --version
+```
+
+That prints `9.15.0`. pnpm itself is in the image, so this works with no
+network.
+
+```sh
+lando exec app -- pnpm install
+```
+
+This downloads your dependencies, so it needs network access.
+
+```sh
+lando exec app -- pnpm test
+```
+
+Use pnpm as an alternative to the npm install path, not a second package
+manager for the same lockfile. To move to another pnpm release, edit
+`packageManager` and run `lando start` again.
+
+For `lando pnpm`, add a tooling entry with `service: app`, `dir: /app`, and
+`cmd: [pnpm]`.
+
+[Use your project's package manager](./node.mdx#use-your-projects-package-manager)
+covers Yarn, the `devEngines` form, and which `package.json` wins in a
+monorepo.
 
 ## Check the config and tear down
 

@@ -235,12 +235,13 @@ instructions for existing imports.
 
 ## Infer Node from the theme package
 
-`packageRoot` changes only where Lando reads `.nvmrc` and `package.json` for
-version inference. It does not change mounts or the container working
-directory. You still need tooling `dir:` so `lando npm` runs in the theme.
+`packageRoot` selects which `package.json` Lando reads. With bare `type: node`,
+Lando also infers the Node version from `.nvmrc` and `engines.node` in that
+directory. It does not change mounts or the container working directory. You
+still need tooling `dir:` so `lando npm` runs in the theme.
 
-Use it only with bare `type: node`, and only when that directory already
-exists:
+Use bare `type: node` when the theme should choose the Node version. The
+directory must already exist:
 
 ```yaml
 services:
@@ -252,8 +253,7 @@ services:
 ```
 
 Pin `type: "node:22"` when the theme is not on disk yet, or when the Landofile
-should own the version. Combining `packageRoot` with `type: "node:22"` fails
-at plan time.
+should own the version.
 
 Service `workingDirectory` sets the container process cwd. It does not set
 the theme directory for `lando npm` when Lando maps your shell's current
@@ -285,15 +285,61 @@ the current Node LTS major.
     </Step>
   </Scenario>
 
-  <Scenario id="rejects-package-root-on-pin" render={false} reason="Plan-time tagged failure when packageRoot is set on type node:22">
-    <Step name="scaffold-invalid">
+## Keep a pinned version and use the theme's package manager
+
+`packageRoot` also works with an explicit type. The Landofile keeps the Node
+version, and the theme's `package.json` supplies the package manager:
+
+```yaml
+services:
+  node:
+    type: "node:22"
+    packageRoot: web/themes/contrib/bootstrap5
+    primary: false
+    endpoints: []
+```
+
+Declare the exact Yarn or pnpm release in the theme's `package.json`:
+
+```json
+{
+  "name": "bootstrap5",
+  "private": true,
+  "packageManager": "pnpm@9.15.0"
+}
+```
+
+Lando installs pnpm 9.15.0 into the `node` image when it builds the service.
+The service stays on Node 22 even if the theme's `.nvmrc` or `engines.node`
+names another version, because project files never change an explicit type.
+Lando reads the theme's `package.json` first, then the one at the app root.
+
+Check the plan without starting anything. The `node` entry under
+`result.services` reports the resolved type:
+
+```sh
+lando app:cache:refresh --format=json
+```
+
+After `lando start`, run the manager in the theme with a tooling entry that
+sets `dir:`, for example `cmd: [pnpm]` with
+`dir: /app/web/themes/contrib/bootstrap5`.
+
+  <Scenario id="pinned-package-root" render>
+    <Step name="scaffold-pinned">
       <UseFixture name="php-theme-package-root-pinned" />
     </Step>
-    <Step name="reject">
-      <Run command="lando app:cache:refresh" expectExit={1} />
-      <Verify errorTag="LandofileValidationError" expect={{ regex: "packageRoot only with bare type: node" }} />
+    <Step name="confirm-conflicting-hints">
+      <Verify file="php-theme-package-root-pinned/web/themes/contrib/bootstrap5/.nvmrc" expect={{ regex: "^24\\s*$" }} />
+      <Verify file="php-theme-package-root-pinned/web/themes/contrib/bootstrap5/package.json" expect={{ regex: "\"node\":\\s*\">=26\"" }} />
+      <Verify file="php-theme-package-root-pinned/web/themes/contrib/bootstrap5/package.json" expect={{ regex: "\"packageManager\":\\s*\"pnpm@9[.]15[.]0\"" }} />
     </Step>
-    <Step name="cleanup-invalid">
+    <Step name="plan-pinned">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"node\",\\s*\"type\":\\s*\"node:22\"" } }} />
+    </Step>
+    <Step name="cleanup-pinned">
       <Cleanup />
     </Step>
   </Scenario>
@@ -301,7 +347,7 @@ the current Node LTS major.
 
 ## Next
 
-- [Add Node.js](./node.mdx) for version inference, `globals`, and `packageRoot`
+- [Add Node.js](./node.mdx) for version inference, package managers, `globals`, and `packageRoot`
 - [Set tooling defaults and command aliases](../tooling/defaults-and-aliases.mdx)
 - [Run the Drupal recipe](../recipes/drupal-workflow.mdx)
 - [Run the WordPress recipe](../recipes/wordpress-workflow.mdx)

@@ -39,6 +39,23 @@ To see what Lando resolved from it without starting anything, print the loaded c
 lando app:config --format=json
 ```
 
+## Use Yarn or pnpm
+
+The recipe writes no `package.json`, so npm from the Node image is what you get by default. When you add a project that uses Yarn or pnpm, keep that choice in the project. Declare the exact release once in `package.json`, for example
+`"packageManager": "pnpm@9.15.0"`. The `web` service installs that release
+when Lando builds its image on `lando start`. You don't declare it again in
+the Landofile, and you don't run Corepack.
+
+```sh
+lando start
+lando exec web -- pnpm --version
+lando exec web -- pnpm install
+```
+
+The first `exec` prints the pinned version and needs no network. The second
+downloads your dependencies, so it does. See
+[Use your project's package manager](https://aaronfeledy.github.io/core4/guides/services/node/#use-your-projects-package-manager).
+
 `lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 ## 1. scaffold

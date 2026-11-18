@@ -46,16 +46,60 @@ Next listens on all interfaces by default, and the recipe sets `PORT=3000`. The 
 
 ### Already have a Next.js project?
 
-Skip the scaffold. Install and run:
+Skip the scaffold and use the package manager your project declares. If
+`package.json` declares none, or declares npm, install and run with the recipe
+tooling:
 
 ```sh
 lando npm install
 lando next dev
 ```
 
+### Projects that use Yarn or pnpm
+
+The scaffold installs with npm. A project you checked out may declare Yarn or pnpm instead. Declare the exact release once in `package.json`, for example
+`"packageManager": "pnpm@9.15.0"`. The `web` service installs that release
+when Lando builds its image on `lando start`. You don't declare it again in
+the Landofile, and you don't run Corepack.
+
+Don't run `lando npm install` or `lando next dev` in these projects.
+`lando npm` is npm, and `lando next` runs `npx next`, so both go around the
+manager your project declares. Run that manager through `lando exec` instead.
+
+For pnpm, start the app and check the release:
+
+```sh
+lando start
+lando exec web -- pnpm --version
+```
+
+That prints the pinned version and needs no network. Then install
+dependencies, which does need the network:
+
+```sh
+lando exec web -- pnpm install
+```
+
+Start the development server:
+
+```sh
+lando exec web -- pnpm exec next dev
+```
+
+For Yarn, use your project's own scripts, for example:
+
+```sh
+lando exec web -- yarn install
+lando exec web -- yarn dev
+```
+
+That matters most with Plug'n'Play, where there is no `node_modules` for
+`npx next` to find. See
+[Use your project's package manager](../services/node.mdx#use-your-projects-package-manager).
+
 ### When the scaffold refuses or fails
 
-- Any existing `package.json` in the app root stops the scaffold before it generates anything. That includes a second run. Use `lando npm install` instead.
+- Any existing `package.json` in the app root stops the scaffold before it generates anything. That includes a second run. Install with your project's package manager instead, as described above.
 - If a generated top-level file collides with one you already have, the command stops and names the first conflicting path. Nothing is copied. Move or remove yours, then run it again.
 - If `npm install` fails, the generated sources stay. Fix the npm error, then run `lando npm install`. Don't scaffold again.
 
@@ -77,7 +121,7 @@ Init writes `.lando.yml` only and downloads nothing. The Next.js app itself come
 | --- | --- |
 | `web` | `node:lts` (or `node:22` when you pass `--answer=node=22`), port `3000`, `NEXTAUTH_PROVIDER` set from the auth answer |
 | `database` | `type: postgres` by default; `mariadb` with `--answer=database=mariadb`; omitted with `--answer=database=none` |
-| Tooling | `lando next` (`npx next`), `lando npm`, and `lando nextjs-scaffold` on `web` |
+| Tooling | `lando next` (`npx next`), `lando npm`, and `lando nextjs-scaffold` on `web`. All three use npm; a Yarn or pnpm project runs its manager through `lando exec web` |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Auth answers (`none`, `nextauth`, `clerk`) only set the `NEXTAUTH_PROVIDER` env hint. Install and configure the helper yourself.
 

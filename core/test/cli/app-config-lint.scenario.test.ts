@@ -255,6 +255,33 @@ describe("lando app:config:lint (source dispatch)", () => {
       expect(text.stdout).toContain("project-file layer");
     });
   });
+  test("packageManager failures name the manifest field in JSON and text", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        'name: node-package-manager\nservices:\n  web:\n    type: "node:22"\n',
+      );
+      await writeFile(join(dir, "package.json"), JSON.stringify({ packageManager: "yarn@latest" }));
+
+      const json = await runCli(["app:config:lint", "--format=json"], dir);
+      expect(json.exitCode).toBe(1);
+      const parsed = parseEnvelopeResult<ConfigLintResult>(json.stdout);
+      expect(parsed.valid).toBe(false);
+      expect(parsed.violations).toMatchObject([
+        {
+          rule: "landofile.service",
+          path: ["services", "web"],
+          source: { layer: "project-file", file: join(dir, "package.json"), path: ["packageManager"] },
+        },
+      ]);
+
+      const text = await runCli(["app:config:lint"], dir);
+      expect(text.exitCode).toBe(1);
+      expect(text.stdout).toContain("package.json");
+      expect(text.stdout).toContain("packageManager");
+      expect(text.stdout).toContain("project-file layer");
+    });
+  });
   test("warning-only lint renders its stable rule and exits successfully", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(

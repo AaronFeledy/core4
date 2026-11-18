@@ -5,6 +5,7 @@ import type {
   EnvironmentValue,
   HealthcheckPlan,
   ServiceFeatureValidationResult,
+  ValidationIssue,
   ValidationIssuePath,
 } from "@lando/sdk/schema";
 import type {
@@ -19,11 +20,14 @@ export interface ServiceConfigIssueOptions {
   readonly suggestion?: string;
   /** App-root-relative project file whose content produced the issue. */
   readonly projectFile?: string;
+  /** Location of the offending value within {@link projectFile}. */
+  readonly projectFileSourcePath?: ReadonlyArray<string | number>;
 }
 
 export class ServiceConfigIssue extends Error {
   readonly suggestion: string | undefined;
   readonly projectFile: string | undefined;
+  readonly projectFileSourcePath: ReadonlyArray<string | number> | undefined;
 
   constructor(
     readonly path: ValidationIssuePath,
@@ -34,9 +38,21 @@ export class ServiceConfigIssue extends Error {
     const resolved = typeof options === "string" ? { suggestion: options } : options;
     this.suggestion = resolved.suggestion;
     this.projectFile = resolved.projectFile;
+    this.projectFileSourcePath = resolved.projectFileSourcePath;
     this.name = "ServiceConfigIssue";
   }
 }
+
+const projectFileIssueSource = (cause: ServiceConfigIssue): Pick<ValidationIssue, "source"> =>
+  cause.projectFile === undefined
+    ? {}
+    : {
+        source: {
+          layer: "project-file",
+          file: cause.projectFile,
+          path: [...(cause.projectFileSourcePath ?? [])],
+        },
+      };
 
 const featureError = (feature: string, cause: unknown, fallback: string) =>
   new ServiceFeatureError({
@@ -50,6 +66,7 @@ const featureError = (feature: string, cause: unknown, fallback: string) =>
               path: cause.path,
               message: cause.message,
               ...(cause.suggestion === undefined ? {} : { suggestion: cause.suggestion }),
+              ...projectFileIssueSource(cause),
             },
           ],
         }
@@ -119,15 +136,7 @@ export const serviceTypeResolve = <A>(
                   path: cause.path,
                   message: cause.message,
                   ...(cause.suggestion ? { suggestion: cause.suggestion } : {}),
-                  ...(cause.projectFile === undefined
-                    ? {}
-                    : {
-                        source: {
-                          layer: "project-file" as const,
-                          file: cause.projectFile,
-                          path: [],
-                        },
-                      }),
+                  ...projectFileIssueSource(cause),
                 },
               ],
             }

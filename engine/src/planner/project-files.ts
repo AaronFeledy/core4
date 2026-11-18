@@ -1,4 +1,5 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { landofileValidationError } from "@lando/landofile/validation";
 import { isPathWithin } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
@@ -26,27 +27,45 @@ interface ProjectFileRequest {
   readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
 }
 
-const validationError = (input: ProjectFileRequest, message: string) =>
-  new LandofileValidationError({
-    message,
-    remediation: "Use a readable app-root-relative packageRoot and repair the reported project file.",
-    file: `${input.appRoot}/.lando.yml`,
-    issues: [validationIssue(["services", input.serviceName, "packageRoot"], message)],
+const landofileFailure = (
+  input: ProjectFileRequest,
+  path: ReadonlyArray<string | number>,
+  message: string,
+  remediation: string,
+) =>
+  landofileValidationError(`${input.appRoot}/.lando.yml`, [validationIssue(path, message, remediation)], {
+    headline: "Landofile has invalid values",
+    remediation,
   });
+
+const validationError = (input: ProjectFileRequest, message: string) =>
+  landofileFailure(
+    input,
+    ["services", input.serviceName],
+    message,
+    "Repair the reported project-file declaration or input and retry.",
+  );
+
+const packageRootError = (input: ProjectFileRequest, message: string) =>
+  landofileFailure(
+    input,
+    ["services", input.serviceName, "packageRoot"],
+    message,
+    "Use a readable app-root-relative packageRoot and repair the reported project file.",
+  );
 
 /** A failure in one declared project file cites that file, not the Landofile's packageRoot. */
 const projectFileError = (input: ProjectFileRequest, absolute: string, message: string) =>
-  new LandofileValidationError({
-    message,
-    remediation: `Repair ${absolute} or remove it, then retry.`,
-    file: absolute,
-    issues: [
+  landofileValidationError(
+    `${input.appRoot}/.lando.yml`,
+    [
       {
         ...validationIssue(["services", input.serviceName], message),
         source: { layer: "project-file", file: absolute, path: [] },
       },
     ],
-  });
+    { remediation: `Repair ${absolute} or remove it, then retry.` },
+  );
 
 const containedPath = (
   input: ProjectFileRequest,
@@ -55,7 +74,7 @@ const containedPath = (
   const absolute = resolve(input.appRoot, authoredPath);
   if (isAbsolute(authoredPath) || !isPathWithin(input.appRoot, absolute)) {
     return Effect.fail(
-      validationError(
+      packageRootError(
         input,
         `Service ${input.serviceName} project path ${authoredPath} escapes the app root. Use an app-root-relative packageRoot.`,
       ),
@@ -71,6 +90,7 @@ const assertNoSymlinkComponents = Effect.fnUntraced(function* (
   input: ProjectFileRequest & { readonly fileSystem: Context.Service.Shape<typeof FileSystem> },
   absolute: string,
   allowMissing: boolean,
+  onViolation: (message: string) => LandofileValidationError,
 ): Effect.fn.Return<boolean, LandofileValidationError> {
   const rel = relative(input.appRoot, absolute);
   const segments = rel === "" ? [] : rel.split(sep);
@@ -80,14 +100,12 @@ const assertNoSymlinkComponents = Effect.fnUntraced(function* (
     const stat = yield* input.fileSystem.lstat(current).pipe(
       Effect.map((value) => ({ kind: "present" as const, value })),
       Effect.catchTag("FileNotFoundError", () => Effect.succeed({ kind: "missing" as const })),
-      mapFailures((cause) =>
-        validationError(input, `Unable to inspect project path ${current}: ${cause.message}.`),
-      ),
+      mapFailures((cause) => onViolation(`Unable to inspect project path ${current}: ${cause.message}.`)),
     );
     if (stat.kind === "missing") {
       if (allowMissing) return false;
       return yield* Effect.fail(
-        validationError(
+        packageRootError(
           input,
           `Service ${input.serviceName} packageRoot directory does not exist: ${input.packageRoot}. Create the directory or correct packageRoot.`,
         ),
@@ -95,8 +113,7 @@ const assertNoSymlinkComponents = Effect.fnUntraced(function* (
     }
     if (stat.value.isSymbolicLink === true) {
       return yield* Effect.fail(
-        validationError(
-          input,
+        onViolation(
           `Service ${input.serviceName} project path ${relative(input.appRoot, current)} is a symbolic link. Use regular files and directories contained in the app root.`,
         ),
       );
@@ -172,23 +189,25 @@ export const loadServiceTypeProjectFiles = Effect.fnUntraced(function* (
     return yield* Effect.fail(
       validationError(
         input,
-        `Service ${input.serviceName} requires project-file inference, but the FileSystem service is unavailable. Provide FileSystem or use an explicit service type.`,
+        `Service ${input.serviceName} requires project-file inputs, but the FileSystem service is unavailable. Provide FileSystem or use a service type that does not read project files.`,
       ),
     );
   }
   const request = { ...input, fileSystem: input.fileSystem };
   const packageRoot = yield* containedPath(input, input.packageRoot);
-  yield* assertNoSymlinkComponents(request, packageRoot, false);
+  yield* assertNoSymlinkComponents(request, packageRoot, false, (message) =>
+    packageRootError(input, message),
+  );
   const packageRootStat = yield* input.fileSystem
     .lstat(packageRoot)
     .pipe(
       mapFailures((cause) =>
-        validationError(input, `Unable to inspect packageRoot ${packageRoot}: ${cause.message}.`),
+        packageRootError(input, `Unable to inspect packageRoot ${packageRoot}: ${cause.message}.`),
       ),
     );
   if (!packageRootStat.isDirectory) {
     return yield* Effect.fail(
-      validationError(
+      packageRootError(
         input,
         `Service ${input.serviceName} packageRoot is not a directory: ${input.packageRoot}.`,
       ),
@@ -196,10 +215,17 @@ export const loadServiceTypeProjectFiles = Effect.fnUntraced(function* (
   }
 
   const files: ServiceTypeProjectFileInput[] = [];
+  const seen = new Set<string>();
   for (const declaration of input.declarations) {
     const absolute = yield* containedPath(input, declaration.path);
-    const present = yield* assertNoSymlinkComponents(request, absolute, true);
+    // A nested package root may point at the app root through another
+    // spelling; the planner reads each canonical path once, in order.
     const path = relative(input.appRoot, absolute);
+    if (seen.has(path)) continue;
+    seen.add(path);
+    const present = yield* assertNoSymlinkComponents(request, absolute, true, (message) =>
+      projectFileError(input, absolute, message),
+    );
     if (!present) {
       files.push({ path, present: false });
       continue;
