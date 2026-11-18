@@ -133,23 +133,20 @@ func (s *scaffold) execute(options scaffoldOptions) (err error) {
 	if err != nil {
 		return err
 	}
-	if resumed && s.markerPath != "" && pathExists(s.markerPath) {
-		if options.complete(s.appRoot) {
-			s.cleanup()
-			return &scaffoldAlreadyComplete{message: s.completeMessage}
-		}
-		// A completion marker whose outputs are gone is repair work, not a
-		// completed scaffold: remove it and rebuild from the same manifest.
-		if err := os.Remove(s.markerPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-	}
-	if !resumed && s.markerPath != "" && pathExists(s.markerPath) && options.complete(s.appRoot) {
+	hasMarker := s.markerPath != "" && pathExists(s.markerPath)
+	if hasMarker && options.complete(s.appRoot) {
 		s.cleanup()
 		return &scaffoldAlreadyComplete{message: s.completeMessage}
 	}
 	if options.preflight != nil {
 		if err := options.preflight(resumed, manifest); err != nil {
+			return err
+		}
+	}
+	if resumed && hasMarker {
+		// A completion marker whose outputs are gone is repair work, not a
+		// completed scaffold: remove it and rebuild from the same manifest.
+		if err := os.Remove(s.markerPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	}
@@ -190,13 +187,13 @@ func (s *scaffold) execute(options scaffoldOptions) (err error) {
 		}
 		s.point("promoted")
 	}
-	if !options.complete(s.appRoot) {
-		return fmt.Errorf("%s scaffold did not produce %s.", s.label, s.outputs)
-	}
 	if options.afterPromote != nil {
 		if err := options.afterPromote(manifest); err != nil {
 			return err
 		}
+	}
+	if !options.complete(s.appRoot) {
+		return fmt.Errorf("%s scaffold did not produce %s.", s.label, s.outputs)
 	}
 	return s.finish()
 }
