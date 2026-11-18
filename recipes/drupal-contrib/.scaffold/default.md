@@ -1,9 +1,8 @@
 # Start a Drupal contrib app
 
-Use this recipe when the git repository is the module, theme, or profile: a
-root `*.info.yml` and the extension's own `composer.json`. Init writes a
-Landofile into that repository. After start, scaffold a Drupal site into the
-`/app` volume around the nested extension mount.
+Run a local Drupal site around your module, theme, or profile checkout. The
+extension root must have exactly one `*.info.yml`. Init writes a Landofile into
+that checkout, and the scaffold installs Drupal into the `/app` volume.
 
 You need Lando installed and provider setup complete. Run init from the
 extension root so `.lando.yml` lands next to the info file:
@@ -31,14 +30,21 @@ After start, scaffold the site. Composer runs then, not during image build:
 ```sh
 lando drupal-contrib-scaffold
 lando drush --version
-lando phpunit -- --version
+lando phpunit --version
 lando composer --version
 ```
 
-The scaffold fills `/app` around the mount. It does not edit the extension
-`composer.json`, and it does not `composer require` the extension package
-itself. A path repository at the mount lets the extension's `require` and
-`require-dev` resolve into the site.
+If the extension has a `composer.json`, the scaffold copies its `require` and
+`require-dev` entries into the site's `composer.json`. It leaves the extension's
+file alone and uses the mounted checkout without installing the extension as a
+Composer package. If the scaffold is interrupted, rerun it to resume.
+
+To run one test by name, pass a PHPUnit filter and the extension's path inside
+`/app`. Replace `ExampleUnitTest` with your test class:
+
+```sh
+lando phpunit --filter ExampleUnitTest web/modules/custom/example
+```
 
 ## Choose stack options
 
@@ -52,15 +58,15 @@ lando init . --recipe drupal-contrib --name=example --yes \
   --answer=php=8.5 \
   --answer=webserver=nginx \
   --answer=database=postgres:16 \
-  --answer=drupal=^11
+  --answer='drupal=^11'
 ```
 
 `lando destroy -y` removes the app containers and networks and keeps its named
 volumes, including the Drupal site at `/app`. See [Keep data across stop,
-restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
+restart, and destroy](../../docs/guides/tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
 
-For day-to-day tooling, PHPUnit, and `lando core-version`, see
-[Run the Drupal contrib recipe](/guides/recipes/drupal-contrib-workflow/).
+For the core constraint change and scaffold recovery, see
+[Run the Drupal contrib recipe](../../docs/guides/recipes/drupal-contrib-workflow.mdx).
 
 ## 1. scaffold
 
