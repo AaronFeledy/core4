@@ -9,13 +9,11 @@ import {
 } from "../source-php.ts";
 import {
   DRUPAL_CONTRIB_CHROME_IMAGE,
-  DRUPAL_CONTRIB_CORE_VERSION_RECIPE_COMMAND,
   DRUPAL_CONTRIB_MINK_DRIVER_ARGS,
-  DRUPAL_CONTRIB_SCAFFOLD_RECIPE_COMMAND,
   contribMountTarget,
   mysqlSimpletestDb,
   pgsqlSimpletestDb,
-} from "./commands.ts";
+} from "./stack.ts";
 
 const contribDir = "/app";
 const contribAppMount = contribMountTarget("{{ recipe.type }}", "{{ recipe.project }}");
@@ -89,26 +87,35 @@ export const source = {
     tooling: {
       drush: {
         service: "appserver",
-        description: "Run Drush inside the appserver service.",
+        description: "Run Drush for the scaffolded Drupal site in /app.",
         cmds: [DRUSH_TOOLING_COMMAND],
         wrapper: true,
         ...contribToolingDir,
       },
       composer: {
         ...composerTool,
+        description: "Run Composer for the scaffolded Drupal site in /app.",
         ...contribToolingDir,
       },
       "drupal-contrib-scaffold": {
         service: "appserver",
         description: "Scaffold a Drupal site in the /app volume around the extension mount.",
         arguments: false,
-        cmd: DRUPAL_CONTRIB_SCAFFOLD_RECIPE_COMMAND,
+        cmd: [
+          "lando-drupal-contrib-scaffold",
+          "{{ recipe.type }}",
+          "{{ recipe.project }}",
+          "{{ recipe.drupal }}",
+        ],
         ...contribToolingDir,
       },
       "core-version": {
         service: "appserver",
         description: "Update the Drupal core constraint in the site composer.json and Landofile.",
-        cmd: DRUPAL_CONTRIB_CORE_VERSION_RECIPE_COMMAND,
+        cmd: ["lando-drupal-contrib-core-version", "{{ recipe.type }}", "{{ recipe.project }}"],
+        args: {
+          constraint: { required: true, description: "Composer constraint for Drupal core, such as ^10." },
+        },
         ...contribToolingDir,
       },
       phpunit: {
@@ -116,6 +123,7 @@ export const source = {
         user: "www-data",
         description: "Run Drupal PHPUnit suites as the web server user.",
         cmd: ["vendor/bin/phpunit", "-c", "web/core"],
+        wrapper: true,
         ...contribToolingDir,
       },
       phpcs: {

@@ -10,7 +10,6 @@ import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { DRUPAL_CMS_PHP_INI_TARGET } from "../../src/recipes/builtin/drupal-cms/php-config.ts";
-import { drupalContribScaffoldCommand } from "../../src/recipes/builtin/drupal-contrib/commands.ts";
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
 
 const {
@@ -132,11 +131,17 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
 
 describe("the decomposed Drupal contrib Landofile on the native load path", () => {
   test("loads the nested mount, /app volume, chrome service, and contrib scaffold", async () => {
+    const options = {
+      ...drupalContribDefaults,
+      type: "theme",
+      project: "hello_theme",
+      drupal: ">=10 <11 || ^11",
+    };
     const decomposer = drupalContribDecomposer({ redactor: createStandaloneRedactor("secrets") });
     const decomposed = Effect.runSync(
       decomposer.decompose({
         producer: drupalContribProducer,
-        options: drupalContribDefaults,
+        options,
         secrets: {},
       }),
     );
@@ -150,20 +155,17 @@ describe("the decomposed Drupal contrib Landofile on the native load path", () =
       const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
       const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
       const services = landofile.document.services as Record<string, Record<string, unknown>>;
-      const project = drupalContribDefaults.project;
-      const type = drupalContribDefaults.type;
-      const constraint = drupalContribDefaults.drupal;
-      if (typeof project !== "string" || typeof type !== "string" || typeof constraint !== "string") {
-        throw new TypeError("Expected string Drupal contrib defaults");
-      }
-      expect(tooling["drupal-contrib-scaffold"]?.cmd).toBe(
-        drupalContribScaffoldCommand(constraint, project, type),
-      );
+      expect(tooling["drupal-contrib-scaffold"]?.cmd).toEqual([
+        "lando-drupal-contrib-scaffold",
+        "theme",
+        "hello_theme",
+        ">=10 <11 || ^11",
+      ]);
       expect(tooling.composer?.dir).toBe("/app");
       expect(tooling.phpunit?.user).toBe("www-data");
       expect(services.appserver?.webroot).toBe("/app/web");
       expect(services.appserver?.appMount).toEqual({
-        target: `/app/web/${type}s/custom/${project}`,
+        target: "/app/web/themes/custom/hello_theme",
         includes: ["vendor", "node_modules", "tmp"],
       });
       expect(services.chrome?.type).toBe("compose");

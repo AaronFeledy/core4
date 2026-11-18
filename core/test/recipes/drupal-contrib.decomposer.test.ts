@@ -6,14 +6,11 @@ import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import {
   DRUPAL_CONTRIB_CHROME_IMAGE,
-  DRUPAL_CONTRIB_CORE_VERSION_RECIPE_COMMAND,
   DRUPAL_CONTRIB_MINK_DRIVER_ARGS,
-  DRUPAL_CONTRIB_SCAFFOLD_COMMAND,
-  DRUPAL_CONTRIB_SCAFFOLD_RECIPE_COMMAND,
   contribMountTarget,
   mysqlSimpletestDb,
   pgsqlSimpletestDb,
-} from "../../src/recipes/builtin/drupal-contrib/commands.ts";
+} from "../../src/recipes/builtin/drupal-contrib/stack.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
 
 const {
@@ -120,14 +117,14 @@ describe("drupal-contrib decomposition", () => {
       tooling: {
         drush: {
           service: "appserver",
-          description: "Run Drush inside the appserver service.",
+          description: "Run Drush for the scaffolded Drupal site in /app.",
           cmds: [DRUSH_TOOLING_COMMAND],
           wrapper: true,
           dir: contribDir,
         },
         composer: {
           service: "appserver",
-          description: "Run Composer inside the appserver service.",
+          description: "Run Composer for the scaffolded Drupal site in /app.",
           cmds: ["composer"],
           wrapper: true,
           dir: contribDir,
@@ -136,13 +133,21 @@ describe("drupal-contrib decomposition", () => {
           service: "appserver",
           description: "Scaffold a Drupal site in the /app volume around the extension mount.",
           arguments: false,
-          cmd: DRUPAL_CONTRIB_SCAFFOLD_RECIPE_COMMAND,
+          cmd: [
+            "lando-drupal-contrib-scaffold",
+            "{{ recipe.type }}",
+            "{{ recipe.project }}",
+            "{{ recipe.drupal }}",
+          ],
           dir: contribDir,
         },
         "core-version": {
           service: "appserver",
           description: "Update the Drupal core constraint in the site composer.json and Landofile.",
-          cmd: DRUPAL_CONTRIB_CORE_VERSION_RECIPE_COMMAND,
+          cmd: ["lando-drupal-contrib-core-version", "{{ recipe.type }}", "{{ recipe.project }}"],
+          args: {
+            constraint: { required: true, description: "Composer constraint for Drupal core, such as ^10." },
+          },
           dir: contribDir,
         },
         phpunit: {
@@ -150,6 +155,7 @@ describe("drupal-contrib decomposition", () => {
           user: "www-data",
           description: "Run Drupal PHPUnit suites as the web server user.",
           cmd: ["vendor/bin/phpunit", "-c", "web/core"],
+          wrapper: true,
           dir: contribDir,
         },
         phpcs: {
@@ -198,21 +204,6 @@ describe("drupal-contrib decomposition", () => {
       uploadDirs: ["sites/*/files"],
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
     });
-  });
-
-  test("keeps the contrib scaffold interpolations and refuses to composer-require the extension", () => {
-    const authoring = authoringOf(defaults) as { tooling: { "drupal-contrib-scaffold": { cmd: string } } };
-    const command = authoring.tooling["drupal-contrib-scaffold"].cmd;
-    expect(command).toBe(DRUPAL_CONTRIB_SCAFFOLD_RECIPE_COMMAND);
-    expect(command).toContain("{{ recipe.drupal }}");
-    expect(command).toContain("{{ recipe.project }}");
-    expect(command).toContain("{{ recipe.type }}");
-    expect(command).toContain("fill_tree");
-    expect(command).toContain("composer create-project");
-    expect(command).toContain("require --dev --no-update");
-    expect(command).toContain("require --no-update --no-interaction drush/drush");
-    expect(command).toContain('test ! -e "$app_root/web/$${type}s/contrib/$project"');
-    expect(command.split("\n").length).toBeGreaterThan(10);
   });
 
   test.each([
@@ -265,9 +256,4 @@ describe("drupal-contrib decomposition", () => {
       );
     },
   );
-
-  test.skipIf(process.platform === "win32")("keeps the scaffold command valid as a shell script", () => {
-    const result = Bun.spawnSync(["sh", "-n", "-c", DRUPAL_CONTRIB_SCAFFOLD_COMMAND]);
-    expect(result.exitCode, result.stderr.toString()).toBe(0);
-  });
 });

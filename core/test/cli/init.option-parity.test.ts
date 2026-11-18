@@ -292,7 +292,11 @@ describe("recipe option parity", () => {
       const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
       expect(yaml).toContain('php: "8.4"');
       expect(yaml).toContain("webroot: /app/web");
-      expect(yaml).toContain("drupal-contrib-scaffold");
+      expect(yaml).toContain("lando-drupal-contrib-scaffold");
+      expect(yaml).not.toContain("composer create-project");
+      expect(yaml).not.toContain("fill_tree");
+      // Allows room for Chrome, test environment, and contrib tooling, but not an embedded scaffold script.
+      expect(Buffer.byteLength(yaml)).toBeLessThan(6_000);
       expect(yaml).toContain("/app/web/{{ recipe.type }}s/custom/{{ recipe.project }}");
       expect(yaml).toContain("selenium/standalone-chromium:155.0-20261010");
       expect(yaml).toContain("vendor/bin/phpunit");
@@ -306,8 +310,8 @@ describe("recipe option parity", () => {
       expect(appserver?.appMount).toMatchObject({
         includes: ["vendor", "node_modules", "tmp"],
       });
-      expect(landofile.tooling?.["drupal-contrib-scaffold"]).toBeDefined();
-      expect(landofile.tooling?.phpunit).toBeDefined();
+      expect(landofile.tooling?.["drupal-contrib-scaffold"]).toMatchObject({ arguments: false });
+      expect(landofile.tooling?.phpunit).toMatchObject({ wrapper: true });
     });
   });
 
