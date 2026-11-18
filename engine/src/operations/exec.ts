@@ -21,11 +21,12 @@ import { withAgentContextEnv } from "../config/agent-env.ts";
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
-import { appliedServicePlan, selectCommandIdentity } from "../services/execution-identity.ts";
+import { appliedAppPlan, selectCommandIdentity } from "../services/execution-identity.ts";
 import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { collectExecStream } from "./exec-stream.ts";
+import { publishNodePackageManagerWarning } from "./node-package-manager-warning.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
 import { availableServiceList, unknownPlanServiceError } from "./unknown-service.ts";
 
@@ -215,7 +216,9 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
   const service = yield* resolveService(split.service, plan);
   yield* registerPlanRedaction(plan);
   const provider = yield* registry.select(plan);
-  const appliedService = yield* appliedServicePlan(registry, plan, String(service.name));
+  const applied = yield* appliedAppPlan(registry, plan);
+  const appliedService = Object.values(applied?.services ?? {}).find((entry) => entry.name === service.name);
+  if (applied?.provider === plan.provider) yield* publishNodePackageManagerWarning(service, appliedService);
   const identity = selectCommandIdentity({
     cliUser: options.user,
     service: appliedService,

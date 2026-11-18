@@ -15,6 +15,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
+import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { executeToolingInvocations } from "../../src/operations/tooling-compile.ts";
 
 const metadata = {
@@ -111,4 +112,82 @@ test("tooling identity never borrows an enclosing app's project user", async () 
 
   expect(lookups).toEqual(["exact"]);
   expect(seen.map(({ user }) => user)).toEqual([undefined]);
+});
+
+const currentPin = { name: "pnpm", version: "10.10.0", launcher: "launcher-2" };
+
+test.each([
+  { label: "version change", before: { ...currentPin, version: "10.9.0" }, warn: true },
+  { label: "manager change", before: { ...currentPin, name: "yarn" }, warn: true },
+  { label: "integrity change", before: { ...currentPin, integrity: "sha256.changed" }, warn: true },
+  { label: "launcher change", before: { ...currentPin, launcher: "launcher-1" }, warn: true },
+  { label: "pin added", before: null, warn: true },
+  { label: "pin removed", before: currentPin, remove: true, warn: true },
+  { label: "same pin", before: currentPin, warn: false },
+  { label: "no stored evidence", before: undefined, warn: false },
+  { label: "other provider", before: null, provider: "docker", warn: false },
+])("tooling warning with $label", async ({ before, remove, provider, warn }) => {
+  const node = (packageManager: unknown, providerId: string): ServicePlan => ({
+    ...service(),
+    type: "node:22",
+    provider: ProviderId.make(providerId),
+    ...(packageManager === undefined ? {} : { provenance: { node: { packageManager } } }),
+  });
+  const plan = planAt(nestedRoot, node(remove ? null : currentPin, "lando"));
+  const applied = planAt(nestedRoot, node(before, provider ?? "lando"));
+  const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
+    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+    list: Effect.succeed([plan.provider]),
+    resolveAppliedPlan: () => Effect.succeed(applied),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
+    select: () => Effect.succeed(TestRuntimeProvider),
+  });
+  const warnings = makeCommandWarnings(true);
+  const invocation: ToolingInvocation = {
+    tool: "check",
+    service: ServiceName.make("web"),
+    commands: [["true"]],
+  };
+  const result = await Effect.runPromise(
+    Effect.scoped(
+      executeToolingInvocations({
+        provider: TestRuntimeProvider,
+        plan,
+        tool: "check",
+        invocations: [invocation, invocation],
+        requiresProvider: true,
+      }).pipe(
+        Effect.provideService(RuntimeProviderRegistry, registry),
+        Effect.provideService(CommandWarnings, warnings),
+        Effect.provideService(ToolingEngine, {
+          id: "test",
+          run: () =>
+            Effect.succeed({
+              tool: "check",
+              service: "web",
+              exitCode: 0,
+              stdout: "ran\n",
+              stderr: "",
+            }),
+        }),
+        Effect.provideService(EnvironmentValueResolver, {
+          openSession: () => Effect.succeed({ resolveEnvironment: () => Effect.succeed({}) }),
+        }),
+      ),
+    ),
+  );
+
+  expect(result.stdout).toBe("ran\nran\n");
+  expect(
+    (await Effect.runPromise(warnings.list)).map(({ code, context, remediation }) => ({
+      code,
+      service: context?.service,
+      remediation,
+    })),
+  ).toEqual(
+    warn
+      ? [{ code: "LANDO_NODE_PACKAGE_MANAGER_STALE", service: "web", remediation: "Run `lando start`." }]
+      : [],
+  );
 });
