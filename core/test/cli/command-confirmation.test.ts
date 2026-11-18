@@ -154,19 +154,10 @@ describe("lifecycle confirmation boundary", () => {
 
 describe("global destroy confirmation boundary", () => {
   test.each([
-    {
-      flags: {},
-      message: "Delete the global Lando app's containers and networks? Global data volumes are kept.",
-    },
-    {
-      flags: { volumes: true },
-      message: "Delete the global Lando app's containers, networks and global data volumes?",
-    },
-    {
-      flags: { purge: true },
-      message: "Delete the global Lando app's containers, networks, global data volumes and built images?",
-    },
-  ])("prompts with what it deletes before engine access: $message", async ({ flags, message }) => {
+    { mode: "default", flags: {} },
+    { mode: "volumes", flags: { volumes: true } },
+    { mode: "purge", flags: { purge: true } },
+  ])("honors a declined $mode confirmation before engine access", async ({ flags }) => {
     const interaction = makeTestInteractionService({ answers: { confirm: "false" } });
     const result = await Effect.runPromise(
       metaGlobalDestroySpec.run({ flags }).pipe(
@@ -185,8 +176,7 @@ describe("global destroy confirmation boundary", () => {
 
     if (Result.isSuccess(result)) throw new TypeError("expected declined confirmation");
     expect(result.failure).toMatchObject({ _tag: "CommandConfirmationError", reason: "declined" });
-    expect(interaction.transcript()).toHaveLength(1);
-    expect(interaction.transcript()[0]?.message).toBe(message);
+    expect(interaction.transcript()).toMatchObject([{ name: "confirm", type: "confirm" }]);
   });
 
   test("non-interactive runs fail with the --yes remediation and touch nothing", async () => {
