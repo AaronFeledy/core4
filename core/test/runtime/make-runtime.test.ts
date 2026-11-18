@@ -26,6 +26,10 @@ import { Cause, Context, Effect, Exit, Layer, Option, Result, Schema } from "eff
 import { LandoRuntimeOptions, makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
+const runtimeSignals = ["SIGINT", "SIGTERM"] as const;
+
+const addedListeners = (signal: NodeJS.Signals, before: readonly NodeJS.SignalsListener[]) =>
+  process.listeners(signal).filter((handler) => !before.includes(handler));
 
 const captureConsoleLog = async (run: () => Promise<void>): Promise<ReadonlyArray<string>> => {
   const lines: Array<string> = [];
@@ -155,40 +159,48 @@ describe("makeLandoRuntime", () => {
   });
 
   test("does not install process signal handlers by default", async () => {
-    const beforeSigint = process.listenerCount("SIGINT");
-    const beforeSigterm = process.listenerCount("SIGTERM");
-
-    await Effect.runPromise(Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "minimal" }))));
-
-    expect(process.listenerCount("SIGINT")).toBe(beforeSigint);
-    expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm);
-  });
-
-  test("installs and removes process signal handlers when explicitly requested", async () => {
-    const beforeSigint = process.listenerCount("SIGINT");
-    const beforeSigterm = process.listenerCount("SIGTERM");
+    const snapshots = runtimeSignals.map((signal) => ({ signal, before: process.listeners(signal) }));
 
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
+          yield* Layer.build(makeLandoRuntime({ bootstrap: "minimal" }));
+          for (const { signal, before } of snapshots) expect(addedListeners(signal, before)).toEqual([]);
+        }),
+      ),
+    );
+  });
+
+  test("installs and removes process signal handlers when explicitly requested", async () => {
+    const snapshots = runtimeSignals.map((signal) => ({ signal, before: process.listeners(signal) }));
+
+    const installed = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
           yield* Layer.build(makeLandoRuntime({ bootstrap: "minimal", installSignalHandlers: true }));
-          expect(process.listenerCount("SIGINT")).toBe(beforeSigint + 1);
-          expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm + 1);
+          return snapshots.map(({ signal, before }) => {
+            const handlers = addedListeners(signal, before);
+            expect(handlers).toHaveLength(1);
+            return { signal, handlers };
+          });
         }),
       ),
     );
 
-    expect(process.listenerCount("SIGINT")).toBe(beforeSigint);
-    expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm);
+    for (const { signal, handlers } of installed) {
+      for (const handler of handlers) expect(process.listeners(signal)).not.toContain(handler);
+    }
   });
 
   test("installed signal handlers interrupt the running fiber", async () => {
-    const before = process.listenerCount("SIGUSR2");
+    const before = process.listeners("SIGUSR2");
+    let installed: readonly NodeJS.SignalsListener[] = [];
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
         Effect.gen(function* () {
           yield* Effect.withFiber((fiber) => installSignalHandlers({ fiber, signals: ["SIGUSR2"] }));
-          expect(process.listenerCount("SIGUSR2")).toBe(before + 1);
+          installed = addedListeners("SIGUSR2", before);
+          expect(installed).toHaveLength(1);
           process.emit("SIGUSR2");
           yield* Effect.never;
         }),
@@ -198,30 +210,30 @@ describe("makeLandoRuntime", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected signal interruption");
     expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
-    expect(process.listenerCount("SIGUSR2")).toBe(before);
+    for (const handler of installed) expect(process.listeners("SIGUSR2")).not.toContain(handler);
   });
 
   test("makeLandoRuntime signal handlers interrupt the provided program", () => {
-    const script = String.raw`
+    const script = `
       import { strict as assert } from "node:assert";
       import { Cause, Effect, Exit } from "effect";
       import { makeLandoRuntime } from "@lando/core";
 
-      const before = process.listenerCount("SIGINT");
-      let during = 0;
+      const before = process.listeners("SIGINT");
+      let installed = [];
       const exit = await Effect.runPromiseExit(
         Effect.gen(function* () {
-          during = process.listenerCount("SIGINT");
+          installed = process.listeners("SIGINT").filter((handler) => !before.includes(handler));
           process.emit("SIGINT");
           yield* Effect.never;
         }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal", installSignalHandlers: true }))),
       );
 
-      assert.equal(during, before + 1);
+      assert.equal(installed.length, 1);
       assert.equal(Exit.isFailure(exit), true);
       if (!Exit.isFailure(exit)) throw new Error("expected signal interruption");
       assert.equal(Cause.hasInterruptsOnly(exit.cause), true);
-      assert.equal(process.listenerCount("SIGINT"), before);
+      assert.equal(process.listeners("SIGINT").includes(installed[0]), false);
       console.log("signal-ok");
     `;
     const proc = Bun.spawnSync([process.execPath, "--eval", script], {
