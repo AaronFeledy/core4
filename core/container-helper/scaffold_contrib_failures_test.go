@@ -9,9 +9,9 @@ import (
 
 func TestDrupalContribScaffoldPreflightRemediation(t *testing.T) {
 	for _, tc := range []struct{ name, infoName, info, want string }{
-		{"missing mount", "", "", "is not mounted at %s. Run lando rebuild so the app mount is recreated"},
-		{"project mismatch", "actual", "type: module\n", "Set recipe.options.project to actual in .lando.yml, run lando rebuild, then rerun lando drupal-contrib-scaffold"},
-		{"type mismatch", "example", "extra:\n  type: module\ntype: theme\n", "Set recipe.options.type to theme in .lando.yml, run lando rebuild, then rerun lando drupal-contrib-scaffold"},
+		{"missing mount", "", "", "is not mounted at %s. Run lando restart so the app mount is recreated"},
+		{"project mismatch", "actual", "type: module\n", "Set recipe.options.project to actual in .lando.yml, run lando restart, then rerun lando drupal-contrib-scaffold"},
+		{"type mismatch", "example", "extra:\n  type: module\ntype: theme\n", "Set recipe.options.type to theme in .lando.yml, run lando restart, then rerun lando drupal-contrib-scaffold"},
 		{"missing top-level type", "example", "extra:\n  type: module\n", "must declare a top-level type"},
 		{"multiple info files", "example", "type: module\n", "Expected exactly one *.info.yml"},
 	} {
@@ -64,4 +64,16 @@ func TestDrupalContribScaffoldDoesNotMarkIncompleteInstall(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDrupalContribScaffoldPublishesNothingWhenResolutionFails(t *testing.T) {
+	f := newContribFixture(t)
+	f.env["LANDO_TEST_COMPOSER_MODE"] = "fail-update"
+	contribTestMount(t, f, "module", "example", "type: module\n")
+	code := f.run(t, contribScaffoldCommand, "module", "example", contribTestConstraint)
+	if code != 1 || !strings.Contains(f.stderr.String(), "could not resolve the site dependencies") {
+		t.Fatalf("scaffold exited %d: %s", code, f.stderr.String())
+	}
+	assertContribCalls(t, f, contribStageCalls(f)...)
+	assertDirectoryNames(t, f.appRoot, []string{"web"})
 }

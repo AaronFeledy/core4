@@ -47,13 +47,23 @@ func assertContribCalls(t *testing.T, f *scaffoldFixture, argv ...[]string) {
 	mustEqualStrings(t, f.calls(t), want)
 }
 
-func contribStageCalls(f *scaffoldFixture) [][]string {
+func contribSetupCalls(f *scaffoldFixture) [][]string {
 	stage := filepath.Join(f.appRoot, ".lando-scaffold", "drupal-contrib-scaffold")
 	return [][]string{
 		{"create-project", "--no-install", "--no-scripts", "--no-interaction", "drupal/recommended-project:^10 || ^11", stage},
 		{"--working-dir=" + stage, "require", "--no-update", "--no-interaction", "drush/drush:*"},
 		{"--working-dir=" + stage, "require", "--dev", "--no-update", "--no-interaction", "drupal/core-dev:^10 || ^11", "drupal/coder:*"},
 	}
+}
+
+func contribLockCall(f *scaffoldFixture) []string {
+	stage := filepath.Join(f.appRoot, ".lando-scaffold", "drupal-contrib-scaffold")
+	return []string{"--working-dir=" + stage, "update", "--no-install", "--no-scripts", "--no-plugins", "--no-interaction"}
+}
+
+// contribStageCalls is the staging sequence for an extension without Composer dependencies.
+func contribStageCalls(f *scaffoldFixture) [][]string {
+	return append(contribSetupCalls(f), contribLockCall(f))
 }
 
 func TestDrupalContribRejectsInvalidArgs(t *testing.T) {
@@ -108,9 +118,10 @@ func TestDrupalContribScaffoldInstallsAroundMountAndMergesDeps(t *testing.T) {
 		t.Fatalf("scaffold exited %d: %s", code, f.stderr.String())
 	}
 	stage := "--working-dir=" + filepath.Join(f.appRoot, ".lando-scaffold", "drupal-contrib-scaffold")
-	want := append(contribStageCalls(f),
+	want := append(contribSetupCalls(f),
 		[]string{stage, "require", "--no-update", "--no-interaction", "acme/use:^2 || ^3"},
 		[]string{stage, "require", "--dev", "--no-update", "--no-interaction", "acme/test:^3"},
+		contribLockCall(f),
 		[]string{"install", "--no-interaction"})
 	assertContribCalls(t, f, want...)
 	after, err := os.Stat(mount)

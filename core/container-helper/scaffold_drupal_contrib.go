@@ -90,7 +90,7 @@ func (o drupalContribOptions) checkMount() error {
 	mount := o.extensionPath("custom")
 	entries, err := os.ReadDir(mount)
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
-		return fmt.Errorf("The extension is not mounted at %s. Run lando rebuild so the app mount is recreated.", mount)
+		return fmt.Errorf("The extension is not mounted at %s. Run lando restart so the app mount is recreated.", mount)
 	}
 	if err != nil {
 		return err
@@ -105,7 +105,7 @@ func (o drupalContribOptions) checkMount() error {
 		return fmt.Errorf("Expected exactly one *.info.yml at the extension root %s.", mount)
 	}
 	infoName := strings.TrimSuffix(infoFiles[0], ".info.yml")
-	const remediation = " Set recipe.options.%s to %s in .lando.yml, run lando rebuild, then rerun lando drupal-contrib-scaffold."
+	const remediation = " Set recipe.options.%s to %s in .lando.yml, run lando restart, then rerun lando drupal-contrib-scaffold."
 	if infoName != o.project {
 		return fmt.Errorf("Root info.yml machine name (%s) does not match recipe.options.project (%s)."+remediation, infoName, o.project, "project", infoName)
 	}
@@ -119,7 +119,7 @@ func (o drupalContribOptions) checkMount() error {
 	}
 	infoType := yamlRootString(string(data), "type")
 	if infoType == "" {
-		return fmt.Errorf("Root info.yml must declare a top-level type: module, theme, or profile. Correct the info.yml and recipe.options.type in .lando.yml, run lando rebuild, then rerun lando drupal-contrib-scaffold.")
+		return fmt.Errorf("Root info.yml must declare a top-level type: module, theme, or profile. Correct the info.yml and recipe.options.type in .lando.yml, run lando restart, then rerun lando drupal-contrib-scaffold.")
 	}
 	if infoType != o.extensionType {
 		return fmt.Errorf("Root info.yml type (%s) does not match recipe.options.type (%s)."+remediation, infoType, o.extensionType, "type", infoType)

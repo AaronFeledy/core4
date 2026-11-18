@@ -57,6 +57,22 @@ func stageDrupalContrib(s *scaffold, stage string, o drupalContribOptions) error
 	if !isRegularFile(filepath.Join(stage, "composer.json")) {
 		return errors.New("Drupal contrib scaffold did not stage a composer.json.")
 	}
+	if err := mergeContribDependencies(s, stage, o); err != nil {
+		return err
+	}
+	// The recommended project ships a lock for its own requirements. Resolve the
+	// whole site here so a dependency conflict fails before anything is promoted,
+	// and the install in the app root runs from a lock that matches composer.json.
+	if err := s.runCommand(s.appRoot, "composer", "--working-dir="+stage, "update",
+		"--no-install", "--no-scripts", "--no-plugins", "--no-interaction"); err != nil {
+		return fmt.Errorf("Drupal contrib scaffold could not resolve the site dependencies: %w", err)
+	}
+	return nil
+}
+
+// mergeContribDependencies adds the extension's own require and require-dev
+// entries to the staged site, so its tests run against what it declares.
+func mergeContribDependencies(s *scaffold, stage string, o drupalContribOptions) error {
 	extension, err := readContribComposer(o.extensionPath("custom"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
