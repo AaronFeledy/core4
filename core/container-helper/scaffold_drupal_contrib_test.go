@@ -8,8 +8,7 @@ import (
 	"testing"
 )
 
-const contribScaffoldCommand = "drupal-contrib-scaffold"
-const contribVersionCommand = "drupal-contrib-core-version"
+const contribSyncCommand = "drupal-contrib-sync"
 const contribTestConstraint = "^10 || ^11"
 
 func newContribFixture(t *testing.T) *scaffoldFixture {
@@ -48,16 +47,16 @@ func assertContribCalls(t *testing.T, f *scaffoldFixture, argv ...[]string) {
 }
 
 func contribSetupCalls(f *scaffoldFixture) [][]string {
-	stage := filepath.Join(f.appRoot, ".lando-scaffold", "drupal-contrib-scaffold")
+	stage := filepath.Join(f.appRoot, ".lando-scaffold", "drupal-contrib-sync")
 	return [][]string{
 		{"create-project", "--no-install", "--no-scripts", "--no-interaction", "drupal/recommended-project:^10 || ^11", stage},
-		{"--working-dir=" + stage, "require", "--no-update", "--no-interaction", "drush/drush:*"},
-		{"--working-dir=" + stage, "require", "--dev", "--no-update", "--no-interaction", "drupal/core-dev:^10 || ^11", "drupal/coder:*"},
+		{"--working-dir=" + stage, "require", "--no-update", "--no-interaction", "drupal/core-composer-scaffold:^10 || ^11", "drupal/core-project-message:^10 || ^11", "drupal/core-recommended:^10 || ^11", "drush/drush:*"},
+		{"--working-dir=" + stage, "require", "--dev", "--no-update", "--no-interaction", "drupal/coder:*", "drupal/core-dev:^10 || ^11"},
 	}
 }
 
 func contribLockCall(f *scaffoldFixture) []string {
-	stage := filepath.Join(f.appRoot, ".lando-scaffold", "drupal-contrib-scaffold")
+	stage := filepath.Join(f.appRoot, ".lando-scaffold", "drupal-contrib-sync")
 	return []string{"--working-dir=" + stage, "update", "--no-install", "--no-scripts", "--no-plugins", "--no-interaction"}
 }
 
@@ -67,35 +66,31 @@ func contribStageCalls(f *scaffoldFixture) [][]string {
 }
 
 func TestDrupalContribRejectsInvalidArgs(t *testing.T) {
-	for _, command := range []string{contribScaffoldCommand, contribVersionCommand} {
-		t.Run(command, func(t *testing.T) {
-			f := newContribFixture(t)
-			for _, tc := range []struct {
-				args    []string
-				message string
-			}{
-				{nil, "Usage:"},
-				{[]string{"module", "example"}, "Usage:"},
-				{[]string{"module", "example", "^10", "extra"}, "Usage:"},
-				{[]string{"--help"}, "does not accept the option"},
-				{[]string{"module", "example", "-v10"}, "does not accept the option"},
-				{[]string{"package", "example", "^10"}, "module, theme, or profile"},
-				{[]string{"module", "../example", "^10"}, "machine name"},
-				{[]string{"module", "Example", "^10"}, "machine name"},
-				{[]string{"module", "example", ""}, "constraint is invalid"},
-				{[]string{"module", "example", "^10;test"}, "constraint is invalid"},
-			} {
-				if code := f.run(t, command, tc.args...); code != 1 || !strings.Contains(f.stderr.String(), tc.message) {
-					t.Fatalf("%s %q exited %d: %s, want %q", command, tc.args, code, f.stderr.String(), tc.message)
-				}
-			}
-			assertContribCalls(t, f)
-			assertDirectoryNames(t, f.appRoot, nil)
-		})
+	f := newContribFixture(t)
+	for _, tc := range []struct {
+		args    []string
+		message string
+	}{
+		{nil, "Usage:"},
+		{[]string{"module", "example"}, "Usage:"},
+		{[]string{"module", "example", "^10", "extra"}, "Usage:"},
+		{[]string{"--help"}, "does not accept the option"},
+		{[]string{"module", "example", "-v10"}, "does not accept the option"},
+		{[]string{"package", "example", "^10"}, "module, theme, or profile"},
+		{[]string{"module", "../example", "^10"}, "machine name"},
+		{[]string{"module", "Example", "^10"}, "machine name"},
+		{[]string{"module", "example", ""}, "constraint is invalid"},
+		{[]string{"module", "example", "^10;test"}, "constraint is invalid"},
+	} {
+		if code := f.run(t, contribSyncCommand, tc.args...); code != 1 || !strings.Contains(f.stderr.String(), tc.message) {
+			t.Fatalf("%s %q exited %d: %s, want %q", contribSyncCommand, tc.args, code, f.stderr.String(), tc.message)
+		}
 	}
+	assertContribCalls(t, f)
+	assertDirectoryNames(t, f.appRoot, nil)
 }
 
-func TestDrupalContribScaffoldInstallsAroundMountAndMergesDeps(t *testing.T) {
+func TestDrupalContribSyncInstallsAroundMountAndMergesDeps(t *testing.T) {
 	f := newContribFixture(t)
 	const info = "name: Example\ntype: 'module' # required\n"
 	mount := contribTestMount(t, f, "module", "example", info)
@@ -114,7 +109,7 @@ func TestDrupalContribScaffoldInstallsAroundMountAndMergesDeps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if code := f.run(t, contribScaffoldCommand, "module", "example", contribTestConstraint); code != 0 {
+	if code := f.run(t, contribSyncCommand, "module", "example", contribTestConstraint); code != 0 {
 		t.Fatalf("scaffold exited %d: %s", code, f.stderr.String())
 	}
 	site, err := readContribComposer(f.appRoot)
@@ -127,11 +122,10 @@ func TestDrupalContribScaffoldInstallsAroundMountAndMergesDeps(t *testing.T) {
 	if site.Require["acme/root"] != "^1" || site.RequireDev["acme/root-dev"] != "^1" {
 		t.Fatalf("recommended project constraints changed: %v / %v", site.Require, site.RequireDev)
 	}
-	stage := "--working-dir=" + filepath.Join(f.appRoot, ".lando-scaffold", "drupal-contrib-scaffold")
+	stage := "--working-dir=" + filepath.Join(f.appRoot, ".lando-scaffold", "drupal-contrib-sync")
 	want := append(contribSetupCalls(f)[:1:1],
-		[]string{stage, "require", "--no-update", "--no-interaction", "acme/use:^2 || ^3", "drush/drush:^12"},
-		[]string{stage, "require", "--dev", "--no-update", "--no-interaction", "acme/test:^3", "drupal/coder:^8.3"},
-		[]string{stage, "require", "--dev", "--no-update", "--no-interaction", "drupal/core-dev:^10 || ^11"},
+		[]string{stage, "require", "--no-update", "--no-interaction", "acme/use:^2 || ^3", "drupal/core-composer-scaffold:^10 || ^11", "drupal/core-project-message:^10 || ^11", "drupal/core-recommended:^10 || ^11", "drush/drush:^12"},
+		[]string{stage, "require", "--dev", "--no-update", "--no-interaction", "acme/test:^3", "drupal/coder:^8.3", "drupal/core-dev:^10 || ^11"},
 		contribLockCall(f),
 		[]string{"install", "--no-interaction"})
 	assertContribCalls(t, f, want...)
@@ -157,15 +151,22 @@ func TestDrupalContribScaffoldInstallsAroundMountAndMergesDeps(t *testing.T) {
 	for _, dir := range []string{"web/core", "web/sites/simpletest/browser_output", "web/sites/default/files/simpletest"} {
 		assertDirectoryNames(t, filepath.Join(f.appRoot, dir), nil)
 	}
-	assertFileText(t, filepath.Join(f.appRoot, ".lando-drupal-contrib-scaffold-complete"), "")
-	if code := f.run(t, contribScaffoldCommand, "module", "example", contribTestConstraint); code != 1 ||
-		!strings.Contains(f.stderr.String(), "Drupal contrib is already scaffolded at "+f.appRoot+".") {
+	if !isRegularFile(filepath.Join(f.appRoot, ".lando-drupal-contrib-sync-complete")) {
+		t.Fatal("sync did not mark the site complete")
+	}
+	record := loadContribSyncRecord(f.appRoot)
+	if record.Version != 1 || record.Require["acme/use"] != "^2 || ^3" || record.RequireDev["acme/test"] != "^3" ||
+		record.Require["acme/root-dev"] != "" || record.RequireDev["acme/root"] != "" {
+		t.Fatalf("record should contain applied requirements only: %+v", record)
+	}
+	if code := f.run(t, contribSyncCommand, "module", "example", contribTestConstraint); code != 0 ||
+		f.stdout.String() != "Drupal site at "+f.appRoot+" is up to date.\n" || f.stderr.Len() != 0 {
 		t.Fatalf("rerun exited %d: %s", code, f.stderr.String())
 	}
 	assertContribCalls(t, f, want...)
 }
 
-func TestDrupalContribScaffoldResumesInstall(t *testing.T) {
+func TestDrupalContribSyncResumesInstall(t *testing.T) {
 	for _, tc := range []struct {
 		point    string
 		installs int
@@ -176,8 +177,8 @@ func TestDrupalContribScaffoldResumesInstall(t *testing.T) {
 			f := newContribFixture(t)
 			contribTestMount(t, f, "theme", "example", "type: theme\n")
 			args := []string{"theme", "example", contribTestConstraint}
-			f.kill(t, contribScaffoldCommand, tc.point, args...)
-			if code := f.run(t, contribScaffoldCommand, args...); code != 0 {
+			f.kill(t, contribSyncCommand, tc.point, args...)
+			if code := f.run(t, contribSyncCommand, args...); code != 0 {
 				t.Fatalf("resume exited %d: %s", code, f.stderr.String())
 			}
 			want := contribStageCalls(f)
@@ -185,18 +186,18 @@ func TestDrupalContribScaffoldResumesInstall(t *testing.T) {
 				want = append(want, []string{"install", "--no-interaction"})
 			}
 			assertContribCalls(t, f, want...)
-			assertFileText(t, filepath.Join(f.appRoot, ".lando-drupal-contrib-scaffold-complete"), "")
+			assertFileText(t, filepath.Join(f.appRoot, ".lando-drupal-contrib-sync-complete"), "")
 			assertDirectoryNames(t, filepath.Join(f.appRoot, "web/sites/simpletest/browser_output"), nil)
 		})
 	}
 }
 
-func TestDrupalContribScaffoldRepairsOrphanMarker(t *testing.T) {
+func TestDrupalContribSyncRepairsOrphanMarker(t *testing.T) {
 	f := newContribFixture(t)
 	contribTestMount(t, f, "profile", "example", "type: profile\n")
-	marker := filepath.Join(f.appRoot, ".lando-drupal-contrib-scaffold-complete")
+	marker := filepath.Join(f.appRoot, ".lando-drupal-contrib-sync-complete")
 	writeContribTestFile(t, marker, "orphan")
-	if code := f.run(t, contribScaffoldCommand, "profile", "example", contribTestConstraint); code != 0 {
+	if code := f.run(t, contribSyncCommand, "profile", "example", contribTestConstraint); code != 0 {
 		t.Fatalf("repair exited %d: %s", code, f.stderr.String())
 	}
 	assertContribCalls(t, f, append(contribStageCalls(f), []string{"install", "--no-interaction"})...)

@@ -24,19 +24,22 @@ func fakeContribComposer(args []string, env map[string]string) int {
 		}
 		if env["LANDO_TEST_COMPOSER_MODE"] != "missing-stage-json" {
 			writeFakeJSON(filepath.Join(stage, "composer.json"), map[string]any{
-				"require":     map[string]string{"drupal/core-recommended": "^10", "acme/root": "^1"},
+				"require": map[string]string{
+					"drupal/core-recommended": "^11.2", "drupal/core-composer-scaffold": "^11.2",
+					"drupal/core-project-message": "^11.2", "acme/root": "^1",
+				},
 				"require-dev": map[string]string{"acme/root-dev": "^1"},
 			})
 		}
-	case "require":
+	case "require", "remove":
 		if env["LANDO_TEST_COMPOSER_MODE"] == "missing-stage-json" {
 			return 0
 		}
 		path := filepath.Join(dir, "composer.json")
 		manifest := readFakeJSON(path)
-		bucket := "require"
+		bucket, other := "require", "require-dev"
 		if slices.Contains(args, "--dev") {
-			bucket = "require-dev"
+			bucket, other = other, bucket
 		}
 		requires, ok := manifest[bucket].(map[string]any)
 		if !ok {
@@ -47,11 +50,18 @@ func fakeContribComposer(args []string, env map[string]string) int {
 			if strings.HasPrefix(arg, "--") {
 				continue
 			}
+			if args[0] == "remove" {
+				delete(requires, arg)
+				continue
+			}
 			name, version, ok := strings.Cut(arg, ":")
 			if !ok {
 				return 2
 			}
 			requires[name] = version
+			if opposite, ok := manifest[other].(map[string]any); ok {
+				delete(opposite, name)
+			}
 		}
 		writeFakeJSON(path, manifest)
 	case "install":
@@ -89,11 +99,6 @@ func fakeContribComposer(args []string, env map[string]string) int {
 		}
 		if env["LANDO_TEST_COMPOSER_MODE"] == "fail-update" {
 			return 42
-		}
-		if path := env["LANDO_TEST_EDIT_LANDOFILE"]; path != "" {
-			if err := os.WriteFile(path, []byte(env["LANDO_TEST_LANDOFILE_TEXT"]), 0o640); err != nil {
-				return 2
-			}
 		}
 	default:
 		return 2

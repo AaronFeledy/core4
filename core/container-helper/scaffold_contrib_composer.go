@@ -31,59 +31,99 @@ func readContribComposer(root string) (contribComposerManifest, error) {
 	return manifest, nil
 }
 
-func contribComposerRequire(streams helperIO, dir string, dev bool, packages ...string) error {
-	args := []string{"--working-dir=" + dir, "require"}
+func (o drupalContribOptions) readExtensionComposer() (contribComposerManifest, error) {
+	extension, err := readContribComposer(o.extensionPath("custom"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return contribComposerManifest{}, nil
+	}
+	return extension, err
+}
+
+func (streams helperIO) contribComposerEdit(dir, step string, dev bool, packages []string) error {
+	if len(packages) == 0 {
+		return nil
+	}
+	sort.Strings(packages)
+	args := []string{"--working-dir=" + dir, step}
 	if dev {
 		args = append(args, "--dev")
 	}
 	args = append(args, "--no-update", "--no-interaction")
-	if err := streams.runCommand(dir, "composer", append(args, packages...)...); err != nil {
-		return fmt.Errorf("Composer could not require packages in %s: %w", dir, err)
+	return streams.contribComposer(dir, step, append(args, packages...))
+}
+
+func (streams helperIO) contribComposer(dir, step string, args []string) error {
+	if err := streams.runCommand(dir, "composer", args...); err != nil {
+		return fmt.Errorf("Drupal contrib sync: Composer %s failed; fix the Composer error, then rerun lando drupal-contrib-sync: %w", step, err)
 	}
 	return nil
 }
 
-func stageDrupalContrib(s *scaffold, stage string, o drupalContribOptions) error {
-	if err := s.runCommand(s.appRoot, "composer", "create-project", "--no-install", "--no-scripts", "--no-interaction",
-		"drupal/recommended-project:"+o.constraint, stage); err != nil {
-		return fmt.Errorf("Drupal contrib scaffold could not stage the project: %w", err)
+func stageDrupalContrib(s *scaffold, manifest *scaffoldManifest, o drupalContribOptions) error {
+	stage := s.stageDir
+	if err := s.streams.contribComposer(s.appRoot, "create-project", []string{"create-project", "--no-install", "--no-scripts", "--no-interaction",
+		"drupal/recommended-project:" + o.constraint, stage}); err != nil {
+		return err
 	}
 	if !isRegularFile(filepath.Join(stage, "composer.json")) {
-		return errors.New("Drupal contrib scaffold did not stage a composer.json.")
-	}
-	if err := mergeContribDependencies(s, stage, o); err != nil {
-		return err
+		return errors.New("Drupal contrib sync did not stage a composer.json.")
 	}
 	site, err := readContribComposer(stage)
 	if err != nil {
 		return err
 	}
-	declared := site.declaredPackages()
-	if !declared["drush/drush"] {
-		if err := contribComposerRequire(s.streams, stage, false, "drush/drush:*"); err != nil {
+	extension, err := o.readExtensionComposer()
+	if err != nil {
+		return err
+	}
+	desired, err := desiredContribRequirements(o.constraint, site, extension)
+	if err != nil {
+		return err
+	}
+	baseline := site.declaredPackages()
+	inherited := contribSyncRecord{Version: 1, Require: map[string]string{}, RequireDev: map[string]string{}}
+	for _, dev := range []bool{false, true} {
+		var packages []string
+		for name, constraint := range desired.bucket(dev) {
+			// Keep non-core requirements inherited from the template on the first
+			// build, even when the extension lists them in a different bucket.
+			if isManagedContribCore(name) {
+				if site.bucket(dev)[name] == constraint {
+					continue
+				}
+			} else if baseline[name] {
+				inherited.bucket(dev)[name] = constraint
+				delete(desired.bucket(dev), name)
+				continue
+			}
+			packages = append(packages, name+":"+constraint)
+		}
+		if err := s.streams.contribComposerEdit(stage, "require", dev, packages); err != nil {
 			return err
 		}
 	}
-	dev := []string{"drupal/core-dev:" + o.constraint}
-	if !declared["drupal/coder"] {
-		dev = append(dev, "drupal/coder:*")
-	}
-	if err := contribComposerRequire(s.streams, stage, true, dev...); err != nil {
+	// Resolve the entire staged site before promotion; install uses this lock.
+	if err := s.streams.contribComposer(s.appRoot, "update (resolve the site dependencies)", []string{"--working-dir=" + stage, "update",
+		"--no-install", "--no-scripts", "--no-plugins", "--no-interaction"}); err != nil {
 		return err
 	}
-	// The recommended project ships a lock for its own requirements. Resolve the
-	// whole site here so a dependency conflict fails before anything is promoted,
-	// and the install in the app root runs from a lock that matches composer.json.
-	if err := s.runCommand(s.appRoot, "composer", "--working-dir="+stage, "update",
-		"--no-install", "--no-scripts", "--no-plugins", "--no-interaction"); err != nil {
-		return fmt.Errorf("Drupal contrib scaffold could not resolve the site dependencies: %w", err)
+	manifest.Contrib = &desired
+	if len(inherited.Require)+len(inherited.RequireDev) > 0 {
+		manifest.ContribInherited = &inherited
 	}
 	return nil
 }
 
-func (site contribComposerManifest) declaredPackages() map[string]bool {
-	declared := make(map[string]bool, len(site.Require)+len(site.RequireDev))
-	for _, bucket := range []map[string]string{site.Require, site.RequireDev} {
+func (manifest contribComposerManifest) bucket(dev bool) map[string]string {
+	if dev {
+		return manifest.RequireDev
+	}
+	return manifest.Require
+}
+
+func (manifest contribComposerManifest) declaredPackages() map[string]bool {
+	declared := make(map[string]bool, len(manifest.Require)+len(manifest.RequireDev))
+	for _, bucket := range []map[string]string{manifest.Require, manifest.RequireDev} {
 		for name := range bucket {
 			declared[strings.ToLower(name)] = true
 		}
@@ -91,55 +131,56 @@ func (site contribComposerManifest) declaredPackages() map[string]bool {
 	return declared
 }
 
-// mergeContribDependencies adds the extension's own require and require-dev
-// entries to the staged site, so its tests run against what it declares.
-func mergeContribDependencies(s *scaffold, stage string, o drupalContribOptions) error {
-	extension, err := readContribComposer(o.extensionPath("custom"))
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
+func desiredContribRequirements(constraint string, site, extension contribComposerManifest) (contribSyncRecord, error) {
+	desired := contribSyncRecord{
+		Version:    1,
+		Require:    map[string]string{"drupal/core-recommended": constraint},
+		RequireDev: map[string]string{"drupal/core-dev": constraint},
 	}
-	if err != nil {
-		return err
+	for _, name := range []string{"drupal/core-composer-scaffold", "drupal/core-project-message"} {
+		if _, declared := site.Require[name]; declared {
+			desired.Require[name] = constraint
+		}
 	}
-	site, err := readContribComposer(stage)
-	if err != nil {
-		return err
-	}
-	seen := site.declaredPackages()
-	for _, bucket := range []struct {
-		dev          bool
-		dependencies map[string]string
-	}{{false, extension.Require}, {true, extension.RequireDev}} {
-		var packages []string
-		for name, version := range bucket.dependencies {
+	seen := make(map[string]bool)
+	for _, dev := range []bool{false, true} {
+		for name, version := range extension.bucket(dev) {
 			key := strings.ToLower(name)
 			if skipContribDependency(key, extension.Name) || seen[key] {
 				continue
 			}
 			if !contribPackagePattern.MatchString(name) {
-				return fmt.Errorf("Invalid Composer package name in the extension's dependencies: %q", name)
+				return contribSyncRecord{}, fmt.Errorf("Invalid Composer package name in the extension's dependencies: %q", name)
 			}
 			seen[key] = true
-			packages = append(packages, name+":"+version)
-		}
-		sort.Strings(packages)
-		if len(packages) > 0 {
-			if err := contribComposerRequire(s.streams, stage, bucket.dev, packages...); err != nil {
-				return err
-			}
+			desired.bucket(dev)[key] = version
 		}
 	}
-	return nil
+	if !seen["drush/drush"] {
+		desired.Require["drush/drush"] = "*"
+	}
+	if !seen["drupal/coder"] {
+		desired.RequireDev["drupal/coder"] = "*"
+	}
+	return desired, nil
 }
 
 var contribPackagePattern = regexp.MustCompile(`(?i)^[a-z0-9][a-z0-9_.-]*(/[a-z0-9][a-z0-9_.-]*)?$`)
 
-func skipContribDependency(name, self string) bool {
-	// Platform requirements follow the recipe's PHP choice. Skip core requirements
-	// so maintainers can test against a core version the extension does not declare yet.
+func isManagedContribCore(name string) bool {
 	switch name {
-	case "php", "composer-plugin-api", "composer-runtime-api", "drupal/core", "drupal/core-recommended", "drupal/core-dev", "drupal/core-composer-scaffold", "drupal/core-project-message":
+	case "drupal/core-recommended", "drupal/core-dev", "drupal/core-composer-scaffold", "drupal/core-project-message":
 		return true
 	}
-	return strings.EqualFold(name, self) || strings.HasPrefix(name, "ext-") || strings.HasPrefix(name, "lib-")
+	return false
+}
+
+func skipContribDependency(name, self string) bool {
+	// Platform requirements follow the recipe's PHP choice. The recipe also
+	// controls core so maintainers can test versions the extension doesn't declare.
+	switch name {
+	case "php", "composer-plugin-api", "composer-runtime-api", "drupal/core":
+		return true
+	}
+	return isManagedContribCore(name) || strings.EqualFold(name, self) || strings.HasPrefix(name, "ext-") || strings.HasPrefix(name, "lib-")
 }

@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -81,7 +82,8 @@ func (s *scaffold) reportKeptPaths(manifest *scaffoldManifest) {
 // isLandoOwnedName reports whether a top-level path belongs to the engine's
 // own bookkeeping rather than to the scaffolded project.
 func (s *scaffold) isLandoOwnedName(name string) bool {
-	if name == ".lando.yml" || name == scaffoldStageRoot || name == scaffoldLockName {
+	if name == ".lando.yml" || name == scaffoldStageRoot || name == scaffoldLockName ||
+		name == contribSyncRecordName || strings.HasPrefix(name, contribSyncRecordName+".tmp.") {
 		return true
 	}
 	if name == filepath.Base(s.manifestPath) {

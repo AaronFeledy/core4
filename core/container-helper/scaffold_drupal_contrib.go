@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -11,7 +12,8 @@ import (
 	"syscall"
 )
 
-const drupalContribScaffoldCommand = "drupal-contrib-scaffold"
+const drupalContribSyncCommand = "drupal-contrib-sync"
+const drupalContribOutputs = "composer.json, executable vendor/bin/{drush,phpunit,phpcs}, web/core, and web/index.php"
 
 var (
 	contribProjectPattern    = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -60,30 +62,54 @@ func (o drupalContribOptions) extensionPath(location string) string {
 	return filepath.Join(o.appRoot, "web", o.extensionType+"s", location, o.project)
 }
 
-func runDrupalContribScaffold(args []string, streams helperIO, crash func(string)) int {
-	const command = drupalContribScaffoldCommand
+func runDrupalContribSync(args []string, streams helperIO, crash func(string)) int {
+	const command = drupalContribSyncCommand
 	o, err := parseDrupalContribArgs("lando-"+command, args, streams.env)
 	if err != nil {
 		return scaffoldResult(err, streams)
 	}
-	// A missing app root cannot contain the bind. Don't create it just to take a lock.
-	if !isDirectory(o.appRoot) {
-		return scaffoldResult(o.checkMount(), streams)
+	if err := o.checkMount(); err != nil {
+		return scaffoldResult(err, streams)
 	}
+	lock, err := acquireScaffoldLock(o.appRoot)
+	if err != nil {
+		return scaffoldResult(err, streams)
+	}
+	defer lock.release()
 	s := newScaffold(
 		command,
 		"Drupal contrib",
 		command,
-		fmt.Sprintf("Drupal contrib is already scaffolded at %s.", o.appRoot),
-		"composer.json, executable vendor/bin/{drush,phpunit,phpcs}, web/core, and web/index.php",
+		fmt.Sprintf("Drupal site at %s is up to date.", o.appRoot),
+		drupalContribOutputs,
 		o.appRoot,
 		streams,
 		crash,
 	)
-	return scaffoldResult(s.execute(scaffoldOptions{
-		preflight:    func(bool, *scaffoldManifest) error { return o.checkMount() },
-		generate:     func(stage string) error { return stageDrupalContrib(s, stage, o) },
+	// A marked site with its manifest still on disk can repair missing
+	// outputs with Composer. A bare marker has no project to repair.
+	if pathExists(s.markerPath) && isRegularFile(filepath.Join(o.appRoot, "composer.json")) {
+		if pathExists(s.manifestPath) {
+			s.cleanup()
+		}
+		return scaffoldResult(convergeDrupalContrib(o, s), streams)
+	}
+	return scaffoldResult(s.executeLocked(scaffoldOptions{
+		generate:     func(_ string, manifest *scaffoldManifest) error { return stageDrupalContrib(s, manifest, o) },
 		afterPromote: func(manifest *scaffoldManifest) error { return installDrupalContrib(s, manifest, o) },
+		beforeFinish: func(manifest *scaffoldManifest) error {
+			if manifest.Contrib == nil {
+				return errors.New("Drupal contrib sync recovery manifest is missing its managed requirements.")
+			}
+			if manifest.ContribInherited != nil {
+				data, err := json.Marshal(manifest.ContribInherited)
+				if err != nil {
+					return err
+				}
+				s.markerData = data
+			}
+			return manifest.Contrib.save(o.appRoot)
+		},
 		complete:     drupalContribComplete,
 	}), streams)
 }
@@ -92,7 +118,7 @@ func (o drupalContribOptions) checkMount() error {
 	mount := o.extensionPath("custom")
 	entries, err := os.ReadDir(mount)
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
-		return fmt.Errorf("The extension is not mounted at %s. If you changed recipe.options.project or recipe.options.type, run lando restart so the app mount moves, then rerun lando drupal-contrib-scaffold.", mount)
+		return fmt.Errorf("The extension is not mounted at %s. If you changed recipe.options.project or recipe.options.type, run lando restart so the app mount moves, then rerun lando drupal-contrib-sync.", mount)
 	}
 	if err != nil {
 		return err
@@ -104,10 +130,10 @@ func (o drupalContribOptions) checkMount() error {
 		}
 	}
 	if len(infoFiles) != 1 {
-		return fmt.Errorf("Expected exactly one *.info.yml at the extension root %s; found %d. Keep one info file at the extension root, then rerun lando drupal-contrib-scaffold.", mount, len(infoFiles))
+		return fmt.Errorf("Expected exactly one *.info.yml at the extension root %s; found %d. Keep one info file at the extension root, then rerun lando drupal-contrib-sync.", mount, len(infoFiles))
 	}
 	infoName := strings.TrimSuffix(infoFiles[0], ".info.yml")
-	const remediation = " Set recipe.options.%s to %s in .lando.yml, run lando restart, then rerun lando drupal-contrib-scaffold."
+	const remediation = " Set recipe.options.%s to %s in .lando.yml, run lando restart, then rerun lando drupal-contrib-sync."
 	if infoName != o.project {
 		return fmt.Errorf("Root info.yml machine name (%s) does not match recipe.options.project (%s)."+remediation, infoName, o.project, "project", infoName)
 	}
@@ -121,7 +147,7 @@ func (o drupalContribOptions) checkMount() error {
 	}
 	infoType := yamlRootString(string(data), "type")
 	if infoType == "" {
-		return fmt.Errorf("Root info.yml must declare a top-level type: module, theme, or profile. Correct the info.yml and recipe.options.type in .lando.yml, run lando restart, then rerun lando drupal-contrib-scaffold.")
+		return fmt.Errorf("Root info.yml must declare a top-level type: module, theme, or profile. Correct the info.yml and recipe.options.type in .lando.yml, run lando restart, then rerun lando drupal-contrib-sync.")
 	}
 	if infoType != o.extensionType {
 		return fmt.Errorf("Root info.yml type (%s) does not match recipe.options.type (%s)."+remediation, infoType, o.extensionType, "type", infoType)
@@ -131,9 +157,9 @@ func (o drupalContribOptions) checkMount() error {
 
 func installDrupalContrib(s *scaffold, manifest *scaffoldManifest, o drupalContribOptions) error {
 	const hook = "composer-install"
-	if !manifest.Hooks[hook] {
-		if err := s.runCommand(s.appRoot, "composer", "install", "--no-interaction"); err != nil {
-			return fmt.Errorf("Drupal contrib scaffold could not install dependencies; fix the Composer error and rerun lando drupal-contrib-scaffold: %w", err)
+	if !manifest.Hooks[hook] || !drupalContribComplete(s.appRoot) {
+		if err := s.streams.contribComposer(s.appRoot, "install", []string{"install", "--no-interaction"}); err != nil {
+			return err
 		}
 		manifest.Hooks[hook] = true
 		if err := s.saveManifest(manifest); err != nil {
@@ -141,13 +167,17 @@ func installDrupalContrib(s *scaffold, manifest *scaffoldManifest, o drupalContr
 		}
 		s.point("hook-composer-install")
 	}
+	return o.prepareTestSite()
+}
+
+func (o drupalContribOptions) prepareTestSite() error {
 	for _, dir := range []string{"simpletest/browser_output", "default/files/simpletest"} {
-		if err := os.MkdirAll(filepath.Join(s.appRoot, "web", "sites", dir), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(o.appRoot, "web", "sites", dir), 0o755); err != nil {
 			return err
 		}
 	}
 	if path := o.extensionPath("contrib"); pathExists(path) {
-		return fmt.Errorf("Drupal contrib scaffold installed the extension into contrib at %s.", path)
+		return fmt.Errorf("Drupal contrib sync installed the extension into contrib at %s.", path)
 	}
 	return nil
 }

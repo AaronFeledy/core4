@@ -24,13 +24,15 @@ func (s *scaffold) newManifest() *scaffoldManifest {
 	}
 }
 
-func (s *scaffold) stage(manifest *scaffoldManifest, generate func(stage string) error) error {
+func (s *scaffold) stage(manifest *scaffoldManifest, generate func(stage string, manifest *scaffoldManifest) error) error {
 	if err := os.RemoveAll(s.stageDir); err != nil {
 		return err
 	}
 	manifest.Phase = "staging"
 	manifest.Entries = nil
 	manifest.Hooks = map[string]bool{}
+	manifest.Contrib = nil
+	manifest.ContribInherited = nil
 	if err := s.saveManifest(manifest); err != nil {
 		return err
 	}
@@ -38,7 +40,7 @@ func (s *scaffold) stage(manifest *scaffoldManifest, generate func(stage string)
 		return err
 	}
 	s.point("stage-created")
-	if err := generate(s.stageDir); err != nil {
+	if err := generate(s.stageDir, manifest); err != nil {
 		// A generation failure has promoted nothing. A kill does not run
 		// cleanup: the staging phase is replayed from scratch on resume.
 		s.cleanup()
@@ -69,6 +71,11 @@ func (s *scaffold) finish() error {
 		file, err := os.OpenFile(s.markerPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 		if err != nil {
 			return err
+		}
+		if len(s.markerData) != 0 {
+			if _, err := file.Write(s.markerData); err != nil {
+				return errors.Join(err, file.Close())
+			}
 		}
 		if err := file.Sync(); err != nil {
 			_ = file.Close()
@@ -176,7 +183,8 @@ func (s *scaffold) validateStagedName(name string) error {
 	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\x00\n") {
 		return fmt.Errorf("Invalid %s scaffold entry: %s", s.label, name)
 	}
-	if name == scaffoldStageRoot || name == scaffoldLockName || name == filepath.Base(s.manifestPath) ||
+	if name == scaffoldStageRoot || name == scaffoldLockName || name == contribSyncRecordName ||
+		strings.HasPrefix(name, contribSyncRecordName+".tmp.") || name == filepath.Base(s.manifestPath) ||
 		(s.markerPath != "" && name == filepath.Base(s.markerPath)) {
 		return fmt.Errorf("Invalid %s scaffold entry: %s is reserved for Lando.", s.label, name)
 	}

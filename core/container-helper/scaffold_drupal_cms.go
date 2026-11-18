@@ -28,7 +28,7 @@ func runDrupalCmsScaffold(args []string, streams helperIO, crash func(string)) i
 		crash,
 	)
 	err := s.execute(scaffoldOptions{
-		generate: func(stage string) error {
+		generate: func(stage string, _ *scaffoldManifest) error {
 			return stageDrupalCms(s, stage)
 		},
 		complete: drupalScaffoldComplete,

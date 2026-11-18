@@ -7,13 +7,13 @@ import (
 	"testing"
 )
 
-func TestDrupalContribScaffoldPreflightRemediation(t *testing.T) {
+func TestDrupalContribSyncPreflightRemediation(t *testing.T) {
 	for _, tc := range []struct{ name, infoName, info, want string }{
-		{"missing mount", "", "", "The extension is not mounted at %s. If you changed recipe.options.project or recipe.options.type, run lando restart so the app mount moves, then rerun lando drupal-contrib-scaffold."},
-		{"project mismatch", "actual", "type: module\n", "Set recipe.options.project to actual in .lando.yml, run lando restart, then rerun lando drupal-contrib-scaffold"},
-		{"type mismatch", "example", "extra:\n  type: module\ntype: theme\n", "Set recipe.options.type to theme in .lando.yml, run lando restart, then rerun lando drupal-contrib-scaffold"},
+		{"missing mount", "", "", "The extension is not mounted at %s. If you changed recipe.options.project or recipe.options.type, run lando restart so the app mount moves, then rerun lando drupal-contrib-sync."},
+		{"project mismatch", "actual", "type: module\n", "Set recipe.options.project to actual in .lando.yml, run lando restart, then rerun lando drupal-contrib-sync"},
+		{"type mismatch", "example", "extra:\n  type: module\ntype: theme\n", "Set recipe.options.type to theme in .lando.yml, run lando restart, then rerun lando drupal-contrib-sync"},
 		{"missing top-level type", "example", "extra:\n  type: module\n", "must declare a top-level type"},
-		{"multiple info files", "example", "type: module\n", "Expected exactly one *.info.yml at the extension root %s; found 2. Keep one info file at the extension root, then rerun lando drupal-contrib-scaffold."},
+		{"multiple info files", "example", "type: module\n", "Expected exactly one *.info.yml at the extension root %s; found 2. Keep one info file at the extension root, then rerun lando drupal-contrib-sync."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newContribFixture(t)
@@ -24,7 +24,7 @@ func TestDrupalContribScaffoldPreflightRemediation(t *testing.T) {
 			if tc.name == "multiple info files" {
 				writeContribTestFile(t, filepath.Join(mount, "second.info.yml"), "type: module\n")
 			}
-			code := f.run(t, contribScaffoldCommand, "module", "example", "^11")
+			code := f.run(t, contribSyncCommand, "module", "example", "^11")
 			want := strings.Replace(tc.want, "%s", mount, 1)
 			if code != 1 || !strings.Contains(f.stderr.String(), want) || strings.Contains(strings.ToLower(f.stderr.String()), "re-init") {
 				t.Fatalf("preflight exited %d: %s, want %q", code, f.stderr.String(), want)
@@ -39,7 +39,7 @@ func TestDrupalContribScaffoldPreflightRemediation(t *testing.T) {
 	}
 }
 
-func TestDrupalContribScaffoldDoesNotMarkIncompleteInstall(t *testing.T) {
+func TestDrupalContribSyncDoesNotMarkIncompleteInstall(t *testing.T) {
 	for _, tc := range []struct{ name, mode, want string }{
 		{"missing staged manifest", "missing-stage-json", "did not stage a composer.json"},
 		{"nonexecutable PHPUnit", "phpunit", "did not produce"},
@@ -55,23 +55,23 @@ func TestDrupalContribScaffoldDoesNotMarkIncompleteInstall(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			code := f.run(t, contribScaffoldCommand, "module", "example", contribTestConstraint)
+			code := f.run(t, contribSyncCommand, "module", "example", contribTestConstraint)
 			if code != 1 || !strings.Contains(f.stderr.String(), tc.want) {
 				t.Fatalf("scaffold exited %d: %s, want %q", code, f.stderr.String(), tc.want)
 			}
-			if _, err := os.Lstat(filepath.Join(f.appRoot, ".lando-drupal-contrib-scaffold-complete")); !os.IsNotExist(err) {
+			if _, err := os.Lstat(filepath.Join(f.appRoot, ".lando-drupal-contrib-sync-complete")); !os.IsNotExist(err) {
 				t.Fatalf("incomplete scaffold published a marker: %v", err)
 			}
 		})
 	}
 }
 
-func TestDrupalContribScaffoldPublishesNothingWhenResolutionFails(t *testing.T) {
+func TestDrupalContribSyncPublishesNothingWhenResolutionFails(t *testing.T) {
 	f := newContribFixture(t)
 	f.env["LANDO_TEST_COMPOSER_MODE"] = "fail-update"
 	contribTestMount(t, f, "module", "example", "type: module\n")
-	code := f.run(t, contribScaffoldCommand, "module", "example", contribTestConstraint)
-	if code != 1 || !strings.Contains(f.stderr.String(), "could not resolve the site dependencies") {
+	code := f.run(t, contribSyncCommand, "module", "example", contribTestConstraint)
+	if code != 1 || !strings.Contains(f.stderr.String(), "Composer update (resolve the site dependencies) failed; fix the Composer error, then rerun lando drupal-contrib-sync") {
 		t.Fatalf("scaffold exited %d: %s", code, f.stderr.String())
 	}
 	assertContribCalls(t, f, contribStageCalls(f)...)

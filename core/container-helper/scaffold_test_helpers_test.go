@@ -37,8 +37,8 @@ func TestScaffoldKillProcess(t *testing.T) {
 		code = runDrupalScaffold(args, streams, crash)
 	case "drupal-cms-scaffold":
 		code = runDrupalCmsScaffold(args, streams, crash)
-	case "drupal-contrib-scaffold":
-		code = runDrupalContribScaffold(args, streams, crash)
+	case contribSyncCommand:
+		code = runDrupalContribSync(args, streams, crash)
 	default:
 		code = runCreateProject(args, streams, crash)
 	}
@@ -156,7 +156,7 @@ func (f *scaffoldFixture) run(t *testing.T, command string, args ...string) int 
 		return runDrupalScaffold(args, f.streams, nil)
 	case "drupal-cms-scaffold":
 		return runDrupalCmsScaffold(args, f.streams, nil)
-	case "drupal-contrib-scaffold", "drupal-contrib-core-version":
+	case contribSyncCommand:
 		return dispatch("lando-"+command, args, f.streams)
 	default:
 		return runCreateProject(args, f.streams, nil)
