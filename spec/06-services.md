@@ -416,7 +416,7 @@ Canonical credentials also survive inheritance. An omitted child credential sour
 
 #### 6.11.3 Service-type-shipped tooling
 
-`ServiceTypeResolution.tooling` merges below resolved Landofile `tooling:`. Conflicts replace whole tasks by name. Between service contributions, the lexicographically first service name wins. A surviving contribution defaults its target to its contributor; `toolingDefaults` fills only unset fields.
+`ServiceTypeResolution.tooling` merges below resolved Landofile `tooling:`. Conflicts replace whole tasks by name. Between service contributions, the lexicographically first service name wins after dropping ambiguous Node manager contributions (§8.5). A surviving contribution defaults its target to its contributor; `toolingDefaults` fills only unset fields.
 
 For generated connection clients, private tooling metadata records the winning task's contributing service, not another credential or task snapshot. Invocation regenerates the factory-owned defaults from ownership-matched applied connection facts, preserving current unrelated defaults and their parsed expression sites. A current authored whole-task replacement bypasses this generated-client path. Both top-level tooling and event `task:` calls obey the same rule; neither imports applied lifecycle events or old authored tooling. Missing historical connection facts or an incompatible applied client family fail with `PlanReplanRequiredError`, not desired-credential fallback.
 
@@ -501,7 +501,7 @@ The catalog is bundled from `@lando/service-lando` and focused `@lando/service-*
 | Type id | Base | Notable options |
 |---|---|---|
 | `php` | `lando` | `via`, `composer`, `xdebug`, `db_client`, `webroot`, `allowOverride`, `uploadDirs` with Lando-owned Apache |
-| `node` | `lando` | `command`, `script`, `globals`, `port`, `packageRoot`; manifest-selected Yarn/pnpm from the nearest declaring `package.json` |
+| `node` | `lando` | `command`, `script`, `globals`, `port`, `packageRoot`; manifest-selected package manager and contributed wrappers for catalog-owned Node (§8.5) |
 | `python` | `lando` | `framework`, `port` |
 | `ruby` | `lando` | `framework`, `port` |
 | `go` | `lando` | `framework`, `port` |
