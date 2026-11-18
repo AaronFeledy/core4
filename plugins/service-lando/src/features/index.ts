@@ -1,5 +1,6 @@
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
+import { adminerServiceFeature } from "../services/adminer.ts";
 import { apacheServiceFeature } from "../services/apache.ts";
 import { composeServiceFeature } from "../services/compose.ts";
 import { dotnetServiceFeature } from "../services/dotnet.ts";
@@ -92,6 +93,7 @@ const definitions: ReadonlyArray<ServiceFeatureDefinition> = [
   nodeServiceFeature,
   opensearchServiceFeature,
   phpServiceFeature,
+  adminerServiceFeature,
   phpmyadminServiceFeature,
   postgresServiceFeature,
   pythonServiceFeature,

@@ -526,8 +526,13 @@ The catalog is bundled from `@lando/service-lando` and focused `@lando/service-*
 | `dotnet` | `lando` | `command`, `port` |
 | `mssql` | `lando` | `creds`; provider emulation required on arm64 |
 | `phpmyadmin` | `lando` | MySQL-family service selection |
+| `adminer` | `lando` | Postgres, MySQL, MariaDB, and declared SQLite targets |
 | `static` | `lando` | `nginx` or `caddy` backend; `webroot`, build hook |
 | `compose` | `l337` | raw supported Compose passthrough |
+
+**Adminer.** `adminer` and `adminer:6` default to the official `adminer:6` image and accept an authored `image`. The type declares an HTTP listener on 8080, a TCP probe, and an HTTP scan of Adminer's unauthenticated manifest. Its app feature uses the resolved connection facts from all PostgreSQL, MySQL, and MariaDB catalog services and discovers SQLite from `sqlite.path`, in service-name order. SQL Server is excluded until the stock image's driver is verified against the catalog service. No match fails planning with the selector-matched-nothing error and points to the supported services and `sqlite.path`. No database startup dependency is added.
+
+The constant login plugin is installed by an image build step. Server metadata and per-server password bindings are container environment, so changing targets changes container creation without changing the plugin or its image build. The type's default launcher loads that plugin before every PHP request and rejects the image's standalone `adminer.php` entry point, which does not load plugins. The plugin signs in to a single discovered target on a fresh deep link or accepts a CSRF-checked selection from the Server dropdown when there are several. It refuses unknown targets. SQLite access is restricted to the declared path, with app source mounted read-write at the owning service's mount target. Network-only Adminer has no app mount. The stock image declares `adminer` (100:101, home `/home/adminer`) as its project user, subject to ordinary realization rules.
 
 Schemas publish at `@lando/sdk/schema/services/<type>` (§13.2). Unknown versions fail before provider action.
 

@@ -30,6 +30,7 @@ const mechanisms: Readonly<
   postgres: { env: "PGPORT" },
   mssql: { env: "MSSQL_TCP_PORT" },
   rabbitmq: { env: "RABBITMQ_NODE_PORT" },
+  adminer: { command: `php -S [::]:${PORT}` },
   phpmyadmin: { env: "APACHE_PORT" },
   elasticsearch: { env: "http.port" },
   opensearch: { env: "http.port" },

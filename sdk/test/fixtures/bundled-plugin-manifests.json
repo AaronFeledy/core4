@@ -345,6 +345,7 @@
         "appFeatures": [
           "service-lando.mailpit.wire",
           "service-lando.php.db-client",
+          "service-lando.adminer.wire",
           "service-lando.phpmyadmin.wire",
           "service-lando.nginx.php-fpm.wire"
         ],
@@ -392,6 +393,7 @@
           "service-lando.node",
           "service-lando.opensearch",
           "service-lando.php",
+          "service-lando.adminer",
           "service-lando.phpmyadmin",
           "service-lando.postgres",
           "service-lando.python",
@@ -445,6 +447,8 @@
           "php:8.4",
           "php:8.5",
           "php:8.6",
+          "adminer",
+          "adminer:6",
           "phpmyadmin",
           "phpmyadmin:5",
           "phpmyadmin:latest",

@@ -1,6 +1,6 @@
-import { Buffer } from "node:buffer";
-
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
+
+import { type LandoBuildFile, landoImageFilesBuildStep } from "./_image-files.ts";
 
 export const LANDO_ERROR_PAGE_DIR = "/usr/share/lando/errors" as const;
 
@@ -45,17 +45,6 @@ const LANDO_ERROR_PAGE_STATUSES = [403, 404] as const;
 /** The exact bytes a server sends for a Lando-owned error page. */
 export const landoErrorPageBytes = (status: 403 | 404): string => `${landoErrorPage(status)}\n`;
 
-/** A file baked into the derived image by a Lando-owned web server build step. */
-export interface LandoBuildFile {
-  readonly path: string;
-  readonly content: string;
-}
-
-const buildFileDirectory = (path: string): string => {
-  const separator = path.lastIndexOf("/");
-  return separator <= 0 ? "/" : path.slice(0, separator);
-};
-
 /**
  * The shared 403/404 pages, plus any caller-owned image files, installed by
  * one root build step.
@@ -65,11 +54,6 @@ const buildFileDirectory = (path: string): string => {
  * PID 1. That is what lets a service keep serving them under a non-root
  * `user:`: a start command that writes nothing needs no write permission
  * anywhere.
- *
- * Each file travels base64-encoded because a derived build renders this step
- * as a Dockerfile `RUN`, and a build-step token carrying CR or LF is refused
- * there. Encoding keeps the served bytes identical to the page or config this
- * module defines without putting a newline in the command.
  */
 export const landoErrorPagesBuildStep = (
   options: { readonly files?: ReadonlyArray<LandoBuildFile> } = {},
@@ -81,24 +65,7 @@ export const landoErrorPagesBuildStep = (
     })),
     ...(options.files ?? []),
   ];
-  const directories = [...new Set(files.map((file) => buildFileDirectory(file.path)))];
-  return {
-    id: LANDO_ERROR_PAGES_BUILD_STEP_ID,
-    phase: "build",
-    user: "root",
-    command: [
-      "sh",
-      "-c",
-      [
-        "set -eu",
-        ...directories.map((directory) => `mkdir -p ${directory}`),
-        ...files.map(
-          (file) =>
-            `printf '%s' '${Buffer.from(file.content, "utf8").toString("base64")}' | base64 -d > ${file.path}`,
-        ),
-      ].join("; "),
-    ],
-  };
+  return landoImageFilesBuildStep(LANDO_ERROR_PAGES_BUILD_STEP_ID, files);
 };
 
 export const nginxErrorPageConfigLines = (): ReadonlyArray<string> => [
