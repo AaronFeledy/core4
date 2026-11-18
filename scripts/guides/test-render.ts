@@ -176,7 +176,12 @@ ${
   cleanupFinalizers === ""
     ? ""
     : `  const controller = new AbortController();
-  const interrupt = () => controller.abort();
+  // The first signal tears the app down; a second one terminates as usual.
+  const interrupt = () => {
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", interrupt);
+    controller.abort();
+  };
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", interrupt);
   try {
