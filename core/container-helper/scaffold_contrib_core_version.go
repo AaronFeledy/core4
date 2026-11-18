@@ -22,8 +22,12 @@ func updateDrupalContribCore(o drupalContribOptions, streams helperIO) error {
 		return err
 	}
 	defer lock.release()
-	if !isRegularFile(filepath.Join(o.appRoot, "composer.json")) {
+	if !pathExists(scaffoldMarkerPath(o.appRoot, drupalContribScaffoldCommand)) || !drupalContribComplete(o.appRoot) {
 		return contribScaffoldRequired(o.appRoot)
+	}
+	landofile := filepath.Join(o.extensionPath("custom"), ".lando.yml")
+	if _, err := prepareContribLandofile(landofile, o.constraint); err != nil {
+		return fmt.Errorf("recipe.options.drupal in %s could not be updated; set it there: %w", landofile, err)
 	}
 	site, err := readContribComposer(o.appRoot)
 	if err != nil {
@@ -50,7 +54,6 @@ func updateDrupalContribCore(o drupalContribOptions, streams helperIO) error {
 	if err := streams.runCommand(o.appRoot, "composer", append(update, "drupal/core-dev", "drush/drush")...); err != nil {
 		return fmt.Errorf("Composer could not update Drupal core: %w", err)
 	}
-	landofile := filepath.Join(o.extensionPath("custom"), ".lando.yml")
 	if err := updateContribLandofile(landofile, o.constraint); err != nil {
 		return fmt.Errorf("Drupal core now uses %s, but recipe.options.drupal in %s could not be updated; set it there: %w", o.constraint, landofile, err)
 	}
@@ -58,5 +61,5 @@ func updateDrupalContribCore(o drupalContribOptions, streams helperIO) error {
 }
 
 func contribScaffoldRequired(root string) error {
-	return fmt.Errorf("Site composer.json is missing at %s. Run lando drupal-contrib-scaffold first.", root)
+	return fmt.Errorf("Drupal contrib is not fully scaffolded at %s. Run lando drupal-contrib-scaffold first.", root)
 }

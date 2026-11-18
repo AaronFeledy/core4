@@ -106,9 +106,13 @@ func newScaffold(
 		crash:           crash,
 	}
 	if markerPrefix != "" && completeMessage != "" {
-		s.markerPath = filepath.Join(appRoot, ".lando-"+markerPrefix+"-complete")
+		s.markerPath = scaffoldMarkerPath(appRoot, markerPrefix)
 	}
 	return s
+}
+
+func scaffoldMarkerPath(appRoot, markerPrefix string) string {
+	return filepath.Join(appRoot, ".lando-"+markerPrefix+"-complete")
 }
 
 // point is the test seam that proves a kill after any single step resumes.

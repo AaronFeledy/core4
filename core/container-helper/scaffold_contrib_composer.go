@@ -48,16 +48,27 @@ func stageDrupalContrib(s *scaffold, stage string, o drupalContribOptions) error
 		"drupal/recommended-project:"+o.constraint, stage); err != nil {
 		return fmt.Errorf("Drupal contrib scaffold could not stage the project: %w", err)
 	}
-	if err := contribComposerRequire(s.streams, stage, false, "drush/drush:*"); err != nil {
-		return err
-	}
-	if err := contribComposerRequire(s.streams, stage, true, "drupal/core-dev:"+o.constraint, "drupal/coder:*"); err != nil {
-		return err
-	}
 	if !isRegularFile(filepath.Join(stage, "composer.json")) {
 		return errors.New("Drupal contrib scaffold did not stage a composer.json.")
 	}
 	if err := mergeContribDependencies(s, stage, o); err != nil {
+		return err
+	}
+	site, err := readContribComposer(stage)
+	if err != nil {
+		return err
+	}
+	declared := site.declaredPackages()
+	if !declared["drush/drush"] {
+		if err := contribComposerRequire(s.streams, stage, false, "drush/drush:*"); err != nil {
+			return err
+		}
+	}
+	dev := []string{"drupal/core-dev:" + o.constraint}
+	if !declared["drupal/coder"] {
+		dev = append(dev, "drupal/coder:*")
+	}
+	if err := contribComposerRequire(s.streams, stage, true, dev...); err != nil {
 		return err
 	}
 	// The recommended project ships a lock for its own requirements. Resolve the
@@ -68,6 +79,16 @@ func stageDrupalContrib(s *scaffold, stage string, o drupalContribOptions) error
 		return fmt.Errorf("Drupal contrib scaffold could not resolve the site dependencies: %w", err)
 	}
 	return nil
+}
+
+func (site contribComposerManifest) declaredPackages() map[string]bool {
+	declared := make(map[string]bool, len(site.Require)+len(site.RequireDev))
+	for _, bucket := range []map[string]string{site.Require, site.RequireDev} {
+		for name := range bucket {
+			declared[strings.ToLower(name)] = true
+		}
+	}
+	return declared
 }
 
 // mergeContribDependencies adds the extension's own require and require-dev
@@ -84,12 +105,7 @@ func mergeContribDependencies(s *scaffold, stage string, o drupalContribOptions)
 	if err != nil {
 		return err
 	}
-	seen := make(map[string]bool, len(site.Require)+len(site.RequireDev))
-	for _, bucket := range []map[string]string{site.Require, site.RequireDev} {
-		for name := range bucket {
-			seen[strings.ToLower(name)] = true
-		}
-	}
+	seen := site.declaredPackages()
 	for _, bucket := range []struct {
 		dev          bool
 		dependencies map[string]string
@@ -119,8 +135,10 @@ func mergeContribDependencies(s *scaffold, stage string, o drupalContribOptions)
 var contribPackagePattern = regexp.MustCompile(`(?i)^[a-z0-9][a-z0-9_.-]*(/[a-z0-9][a-z0-9_.-]*)?$`)
 
 func skipContribDependency(name, self string) bool {
+	// Platform requirements follow the recipe's PHP choice. Skip core requirements
+	// so maintainers can test against a core version the extension does not declare yet.
 	switch name {
-	case "php", "composer-plugin-api", "composer-runtime-api", "drupal/core", "drupal/core-recommended", "drupal/core-dev", "drupal/core-composer-scaffold":
+	case "php", "composer-plugin-api", "composer-runtime-api", "drupal/core", "drupal/core-recommended", "drupal/core-dev", "drupal/core-composer-scaffold", "drupal/core-project-message":
 		return true
 	}
 	return strings.EqualFold(name, self) || strings.HasPrefix(name, "ext-") || strings.HasPrefix(name, "lib-")

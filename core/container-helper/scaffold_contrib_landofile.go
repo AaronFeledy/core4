@@ -10,32 +10,50 @@ import (
 )
 
 func updateContribLandofile(path, constraint string) error {
-	info, err := os.Lstat(path)
+	edit, err := prepareContribLandofile(path, constraint)
 	if err != nil {
 		return err
 	}
+	return replaceContribLandofile(path, edit.text, edit.mode)
+}
+
+type contribLandofileEdit struct {
+	text string
+	mode fs.FileMode
+}
+
+func prepareContribLandofile(path, constraint string) (contribLandofileEdit, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return contribLandofileEdit{}, err
+	}
 	if !info.Mode().IsRegular() {
-		return errors.New("Landofile is not a regular file")
+		return contribLandofileEdit{}, errors.New("Landofile is not a regular file")
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return contribLandofileEdit{}, err
 	}
 	text := string(data)
 	value, ok := findYAMLBlockValue(text, "recipe", "options", "drupal")
 	if !ok {
-		return errors.New("expected a single-line recipe.options.drupal value inside block mappings")
+		return contribLandofileEdit{}, errors.New("expected a single-line recipe.options.drupal value inside block mappings")
 	}
 	encoded, err := json.Marshal(constraint)
 	if err != nil {
-		return err
+		return contribLandofileEdit{}, err
 	}
 	replacement := string(encoded)
 	if value.start == value.end {
 		// Insert after the colon and leave any existing comment separation intact.
 		replacement = " " + replacement
 	}
-	return replaceContribLandofile(path, text[:value.start]+replacement+text[value.end:], info.Mode())
+	candidate := text[:value.start] + replacement + text[value.end:]
+	span, ok := findYAMLBlockValue(candidate, "recipe", "options", "drupal")
+	if !ok || decodeYAMLString(candidate[span.start:span.end]) != constraint {
+		return contribLandofileEdit{}, errors.New("edited recipe.options.drupal did not round-trip to the requested constraint")
+	}
+	return contribLandofileEdit{candidate, info.Mode()}, nil
 }
 
 func replaceContribLandofile(path, text string, mode fs.FileMode) error {
@@ -72,7 +90,10 @@ func yamlRootString(text, key string) string {
 	if !ok {
 		return ""
 	}
-	value := text[span.start:span.end]
+	return decodeYAMLString(text[span.start:span.end])
+}
+
+func decodeYAMLString(value string) string {
 	if strings.HasPrefix(value, `"`) {
 		var decoded string
 		if json.Unmarshal([]byte(value), &decoded) == nil {

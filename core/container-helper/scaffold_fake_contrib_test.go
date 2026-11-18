@@ -85,6 +85,11 @@ func fakeContribComposer(args []string, env map[string]string) int {
 		if env["LANDO_TEST_COMPOSER_MODE"] == "fail-update" {
 			return 42
 		}
+		if path := env["LANDO_TEST_EDIT_LANDOFILE"]; path != "" {
+			if err := os.WriteFile(path, []byte(env["LANDO_TEST_LANDOFILE_TEXT"]), 0o640); err != nil {
+				return 2
+			}
+		}
 	default:
 		return 2
 	}

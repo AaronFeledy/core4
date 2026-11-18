@@ -103,10 +103,10 @@ func TestDrupalContribScaffoldInstallsAroundMountAndMergesDeps(t *testing.T) {
 	writeContribTestFile(t, source, "<?php // mounted source\n")
 	const deps = `{
 		"name":"drupal/example",
-		"require":{"acme/use":"^2 || ^3","acme/root-dev":"^9","drush/drush":"^9","drupal/example":"*",
+		"require":{"acme/use":"^2 || ^3","acme/root-dev":"^9","drush/drush":"^12","drupal/example":"*",
 			"php":">=8.3","ext-json":"*","lib-curl":"*","composer-plugin-api":"*","composer-runtime-api":"*",
-			"drupal/core":"^9","drupal/core-recommended":"^9","drupal/core-dev":"^9","drupal/core-composer-scaffold":"^9"},
-		"require-dev":{"acme/test":"^3","acme/root":"^9","acme/use":"^9","drupal/coder":"^9","drupal/example":"*"},
+			"drupal/core":"^9","drupal/core-recommended":"^9","drupal/core-dev":"^9","drupal/core-composer-scaffold":"^9","drupal/core-project-message":"^9"},
+		"require-dev":{"acme/test":"^3","acme/root":"^9","acme/use":"^9","drupal/coder":"^8.3","drupal/example":"*"},
 		"repositories":[{"type":"path","url":"."}]
 	}`
 	writeContribTestFile(t, filepath.Join(mount, "composer.json"), deps)
@@ -117,10 +117,21 @@ func TestDrupalContribScaffoldInstallsAroundMountAndMergesDeps(t *testing.T) {
 	if code := f.run(t, contribScaffoldCommand, "module", "example", contribTestConstraint); code != 0 {
 		t.Fatalf("scaffold exited %d: %s", code, f.stderr.String())
 	}
+	site, err := readContribComposer(f.appRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if site.Require["drush/drush"] != "^12" || site.RequireDev["drupal/coder"] != "^8.3" {
+		t.Fatalf("extension constraints lost: Drush = %q, Coder = %q", site.Require["drush/drush"], site.RequireDev["drupal/coder"])
+	}
+	if site.Require["acme/root"] != "^1" || site.RequireDev["acme/root-dev"] != "^1" {
+		t.Fatalf("recommended project constraints changed: %v / %v", site.Require, site.RequireDev)
+	}
 	stage := "--working-dir=" + filepath.Join(f.appRoot, ".lando-scaffold", "drupal-contrib-scaffold")
-	want := append(contribSetupCalls(f),
-		[]string{stage, "require", "--no-update", "--no-interaction", "acme/use:^2 || ^3"},
-		[]string{stage, "require", "--dev", "--no-update", "--no-interaction", "acme/test:^3"},
+	want := append(contribSetupCalls(f)[:1:1],
+		[]string{stage, "require", "--no-update", "--no-interaction", "acme/use:^2 || ^3", "drush/drush:^12"},
+		[]string{stage, "require", "--dev", "--no-update", "--no-interaction", "acme/test:^3", "drupal/coder:^8.3"},
+		[]string{stage, "require", "--dev", "--no-update", "--no-interaction", "drupal/core-dev:^10 || ^11"},
 		contribLockCall(f),
 		[]string{"install", "--no-interaction"})
 	assertContribCalls(t, f, want...)

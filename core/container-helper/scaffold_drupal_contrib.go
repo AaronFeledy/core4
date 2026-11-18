@@ -11,6 +11,8 @@ import (
 	"syscall"
 )
 
+const drupalContribScaffoldCommand = "drupal-contrib-scaffold"
+
 var (
 	contribProjectPattern    = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 	contribConstraintPattern = regexp.MustCompile(`^[v0-9^~<>=*.,@| a-zA-Z-]+$`)
@@ -59,7 +61,7 @@ func (o drupalContribOptions) extensionPath(location string) string {
 }
 
 func runDrupalContribScaffold(args []string, streams helperIO, crash func(string)) int {
-	const command = "drupal-contrib-scaffold"
+	const command = drupalContribScaffoldCommand
 	o, err := parseDrupalContribArgs("lando-"+command, args, streams.env)
 	if err != nil {
 		return scaffoldResult(err, streams)
@@ -90,7 +92,7 @@ func (o drupalContribOptions) checkMount() error {
 	mount := o.extensionPath("custom")
 	entries, err := os.ReadDir(mount)
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
-		return fmt.Errorf("The extension is not mounted at %s. Run lando restart so the app mount is recreated.", mount)
+		return fmt.Errorf("The extension is not mounted at %s. If you changed recipe.options.project or recipe.options.type, run lando restart so the app mount moves, then rerun lando drupal-contrib-scaffold.", mount)
 	}
 	if err != nil {
 		return err
@@ -102,7 +104,7 @@ func (o drupalContribOptions) checkMount() error {
 		}
 	}
 	if len(infoFiles) != 1 {
-		return fmt.Errorf("Expected exactly one *.info.yml at the extension root %s.", mount)
+		return fmt.Errorf("Expected exactly one *.info.yml at the extension root %s; found %d. Keep one info file at the extension root, then rerun lando drupal-contrib-scaffold.", mount, len(infoFiles))
 	}
 	infoName := strings.TrimSuffix(infoFiles[0], ".info.yml")
 	const remediation = " Set recipe.options.%s to %s in .lando.yml, run lando restart, then rerun lando drupal-contrib-scaffold."

@@ -7,6 +7,16 @@ import (
 	"testing"
 )
 
+func scaffoldContribForCoreVersion(t *testing.T, f *scaffoldFixture, kind string) {
+	t.Helper()
+	if code := f.run(t, contribScaffoldCommand, kind, "example", "^10"); code != 0 {
+		t.Fatalf("could not prepare completed scaffold: %s", f.stderr.String())
+	}
+	if err := os.Remove(f.logPath); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDrupalContribCoreVersionUpdatesComposerThenOnlyRecipeValue(t *testing.T) {
 	for _, tc := range []struct {
 		name, require string
@@ -22,6 +32,7 @@ func TestDrupalContribCoreVersionUpdatesComposerThenOnlyRecipeValue(t *testing.T
 			landofile := filepath.Join(mount, ".lando.yml")
 			const before = "--- # generated\r\nservices:\r\n  drupal: # service\r\n    type: php\r\n    script: |\r\n      ---\r\nrecipe: # recipe\r\n  id: drupal-contrib\r\n  options:\r\n    deeper:\r\n      drupal: keep me\r\n    \"drupal\":  '^10 # old'  # keep comment\r\n    type: profile\r\n# no final newline"
 			writeContribTestFile(t, landofile, before)
+			scaffoldContribForCoreVersion(t, f, "profile")
 			writeContribTestFile(t, filepath.Join(f.appRoot, "composer.json"), `{"require":{`+tc.require+`}}`)
 			if code := f.run(t, contribVersionCommand, "profile", "example", contribTestConstraint); code != 0 {
 				t.Fatalf("core-version exited %d: %s", code, f.stderr.String())
@@ -48,21 +59,24 @@ func TestDrupalContribCoreVersionLeavesLandofileUntouchedOnFailure(t *testing.T)
 	for _, tc := range []struct{ name, text, mode string }{
 		{"missing key", "services:\n  drupal: unrelated\nrecipe:\n  options:\n    nested:\n      drupal: ^10\n    type: module\n", ""},
 		{"missing file", "", ""},
+		{"unsupported mapping", "recipe:\n  options: {drupal: '^10'}\n", ""},
 		{"composer failure", "recipe:\n  options:\n    drupal: ^10 # keep\n", "fail-update"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newContribFixture(t)
-			f.env["LANDO_TEST_COMPOSER_MODE"] = tc.mode
 			mount := contribTestMount(t, f, "module", "example", "type: module\n")
+			scaffoldContribForCoreVersion(t, f, "module")
+			f.env["LANDO_TEST_COMPOSER_MODE"] = tc.mode
 			landofile := filepath.Join(mount, ".lando.yml")
 			if tc.text != "" {
 				writeContribTestFile(t, landofile, tc.text)
 			}
-			writeContribTestFile(t, filepath.Join(f.appRoot, "composer.json"), `{}`)
 			code := f.run(t, contribVersionCommand, "module", "example", "^11")
-			message := "Drupal core now uses ^11, but recipe.options.drupal in " + landofile + " could not be updated; set it there"
+			message := "recipe.options.drupal in " + landofile + " could not be updated; set it there"
 			if tc.mode != "" {
 				message = "Composer could not update Drupal core"
+			} else {
+				assertContribCalls(t, f)
 			}
 			if code != 1 || !strings.Contains(f.stderr.String(), message) {
 				t.Fatalf("core-version exited %d: %s", code, f.stderr.String())
@@ -72,6 +86,65 @@ func TestDrupalContribCoreVersionLeavesLandofileUntouchedOnFailure(t *testing.T)
 			} else if _, err := os.Lstat(landofile); !os.IsNotExist(err) {
 				t.Fatalf("missing Landofile was created: %v", err)
 			}
+		})
+	}
+}
+
+func TestDrupalContribCoreVersionUsesLandofileAfterComposer(t *testing.T) {
+	for _, tc := range []struct {
+		name, edited, want string
+	}{
+		{"preserve intervening edits", "name: edited\nrecipe:\n  options:\n    drupal: # keep\n", "name: edited\nrecipe:\n  options:\n    drupal: \"\\u003c12\" # keep\n"},
+		{"refuse newly unsupported mapping", "recipe:\n  options: {drupal: '^10'}\n", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newContribFixture(t)
+			mount := contribTestMount(t, f, "module", "example", "type: module\n")
+			landofile := filepath.Join(mount, ".lando.yml")
+			writeContribTestFile(t, landofile, "recipe:\n  options:\n    drupal: ^10\n")
+			scaffoldContribForCoreVersion(t, f, "module")
+			f.env["LANDO_TEST_EDIT_LANDOFILE"] = landofile
+			f.env["LANDO_TEST_LANDOFILE_TEXT"] = tc.edited
+			code := f.run(t, contribVersionCommand, "module", "example", "<12")
+			if tc.want == "" {
+				if code != 1 || !strings.Contains(f.stderr.String(), "Drupal core now uses <12, but recipe.options.drupal") {
+					t.Fatalf("core-version exited %d: %s", code, f.stderr.String())
+				}
+				assertFileText(t, landofile, tc.edited)
+				return
+			}
+			if code != 0 {
+				t.Fatalf("core-version exited %d: %s", code, f.stderr.String())
+			}
+			assertFileText(t, landofile, tc.want)
+		})
+	}
+}
+
+func TestDrupalContribCoreVersionRejectsUnfinishedScaffold(t *testing.T) {
+	for _, state := range []string{"promoted", "hook-composer-install", "missing executable"} {
+		t.Run(state, func(t *testing.T) {
+			f := newContribFixture(t)
+			mount := contribTestMount(t, f, "module", "example", "type: module\n")
+			landofile := filepath.Join(mount, ".lando.yml")
+			const before = "recipe:\n  options:\n    drupal: ^10\n"
+			writeContribTestFile(t, landofile, before)
+			if state == "missing executable" {
+				scaffoldContribForCoreVersion(t, f, "module")
+				if err := os.Remove(filepath.Join(f.appRoot, "vendor", "bin", "phpunit")); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				f.kill(t, contribScaffoldCommand, state, "module", "example", "^10")
+			}
+			calls := f.calls(t)
+			code := f.run(t, contribVersionCommand, "module", "example", "^11")
+			mustEqualStrings(t, f.calls(t), calls)
+			want := "Drupal contrib is not fully scaffolded at " + f.appRoot + ". Run lando drupal-contrib-scaffold first."
+			if code != 1 || !strings.Contains(f.stderr.String(), want) {
+				t.Fatalf("core-version exited %d: %s, want %q", code, f.stderr.String(), want)
+			}
+			assertFileText(t, landofile, before)
 		})
 	}
 }

@@ -9,11 +9,11 @@ import (
 
 func TestDrupalContribScaffoldPreflightRemediation(t *testing.T) {
 	for _, tc := range []struct{ name, infoName, info, want string }{
-		{"missing mount", "", "", "is not mounted at %s. Run lando restart so the app mount is recreated"},
+		{"missing mount", "", "", "The extension is not mounted at %s. If you changed recipe.options.project or recipe.options.type, run lando restart so the app mount moves, then rerun lando drupal-contrib-scaffold."},
 		{"project mismatch", "actual", "type: module\n", "Set recipe.options.project to actual in .lando.yml, run lando restart, then rerun lando drupal-contrib-scaffold"},
 		{"type mismatch", "example", "extra:\n  type: module\ntype: theme\n", "Set recipe.options.type to theme in .lando.yml, run lando restart, then rerun lando drupal-contrib-scaffold"},
 		{"missing top-level type", "example", "extra:\n  type: module\n", "must declare a top-level type"},
-		{"multiple info files", "example", "type: module\n", "Expected exactly one *.info.yml"},
+		{"multiple info files", "example", "type: module\n", "Expected exactly one *.info.yml at the extension root %s; found 2. Keep one info file at the extension root, then rerun lando drupal-contrib-scaffold."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newContribFixture(t)
