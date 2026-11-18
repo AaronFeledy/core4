@@ -118,7 +118,7 @@ describe("bootstrap plugin services", () => {
   });
 
   test("scratch bootstrap executes a host post-stop step", async () => {
-    // Given: a plan whose post-stop event touches a host file.
+    // Given: a plan whose post-stop event writes a host marker.
     const root = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-event-")));
     const marker = join(root, "hook-ran");
     const plan: AppPlan = {
@@ -140,7 +140,7 @@ describe("bootstrap plugin services", () => {
       events: {
         "post-stop": [
           {
-            step: { cmd: `touch ${marker}`, service: ":host" },
+            step: { cmd: `echo stopped > ${Bun.$.escape(marker)}`, service: ":host" },
             source: "project",
             sourceIndex: 0,
             status: "active",
