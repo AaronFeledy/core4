@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { annotateFailureRole, failureDefectCause, mergeFailure } from "@lando/sdk/command-result";
 import { Transcript, type TranscriptFrame } from "@lando/sdk/docs/components";
 import {
   FileIoError,
@@ -185,6 +186,11 @@ export interface ScenarioContext {
    * @returns The wrapped effect with hidden depth restored afterward.
    */
   readonly hidden: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+  /** Registers a cleanup step and returns the checkpoint to take at its authored position. */
+  readonly deferCleanup: <R = never>(
+    actions: ReadonlyArray<Effect.Effect<unknown, unknown, R>>,
+    hidden: boolean,
+  ) => Effect.Effect<() => void, never, Scope.Scope | R>;
   /**
    * Redacted events published by every in-process CLI invocation in this scenario, in order.
    * Compiled e2e invocations run in a child process and contribute none.
@@ -564,6 +570,7 @@ const invokeRealCli = async (
   getWorkingDirectory: () => string,
   setWorkingDirectory: (path: string) => void,
   env: Readonly<Record<string, string | undefined>>,
+  signal: AbortSignal,
 ): Promise<ScenarioRunResult> => {
   // Scenario commands read an empty stdin, never the test runner's.
   const io = createBufferedRendererIO({ stdin: "" });
@@ -587,11 +594,11 @@ const invokeRealCli = async (
 
   const cli = await import("../cli/index");
   const runDispatch = () =>
-    cli.runCli({ argv: args, rootUrl: new URL("../../bin/lando.ts", import.meta.url).href, context });
+    cli.runCli({ argv: args, rootUrl: new URL("../../bin/lando.ts", import.meta.url).href, context, signal });
   await runInitDispatchWithSeededAnswers(args, options, runDispatch);
   const stdoutText = io.stdout();
   const stderrText = io.stderr();
-  advanceWorkingDirectoryAfterInit(args, options, exitCode, cwd, setWorkingDirectory);
+  if (!signal.aborted) advanceWorkingDirectoryAfterInit(args, options, exitCode, cwd, setWorkingDirectory);
 
   const result = {
     command: args,
@@ -604,6 +611,25 @@ const invokeRealCli = async (
   return errorTag === undefined ? result : { ...result, _tag: errorTag };
 };
 
+// Wait for cancellation to settle before the scenario can start tearing down the app.
+const runInterruptibleCli = (run: (signal: AbortSignal) => Promise<ScenarioRunResult>) =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const controller = new AbortController();
+      return { controller, pending: Effect.runPromiseExit(Effect.tryPromise(() => run(controller.signal))) };
+    }),
+    ({ pending }) =>
+      Effect.flatMap(
+        Effect.promise(() => pending),
+        (exit) => exit,
+      ),
+    ({ controller, pending }) =>
+      Effect.promise(() => {
+        controller.abort();
+        return pending;
+      }),
+  );
+
 const createScenarioRunCli = (
   events: LandoEvent[],
   getWorkingDirectory: () => string,
@@ -612,9 +638,18 @@ const createScenarioRunCli = (
 ): ArgvRunner => {
   const provider = makeScenarioProvider();
   return (command, options) =>
-    Effect.tryPromise(async () => {
+    runInterruptibleCli((signal) => {
       const args = appendInitAnswers(command, options?.answers);
-      return invokeRealCli(args, options, events, provider, getWorkingDirectory, setWorkingDirectory, env);
+      return invokeRealCli(
+        args,
+        options,
+        events,
+        provider,
+        getWorkingDirectory,
+        setWorkingDirectory,
+        env,
+        signal,
+      );
     });
 };
 
@@ -624,7 +659,7 @@ const compiledBinaryPath = (): string =>
 const createE2eRunCli =
   (getWorkingDirectory: () => string, setWorkingDirectory: (path: string) => void): ArgvRunner =>
   (command, options) =>
-    Effect.tryPromise(async () => {
+    runInterruptibleCli(async (signal) => {
       const args = appendInitAnswers(command, options?.answers);
       const binary = compiledBinaryPath();
       if (!(await Bun.file(binary).exists())) {
@@ -648,6 +683,7 @@ const createE2eRunCli =
         },
         stdout: "pipe",
         stderr: "pipe",
+        signal,
       });
       const [exitCode, stdout, stderr] = await Promise.all([
         proc.exited,
@@ -745,6 +781,43 @@ const makeScenarioContext = (
     workingDirectory = path;
   };
 
+  const deferCleanup: ScenarioContext["deferCleanup"] = Effect.fnUntraced(function* <R>(
+    actions: ReadonlyArray<Effect.Effect<unknown, unknown, R>>,
+    isHidden: boolean,
+  ) {
+    let checkpoint: { readonly cwd: string; readonly frameIndex: number } | undefined;
+    const cleanup = Effect.gen(function* () {
+      let failure: Cause.Cause<unknown> | undefined;
+      const previousCwd = workingDirectory;
+      const end = transcriptFrames.length;
+      workingDirectory = checkpoint?.cwd ?? previousCwd;
+      try {
+        for (const action of actions) {
+          const exit = yield* Effect.exit(action);
+          if (Exit.isFailure(exit)) {
+            failure =
+              failure === undefined
+                ? annotateFailureRole(exit.cause, "cleanup")
+                : mergeFailure(failure, exit.cause, "cleanup");
+          }
+        }
+      } finally {
+        workingDirectory = previousCwd;
+        // Scope closes these in reverse order, so earlier frame indexes remain valid.
+        if (checkpoint !== undefined) {
+          const frames = transcriptFrames.splice(end);
+          transcriptFrames.splice(checkpoint.frameIndex, 0, ...frames);
+        }
+        appendFrame({ kind: "cleanup", command: [], exit: failure === undefined ? 0 : 1 });
+      }
+      if (failure !== undefined) return yield* Effect.failCause(failureDefectCause(failure));
+    });
+    yield* Effect.addFinalizer(() => (isHidden ? hidden(cleanup) : cleanup));
+    return () => {
+      checkpoint = { cwd: workingDirectory, frameIndex: transcriptFrames.length };
+    };
+  });
+
   return ScenarioContext.of({
     guideId: options.guideId,
     scenarioId: options.scenarioId,
@@ -772,6 +845,7 @@ const makeScenarioContext = (
     shell: (command) => Effect.fail(shellNotImplemented(command)),
     inspect: createInspect(testDir, events, transcriptFrames, appendFrame),
     hidden,
+    deferCleanup,
     events,
     transcript: {
       frames: transcriptFrames,

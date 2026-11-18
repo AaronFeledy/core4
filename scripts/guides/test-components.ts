@@ -18,18 +18,15 @@ export const renderVariableSetup = (variables: ReadonlyMap<string, VariableProps
     })
     .join("\n");
 
-export const renderCleanupFinalizers = (steps: ReadonlyArray<GuideStepNode>, sourcePath: string): string =>
-  steps
-    .flatMap((step) =>
-      step.components
-        .filter((component) => component.kind === "Cleanup")
-        .map((component) => ({ component, hidden: step.hidden })),
-    )
-    .map(({ component, hidden }) => {
-      const append = 'context.transcript.append({ kind: "cleanup", command: [], exit: 0 })';
-      return `${sourceComment(sourcePath, component.line)}\n    yield* Effect.addFinalizer(() => ${hidden ? `context.hidden(${append})` : append});`;
-    })
-    .join("\n");
+export const renderCleanupFinalizer = (step: GuideStepNode, sourcePath: string, index: number): string => {
+  const marker = step.components.find((component) => component.kind === "Cleanup");
+  if (marker === undefined) return "";
+  const actions = step.components
+    .map((component) => renderStepComponent(component, sourcePath))
+    .filter(Boolean)
+    .map((action) => `Effect.gen(function* () {\n${action}\n    })`);
+  return `${sourceComment(sourcePath, marker.line)}\n    const cleanup${index} = yield* context.deferCleanup([${actions.join(",\n")}], ${step.hidden});`;
+};
 
 const renderRun = (component: Extract<GuideStepComponent, { kind: "Run" }>, sourcePath: string): string => {
   const props = component.props;
