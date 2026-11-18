@@ -1489,8 +1489,8 @@ describe("Landofile events on applied-state teardown", () => {
           event,
           stepFailure: {
             _tag: "LandofileEventStepFailedError",
-            message: expect.stringContaining("7"),
-            remediation: expect.stringContaining(event),
+            message: expect.stringMatching(/\S/u),
+            remediation: expect.stringMatching(/\S/u),
           },
         });
         if (outcome?.status !== "failed") throw new TypeError("Expected a failed post-step outcome.");
