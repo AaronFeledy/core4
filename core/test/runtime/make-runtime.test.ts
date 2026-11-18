@@ -193,15 +193,16 @@ describe("makeLandoRuntime", () => {
   });
 
   test("installed signal handlers interrupt the running fiber", async () => {
-    const before = process.listeners("SIGUSR2");
+    const signal = "SIGTERM";
+    const before = process.listeners(signal);
     let installed: readonly NodeJS.SignalsListener[] = [];
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
         Effect.gen(function* () {
-          yield* Effect.withFiber((fiber) => installSignalHandlers({ fiber, signals: ["SIGUSR2"] }));
-          installed = addedListeners("SIGUSR2", before);
+          yield* Effect.withFiber((fiber) => installSignalHandlers({ fiber, signals: [signal] }));
+          installed = addedListeners(signal, before);
           expect(installed).toHaveLength(1);
-          process.emit("SIGUSR2");
+          for (const handler of installed) handler(signal);
           yield* Effect.never;
         }),
       ),
@@ -210,7 +211,7 @@ describe("makeLandoRuntime", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected signal interruption");
     expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
-    for (const handler of installed) expect(process.listeners("SIGUSR2")).not.toContain(handler);
+    for (const handler of installed) expect(process.listeners(signal)).not.toContain(handler);
   });
 
   test("makeLandoRuntime signal handlers interrupt the provided program", () => {
