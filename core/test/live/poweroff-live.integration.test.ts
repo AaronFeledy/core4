@@ -180,9 +180,13 @@ test.skipIf(!liveEnabled)(
         [a, b, c, d].some((fixture) => fixture.id === id && fixture.root === appRoot) ||
         (id === "global" && appRoot === globalRoot) ||
         (id === scratchId && appRoot === b.root);
-      // List can report paused containers or unfinished starts as stopped. Refuse those records too.
+      // Poweroff only touches active apps, scratch apps, and live containers, so a stopped leftover
+      // record from an earlier suite is not a hazard. The socket inventory catches paused or created
+      // containers that list reports as stopped.
       const foreign = [
-        ...listed.map(({ appId, appRoot }) => ({ id: appId, root: appRoot })),
+        ...listed
+          .filter(({ status }) => status === "active")
+          .map(({ appId, appRoot }) => ({ id: appId, root: appRoot })),
         ...scratches.map(({ id, app }) => ({ id, root: app.root })),
         ...observed
           .filter(({ State }) => !["exited", "stopped", "dead"].includes(State))
@@ -287,5 +291,5 @@ test.skipIf(!liveEnabled)(
       await rm(root, { recursive: true, force: true });
     }
   },
-  24 * childTimeout,
+  5 * childTimeout,
 );
