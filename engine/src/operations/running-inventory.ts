@@ -2,13 +2,16 @@ import { SCRATCH_LABEL } from "@lando/container-runtime/labels";
 import { AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
 import {
+  GlobalAppService,
   type ProviderRuntimeSnapshot,
   RuntimeProviderRegistry,
   ScratchAppService,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
+import { globalObserveProviderId } from "../global-app/placement.ts";
 import { TeardownProvider } from "../providers/app-placement.ts";
+import { matchesAppPlanIdentity } from "../providers/app-plan-identity.ts";
 import { readAcceleratedStartInventory } from "./accelerated-start-inventory.ts";
 import { digest } from "./accelerated-start-record.ts";
 import { appRootIdentityKey } from "./app-root-identity.ts";
@@ -195,6 +198,48 @@ const readScratchTargets = Effect.fnUntraced(function* (scratchObserved: Readonl
   return { scratchTargets, failures };
 });
 
+const resolveGlobalStopTarget = Effect.fnUntraced(function* (snapshots: readonly ProviderRuntimeSnapshot[]) {
+  const providerId = yield* globalObserveProviderId;
+  const selected = snapshots.filter((snapshot) => snapshot.providerId === providerId);
+  const observedRoots = selected.flatMap(({ services }) =>
+    services.flatMap((service) =>
+      service.app === "global" &&
+      service.providerId === providerId &&
+      service.labels?.[SCRATCH_LABEL] !== "TRUE" &&
+      service.appRoot !== undefined
+        ? [service.appRoot]
+        : [],
+    ),
+  );
+  const roots = [
+    ...new Set(
+      observedRoots.length > 0
+        ? observedRoots
+        : selected.flatMap(({ appliedPlans }) =>
+            appliedPlans.flatMap((plan) =>
+              plan.id === "global" &&
+              plan.provider === providerId &&
+              matchesAppPlanIdentity(plan, { kind: "global", id: "global" })
+                ? [plan.root]
+                : [],
+            ),
+          ),
+    ),
+  ].sort();
+  if (roots.length > 1) {
+    return yield* new AppResolveError({
+      reason: "ambiguous",
+      detail: "provider-resources",
+      message: `The global app on ${providerId} has multiple discovered roots: ${roots.join(", ")}.`,
+      remediation: "Resolve the conflicting global app roots on the provider, then retry `lando poweroff`.",
+    });
+  }
+  const root = roots[0];
+  if (root !== undefined) return { root, providerId };
+  const app = yield* GlobalAppService;
+  return { root: (yield* app.paths).root, providerId };
+});
+
 export const readRunningInventory = Effect.fnUntraced(function* () {
   const journalRead = yield* readAcceleratedStartInventory(false).pipe(Effect.result);
   const journalRecords = Result.isSuccess(journalRead) ? journalRead.success.records : [];
@@ -222,6 +267,7 @@ export const readRunningInventory = Effect.fnUntraced(function* () {
   return {
     userTargets: targets.userTargets,
     failures: [...failures, ...targets.failures],
+    resolveGlobalTarget: resolveGlobalStopTarget(inventory.snapshots),
     // User stop hooks can change the scratch list before poweroff reaches that phase.
     readScratch: readScratchTargets(targets.scratchObserved),
   };

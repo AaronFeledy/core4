@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { makeLandoPaths } from "@lando/paths";
 import { LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -26,7 +27,7 @@ import { DateTime, Effect, Layer } from "effect";
 import { pendingStartBucketSpec } from "../../src/operations/accelerated-start-record.ts";
 import { poweroff } from "../../src/operations/poweroff.ts";
 import { HostMaintenanceRegistry } from "../../src/runtime/host-maintenance.ts";
-import { globalTeardownHarness } from "../../src/testing/global-teardown.ts";
+import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
 import { layerTransactionGuard } from "../services/landofile-layer.ts";
 import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
@@ -88,6 +89,7 @@ const makeHarness = async (input: {
   readonly idle?: boolean;
   readonly holdingPlans?: ReadonlyArray<AppPlan>;
   readonly globalPlans?: ReadonlyArray<AppPlan>;
+  readonly observedGlobalRoots?: readonly string[];
 }) => {
   const teardown = await globalTeardownHarness(dataRoot);
   const calls: string[] = [];
@@ -108,17 +110,27 @@ const makeHarness = async (input: {
   );
   if (input.quiescent !== undefined)
     services.push(serviceAt(input.quiescent.root, String(input.quiescent.plan.id), "exited"));
+  const globalServices = (input.observedGlobalRoots ?? []).map((root, index) => {
+    const service = `global-${index}`;
+    return {
+      ...serviceAt(root, "global", "running"),
+      service: ServiceName.make(service),
+      containerId: service,
+      labels: { [APP_LABEL]: "global", [APP_ROOT_LABEL]: root, [SERVICE_LABEL]: service },
+    };
+  });
+  services.push(...globalServices);
   const snapshot: ProviderRuntimeSnapshot = {
     providerId,
     runtimeObserved: input.runtimeObserved ?? true,
-    appliedPlans: input.holdingPlans ?? [],
+    appliedPlans: [...(input.holdingPlans ?? []), ...(input.globalPlans ?? [])],
     services,
     volumes: [],
   };
   const provider = {
     ...TestRuntimeProvider,
     id: "lando",
-    appliedPlans: Effect.succeed(input.holdingPlans ?? []),
+    appliedPlans: Effect.succeed(snapshot.appliedPlans),
     getStatus: input.statusFailure
       ? Effect.fail(
           new ProviderUnavailableError({
@@ -129,8 +141,13 @@ const makeHarness = async (input: {
           }),
         )
       : Effect.succeed({ state: input.idle === true ? ("idle" as const) : ("running" as const) }),
-    list: () => Effect.succeed([]),
+    list: () => Effect.succeed(globalServices),
     listVolumes: () => Effect.succeed([]),
+    removeObservedService: (service: ServiceRuntimeInfo) =>
+      Effect.sync(() => {
+        calls.push(`remove:${service.appRoot}`);
+        return { kind: "removed" as const };
+      }),
     destroy: (target: { readonly app: string; readonly plan?: AppPlan }) =>
       Effect.gen(function* () {
         calls.push(`destroy:${target.plan?.root ?? "global"}`);
@@ -225,7 +242,7 @@ const makeHarness = async (input: {
     planner,
     Layer.succeed(RuntimeProviderRegistry, registry as never),
   );
-  return { layer, calls };
+  return { layer, calls, events: teardown.events, routeRoots: teardown.routeRoots };
 };
 
 const withRoots = async <A>(
@@ -343,6 +360,50 @@ describe("poweroff operation", () => {
     expect(harness.calls).not.toContain("runtime");
   });
 
+  test.each(["container", "applied plan"] as const)(
+    "stops the global root discovered from the %s",
+    async (source) => {
+      await withRoots(async ({ a, b }) => {
+        const harness = await makeHarness({
+          roots: [],
+          globalPlans: [globalPlanAt(AbsolutePath.make(source === "container" ? b : a))],
+          ...(source === "container" ? { observedGlobalRoots: [a, a] } : {}),
+        });
+
+        const result = await Effect.runPromise(poweroff().pipe(Effect.result, Effect.provide(harness.layer)));
+
+        expect(result).toMatchObject({
+          _tag: "Success",
+          success: { apps: [{ kind: "global", appRoot: a, providerId, outcome: "stopped" }] },
+        });
+        expect(harness.events.filter((event) => event._tag === "pre-global-stop")).toMatchObject([
+          { app: { root: a }, triggeredBy: "apps:poweroff" },
+        ]);
+        expect(harness.routeRoots).toEqual([a]);
+      });
+    },
+  );
+
+  test("refuses multiple discovered global roots before stopping containers or withdrawing routes", async () => {
+    await withRoots(async ({ a, b }) => {
+      const harness = await makeHarness({ roots: [], observedGlobalRoots: [b, a] });
+
+      const result = await Effect.runPromise(poweroff().pipe(Effect.result, Effect.provide(harness.layer)));
+
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "PoweroffStopError",
+          failures: [
+            { kind: "global", _tag: "AppResolveError", message: expect.stringContaining(`${a}, ${b}`) },
+          ],
+        },
+      });
+      expect(harness.calls).toEqual([]);
+      expect(harness.routeRoots).toEqual([]);
+    });
+  });
+
   test("fails a provider with recorded holdings when its runtime status check fails", async () => {
     await withRoots(async ({ a }) => {
       const harness = await makeHarness({
@@ -451,6 +512,7 @@ describe("poweroff operation", () => {
         roots: [{ root: a, plan: planAt(a), status: "running" }],
       });
       const result = await Effect.runPromise(poweroff().pipe(Effect.provide(harness.layer)));
+      expect(harness.routeRoots).toContain(makeLandoPaths({ userDataRoot: dataRoot }).globalAppRoot);
       expect(result.runtimeServiceStopped).toBe(true);
       expect(result.runtimeServicePid).toBe(4242);
       expect(harness.calls.filter((call) => call === "runtime")).toHaveLength(1);

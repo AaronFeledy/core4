@@ -2,7 +2,6 @@ import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import {
   ConfigService,
   type FileSystem,
-  GlobalAppService,
   type RuntimeProviderRegistry,
   ScratchAppService,
   type StateStore,
@@ -10,7 +9,6 @@ import {
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Option, Result, Schema } from "effect";
-import { globalObserveProviderId } from "../global-app/placement.ts";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "../runtime/host-maintenance.ts";
 import { type GlobalStopError, type GlobalStopServices, globalStop } from "./global-stop.ts";
 import {
@@ -134,7 +132,7 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
     );
   }
 
-  const globalTargetResult = yield* globalStopTarget().pipe(Effect.result);
+  const globalTargetResult = yield* inventory.resolveGlobalTarget.pipe(Effect.result);
   const globalTarget = Result.isSuccess(globalTargetResult) ? globalTargetResult.success : undefined;
   if (Result.isFailure(globalTargetResult))
     failures.push({
@@ -210,11 +208,6 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
     runtimeServiceStopped: runtimeService.terminated,
     ...(runtimeService.pid === undefined ? {} : { runtimeServicePid: runtimeService.pid }),
   };
-});
-
-const globalStopTarget = Effect.fnUntraced(function* () {
-  const app = yield* GlobalAppService;
-  return { root: (yield* app.paths).root, providerId: yield* globalObserveProviderId };
 });
 
 const stopManagedRuntimeService: Effect.Effect<
