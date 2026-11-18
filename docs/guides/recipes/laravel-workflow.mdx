@@ -76,7 +76,7 @@ The appserver sets `uploadDirs: [storage]` beneath webroot `public` to keep PHP 
 | `cache` | `type: redis` |
 | `node` | `node:22`, `primary: false`, no `command`, idle until `lando npm` runs |
 | `worker` (optional) | `php:8.4`, `via: cli`, `command: php artisan queue:work` with `--answer=worker=true` |
-| Tooling | `lando artisan` and `lando composer` on `appserver`, `lando npm` on `node` |
+| Tooling | `lando artisan` and `lando composer` on `appserver`. The `node` service adds `lando npm` and `lando npx` |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=database=postgres:16` when you want Postgres instead.
 
@@ -97,7 +97,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"primary\":\\s*false" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
+      <Verify command="lando help npm --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"node\"[\\s\\S]*\"program\":\\s*\"npm\"" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />

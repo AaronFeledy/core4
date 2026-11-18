@@ -43,14 +43,14 @@ The scaffold writes only `.lando.yml`. It declares a `web` service on `node:<nod
 
 Lando derives `PORT` from `port:` (default `4321` here), but Astro's Vite development server still needs explicit host and port configuration. After installing your app, run `lando astro dev --host 0.0.0.0 --port 4321 --allowed-hosts my-astro.lndo.site`, replacing the hostname with the one from `lando info`. Keep the port argument aligned when you change `port:`. An unequal or malformed authored `environment.PORT` fails planning. `lando start` keeps the Node service idle; it does not start Astro.
 
-Two tooling commands ship with the Landofile, both running inside the `web` service:
+The Landofile declares `lando astro`, and the `web` service adds `lando npm` and `lando npx`. All of them run inside `web`:
 
 ```sh
 lando astro --version
 lando npm install
 ```
 
-`lando astro` wraps `npx astro`, so `lando astro dev` and `lando astro build` run Astro inside the service.
+`lando astro` runs the `astro` binary your project installed, through the project's package manager, so `lando astro dev` and `lando astro build` run Astro inside the service. It never downloads Astro, so install your dependencies first. A project that declares Yarn or pnpm in `package.json` gets `lando yarn`, or `lando pnpm` and `lando pnpx`, in place of `lando npm` and `lando npx`.
 
 `lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it.
 
