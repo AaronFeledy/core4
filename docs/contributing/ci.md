@@ -602,6 +602,9 @@ fixture projects from a host temp directory. When the socket belongs to an
 engine that cannot see this host's temp tree, such as a Podman service in
 another WSL distribution, set `LANDO_TEST_PROJECT_BIND_ROOT` to a directory
 both sides share; otherwise the suite fails and names the unreachable path.
+Its Node package-manager cases download Yarn and pnpm releases from
+`registry.npmjs.org` on the host, not inside the image build, so the host
+running the suite needs registry access.
 
 The `providers` PR profile runs Linux x64 provider integration. Other platform-specific provider jobs remain part of broad CI. Fake-client provider contracts also run in the ordinary PR unit shards, independently of live socket availability.
 
