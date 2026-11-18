@@ -44,7 +44,7 @@ test("poweroff runs a running app's post-stop host hook", async () => {
         Effect.gen(function* () {
           const appId = "poweroff-app-a";
           const marker = join(context.testDir, "a-hook");
-          yield* startWithHook(context, appId, { event: "post-stop", cmd: `touch ${Bun.$.escape(marker)}` });
+          yield* startWithHook(context, appId, { event: "post-stop", cmd: "echo stopped > a-hook" });
           expect(yield* Effect.promise(() => Bun.file(marker).exists())).toBe(false);
 
           const run = yield* context.runCli(["poweroff", "--format=json"]);
@@ -72,7 +72,7 @@ test("poweroff omits an already stopped app without rerunning its hook", async (
           const lineCount = () => Effect.promise(async () => (await log.text()).trimEnd().split("\n").length);
           yield* startWithHook(context, appId, {
             event: "post-stop",
-            cmd: `echo stopped >> ${Bun.$.escape(join(context.testDir, "b-hook.log"))}`,
+            cmd: "echo stopped >> b-hook.log",
           });
           const stopped = yield* context.runCli(["stop", "--format=json"]);
           expect(stopped.exitCode, stopped.stdout + stopped.stderr).toBe(0);
@@ -108,19 +108,12 @@ test("poweroff encodes nested stop failures and reports the global app as skippe
           expect(envelope.ok).toBe(false);
           expect(envelope.error?._tag).toBe("PoweroffStopError");
           const apps = Schema.decodeUnknownSync(PoweroffStopError.fields.apps)(envelope.error?.apps);
-          const failures = Schema.decodeUnknownSync(
-            Schema.NonEmptyArray(
-              Schema.Struct({
-                _tag: Schema.NonEmptyString,
-                message: Schema.String,
-                remediation: Schema.NonEmptyString,
-              }),
-            ),
-          )(envelope.error?.failures);
-          for (const failure of failures) {
-            expect(failure.message).toContain(appId);
-            expect(failure.message).toContain(root);
-          }
+          const failures = Schema.decodeUnknownSync(PoweroffStopError.fields.failures)(
+            envelope.error?.failures,
+          );
+          expect(failures).toMatchObject([
+            { kind: "user", _tag: "LandofileEventStepFailedError", appId, appRoot: root },
+          ]);
           expect(apps.find((app) => app.kind === "global")?.outcome).toBe("skipped");
         }),
     ),
