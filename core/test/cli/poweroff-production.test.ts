@@ -199,6 +199,28 @@ test("renders stopped, unchanged, and failed-hook outcomes separately when app i
   expect(diagnostic).toContain(failedPostStop.stepFailure.remediation);
 });
 
+test("keeps an app with a failed hook off every success line", () => {
+  const rendered = renderPoweroffResult({
+    apps: [
+      {
+        kind: "user",
+        appId: "idle",
+        appRoot: "/idle",
+        providerId: "lando",
+        outcome: "unchanged",
+        landofileEvents: failedPostStop,
+      },
+    ],
+    keptGlobalApp: false,
+    keptScratchApps: 0,
+    runtimeServiceStopped: false,
+  });
+  const lines = rendered.split("\n");
+  expect(lines.filter((line) => line.includes("idle"))).toEqual([
+    expect.stringContaining(failedPostStop.event),
+  ]);
+});
+
 test("encodes the failed hook on a stopped app even when another app fails to stop", async () => {
   const error = new PoweroffStopError({
     message: "Some apps could not stop.",

@@ -19,6 +19,13 @@ export {
   poweroff,
 };
 
+const outcomeText: Record<PoweroffAppResult["outcome"], string> = {
+  stopped: "stopped",
+  unchanged: "nothing to stop",
+  destroyed: "destroyed",
+  skipped: "skipped",
+};
+
 const labelApp = (app: PoweroffAppResult, duplicates: ReadonlySet<string>): string =>
   duplicates.has(app.appId) && app.appRoot !== "" ? `${app.appId} (${app.appRoot})` : app.appId;
 
@@ -26,11 +33,11 @@ export const renderPoweroffResult = (result: PoweroffResult): string => {
   const lines: string[] = [];
   const ids = result.apps.map((app) => app.appId);
   const duplicates = new Set(ids.filter((id, index) => ids.indexOf(id) !== index));
-  const poweredOff = result.apps.filter(
-    (app) => app.outcome === "stopped" && app.landofileEvents?.status !== "failed",
-  );
-  const unchanged = result.apps.filter((app) => app.outcome === "unchanged");
-  const destroyed = result.apps.filter((app) => app.outcome === "destroyed");
+  // An app whose post-step failed is reported only on its failure line, never as a plain success.
+  const clean = result.apps.filter((app) => app.landofileEvents?.status !== "failed");
+  const poweredOff = clean.filter((app) => app.outcome === "stopped");
+  const unchanged = clean.filter((app) => app.outcome === "unchanged");
+  const destroyed = clean.filter((app) => app.outcome === "destroyed");
   if (poweredOff.length > 0)
     lines.push(`Powered off: ${poweredOff.map((app) => labelApp(app, duplicates)).join(", ")}`);
   if (unchanged.length > 0)
@@ -43,7 +50,10 @@ export const renderPoweroffResult = (result: PoweroffResult): string => {
     const { message, remediation } = hook.stepFailure;
     const label = app.appRoot === "" ? app.appId : `${app.appId} (${app.appRoot})`;
     lines.push(
-      `${label}: stopped, but ${hook.event} failed. ${message} ${remediation}`.replace(/\s*\r?\n\s*/gu, " "),
+      `${label}: ${outcomeText[app.outcome]}, but ${hook.event} failed. ${message} ${remediation}`.replace(
+        /\s*\r?\n\s*/gu,
+        " ",
+      ),
     );
   }
   if (lines.length === 0) lines.push("No Lando apps to power off.");
