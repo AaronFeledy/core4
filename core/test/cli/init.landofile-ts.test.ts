@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { ServiceName } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { InitTargetExistsError } from "@lando/sdk/errors";
 import type { LoadScopedLandofile } from "@lando/sdk/schema";
@@ -120,6 +121,7 @@ const planLandofile = (landofile: LoadScopedLandofile) =>
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
+      Effect.provide(BunFileSystem.layer),
     ),
   );
 
