@@ -89,6 +89,29 @@ export const ServiceBuildDirectoryCommand = Schema.Struct({
 });
 export type ServiceBuildDirectoryCommand = typeof ServiceBuildDirectoryCommand.Type;
 
+export const ServiceBuildAcquisition = Schema.Struct({
+  kind: Schema.Literal("npm"),
+  name: Schema.String.check(Schema.isPattern(/^(?:@[a-z0-9._-]+\/)?[a-z0-9][a-z0-9._-]*$/u)),
+  version: Schema.String,
+  contextName: Schema.String.check(Schema.isMaxLength(60), Schema.isPattern(/^[a-z0-9][a-z0-9._-]*$/u)),
+  destination: Schema.String.check(
+    Schema.isMaxLength(256),
+    Schema.isPattern(/^\/(?:[A-Za-z0-9_-][A-Za-z0-9._+-]*)(?:\/[A-Za-z0-9_-][A-Za-z0-9._+-]*)*$/u),
+  ),
+  integrity: Schema.optionalKey(
+    Schema.Struct({
+      algorithm: Schema.Literals(["sha224", "sha256", "sha384", "sha512"]),
+      hex: Schema.String.check(Schema.isMaxLength(128), Schema.isPattern(/^[a-f0-9]+$/u)),
+      file: Schema.optionalKey(
+        Schema.String.check(
+          Schema.isPattern(/^[A-Za-z0-9_-][A-Za-z0-9._-]*(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/u),
+        ),
+      ),
+    }),
+  ),
+});
+export type ServiceBuildAcquisition = typeof ServiceBuildAcquisition.Type;
+
 export interface ServiceBuildStepIntent {
   /** Optional stable id for ordering/dedup by the build orchestrator. */
   readonly id?: string;
@@ -106,6 +129,7 @@ export interface ServiceBuildStepIntent {
   readonly buildKeyInputs?: Readonly<Record<string, unknown>>;
   /** Verified host CA files copied into the derived build context for this step. */
   readonly caFiles?: ReadonlyArray<ServiceCaFileDescriptor>;
+  readonly acquisitions?: ReadonlyArray<ServiceBuildAcquisition>;
   /** Step ids this step depends on, if any. */
   readonly dependsOn?: ReadonlyArray<string>;
 }
