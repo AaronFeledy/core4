@@ -167,3 +167,31 @@ func TestDrupalContribCoreVersionRequiresScaffoldAndUsesItsLock(t *testing.T) {
 	}
 	assertContribCalls(t, f)
 }
+
+func TestDrupalContribCoreVersionUnlocksAnInstalledSiteDirectory(t *testing.T) {
+	for _, mode := range []string{"", "fail-update"} {
+		t.Run("mode="+mode, func(t *testing.T) {
+			f := newContribFixture(t)
+			mount := contribTestMount(t, f, "module", "example", "type: module\n")
+			writeContribTestFile(t, filepath.Join(mount, ".lando.yml"), "recipe:\n  options:\n    drupal: ^11\n")
+			scaffoldContribForCoreVersion(t, f, "module")
+			site := filepath.Join(f.appRoot, "web", "sites", "default")
+			if err := os.MkdirAll(site, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(site, 0o555); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(site, 0o755) })
+			f.env["LANDO_TEST_COMPOSER_MODE"] = mode
+			code := f.run(t, contribVersionCommand, "module", "example", "^10")
+			if want := map[string]int{"": 0, "fail-update": 1}[mode]; code != want {
+				t.Fatalf("core-version exited %d, want %d: %s", code, want, f.stderr.String())
+			}
+			info, err := os.Stat(site)
+			if err != nil || info.Mode().Perm() != 0o555 {
+				t.Fatalf("sites/default mode was not restored: %v, %v", info, err)
+			}
+		})
+	}
+}

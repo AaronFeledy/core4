@@ -82,6 +82,11 @@ func fakeContribComposer(args []string, env map[string]string) int {
 			return 2
 		}
 	case "update":
+		// Composer's core scaffold replaces files in sites/default, which Drupal's
+		// installer leaves read-only. Check the bit: tests may run as root.
+		if info, err := os.Stat(filepath.Join(dir, "web", "sites", "default")); err == nil && info.Mode().Perm()&0o200 == 0 {
+			return 43
+		}
 		if env["LANDO_TEST_COMPOSER_MODE"] == "fail-update" {
 			return 42
 		}
