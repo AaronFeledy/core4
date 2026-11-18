@@ -7,7 +7,13 @@ import {
   FileSyncStopError,
   type LandofileLoadExpressionError,
 } from "@lando/sdk/errors";
-import type { AbsolutePath, AppPlan, AppRef, ProviderId } from "@lando/sdk/schema";
+import {
+  type AbsolutePath,
+  type AppPlan,
+  type AppRef,
+  type ProviderId,
+  noVolumesRemoved,
+} from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type EventService,
@@ -80,7 +86,6 @@ type StopExecution = {
   readonly missingRoot?: boolean;
 };
 
-/** What one stop body needs from the entry point that already holds the root lock. */
 type StopScope = {
   readonly root: AbsolutePath;
   readonly rootExists: boolean;
@@ -169,7 +174,7 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
           },
           "stop",
         )
-      : Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } });
+      : Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: { ...noVolumesRemoved } });
   if ((pending === null || pending.phase === "completed") && (execution.requireAppliedEvidence || retired)) {
     const evidence =
       execution.cleanupOwnership === false
@@ -326,9 +331,6 @@ export const stopAppForTarget = Effect.fn("AppOperation.stopForTarget")(function
   );
 });
 
-const asStopped = (result: StopAppResult): StopAppResult =>
-  result.outcome === "unchanged" ? result : { ...result, outcome: "stopped" };
-
 /** Stop a root whose unfinished accelerated start means the desired plan must be the same app. */
 const stopRetainedStart = Effect.fnUntraced(function* (
   scope: StopScope,
@@ -364,7 +366,6 @@ const stopRetainedStart = Effect.fnUntraced(function* (
   })).result;
 });
 
-/** One stop body for every teardown evidence kind; entry points supply the root and desired loader. */
 const stopResolution = (
   scope: StopScope,
   resolution: TeardownResolution,
@@ -408,8 +409,6 @@ const stopResolution = (
       }
       case "absent": {
         const app = basename(scope.root);
-        // A root with an unfinished start is never reported unchanged, and its journal is read
-        // before this result is decided.
         const pending = yield* journalPending(scope.root, app);
         if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution);
         if (!scope.loadDesiredOnAbsent) return unchangedResult(app);
@@ -430,7 +429,12 @@ const stopResolution = (
       }
     }
   });
-  return body.pipe(Effect.map(asStopped));
+  return body.pipe(
+    Effect.map(
+      (result): StopAppResult =>
+        result.outcome === "unchanged" ? result : { ...result, outcome: "stopped" },
+    ),
+  );
 };
 
 const stopAtRoot = Effect.fnUntraced(function* <E, R>(

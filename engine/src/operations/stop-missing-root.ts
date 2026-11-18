@@ -40,9 +40,8 @@ export const journalPending = Effect.fnUntraced(function* (root: AbsolutePath, i
 });
 
 /**
- * Stop whatever the verified teardown evidence says is still writing at a root whose folder is
- * gone, then clean host workers and withdraw routes. The journal preflight already proved the
- * attempt identity; this never loads desired config or runs live file-sync preflight.
+ * The journal preflight already proved the attempt identity, so stopping these writers needs
+ * neither desired config nor live file-sync preflight.
  */
 const stopMissingRootWriters = Effect.fnUntraced(function* (app: AppRef, resolution: TeardownResolution) {
   const registry = yield* RuntimeProviderRegistry;
@@ -107,7 +106,6 @@ export const stopMissingRootStart = Effect.fnUntraced(function* (
   resolution: TeardownResolution,
 ) {
   const app = journalRef(root, pending.appId);
-  // Verify the journal and engine identity before any writer is touched.
   const disposal = yield* prepareMissingRootStartDisposal(app, pending, { volumes: false });
   const result = yield* stopMissingRootWriters(app, resolution);
   // Writers are gone; termination never flushes and the journal stays for the next start.
