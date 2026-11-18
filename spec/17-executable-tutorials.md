@@ -39,7 +39,7 @@ An executable guide has `GuideFrontmatter`, one top-level `<Guide>`, and one or 
 | Fixture scenario | Standalone non-doc coverage under the scenario test tree. |
 | Variant | One resolved axes/platform/provider cell with its own test and transcript. |
 | Step | Ordered unit within a scenario. |
-| Fixture | Immutable input copied before mutation; fixtures contain data, not test logic. |
+| Fixture | Immutable input copied before mutation. Fixtures MAY hold executable project files, such as sample tests a documented command runs; scenario orchestration and assertions belong in the guide. |
 
 ### 19.3 Component vocabulary
 
