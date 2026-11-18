@@ -15,6 +15,7 @@ export const archiveAcquisition = (options: SourceStoreOptions, storage: Storage
     readonly sha256: string;
     readonly source: string;
     readonly repair: boolean;
+    readonly verifyTree?: (root: string) => Effect.Effect<void, SourceAcquisitionError>;
   }) =>
     storage.stage((stage) =>
       Effect.gen(function* () {
@@ -22,6 +23,7 @@ export const archiveAcquisition = (options: SourceStoreOptions, storage: Storage
           try: () => extractArchive(input.bytes, containedPath(stage, "tree")),
           catch: (cause) => acquisitionError("extract-failed", input.source, cause),
         }).pipe(Effect.uninterruptible);
+        if (input.verifyTree !== undefined) yield* input.verifyTree(containedPath(stage, "tree"));
         return yield* storage.publish({
           key: { kind: "archive", sha256: input.sha256 },
           pin: { kind: "archive", sha256: input.sha256, url: input.source },

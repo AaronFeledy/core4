@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
@@ -8,11 +9,19 @@ import { SourceAcquisitionError, acquisitionError, displaySource } from "./error
 import { metadata } from "./gc-inventory.ts";
 import { checkNpmPackageDistIntegrity } from "./integrity.ts";
 import { parseNpmPackageSpec, resolveNpmPackageVersion } from "./npm.ts";
+import { verifyAuthoredNpmDigest, verifyNpmFile } from "./npm-authored-integrity.ts";
 import { type NpmIndexRecord, sourceRecords } from "./records.ts";
 import { type Storage, io } from "./storage.ts";
 import { acquireTransport } from "./transport.ts";
 import { containedPath } from "./tree.ts";
-import type { MaterializeOptions, NpmPin, SourceSnapshot, SourceStoreOptions } from "./types.ts";
+import type {
+  ExactNpmSource,
+  MaterializeOptions,
+  NpmAuthoredIntegrity,
+  NpmPin,
+  SourceSnapshot,
+  SourceStoreOptions,
+} from "./types.ts";
 
 export const npmAcquisition = (
   options: SourceStoreOptions,
@@ -43,13 +52,14 @@ export const npmAcquisition = (
   const resolveNpm = Effect.fn("SourceSession.resolveNpm")(function* (locator: {
     readonly name: string;
     readonly selector?: string;
+    readonly registry?: string;
   }) {
     const spec = `${locator.name}${locator.selector === undefined ? "" : `@${locator.selector}`}`;
     yield* Effect.try({
       try: () => parseNpmPackageSpec(spec),
       catch: (cause) => acquisitionError("invalid-locator", spec, cause),
     });
-    const registry = yield* registryFor(locator.name).pipe(
+    const registry = yield* registryFor(locator.name, locator.registry).pipe(
       mapFailures(
         (error) => new SourceAcquisitionError({ ...error, message: error.message, phase: "metadata" }),
       ),
@@ -130,6 +140,23 @@ export const npmAcquisition = (
     }
     return undefined;
   });
+  const indexedRecord = Effect.fnUntraced(function* (
+    coordinate: {
+      readonly name: string;
+      readonly version: string;
+    },
+    registry: string,
+  ) {
+    const bucket = yield* records.npm(registry, coordinate.name, coordinate.version);
+    const record = yield* bucket.get.pipe(
+      mapFailures((error) => acquisitionError("cache", coordinate.name, error)),
+    );
+    return record?.name === coordinate.name &&
+      record.version === coordinate.version &&
+      record.registry === displaySource(registry)
+      ? record
+      : undefined;
+  });
   const lookupNpm = Effect.fn("SourceSession.lookupNpm")(function* (coordinate: {
     readonly name: string;
     readonly version: string;
@@ -141,22 +168,16 @@ export const npmAcquisition = (
       return fallback ?? (yield* Effect.fail(resolved.failure));
     }
     const registry = resolved.success;
-    const bucket = yield* records.npm(registry, coordinate.name, coordinate.version);
-    const record = yield* bucket.get.pipe(
-      mapFailures((error) => acquisitionError("cache", coordinate.name, error)),
-    );
-    const exact =
-      record === null ||
-      record.name !== coordinate.name ||
-      record.version !== coordinate.version ||
-      record.registry !== displaySource(registry)
-        ? undefined
-        : yield* openIndexed(coordinate, registry, record);
+    const record = yield* indexedRecord(coordinate, registry);
+    const exact = record === undefined ? undefined : yield* openIndexed(coordinate, registry, record);
     return exact ?? (yield* lookupAnyRegistry(coordinate));
   });
   const materializeNpm = Effect.fn("SourceSession.materializeNpm")(function* (
     pin: NpmPin,
-    acquisition: MaterializeOptions = {},
+    acquisition: MaterializeOptions & {
+      readonly exact?: true;
+      readonly integrity?: NpmAuthoredIntegrity;
+    } = {},
   ): Effect.fn.Return<SourceSnapshot<NpmPin>, SourceAcquisitionError> {
     const source = `${pin.name}@${pin.version}`;
     if ((pin.dist.integrity?.trim() ?? "") === "" && (pin.dist.shasum?.trim() ?? "") === "") {
@@ -172,6 +193,7 @@ export const npmAcquisition = (
     const bucket = yield* records.npm(pin.registry, pin.name, pin.version);
     const previous = yield* bucket.get.pipe(mapFailures((error) => acquisitionError("cache", source, error)));
     if (
+      acquisition.exact !== true &&
       previous !== null &&
       previous.registry === displaySource(pin.registry) &&
       previous.name === pin.name &&
@@ -228,15 +250,31 @@ export const npmAcquisition = (
       }
     }
     const sha256 = sha256Hex(bytes);
+    const tarballDigests = {
+      sha224: createHash("sha224").update(bytes).digest("hex"),
+      sha384: createHash("sha384").update(bytes).digest("hex"),
+      sha512: createHash("sha512").update(bytes).digest("hex"),
+    };
+    const authored = acquisition.integrity;
+    if (authored !== undefined && authored.file === undefined) {
+      yield* verifyAuthoredNpmDigest(
+        source,
+        authored,
+        authored.algorithm === "sha256" ? sha256 : tarballDigests[authored.algorithm],
+      );
+    }
+    const verifyTree = authored?.file === undefined ? undefined : verifyNpmFile(source, authored);
     const cached = yield* storage.open({ kind: "archive", sha256 }, pin, {
       verify: acquisition.repair === true,
     });
+    if (cached !== undefined && verifyTree !== undefined) yield* verifyTree(cached.root);
     const snapshot = cached ?? {
       ...(yield* archives.publishBytes({
         bytes,
         sha256,
         source: pin.dist.tarball,
         repair: acquisition.repair === true,
+        ...(verifyTree === undefined ? {} : { verifyTree }),
       })),
       pin,
     };
@@ -246,6 +284,7 @@ export const npmAcquisition = (
         version: pin.version,
         registry: displaySource(pin.registry),
         sha256,
+        tarballDigests,
         ...(pin.dist.integrity === undefined ? {} : { integrity: pin.dist.integrity }),
         ...(pin.dist.shasum === undefined ? {} : { shasum: pin.dist.shasum }),
       }),
@@ -258,5 +297,62 @@ export const npmAcquisition = (
   ) {
     return yield* materializeNpm(yield* resolveNpm(locator), acquisition);
   });
-  return { resolveNpm, lookupNpm, materializeNpm, acquireNpm };
+  const acquireExactNpm = Effect.fn("SourceSession.acquireExactNpm")(function* (
+    coordinate: ExactNpmSource,
+    acquisition: { readonly network?: boolean } = {},
+  ) {
+    const { name, version, integrity } = coordinate;
+    const source = `${name}@${version}`;
+    if (!/^\d+\.\d+\.\d+(?:-[0-9a-z.-]+)?(?:\+[0-9a-z.-]+)?$/iu.test(version)) {
+      return yield* Effect.fail(
+        new SourceAcquisitionError({
+          kind: "invalid-locator",
+          source,
+          message: `Expected an exact npm version for ${source}.`,
+          remediation: "Choose an exact published npm version.",
+        }),
+      );
+    }
+    const registry = yield* registryFor(name);
+    const record = yield* indexedRecord(coordinate, registry);
+    if (record !== undefined) {
+      const snapshot = yield* openIndexed(coordinate, registry, record);
+      if (snapshot !== undefined) {
+        if (integrity === undefined) return snapshot;
+        if (integrity.file !== undefined) {
+          yield* verifyNpmFile(source, integrity)(snapshot.root);
+          return snapshot;
+        }
+        const actual =
+          integrity.algorithm === "sha256" ? record.sha256 : record.tarballDigests?.[integrity.algorithm];
+        if (actual !== undefined) {
+          yield* verifyAuthoredNpmDigest(source, integrity, actual);
+          return snapshot;
+        }
+      }
+    }
+    if (acquisition.network === false) {
+      return yield* Effect.fail(
+        new SourceAcquisitionError({
+          kind: "offline-miss",
+          source,
+          message: `Exact npm source ${source} is not cached with the required integrity.`,
+          remediation: "Acquire this exact package with network access once.",
+        }),
+      );
+    }
+    const pin = yield* resolveNpm({ name, selector: version, registry });
+    if (pin.version !== version) {
+      return yield* Effect.fail(
+        new SourceAcquisitionError({
+          kind: "version-not-found",
+          source,
+          message: `The registry did not publish exact version ${source}.`,
+          remediation: "Choose an exact published npm version.",
+        }),
+      );
+    }
+    return yield* materializeNpm(pin, { exact: true, ...(integrity === undefined ? {} : { integrity }) });
+  });
+  return { resolveNpm, lookupNpm, materializeNpm, acquireNpm, acquireExactNpm };
 };
