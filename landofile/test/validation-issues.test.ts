@@ -182,13 +182,13 @@ describe("service-level database and password point at the key their service typ
   });
 });
 
-describe("validation error summaries name the source that failed", () => {
-  const projectIssue = (file: string, path: ReadonlyArray<string | number>, message: string) => ({
-    path: ["services", "web"],
-    message,
-    source: { layer: "project-file" as const, file, path },
-  });
+const projectIssue = (file: string, path: ReadonlyArray<string | number>, message: string) => ({
+  path: ["services", "web"],
+  message,
+  source: { layer: "project-file" as const, file, path },
+});
 
+describe("validation error summaries name the source that failed", () => {
   test("names a single project file by its app-relative path", () => {
     const error = landofileValidationError("/app/.lando.yml", [
       projectIssue(
@@ -212,7 +212,7 @@ describe("validation error summaries name the source that failed", () => {
     const error = landofileValidationError("/app/.lando.yml", [
       projectIssue("/app/apps/web/package.json", ["packageManager"], "Invalid manager."),
     ]);
-    expect(error.message).toContain("apps/web/package.json has invalid values");
+    expect(error.message.startsWith("apps/web/package.json has invalid values")).toBe(true);
   });
 
   test("names several project files without claiming a single one", () => {
@@ -259,12 +259,6 @@ describe("validation error summaries name the source that failed", () => {
 });
 
 describe("project-file human paths use app root and escape controls", () => {
-  const projectIssue = (file: string, path: ReadonlyArray<string | number>, message: string) => ({
-    path: ["services", "web"],
-    message,
-    source: { layer: "project-file" as const, file, path },
-  });
-
   test("bases the headline on framing.appRoot when the Landofile lives outside the app", () => {
     // Given: embedding callers may pass a config file outside the app root
     const landofileOutside = "/config/embedding/landofile.yml";
@@ -301,14 +295,5 @@ describe("project-file human paths use app root and escape controls", () => {
     expect(error.message).not.toContain(`pack${String.fromCharCode(10)}age`);
     expect(error.file).toBe(rawFile);
     expect(error.issues[0]?.source).toMatchObject({ layer: "project-file", file: rawFile });
-  });
-
-  test("defaults display base to dirname(file) when appRoot is omitted", () => {
-    // Given / When: same-directory Landofile keeps prior relative behavior
-    const error = landofileValidationError("/app/.lando.yml", [
-      projectIssue("/app/apps/web/package.json", [], "Invalid manager."),
-    ]);
-    // Then
-    expect(error.message).toContain("apps/web/package.json has invalid values");
   });
 });

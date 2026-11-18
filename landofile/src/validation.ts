@@ -54,12 +54,8 @@ const oneLine = (issue: ValidationIssue, appRoot: string): string => {
   }
   const file = displayPath(source.file, appRoot);
   const location = formatValidationIssuePath(source.path);
-  const where = formatValidationIssuePath(issue.path);
-  const message = issue.message.replace(/\.$/u, "");
-  const detail = `${where.length === 0 ? "" : `${where}: `}${message}`;
-  const hint =
-    issue.suggestion === undefined ? "" : `${/[.?!:]$/.test(message) ? "" : "."} ${issue.suggestion}`;
-  return `${detail}${hint} (${file}${location.length === 0 ? "" : `: ${location}`})`;
+  const detail = formatValidationIssueLine({ ...issue, message: issue.message.replace(/\.$/u, "") });
+  return `${detail} (${file}${location.length === 0 ? "" : `: ${location}`})`;
 };
 
 const defaultHeadline = (issues: ReadonlyArray<ValidationIssue>, appRoot: string): string => {
