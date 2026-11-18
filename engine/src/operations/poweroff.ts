@@ -1,6 +1,4 @@
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
-import { StopAppResult } from "@lando/sdk/schema";
 import {
   ConfigService,
   type FileSystem,
@@ -13,39 +11,19 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Option, Result, Schema } from "effect";
 import { globalObserveProviderId } from "../global-app/placement.ts";
-import { taggedErrorRemediation } from "../providers/managed.ts";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "../runtime/host-maintenance.ts";
 import { type GlobalStopError, type GlobalStopServices, globalStop } from "./global-stop.ts";
+import {
+  PoweroffAppResultSchema,
+  PoweroffStopFailureSchema,
+  type StopFailure,
+  appResult,
+  stopEntries,
+} from "./poweroff-failures.ts";
 import { readRunningInventory } from "./running-inventory.ts";
 import { type StopAppError, stopAppAtRoot } from "./stop.ts";
 
-const PoweroffAppKind = Schema.Literals(["user", "scratch", "global"]);
-const PoweroffAppOutcome = Schema.Literals(["stopped", "unchanged", "destroyed", "skipped"]);
-
-const PoweroffAppResultSchema = Schema.Struct({
-  kind: PoweroffAppKind,
-  appId: Schema.String,
-  appRoot: Schema.String,
-  providerId: Schema.String,
-  outcome: PoweroffAppOutcome,
-  servicesStopped: Schema.optionalKey(StopAppResult.fields.servicesStopped),
-  landofileEvents: StopAppResult.fields.landofileEvents,
-  shutdownObservations: StopAppResult.fields.shutdownObservations,
-});
-
 export type PoweroffAppResult = typeof PoweroffAppResultSchema.Type;
-
-const PoweroffStopFailureSchema = Schema.Struct({
-  kind: PoweroffAppKind,
-  appId: Schema.String,
-  appRoot: Schema.String,
-  providerId: Schema.String,
-  _tag: Schema.String,
-  message: Schema.String,
-  remediation: Schema.NonEmptyString,
-});
-
-type PoweroffStopFailure = typeof PoweroffStopFailureSchema.Type;
 
 export const PoweroffResultSchema = Schema.Struct({
   apps: Schema.Array(PoweroffAppResultSchema),
@@ -82,74 +60,6 @@ export type PoweroffServices =
 export type PoweroffError = GlobalStopError | PoweroffStopError | StopAppError;
 
 type RuntimeServiceStopResult = { readonly terminated: boolean; readonly pid?: number };
-type StopFailure = {
-  readonly kind: PoweroffAppResult["kind"];
-  readonly appId: string;
-  readonly appRoot: string;
-  readonly providerId: string;
-  readonly error: unknown;
-};
-
-const failureTag = (error: unknown): string => {
-  if (error !== null && typeof error === "object") {
-    const tag = Reflect.get(error, "_tag");
-    if (typeof tag === "string" && tag.length > 0) return tag;
-  }
-  return error instanceof Error && error.name.length > 0 ? error.name : "UnknownError";
-};
-
-const failureMessage = (error: unknown): string => {
-  if (error !== null && typeof error === "object") {
-    const message = Reflect.get(error, "message");
-    if (typeof message === "string" && message.length > 0) return message;
-  }
-  return String(error);
-};
-
-const failureRemediation = (error: unknown): string =>
-  taggedErrorRemediation(error) ?? "Resolve the reported failure for this app, then retry `lando poweroff`.";
-
-const redacted = Effect.fnUntraced(function* (text: string) {
-  const redaction = yield* Effect.serviceOption(RedactionService);
-  if (Option.isNone(redaction)) return text;
-  const profile = yield* redaction.value.forProfile("secrets", { sourceEnv: process.env });
-  return profile.redactString(text);
-});
-
-const stopFailure = Effect.fnUntraced(function* (
-  target: Pick<StopFailure, "kind" | "appId" | "appRoot" | "providerId">,
-  error: unknown,
-) {
-  // App-scoped failures name the app; provider and inventory failures carry no root to name.
-  const message =
-    target.appRoot === ""
-      ? failureMessage(error)
-      : `${target.appId} (${target.appRoot}): ${failureMessage(error)}`;
-  return {
-    ...target,
-    _tag: failureTag(error),
-    message: yield* redacted(message),
-    remediation: yield* redacted(failureRemediation(error)),
-  } satisfies PoweroffStopFailure;
-});
-
-const stopEntries = (failures: ReadonlyArray<StopFailure>): Effect.Effect<PoweroffStopFailure[]> =>
-  Effect.forEach(failures, (failure) => stopFailure(failure, failure.error), { concurrency: 1 });
-
-const appResult = (
-  target: Pick<StopFailure, "kind" | "appId" | "appRoot" | "providerId">,
-  outcome: PoweroffAppResult["outcome"],
-  result?: StopAppResult,
-): PoweroffAppResult => ({
-  ...target,
-  outcome,
-  ...(result?.servicesStopped === undefined ? {} : { servicesStopped: result.servicesStopped }),
-  ...(result?.landofileEvents === undefined ? {} : { landofileEvents: result.landofileEvents }),
-  ...(result?.shutdownObservations === undefined
-    ? {}
-    : { shutdownObservations: result.shutdownObservations }),
-});
-
 export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
   options: PoweroffOptions = {},
 ): Effect.fn.Return<PoweroffResult, PoweroffError, PoweroffServices> {

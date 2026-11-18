@@ -12,6 +12,11 @@ import { TeardownProvider } from "../providers/app-placement.ts";
 import { readAcceleratedStartInventory } from "./accelerated-start-inventory.ts";
 import { digest } from "./accelerated-start-record.ts";
 import { appRootIdentityKey } from "./app-root-identity.ts";
+import {
+  providerInventoryFailure,
+  unobservedRuntimeError,
+  unreadableAppliedState,
+} from "./poweroff-failures.ts";
 
 type InventoryFailure = {
   readonly kind: "user" | "scratch";
@@ -38,31 +43,6 @@ const ACTIVE_SERVICE_STATUSES: ReadonlySet<ServiceRuntimeInfo["status"]> = new S
   "restarting",
   "created",
 ]);
-
-const providerInventoryFailure = (providerId: string, error: unknown): InventoryFailure => ({
-  kind: "user",
-  appId: providerId,
-  appRoot: "",
-  providerId,
-  error,
-});
-
-const unreadableAppliedState = (providerId: ProviderId, count: number) =>
-  new ProviderUnavailableError({
-    providerId,
-    operation: "applied-state.list",
-    message: `${count} applied-state records could not be read.`,
-    remediation:
-      "Restore a readable applied-state record from a trusted backup or remove the corrupt file, then retry `lando poweroff`.",
-  });
-
-const unobservedRuntimeError = (providerId: ProviderId) =>
-  new ProviderUnavailableError({
-    providerId,
-    operation: "getStatus",
-    message: "The provider reported a running runtime but no runtime inventory was observed.",
-    remediation: "Restore provider access or stop its recorded apps explicitly, then retry `lando poweroff`.",
-  });
 
 const readProviderSnapshots = Effect.fnUntraced(function* (journalProviders: ReadonlySet<string>) {
   const registry = yield* RuntimeProviderRegistry;
@@ -218,7 +198,9 @@ const readScratchTargets = Effect.fnUntraced(function* (scratchObserved: Readonl
 export const readRunningInventory = Effect.fnUntraced(function* () {
   const journalRead = yield* readAcceleratedStartInventory(false).pipe(Effect.result);
   const journalRecords = Result.isSuccess(journalRead) ? journalRead.success.records : [];
-  const inventory = yield* readProviderSnapshots(new Set(journalRecords.map((journal) => journal.providerId)));
+  const inventory = yield* readProviderSnapshots(
+    new Set(journalRecords.map((journal) => journal.providerId)),
+  );
   const failures = [...inventory.failures];
   if (Result.isFailure(journalRead)) failures.push(providerInventoryFailure("journals", journalRead.failure));
   else {
