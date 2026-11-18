@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { installSignalHandlers } from "@lando/engine/runtime/interrupt";
+import { defaultInterruptSignals } from "@lando/engine/runtime/process-signals";
 import { normalizePluginPolicy } from "@lando/engine/runtime/runtime-options";
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { definePlugin } from "@lando/sdk/plugins";
@@ -26,7 +27,8 @@ import { Cause, Context, Effect, Exit, Layer, Option, Result, Schema } from "eff
 import { LandoRuntimeOptions, makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const runtimeSignals = ["SIGINT", "SIGTERM"] as const;
+// A parent that ignores SIGINT or SIGHUP (nohup, a background job) removes it from the runtime set.
+const runtimeSignals = defaultInterruptSignals();
 
 const addedListeners = (signal: NodeJS.Signals, before: readonly NodeJS.SignalsListener[]) =>
   process.listeners(signal).filter((handler) => !before.includes(handler));
@@ -220,12 +222,12 @@ describe("makeLandoRuntime", () => {
       import { Cause, Effect, Exit } from "effect";
       import { makeLandoRuntime } from "@lando/core";
 
-      const before = process.listeners("SIGINT");
+      const before = process.listeners("SIGTERM");
       let installed = [];
       const exit = await Effect.runPromiseExit(
         Effect.gen(function* () {
-          installed = process.listeners("SIGINT").filter((handler) => !before.includes(handler));
-          process.emit("SIGINT");
+          installed = process.listeners("SIGTERM").filter((handler) => !before.includes(handler));
+          process.emit("SIGTERM");
           yield* Effect.never;
         }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal", installSignalHandlers: true }))),
       );
@@ -234,7 +236,7 @@ describe("makeLandoRuntime", () => {
       assert.equal(Exit.isFailure(exit), true);
       if (!Exit.isFailure(exit)) throw new Error("expected signal interruption");
       assert.equal(Cause.hasInterruptsOnly(exit.cause), true);
-      assert.equal(process.listeners("SIGINT").includes(installed[0]), false);
+      assert.equal(process.listeners("SIGTERM").includes(installed[0]), false);
       console.log("signal-ok");
     `;
     const proc = Bun.spawnSync([process.execPath, "--eval", script], {
