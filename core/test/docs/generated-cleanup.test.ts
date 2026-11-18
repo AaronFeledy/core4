@@ -35,6 +35,12 @@ const cases = [
     commands: ["interrupt:app", "destroy:app", "finish:app"],
   },
   {
+    name: "timeout",
+    before: "hang",
+    teardown: "destroy",
+    commands: ["hang:app", "destroy:app", "finish:app"],
+  },
+  {
     name: "failed init",
     before: "check",
     teardown: "destroy",
@@ -64,6 +70,7 @@ case "$1" in
   init) if [ "$2" = failed ]; then echo primary-step-failed >&2; exit 7; fi; mkdir -p -- "$2" ;;
   fail) echo primary-step-failed >&2; exit 7 ;;
   interrupt) kill -TERM "$PPID"; exec sleep 60 ;;
+  hang) exec sleep 60 ;;
   broken-cleanup) echo teardown-failed >&2; exit 8 ;;
 esac
 `,
@@ -119,6 +126,7 @@ timeout: 10000
         if (teardown === "broken-cleanup")
           expect(stderr.indexOf("teardown-failed")).toBeGreaterThan(stderr.indexOf("primary-step-failed"));
         if (name === "interruption") expect(stderr).toContain("Interrupt");
+        if (name === "timeout") expect(stderr).toContain("ran out of time");
         if (name === "success") {
           const transcript = Schema.decodeUnknownSync(Transcript)(
             await Bun.file(join(transcriptDir, "probe.json")).json(),

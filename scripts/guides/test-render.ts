@@ -184,6 +184,12 @@ ${
   };
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", interrupt);
+  // Bun records a timeout without stopping the test body, so stop it first and keep time to tear down.
+  let timedOut = false;
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, ${guide.frontmatter.timeout - Math.min(120_000, Math.floor(guide.frontmatter.timeout / 4))});
   try {
 `
 }  const exit = await Effect.runPromiseExit(
@@ -196,12 +202,18 @@ ${variableSetup === "" ? "" : `${variableSetup}\n`}${cleanupFinalizers === "" ? 
       }),
     ),${cleanupFinalizers === "" ? "" : "\n    { signal: controller.signal },"}
   );
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
+${
+  cleanupFinalizers === ""
+    ? ""
+    : `  if (timedOut) throw new Error("The scenario ran out of time; its cleanup steps ran before the test timeout.");
+`
+}  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
   expect.hasAssertions();${
     cleanupFinalizers === ""
       ? ""
       : `
   } finally {
+    clearTimeout(deadline);
     process.off("SIGINT", interrupt);
     process.off("SIGTERM", interrupt);
   }`
