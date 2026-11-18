@@ -1239,7 +1239,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   InternalEndpoint: "Service-facing endpoint that is never published on the host.",
   PublishedEndpoint: "Service endpoint carrying explicit nested host-publication intent.",
   RouteFilterType: "Supported provider-neutral route filter types.",
-  RouteFilter: "Provider-neutral route filter options discriminated by type.",
+  RouteFilter:
+    "Provider-neutral plan representation discriminated by type. In a Landofile route, author filters with kind instead.",
   RouteInputError: "Invalid authored route with its key path and remediation.",
   RouteProviderMismatchError: "Routed app provider differs from the host router provider.",
   AppPlacementError: "App realized on a provider other than the selected provider.",
@@ -1752,7 +1753,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "EndpointInput.port",
   "EndpointInput.protocol",
   "EndpointInput.socketPath",
-  "EndpointInput._tag",
   "EndpointInput.appProtocol",
   "EndpointPlan.name",
   "EndpointPlan.appProtocol",

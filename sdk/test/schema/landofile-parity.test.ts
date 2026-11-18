@@ -202,6 +202,17 @@ test("runtime JSON Schema agrees with the strict Landofile decoder", async () =>
 
 const inputValid = [
   {
+    id: "endpoint-item-expressions",
+    input: {
+      name: "demo",
+      services: { web: { endpoints: ["{{ env.EP }}", "http:{{ env.PORT }}", "${EP}"] } },
+    },
+  },
+  {
+    id: "endpoint-list-expression",
+    input: { name: "demo", services: { web: { endpoints: "{{ [env.EP] }}" } } },
+  },
+  {
     id: "notice-field-expression",
     input: {
       name: "demo",

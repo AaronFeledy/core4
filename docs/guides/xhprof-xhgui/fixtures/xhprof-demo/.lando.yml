@@ -28,10 +28,7 @@ services:
       XHGUI_PDO_USER: xhgui
       XHGUI_PDO_PASS: xhgui
     endpoints:
-      - _tag: internal
-        name: ui
-        protocol: http
-        port: 80
+      - ui=http:80
     dependsOn:
       profiles:
         condition: service_healthy

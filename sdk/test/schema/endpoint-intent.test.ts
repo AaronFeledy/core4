@@ -15,7 +15,7 @@ const decodePlan = Schema.decodeUnknownResult(EndpointPlan, { onExcessProperty: 
 describe("endpoint publication intent", () => {
   test("represents publish-with-defaults explicitly", () => {
     const result = decodeInput({
-      _tag: "published",
+      kind: "published",
       protocol: "http",
       port: 8080,
       publication: {},
@@ -56,7 +56,7 @@ describe("endpoint publication intent", () => {
   test("preserves application protocol metadata on internal endpoints", () => {
     // Given / When
     const result = Schema.decodeUnknownResult(EndpointInput)(
-      { _tag: "internal", protocol: "tcp", port: 8080, appProtocol: "http/1.1" },
+      { kind: "internal", protocol: "tcp", port: 8080, appProtocol: "http/1.1" },
       { onExcessProperty: "error" },
     );
 
@@ -66,7 +66,7 @@ describe("endpoint publication intent", () => {
 
   test("accepts internal unix endpoints", () => {
     const result = decodeInput({
-      _tag: "internal",
+      kind: "internal",
       protocol: "unix",
       socketPath: "/run/app.sock",
     });
@@ -76,7 +76,7 @@ describe("endpoint publication intent", () => {
 
   test("rejects publication on unix endpoints", () => {
     const result = decodeInput({
-      _tag: "published",
+      kind: "published",
       protocol: "unix",
       socketPath: "/run/app.sock",
       publication: {},

@@ -11,11 +11,11 @@ describe("route filters", () => {
     { type: "responseHeader", header: "X-Frame-Options", value: "DENY" },
     { type: "redirect", to: "/login", permanent: true },
   ] as const) {
-    it(`decodes ${filter.type} when its options are valid`, () => {
-      // Given a provider-neutral filter from the authored configuration.
-      // When decoding the public contract.
+    it(`decodes plan filter ${filter.type} when its options are valid`, () => {
+      // Given a provider-neutral plan filter.
+      // When decoding the public plan contract.
       const result = Schema.decodeUnknownSync(Contracts.RouteFilter)(filter);
-      // Then all authored options, including merge identity, survive.
+      // Then all options, including merge identity, survive.
       expect(result).toEqual(filter);
     });
   }
@@ -31,8 +31,8 @@ describe("route filters", () => {
     { type: "requestHeader", name: "X-Header", value: "x" },
     { type: "redirect", to: "" },
   ]) {
-    it(`rejects invalid filter ${JSON.stringify(filter)}`, () => {
-      // Given invalid authored options.
+    it(`rejects invalid plan filter ${JSON.stringify(filter)}`, () => {
+      // Given invalid plan options.
       // When decoding the filter.
       const result = Schema.decodeUnknownResult(Contracts.RouteFilter)(filter);
       // Then validation fails.
@@ -52,14 +52,53 @@ describe("route filters", () => {
 describe("route input and plans", () => {
   for (const input of [
     "app.lndo.site/api",
-    { hostname: "app.lndo.site", filters: [{ type: "addPrefix", prefix: "/v1" }] },
+    { hostname: "app.lndo.site", filters: [{ kind: "addPrefix", prefix: "/v1" }] },
   ] as const) {
     it(`accepts authored route ${JSON.stringify(input)}`, () => {
-      // Given shorthand or object authoring.
+      // Given shorthand or object authoring with kind filters.
       // When decoding the public route input.
       const result = Schema.decodeUnknownSync(Contracts.RouteInput)(input);
-      // Then the authored form is preserved.
-      expect(result).toEqual(input);
+      // Then the authored form decodes; filters become plan type discriminators.
+      if (typeof input === "string") expect(result).toEqual(input);
+      else
+        expect(result).toEqual({
+          hostname: "app.lndo.site",
+          filters: [{ type: "addPrefix", prefix: "/v1" }],
+        });
+    });
+  }
+
+  it("encodes authored route filters back as kind", () => {
+    const decoded = Schema.decodeUnknownSync(Contracts.RouteObjectInput, { onExcessProperty: "error" })({
+      hostname: "app.lndo.site",
+      filters: [
+        { kind: "stripPrefix", name: "api", prefix: "/api" },
+        { kind: "redirect", to: "/login", permanent: true },
+      ],
+    });
+    expect(Schema.encodeSync(Contracts.RouteObjectInput)(decoded)).toEqual({
+      hostname: "app.lndo.site",
+      filters: [
+        { kind: "stripPrefix", name: "api", prefix: "/api" },
+        { kind: "redirect", to: "/login", permanent: true },
+      ],
+    });
+  });
+
+  for (const filter of [
+    { type: "addPrefix", prefix: "/v1" },
+    { kind: "addPrefix", type: "addPrefix", prefix: "/v1" },
+    { kind: "stripPrefix", prefix: "api" },
+  ] as const) {
+    it(`rejects legacy or invalid authored filter ${JSON.stringify(filter)}`, () => {
+      expect(
+        Result.isFailure(
+          Schema.decodeUnknownResult(Contracts.RouteObjectInput, { onExcessProperty: "error" })({
+            hostname: "app.lndo.site",
+            filters: [filter],
+          }),
+        ),
+      ).toBe(true);
     });
   }
 
@@ -73,7 +112,7 @@ describe("route input and plans", () => {
 
   for (const options of [{}, { filters: [{ type: "stripPrefix", prefix: "/api" }] }] as const) {
     it(`accepts a route plan with optional filters ${JSON.stringify(options)}`, () => {
-      // Given a complete backend with optional filters.
+      // Given a complete backend with optional plan filters.
       const plan = {
         hostname: "app.lndo.site",
         scheme: "https",

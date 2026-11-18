@@ -690,7 +690,7 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
   CertsInput: true,
   CaInput: "./certs/corp-ca.pem",
   ContainerUser: "www-data",
-  EndpointInput: { _tag: "internal", protocol: "http", port: 8080 },
+  EndpointInput: { kind: "internal", protocol: "http", port: 8080 },
   RouteInput: "appserver.lndo.site",
   HealthcheckInput: "pg_isready",
   CommandSpec: "npm start",

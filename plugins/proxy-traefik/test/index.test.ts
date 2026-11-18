@@ -55,14 +55,18 @@ describe("@lando/proxy-traefik plugin exports", () => {
       expect(traefikEffect).toBeDefined();
       if (traefikEffect === undefined) throw new Error("traefik effect missing");
       expect(Effect.isEffect(traefikEffect)).toBe(true);
-      const config = Schema.decodeUnknownSync(ServiceConfig)(await Effect.runPromise(traefikEffect));
+      const config = Schema.decodeUnknownSync(Schema.toType(ServiceConfig))(
+        await Effect.runPromise(traefikEffect),
+      );
       expect(config.type).toBe("compose");
       expect(config.image).toBe("traefik:v3.3");
 
       const diagnosticsEffect = globalServices.get("traefik-diagnostics");
       expect(diagnosticsEffect).toBeDefined();
       if (diagnosticsEffect === undefined) throw new Error("diagnostics effect missing");
-      const diagnostics = Schema.decodeUnknownSync(ServiceConfig)(await Effect.runPromise(diagnosticsEffect));
+      const diagnostics = Schema.decodeUnknownSync(Schema.toType(ServiceConfig))(
+        await Effect.runPromise(diagnosticsEffect),
+      );
       expect(diagnostics).toMatchObject({
         type: "compose",
         image: "nginx:1.26-alpine",

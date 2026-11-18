@@ -203,7 +203,7 @@ describe("cloned services", () => {
       environment: { TZ: "UTC" },
       ports: ["8099:80"],
       expose: [9000],
-      endpoints: [{ _tag: "internal", protocol: "http", port: 8080 }],
+      endpoints: ["http:8080"],
       routes: ["app.lndo.site"],
       hostnames: ["web.example.internal"],
       healthcheck: { command: "true" },

@@ -11,7 +11,7 @@ describe("prepared init route projection", () => {
       services: {
         web: {
           type: "node:22",
-          endpoints: [{ _tag: "internal", protocol: "http", port: 3000, name: "web" }],
+          endpoints: [{ kind: "internal", protocol: "http", port: 3000, name: "web" }],
           routes: [
             { hostname: "{{ recipe.hostname }}", scheme: "both", endpoint: "web", pathPrefix: "/preview" },
           ],
@@ -87,8 +87,8 @@ describe("prepared init route projection", () => {
       services: {
         web: {
           endpoints: [
-            { _tag: "internal", protocol: "http", port: 3000 },
-            { _tag: "internal", protocol: "http", port: 3001 },
+            { kind: "internal", protocol: "http", port: 3000 },
+            { kind: "internal", protocol: "http", port: 3001 },
           ],
           routes: ["chosen.example"],
         },
@@ -103,8 +103,8 @@ describe("prepared init route projection", () => {
       services: {
         web: {
           endpoints: [
-            { _tag: "internal", protocol: "http", port: 3000 },
-            { _tag: "internal", protocol: "http", port: 3001 },
+            { kind: "internal", protocol: "http", port: 3000 },
+            { kind: "internal", protocol: "http", port: 3001 },
           ],
           routes: ["chosen.example:3001/api"],
         },
@@ -133,5 +133,55 @@ describe("prepared init route projection", () => {
     const result = projectInitReviewRoutes(review, {});
     expect(result.candidates).toEqual([]);
     expect(result.unresolved).toBe(2);
+  });
+
+  test("decodes literal shorthand endpoints for listener selection", () => {
+    const review = reviewWith({
+      services: {
+        web: {
+          endpoints: ["web=http:3000", "http:3001"],
+          routes: [{ hostname: "chosen.example", endpoint: "web" }],
+        },
+      },
+    });
+    const result = projectInitReviewRoutes(review, {});
+    expect(result.candidates).toEqual([{ service: "web", url: "https://chosen.example" }]);
+  });
+
+  test("projects published listeners without requiring resolved host-binding fields", () => {
+    const review = reviewWith({
+      services: {
+        web: {
+          endpoints: [
+            {
+              kind: "published",
+              protocol: "http",
+              port: 3000,
+              name: "web",
+              publication: { hostPort: "{{ env.HOST_PORT }}" },
+            },
+          ],
+          routes: [{ hostname: "chosen.example", endpoint: "web" }],
+        },
+      },
+    });
+    const result = projectInitReviewRoutes(review, {});
+    expect(result.candidates).toEqual([{ service: "web", url: "https://chosen.example" }]);
+    expect(result.unresolved).toBe(0);
+  });
+
+  test("counts unresolved endpoint selectors without inventing a backend", () => {
+    const review = reviewWith({
+      services: {
+        web: {
+          endpoints: [{ kind: "internal", protocol: "http", port: 3000, name: "web" }],
+          routes: [{ hostname: "chosen.example", endpoint: "{{ env.BACKEND }}" }],
+        },
+      },
+    });
+    const result = projectInitReviewRoutes(review, {});
+    expect(result.status).toBe("unresolved");
+    expect(result.candidates).toEqual([]);
+    expect(result.unresolved).toBe(1);
   });
 });

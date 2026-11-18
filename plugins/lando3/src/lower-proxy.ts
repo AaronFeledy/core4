@@ -1,14 +1,16 @@
-import { isLegacyTagged, parseRouteHostname } from "@lando/sdk/landofile";
-import type { RouteFilter, RouteObjectInput } from "@lando/sdk/schema";
-import { Result } from "effect";
+import { isLegacyTagged, mergeLandofiles, parseRouteHostname } from "@lando/sdk/landofile";
+import { EndpointInput, type RouteObjectInput } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 import { resolveCatalogType } from "./catalog.ts";
 import type { Lando3Path, Lando3TranslatorPorts } from "./contract.ts";
 import { type V4Wire, hasPlainObjectPrototype } from "./lowering-contract.ts";
 import { type Report, lowerText } from "./lowering-report.ts";
 
 const expression = (text: string) => text.includes("{{") || text.includes("${");
+type RouteWire = typeof RouteObjectInput.Encoded;
+type FilterWire = NonNullable<RouteWire["filters"]>[number];
 
-const parseRoute = (value: unknown): RouteObjectInput | undefined => {
+const parseRoute = (value: unknown): RouteWire | undefined => {
   if (isLegacyTagged(value)) return undefined;
   const object = hasPlainObjectPrototype(value) ? value : undefined;
   const text = typeof value === "string" ? value : object?.hostname;
@@ -36,7 +38,7 @@ const parseRoute = (value: unknown): RouteObjectInput | undefined => {
     hostname,
     scheme: "both",
     ...(port === undefined ? {} : { endpoint: Number(port) }),
-    ...(prefix === "/" ? {} : { pathPrefix: prefix, filters: [{ type: "stripPrefix", prefix }] }),
+    ...(prefix === "/" ? {} : { pathPrefix: prefix, filters: [{ kind: "stripPrefix", prefix }] }),
   };
 };
 
@@ -45,11 +47,11 @@ interface Middleware {
   readonly path: Lando3Path;
 }
 interface RouteGroup {
-  readonly route: RouteObjectInput;
+  readonly route: RouteWire;
   readonly middlewares: Map<string | symbol, Middleware>;
 }
 
-const lowerMiddleware = ({ value, path }: Middleware, report: Report): RouteFilter | undefined => {
+const lowerMiddleware = ({ value, path }: Middleware, report: Report): FilterWire | undefined => {
   const entry = hasPlainObjectPrototype(value) && !isLegacyTagged(value) ? value : {};
   const { name, key, value: raw } = entry;
   const match =
@@ -73,16 +75,16 @@ const lowerMiddleware = ({ value, path }: Middleware, report: Report): RouteFilt
   const text = lowerText(String(raw), [...path, "value"], report);
   if (typeof text !== "string") return undefined;
   return {
-    type: match?.[1]?.toLowerCase() === "request" ? "requestHeader" : "responseHeader",
+    kind: match?.[1]?.toLowerCase() === "request" ? "requestHeader" : "responseHeader",
     name,
     header,
     value: text,
   };
 };
 
-const emitRoutes = (group: RouteGroup, report: Report): readonly RouteObjectInput[] => {
-  const plain: RouteFilter[] = [...(group.route.filters ?? [])];
-  const secured: RouteFilter[] = [];
+const emitRoutes = (group: RouteGroup, report: Report): readonly RouteWire[] => {
+  const plain: FilterWire[] = [...(group.route.filters ?? [])];
+  const secured: FilterWire[] = [];
   for (const middleware of group.middlewares.values()) {
     const filter = lowerMiddleware(middleware, report);
     if (filter !== undefined) (filter.name?.endsWith("-secured") ? secured : plain).push(filter);
@@ -125,7 +127,7 @@ export const lowerProxy = (value: unknown, report: Report): { readonly fragment:
     );
     return { fragment: {} };
   }
-  const proxy = new Map<string, readonly RouteObjectInput[]>();
+  const proxy = new Map<string, readonly RouteWire[]>();
   for (const [service, entries] of Object.entries(value)) {
     if (!Array.isArray(entries)) {
       report(
@@ -191,6 +193,7 @@ export const lowerProxy = (value: unknown, report: Report): { readonly fragment:
 };
 
 const LANDO3_DEFAULT_ROUTE_PORT = 80;
+const decodeEndpoint = Schema.decodeUnknownResult(EndpointInput, { onExcessProperty: "error" });
 
 const servedPorts = (
   service: V4Wire,
@@ -198,13 +201,14 @@ const servedPorts = (
 ): ReadonlySet<number> => {
   const ports = new Set<number>();
   for (const endpoint of Array.isArray(service.endpoints) ? service.endpoints : []) {
+    const result = decodeEndpoint(endpoint);
     if (
-      hasPlainObjectPrototype(endpoint) &&
-      typeof endpoint.port === "number" &&
-      /^https?$/.test(String(endpoint.protocol))
+      Result.isSuccess(result) &&
+      (result.success.protocol === "http" || result.success.protocol === "https")
     )
-      ports.add(endpoint.port);
+      ports.add(result.success.port);
   }
+  if (Array.isArray(service.endpoints)) return ports;
   const resolution =
     typeof service.type === "string" ? resolveCatalogType(service.type, serviceFacts) : undefined;
   if (resolution?._tag === "resolved" && resolution.id !== "compose" && resolution.id !== "lando") {
@@ -240,16 +244,13 @@ export const declareRouteEndpoints = (
     if (!Array.isArray(routes)) continue;
     const authored = services.get(name);
     const recipe = options.external.get(name);
-    // Endpoint objects have no merge identity, so a new array on an authored
-    // override replaces the recipe service's endpoints. Append to an array
-    // that already wins, otherwise to the recipe service itself.
-    const service =
-      authored !== undefined && Array.isArray(authored.endpoints)
-        ? authored
-        : recipe !== undefined && (Array.isArray(recipe.endpoints) || authored === undefined)
-          ? recipe
-          : authored;
-    if (service === undefined) continue;
+    if (authored === undefined && recipe === undefined) continue;
+    const { services: effective } = mergeLandofiles([
+      { services: { [name]: recipe ?? {} } },
+      { services: { [name]: authored ?? {} } },
+    ]);
+    const service = hasPlainObjectPrototype(effective) ? effective[name] : undefined;
+    if (!hasPlainObjectPrototype(service)) continue;
     const served = servedPorts(service, options.serviceFacts);
     const catalogServed = served.size > 0;
     const added: number[] = [];
@@ -263,7 +264,7 @@ export const declareRouteEndpoints = (
     }
     if (added.length === 0) continue;
     const existing = Array.isArray(service.endpoints) ? service.endpoints : [];
-    const endpoints = [...existing, ...added.map((port) => ({ _tag: "internal", protocol: "http", port }))];
+    const endpoints = [...existing, ...added.map((port) => ({ kind: "internal", protocol: "http", port }))];
     // Copy onto this layer. Mutating a recipe or already-converted service would
     // either change a shared fragment or a caller's established layer.
     services.set(name, { ...(authored ?? {}), endpoints });

@@ -13,11 +13,22 @@ test.each([
   { endpoints: "    endpoints: []\n", route: "empty.lndo.site", valid: false },
   {
     endpoints:
-      "    endpoints:\n      - _tag: internal\n        name: web\n        protocol: http\n        port: 8080\n",
+      "    endpoints:\n      - kind: internal\n        name: web\n        protocol: http\n        port: 8080\n",
     route: "valid.lndo.site",
     valid: true,
   },
-])("checks authored HTTP binding for $route", async ({ endpoints, route, valid }) => {
+  {
+    endpoints: "    endpoints:\n      - http:8080\n",
+    route: "valid.lndo.site",
+    valid: true,
+  },
+  {
+    endpoints: "    endpoints:\n      - http:8080\n      - http:65536\n      - tcp:9000\n",
+    route: "valid.lndo.site",
+    valid: false,
+    violation: { rule: "landofile.validation", path: ["services", "web", "endpoints", 1] },
+  },
+])("checks authored HTTP binding for $route", async ({ endpoints, route, valid, violation }) => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-route-binding-lint-"));
   try {
@@ -32,7 +43,7 @@ test.each([
     // Then
     expect(result.valid).toBe(valid);
     expect(result.violations.map(({ rule, path }) => ({ rule, path }))).toEqual(
-      valid ? [] : [{ rule: "landofile.route", path: ["services", "web", "routes", 0] }],
+      valid ? [] : [violation ?? { rule: "landofile.route", path: ["services", "web", "routes", 0] }],
     );
   } finally {
     await rm(root, { recursive: true, force: true });

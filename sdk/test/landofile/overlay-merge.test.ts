@@ -164,52 +164,52 @@ describe("mergeLandofiles", () => {
     expect(result).toEqual({ name: "final", services: { web: { type: "node" } } });
   });
 
-  test("merges route filters by name then unnamed type identity, preserving first-appearance order", () => {
+  test("merges route filters by name then unnamed kind identity, preserving first-appearance order", () => {
     const result = mergeRouteFragments([
       {
         filters: [
-          { type: "requestHeader", header: "X-A", value: "1" },
-          { name: "strip", type: "stripPrefix", prefix: "/a" },
+          { kind: "requestHeader", header: "X-A", value: "1" },
+          { name: "strip", kind: "stripPrefix", prefix: "/a" },
         ],
       },
       {
         filters: [
-          { name: "strip", type: "stripPrefix", prefix: "/b" },
-          { type: "requestHeader", header: "X-A", value: "2" },
+          { name: "strip", kind: "stripPrefix", prefix: "/b" },
+          { kind: "requestHeader", header: "X-A", value: "2" },
         ],
       },
     ]);
 
     expect(result).toEqual({
       filters: [
-        { type: "requestHeader", header: "X-A", value: "2" },
-        { name: "strip", type: "stripPrefix", prefix: "/b" },
+        { kind: "requestHeader", header: "X-A", value: "2" },
+        { name: "strip", kind: "stripPrefix", prefix: "/b" },
       ],
     });
   });
 
   test("never matches a named filter against an unnamed one", () => {
     const result = mergeRouteFragments([
-      { filters: [{ name: "auth", type: "requestHeader", header: "X-A", value: "1" }] },
-      { filters: [{ type: "requestHeader", header: "X-A", value: "2" }] },
+      { filters: [{ name: "auth", kind: "requestHeader", header: "X-A", value: "1" }] },
+      { filters: [{ kind: "requestHeader", header: "X-A", value: "2" }] },
     ]);
 
     expect(result).toEqual({
       filters: [
-        { name: "auth", type: "requestHeader", header: "X-A", value: "1" },
-        { type: "requestHeader", header: "X-A", value: "2" },
+        { name: "auth", kind: "requestHeader", header: "X-A", value: "1" },
+        { kind: "requestHeader", header: "X-A", value: "2" },
       ],
     });
   });
 
-  test("replaces a named filter when overlay changes its type", () => {
+  test("replaces a named filter when overlay changes its kind", () => {
     const result = mergeRouteFragments([
-      { filters: [{ name: "transform", type: "stripPrefix", prefix: "/api" }] },
-      { filters: [{ name: "transform", type: "requestHeader", header: "X-Lando", value: "v4" }] },
+      { filters: [{ name: "transform", kind: "stripPrefix", prefix: "/api" }] },
+      { filters: [{ name: "transform", kind: "requestHeader", header: "X-Lando", value: "v4" }] },
     ]);
 
     expect(result).toEqual({
-      filters: [{ name: "transform", type: "requestHeader", header: "X-Lando", value: "v4" }],
+      filters: [{ name: "transform", kind: "requestHeader", header: "X-Lando", value: "v4" }],
     });
   });
 
@@ -240,8 +240,8 @@ describe("mergeLandofiles", () => {
               {
                 hostname: "app.lndo.site",
                 filters: [
-                  { type: "requestHeader", header: "X-A", value: "1" },
-                  { name: "strip", type: "stripPrefix", prefix: "/a" },
+                  { kind: "requestHeader", header: "X-A", value: "1" },
+                  { name: "strip", kind: "stripPrefix", prefix: "/a" },
                 ],
               },
             ],
@@ -255,8 +255,8 @@ describe("mergeLandofiles", () => {
               {
                 hostname: "app.lndo.site",
                 filters: [
-                  { name: "strip", type: "stripPrefix", prefix: "/b" },
-                  { type: "requestHeader", header: "X-A", value: "2" },
+                  { name: "strip", kind: "stripPrefix", prefix: "/b" },
+                  { kind: "requestHeader", header: "X-A", value: "2" },
                 ],
               },
             ],
@@ -272,8 +272,8 @@ describe("mergeLandofiles", () => {
             {
               hostname: "app.lndo.site",
               filters: [
-                { type: "requestHeader", header: "X-A", value: "2" },
-                { name: "strip", type: "stripPrefix", prefix: "/b" },
+                { kind: "requestHeader", header: "X-A", value: "2" },
+                { name: "strip", kind: "stripPrefix", prefix: "/b" },
               ],
             },
           ],
@@ -285,39 +285,39 @@ describe("mergeLandofiles", () => {
 
 describe("routeFilterIdentity", () => {
   test("uses name when the entry has one", () => {
-    const named = routeFilterIdentity({ name: "strip", type: "stripPrefix", prefix: "/a" });
-    const sameName = routeFilterIdentity({ name: "strip", type: "addPrefix", prefix: "/b" });
-    const otherName = routeFilterIdentity({ name: "other", type: "stripPrefix", prefix: "/a" });
+    const named = routeFilterIdentity({ name: "strip", kind: "stripPrefix", prefix: "/a" });
+    const sameName = routeFilterIdentity({ name: "strip", kind: "addPrefix", prefix: "/b" });
+    const otherName = routeFilterIdentity({ name: "other", kind: "stripPrefix", prefix: "/a" });
 
     expect(named).toBeDefined();
     expect(named).toEqual(sameName);
     expect(named).not.toEqual(otherName);
   });
 
-  test("falls back to type when the entry is unnamed", () => {
-    const unnamed = routeFilterIdentity({ type: "requestHeader", header: "X-A", value: "1" });
-    const sameType = routeFilterIdentity({ type: "requestHeader", header: "X-B", value: "2" });
-    const otherType = routeFilterIdentity({ type: "stripPrefix", prefix: "/a" });
+  test("falls back to kind when the entry is unnamed", () => {
+    const unnamed = routeFilterIdentity({ kind: "requestHeader", header: "X-A", value: "1" });
+    const sameType = routeFilterIdentity({ kind: "requestHeader", header: "X-B", value: "2" });
+    const otherType = routeFilterIdentity({ kind: "stripPrefix", prefix: "/a" });
 
     expect(unnamed).toBeDefined();
     expect(unnamed).toEqual(sameType);
     expect(unnamed).not.toEqual(otherType);
   });
 
-  test("keeps named and unnamed identities distinct even when name equals type", () => {
+  test("keeps named and unnamed identities distinct even when name equals kind", () => {
     expect(routeFilterIdentity({ name: "requestHeader" })).not.toEqual(
-      routeFilterIdentity({ type: "requestHeader" }),
+      routeFilterIdentity({ kind: "requestHeader" }),
     );
   });
 
-  test("returns undefined for non-records and entries without name or type", () => {
+  test("returns undefined for non-records and entries without name or kind", () => {
     expect(routeFilterIdentity("nope")).toBeUndefined();
     expect(routeFilterIdentity(null)).toBeUndefined();
     expect(routeFilterIdentity({ header: "X-A" })).toBeUndefined();
   });
 
   test("treats an owned undefined name as a name identity", () => {
-    expect(routeFilterIdentity({ name: undefined, type: "redirect" })).toEqual({
+    expect(routeFilterIdentity({ name: undefined, kind: "redirect" })).toEqual({
       kind: "name",
       value: undefined,
     });
@@ -328,17 +328,17 @@ describe("routeFilterMatches", () => {
   test("matches named filters by name", () => {
     expect(
       routeFilterMatches(
-        { name: "strip", type: "stripPrefix", prefix: "/a" },
-        { name: "strip", type: "addPrefix", prefix: "/b" },
+        { name: "strip", kind: "stripPrefix", prefix: "/a" },
+        { name: "strip", kind: "addPrefix", prefix: "/b" },
       ),
     ).toBe(true);
   });
 
-  test("matches unnamed filters by type", () => {
+  test("matches unnamed filters by kind", () => {
     expect(
       routeFilterMatches(
-        { type: "requestHeader", header: "X-A", value: "1" },
-        { type: "requestHeader", header: "X-B", value: "2" },
+        { kind: "requestHeader", header: "X-A", value: "1" },
+        { kind: "requestHeader", header: "X-B", value: "2" },
       ),
     ).toBe(true);
   });
@@ -346,29 +346,29 @@ describe("routeFilterMatches", () => {
   test("never matches a named filter against an unnamed one", () => {
     expect(
       routeFilterMatches(
-        { name: "strip", type: "stripPrefix", prefix: "/a" },
-        { type: "stripPrefix", prefix: "/b" },
+        { name: "strip", kind: "stripPrefix", prefix: "/a" },
+        { kind: "stripPrefix", prefix: "/b" },
       ),
     ).toBe(false);
   });
 
   test("does not match when identity is missing", () => {
-    expect(routeFilterMatches({ type: "requestHeader" }, { header: "X-A" })).toBe(false);
-    expect(routeFilterMatches("nope", { type: "requestHeader" })).toBe(false);
+    expect(routeFilterMatches({ kind: "requestHeader" }, { header: "X-A" })).toBe(false);
+    expect(routeFilterMatches("nope", { kind: "requestHeader" })).toBe(false);
   });
 });
 
 describe("mergeValues identity edges", () => {
   test("retains sequential matching for repeated named route filters", () => {
-    const left = { filters: [{ name: "a", type: "stripPrefix", prefix: "/base" }] };
+    const left = { filters: [{ name: "a", kind: "stripPrefix", prefix: "/base" }] };
     const right = {
       filters: [
-        { name: "a", type: "stripPrefix", prefix: "/first" },
-        { name: "a", type: "stripPrefix", prefix: "/last" },
+        { name: "a", kind: "stripPrefix", prefix: "/first" },
+        { name: "a", kind: "stripPrefix", prefix: "/last" },
       ],
     };
     expect(mergeValues(RouteObjectInput, left, right)).toEqual({
-      filters: [{ name: "a", type: "stripPrefix", prefix: "/last" }],
+      filters: [{ name: "a", kind: "stripPrefix", prefix: "/last" }],
     });
   });
   test.each([...identities])("clears a $field array when the overlay is empty", ({ key, field }) => {
@@ -382,7 +382,7 @@ describe("mergeValues identity edges", () => {
 
   test("clears route filters when the overlay is empty", () => {
     // Given named and unnamed inherited route filters.
-    const left = { filters: [{ name: "strip", type: "stripPrefix" }, { type: "requestHeader" }] };
+    const left = { filters: [{ name: "strip", kind: "stripPrefix" }, { kind: "requestHeader" }] };
     // When the overlay explicitly empties the filter list.
     const result = mergeValues(RouteObjectInput, left, { filters: [] });
     // Then both filter identity kinds are cleared.
@@ -434,7 +434,117 @@ describe("mergeValues identity edges", () => {
   });
 
   test("replaces filters lacking identity", () => {
-    expect(mergeValues(RouteObjectInput, [{ type: "redirect" }], [{}], ["filters"])).toEqual([{}]);
+    expect(mergeValues(RouteObjectInput, [{ kind: "redirect" }], [{}], ["filters"])).toEqual([{}]);
+  });
+
+  test.each([
+    {
+      name: "named scalar over object",
+      left: [{ name: "ui", kind: "internal", protocol: "http", port: 80, primary: true }],
+      right: ["ui=https:443"],
+      expected: ["ui=https:443"],
+    },
+    {
+      name: "named object over scalar",
+      left: ["ui=http:80"],
+      right: [{ name: "ui", kind: "internal", protocol: "https", port: 443, primary: true }],
+      expected: [{ name: "ui", kind: "internal", protocol: "https", port: 443, primary: true }],
+    },
+    {
+      name: "named scalar over scalar keeps siblings",
+      left: ["ui=http:80", "other=tcp:9"],
+      right: ["ui=https:443"],
+      expected: ["ui=https:443", "other=tcp:9"],
+    },
+    {
+      name: "object deep-merge keeps unmatched properties",
+      left: [{ name: "ui", kind: "internal", protocol: "http", port: 80, appProtocol: "keep" }],
+      right: [{ name: "ui", protocol: "https", port: 443 }],
+      expected: [{ name: "ui", kind: "internal", protocol: "https", port: 443, appProtocol: "keep" }],
+    },
+    {
+      name: "case-sensitive aliases stay distinct",
+      left: ["UI=http:80"],
+      right: ["ui=https:443"],
+      expected: ["UI=http:80", "ui=https:443"],
+    },
+    {
+      name: "duplicate lower names replace",
+      left: ["ui=http:80", "ui=tcp:9"],
+      right: ["ui=https:443"],
+      expected: ["ui=https:443"],
+    },
+    {
+      name: "uses the literal alias before evaluating the port",
+      left: ["ui=http:80", "metrics=tcp:9000"],
+      right: ["ui=http:{{ env.PORT }}"],
+      expected: ["ui=http:{{ env.PORT }}", "metrics=tcp:9000"],
+    },
+    {
+      name: "treats an expression in the alias as unkeyable",
+      left: ["ui=http:80", "metrics=tcp:9000"],
+      right: ["{{ env.N }}=http:8080"],
+      expected: ["{{ env.N }}=http:8080"],
+    },
+    {
+      name: "replaces a matching object when its kind changes",
+      left: [
+        { kind: "internal", name: "ui", protocol: "unix", socketPath: "/run/ui.sock" },
+        "metrics=tcp:9000",
+      ],
+      right: [{ kind: "published", name: "ui", protocol: "http", port: 80, publication: {} }],
+      expected: [
+        { kind: "published", name: "ui", protocol: "http", port: 80, publication: {} },
+        "metrics=tcp:9000",
+      ],
+    },
+    {
+      name: "merges matching objects of the same kind",
+      left: [{ kind: "published", name: "ui", protocol: "http", port: 80, publication: { hostPort: 8080 } }],
+      right: [{ kind: "published", name: "ui", port: 8081, publication: { bindAddress: "127.0.0.1" } }],
+      expected: [
+        {
+          kind: "published",
+          name: "ui",
+          protocol: "http",
+          port: 8081,
+          publication: { hostPort: 8080, bindAddress: "127.0.0.1" },
+        },
+      ],
+    },
+    {
+      name: "duplicate higher names replace",
+      left: ["ui=http:80", "other=tcp:9"],
+      right: ["ui=https:443", "ui=udp:53"],
+      expected: ["ui=https:443", "ui=udp:53"],
+    },
+    {
+      name: "unnamed list replaces",
+      left: ["http:80", "tcp:9"],
+      right: ["https:443"],
+      expected: ["https:443"],
+    },
+    {
+      name: "empty array clears",
+      left: ["ui=http:80"],
+      right: [],
+      expected: [],
+    },
+  ] as const)("merges endpoints $name", ({ left, right, expected }) => {
+    expect(mergeValues(ServiceConfig, left, right, ["endpoints"])).toEqual([...expected]);
+  });
+
+  test("three-layer endpoint replacement does not leak lower properties", () => {
+    const layers = [
+      ["base=http:80"],
+      [{ name: "base", kind: "internal", protocol: "https", port: 443, primary: true }],
+      ["base=tcp:9000"],
+    ] as const;
+    const merged = layers.reduce<unknown>(
+      (left, right) => mergeValues(ServiceConfig, left, right, ["endpoints"]),
+      [],
+    );
+    expect(merged).toEqual(["base=tcp:9000"]);
   });
 });
 
@@ -506,11 +616,11 @@ describe("native merge directives", () => {
     expect(result).toEqual(web({ environment: { NEW: "new" } }));
   });
 
-  test("materializes directives in new members, appended entries, and type-change replacements", () => {
+  test("materializes directives in new members, appended entries, and kind-change replacements", () => {
     // Given directives inside subtrees that bypass the recursive member merge.
     const result = mergeLandofiles([
       web({
-        routes: [{ hostname: "a.test", filters: [{ name: "f", type: "stripPrefix", prefix: "/a" }] }],
+        routes: [{ hostname: "a.test", filters: [{ name: "f", kind: "stripPrefix", prefix: "/a" }] }],
       }),
       {
         services: {
@@ -518,7 +628,7 @@ describe("native merge directives", () => {
             routes: [
               {
                 hostname: "a.test",
-                filters: [{ name: "f", type: "redirect", to: override("/b"), x: reset() }],
+                filters: [{ name: "f", kind: "redirect", to: override("/b"), x: reset() }],
               },
               { hostname: "b.test", filters: override([]), extra: reset() },
             ],
@@ -533,7 +643,7 @@ describe("native merge directives", () => {
       services: {
         web: {
           routes: [
-            { hostname: "a.test", filters: [{ name: "f", type: "redirect", to: "/b" }] },
+            { hostname: "a.test", filters: [{ name: "f", kind: "redirect", to: "/b" }] },
             { hostname: "b.test", filters: [] },
           ],
         },

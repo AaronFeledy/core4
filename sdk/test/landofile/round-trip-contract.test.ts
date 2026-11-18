@@ -295,7 +295,11 @@ describe("@lando/sdk/landofile — native merge directive round-trip", () => {
         web: {
           image: override("nginx:stable"),
           environment: { FOO: reset(), KEEP: "yes" },
-          routes: [{ filters: override([{ type: "redirect", to: "/" }]), hostname: "web.test" }],
+          endpoints: override([
+            "ui=http:80",
+            { kind: "internal", name: "metrics", protocol: "tcp", port: "{{ number(env.PORT) }}" },
+          ]),
+          routes: [{ filters: override([{ kind: "redirect", to: "/" }]), hostname: "web.test" }],
         },
       },
     };

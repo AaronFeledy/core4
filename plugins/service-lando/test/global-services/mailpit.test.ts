@@ -13,7 +13,7 @@ import {
 
 const decodeConfig = async (): Promise<ServiceConfig> => {
   const value = await Effect.runPromise(mailpitGlobalService);
-  return Schema.decodeUnknownSync(ServiceConfig)(value);
+  return Schema.decodeUnknownSync(Schema.toType(ServiceConfig))(value);
 };
 
 describe("mailpit global service ServiceConfig", () => {

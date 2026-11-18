@@ -43,7 +43,7 @@ test.each(["events", "endpoints", "member endpoints"])(
                         _tag: "LandofileOverride",
                         value: {
                           image: "php:8.3",
-                          endpoints: [{ _tag: "internal", protocol: "http", port: 80 }],
+                          endpoints: [{ kind: "internal", protocol: "http", port: 80 }],
                         },
                       },
                     }
@@ -52,7 +52,7 @@ test.each(["events", "endpoints", "member endpoints"])(
                       value: {
                         appserver: {
                           image: "php:8.3",
-                          endpoints: [{ _tag: "internal", protocol: "http", port: 80 }],
+                          endpoints: [{ kind: "internal", protocol: "http", port: 80 }],
                         },
                       },
                     },
@@ -78,8 +78,8 @@ test.each(["events", "endpoints", "member endpoints"])(
     const services: unknown = fragment.services;
     const appserver = isPlainRecord(services) ? services.appserver : undefined;
     expect(isPlainRecord(appserver) ? appserver.endpoints : undefined).toEqual([
-      { _tag: "internal", protocol: "http", port: 80 },
-      { _tag: "internal", protocol: "http", port: 8080 },
+      { kind: "internal", protocol: "http", port: 80 },
+      { kind: "internal", protocol: "http", port: 8080 },
     ]);
   },
 );

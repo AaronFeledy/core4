@@ -8,10 +8,11 @@ import { Schema } from "effect";
 const cliEntry = resolve(import.meta.dirname, "../../bin/lando.ts");
 
 test.each([
-  { style: "flow", endpoints: "[{_tag: internal, protocol: http, port: 80}]", valid: false },
+  { style: "flow object", endpoints: "[{kind: internal, protocol: http, port: 80}]", valid: false },
+  { style: "flow scalar", endpoints: "[http:80]", valid: true },
   {
-    style: "block",
-    endpoints: "\n      - _tag: internal\n        protocol: http\n        port: 80",
+    style: "block object",
+    endpoints: "\n      - kind: internal\n        protocol: http\n        port: 80",
     valid: true,
   },
 ])(

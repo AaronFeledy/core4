@@ -9,7 +9,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const http = (port: number, extra: Readonly<Record<string, unknown>> = {}) => ({
-  _tag: "internal",
+  kind: "internal",
   protocol: "http",
   port,
   ...extra,
@@ -38,19 +38,19 @@ test.each([
   },
   {
     label: "TCP hint",
-    endpoints: [{ _tag: "internal", protocol: "tcp", port: 80, appProtocol: "http" }],
+    endpoints: [{ kind: "internal", protocol: "tcp", port: 80, appProtocol: "http" }],
     route: "app.lndo.site",
     valid: false,
   },
   {
     label: "non-HTTP primary",
-    endpoints: [{ _tag: "internal", protocol: "tcp", port: 25, primary: true }, http(80)],
+    endpoints: [{ kind: "internal", protocol: "tcp", port: 25, primary: true }, http(80)],
     route: "app.lndo.site",
     valid: true,
   },
   {
     label: "logical facets",
-    endpoints: [http(80, { name: "web" }), http(80, { _tag: "published", publication: { hostPort: 8080 } })],
+    endpoints: [http(80, { name: "web" }), http(80, { kind: "published", publication: { hostPort: 8080 } })],
     route: "app.lndo.site",
     valid: true,
   },

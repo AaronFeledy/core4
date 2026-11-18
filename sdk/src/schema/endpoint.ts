@@ -1,9 +1,14 @@
-import { Schema } from "effect";
+import { Effect, Schema, SchemaGetter, SchemaIssue } from "effect";
 
+import {
+  EndpointNetworkProtocol,
+  EndpointShorthand,
+  endpointInputMessage,
+  parseEndpointShorthand,
+} from "./endpoint-shorthand.ts";
 import { PortNumber, PortablePath } from "./primitives.ts";
 import { scanFields } from "./scan-fields.ts";
 
-const NETWORK_PROTOCOL = Schema.Literals(["http", "https", "tcp", "udp"]);
 const IPV4_PATTERN = /^(?:0|[1-9][0-9]{0,2})(?:\.(?:0|[1-9][0-9]{0,2})){3}$/u;
 
 const isBindAddress = (value: string): boolean => {
@@ -55,7 +60,7 @@ const internalTag = Schema.Literal("internal").annotateKey({
 const publishedTag = Schema.Literal("published").annotateKey({
   description: "Discriminates an explicitly host-published endpoint.",
 });
-const networkProtocol = NETWORK_PROTOCOL.annotateKey({
+const networkProtocol = EndpointNetworkProtocol.annotateKey({
   description: "Service-facing network protocol.",
 });
 const unixProtocol = Schema.Literal("unix").annotateKey({
@@ -68,33 +73,60 @@ const publicationField = EndpointPublication.annotateKey({
 const InternalNetworkEndpointInput = Schema.Struct({
   _tag: internalTag,
   protocol: networkProtocol,
-  port: PortNumber,
+  port: PortNumber.annotateKey({ description: "Container listener port." }),
   ...commonFields,
   ...applicationProtocolField,
 });
 const InternalUnixEndpointInput = Schema.Struct({
   _tag: internalTag,
   protocol: unixProtocol,
-  socketPath: Schema.String,
+  socketPath: Schema.String.annotateKey({ description: "Path to the Unix socket inside the service." }),
   ...commonFields,
 });
-export const InternalEndpointInput = Schema.Union([InternalNetworkEndpointInput, InternalUnixEndpointInput]);
+const InternalNetworkObject = InternalNetworkEndpointInput.pipe(Schema.encodeKeys({ _tag: "kind" }));
+const InternalUnixObject = InternalUnixEndpointInput.pipe(Schema.encodeKeys({ _tag: "kind" }));
+export const InternalEndpointInput = Schema.Union([InternalNetworkObject, InternalUnixObject]);
 export type InternalEndpointInput = typeof InternalEndpointInput.Type;
 
-export const PublishedEndpointInput = Schema.Struct({
+const PublishedEndpointFields = Schema.Struct({
   _tag: publishedTag,
   protocol: networkProtocol,
-  port: PortNumber,
+  port: PortNumber.annotateKey({ description: "Container listener port." }),
   publication: publicationField,
   ...commonFields,
   ...applicationProtocolField,
 });
+export const PublishedEndpointInput = PublishedEndpointFields.pipe(Schema.encodeKeys({ _tag: "kind" }));
 export type PublishedEndpointInput = typeof PublishedEndpointInput.Type;
 
-export const EndpointInput = Schema.Union([InternalEndpointInput, PublishedEndpointInput]).annotate({
+const EndpointWire = Schema.Union([
+  EndpointShorthand,
+  Schema.toEncoded(InternalNetworkObject),
+  Schema.toEncoded(InternalUnixObject),
+  Schema.toEncoded(PublishedEndpointInput),
+]).annotate({
   identifier: "EndpointInput",
-  expected: 'an internal or published endpoint object with "_tag"',
-  message: 'Expected an internal or published endpoint object with "_tag"',
+  description: "Explicit service listener, authored as shorthand or as a kind-discriminated object.",
+  message: endpointInputMessage,
+});
+const EndpointObject = Schema.Union([InternalEndpointInput, PublishedEndpointInput]);
+
+export const EndpointInput = EndpointWire.pipe(
+  Schema.decodeTo<typeof EndpointObject, typeof EndpointWire>(EndpointObject, {
+    decode: SchemaGetter.transformEffect(
+      (input): Effect.Effect<typeof EndpointObject.Encoded, SchemaIssue.Issue> => {
+        if (typeof input !== "string") return Effect.succeed(input);
+        const parsed = parseEndpointShorthand(input);
+        return parsed === undefined
+          ? Effect.fail(new SchemaIssue.InvalidValue(undefined, { message: endpointInputMessage }))
+          : Effect.succeed(parsed);
+      },
+    ),
+    encode: SchemaGetter.passthroughSubtype<typeof EndpointWire.Type, typeof EndpointObject.Encoded>(),
+  }),
+).annotate({
+  identifier: "EndpointInput",
+  description: "Explicit service listener, authored as shorthand or as a kind-discriminated object.",
 });
 export type EndpointInput = typeof EndpointInput.Type;
 

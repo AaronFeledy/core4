@@ -39,7 +39,7 @@ const header = Schema.String.pipe(
 });
 const value = Schema.String.annotate({ description: "HTTP header value to set." });
 
-export const RouteFilter = Schema.Union([
+const filterArms = [
   Schema.Struct({
     type: Schema.Literal("stripPrefix").annotate({ description: "Remove a request path prefix." }),
     name,
@@ -68,7 +68,19 @@ export const RouteFilter = Schema.Union([
     to: Schema.NonEmptyString.annotate({ description: "Non-empty redirect destination." }),
     permanent: Schema.optionalKey(Schema.Boolean).annotate({ description: "Use a permanent redirect." }),
   }),
-]).annotate({
+] as const;
+
+export const RouteFilter = Schema.Union(filterArms).annotate({
   expected: "a filter with type stripPrefix, addPrefix, requestHeader, responseHeader, or redirect",
 });
 export type RouteFilter = typeof RouteFilter.Type;
+
+export const RouteFilterInput = Schema.Union([
+  filterArms[0].pipe(Schema.encodeKeys({ type: "kind" })),
+  filterArms[1].pipe(Schema.encodeKeys({ type: "kind" })),
+  filterArms[2].pipe(Schema.encodeKeys({ type: "kind" })),
+  filterArms[3].pipe(Schema.encodeKeys({ type: "kind" })),
+  filterArms[4].pipe(Schema.encodeKeys({ type: "kind" })),
+]).annotate({
+  expected: "a filter with kind stripPrefix, addPrefix, requestHeader, responseHeader, or redirect",
+});

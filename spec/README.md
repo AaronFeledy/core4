@@ -103,7 +103,7 @@ If you are looking for a public surface or policy:
 | Canonical file-sync execution bundle and retained flat session history | 06 | §6.4 |
 | Current/recorded app names, retained data name, and planned/applied project-file policy in info | 06 | §6.10 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
-| Logical endpoint identity, mandatory endpoint normalization, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
+| Logical endpoint identity, authored endpoint shorthand and `kind` objects, mandatory endpoint normalization, hostnames, routes, authored filter `kind` vs plan `type`, and cross-app priority | 06 | §6.6 |
 | Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, terminal dependency evidence, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
 | Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
 | Native-health observations and readiness configuration metadata, without last-proof inference | 06 | §6.10 |
@@ -133,7 +133,7 @@ If you are looking for a public surface or policy:
 | Pathless console aliases, pipe selection, file followers, and PHP Apache/FPM routing | 06 | §6.10 + §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
 | Host-owned SDK and Effect modules for author code | 07 | §7.1.1 |
-| Six-layer Landofile merge | 07 | §7.2 |
+| Six-layer Landofile merge, endpoint alias and filter identities, form and kind replacement, and empty-list clearing | 07 | §7.2 |
 | Compilation carrier and evaluation stages | 07 | §7.2.1 |
 | External file loading, expressions, and templates | 07 | §7.3 |
 | Top-level Landofile and Compose-subset keys, per-folder data identity, and rename reconciliation | 07 | §7.4 |
@@ -143,7 +143,7 @@ If you are looking for a public surface or policy:
 | Environment override naming | 07 | §7.6 |
 | Includes, fragments, lockfile, cache, and security | 07 | §7.7 |
 | Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
-| Schema and generated-reference publication | 07 | §7.8 |
+| Schema and generated-reference publication, indexed endpoint diagnostics, and resolved `kind` encoding | 07 | §7.8 |
 | Shared resolved-Landofile validation, typed lint rule registry, generated rule reference, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
 | Authored HTTP route binding, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
 | Node runtime inference versus package-manager selection, offline launchers, BYO toolchains, and project-file validation headlines | 06 + 07 + 12 + 13 | §6.11.0 + §6.12.1 + §6.13.3 + §7.8 + §12.1 + §13.1 |

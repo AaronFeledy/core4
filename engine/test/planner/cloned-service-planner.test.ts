@@ -195,7 +195,7 @@ const web = {
   mounts: [{ source: ".", target: "/src", excludes: ["vendor"] }],
   networks: { default: { aliases: ["db-alias"] } },
   build: { artifact: ["echo artifact"], app: ["composer install"] },
-  endpoints: [{ _tag: "published", protocol: "http", port: 80, publication: { hostPort: 8099 } }],
+  endpoints: [{ kind: "published", protocol: "http", port: 80, publication: { hostPort: 8099 } }],
   hostnames: ["web.example.internal"],
   routes: ["app.lndo.site"],
   healthcheck: { command: "true" },

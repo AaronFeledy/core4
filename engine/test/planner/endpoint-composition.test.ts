@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { definePlugin } from "@lando/sdk/plugins";
-import { AppPlan, type EndpointPlan, PluginManifest, ServiceName } from "@lando/sdk/schema";
+import { AppPlan, PluginManifest, ServiceName } from "@lando/sdk/schema";
 import { type AppFeatureDefinition, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Result, Schema } from "effect";
@@ -165,22 +165,29 @@ test("retains typed credentials and exact declaration identity while replaying l
   });
 });
 
-test.each([{ endpoints: [] }, { endpoints: [{ _tag: "internal", protocol: "http", port: 8000 }] }])(
-  "replays explicit endpoint authority after app features: %j",
-  async ({ endpoints }) => {
-    // Given
-    const service = { type: "compose", image: "alpine:3", ports: ["17000:7000"], expose: [9000], endpoints };
-    // When
-    const result = await Effect.runPromise(plan(service));
-    // Then
-    expect(result.services[ServiceName.make("web")]?.endpoints).toEqual(
-      endpoints.map((endpoint) => ({ ...endpoint, scan: { path: "/", okCodes: [] } })),
-    );
-    expect(result.routes.map((route) => route.backend.port)).toEqual(
-      endpoints.map((endpoint) => endpoint.port),
-    );
+test.each([
+  { wire: [], expected: [] as const },
+  {
+    wire: [{ kind: "internal" as const, protocol: "http" as const, port: 8000 }],
+    expected: [{ _tag: "internal" as const, protocol: "http" as const, port: 8000 }],
   },
-);
+])("replays explicit endpoint authority after app features: $wire", async ({ wire, expected }) => {
+  // Given
+  const service = {
+    type: "compose",
+    image: "alpine:3",
+    ports: ["17000:7000"],
+    expose: [9000],
+    endpoints: wire,
+  };
+  // When
+  const result = await Effect.runPromise(plan(service));
+  // Then
+  expect(result.services[ServiceName.make("web")]?.endpoints).toEqual(
+    expected.map((endpoint) => ({ ...endpoint, scan: { path: "/", okCodes: [] } })),
+  );
+  expect(result.routes.map((route) => route.backend.port)).toEqual(expected.map((endpoint) => endpoint.port));
+});
 
 test("emits byte-identical endpoint and route inputs on repeated planning", async () => {
   // Given
@@ -205,29 +212,29 @@ test.each([
   {
     label: "aliases across TCP and UDP",
     endpoints: [
-      { _tag: "internal", protocol: "tcp", port: 80, name: "same" },
-      { _tag: "internal", protocol: "udp", port: 80, name: "same" },
+      { kind: "internal", protocol: "tcp", port: 80, name: "same" },
+      { kind: "internal", protocol: "udp", port: 80, name: "same" },
     ],
   },
   {
     label: "aliases across Unix and TCP",
     endpoints: [
-      { _tag: "internal", protocol: "unix", socketPath: "/run/app.sock", name: "same" },
-      { _tag: "internal", protocol: "tcp", port: 80, name: "same" },
+      { kind: "internal", protocol: "unix", socketPath: "/run/app.sock", name: "same" },
+      { kind: "internal", protocol: "tcp", port: 80, name: "same" },
     ],
   },
   {
     label: "conflicting listener protocols",
     endpoints: [
-      { _tag: "internal", protocol: "http", port: 80 },
-      { _tag: "internal", protocol: "tcp", port: 80 },
+      { kind: "internal", protocol: "http", port: 80 },
+      { kind: "internal", protocol: "tcp", port: 80 },
     ],
   },
   {
     label: "distinct primary listeners",
     endpoints: [
-      { _tag: "internal", protocol: "http", port: 80, primary: true },
-      { _tag: "internal", protocol: "http", port: 90, primary: true },
+      { kind: "internal", protocol: "http", port: 80, primary: true },
+      { kind: "internal", protocol: "http", port: 90, primary: true },
     ],
   },
 ])("reports $label at the service endpoint field", async ({ endpoints }) => {
@@ -247,10 +254,10 @@ test.each([
 
 test("rejects unselected ambiguous HTTP listeners instead of using list order", async () => {
   // Given
-  const endpoints: readonly EndpointPlan[] = [
-    { _tag: "internal", protocol: "http", port: 80 },
-    { _tag: "internal", protocol: "http", port: 90 },
-  ];
+  const endpoints = [
+    { kind: "internal", protocol: "http", port: 80 },
+    { kind: "internal", protocol: "http", port: 90 },
+  ] as const;
   // When
   const result = await Effect.runPromise(
     Effect.result(plan({ type: "compose", image: "alpine:3", endpoints })),
@@ -262,4 +269,28 @@ test("rejects unselected ambiguous HTTP listeners instead of using list order", 
       _tag: "LandofileValidationError",
       issues: [{ path: ["services", "web", "routes"] }],
     });
+});
+
+test("plans equivalent short and long endpoint spellings identically", async () => {
+  // Given
+  const short = { type: "compose", image: "nginx:alpine", home: false, endpoints: ["http:80"] };
+  const long = {
+    type: "compose",
+    image: "nginx:alpine",
+    home: false,
+    endpoints: [{ kind: "internal", protocol: "http", port: 80 }],
+  };
+  // When
+  const [shortPlan, longPlan] = await Promise.all([
+    Effect.runPromise(plan(short)),
+    Effect.runPromise(plan(long)),
+  ]);
+  // Then
+  const shortWeb = shortPlan.services[ServiceName.make("web")];
+  const longWeb = longPlan.services[ServiceName.make("web")];
+  expect(shortWeb?.endpoints).toEqual(longWeb?.endpoints);
+  expect(shortPlan.routes).toEqual(longPlan.routes);
+  // Canonical execution payload: same endpoints/routes without host publication.
+  expect(shortWeb?.endpoints?.some((endpoint) => endpoint._tag === "published")).toBe(false);
+  expect(shortPlan.routes).toMatchObject([{ scheme: "https", backend: { protocol: "http", port: 80 } }]);
 });

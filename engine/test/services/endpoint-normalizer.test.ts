@@ -67,12 +67,18 @@ test("preserves distinct bindings and aliases while deduplicating identical face
   expect(normalizeEndpoints([listener, listener], config)).toEqual(endpoints);
 });
 
-test.each([{ endpoints: [] }, { endpoints: [{ _tag: "internal", protocol: "tcp", port: 1234 }] }])(
-  "keeps explicit endpoints authoritative over contributions, ports and expose: %j",
-  ({ endpoints }) => {
+test.each([
+  { wire: [], expected: [] },
+  {
+    wire: [{ kind: "internal", protocol: "tcp", port: 1234 }],
+    expected: [{ _tag: "internal", protocol: "tcp", port: 1234 }],
+  },
+])(
+  "keeps explicit endpoints authoritative over contributions, ports and expose: $wire",
+  ({ wire, expected }) => {
     // Given
     const config = Schema.decodeUnknownSync(ServiceConfig)({
-      endpoints,
+      endpoints: wire,
       ports: ["18080:8080"],
       expose: [9000],
     });
@@ -82,7 +88,7 @@ test.each([{ endpoints: [] }, { endpoints: [{ _tag: "internal", protocol: "tcp",
       config,
     );
     // Then
-    expect(normalized).toEqual([...endpoints]);
+    expect(normalized).toEqual([...expected]);
   },
 );
 
@@ -103,20 +109,23 @@ test("publications inherit sparse scan defaults from every matching facet", () =
   ]);
 });
 
-test.each([{ endpoints: [] }, { endpoints: [{ _tag: "internal", protocol: "http", port: 9000 }] }])(
-  "explicit endpoints replace discovery scan metadata: %j",
-  ({ endpoints }) => {
-    // Given
-    const config = Schema.decodeUnknownSync(ServiceConfig)({ endpoints, ports: ["19000:9000"] });
-    // When
-    const result = normalizeEndpoints(
-      [{ _tag: "internal", protocol: "http", port: 9000, scan: { path: "/health" } }],
-      config,
-    );
-    // Then
-    expect(result).toEqual([...endpoints]);
+test.each([
+  { wire: [], expected: [] },
+  {
+    wire: [{ kind: "internal", protocol: "http", port: 9000 }],
+    expected: [{ _tag: "internal", protocol: "http", port: 9000 }],
   },
-);
+])("explicit endpoints replace discovery scan metadata: $wire", ({ wire, expected }) => {
+  // Given
+  const config = Schema.decodeUnknownSync(ServiceConfig)({ endpoints: wire, ports: ["19000:9000"] });
+  // When
+  const result = normalizeEndpoints(
+    [{ _tag: "internal", protocol: "http", port: 9000, scan: { path: "/health" } }],
+    config,
+  );
+  // Then
+  expect(result).toEqual([...expected]);
+});
 
 test.each([
   { first: { path: "/health" }, second: { path: "/" }, conflict: true },

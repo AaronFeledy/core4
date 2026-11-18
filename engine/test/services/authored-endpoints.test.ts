@@ -16,13 +16,22 @@ const defaults: ServiceFeatureDefinition = {
 };
 
 test.each([
-  { endpoints: [] },
-  { endpoints: [{ _tag: "internal", name: "web", protocol: "http", port: 8080 }] },
-  { endpoints: [{ _tag: "published", protocol: "udp", port: 53, publication: { hostPort: 5353 } }] },
-  { endpoints: [{ _tag: "internal", protocol: "unix", socketPath: PortablePath.make("/run/app.sock") }] },
-])("replaces all feature endpoints when an endpoint list is supplied: %j", async ({ endpoints }) => {
+  { wire: [], expected: [] },
+  {
+    wire: [{ kind: "internal", name: "web", protocol: "http", port: 8080 }],
+    expected: [{ _tag: "internal", name: "web", protocol: "http", port: 8080 }],
+  },
+  {
+    wire: [{ kind: "published", protocol: "udp", port: 53, publication: { hostPort: 5353 } }],
+    expected: [{ _tag: "published", protocol: "udp", port: 53, publication: { hostPort: 5353 } }],
+  },
+  {
+    wire: [{ kind: "internal", protocol: "unix", socketPath: PortablePath.make("/run/app.sock") }],
+    expected: [{ _tag: "internal", protocol: "unix", socketPath: PortablePath.make("/run/app.sock") }],
+  },
+])("replaces all feature endpoints when an endpoint list is supplied: $wire", async ({ wire, expected }) => {
   // Given
-  const normalizedConfig = Schema.decodeUnknownSync(ServiceConfig)({ endpoints });
+  const normalizedConfig = Schema.decodeUnknownSync(ServiceConfig)({ endpoints: wire });
   // When
   const plan = await Effect.runPromise(
     composeService({
@@ -41,5 +50,5 @@ test.each([
     }),
   );
   // Then
-  expect(plan.endpoints).toEqual(endpoints);
+  expect(plan.endpoints).toEqual(expected);
 });

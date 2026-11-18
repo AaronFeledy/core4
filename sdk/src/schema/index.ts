@@ -175,7 +175,7 @@ export * from "./renderer-capabilities.ts";
 export * from "./renderer-mode.ts";
 export * from "./renderer-panel.ts";
 export * from "./resource-ownership.ts";
-export * from "./route-filter.ts";
+export { RouteFilter, RouteFilterType } from "./route-filter.ts";
 export * from "./schedule.ts";
 export * from "./service-connection.ts";
 export * from "./service-dependency.ts";

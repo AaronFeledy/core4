@@ -31,7 +31,7 @@ const translateFiles = async (files: ReadonlyArray<readonly [string, string]>) =
 };
 const translate = (proxy: string) => translateFiles([[".lando.yml", `name: routes\nproxy: ${proxy}\n`]]);
 const route = (hostname: string, extra = {}) => ({ hostname, scheme: "both", ...extra });
-const strip = (prefix: string) => ({ type: "stripPrefix", prefix });
+const strip = (prefix: string) => ({ kind: "stripPrefix", prefix });
 
 describe("proxy lowering", () => {
   test("emits ordered objects when strings contain wildcards, ports and prefixes", async () => {
@@ -85,8 +85,8 @@ describe("proxy lowering", () => {
     // Then
     const plain = [
       strip("/api"),
-      { type: "requestHeader", name: "req", header: "X-Count", value: "42" },
-      { type: "responseHeader", name: "res", header: "X-Text", value: "{{{{literal}}" },
+      { kind: "requestHeader", name: "req", header: "X-Count", value: "42" },
+      { kind: "responseHeader", name: "res", header: "X-Text", value: "{{{{literal}}" },
     ];
     expect(result.merged.proxy).toEqual({
       appserver: [
@@ -97,7 +97,7 @@ describe("proxy lowering", () => {
           pathPrefix: "/api",
           filters: [
             ...plain,
-            { type: "responseHeader", name: "tls-secured", header: "X-TLS", value: "true" },
+            { kind: "responseHeader", name: "tls-secured", header: "X-TLS", value: "true" },
           ],
         },
         route("last.demo"),
@@ -212,7 +212,7 @@ describe("proxy lowering", () => {
     expect(result.merged.proxy).toEqual({
       appserver: [
         route("demo", {
-          filters: [{ type: "requestHeader", name: "good", header: "X-Good", value: "$NAME" }],
+          filters: [{ kind: "requestHeader", name: "good", header: "X-Good", value: "$NAME" }],
         }),
       ],
     });
@@ -243,9 +243,9 @@ describe("proxy lowering", () => {
             pathPrefix: "/api",
             filters: [
               strip("/api"),
-              { type: "responseHeader", name: "change", header: "X-New", value: "new" },
-              { type: "requestHeader", name: "keep", header: "X-Two", value: "kept" },
-              { type: "requestHeader", name: "append", header: "X-Three", value: "added" },
+              { kind: "responseHeader", name: "change", header: "X-New", value: "new" },
+              { kind: "requestHeader", name: "keep", header: "X-Two", value: "kept" },
+              { kind: "requestHeader", name: "append", header: "X-Three", value: "added" },
             ],
           }),
         ),
@@ -271,7 +271,7 @@ describe("proxy lowering", () => {
         route("demo", {
           endpoint: 8080,
           pathPrefix: "/api",
-          filters: [strip("/api"), { type: "requestHeader", name: "req", header: "X-One", value: "on" }],
+          filters: [strip("/api"), { kind: "requestHeader", name: "req", header: "X-One", value: "on" }],
         }),
       ].flatMap((item) => [
         { ...item, scheme: "http" },
@@ -300,13 +300,13 @@ test("updates split secured routes without relocation and still orders diagnosti
     web: [
       route("web.demo", {
         scheme: "http",
-        filters: [{ type: "requestHeader", name: "test", header: "X-Test", value: "picard" }],
+        filters: [{ kind: "requestHeader", name: "test", header: "X-Test", value: "picard" }],
       }),
       route("web.demo", {
         scheme: "https",
         filters: [
-          { type: "requestHeader", name: "test", header: "X-Test", value: "picard" },
-          { type: "requestHeader", name: "test-secured", header: "X-Ssl", value: "on" },
+          { kind: "requestHeader", name: "test", header: "X-Test", value: "picard" },
+          { kind: "requestHeader", name: "test-secured", header: "X-Ssl", value: "on" },
         ],
       }),
     ],
@@ -326,12 +326,12 @@ test("declares the HTTP endpoints a route targets on services without catalog en
   const services = result.merged.services;
   expect(isPlainRecord(services) ? services.who : undefined).toMatchObject({
     endpoints: [
-      { _tag: "internal", protocol: "http", port: 80 },
-      { _tag: "internal", protocol: "http", port: 8080 },
+      { kind: "internal", protocol: "http", port: 80 },
+      { kind: "internal", protocol: "http", port: 8080 },
     ],
   });
   expect(isPlainRecord(services) ? services.node : undefined).toMatchObject({
-    endpoints: [{ _tag: "internal", protocol: "http", port: 9229 }],
+    endpoints: [{ kind: "internal", protocol: "http", port: 9229 }],
   });
   expect(result.diagnostics.filter(({ kind }) => kind === "generated").map(({ keyPath }) => keyPath)).toEqual(
     [
@@ -360,8 +360,8 @@ test("declares a routed port on the recipe service without dropping its endpoint
   const appserver = isPlainRecord(merged.services) ? merged.services.appserver : undefined;
   // Then the recipe endpoint survives and the routed port is appended.
   expect(isPlainRecord(appserver) ? appserver.endpoints : undefined).toEqual([
-    { _tag: "internal", protocol: "http", port: 80 },
-    { _tag: "internal", protocol: "http", port: 8080 },
+    { kind: "internal", protocol: "http", port: 80 },
+    { kind: "internal", protocol: "http", port: 8080 },
   ]);
 });
 
@@ -371,7 +371,7 @@ test("copies a route endpoint onto an already converted recipe service", async (
     services: {
       appserver: {
         image: "php:8.3",
-        endpoints: [{ _tag: "internal", protocol: "http", port: 80 }],
+        endpoints: [{ kind: "internal", protocol: "http", port: 80 }],
       },
     },
   };
@@ -395,10 +395,10 @@ test("copies a route endpoint onto an already converted recipe service", async (
   ]);
   const appserver = isPlainRecord(merged.services) ? merged.services.appserver : undefined;
   // Then the established endpoint is copied forward and the new port is added.
-  expect(dist.services.appserver.endpoints).toEqual([{ _tag: "internal", protocol: "http", port: 80 }]);
+  expect(dist.services.appserver.endpoints).toEqual([{ kind: "internal", protocol: "http", port: 80 }]);
   expect(isPlainRecord(appserver) ? appserver.endpoints : undefined).toEqual([
-    { _tag: "internal", protocol: "http", port: 80 },
-    { _tag: "internal", protocol: "http", port: 8080 },
+    { kind: "internal", protocol: "http", port: 80 },
+    { kind: "internal", protocol: "http", port: 8080 },
   ]);
 });
 
@@ -415,7 +415,60 @@ test("does not treat a TCP catalog port as an HTTP endpoint", async () => {
   const app = isPlainRecord(services) ? services.app : undefined;
   // Then redis gains an HTTP endpoint on 6379, and python keeps its own HTTP port.
   expect(isPlainRecord(cache) ? cache.endpoints : undefined).toEqual([
-    { _tag: "internal", protocol: "http", port: 6379 },
+    { kind: "internal", protocol: "http", port: 6379 },
   ]);
   expect(isPlainRecord(app) ? app.endpoints : undefined).toBeUndefined();
+});
+
+test("preserves recipe shorthand endpoints when adding a missing routed port", async () => {
+  // Given a recipe service whose only HTTP listener is authored as shorthand.
+  const fake = fakeDecomposers(false, "scalar");
+  const result = await Effect.runPromise(
+    makeLando3ConfigTranslator({
+      decomposers: fake.decomposers,
+      redactor: createRedactor("secrets"),
+    }).translate(
+      documentSet([
+        document(".lando.yml", "name: routes\nrecipe: lamp\nproxy:\n  appserver: ['extra.demo:8080']\n"),
+      ]),
+    ),
+  );
+  const merged = mergeLandofiles(
+    result.outputs.map(({ fragment }) => (isPlainRecord(fragment) ? fragment : {})),
+  );
+  const appserver = isPlainRecord(merged.services) ? merged.services.appserver : undefined;
+  // Then the effective list keeps the unnamed scalar and appends the missing routed port.
+  expect(isPlainRecord(appserver) ? appserver.endpoints : undefined).toEqual([
+    "http:80",
+    { kind: "internal", protocol: "http", port: 8080 },
+  ]);
+  expect(
+    result.diagnostics
+      .filter(({ kind, keyPath }) => kind === "generated" && keyPath[0] === "proxy")
+      .map(({ keyPath }) => keyPath),
+  ).toEqual([["proxy", "appserver"]]);
+});
+
+test("does not redeclare a routed port already served by recipe shorthand", async () => {
+  // Given a recipe service that already serves HTTP:80 as shorthand, and a portless route.
+  const fake = fakeDecomposers(false, "scalar");
+  const result = await Effect.runPromise(
+    makeLando3ConfigTranslator({
+      decomposers: fake.decomposers,
+      redactor: createRedactor("secrets"),
+    }).translate(
+      documentSet([
+        document(".lando.yml", "name: routes\nrecipe: lamp\nproxy:\n  appserver: [appserver.demo]\n"),
+      ]),
+    ),
+  );
+  const merged = mergeLandofiles(
+    result.outputs.map(({ fragment }) => (isPlainRecord(fragment) ? fragment : {})),
+  );
+  const appserver = isPlainRecord(merged.services) ? merged.services.appserver : undefined;
+  // Then the recipe keeps the shorthand alone and no route-endpoint declaration fires.
+  expect(isPlainRecord(appserver) ? appserver.endpoints : undefined).toEqual(["http:80"]);
+  expect(
+    result.diagnostics.filter(({ kind, keyPath }) => kind === "generated" && keyPath[0] === "proxy"),
+  ).toEqual([]);
 });

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { attachRouteFilter } from "@lando/landofile/route-filters";
-import { RouteFilter, RouteFilterType } from "@lando/sdk/schema";
+import { RouteFilter, RouteFilterType, RouteObjectInput } from "@lando/sdk/schema";
 import { type RouteFilterContractHarness, runRouteFilterContractSuite } from "@lando/sdk/test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 /**
  * RouteFilter built-in invocation.
@@ -30,7 +30,17 @@ type Filter<Options> = RouteFilterContractHarness<Route, Options>;
 const baseRoute: Route = { hostname: "app.lndo.site", scheme: "https", service: "appserver" };
 
 const applyShipped = (route: Route, filter: unknown): Effect.Effect<Route> =>
-  Effect.succeed(attachRouteFilter(route, filter));
+  Effect.sync(() => {
+    const encode = Schema.encodeUnknownSync(RouteObjectInput);
+    const { service, ...routeFields } = route;
+    const wire = encode(routeFields);
+    const [authoredFilter] = encode({ hostname: route.hostname, filters: [filter] }).filters ?? [];
+    return {
+      ...route,
+      ...Schema.decodeUnknownSync(RouteObjectInput)(attachRouteFilter(wire, authoredFilter)),
+      service,
+    };
+  });
 
 const stripPrefixFilter = { type: "stripPrefix", prefix: "/api" } as const;
 const stripPrefix: Filter<typeof stripPrefixFilter> = {

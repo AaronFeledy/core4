@@ -44,7 +44,7 @@ import {
 import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
-import { RouteFilter } from "./route-filter.ts";
+import { RouteFilterInput } from "./route-filter.ts";
 import { ScheduleConfig } from "./schedule.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
 import { SqliteTargetConfig } from "./sqlite.ts";
@@ -93,11 +93,11 @@ export const RouteObjectInput = Schema.Struct({
     description: "Request path prefix to match, beginning with / and without a query string or fragment.",
   }),
   filters: Schema.optionalKey(
-    layerMerge(Schema.Array(RouteFilter), {
+    layerMerge(Schema.Array(RouteFilterInput), {
       kind: "keyed",
-      identity: "filter-name-or-type",
+      identity: "filter-name-or-kind",
       whenUnkeyed: "replace",
-      onMatch: "replace-on-type-change",
+      onMatch: "replace-on-kind-change",
     }),
   ).annotate({
     description: "Ordered provider-neutral route filters; names identify filters across layers.",
@@ -794,7 +794,12 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description: "How the post-start URL scan probes this service, or false to skip it.",
     }),
     endpoints: Schema.optionalKey(
-      layerMerge(Schema.Array(EndpointInput), keyedMerge("endpoint-name")),
+      layerMerge(Schema.Array(EndpointInput), {
+        kind: "keyed",
+        identity: "endpoint-name",
+        whenUnkeyed: "replace",
+        onMatch: "replace-on-kind-change",
+      }),
     ).annotate({
       description: "Internal or published network endpoints exposed by the service.",
     }),

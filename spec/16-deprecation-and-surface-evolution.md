@@ -26,6 +26,8 @@ This part defines the single machine-readable deprecation contract for every pub
 
 The unreleased `ToolingVarDefault` and `ToolingVarPrompt` schemas are removed without aliases or a deprecation cycle: a literal var replaces `{ default }`, and a declared flag or arg, or a `vars.<name>.sh` command, replaces `{ prompt }` (§8.5.3). The removal updates the public-surface fixture and schema artifacts.
 
+The unreleased authored endpoint `_tag` and route-filter `type` discriminators are replaced by `kind` without aliases or a deprecation cycle; plan representations retain endpoint `_tag` and filter `type` (§6.6).
+
 ### 18.2 The `DeprecationNotice` schema
 
 `DeprecationNotice` is an Effect Schema in `@lando/sdk`, re-exported by `@lando/core/schema`, and published through the §13.2 artifact set.

@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { sha256Hex } from "@lando/sdk/digest";
+import { LandofileShape } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { APP_PLAN_CACHE_SCHEMA_VERSION, deriveAppPlanCacheKey } from "../../src/cache/app-plan.ts";
 import { canonicalCacheJson } from "../../src/cache/canonical.ts";
 import { deriveAppCommandEntriesFingerprint } from "../../src/cache/command-index.ts";
@@ -144,3 +146,29 @@ import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/t
 import { Result as FixtureResult } from "effect";
 
 const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
+
+test("shares deriveAppPlanCacheKey for equivalent short and long endpoint spellings", () => {
+  const base = {
+    appRoot: "/app",
+    hostProvider: "lando",
+    pluginManifests: [],
+    planningRuntime: "fixed",
+  };
+  const short = Schema.decodeUnknownSync(LandofileShape)({
+    name: "app",
+    services: { web: { type: "compose", image: "nginx:alpine", endpoints: ["http:80"] } },
+  });
+  const long = Schema.decodeUnknownSync(LandofileShape)({
+    name: "app",
+    services: {
+      web: {
+        type: "compose",
+        image: "nginx:alpine",
+        endpoints: [{ kind: "internal", protocol: "http", port: 80 }],
+      },
+    },
+  });
+  expect(deriveAppPlanCacheKey({ ...base, landofile: short })).toBe(
+    deriveAppPlanCacheKey({ ...base, landofile: long }),
+  );
+});

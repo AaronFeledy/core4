@@ -52,7 +52,7 @@ This part is the master contract index for replaceable abstractions, selection, 
 | Service feature | `ServiceFeature` | Plugin-only | `serviceFeatures:`. |
 | App feature | `AppFeature` | Plugin-only | `appFeatures:`; selector-driven, app-scoped, and idempotent (§6.11.4). |
 | Global service | No service tag | Plugin-only | `globalServices:` contributes `ServiceConfig`; owner-scoped policy in `<userConfRoot>/global.config.yml` applies an individual override, package policy, then the recorded initial default. `meta:global:enable`/`meta:global:disable` change intent; `meta:global:reconcile` preserves it (§20). |
-| Route filter | `RouteFilter` | `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`, `addPrefix` | `routeFilters:`; implementations MUST pass the route-filter contract suite (§13.1). |
+| Route filter | `RouteFilter` | `requestHeader`, `responseHeader`, `redirect`, `stripPrefix`, `addPrefix` | `routeFilters:`; implementations MUST pass the route-filter contract suite (§13.1). |
 | Telemetry | `Telemetry` | Core collector, enabled by default | Sinks compose only through Telemetry and MUST honor disablement. |
 | Update channel | `UpdateService` | Registry-channel updater | Replace for air-gapped or vendor-managed distributions. |
 | Secret store | `SecretStore` | `env` (default bare ids), `lando` (persistent writable), `1password` (exclusive `op` owner) | `secretStores:`; schemes route to their owner, bare ids to `defaultSecretStore`. Contract includes ids-only `list` and metadata-only `describe`; writable stores add `put`/`remove`. `lando` is the only bundled persistent writable store (§9.5.1). |

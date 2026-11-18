@@ -17,7 +17,7 @@ import { acquisitionStateFile } from "../../src/proxy-paths.ts";
 
 const decodeConfig = async (): Promise<ServiceConfig> => {
   const value = await Effect.runPromise(traefikGlobalService);
-  return Schema.decodeUnknownSync(ServiceConfig)(value);
+  return Schema.decodeUnknownSync(Schema.toType(ServiceConfig))(value);
 };
 
 const commandText = (config: ServiceConfig): string =>

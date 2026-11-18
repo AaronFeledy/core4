@@ -36,12 +36,14 @@ test.each([{ path: "health" }, { okCodes: [99] }, { okCodes: [600] }, { okCodes:
 
 test("keeps scan metadata out of authored endpoints and old plans", () => {
   // Given
-  const input = { _tag: "internal", protocol: "http", port: 80 } as const;
+  const plan = { _tag: "internal", protocol: "http", port: 80 } as const;
+  const wire = { kind: "internal", protocol: "http", port: 80 } as const;
   // When / Then
-  expect(Schema.decodeUnknownSync(EndpointPlan)(input)).toEqual(input);
+  expect(Schema.decodeUnknownSync(EndpointPlan)(plan)).toEqual(plan);
+  expect(Schema.decodeUnknownSync(EndpointInput, { onExcessProperty: "error" })(wire)).toEqual(plan);
   expect(() =>
     Schema.decodeUnknownSync(EndpointInput, { onExcessProperty: "error" })({
-      ...input,
+      ...wire,
       scan: { path: "/health" },
     }),
   ).toThrow();

@@ -39,7 +39,9 @@ for (const options of [{ subcommand: "get", key: "services.web" }, { path: "serv
       sources: [],
       redactionTokens: ["selection-canary"],
       value: {
-        dependsOn: [{ service: "database", condition: "service_healthy", restart: true }],
+        // Resolved selection reads the encoded Landofile tree so map forms match full JSON/YAML.
+        dependsOn: { database: { condition: "service_healthy", restart: true } },
+        type: "node:lts",
       },
     });
   });
@@ -94,4 +96,31 @@ test("omits value when the selected extension is missing", async () => {
   // Then the selector survives without manufacturing a value.
   expect(result).toMatchObject({ subcommand: "get", key: "x-missing" });
   expect(Object.hasOwn(result, "value")).toBe(false);
+});
+
+test("selects encoded endpoint kind from the resolved Landofile tree", async () => {
+  // Given a decoded Landofile whose wire spelling uses kind.
+  const landofile = Schema.decodeUnknownSync(LandofileShape)({
+    name: "inspection",
+    services: {
+      web: {
+        type: "compose",
+        image: "nginx:alpine",
+        endpoints: ["ui=http:8080", { kind: "internal", protocol: "tcp", port: 9000 }],
+      },
+    },
+  });
+
+  // When a parent endpoint and a kind field are selected.
+  const parent = await Effect.runPromise(inspect(landofile, { path: "services.web.endpoints[0]" }));
+  const kind = await Effect.runPromise(inspect(landofile, { path: "services.web.endpoints[0].kind" }));
+
+  // Then selection agrees with the full encoded document and never exposes _tag.
+  expect(parent).toMatchObject({
+    path: "services.web.endpoints[0]",
+    value: { kind: "internal", protocol: "http", port: 8080, name: "ui" },
+  });
+  expect(kind).toMatchObject({ path: "services.web.endpoints[0].kind", value: "internal" });
+  expect(JSON.stringify(parent)).not.toContain('"_tag"');
+  expect(JSON.stringify(kind)).not.toContain('"_tag"');
 });

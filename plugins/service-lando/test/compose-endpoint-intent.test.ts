@@ -107,7 +107,7 @@ describe("compose endpoint intent", () => {
       type: "compose",
       image: "alpine:3",
       ports: ["38080:80"],
-      endpoints: [{ _tag: "internal", name: "web", protocol: "http", port: 80 }],
+      endpoints: [{ kind: "internal", name: "web", protocol: "http", port: 80 }],
     });
 
     expect(plan.endpoints).toEqual([{ _tag: "internal", name: "web", protocol: "http", port: 80 }]);

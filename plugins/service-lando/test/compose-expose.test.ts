@@ -65,7 +65,7 @@ test("prefers explicit endpoints over both ports and expose", async () => {
     image: "alpine:3",
     ports: ["8080:80"],
     expose: [3000],
-    endpoints: [{ _tag: "internal", name: "web", protocol: "http", port: 80 }],
+    endpoints: [{ kind: "internal", name: "web", protocol: "http", port: 80 }],
   };
 
   // When

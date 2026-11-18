@@ -8,8 +8,8 @@ services:
         pathPrefix: /v1
         filters:
           - name: strip-v1
-            type: stripPrefix
+            kind: stripPrefix
             prefix: /v1
-          - type: responseHeader
+          - kind: responseHeader
             header: X-Served-By
             value: base

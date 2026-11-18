@@ -63,8 +63,9 @@ A Landofile that lints clean can still fail there.
 
 ## Fix a route's HTTP endpoint
 
-Declare the listener your service actually runs. A raw Compose image, `ports:`,
-`expose:`, or a TCP endpoint's `appProtocol: http` does not declare an HTTP listener:
+Declare the listener your service actually runs. Use endpoint shorthand such as
+`http:80`, or a `kind` object. A raw Compose image, `ports:`, `expose:`, or a TCP
+endpoint's `appProtocol: http` does not declare an HTTP listener:
 
 ```yaml
 services:
@@ -72,9 +73,7 @@ services:
     type: compose
     image: nginx:alpine
     endpoints:
-      - _tag: internal
-        protocol: http
-        port: 80
+      - http:80
     routes:
       - web.lndo.site
 ```
@@ -130,9 +129,14 @@ Text output prints each finding's path, severity, rule, and message, then where 
 That file is wrong on its own (`fragment`) and it breaks the composed app (`effective`), so it's one finding with both scopes. JSON reports it once, with `"scopes": ["fragment", "effective"]`. When the effective path differs from what you wrote, the location line adds `authored as <path>`.
 
 Wrong values name the expected shape, not an internal schema name. For example,
-`services.web: nginx` needs an object. A filter with `type: stripPrefix` and
+`services.web: nginx` needs an object. A filter with `kind: stripPrefix` and
 `prefix: 5` reports the prefix's wrong type once, with both scopes. It does not
-report errors for other filter types you didn't choose.
+report errors for other filter kinds you didn't choose.
+
+A malformed endpoint scalar is an indexed finding. For example,
+`endpoints: [tcp:9000, http:65536]` fails at `["services", "web", "endpoints", 1]`
+with a message that names the accepted `protocol:port` or `name=protocol:port`
+form (and `kind` objects). The `source.path` keeps the authored index.
 
 An unknown key gets a `suggestion` naming the closest allowed key, as long as the typo is within two edits. `imgae` suggests `image`. A key nowhere near anything valid gets a plain unknown-key message instead. Unknown keys are schema-only violations, never a `NotImplementedError`.
 
@@ -255,7 +259,7 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
     </Step>
     <Step name="cleanup-broken-includes"><Cleanup /></Step>
   </Scenario>
-  <Scenario id="filter-reports-only-selected-type" render>
+  <Scenario id="filter-reports-only-selected-kind" render>
     <Step name="lint-filter-prefix">
       <UseFixture name="wrong-filter-prefix" />
       <Run command="lando app:config:lint --format=json" expectExit={1} />
@@ -301,6 +305,18 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
     </Step>
     <Step name="refresh-declared-http"><Run command="lando app:cache:refresh --format=json" /></Step>
     <Step name="cleanup-declared-http"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="reject-malformed-endpoint" render>
+    <Step name="lint-malformed-endpoint">
+      <UseFixture name="malformed-endpoint" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.validation\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"endpoints\",\\s*1\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "protocol:port or name=protocol:port" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"scopes\":\\s*\\[\\s*\"fragment\",\\s*\"effective\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-malformed-endpoint"><Cleanup /></Step>
   </Scenario>
   <Scenario id="clean-landofile" render>
     <Step name="lint">

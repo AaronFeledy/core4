@@ -24,13 +24,14 @@ const planService = async (config: unknown) => {
 describe("lando endpoint intent", () => {
   test("preserves an internal HTTP endpoint when no ports are authored", async () => {
     // Given
-    const endpoints = [{ _tag: "internal", protocol: "http", port: 80 }] as const;
+    const wire = [{ kind: "internal", protocol: "http", port: 80 }] as const;
+    const expected = [{ _tag: "internal", protocol: "http", port: 80 }] as const;
 
     // When
-    const plan = await planService({ type: "lando", image: "traefik/whoami", endpoints });
+    const plan = await planService({ type: "lando", image: "traefik/whoami", endpoints: wire });
 
     // Then
-    expect(plan.endpoints).toEqual(endpoints);
+    expect(plan.endpoints).toEqual(expected);
   });
 
   test("preserves host publication fields and UDP protocol", async () => {
@@ -55,23 +56,30 @@ describe("lando endpoint intent", () => {
   });
 
   test.each([
-    { endpoints: [{ _tag: "internal", protocol: "http", port: 80, name: "web" }] },
-    { endpoints: [{ _tag: "published", protocol: "https", port: 443, publication: { hostPort: 8443 } }] },
     {
-      endpoints: [{ _tag: "internal", protocol: "unix", socketPath: PortablePath.make("/run/worker.sock") }],
+      wire: [{ kind: "internal", protocol: "http", port: 80, name: "web" }],
+      expected: [{ _tag: "internal", protocol: "http", port: 80, name: "web" }],
     },
-    { endpoints: [] },
+    {
+      wire: [{ kind: "published", protocol: "https", port: 443, publication: { hostPort: 8443 } }],
+      expected: [{ _tag: "published", protocol: "https", port: 443, publication: { hostPort: 8443 } }],
+    },
+    {
+      wire: [{ kind: "internal", protocol: "unix", socketPath: PortablePath.make("/run/worker.sock") }],
+      expected: [{ _tag: "internal", protocol: "unix", socketPath: PortablePath.make("/run/worker.sock") }],
+    },
+    { wire: [], expected: [] },
   ])(
-    "uses authored endpoints instead of inferred ports when endpoints are declared: %j",
-    async ({ endpoints }) => {
+    "uses authored endpoints instead of inferred ports when endpoints are declared: $wire",
+    async ({ wire, expected }) => {
       // Given
-      const config = { type: "lando", image: "traefik/whoami", ports: ["8080:80"], endpoints };
+      const config = { type: "lando", image: "traefik/whoami", ports: ["8080:80"], endpoints: wire };
 
       // When
       const plan = await planService(config);
 
       // Then
-      expect(plan.endpoints).toEqual(endpoints);
+      expect(plan.endpoints).toEqual(expected);
     },
   );
 });

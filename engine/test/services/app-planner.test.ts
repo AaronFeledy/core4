@@ -2241,8 +2241,8 @@ describe("AppPlannerLayer.layer", () => {
               home: false,
               appMount: false,
               endpoints: [
-                { _tag: "internal", name: "admin", protocol: "http", port: 8081 },
-                { _tag: "internal", name: "primary", protocol: "http", port: 8080, primary: true },
+                { kind: "internal", name: "admin", protocol: "http", port: 8081 },
+                { kind: "internal", name: "primary", protocol: "http", port: 8080, primary: true },
               ],
             },
           },
@@ -2271,8 +2271,8 @@ describe("AppPlannerLayer.layer", () => {
               appMount: false,
               home: false,
               endpoints: [
-                { _tag: "internal", name: "web", protocol: "http", port: 8080 },
-                { _tag: "internal", name: "web", protocol: "http", port: 8081 },
+                { kind: "internal", name: "web", protocol: "http", port: 8080 },
+                { kind: "internal", name: "web", protocol: "http", port: 8081 },
               ],
             },
           },

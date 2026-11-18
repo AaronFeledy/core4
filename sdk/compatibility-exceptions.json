@@ -1,5 +1,101 @@
 [
   {
+    "surface": "schema:AdminerServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Unreleased endpoint authoring accepts shorthand and uses kind for objects; decoded listeners are unchanged (#2456, #2109)."
+  },
+  {
+    "surface": "schema:AdminerServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:LayerMergeRule",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Filter merge metadata now names the authored kind discriminator (#2109)."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:RouteObjectInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.filters.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters keep type (#2109)."
+  },
+  {
     "surface": "command:app:destroy",
     "changeKind": "union-widened",
     "path": "$.landofileEvents.anyOf",

@@ -185,6 +185,12 @@ Declarations compose in stable feature-priority order, service features before a
 features. Authored `endpoints:` overrides the contributions, including an empty
 list. `ports:` adds publication facets without turning a TCP-only listener into HTTP.
 
+`declareEndpoints` returns decoded plan listeners with `_tag: "internal"` or
+`_tag: "published"`. That is the plugin contract, not Landofile YAML. In a
+Landofile, authors write shorthand such as `http:80` or `ui=http:80`, or objects
+with `kind: internal` / `kind: published`. Do not copy the `_tag` objects into
+`.lando.yml`. See [Write routes as shorthand strings and add filters](../proxy/route-shorthand.mdx#choose-a-catalog-services-endpoints).
+
 ## Renderer plugins
 
 `@lando/renderer-lando` is the bundled example. It declares:
