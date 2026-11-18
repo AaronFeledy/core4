@@ -1,6 +1,7 @@
 import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { applyToolingDefaults } from "@lando/landofile/tooling-defaults";
 import { type LandofileShape, ServiceName, type ToolingTaskShape } from "@lando/sdk/schema";
+import { lowerNodeLocalTooling } from "./node-local-tooling.ts";
 
 export type EffectiveTooling = Readonly<Record<string, ToolingTaskShape>>;
 
@@ -11,6 +12,7 @@ export interface ToolingServiceContribution {
   readonly name: string;
   readonly serviceTypeId?: string;
   readonly tooling?: EffectiveTooling;
+  readonly metadata?: unknown;
   readonly connectionClientNames?: readonly string[];
 }
 
@@ -25,8 +27,18 @@ export const compareOrdinal = (left: string, right: string): number =>
 
 export const toolingContributors = (services: readonly ToolingServiceContribution[]) => {
   const winners = new Map<string, ToolingServiceContribution>();
+  const nodeClaims = new Map<string, number>();
+  const isNode = (service: ToolingServiceContribution) =>
+    service.serviceTypeId === "node" || service.serviceTypeId?.startsWith("node:");
+  for (const service of services) {
+    if (isNode(service)) {
+      for (const name of Object.keys(service.tooling ?? {}))
+        nodeClaims.set(name, (nodeClaims.get(name) ?? 0) + 1);
+    }
+  }
   for (const service of [...services].sort((left, right) => compareOrdinal(left.name, right.name))) {
     for (const name of Object.keys(service.tooling ?? {}).sort(compareOrdinal)) {
+      if (isNode(service) && nodeClaims.get(name) !== 1) continue;
       if (!winners.has(name)) winners.set(name, service);
     }
   }
@@ -39,7 +51,12 @@ export const toolingBeforeDefaults = (input: ToolingComposition): EffectiveTooli
     const task = service.tooling?.[name];
     if (task !== undefined) contributed[name] = { service: service.name, ...task };
   }
-  return { ...contributed, ...input.landofile.tooling };
+  const serviceMetadata = new Map(input.services.map(({ name, metadata }) => [name, metadata]));
+  const authored = Object.entries(input.landofile.tooling ?? {}).map(([name, task]) => [
+    name,
+    lowerNodeLocalTooling(task, task.service === undefined ? undefined : serviceMetadata.get(task.service)),
+  ]);
+  return { ...contributed, ...Object.fromEntries(authored) };
 };
 
 export const compileEffectiveTooling = (input: ToolingComposition): EffectiveTooling =>

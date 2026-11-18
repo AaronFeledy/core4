@@ -203,6 +203,7 @@ describe("bare node version inference", () => {
         sourcePath: "apps/web/.nvmrc",
         normalizedConstraint: "22.11.0",
         artifact: "node:22.11.0",
+        packageManager: null,
         files: projectFiles.map((file) => ({
           path: file.path,
           present: file.present,

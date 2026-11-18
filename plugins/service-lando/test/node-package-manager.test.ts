@@ -487,6 +487,7 @@ describe("node package manager provisioning", () => {
           version: "4.18.1",
           sourcePath: "apps/web/package.json",
           sourceField: "devEngines.packageManager",
+          launcher: PACKAGE_MANAGER_LAUNCHER_REVISION,
         },
       },
     });

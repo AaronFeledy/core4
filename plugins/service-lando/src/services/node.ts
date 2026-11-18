@@ -41,6 +41,7 @@ import {
   packageManagerBuildStep,
   validatePackageManagerDistribution,
 } from "./node-package-manager-install.ts";
+import { nodeManagerTooling } from "./node-tooling.ts";
 import { NODE_ARTIFACTS, SUPPORTED_NODE_VERSIONS, type SupportedNodeVersion } from "./node-versions.ts";
 
 export const NODE_FEATURE_ID = "service-lando.node" as const;
@@ -185,6 +186,10 @@ const resolveCatalogNode = (
     const selected = selectVersion(projectFiles);
     const packageManager = resolveNodePackageManager(projectFiles);
     if (packageManager !== undefined) validatePackageManagerDistribution(packageManager);
+    const packageManagerConfig =
+      packageManager === undefined ? undefined : packageManagerConfigFor(packageManager);
+    // The planner supplies no candidates when the author owns the image/build.
+    const catalogOwned = projectFiles.length > 0;
     const globals = applyProvisionedGlobals(normalizeNpmGlobals(input.service.globals), packageManager);
     const files = projectFiles.map((file) => ({
       path: file.path,
@@ -200,13 +205,12 @@ const resolveCatalogNode = (
           config: {
             version: selected.version,
             globals,
-            ...(packageManager === undefined
-              ? {}
-              : { packageManager: packageManagerConfigFor(packageManager) }),
+            ...(packageManagerConfig === undefined ? {} : { packageManager: packageManagerConfig }),
           },
         },
         { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
       ],
+      ...(catalogOwned ? { tooling: nodeManagerTooling(input.name, packageManager?.name) } : {}),
       metadata: {
         node: {
           ...(selected.inference === undefined
@@ -217,9 +221,20 @@ const resolveCatalogNode = (
               }),
           artifact: artifactFor(selected.version),
           files,
-          ...(packageManager === undefined
-            ? {}
-            : { packageManager: packageManagerProvenance(packageManager) }),
+          ...(catalogOwned
+            ? {
+                packageManager:
+                  packageManager === undefined || packageManagerConfig === undefined
+                    ? null
+                    : {
+                        ...packageManagerProvenance(packageManager),
+                        ...(packageManagerConfig.integrity === undefined
+                          ? {}
+                          : { integrity: packageManagerConfig.integrity }),
+                        launcher: packageManagerConfig.launcher,
+                      },
+              }
+            : {}),
         },
       },
     };
