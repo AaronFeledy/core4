@@ -177,8 +177,9 @@ lando drupal-contrib-sync
 
 If Composer fails, for example because your extension requires a package that
 conflicts with the Drupal core constraint, fix the requirement and run
-`lando drupal-contrib-sync` again. A failed sync retries the same change, and an
-interrupted first build resumes where it stopped.
+`lando drupal-contrib-sync` again. A failed sync puts the site's `composer.json`
+and `composer.lock` back the way they were, so the next run retries the same
+change. An interrupted first build resumes where it stopped.
 
 ## Destroy the app
 
