@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { createStandaloneRedactor } from "@lando/redaction/service";
@@ -27,6 +27,8 @@ import {
   type Scope,
   Stream,
 } from "effect";
+import { resolveInitDestination } from "../cli/commands/init-destination";
+import { compiledCommandInputFromArgv } from "../cli/compiled-input.ts";
 import { redactDetails } from "../cli/redact";
 import { type GuideCommandSyntaxError, guideCommandArgv } from "../docs/guide-compiler/command-argv.ts";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
@@ -238,17 +240,6 @@ const parseCommand = (
 
 const withoutLandoPrefix = (argv: ReadonlyArray<string>): ReadonlyArray<string> =>
   argv[0] === "lando" || argv[0] === "lando4" ? argv.slice(1) : argv;
-
-const stringFlagValue = (args: ReadonlyArray<string>, name: string): string | undefined => {
-  const equalsPrefix = `--${name}=`;
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === undefined) continue;
-    if (arg.startsWith(equalsPrefix)) return arg.slice(equalsPrefix.length);
-    if (arg === `--${name}`) return args[index + 1];
-  }
-  return undefined;
-};
 
 const errorTagFromStderr = (stderr: string): string | undefined => {
   const match = /code:\s*([A-Za-z0-9_]+)/.exec(stderr) ?? /"code"\s*:\s*"([A-Za-z0-9_]+)"/.exec(stderr);
@@ -522,8 +513,10 @@ type ArgvRunner = (
   options?: ScenarioRunOptions,
 ) => Effect.Effect<ScenarioRunResult, unknown>;
 
-// `init` creates the app under a `<name>` subdirectory; advance the scenario cwd
-// into it so later commands find the generated `.lando.yml`. Shared by both runners.
+// `init` writes the app where `resolveInitDestination` points: its destination
+// argument, else a `<name>` subdirectory. Parse the argv with the real command
+// spec and advance the scenario cwd there so later commands find the generated
+// `.lando.yml`. Shared by both runners.
 const advanceWorkingDirectoryAfterInit = (
   args: ReadonlyArray<string>,
   options: ScenarioRunOptions | undefined,
@@ -532,8 +525,18 @@ const advanceWorkingDirectoryAfterInit = (
   setWorkingDirectory: (path: string) => void,
 ): void => {
   if ((args[0] !== "init" && args[0] !== "apps:init") || exitCode !== 0) return;
-  const appName = stringFlagValue(args, "name") ?? options?.answers?.name;
-  if (appName !== undefined && appName !== "") setWorkingDirectory(join(cwd, appName));
+  const input = compiledCommandInputFromArgv("apps:init", args.slice(1));
+  const destination = typeof input.args.destination === "string" ? input.args.destination : undefined;
+  const flagName = typeof input.flags.name === "string" ? input.flags.name : undefined;
+  const name = flagName ?? options?.answers?.name;
+  if (destination === undefined && (name === undefined || name === "")) return;
+  setWorkingDirectory(
+    resolveInitDestination({
+      cwd,
+      ...(destination === undefined ? {} : { destination }),
+      ...(name === undefined ? {} : { name }),
+    }),
+  );
 };
 
 // When a scenario `<Run answers>` drives `init`/`apps:init`, route the prompt
@@ -733,7 +736,12 @@ const makeScenarioContext = (
     );
   let workingDirectory = testDir;
   const getWorkingDirectory = () => workingDirectory;
+  // A scenario never leaves its own workspace, whatever path a command names.
   const setWorkingDirectory = (path: string) => {
+    const scoped = relative(testDir, path);
+    if (scoped.startsWith("..") || isAbsolute(scoped)) {
+      throw new Error(`Scenario working directory ${path} is outside the scenario workspace ${testDir}.`);
+    }
     workingDirectory = path;
   };
 
