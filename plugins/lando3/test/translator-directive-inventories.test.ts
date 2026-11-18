@@ -65,7 +65,7 @@ test.each(["events", "endpoints", "member endpoints"])(
         ],
       }),
     );
-    // Then events name the real service and routes retain its existing endpoint.
+    // Then events name the real service; proxy routes stay numeric and do not rewrite endpoints.
     const fragment = result.outputs.find(({ targetLayer }) => targetLayer === "local")?.fragment;
     if (!isPlainRecord(fragment)) throw new Error("Expected a local mapping fragment");
     if (inventory === "events") {
@@ -75,12 +75,10 @@ test.each(["events", "endpoints", "member endpoints"])(
       });
       return;
     }
-    const services: unknown = fragment.services;
-    const appserver = isPlainRecord(services) ? services.appserver : undefined;
-    expect(isPlainRecord(appserver) ? appserver.endpoints : undefined).toEqual([
-      { kind: "internal", protocol: "http", port: 80 },
-      { kind: "internal", protocol: "http", port: 8080 },
-    ]);
+    expect(fragment.services).toBeUndefined();
+    expect(fragment.proxy).toEqual({
+      appserver: [{ hostname: "appserver.demo", scheme: "both", endpoint: 8080 }],
+    });
   },
 );
 

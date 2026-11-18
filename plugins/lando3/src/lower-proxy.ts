@@ -195,7 +195,7 @@ export const lowerProxy = (value: unknown, report: Report): { readonly fragment:
 const LANDO3_DEFAULT_ROUTE_PORT = 80;
 const decodeEndpoint = Schema.decodeUnknownResult(EndpointInput, { onExcessProperty: "error" });
 
-const servedPorts = (
+const servedHttpPorts = (
   service: V4Wire,
   serviceFacts: Lando3TranslatorPorts["serviceFacts"],
 ): ReadonlySet<number> => {
@@ -226,11 +226,12 @@ const servedPorts = (
 
 /**
  * Lando 3 sent a route to any container port and spoke HTTP to it, defaulting
- * to port 80. A Lando 4 route must land on a declared HTTP endpoint, so each
- * converted service gains an internal HTTP endpoint for every routed port it
- * does not already serve.
+ * to port 80. Lando 4 binds routes with numeric selectors; when a known service
+ * has no served HTTP(S) listener, portless routes get `endpoint: 80`. Explicit
+ * numeric ports stay on the route. Native route derivation owns listeners — this
+ * never writes a service `endpoints:` list.
  */
-export const declareRouteEndpoints = (
+export const bindPortlessRouteDefaults = (
   fragment: V4Wire,
   services: Map<string, V4Wire>,
   report: Report,
@@ -244,6 +245,7 @@ export const declareRouteEndpoints = (
     if (!Array.isArray(routes)) continue;
     const authored = services.get(name);
     const recipe = options.external.get(name);
+    // Unknown or blocked services keep existing diagnostics; do not guess a port.
     if (authored === undefined && recipe === undefined) continue;
     const { services: effective } = mergeLandofiles([
       { services: { [name]: recipe ?? {} } },
@@ -251,28 +253,25 @@ export const declareRouteEndpoints = (
     ]);
     const service = hasPlainObjectPrototype(effective) ? effective[name] : undefined;
     if (!hasPlainObjectPrototype(service)) continue;
-    const served = servedPorts(service, options.serviceFacts);
-    const catalogServed = served.size > 0;
-    const added: number[] = [];
-    for (const route of routes) {
-      const port =
-        hasPlainObjectPrototype(route) && typeof route.endpoint === "number" ? route.endpoint : undefined;
-      if (port === undefined && catalogServed) continue;
-      const wanted = port ?? LANDO3_DEFAULT_ROUTE_PORT;
-      if (served.has(wanted) || added.includes(wanted)) continue;
-      added.push(wanted);
-    }
-    if (added.length === 0) continue;
-    const existing = Array.isArray(service.endpoints) ? service.endpoints : [];
-    const endpoints = [...existing, ...added.map((port) => ({ kind: "internal", protocol: "http", port }))];
-    // Copy onto this layer. Mutating a recipe or already-converted service would
-    // either change a shared fragment or a caller's established layer.
-    services.set(name, { ...(authored ?? {}), endpoints });
-    report(
-      "generated",
-      ["proxy", name],
-      `Declared internal HTTP endpoints on port ${added.join(", ")} of ${name} for its routes; Lando 3 routed to container ports directly.`,
-      `Review services.${name}.endpoints; change the protocol if the port does not speak HTTP.`,
-    );
+    const served = servedHttpPorts(service, options.serviceFacts);
+    // Known HTTP(S) keeps portless selection on the catalog/authored default.
+    if (served.size > 0) continue;
+    let defaulted = false;
+    routes.forEach((entry, index) => {
+      if (!hasPlainObjectPrototype(entry)) return;
+      // Explicit numeric ports (including secured split halves) stay unchanged.
+      if (entry.endpoint !== undefined) return;
+      routes[index] = { ...entry, endpoint: LANDO3_DEFAULT_ROUTE_PORT };
+      defaulted = true;
+    });
+    // One diagnostic at the service proxy entry — split scheme halves share that owner
+    // and synthetic indices after a secure-filter split have no authored span.
+    if (defaulted)
+      report(
+        "generated",
+        ["proxy", name],
+        `Set portless route endpoints to port ${LANDO3_DEFAULT_ROUTE_PORT} on ${name}; Lando 3 defaulted portless routes to container port 80.`,
+        `Review proxy.${name} route endpoint values if the service listens on a different port.`,
+      );
   }
 };
