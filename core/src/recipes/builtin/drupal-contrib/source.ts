@@ -16,15 +16,23 @@ import {
 } from "./stack.ts";
 
 const contribDir = "/app";
-const contribAppMount = contribMountTarget("{{ recipe.type }}", "{{ recipe.project }}");
+/**
+ * One app-scoped volume holds the Drupal site, so the nginx edge serves the
+ * same tree the appserver scaffolds. Each service nests the checkout in it.
+ */
+const contribSiteVolume = `site:${contribDir}`;
+const contribAppMount = {
+  target: contribMountTarget("{{ recipe.type }}", "{{ recipe.project }}"),
+  includes: ["vendor", "node_modules", "tmp"],
+};
 
 const contribAppserver = {
   ...phpAppserver("drupal"),
   webroot: "{{ recipe.webroot }}",
   workingDirectory: contribDir,
   dependsOn: ["database", "chrome"],
-  appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
-  storage: ["/app"],
+  appMount: contribAppMount,
+  mounts: [contribSiteVolume],
   environment: {
     SIMPLETEST_BASE_URL: "http://appserver",
     SIMPLETEST_DB: mysqlSimpletestDb,
@@ -156,6 +164,7 @@ export const source = {
       config: {
         services: {
           appserver: { environment: { SIMPLETEST_BASE_URL: "http://edge" } },
+          edge: { appMount: contribAppMount, mounts: [`${contribSiteVolume}:ro`] },
         },
       },
     },

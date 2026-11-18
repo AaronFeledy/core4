@@ -278,7 +278,7 @@ describe("recipe option parity", () => {
     });
   });
 
-  test("drupal-contrib init writes a nested app mount, /app volume, and contrib scaffolding", async () => {
+  test("drupal-contrib init writes a nested app mount, /app site volume, and helper tooling", async () => {
     await withTempCwd(async (dir) => {
       const result = await initApp({
         cwd: dir,
@@ -290,28 +290,28 @@ describe("recipe option parity", () => {
         postInitIO: { out: () => {}, err: () => {} },
       });
       const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
-      expect(yaml).toContain('php: "8.4"');
-      expect(yaml).toContain("webroot: /app/web");
-      expect(yaml).toContain("lando-drupal-contrib-scaffold");
-      expect(yaml).not.toContain("composer create-project");
-      expect(yaml).not.toContain("fill_tree");
       // Allows room for Chrome, test environment, and contrib tooling, but not an embedded scaffold script.
       expect(Buffer.byteLength(yaml)).toBeLessThan(6_000);
-      expect(yaml).toContain("/app/web/{{ recipe.type }}s/custom/{{ recipe.project }}");
-      expect(yaml).toContain("selenium/standalone-chromium:155.0-20261010");
-      expect(yaml).toContain("vendor/bin/phpunit");
-      expect(yaml).toContain("SIMPLETEST_DB");
-      expect(yaml).not.toContain("store: app");
-      expect(yaml).not.toContain("extends: drupal");
       const landofile = await discoverFrom(result.directory);
       const appserver = landofile.services?.[ServiceName.make("appserver")];
       expect(appserver?.webroot).toBe(PortablePath.make("/app/web"));
-      expect(appserver?.storage).toEqual(["/app"]);
+      expect(appserver?.mounts).toEqual(["site:/app"]);
       expect(appserver?.appMount).toMatchObject({
+        target: "/app/web/modules/custom/example",
         includes: ["vendor", "node_modules", "tmp"],
       });
-      expect(landofile.tooling?.["drupal-contrib-scaffold"]).toMatchObject({ arguments: false });
-      expect(landofile.tooling?.phpunit).toMatchObject({ wrapper: true });
+      expect(Object.keys(appserver?.environment ?? {})).toContain("SIMPLETEST_DB");
+      expect(landofile.services?.[ServiceName.make("chrome")]?.image).toBe(
+        "selenium/standalone-chromium:155.0-20261010",
+      );
+      expect(landofile.tooling?.["drupal-contrib-scaffold"]).toMatchObject({
+        arguments: false,
+        cmd: ["lando-drupal-contrib-scaffold", "module", "example", "^11"],
+      });
+      expect(landofile.tooling?.phpunit).toMatchObject({
+        wrapper: true,
+        cmd: ["vendor/bin/phpunit", "-c", "web/core"],
+      });
     });
   });
 

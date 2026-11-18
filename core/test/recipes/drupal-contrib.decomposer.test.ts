@@ -99,7 +99,7 @@ describe("drupal-contrib decomposition", () => {
           workingDirectory: contribDir,
           dependsOn: ["database", "chrome"],
           appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
-          storage: ["/app"],
+          mounts: ["site:/app"],
           environment: {
             SIMPLETEST_BASE_URL: "http://appserver",
             SIMPLETEST_DB: mysqlSimpletestDb,
@@ -203,6 +203,8 @@ describe("drupal-contrib decomposition", () => {
       webroot: "{{ recipe.webroot }}",
       uploadDirs: ["sites/*/files"],
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
+      appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
+      mounts: ["site:/app:ro"],
     });
   });
 
