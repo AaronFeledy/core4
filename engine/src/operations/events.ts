@@ -1,14 +1,18 @@
-import { RedactionService, collectSecretStructuralValues } from "@lando/redaction/service";
+import {
+  RedactionService,
+  collectSecretStructuralValues,
+  createStandaloneRedactor,
+} from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent, PostInitEvent, PreInitEvent } from "@lando/sdk/events";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type {
-  AppLifecycleEventName,
   AppPlan,
   EventStep,
   EventStepPlan,
   LandofileEventName,
+  LandofileEventsOutcome,
   ServiceRunStatus,
 } from "@lando/sdk/schema";
 import { LANDO_HOST_EVENT_ENV, ServiceName, isIdleRunStatus } from "@lando/sdk/schema";
@@ -225,12 +229,10 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           ...collectRecords(sources.input),
         ];
         yield* redactionOption.value.registerValues(redactionTokens);
-        return yield* redactionOption.value
-          .forProfile("secrets", {
-            sourceEnv: process.env,
-            redactionTokens,
-          })
-          .pipe(Effect.map((redactor) => ({ redactor, redactionTokens })));
+        const scopeOptions = { sourceEnv: process.env, redactionTokens };
+        const redactor = yield* redactionOption.value.forProfile("secrets", scopeOptions);
+        const payloadValues = yield* redactionOption.value.payloadValues(scopeOptions);
+        return { redactor, redactionTokens, payloadValues };
       });
       const commandExecutor = yield* Effect.serviceOption(EventCommandExecutor);
       const validate = Option.isSome(commandExecutor) ? commandExecutor.value.validate : undefined;
@@ -296,29 +298,43 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
   );
 });
 
-/** A post-event failure warns instead of failing, so the warning carries the step's redacted output. */
-const postEventWarning = (error: EventRuntimeError): string => {
-  const tail = error instanceof LandofileEventStepFailedError ? error.outputTail.trim() : "";
-  return [error.message, ...(tail.length > 0 ? [tail] : []), error.remediation].join(" ");
-};
+type FailedPostEvent = Extract<LandofileEventsOutcome, { status: "failed" }>;
 
 export const runPostAppEvent = Effect.fn("AppOperation.runPostEvent")(function* (
   plan: AppPlan,
-  event: AppLifecycleEventName,
+  event: FailedPostEvent["event"],
   payload?: ExpressionContext["event"],
 ) {
   return yield* runAppEvent(plan, event, payload).pipe(
     Effect.catch((error) =>
-      EventService.pipe(
-        Effect.flatMap((events) =>
-          events.publish(
-            MessageWarnEvent.make({
-              body: postEventWarning(error),
-              timestamp: DateTime.nowUnsafe(),
-            }),
-          ),
-        ),
-      ),
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        const service = yield* Effect.serviceOption(RedactionService);
+        const tokens = yield* registerPlanRedaction(plan);
+        const options = {
+          sourceEnv: process.env,
+          redactionTokens: tokens.substring,
+          wholeTokenValues: tokens.wholeToken,
+        };
+        const redactor = Option.isSome(service)
+          ? yield* service.value.forProfile("secrets", options)
+          : createStandaloneRedactor("secrets", options);
+        const stepFailure = {
+          _tag: error._tag,
+          message: redactor.redactString(error.message),
+          remediation: redactor.redactString(error.remediation),
+        };
+        const tail = error instanceof LandofileEventStepFailedError ? error.outputTail.trim() : "";
+        yield* events.publish(
+          MessageWarnEvent.make({
+            body: [stepFailure.message, ...(tail.length > 0 ? [tail] : []), stepFailure.remediation].join(
+              " ",
+            ),
+            timestamp: DateTime.nowUnsafe(),
+          }),
+        );
+        return { status: "failed", event, stepFailure } satisfies FailedPostEvent;
+      }),
     ),
   );
 });
@@ -335,12 +351,12 @@ export const publishAndRunAppEvent = Effect.fnUntraced(function* (
 
 export const publishAndRunPostAppEvent = Effect.fnUntraced(function* (
   plan: AppPlan,
-  name: AppLifecycleEventName,
+  name: FailedPostEvent["event"],
   event: LandoEvent & ExpressionContext["event"],
 ) {
   const events = yield* EventService;
   yield* events.publish(event);
-  yield* runPostAppEvent(plan, name, event);
+  return yield* runPostAppEvent(plan, name, event);
 });
 
 export const runAppInitEvents = Effect.fn("AppOperation.initEvents")(function* (plan: AppPlan) {

@@ -1,24 +1,25 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { cp, mkdir, readdir, realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { APP_ROOT_LABEL, SNAPSHOT_STORE_LABEL } from "@lando/container-runtime/labels";
-import { providerImages } from "@lando/container-runtime/provider-images";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { isPathWithin } from "@lando/paths";
+import { isProviderError } from "@lando/redaction/provider-error";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import {
   ArchiveFormatError,
   ArtifactTransferError,
-  type DataChecksumMismatchError,
+  DataChecksumMismatchError,
   DataEndpointUnsupportedError,
   DataSourceOutsideRootError,
   DataTargetExistsError,
   DataTransferError,
   ProviderUnavailableError,
   SnapshotOwnershipError,
+  StateStoreError,
   errnoCode,
 } from "@lando/sdk/errors";
 import {
@@ -36,10 +37,10 @@ import {
   type DataTransferProgress,
   type DataTransferResult,
   type DataTransferSpec,
-  PortablePath,
   ProviderId,
   type PrunePolicy,
   type SnapshotInfo,
+  type VolumeInfo,
   type VolumeRef,
   type VolumeSnapshotRef,
   planDataId,
@@ -53,13 +54,10 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import {
-  VerifiedStreamError,
-  collectVerifiedStream,
-  persistVerifiedStream,
-} from "@lando/sdk/verified-stream";
+import { VerifiedStreamError, persistVerifiedStream } from "@lando/sdk/verified-stream";
 import { findRealpathAncestor, resolveStatePath } from "@lando/state-store/paths";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { withPhysicalVolumeLock, withPhysicalVolumeLocks } from "@lando/state-store/volume-lock";
 import {
   Cause,
   Clock,
@@ -69,13 +67,17 @@ import {
   Exit,
   Layer,
   Option,
+  Queue,
   Schema,
   type Scope,
   Stream,
 } from "effect";
-import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
-import { checkedTransferCommand, serviceCommandFailure } from "./command-failure.ts";
-import { execStdoutStream } from "./exec-stream.ts";
+import {
+  decodeArchiveStream,
+  decodeCompressionStream,
+  encodeArchiveStream,
+  encodeCompressionStream,
+} from "./archive-stream.ts";
 import { legacySnapshotReferences, orphanedSnapshotMethods } from "./orphaned-snapshots.ts";
 import { providerFailure } from "./provider-failure.ts";
 import { checkedServiceCommand, serviceCommandStdout } from "./service-command-redaction.ts";
@@ -99,6 +101,7 @@ import { requireSnapshotSeedTarget } from "./snapshot-seed.ts";
 import { stageVerifiedStream } from "./staged-stream.ts";
 import { endpointName, hostReadError, mapVerifiedError } from "./transfer-errors.ts";
 import { sharedVolumeInitialization } from "./volume-initialization.ts";
+import { withVolumeTransaction, withVolumeTransactions } from "./volume-transaction.ts";
 
 interface DataMoverEvents {
   readonly redactText: (text: string) => string;
@@ -111,9 +114,6 @@ type DataMoverTransferError =
   | DataEndpointUnsupportedError
   | DataChecksumMismatchError
   | DataTargetExistsError;
-
-const helperTarget = Schema.decodeUnknownSync(PortablePath)("/data");
-const helperPayload = Schema.decodeUnknownSync(PortablePath)("/data/payload");
 
 const absolutePath = (path: string) => Schema.decodeUnknownSync(AbsolutePath)(path);
 const providerId = (id: string) => Schema.decodeUnknownSync(ProviderId)(id);
@@ -158,32 +158,6 @@ const unsupported = (from: DataEndpoint, to: DataEndpoint, reason: string): Data
 
 const failUnsupported = (from: DataEndpoint, to: DataEndpoint, reason: string) =>
   Effect.fail(unsupported(from, to, reason));
-
-const dataHelperImage = providerImages.images.dataHelper;
-
-const resolveDataHelperImage = (
-  provider: Context.Service.Shape<typeof RuntimeProvider>,
-): Effect.Effect<string, DataTransferError> => {
-  const pinnedRef = `${dataHelperImage.image}@${dataHelperImage.digest}`;
-  if (!provider.capabilities.artifactPull) return Effect.succeed(pinnedRef);
-  return provider.pullArtifact({ ref: pinnedRef, policy: "missing" }).pipe(
-    mapFailures((cause) => providerFailure("pullArtifact", cause)),
-    Effect.flatMap((ref) => {
-      if (ref.digest !== dataHelperImage.digest) {
-        return Effect.fail(
-          new DataTransferError({
-            message: "Pinned data-helper image digest could not be verified.",
-            operation: "resolve-helper-image",
-            cause: { expectedDigest: dataHelperImage.digest, actualDigest: ref.digest },
-            remediation:
-              "The provider returned a different image digest than the pinned manifest; refuse to run an unverified helper image.",
-          }),
-        );
-      }
-      return Effect.succeed(pinnedRef);
-    }),
-  );
-};
 
 const octal = (value: number, width: number): string => {
   const text = value.toString(8);
@@ -585,17 +559,208 @@ const byteStreamFromArchive = (
     maxPayloadBytes: MAX_DECOMPRESSED_ARCHIVE_BYTES,
   });
 
+/** SHA-256 and byte count of the exact payload bytes that flow through a stream. */
+const archiveTap = () => {
+  const hash = createHash("sha256");
+  let sizeBytes = 0;
+  let sealed: { readonly sha256: string; readonly sizeBytes: number } | undefined;
+  return {
+    stream: <E, R>(body: Stream.Stream<Uint8Array, E, R>): Stream.Stream<Uint8Array, E, R> =>
+      body.pipe(
+        Stream.tap((chunk) =>
+          Effect.sync(() => {
+            hash.update(chunk);
+            sizeBytes += chunk.byteLength;
+          }),
+        ),
+      ),
+    result: () => {
+      sealed ??= { sha256: hash.digest("hex"), sizeBytes };
+      return sealed;
+    },
+  };
+};
+
+type VolumeEndpointRef = { readonly app: AppId; readonly store: string };
+
+const coordinationKeyFor = (
+  provider: Context.Service.Shape<typeof RuntimeProvider>,
+  ref: VolumeEndpointRef,
+): Effect.Effect<string, DataTransferError> =>
+  provider.locateVolume(ref).pipe(
+    mapFailures((cause) => providerFailure("locateVolume", cause)),
+    Effect.map((locator) => locator.coordinationKey),
+  );
+
+const volumeLockFailure = <E>(cause: E | StateStoreError) =>
+  cause instanceof StateStoreError ? stateFailure("volume-lock", cause) : cause;
+
+const mapLockFailure = <A, E, R>(effect: Effect.Effect<A, E | StateStoreError, R>) =>
+  effect.pipe(mapFailures(volumeLockFailure<E>));
+
+/**
+ * Physical-volume lock first, then the transaction gate; every volume path uses this order.
+ * A caller that already holds the lock (SQL recovery) re-enters it and then waits only on the
+ * gate, while a non-holder waits on the lock without holding a gate, so no wait cycle exists.
+ */
+const withVolumeTransactionLock = <A, E, R>(
+  stateStore: Context.Service.Shape<typeof StateStore>,
+  coordinationKey: string,
+  body: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | StateStoreError, R> =>
+  withPhysicalVolumeLock(stateStore, coordinationKey, withVolumeTransaction(coordinationKey, body));
+
+const withVolumeTransactionLocks = <A, E, R>(
+  stateStore: Context.Service.Shape<typeof StateStore>,
+  coordinationKeys: ReadonlyArray<string>,
+  body: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | StateStoreError, R> =>
+  withPhysicalVolumeLocks(stateStore, coordinationKeys, withVolumeTransactions(coordinationKeys, body));
+
+/**
+ * Hold every involved volume's physical lock, acquired in sorted order, for the whole
+ * operation. Nested DataMover work re-enters instead of deadlocking.
+ */
+const withEndpointVolumeLocks = Effect.fnUntraced(function* <A, E, R>(input: {
+  readonly provider: Context.Service.Shape<typeof RuntimeProvider>;
+  readonly endpoints: ReadonlyArray<DataEndpoint>;
+  readonly stateStore: Context.Service.Shape<typeof StateStore>;
+  readonly body: Effect.Effect<A, E, R>;
+}): Effect.fn.Return<A, E | DataTransferError | StateStoreError, R> {
+  const refs = input.endpoints.flatMap((endpoint) =>
+    endpoint._tag === "volume" ? [{ app: endpoint.app, store: endpoint.store }] : [],
+  );
+  const keys = yield* Effect.forEach(refs, (ref) => coordinationKeyFor(input.provider, ref));
+  return yield* withVolumeTransactionLocks(input.stateStore, keys, input.body);
+});
+
+/** Hold a volume's physical lock while a caller-owned stream is consumed. */
+const streamUnderVolumeLock = <A, E, R>(input: {
+  readonly provider: Context.Service.Shape<typeof RuntimeProvider>;
+  readonly ref: VolumeEndpointRef;
+  readonly stateStore: Context.Service.Shape<typeof StateStore>;
+  readonly stream: Stream.Stream<A, E | DataTransferError, R>;
+}): Stream.Stream<A, E | DataTransferError, R | Scope.Scope> =>
+  Stream.scoped(
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const coordinationKey = yield* coordinationKeyFor(input.provider, input.ref);
+        const queue = yield* Queue.bounded<A, E | DataTransferError | StateStoreError | Cause.Done>(16);
+        // The exit covers lock acquisition as well as the stream, so a lock failure ends the
+        // consumer's queue instead of leaving it waiting forever.
+        yield* withVolumeTransactionLock(
+          input.stateStore,
+          coordinationKey,
+          Stream.runForEach(input.stream, (item) => Queue.offer(queue, item)),
+        ).pipe(
+          Effect.onExit((exit) =>
+            Exit.isFailure(exit) ? Queue.failCause(queue, exit.cause) : Queue.end(queue).pipe(Effect.ignore),
+          ),
+          Effect.forkScoped,
+        );
+        return Stream.fromQueue(queue).pipe(mapStreamFailures(volumeLockFailure<E | DataTransferError>));
+      }),
+    ),
+  );
+
 type DataProvider = Effect.Effect<Context.Service.Shape<typeof RuntimeProvider>, DataTransferError>;
 
-const volumeRunOwner = Effect.fn("DataMover.volumeRunOwner")(function* (
+/**
+ * Fail when a generic volume import would replace an existing volume without overwrite.
+ * Checked once before extraction: the extractor creates the target itself, so a later
+ * listing cannot tell a conflict from the import's own volume.
+ */
+const requireVolumeImportAdmission = Effect.fnUntraced(function* (
   provider: Context.Service.Shape<typeof RuntimeProvider>,
-  app: AppId,
+  target: { readonly app: AppId; readonly store: string },
+  overwrite: boolean | undefined,
 ) {
-  const plans = yield* (provider.appliedPlans ?? Effect.succeed([])).pipe(
-    mapFailures((cause) => providerFailure("appliedPlans", cause)),
-  );
-  const plan = plans.find((candidate) => planDataId(candidate) === app);
-  return plan === undefined ? { app } : { app: plan.id, plan };
+  if (overwrite === true) return;
+  const volumes = yield* provider
+    .listVolumes({ app: target.app, store: target.store })
+    .pipe(mapFailures((cause) => providerFailure("listVolumes", cause)));
+  if (volumes.some((volume) => volume.ref.app === target.app && volume.ref.store === target.store)) {
+    return yield* Effect.fail(
+      new DataTargetExistsError({
+        message: "Target volume already exists and overwrite was not requested.",
+        store: target.store,
+        app: target.app,
+        remediation: "Pass overwrite:true only after confirming the existing data can be replaced.",
+      }),
+    );
+  }
+});
+
+interface CopyRestoreTargetCheck {
+  readonly persistence: SnapshotPersistence & { readonly privateFileAccess: PrivateFileAccess };
+  readonly info: SnapshotInfo;
+  readonly target: VolumeInfo | undefined;
+  readonly store: VolumeRef;
+  readonly mode: "restore" | "seed" | undefined;
+}
+
+/** Ownership and physical-generation gate shared by the pre-stage and pre-mutation checks. */
+const requireCopyRestoreTarget = Effect.fnUntraced(function* (input: CopyRestoreTargetCheck) {
+  const targetGeneration = input.target === undefined ? undefined : physicalVolumeGeneration(input.target);
+  if (input.target === undefined || targetGeneration === undefined) {
+    return yield* Effect.fail(
+      new SnapshotOwnershipError({
+        message: "Physical restore target identity is unknown.",
+        snapshotId: input.info.id,
+        sourceVolumeInstanceId: input.info.metadata?.volumeInstanceId ?? "unknown",
+        remediation: "Use a logical export and import when the target volume identity cannot be proven.",
+      }),
+    );
+  }
+  yield* requireSnapshotTargetOwner(input.info, input.target);
+  if (input.mode === "seed") {
+    yield* requireSnapshotSeedTarget(input.persistence.stateStore, input.info, {
+      volume: input.target,
+      store: input.store,
+    });
+    return;
+  }
+  if (
+    input.info.metadata !== undefined &&
+    !matchesSnapshotSource(input.target, input.info.metadata, input.info.owner)
+  ) {
+    return yield* Effect.fail(
+      new SnapshotOwnershipError({
+        message: "Physical snapshot ownership does not match the target volume instance.",
+        snapshotId: input.info.id,
+        sourceVolumeInstanceId: input.info.metadata.volumeInstanceId ?? "unknown",
+        targetVolumeInstanceId: targetGeneration,
+        remediation:
+          "Restore only to the original physical volume instance, or use a logical export and import for cross-volume movement.",
+      }),
+    );
+  }
+  // The recorded physical source generation is independent of database metadata; a
+  // restore without it cannot prove the target is the volume the snapshot came from.
+  const recordedGeneration = input.info.sourceVolumeGeneration ?? input.info.metadata?.volumeInstanceId;
+  if (recordedGeneration === undefined) {
+    return yield* Effect.fail(
+      new SnapshotOwnershipError({
+        message: "The snapshot does not record its physical source volume generation.",
+        snapshotId: input.info.id,
+        sourceVolumeInstanceId: "unknown",
+        remediation:
+          "Seed a fresh volume or use a logical export and import; this snapshot cannot be restored physically.",
+      }),
+    );
+  }
+  if (targetGeneration !== recordedGeneration) {
+    return yield* Effect.fail(
+      new SnapshotOwnershipError({
+        message: "Physical restore target generation does not match the snapshot's source generation.",
+        snapshotId: input.info.id,
+        sourceVolumeInstanceId: recordedGeneration,
+        targetVolumeInstanceId: targetGeneration,
+        remediation:
+          "Restore only to the original physical volume instance, or use a logical export and import for cross-volume movement.",
+      }),
+    );
+  }
 });
 
 const streamFromEndpoint = (
@@ -642,38 +807,19 @@ const streamFromProvider = (
         .copyFromService({ app: endpoint.app, service: endpoint.service }, { sourcePath: endpoint.path })
         .pipe(mapStreamFailures((cause) => providerFailure("copyFromService", cause)));
     case "volume":
-      if (!provider.capabilities.ephemeralMounts) {
+      if (provider.capabilities.volumeArchive !== true) {
         return Stream.fail(
           new DataEndpointUnsupportedError({
-            message: "Volume export requires ephemeral mounts for the generic fallback.",
+            message: "Volume export requires typed volume archive support.",
             fromEndpoint: endpointName(endpoint),
             toEndpoint: "stream",
-            remediation: "Use a provider with ephemeral mount support or a native data-plane method.",
+            remediation: "Use a provider that streams whole-volume archives.",
           }),
         );
       }
-      return Stream.unwrap(
-        resolveDataHelperImage(provider).pipe(
-          Effect.bindTo("image"),
-          Effect.bind("owner", () => volumeRunOwner(provider, endpoint.app)),
-          Effect.map(({ image, owner }) =>
-            execStdoutStream(
-              provider.runStream({
-                owner,
-                image,
-                command: ["sh", "-c", `cat ${helperPayload}`],
-                mounts: [{ type: "volume", store: endpoint.store, target: helperTarget, readOnly: true }],
-                remove: true,
-              }),
-              (exitCode, stderrTail, evidence) =>
-                serviceCommandFailure("runStream", exitCode, stderrTail, evidence),
-            ),
-          ),
-          mapFailures((cause) =>
-            cause instanceof DataTransferError ? cause : providerFailure("runStream", cause),
-          ),
-        ),
-      );
+      return provider
+        .exportVolume({ app: endpoint.app, store: endpoint.store })
+        .pipe(mapStreamFailures((cause) => providerFailure("exportVolume", cause)));
     case "artifact":
       if (!provider.capabilities.artifactExport) {
         return Stream.fail(
@@ -795,51 +941,44 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
     }
     case "volume": {
       const provider = yield* selectedProvider;
-      if (!provider.capabilities.ephemeralMounts)
-        return yield* failUnsupported(spec.from, target, "ephemeral mounts are unavailable");
+      if (provider.capabilities.volumeArchive !== true)
+        return yield* failUnsupported(spec.from, target, "typed volume archives are unavailable");
       {
-        if (spec.overwrite !== true) {
-          const volumes = yield* provider
-            .listVolumes({ app: target.app, store: target.store })
-            .pipe(mapFailures((cause) => providerFailure("listVolumes", cause)));
-          if (volumes.some((volume) => volume.ref.app === target.app && volume.ref.store === target.store)) {
-            return yield* Effect.fail(
-              new DataTargetExistsError({
-                message: "Target volume already exists and overwrite was not requested.",
-                store: target.store,
-                app: target.app,
-                remediation: "Pass overwrite:true only after confirming the existing data can be replaced.",
-              }),
-            );
-          }
-        }
-        const staged = yield* stageVerifiedStream({
-          body,
-          ...staging,
-          prefix: "volume",
-          ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
-        }).pipe(
-          mapFailures((error) =>
-            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
-          ),
-        );
-        const helperImage = yield* resolveDataHelperImage(provider);
-        const owner = yield* volumeRunOwner(provider, target.app);
-        yield* checkedTransferCommand(
-          provider.runStream({
-            owner,
-            image: helperImage,
-            command: ["sh", "-c", `cat > ${helperPayload}`],
-            mounts: [{ type: "volume", store: target.store, target: helperTarget, readOnly: false }],
-            stdinStream: Bun.file(staged.path).stream(),
-            remove: true,
-          }),
-          "run",
-        );
+        yield* requireVolumeImportAdmission(provider, target, spec.overwrite);
+        const tap = archiveTap();
+        yield* provider
+          .importVolume<
+            | ArchiveFormatError
+            | DataTransferError
+            | DataEndpointUnsupportedError
+            | DataChecksumMismatchError
+            | DataTargetExistsError,
+            Scope.Scope
+          >({
+            target: { app: target.app, store: target.store },
+            archive: tap.stream(body),
+            beforeCommit: Effect.gen(function* () {
+              const captured = tap.result();
+              if (spec.expectedDigest !== undefined && captured.sha256 !== spec.expectedDigest) {
+                return yield* Effect.fail(
+                  new DataChecksumMismatchError({
+                    message: "Volume archive checksum did not match the expected SHA-256.",
+                    expectedSha256: spec.expectedDigest,
+                    actualSha256: captured.sha256,
+                    remediation: "Retry the transfer from a trusted source; verification cannot be skipped.",
+                  }),
+                );
+              }
+            }),
+          })
+          .pipe(
+            mapFailures((cause) => (isProviderError(cause) ? providerFailure("importVolume", cause) : cause)),
+          );
+        const captured = tap.result();
         return {
           accelerated: false,
-          sizeBytes: staged.verified.sizeBytes,
-          digest: staged.verified.sha256,
+          sizeBytes: captured.sizeBytes,
+          digest: captured.sha256,
         };
       }
     }
@@ -893,7 +1032,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
         ),
       );
-      const stdinStream = Bun.file(staged.path).stream();
+      const stdinStream = yield* Stream.toAsyncIterableEffect(byteStreamFromHost(staged.path));
       const command = { ...providerCommandSpec(target.command, target.env), stdinStream };
       yield* checkedServiceCommand(
         provider.execStream({ app: target.app, service: target.service }, command),
@@ -947,6 +1086,16 @@ export const makeDataMoverService = (
       });
 
       const run = Effect.gen(function* () {
+        if (
+          (spec.from._tag === "volume" && spec.to._tag === "artifact") ||
+          (spec.from._tag === "artifact" && spec.to._tag === "volume")
+        ) {
+          return yield* failUnsupported(
+            spec.from,
+            spec.to,
+            "artifact endpoints carry engine image archives, not volume tree archives",
+          );
+        }
         yield* validateHostEndpoints(spec, persistence.paths.scratchDir);
         const hostToHost = spec.from._tag === "hostPath" && spec.to._tag === "hostPath";
         const treeCopy = hostToHost ? yield* hostSourceIsDirectory(spec.from.path) : false;
@@ -993,8 +1142,20 @@ export const makeDataMoverService = (
         return adjusted;
       });
 
+      const lockedRun = [spec.from, spec.to].some((endpoint) => endpoint._tag === "volume")
+        ? Effect.flatMap(selectedProvider, (provider) =>
+            mapLockFailure(
+              withEndpointVolumeLocks({
+                provider,
+                endpoints: [spec.from, spec.to],
+                stateStore: persistence.stateStore,
+                body: run,
+              }),
+            ),
+          )
+        : run;
       return yield* events.publish(pre).pipe(
-        Effect.andThen(run),
+        Effect.andThen(lockedRun),
         Effect.tap(
           Effect.fnUntraced(function* (result) {
             yield* events.publish(
@@ -1087,8 +1248,21 @@ export const makeDataMoverService = (
           let reachedEnd = false;
           // The source gets its own scope, and the outcome is published from the outermost exit, so
           // producer cleanup has finished first. An early stop (EOF never reached) counts as a failure.
+          const source =
+            from._tag === "volume"
+              ? Stream.unwrap(
+                  Effect.map(selectedProvider, (provider) =>
+                    streamUnderVolumeLock({
+                      provider,
+                      ref: { app: from.app, store: from.store },
+                      stateStore: persistence.stateStore,
+                      stream: streamFromProvider(provider, from),
+                    }),
+                  ),
+                )
+              : streamFromEndpoint(selectedProvider, from);
           return Stream.scoped(
-            streamFromEndpoint(selectedProvider, from).pipe(
+            source.pipe(
               Stream.tap((chunk) =>
                 Effect.sync(() => {
                   sizeBytes += chunk.byteLength;
@@ -1135,11 +1309,12 @@ export const makeDataMoverService = (
           }),
         );
       }
+      const coordinationKey = yield* coordinationKeyFor(provider, store);
       const snapshotId = randomUUID();
       let rollbackNative: VolumeSnapshotRef | undefined;
       let rollbackArchive: string | undefined;
       let sidecarCommitted = false;
-      return yield* Effect.scoped(
+      const capture = Effect.scoped(
         Effect.gen(function* () {
           // Best-effort: a native image this misses is reclaimed by orphan GC after its grace period.
           yield* Effect.addFinalizer(() =>
@@ -1193,6 +1368,7 @@ export const makeDataMoverService = (
             format,
           });
           const storeIdentity = yield* snapshotStoreIdentity(persistence);
+          const sourceGeneration = physicalVolumeGeneration(source);
           const native: VolumeSnapshotRef | undefined = useNative
             ? yield* Effect.uninterruptibleMask((restore) =>
                 restore(
@@ -1217,40 +1393,18 @@ export const makeDataMoverService = (
               )
             : undefined;
           if (native === undefined) rollbackArchive = archivePath;
-          const copyResult =
+          const sourceEndpoint = { _tag: "volume" as const, app: store.app, store: store.store };
+          const tree = streamFromEndpoint(selectedProvider, sourceEndpoint);
+          const storedArchive =
             native === undefined
-              ? yield* writeStreamToEndpoint(
-                  selectedProvider,
-                  {
-                    from: { _tag: "volume", app: store.app, store: store.store },
-                    to: {
-                      _tag: "hostArchive",
-                      path: absolutePath(archivePath),
-                      format,
-                    },
-                    overwrite: true,
-                  },
-                  streamFromEndpoint(selectedProvider, {
-                    _tag: "volume",
-                    app: store.app,
-                    store: store.store,
-                  }),
-                  {
-                    transferStagingDir: persistence.paths.transferStagingDir,
-                    privateFileAccess: persistence.privateFileAccess,
-                  },
-                )
-              : undefined;
-          const archiveIntegrity =
-            copyResult === undefined
-              ? undefined
-              : yield* collectVerifiedStream({
-                  body: byteStreamFromHost(archivePath),
+              ? yield* persistVerifiedStream({
+                  body: format === "tar" ? tree : encodeCompressionStream(tree, format, archivePath),
+                  destinationPath: archivePath,
                 }).pipe(
                   mapFailures((error) =>
                     error instanceof VerifiedStreamError
                       ? mapVerifiedError(error, {
-                          from: { _tag: "volume", app: store.app, store: store.store },
+                          from: sourceEndpoint,
                           to: {
                             _tag: "hostArchive",
                             path: absolutePath(archivePath),
@@ -1259,9 +1413,10 @@ export const makeDataMoverService = (
                         })
                       : error,
                   ),
-                );
-          const digest = native?.digest ?? archiveIntegrity?.sha256;
-          const sizeBytes = native?.sizeBytes ?? archiveIntegrity?.sizeBytes;
+                )
+              : undefined;
+          const digest = native?.digest ?? storedArchive?.sha256;
+          const sizeBytes = native?.sizeBytes ?? storedArchive?.sizeBytes;
           if (digest === undefined || sizeBytes === undefined) {
             return yield* Effect.fail(
               new DataTransferError({
@@ -1282,6 +1437,7 @@ export const makeDataMoverService = (
             ...(opts?.label === undefined ? {} : { label: opts.label }),
             ...(opts?.labels === undefined ? {} : { labels: opts.labels }),
             ...(opts?.metadata === undefined ? {} : { metadata: opts.metadata }),
+            ...(sourceGeneration === undefined ? {} : { sourceVolumeGeneration: sourceGeneration }),
           };
           const bucket = yield* openSnapshot(persistence, snapshotHandle(info));
           // The sidecar is the commit point. The write runs uninterruptibly so its outcome is
@@ -1333,6 +1489,9 @@ export const makeDataMoverService = (
           }),
         ),
       );
+      return yield* mapLockFailure(
+        withVolumeTransactionLock(persistence.stateStore, coordinationKey, capture),
+      );
     }),
     restore: Effect.fn("DataMover.restore")(function* (handle, store, opts) {
       const provider = yield* selectedProvider;
@@ -1347,117 +1506,203 @@ export const makeDataMoverService = (
           }),
         );
       }
-      const targets = yield* provider
-        .listVolumes({ app: store.app, store: store.store })
-        .pipe(mapFailures((cause) => providerFailure("listVolumes", cause)));
-      const target = targets.find(
-        (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
-      );
-      yield* requireSnapshotTargetOwner(info, target);
-      if (info.native === undefined) {
-        const archivePath = yield* snapshotArchivePath(persistence.paths, info);
-        if (info.metadata !== undefined || opts?.mode === "seed") {
-          if (opts?.mode === "seed") {
-            yield* requireSnapshotSeedTarget(persistence.stateStore, info, { volume: target, store });
-          } else if (
-            info.metadata !== undefined &&
-            !matchesSnapshotSource(target, info.metadata, info.owner)
-          ) {
-            return yield* Effect.fail(
-              new SnapshotOwnershipError({
-                message: "Physical snapshot ownership does not match the target volume instance.",
-                snapshotId: info.id,
-                sourceVolumeInstanceId: info.metadata.volumeInstanceId ?? "unknown",
-                ...(physicalVolumeGeneration(target) === undefined
-                  ? {}
-                  : { targetVolumeInstanceId: physicalVolumeGeneration(target) }),
-                remediation:
-                  "Restore only to the original physical volume instance, or use a logical export and import for cross-volume movement.",
-              }),
-            );
-          }
-        }
-        const staged = yield* stageVerifiedStream({
-          body: byteStreamFromHost(archivePath),
-          transferStagingDir: persistence.paths.transferStagingDir,
-          privateFileAccess: persistence.privateFileAccess,
-          prefix: "snapshot",
-          expectedSha256: info.digest,
-          expectedSizeBytes: info.sizeBytes,
-        }).pipe(
-          mapFailures((error) =>
-            error instanceof VerifiedStreamError
-              ? mapVerifiedError(error, {
-                  from: {
-                    _tag: "hostArchive",
-                    path: absolutePath(archivePath),
-                    format: info.format ?? "tar",
-                  },
-                  to: { _tag: "volume", app: store.app, store: store.store },
-                })
-              : error,
+      if (
+        info.sourceVolumeGeneration !== undefined &&
+        info.metadata?.volumeInstanceId !== undefined &&
+        info.sourceVolumeGeneration !== info.metadata.volumeInstanceId
+      ) {
+        return yield* Effect.fail(
+          new SnapshotOwnershipError({
+            message: "The snapshot records conflicting physical source volume generations.",
+            snapshotId: info.id,
+            sourceVolumeInstanceId: info.sourceVolumeGeneration,
+            targetVolumeInstanceId: info.metadata.volumeInstanceId,
+            remediation:
+              "Use a logical export and import; this snapshot cannot prove which physical volume it came from.",
+          }),
+        );
+      }
+      const recordedGeneration = info.sourceVolumeGeneration ?? info.metadata?.volumeInstanceId;
+      const observeTarget = () =>
+        provider.listVolumes({ app: store.app, store: store.store }).pipe(
+          mapFailures((cause) => providerFailure("listVolumes", cause)),
+          Effect.map((volumes) =>
+            volumes.find(
+              (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
+            ),
           ),
         );
-        return yield* writeStreamToEndpoint(
-          selectedProvider,
-          {
-            from: {
-              _tag: "hostArchive",
-              path: absolutePath(archivePath),
-              format: info.format ?? "tar",
-            },
-            to: { _tag: "volume", app: store.app, store: store.store },
-            overwrite: true,
-          },
-          streamFromEndpoint(selectedProvider, {
-            _tag: "hostArchive",
-            path: absolutePath(staged.path),
-            format: info.format ?? "tar",
-          }),
-          {
-            transferStagingDir: persistence.paths.transferStagingDir,
-            privateFileAccess: persistence.privateFileAccess,
-          },
-        ).pipe(Effect.asVoid);
+      const target = yield* observeTarget();
+      yield* requireSnapshotTargetOwner(info, target);
+      const coordinationKey = yield* coordinationKeyFor(provider, store);
+
+      if (info.native === undefined) {
+        const archiveFormat = info.format ?? "tar";
+        const archivePath = yield* snapshotArchivePath(persistence.paths, info);
+        if (provider.capabilities.volumeArchive !== true) {
+          return yield* failUnsupported(
+            { _tag: "hostArchive", path: absolutePath(archivePath), format: archiveFormat },
+            { _tag: "volume", app: store.app, store: store.store },
+            "typed volume archives are unavailable",
+          );
+        }
+        yield* requireCopyRestoreTarget({
+          persistence,
+          info,
+          target,
+          store,
+          mode: opts?.mode,
+        });
+        yield* mapLockFailure(
+          withVolumeTransactionLock(
+            persistence.stateStore,
+            coordinationKey,
+            Effect.gen(function* () {
+              const tap = archiveTap();
+              const archived = tap.stream(byteStreamFromHost(archivePath));
+              yield* provider
+                .importVolume<
+                  DataTransferError | ArchiveFormatError | DataChecksumMismatchError | SnapshotOwnershipError,
+                  Scope.Scope
+                >({
+                  target: store,
+                  archive:
+                    archiveFormat === "tar"
+                      ? archived
+                      : decodeCompressionStream(archived, archiveFormat, archivePath),
+                  beforeCommit: Effect.gen(function* () {
+                    const captured = tap.result();
+                    if (captured.sha256 !== info.digest || captured.sizeBytes !== info.sizeBytes) {
+                      return yield* Effect.fail(
+                        new DataChecksumMismatchError({
+                          message: "The snapshot archive no longer matches its recorded digest and size.",
+                          expectedSha256: info.digest,
+                          actualSha256: captured.sha256,
+                          archivePath,
+                          snapshotId: info.id,
+                          remediation:
+                            "Remove the damaged snapshot archive and take a new snapshot; verification cannot be skipped.",
+                        }),
+                      );
+                    }
+                    // Re-observe immediately before publication so a volume replaced
+                    // while the archive was read is refused.
+                    yield* requireCopyRestoreTarget({
+                      persistence,
+                      info,
+                      target: yield* observeTarget(),
+                      store,
+                      mode: opts?.mode,
+                    });
+                  }),
+                })
+                .pipe(
+                  mapFailures((cause) =>
+                    isProviderError(cause) ? providerFailure("importVolume", cause) : cause,
+                  ),
+                );
+            }),
+          ),
+        );
+        return;
       }
+
+      const nativeSnapshot = info.native;
       const targetGeneration = physicalVolumeGeneration(target);
-      if (opts?.mode === "seed") {
-        yield* requireSnapshotSeedTarget(persistence.stateStore, info, { volume: target, store });
-      }
       if (targetGeneration === undefined) {
         return yield* Effect.fail(
           new SnapshotOwnershipError({
             message: "Physical restore target identity is unknown.",
             snapshotId: info.id,
-            sourceVolumeInstanceId: info.metadata?.volumeInstanceId ?? "unknown",
+            sourceVolumeInstanceId: recordedGeneration ?? "unknown",
             remediation: "Use a logical export and import when the target volume identity cannot be proven.",
           }),
         );
       }
-      if (info.metadata !== undefined) {
-        if (opts?.mode !== "seed" && !matchesSnapshotSource(target, info.metadata, info.owner)) {
+      if (opts?.mode !== "seed") {
+        if (info.metadata !== undefined && !matchesSnapshotSource(target, info.metadata, info.owner)) {
           return yield* Effect.fail(
             new SnapshotOwnershipError({
               message: "Physical snapshot ownership does not match the target volume instance.",
               snapshotId: info.id,
               sourceVolumeInstanceId: info.metadata.volumeInstanceId ?? "unknown",
-              ...(physicalVolumeGeneration(target) === undefined
-                ? {}
-                : { targetVolumeInstanceId: physicalVolumeGeneration(target) }),
+              targetVolumeInstanceId: targetGeneration,
+              remediation:
+                "Restore only to the original physical volume instance, or use a logical export and import for cross-volume movement.",
+            }),
+          );
+        }
+        if (recordedGeneration === undefined) {
+          return yield* Effect.fail(
+            new SnapshotOwnershipError({
+              message: "The snapshot does not record its physical source volume generation.",
+              snapshotId: info.id,
+              sourceVolumeInstanceId: "unknown",
+              targetVolumeInstanceId: targetGeneration,
+              remediation:
+                "Seed a fresh volume or use a logical export and import; this snapshot cannot be restored physically.",
+            }),
+          );
+        }
+        if (recordedGeneration !== targetGeneration) {
+          return yield* Effect.fail(
+            new SnapshotOwnershipError({
+              message: "Physical restore target generation does not match the snapshot's source generation.",
+              snapshotId: info.id,
+              sourceVolumeInstanceId: recordedGeneration,
+              targetVolumeInstanceId: targetGeneration,
               remediation:
                 "Restore only to the original physical volume instance, or use a logical export and import for cross-volume movement.",
             }),
           );
         }
       }
-      return yield* provider
-        .restoreVolume({
-          snapshot: info.native,
-          target: store,
-          expectedTargetGeneration: targetGeneration,
-          overwrite: true,
-        })
-        .pipe(mapFailures((cause) => providerFailure("restoreVolume", cause)));
+      const seedAdmission = requireSnapshotSeedTarget(persistence.stateStore, info, {
+        volume: target,
+        store,
+      });
+      // Re-observe immediately before publication so a volume replaced while the snapshot
+      // was staged is refused here, not only by the provider's generation check.
+      const targetStillCurrent = Effect.gen(function* () {
+        const current = yield* observeTarget();
+        yield* requireSnapshotTargetOwner(info, current);
+        const currentGeneration = physicalVolumeGeneration(current);
+        if (currentGeneration !== targetGeneration) {
+          return yield* Effect.fail(
+            new SnapshotOwnershipError({
+              message: "The restore target volume was replaced while the snapshot was staged.",
+              snapshotId: info.id,
+              sourceVolumeInstanceId: targetGeneration,
+              ...(currentGeneration === undefined ? {} : { targetVolumeInstanceId: currentGeneration }),
+              remediation: "Retry the restore against the current volume.",
+            }),
+          );
+        }
+      });
+      yield* mapLockFailure(
+        withVolumeTransactionLock(
+          persistence.stateStore,
+          coordinationKey,
+          Effect.gen(function* () {
+            if (opts?.mode === "seed") yield* seedAdmission;
+            yield* provider
+              .restoreVolume(
+                {
+                  snapshot: nativeSnapshot,
+                  target: store,
+                  expectedTargetGeneration: targetGeneration,
+                  overwrite: true,
+                },
+                { beforeCommit: opts?.mode === "seed" ? seedAdmission : targetStillCurrent },
+              )
+              .pipe(
+                mapFailures((cause) =>
+                  isProviderError(cause) ? providerFailure("restoreVolume", cause) : cause,
+                ),
+              );
+          }),
+        ),
+      );
     }),
     listSnapshots: Effect.fn("DataMover.listSnapshots")((filter) => listSnapshotInfos(persistence, filter)),
     resolveSnapshot: Effect.fn("DataMover.resolveSnapshot")((reference, scope) =>

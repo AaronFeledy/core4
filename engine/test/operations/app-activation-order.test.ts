@@ -121,6 +121,8 @@ const admission = [
   "pre-init",
   "post-init",
 ];
+// A selected restart or rebuild reads applied state again, after any resume and before init hooks.
+const selectedAdmission = [...admission.slice(0, 4), "applied state", ...admission.slice(4)];
 const haltAndRelaunch = [
   "applied state",
   "pre-stop",
@@ -141,16 +143,16 @@ const operations = {
 };
 
 test.each([
-  ["start", ["pre-start", "apply", "post-start"]],
-  ["restart", ["pre-restart", ...haltAndRelaunch, "post-restart"]],
-  ["rebuild", ["pre-rebuild", ...haltAndRelaunch, "post-rebuild"]],
-  ["restart --service", ["pre-restart", "stop service", "apply", "post-restart"]],
-  ["rebuild --service", ["pre-rebuild", "stop service", "apply", "post-rebuild"]],
-] as const)("%s runs the shared admission and then its own body", async (name, body) => {
+  ["start", admission, ["pre-start", "apply", "post-start"]],
+  ["restart", admission, ["pre-restart", ...haltAndRelaunch, "post-restart"]],
+  ["rebuild", admission, ["pre-rebuild", ...haltAndRelaunch, "post-rebuild"]],
+  ["restart --service", selectedAdmission, ["pre-restart", "stop service", "apply", "post-restart"]],
+  ["rebuild --service", selectedAdmission, ["pre-rebuild", "stop service", "apply", "post-rebuild"]],
+] as const)("%s runs the shared admission and then its own body", async (name, admitted, body) => {
   const { trace, error } = await traced(operations[name]);
 
   expect(error).toBeUndefined();
-  expect(trace).toEqual([...admission, ...body]);
+  expect(trace).toEqual([...admitted, ...body]);
 });
 
 const routed: AppPlan = {

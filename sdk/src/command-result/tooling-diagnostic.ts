@@ -58,6 +58,7 @@ export const projectToolingDiagnostic = (
       case "config-file":
       case "config-drop-in":
       case "script":
+      case "project-file":
         return { ...location, layer: value.layer, file: text(value.file) };
       case "env":
         return { ...location, layer: value.layer, variable: text(value.variable) };

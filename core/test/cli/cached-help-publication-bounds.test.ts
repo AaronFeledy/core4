@@ -7,12 +7,12 @@ import {
   readAppCommandCacheForCwdDetailed,
   writeAppCommandCacheStrict,
 } from "@lando/engine/cache/command-index-writer";
-import { rememberLandofileEnvironmentDependencies } from "@lando/landofile/load-expression-provenance";
 import { ToolingCompileError } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { HelpCatalogResult } from "../../src/cli/compiled-help";
+import { fixtureProvenance } from "../provenance-support.ts";
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
@@ -41,12 +41,11 @@ test.each(["json", "yaml"] as const)(
         LANDO_USER_DATA_ROOT: join(root, "data"),
         LANDO_USER_CONF_ROOT: join(root, "conf"),
       };
-      const landofile = rememberLandofileEnvironmentDependencies(
-        Schema.decodeUnknownSync(LandofileShape)(authored),
-        { _tag: "Names", names: [] },
-      );
+      const landofile = Schema.decodeUnknownSync(LandofileShape)(authored);
+      const provenance = fixtureProvenance({ environmentDependencies: { _tag: "Names", names: [] } });
       await Effect.runPromise(
         writeAppCommandCacheStrict({
+          provenance,
           cwd: root,
           cacheRoot,
           env,

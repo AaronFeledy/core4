@@ -19,7 +19,6 @@ import type {
   ServiceCopyError,
   ServiceExecError,
   ServiceNotFoundError,
-  ServiceRestartWouldRecreateError,
   ServiceStartError,
   VolumeOperationError,
 } from "../errors/index.ts";
@@ -53,6 +52,7 @@ import type {
   ProviderId,
   ProviderSetupPlan,
   RetainedFileSyncQuiescence,
+  ServiceContainerChange,
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
   ServiceName,
@@ -101,7 +101,6 @@ export type ProviderError =
   | ProviderUnavailableError
   | ServiceExecError
   | ServiceNotFoundError
-  | ServiceRestartWouldRecreateError
   | ServiceStartError
   | VolumeOperationError
   | ServiceCopyError
@@ -137,6 +136,13 @@ export interface ProviderVersions {
   readonly bundle?: string;
 }
 
+export interface ArtifactBuildContextTree {
+  readonly contextName: string;
+  readonly destination: string;
+  readonly root: string;
+  readonly digest: string;
+}
+
 export interface ArtifactBuildRequest {
   readonly app: AppId;
   readonly service: ServiceName;
@@ -149,6 +155,7 @@ export interface ArtifactBuildRequest {
   readonly ref: string;
   /** Engine-chosen labels the provider sets on every image the build produces. */
   readonly labels: Readonly<Record<string, string>>;
+  readonly contextTrees?: ReadonlyArray<ArtifactBuildContextTree>;
   /**
    * Receives the build's output text in arrival order: unredacted and not aligned to lines. The provider
    * awaits each call before reading further, delivers every call before `buildArtifact` returns, and
@@ -196,18 +203,17 @@ export interface ApplyOptions {
   readonly onVolumeCreated?: (
     fact: import("../schema/volume-initialization.ts").VolumeCreationFact,
   ) => Effect.Effect<void, ProviderError>;
-  /**
-   * When true, bring-up fails instead of removing and recreating a container
-   * for publish-port, bind-source, or network drift, and instead of recovering
-   * a host-port bind rejection with a fresh port. Cannot be combined with
-   * `reconcile: true`.
-   */
-  readonly forbidRecreate?: boolean;
 }
 
 export interface ApplyResult {
   readonly changed: boolean;
   readonly createdVolumes?: readonly import("../schema/volume-initialization.ts").VolumeCreationFact[];
+  /**
+   * What apply did to each executed service's container. Providers that cannot report a
+   * container-level outcome omit it, and consumers then announce nothing and add no
+   * `container` field rather than guessing.
+   */
+  readonly services?: Readonly<Record<string, ServiceContainerChange>>;
 }
 
 export interface ServiceSelector {
@@ -279,12 +285,35 @@ export interface EphemeralRunSpec {
   /** Borrow the realized mounts of an existing service container. */
   readonly mountsFrom?: EphemeralMountSource;
   readonly user?: string;
+  /**
+   * Runtime user-namespace mode the helper must share with the container
+   * whose mounts it borrows (for example `keep-id:uid=33,gid=33`). Without
+   * it, `user` ids resolve inside a different namespace and files land on
+   * subordinate host ids.
+   */
+  readonly usernsMode?: string;
   readonly entrypoint?: ReadonlyArray<string>;
   readonly stdin?: "inherit" | "ignore";
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly captureStdout?: boolean;
   readonly env?: Readonly<Record<string, string>>;
   readonly remove?: boolean;
+}
+
+/**
+ * One staged replacement of a volume's contents. The provider owns staging,
+ * extraction, publication, and cleanup; the caller supplies only the archive and
+ * the last fallible check before anything live changes.
+ */
+export interface VolumeArchiveImportSpec<E, R> {
+  readonly target: VolumeRef;
+  /** Uncompressed tar of the volume's contents, excluding Lando's reserved root entries. */
+  readonly archive: Stream.Stream<Uint8Array, E, R>;
+  /**
+   * Runs exactly once after the archive completed, was validated and extracted, and
+   * before publication. A failure leaves the live contents unchanged.
+   */
+  readonly beforeCommit: Effect.Effect<void, E, R>;
 }
 
 export interface LogTarget extends ServiceSelector {}
@@ -324,12 +353,6 @@ export interface ServiceRuntimeFields {
   /** Mount table from the same container inspection, absent when unsupported. */
   readonly mounts?: MountObservation;
   readonly lastStartedAt?: Date;
-  /** Inspect fingerprint of published host ports. Absent when the container is missing. */
-  readonly publishFingerprint?: string;
-  /** Inspected bind and agent-socket mount sources, keyed by container target. */
-  readonly bindSources?: Readonly<Record<string, string>>;
-  /** Inspected network names attached to the container. */
-  readonly networkNames?: ReadonlyArray<string>;
 }
 
 /**
@@ -375,6 +398,14 @@ export type AppliedTeardownEvidence =
   | { readonly kind: "owned"; readonly ownership: ReadonlyArray<ResourceOwnership> }
   | { readonly kind: "absent" };
 
+/**
+ * How far applied-plan resolution may widen from the lookup root. `"ancestor"` accepts the
+ * deepest applied plan whose app root contains the lookup root, which suits a working
+ * directory inside an app; `"exact"` requires the plan recorded for that root itself and is
+ * what a caller that already resolved its app must use.
+ */
+export type AppliedPlanLookup = "ancestor" | "exact";
+
 /** Read-only host-wide evidence; an unobserved runtime contributes only applied plans. */
 export interface ProviderRuntimeSnapshot {
   readonly providerId: ProviderId;
@@ -416,9 +447,15 @@ export class RuntimeProviderRegistry extends Context.Service<
       providerId: ProviderId,
       root: AbsolutePath,
     ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>;
+    /**
+     * The applied plan for a lookup root, failing closed on contradictory or orphaned runtime
+     * state. With the default `"ancestor"` lookup a working directory inside an app resolves
+     * that app; `"exact"` never returns an enclosing app's plan.
+     */
     readonly resolveAppliedPlan: (
       root: AbsolutePath,
       app?: Pick<AppRef, "kind" | "id">,
+      lookup?: AppliedPlanLookup,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
     readonly resolveTeardownEvidence: (
       root: AbsolutePath,
@@ -584,6 +621,10 @@ export class RuntimeProvider extends Context.Service<
     readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
     readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
 
+    /**
+     * Captures a native volume snapshot. Requires the caller to hold the
+     * physical-volume lock for the source; DataMover is the caller that does.
+     */
     readonly snapshotVolume: (
       spec: VolumeSnapshotSpec,
     ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
@@ -594,7 +635,32 @@ export class RuntimeProvider extends Context.Service<
     ) => Effect.Effect<void, ProviderError, Scope.Scope>;
     /** List native snapshot images without consulting a host snapshot index. */
     readonly listVolumeSnapshots?: () => Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>, ProviderError>;
-    readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    /**
+     * Restore a native snapshot into a target volume. `beforeCommit`, when given, runs
+     * after staging and target verification and immediately before publication. Requires
+     * the caller to hold the physical-volume lock for the target; DataMover is the caller
+     * that does.
+     */
+    readonly restoreVolume: <E = never>(
+      spec: VolumeRestoreSpec,
+      options?: { readonly beforeCommit?: Effect.Effect<void, E> },
+    ) => Effect.Effect<void, ProviderError | E, Scope.Scope>;
+    /**
+     * Streams the volume's contents as an uncompressed tar, excluding Lando's reserved
+     * root entries. Requires the caller to hold the physical-volume lock for this
+     * volume; DataMover is the caller that does.
+     */
+    readonly exportVolume: (ref: VolumeRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+    /**
+     * Replaces the volume's contents in one operation: stage and extract the archive
+     * inside the volume, validate it inline, run `beforeCommit`, then publish and dispose
+     * of the previous contents. A failure or interruption before publication leaves the
+     * live contents unchanged and removes staging. Requires the caller to hold the
+     * physical-volume lock for the target; DataMover is the caller that does.
+     */
+    readonly importVolume: <E, R>(
+      spec: VolumeArchiveImportSpec<E, R>,
+    ) => Effect.Effect<void, ProviderError | E, Scope.Scope | R>;
     readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
     readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
     readonly inspectResourceNames?: (

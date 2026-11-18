@@ -17,6 +17,7 @@ export {
 export { socketHttpRequestText } from "./transport-request.ts";
 
 import { connect, readResponse } from "./transport-connection.ts";
+import { ContainerTransportError } from "./transport-error.ts";
 import {
   type ParsedHttpHead,
   collectBytes,
@@ -198,6 +199,23 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       stopStdinPump = resolve;
     });
     const ready = Promise.withResolvers<void>();
+    let stdinFailure: unknown;
+    const stdinFailureError = (): ContainerTransportError | undefined =>
+      stdinFailure === undefined
+        ? undefined
+        : stdinFailure instanceof ContainerTransportError
+          ? stdinFailure
+          : fail(
+              "stdin",
+              operation,
+              "Container runtime request stdin failed.",
+              {
+                method: input.method,
+                path: input.path,
+                ...(stdinFailure instanceof Error ? { message: stdinFailure.message } : {}),
+              },
+              stdinFailure,
+            );
     const abort = () => connection.destroy();
     input.signal?.addEventListener("abort", abort, { once: true });
     const maybeEndStdin = (): void => {
@@ -233,7 +251,10 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
           await Promise.race([connection.write(next.value), stdinStopped]);
         }
       })();
-      stdinPump.catch(() => connection.destroy());
+      stdinPump.catch((cause: unknown) => {
+        stdinFailure = cause;
+        connection.destroy();
+      });
     };
     try {
       await writeRequest(connection, request, options);
@@ -245,6 +266,8 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
 
       const response = readResponse(connection, operation, input);
       for await (const chunk of response) {
+        const stdinError = stdinFailureError();
+        if (stdinError !== undefined) throw stdinError;
         if (parsed === undefined) {
           initialChunks.push(chunk);
           const merged = concatBytes(initialChunks);
@@ -310,6 +333,8 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       if (chunkedBody && bodyBuffer.length > 0) {
         for (const bodyChunk of flushChunkedBufferAtEnd(bodyBuffer)) yield bodyChunk;
       }
+      const settledStdinError = stdinFailureError();
+      if (settledStdinError !== undefined) throw settledStdinError;
       if (input.signal?.aborted) throw new DOMException("Socket stream aborted.", "AbortError");
     } catch (cause) {
       // Socket implementations vary: abort may end iteration, throw a generic

@@ -3,7 +3,7 @@ import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtim
 import { bringDown } from "@lando/provider-lando";
 import { AppId, type AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { bringUp } from "./provider-fixture.ts";
 import { appRoot, makeFakeApi, plan, servicePlan, volumeSelector } from "./support/bring-down-fixture.ts";
 
@@ -187,19 +187,24 @@ describe("provider-lando bringDown", () => {
     await Effect.runPromise(bringUp(plan, { api: fake.api }));
     await Effect.runPromise(bringDown(plan, { api: fake.api, volumes: true, purgeCaches: true }));
 
-    const prune = fake.calls.find((call) => call.path.startsWith("/libpod/volumes/prune"));
-    expect(prune).toBeDefined();
-    const pruneUrl = new URL(`http://localhost${prune?.path ?? ""}`);
-    const filters = JSON.parse(decodeURIComponent(pruneUrl.searchParams.get("filters") ?? "{}")) as Record<
-      string,
-      readonly string[]
-    >;
-    expect(filters.label).toEqual([
-      `dev.lando.volume-selector=${volumeSelector(plan.id, "cache")}`,
-      `dev.lando.volume-selector=${volumeSelector(plan.id, "data")}`,
-    ]);
-    expect(filters.all).toBeUndefined();
-    expect(pruneUrl.searchParams.get("all")).toBe("true");
+    const prunes = fake.calls.filter((call) => call.path.startsWith("/libpod/volumes/prune"));
+    expect(prunes).toHaveLength(2);
+    const decodeFilters = Schema.decodeUnknownSync(
+      Schema.fromJsonString(Schema.Record(Schema.String, Schema.Array(Schema.String))),
+    );
+    const selectors = prunes.map((prune) => {
+      const pruneUrl = new URL(`http://localhost${prune.path}`);
+      const filters = decodeFilters(decodeURIComponent(pruneUrl.searchParams.get("filters") ?? "{}"));
+      expect(filters.all).toBeUndefined();
+      expect(pruneUrl.searchParams.get("all")).toBe("true");
+      return filters.label;
+    });
+    expect(selectors).toEqual(
+      expect.arrayContaining([
+        [`dev.lando.volume-selector=${volumeSelector(plan.id, "cache")}`],
+        [`dev.lando.volume-selector=${volumeSelector(plan.id, "data")}`],
+      ]),
+    );
   });
 
   test("default cleanup does not prune named volumes without explicit destructive intent", async () => {

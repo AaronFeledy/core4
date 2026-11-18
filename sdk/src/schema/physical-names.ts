@@ -74,3 +74,12 @@ export const landoAppStoreName = (slug: string, source: string): string =>
 
 /** Cache keys deliberately share a namespace across apps. */
 export const landoCacheStoreName = (key: string): string => `lando-cache-${canonicalOrHashed(key)}`;
+
+/**
+ * The canonical in-network alias of a planned service, which also names the
+ * generated leaf certificate's common name. The router verifies and dials this
+ * alias for managed backend TLS, so it is derived here once. `appSlug` is the
+ * normalized app identity (`normalizeAppSlug`), not the raw authored name.
+ */
+export const serviceInternalAlias = (serviceName: string, appSlug: string): string =>
+  `${serviceName}.${appSlug}.internal`;

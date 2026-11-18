@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
-import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { DateTime, Effect, Schema } from "effect";
 import {
   attachEffectiveTooling,
   connectionClientsForPlan,
   effectiveToolingForPlan,
+  internalToolingNamesForPlan,
   resolveEffectiveTooling,
   toolingIssueSourceForPlan,
   toolingOriginAt,
@@ -14,6 +14,7 @@ import {
   toolingSourceResolverForPlan,
 } from "../../src/planner/effective-tooling.ts";
 import { ToolingProvenance } from "../../src/planner/tooling-provenance.ts";
+import { provenanceIn } from "../provenance-support.ts";
 
 const base: AppPlan = {
   id: AppId.make("provenance"),
@@ -62,6 +63,7 @@ test("persisted tooling resolves field prefixes to winning defaults, local field
   );
   const resolution = resolveEffectiveTooling({
     landofile: compiled.document,
+    provenance: provenanceIn(compiled),
     services: [
       { name: "zeta", serviceTypeId: "node", tooling: { php: { cmd: "wrong contributor" } } },
       { name: "web", serviceTypeId: "php", tooling: { php: { cmd: "php" } }, connectionClientNames: ["php"] },
@@ -128,7 +130,7 @@ test("unversioned applied tooling retains executable intent and internal/client 
   });
   const tasks = effectiveToolingForPlan(plan);
   expect(tasks).toEqual(legacy.tasks);
-  expect(getInternalToolingTasks(tasks ?? {})).toEqual(["psql"]);
+  expect(internalToolingNamesForPlan(plan)).toEqual(["psql"]);
   expect(connectionClientsForPlan(plan)).toEqual({ psql: ServiceName.make("database") });
   expect(toolingIssueSourceForPlan(plan, "psql", ["cmd"])).toBeUndefined();
   expect(toolingSourceResolverForPlan(plan)("off").locate?.(["tooling", "off", "disabled"])).toBeUndefined();
@@ -144,6 +146,7 @@ test("unversioned applied tooling retains executable intent and internal/client 
 test("missing composition sources remain explicitly Unknown through attachment", () => {
   const resolution = resolveEffectiveTooling({
     landofile: { tooling: { inspect: { cmd: "echo ok" } } },
+    provenance: undefined,
     services: [],
   });
   const plan = attachEffectiveTooling(base, resolution.tasks, resolution);

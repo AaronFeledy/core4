@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { VolumeRef } from "@lando/sdk/schema";
 import { type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
+import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
 import { Deferred, Effect, Fiber } from "effect";
 import {
   verifyActiveVolumeCoordination,
   withPlanVolumeCoordination,
-  withVolumeCoordinationLock,
 } from "../../src/lifecycle/volume-coordination.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { planWith } from "../services/build-app-runner-test-support.ts";
@@ -50,7 +50,7 @@ describe("volume coordination fiber-local state", () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         yield* verifyActiveVolumeCoordination(provider);
-        yield* withVolumeCoordinationLock(recordingStore, key("alpha"), Effect.void);
+        yield* withPhysicalVolumeLock(recordingStore, key("alpha"), Effect.void);
         const bound = yield* withPlanVolumeCoordination({
           plan: planFor("alpha"),
           provider,
@@ -58,7 +58,7 @@ describe("volume coordination fiber-local state", () => {
           body: Effect.fnUntraced(function* () {
             yield* verifyActiveVolumeCoordination(provider);
             const child = yield* Effect.forkChild(
-              withVolumeCoordinationLock(
+              withPhysicalVolumeLock(
                 recordingStore,
                 key("alpha"),
                 verifyActiveVolumeCoordination(provider).pipe(Effect.as("inherited")),
@@ -68,7 +68,7 @@ describe("volume coordination fiber-local state", () => {
           }),
         });
         yield* verifyActiveVolumeCoordination(provider);
-        yield* withVolumeCoordinationLock(recordingStore, key("alpha"), Effect.void);
+        yield* withPhysicalVolumeLock(recordingStore, key("alpha"), Effect.void);
         return bound;
       }).pipe(Effect.timeout("2 seconds")),
     );

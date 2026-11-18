@@ -26,7 +26,7 @@ for (const path of paths) {
       expect(warnings[0]?.body).toContain(home.target);
     }
     expect(timeline.indexOf("warn")).toBeLessThan(timeline.indexOf("apply"));
-    expect(appliedReads).toBe(path === "selected restart" ? 1 : 0);
+    expect(appliedReads).toBe(0);
   });
 
   test.each([

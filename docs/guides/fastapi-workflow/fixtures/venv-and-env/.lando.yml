@@ -30,10 +30,12 @@ tooling:
   pip:
     service: web
     description: Run pip inside the web service.
+    wrapper: true
     cmds:
       - pip
   uvicorn:
     service: web
     description: Run uvicorn inside the web service.
+    wrapper: true
     cmds:
       - uvicorn

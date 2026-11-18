@@ -1,5 +1,12 @@
 import type { RecipeSource } from "@lando/sdk/schema";
-import { composerOption, composerTool, phpAppserver, phpOption, webrootOption } from "../source-php.ts";
+import {
+  composerOption,
+  composerTool,
+  createProjectTool,
+  phpAppserver,
+  phpOption,
+  webrootOption,
+} from "../source-php.ts";
 import { defaultRoutes } from "../source-web.ts";
 
 const serverEnvironment = {
@@ -57,7 +64,7 @@ export const source = {
         wrapper: true,
       },
       composer: composerTool,
-      npm: { service: "node", description: "Run npm inside the node service.", cmds: ["npm"], wrapper: true },
+      "create-project": createProjectTool,
     },
   },
   variants: [

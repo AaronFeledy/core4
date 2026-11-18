@@ -17,8 +17,8 @@ import { versionSpec as typedVersionSpec } from "../../src/cli/command-specs/met
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
 import { serviceLayer as mcpServiceLayer } from "../../src/mcp-command-executor.ts";
-import { makeCommandsBootstrapLayer } from "../../src/runtime/generated/layers/commands.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { makeCommandsBootstrapLayer } from "../../src/runtime/layers/commands.ts";
 
 const roots: string[] = [];
 const versionSpec: LandoCommandSpec = typedVersionSpec;

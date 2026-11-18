@@ -42,7 +42,7 @@ export const retainedSourceTransports = Effect.fnUntraced(function* (registryUrl
     readPolicy,
   );
   const fetchJson: typeof httpJsonFetch = (url, options) =>
-    httpJsonFetch(url, options, Option.getOrUndefined(client));
+    httpJsonFetch(url, options, Option.getOrUndefined(client), requestContext);
   const archive = makeArchiveTransport(Option.getOrUndefined(downloader), requestContext);
   const npmClient = defaultNpmRegistryClient({
     ...(registryUrl === undefined ? {} : { registryUrl }),

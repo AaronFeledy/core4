@@ -1,4 +1,3 @@
-import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { suggestionForUnknownKey } from "@lando/sdk/schema";
 import { reservedToolingNameConflict } from "../operations/reserved-aliases.ts";
 import { reservedEventCollisions, validEventNames } from "./event-names.ts";
@@ -9,8 +8,8 @@ import { toolingIssueSource } from "./tooling-provenance.ts";
 
 export const toolingAndEventIssues = (resolution: ResolvedLandofile): ReadonlyArray<PlannerIssue> => {
   const { landofile } = resolution;
-  const { tasks: effectiveTooling, provenance } = resolution.toolingResolution;
-  const internal = new Set(getInternalToolingTasks(effectiveTooling));
+  const { tasks: effectiveTooling, provenance, internalNames } = resolution.toolingResolution;
+  const internal = new Set(internalNames);
   const issues: PlannerIssue[] = [];
   for (const [name] of enabledToolingEntries(effectiveTooling)) {
     if (internal.has(name)) continue;
@@ -39,13 +38,13 @@ export const toolingAndEventIssues = (resolution: ResolvedLandofile): ReadonlyAr
     }
   }
   if (resolution.unavailable.size === 0) {
-    const valid = validEventNames(effectiveTooling);
+    const valid = validEventNames(effectiveTooling, internalNames);
     const known = new Set(valid);
     for (const name of Object.keys(landofile.events ?? {})) {
       if (known.has(name)) continue;
       const suggestion = suggestionForUnknownKey(name, valid);
       issues.push(
-        attributePlannerIssue(landofile, {
+        attributePlannerIssue(resolution.provenance, {
           rule: "landofile.event",
           path: ["events", name],
           message: `Unknown app event ${name}.`,

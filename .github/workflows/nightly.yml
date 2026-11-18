@@ -315,7 +315,7 @@ jobs:
   provider-lando-e2e-linux-x64:
     needs: [container-helper, runtime-bundle-linux-x64]
     runs-on: ubuntu-26.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Isolate Lando roots
@@ -466,9 +466,12 @@ jobs:
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:24
-          pull_image docker.io/library/node:22-alpine
+          # Every supported Node major is pre-pulled from the service-type table.
           pull_image docker.io/library/node:22
+          pull_image docker.io/library/node:24
+          pull_image docker.io/library/node:26
+          pull_image docker.io/library/node:22-alpine
+          pull_image docker.io/library/adminer:6
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -491,6 +494,8 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image docker.io/library/alpine:3.20.3@sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d
           docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Run e2e guide scenarios
@@ -702,9 +707,12 @@ jobs:
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:24
-          pull_image docker.io/library/node:22-alpine
+          # Every supported Node major is pre-pulled from the service-type table.
           pull_image docker.io/library/node:22
+          pull_image docker.io/library/node:24
+          pull_image docker.io/library/node:26
+          pull_image docker.io/library/node:22-alpine
+          pull_image docker.io/library/adminer:6
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -727,6 +735,8 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image docker.io/library/alpine:3.20.3@sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d
           docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Build test-only pinned MinIO BYO image
@@ -935,9 +945,12 @@ jobs:
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:24
-          pull_image docker.io/library/node:22-alpine
+          # Every supported Node major is pre-pulled from the service-type table.
           pull_image docker.io/library/node:22
+          pull_image docker.io/library/node:24
+          pull_image docker.io/library/node:26
+          pull_image docker.io/library/node:22-alpine
+          pull_image docker.io/library/adminer:6
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -960,6 +973,8 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image docker.io/library/alpine:3.20.3@sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d
           docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Build test-only pinned MinIO BYO image
@@ -1635,3 +1650,29 @@ jobs:
           path: dist/bundle
           if-no-files-found: error
           retention-days: 14
+
+  report-failure:
+    needs: [container-helper, runtime-bundle-linux-x64, runtime-bundle-linux-arm64, runtime-bundle-reproducibility-linux-x64, runtime-bundle-reproducibility-linux-arm64, file-sync-contract-linux-x64, file-sync-contract-darwin-arm64, file-sync-contract-darwin-x64, file-sync-contract-windows-x64, provider-lando-e2e-linux-x64, service-listeners-linux-x64, service-listener-matrix-linux-x64, published-manifest-setup-linux-x64, mysql-arm-client-linux-arm64, source-store-acceptance-linux-x64, source-store-acceptance-darwin-arm64, source-store-acceptance-windows-x64, nightly-tier-unit-tests-linux-x64, refresh-test-timings-linux-x64, runtime-bundle-manifest-live, distribution-rehearsal-linux-x64]
+    if: ${{ !cancelled() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      NEEDS_JSON: ${{ toJSON(needs) }}
+    steps:
+      - name: Report automation failure
+        run: |
+          set -euo pipefail
+          TITLE='nightly automation failure'
+          FAILED_JOBS="$(jq -r '[to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key + (if .value.result == "cancelled" then " (timed out or cancelled)" else "" end)] | join(", ")' <<< "$NEEDS_JSON")"
+          printf -v BODY 'Workflow run failed: %s\n\nFailed jobs: %s' "$RUN_URL" "$FAILED_JOBS"
+          ISSUE_NUMBER="$(gh issue list --state open --search 'in:title "nightly automation failure" sort:created-asc' --limit 100 --json number,title --jq '[.[] | select(.title == "nightly automation failure")] | .[0].number // ""')"
+          if [ -n "$ISSUE_NUMBER" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --body "$BODY" --assignee 'AaronFeledy'
+          fi

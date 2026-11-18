@@ -169,6 +169,11 @@ test("destroy reports unchanged when the provider returns no-op and nothing else
   );
   // Then: neither the result nor its closing event claims planned services were removed.
   expect(destroys).toBe(1);
-  expect(result).toMatchObject({ outcome: "unchanged", servicesDestroyed: [], volumesRemoved: false });
+  expect(result).toMatchObject({
+    outcome: "unchanged",
+    servicesDestroyed: [],
+    dataVolumesRemoved: false,
+    cacheVolumesRemoved: false,
+  });
   expect(byTag(harness.events, "post-destroy")).toMatchObject([{ outcome: "unchanged" }]);
 });

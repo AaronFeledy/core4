@@ -63,14 +63,21 @@ export const retainWithinBytes = (text: string, maxBytes: number): string | unde
   return builder.append(text) ? builder.finish() : undefined;
 };
 
+// `String.prototype.replace` hands a replacer `(match, ...groups, offset, input)`.
+// The declared catalog type stops at the groups, so assert the arity once here
+// instead of forcing every replacer to accept an offset and the whole input.
+type ReplaceCallback = (substring: string, ...args: ReadonlyArray<string | number>) => string;
+
 const appendReplacement = (
   builder: BoundedStringBuilder,
   replacement: BoundedPatternReplacement["replace"],
   match: RegExpExecArray,
 ): boolean => {
   if (typeof replacement === "string") return builder.append(replacement);
-  const groups = match.slice(1).map((group) => group ?? "");
-  return builder.append(replacement(match[0], ...groups));
+  // Captured groups pass through untouched: an unmatched optional group is
+  // `undefined` at runtime, exactly as `String.replace` hands it to a replacer.
+  const replacer = replacement as ReplaceCallback;
+  return builder.append(replacer(match[0], ...match.slice(1), match.index, match.input));
 };
 
 /** Mask overlapping occurrence unions, widening partial sentinel intersections. */
@@ -167,4 +174,33 @@ export const replacePatternsBounded = (
     result = builder.finish();
   }
   return result;
+};
+
+/** One masked range, in ascending, non-overlapping order. */
+export interface BoundedSpan {
+  readonly start: number;
+  readonly end: number;
+  readonly replacement: string;
+}
+
+/**
+ * Apply pre-computed spans under a byte budget. The result is exactly what the
+ * unbounded renderer would produce when it fits, and `undefined` otherwise, so
+ * a bounded caller either gets identical masking or fails closed.
+ */
+export const replaceSpansBounded = (
+  text: string,
+  spans: readonly BoundedSpan[],
+  maxBytes: number,
+): string | undefined => {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) return undefined;
+  const builder = new BoundedStringBuilder(maxBytes);
+  let cursor = 0;
+  for (const span of spans) {
+    if (span.start > cursor && !builder.append(text.slice(cursor, span.start))) return undefined;
+    if (!builder.append(span.replacement)) return undefined;
+    cursor = span.end;
+  }
+  if (cursor < text.length && !builder.append(text.slice(cursor))) return undefined;
+  return builder.finish();
 };

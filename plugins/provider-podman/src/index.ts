@@ -14,6 +14,7 @@ import {
   type HostProxyContainerTarget,
   buildProviderCapabilities,
   engineInfoArchitecture,
+  engineInfoRootless,
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
@@ -356,8 +357,26 @@ const bindMountPerformanceForPlatform = (
 export const podmanCapabilitiesForPlatform = (
   platform: HostPlatform,
   containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
-): ProviderCapabilities =>
-  buildProviderCapabilities({
+  rootless = true,
+): ProviderCapabilities => {
+  const family = hostPlatformFamily(platform);
+  // Rootless Podman on a Linux host maps one container id to the host user.
+  // A rootful engine writes real host ids, so it renumbers a catalog project
+  // user to them during the image build. The VM-backed desktop engines expose
+  // neither fact to the guest.
+  const projectUserMapping =
+    family !== "linux"
+      ? ("unsupported" as const)
+      : rootless
+        ? ("userns-keep-id" as const)
+        : ("image-renumber" as const);
+  const bindOwnership =
+    family !== "linux"
+      ? ("unknown" as const)
+      : rootless
+        ? ("root-is-host-user" as const)
+        : ("host-ids" as const);
+  return buildProviderCapabilities({
     bindMounts: true,
     artifactBuild: true,
     artifactPull: true,
@@ -368,7 +387,9 @@ export const podmanCapabilitiesForPlatform = (
     artifactImport: true,
     ephemeralMounts: true,
     tlsCertificates: "none",
-    rootless: true,
+    rootless,
+    projectUserMapping,
+    bindOwnership,
     composeSpec: "native",
     composeKnobs: { supported: composeKnobsForDialect("libpod") },
     composeServiceFields: { supported: ["labels", "configs"] },
@@ -380,6 +401,7 @@ export const podmanCapabilitiesForPlatform = (
       ? { agentSocket: { delivery: "bind-directory" as const } }
       : {}),
   });
+};
 
 export const linuxPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("linux");
 export const macosPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("darwin");
@@ -679,6 +701,7 @@ const assembleRuntimeProvider = (
           const capabilities = podmanCapabilitiesForPlatform(
             platform,
             hostProxyContainerTargets(containerArch),
+            engineInfoRootless(info) ?? true,
           );
           const logSourceBinding = makeProviderLogSourceBinding({
             ...(PODMAN_CTX.redactor === undefined ? {} : { redactor: PODMAN_CTX.redactor }),
@@ -784,7 +807,7 @@ const assembleRuntimeProvider = (
             ctx: PODMAN_CTX,
             ...execHelper,
           }),
-        inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX, ...execHelper }),
+        inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX }),
       },
     });
 
@@ -865,7 +888,6 @@ const assembleRuntimeProvider = (
             : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
           reconcile: applyOptions.reconcile,
           onVolumeCreated: applyOptions.onVolumeCreated,
-          ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
           completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
           ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
         }).pipe(
@@ -878,14 +900,14 @@ const assembleRuntimeProvider = (
         const previous = yield* appliedPlans.resolveMutationPlan(target.app);
         const plan = target.plan ?? previous;
         if (plan === undefined) return DESTROY_NO_OP;
-        const { shutdownObservations } = yield* bringDown(plan, {
+        const { shutdownObservations, volumesRemoved } = yield* bringDown(plan, {
           api: podmanApi,
           ctx: PODMAN_CTX,
           volumes: destroyOptions.volumes,
           ...(destroyOptions.purgeCaches === undefined ? {} : { purgeCaches: destroyOptions.purgeCaches }),
         });
         yield* forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions);
-        return { kind: "destroyed", shutdownObservations };
+        return { kind: "destroyed", volumesRemoved, shutdownObservations };
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
         appliedPlans

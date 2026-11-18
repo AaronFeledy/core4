@@ -3,9 +3,10 @@ import { resolve } from "node:path";
 import { deriveToolInputSchema } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { InteractionService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Result } from "effect";
 import { destroySpec, runDestroyCommand } from "../../src/cli/command-specs/app/destroy";
 import { rebuildSpec, runRebuildCommand } from "../../src/cli/command-specs/app/rebuild";
+import { metaGlobalDestroySpec } from "../../src/cli/command-specs/meta/global/destroy";
 import { commandErrorMessage } from "../../src/cli/compiled-runtime";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { type AppRuntimeServices, makeLandoRuntime } from "../../src/runtime/layer";
@@ -148,5 +149,81 @@ describe("lifecycle confirmation boundary", () => {
     const schema = deriveToolInputSchema(rebuildSpec);
     // Then
     expect(schema).toMatchObject({ properties: { flags: { properties: { yes: { type: "boolean" } } } } });
+  });
+});
+
+describe("global destroy confirmation boundary", () => {
+  test.each([
+    { mode: "default", flags: {} },
+    { mode: "volumes", flags: { volumes: true } },
+    { mode: "purge", flags: { purge: true } },
+  ])("honors a declined $mode confirmation before engine access", async ({ flags }) => {
+    const interaction = makeTestInteractionService({ answers: { confirm: "false" } });
+    const result = await Effect.runPromise(
+      metaGlobalDestroySpec.run({ flags }).pipe(
+        Effect.provide(
+          Layer.succeed(
+            InteractionService,
+            InteractionService.of({
+              ...interaction.service,
+              isInteractive: Effect.succeed(true),
+            }),
+          ),
+        ),
+        Effect.result,
+      ) as Effect.Effect<Result.Result<unknown, unknown>, never, never>,
+    );
+
+    if (Result.isSuccess(result)) throw new TypeError("expected declined confirmation");
+    expect(result.failure).toMatchObject({ _tag: "CommandConfirmationError", reason: "declined" });
+    expect(interaction.transcript()).toMatchObject([{ name: "confirm", type: "confirm" }]);
+  });
+
+  test("non-interactive runs fail with the --yes remediation and touch nothing", async () => {
+    const interaction = makeTestInteractionService({ answers: { confirm: "true" } });
+    const result = await Effect.runPromise(
+      metaGlobalDestroySpec.run({ flags: {} }).pipe(
+        Effect.provide(
+          Layer.succeed(
+            InteractionService,
+            InteractionService.of({
+              ...interaction.service,
+              isInteractive: Effect.succeed(false),
+            }),
+          ),
+        ),
+        Effect.result,
+      ) as Effect.Effect<Result.Result<unknown, unknown>, never, never>,
+    );
+
+    if (Result.isSuccess(result)) throw new TypeError("expected non-interactive refusal");
+    expect(result.failure).toMatchObject({
+      _tag: "CommandConfirmationError",
+      reason: "non-interactive",
+      remediation: expect.stringContaining("--yes"),
+    });
+  });
+
+  test("confirmation precedes engine access", async () => {
+    const interaction = makeTestInteractionService({ answers: { confirm: "true" } });
+    const exit = await Effect.runPromiseExit(
+      metaGlobalDestroySpec.run({ flags: {} }).pipe(
+        Effect.provide(
+          Layer.succeed(
+            InteractionService,
+            InteractionService.of({
+              ...interaction.service,
+              isInteractive: Effect.succeed(true),
+            }),
+          ),
+        ),
+      ) as Effect.Effect<unknown, unknown, never>,
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(interaction.transcript()).toHaveLength(1);
+    // The die proves execution passed confirmation and reached the engine; a refusal would be typed.
+    expect(Exit.isFailure(exit) ? exit.cause.reasons.some(Cause.isDieReason) : false).toBe(true);
+    expect(Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isFailReason) : []).toHaveLength(0);
   });
 });

@@ -4,7 +4,6 @@ import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipe
 import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { drupalScaffoldCommand } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
 
 const {
@@ -46,7 +45,7 @@ const scaffoldTooling = {
   service: "appserver",
   description: "Scaffold Drupal and project-local Drush into the mounted app root.",
   arguments: false,
-  cmd: drupalScaffoldCommand("{{ recipe.drupal }}"),
+  cmd: "lando-drupal-scaffold {{ recipe.drupal }}",
 };
 
 describe("drupal decomposition", () => {
@@ -126,12 +125,9 @@ describe("drupal decomposition", () => {
     });
   });
 
-  test("defers the Drupal major version to the recipe option scope in the scaffold command", () => {
+  test("names the container helper scaffold command and keeps the Drupal major in recipe scope", () => {
     const authoring = authoringOf(alternatives) as { tooling: { "drupal-scaffold": { cmd: string } } };
-    const command = authoring.tooling["drupal-scaffold"].cmd;
-    expect(command).toContain("composer create-project 'drupal/recommended-project:^{{ recipe.drupal }}'");
-    expect(command.split("\n").length).toBeGreaterThan(10);
-    expect(command).toBe(drupalScaffoldCommand("{{ recipe.drupal }}"));
+    expect(authoring.tooling["drupal-scaffold"].cmd).toBe("lando-drupal-scaffold {{ recipe.drupal }}");
   });
 
   test.each([

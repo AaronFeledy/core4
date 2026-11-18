@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Effect } from "effect";
 import { loadLandofileLayers } from "../src/service.ts";
 import { getLandofileValueSource } from "../src/validation.ts";
+import { provenanceIn } from "./provenance-support.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const withApp = async (files: Readonly<Record<string, string>>, check: (root: string) => Promise<void>) => {
@@ -59,9 +60,9 @@ for (const form of ["includes", "toolingIncludes"]) {
         async (root) => {
           const compiled = await load(root);
           expect(compiled.document.tooling?.["ns:task"]?.disabled).toBe(true);
-          expect(getLandofileValueSource(compiled.document, ["tooling", "ns:task", "disabled"])?.file).toBe(
-            join(root, "tasks.yml"),
-          );
+          expect(
+            getLandofileValueSource(provenanceIn(compiled), ["tooling", "ns:task", "disabled"])?.file,
+          ).toBe(join(root, "tasks.yml"));
         },
       );
     },
@@ -146,12 +147,12 @@ for (const form of ["includes", "toolingIncludes"]) {
           ["tooling", "ns:task", "cmd"],
           ["tooling", "ns:task", "vars", "KEEP"],
         ]);
-        expect(getLandofileValueSource(compiled.document, ["tooling", "ns:task", "vars", "KEEP"])?.file).toBe(
-          join(root, ".lando.yml"),
-        );
-        expect(getLandofileValueSource(compiled.document, ["tooling", "ns:task", "vars", "DROP"])?.file).toBe(
-          join(root, ".lando.local.yml"),
-        );
+        expect(
+          getLandofileValueSource(provenanceIn(compiled), ["tooling", "ns:task", "vars", "KEEP"])?.file,
+        ).toBe(join(root, ".lando.yml"));
+        expect(
+          getLandofileValueSource(provenanceIn(compiled), ["tooling", "ns:task", "vars", "DROP"])?.file,
+        ).toBe(join(root, ".lando.local.yml"));
       },
     );
   });

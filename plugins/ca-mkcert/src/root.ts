@@ -85,7 +85,6 @@ export const makeMkcertRoot = (
       yield* issueInto(caroot, ["localhost"], async () => undefined);
     });
     yield* withAdvisoryLockUsing(privateFileAccess, {
-      expireLiveOwner: false,
       timeoutMs: ROOT_LOCK_TIMEOUT_MS,
     })(join(caroot, "lando-root"), "mkcert-root", createWhenMissing).pipe(
       mapFailures((cause) =>

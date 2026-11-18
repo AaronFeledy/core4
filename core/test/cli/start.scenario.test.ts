@@ -108,6 +108,8 @@ const capabilities: ProviderCapabilities = {
   routeProvider: false,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
@@ -640,7 +642,7 @@ const makeStartLayer = (
         });
       }).pipe(
         Effect.andThen(options.destroyEffect ?? Effect.void),
-        Effect.as({ kind: "destroyed" as const }),
+        Effect.as({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
       ),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -3014,7 +3016,7 @@ describe("lando start", () => {
       destroy: (_target, options) =>
         Effect.sync(() => {
           destroyCalls.push(`${options.volumes}:${options.removeState ?? false}`);
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -3191,7 +3193,7 @@ describe("lando start", () => {
       destroy: (_target, options) =>
         Effect.sync(() => {
           destroyCalls.push(`${options.volumes}:${options.removeState ?? false}`);
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -3599,7 +3601,7 @@ describe("lando start", () => {
       destroy: (_target, options) =>
         Effect.sync(() => {
           callLog.push(`destroy:${options.volumes}:${options.removeState ?? false}`);
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),

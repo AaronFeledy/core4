@@ -1,19 +1,18 @@
 import { join } from "node:path";
 import { isPlainRecord } from "@lando/sdk/landofile";
 import { Effect } from "effect";
-import { getIncludeOverlays, includeAcquisitionView } from "./include-layer-overlays.ts";
+import type { ResolvedTree } from "./include-tree.ts";
 import { prepareIncludeAcquisition } from "./load-acquisition.ts";
 import type { LoadFailureRecorder } from "./load-failures.ts";
 import { loadVersionConstraints } from "./load-version-constraints.ts";
 import { foldAuthoredOverlays } from "./pipeline/fold.ts";
 import { type LandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
-import { getOrigins } from "./pipeline/origins.ts";
+import { type AuthoredDocument, combineProvenance } from "./provenance.ts";
 import { resolveToolingIncludes } from "./tooling-includes.ts";
 import { validationErrorFromCause } from "./validation.ts";
-import { getVersionConstraintEntries, rememberVersionConstraintEntries } from "./version-constraint.ts";
 
 export const inspectIncludeComposition = Effect.fnUntraced(function* (
-  resolved: readonly Record<string, unknown>[],
+  resolved: readonly ResolvedTree[],
   context: {
     readonly appRoot: string;
     readonly scope: LandofileLoadScope;
@@ -21,32 +20,34 @@ export const inspectIncludeComposition = Effect.fnUntraced(function* (
   },
 ) {
   const file = join(context.appRoot, ".lando.yml");
-  const document = foldAuthoredOverlays(resolved.flatMap(getIncludeOverlays), {
-    file,
-    layer: "canonical",
-    path: [],
-  });
-  rememberVersionConstraintEntries(
-    document,
-    resolved.flatMap((value) => getVersionConstraintEntries(value, file)),
+  const folded = foldAuthoredOverlays(
+    resolved.flatMap(({ overlays }) => overlays),
+    { file, layer: "canonical", path: [] },
   );
+  const document: AuthoredDocument = {
+    value: isPlainRecord(folded.value) ? folded.value : {},
+    provenance: combineProvenance(
+      resolved.map(({ document }) => document.provenance),
+      folded.origins,
+    ),
+  };
   const scope = { ...context.scope, recorder: context.recorder };
   const value = yield* materializeLandofileLayer(file, document, {
     ...scope,
     siteFilter: (site) => site.path[0] !== "lando",
   });
-  if (!isPlainRecord(value)) context.recorder.record(validationErrorFromCause(file, value, undefined));
-  const acquired = prepareIncludeAcquisition(isPlainRecord(value) ? value : document, {
+  if (!isPlainRecord(value.value))
+    context.recorder.record(validationErrorFromCause(file, value.value, undefined));
+  const acquired = prepareIncludeAcquisition(value, {
     recorder: context.recorder,
     source: { file, layer: "canonical", path: [] },
   });
   yield* resolveToolingIncludes({
-    landofile: includeAcquisitionView(acquired),
-    origins: getOrigins(acquired),
+    document: acquired,
     appRoot: context.appRoot,
     sourceRoot: context.appRoot,
     loadScope: scope,
     recorder: context.recorder,
   });
-  yield* loadVersionConstraints(document, file, scope);
+  yield* loadVersionConstraints(acquired.provenance.versionConstraints, scope);
 });

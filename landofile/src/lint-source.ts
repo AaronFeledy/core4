@@ -1,21 +1,17 @@
-import type {
-  ConfigLintRuleId,
-  ConfigLintViolation,
-  LandofileShape,
-  ValidationIssue,
-} from "@lando/sdk/schema";
-import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
+import type { ConfigLintRuleId, ConfigLintViolation, ValidationIssue } from "@lando/sdk/schema";
+import { type LandofileProvenance, type SourceDocument, provenanceOf } from "./provenance.ts";
 import { getLandofileValueSource } from "./validation.ts";
 
 export const attributeEffectiveLintIssue = (
-  landofile: LandofileShape,
+  value: object,
   issue: ValidationIssue & { readonly rule: ConfigLintRuleId; readonly severity?: "error" | "warning" },
+  provenance: LandofileProvenance | undefined = provenanceOf(value),
 ): ConfigLintViolation => {
-  const source = issue.source ?? getLandofileValueSource(landofile, issue.path);
+  const source = issue.source ?? getLandofileValueSource(provenance, issue.path);
   return attributeLintIssue(
     { ...issue, severity: issue.severity ?? "error", ...(source === undefined ? {} : { source }) },
     "effective",
-    getSourceDocuments(landofile),
+    provenance?.documents ?? [],
   );
 };
 

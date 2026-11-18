@@ -27,7 +27,6 @@ test("preserves a live replacement inode during unreadable stale takeover", asyn
       Effect.result(
         Effect.acquireUseRelease(
           acquireAdvisoryLockAt(path, "test", {
-            expireLiveOwner: false,
             privateFileAccess: ownerOnlyFileAccess,
           }),
           () => Effect.void,
@@ -56,12 +55,11 @@ for (const old of [true, false]) {
       if (old) await utimes(path, new Date(0), new Date(0));
       const before = await lstat(path);
       try {
-        // When a non-expiring acquisition encounters the unreadable lock
+        // When an acquisition encounters the unreadable lock
         const result = await Effect.runPromise(
           Effect.result(
             Effect.acquireUseRelease(
               acquireAdvisoryLockAt(path, "test", {
-                expireLiveOwner: false,
                 privateFileAccess: ownerOnlyFileAccess,
               }),
               () => Effect.void,
@@ -113,12 +111,11 @@ for (const kind of ["symlink", "directory", "foreign-owner"] as const) {
       if (kind !== "symlink") await utimes(path, new Date(0), new Date(0));
       const before = await lstat(path);
       try {
-        // When non-expiring acquisition considers stale takeover
+        // When acquisition considers stale takeover
         const result = await Effect.runPromise(
           Effect.result(
             Effect.acquireUseRelease(
               acquireAdvisoryLockAt(path, "test", {
-                expireLiveOwner: false,
                 privateFileAccess: ownerOnlyFileAccess,
               }),
               () => Effect.void,

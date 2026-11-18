@@ -1,7 +1,12 @@
 import { retainCreateArtifactIdentity } from "@lando/container-runtime/create-fingerprint";
 import type { ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan, ArtifactRef as PlannedArtifactRef, ServicePlan } from "@lando/sdk/schema";
-import type { ProviderArtifactRef, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
+import type {
+  ArtifactBuildRequest,
+  ProviderArtifactRef,
+  ProviderError,
+  RuntimeProviderShape,
+} from "@lando/sdk/services";
 import { Effect, Predicate } from "effect";
 
 import { artifactBuildStepsFor } from "./build-key.ts";
@@ -28,6 +33,7 @@ interface ProviderBuildInput {
   readonly buildKey: string;
   readonly ref: string;
   readonly labels: Readonly<Record<string, string>>;
+  readonly contextTrees?: ArtifactBuildRequest["contextTrees"];
   readonly resolvedSource?: ProviderArtifactRef;
   readonly onOutput?: (text: string) => Effect.Effect<void, ProviderInternalError>;
 }
@@ -71,6 +77,7 @@ export const runProviderBuild = Effect.fn("RuntimeProvider.buildArtifact")(funct
       buildKey,
       ref: input.ref,
       labels: input.labels,
+      ...(input.contextTrees === undefined ? {} : { contextTrees: input.contextTrees }),
       ...(input.onOutput === undefined ? {} : { onOutput: input.onOutput }),
     }),
   );

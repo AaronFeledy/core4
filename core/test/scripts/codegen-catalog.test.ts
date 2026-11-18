@@ -80,7 +80,14 @@ const expectedCatalogRows = [
     "derived",
     "build-bundled-plugins.ts",
     "repo",
-    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog", "provider-images"],
+    [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "tomcat-catalog",
+      "node-releases",
+      "provider-images",
+    ],
   ],
   ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo", ["core-service-env-catalog"]],
   [
@@ -93,16 +100,23 @@ const expectedCatalogRows = [
   ["php-msmtp-pins", "committed-pin", "build-php-msmtp-pins.ts", "repo"],
   ["github-actions-pins", "committed-pin", "build-github-actions-pins.ts", "repo"],
   ["tomcat-catalog", "derived", "build-tomcat-catalog.ts", "repo"],
+  ["node-releases", "derived", "build-node-releases.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
   ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo", ["core-service-env-catalog"]],
-  ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo", ["core-service-env-catalog"]],
   [
     "setup-plugin-flags",
     "derived",
     "build-setup-plugin-flags.ts",
     "repo",
-    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog", "provider-images"],
+    [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "tomcat-catalog",
+      "node-releases",
+      "provider-images",
+    ],
   ],
   [
     "bundled-command-descriptors",
@@ -150,7 +164,6 @@ const expectedCatalogRows = [
       "bundled-command-descriptors",
       "bundled-plugins",
       "bundled-recipes",
-      "bootstrap-layers",
       "setup-plugin-flags",
       "mcp-allowlist",
       "host-proxy-allowlist",
@@ -178,14 +191,14 @@ const expectedCatalogRows = [
     "derived",
     "build-service-type-reference.ts",
     "repo",
-    ["php-msmtp-pins", "tomcat-catalog"],
+    ["php-msmtp-pins", "tomcat-catalog", "node-releases"],
   ],
   [
     "service-listener-reference",
     "derived",
     "build-service-listener-reference.ts",
     "repo",
-    ["php-msmtp-pins", "tomcat-catalog"],
+    ["php-msmtp-pins", "tomcat-catalog", "node-releases"],
   ],
   [
     "config-lint-rule-reference",
@@ -205,6 +218,7 @@ const expectedCatalogRows = [
   ["runtime-bundle-workflow", "committed-workflow", "build-runtime-bundle-workflow.ts", "repo"],
   ["compose-vendor-bump-workflow", "committed-workflow", "build-compose-vendor-bump-workflow.ts", "repo"],
   ["tomcat-bump-workflow", "committed-workflow", "build-tomcat-bump-workflow.ts", "repo"],
+  ["node-releases-bump-workflow", "committed-workflow", "build-node-releases-bump-workflow.ts", "repo"],
   ["platform-readiness-workflow", "committed-workflow", "build-platform-readiness-workflow.ts", "repo"],
   ["drupal-journey-workflow", "committed-workflow", "build-drupal-journey-workflow.ts", "repo"],
   ["rails-journey-workflow", "committed-workflow", "build-rails-journey-workflow.ts", "repo"],
@@ -285,6 +299,7 @@ describe("codegen catalog", () => {
       "docker-cli-versions",
       "php-msmtp-pins",
       "tomcat-catalog",
+      "node-releases",
       "provider-images",
     ].map((id) => ({
       id,
@@ -340,7 +355,6 @@ describe("codegen catalog", () => {
     const prerequisiteIds = [
       "bundled-plugins",
       "bundled-recipes",
-      "bootstrap-layers",
       "setup-plugin-flags",
       "mcp-allowlist",
       "host-proxy-allowlist",
@@ -375,6 +389,7 @@ describe("codegen catalog", () => {
       "runtime-bundle-workflow",
       "compose-vendor-bump-workflow",
       "tomcat-bump-workflow",
+      "node-releases-bump-workflow",
       "platform-readiness-workflow",
       "drupal-journey-workflow",
       "rails-journey-workflow",
@@ -391,12 +406,12 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(43);
+    expect(catalog).toHaveLength(44);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(4);
-    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(14);
+    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(15);
     expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(25);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
@@ -432,7 +447,6 @@ describe("codegen catalog", () => {
     expect(waveOf("setup-plugin-flags")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("host-proxy-allowlist"));
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
-    expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("bootstrap-layers"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("build-guide-scenarios"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("mutagen-versions"));
     expect(waveOf("schema-deprecations")).toBeLessThan(waveOf("command-registry-manifest"));

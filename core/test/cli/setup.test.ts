@@ -1213,7 +1213,7 @@ describe("meta:setup command", () => {
           Effect.sync(() => {
             calls.push("retire");
             globalApplied = false;
-            return { kind: "destroyed" as const };
+            return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
           }),
       };
       const registry = {

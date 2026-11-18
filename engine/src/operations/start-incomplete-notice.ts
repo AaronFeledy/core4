@@ -1,8 +1,9 @@
 import type { AppPlan } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
-import { Context, Duration, Effect, Exit, Option, Ref } from "effect";
+import { Cause, Context, Duration, Effect, Exit, Option, Ref } from "effect";
 
 import { CommandWarnings } from "../landofile/command-warnings.ts";
+import { taggedErrorRemediation } from "../providers/managed.ts";
 
 /** Observation stops after this budget; anything still unobserved is reported as unverified. */
 export const INCOMPLETE_START_OBSERVATION_BUDGET = Duration.seconds(1);
@@ -44,8 +45,18 @@ const rerunCommand = (command: IncompleteStartCommand): string => {
   return `lando ${command.verb} ${services.map((service) => `-s ${service}`).join(" ")}`;
 };
 
-const unchangedNotice = (command: IncompleteStartCommand): string =>
-  `${VERB_LABEL[command.verb]} did not complete. No app resources changed. Fix the reported error, then run \`${rerunCommand(command)}\`.`;
+/**
+ * Nothing changed, so the error's own remedy is the advice. The rerun hint is added only when that
+ * remedy names no other Lando command, so the footer never contradicts it.
+ */
+const unchangedNotice = (command: IncompleteStartCommand, remediation: string | undefined): string => {
+  const rerun = rerunCommand(command);
+  const hasOtherCommand = [...(remediation ?? "").matchAll(/`(lando [^`]+)`/gu)].some(
+    ([, named]) => named !== undefined && named !== rerun,
+  );
+  const summary = `${VERB_LABEL[command.verb]} did not complete. No app resources changed.`;
+  return hasOtherCommand ? summary : `${summary} Fix the reported error, then run \`${rerun}\`.`;
+};
 
 const inventoryNotice = Effect.fnUntraced(function* (plan: AppPlan, command: IncompleteStartCommand) {
   const services = Object.values(plan.services).map((service) => service.name);
@@ -131,7 +142,14 @@ export const withIncompleteStartNotice = Effect.fnUntraced(function* <A, E, R>(
         ? Effect.void
         : Ref.get(mutated).pipe(
             Effect.flatMap((plan) =>
-              plan !== undefined ? inventoryNotice(plan, command) : Effect.succeed(unchangedNotice(command)),
+              plan !== undefined
+                ? inventoryNotice(plan, command)
+                : Effect.succeed(
+                    unchangedNotice(
+                      command,
+                      taggedErrorRemediation(Option.getOrUndefined(Cause.findErrorOption(exit.cause))),
+                    ),
+                  ),
             ),
             Effect.flatMap(notices.addFailureNotice),
             // Even a defective notice sink must not append to the original command cause.

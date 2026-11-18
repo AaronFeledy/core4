@@ -2,10 +2,16 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
-import { ServiceBuildDirectoryCommand, ServiceCaFileDescriptor } from "@lando/sdk/services";
+import {
+  type ArtifactBuildContextTree,
+  ServiceBuildAcquisition,
+  ServiceBuildDirectoryCommand,
+  ServiceCaFileDescriptor,
+} from "@lando/sdk/services";
 import { Effect, Predicate, Result, Schema } from "effect";
 
 import type { BuildContextEntry } from "./build-context.ts";
+import { packVerifiedBuildTrees, treeArchivePath } from "./image-build-tree.ts";
 import { validateDockerfileUser } from "./image-build-user.ts";
 
 export interface PreparedBuildStep {
@@ -13,11 +19,12 @@ export interface PreparedBuildStep {
   readonly phase: string;
   readonly user?: string;
   readonly caFiles: ReadonlyArray<ServiceCaFileDescriptor>;
+  readonly acquisitions: ReadonlyArray<ServiceBuildAcquisition>;
 }
 
 export interface PreparedDerivedBuild {
   readonly steps: ReadonlyArray<PreparedBuildStep>;
-  readonly caEntries: ReadonlyArray<BuildContextEntry>;
+  readonly entries: ReadonlyArray<BuildContextEntry>;
 }
 
 const internalError = (providerId: string, message: string, cause?: unknown): ProviderInternalError =>
@@ -52,6 +59,12 @@ const parseStep = Effect.fnUntraced(function* (
   const user =
     "user" in value ? yield* validateDockerfileUser(value.user, "build step user", providerId) : undefined;
   const files = yield* caFiles;
+  const acquisitions = Schema.decodeUnknownResult(Schema.Array(ServiceBuildAcquisition))(
+    value.acquisitions ?? [],
+  );
+  if (Result.isFailure(acquisitions)) {
+    return yield* Effect.fail(internalError(providerId, "Invalid acquisition in service build step."));
+  }
   let command: PreparedBuildStep["command"];
   if (typeof value.command === "string") {
     command = value.command;
@@ -69,7 +82,13 @@ const parseStep = Effect.fnUntraced(function* (
   } else {
     return undefined;
   }
-  return { command, phase: "build", ...(user === undefined ? {} : { user }), caFiles: files };
+  return {
+    command,
+    phase: "build",
+    ...(user === undefined ? {} : { user }),
+    caFiles: files,
+    acquisitions: acquisitions.success,
+  };
 });
 
 const uniqueDescriptors = (
@@ -118,6 +137,7 @@ const readCaEntry = (
 export const prepareDerivedBuild = Effect.fn("RuntimeProvider.prepareDerivedBuild")(function* (
   service: ServicePlan,
   providerId: string,
+  contextTrees: readonly ArtifactBuildContextTree[] = [],
 ): Effect.fn.Return<PreparedDerivedBuild, ProviderInternalError> {
   const extension = service.extensions["@lando/core/service-features"];
   const rawSteps =
@@ -125,6 +145,41 @@ export const prepareDerivedBuild = Effect.fn("RuntimeProvider.prepareDerivedBuil
 
   const parsed = yield* Effect.forEach(rawSteps, (step) => parseStep(step, providerId));
   const steps = parsed.filter((step) => step !== undefined);
+  const acquisitions = steps.flatMap((step) => step.acquisitions);
+  const overlap = (left: string, right: string) =>
+    left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+  const destinations = descriptorsForCopy(steps);
+  const names = new Set<string>();
+  for (const acquisition of acquisitions) {
+    if (
+      names.has(acquisition.contextName) ||
+      destinations.some((destination) => overlap(destination, acquisition.destination))
+    ) {
+      return yield* Effect.fail(
+        internalError(providerId, "Conflicting derived build context name or destination."),
+      );
+    }
+    names.add(acquisition.contextName);
+    destinations.push(acquisition.destination);
+  }
+  const byName = new Map(contextTrees.map((tree) => [tree.contextName, tree]));
+  if (
+    contextTrees.length !== acquisitions.length ||
+    byName.size !== contextTrees.length ||
+    acquisitions.some(({ contextName, destination }) => byName.get(contextName)?.destination !== destination)
+  ) {
+    return yield* Effect.fail(
+      internalError(providerId, "Realized build trees do not match declared acquisitions."),
+    );
+  }
+  const treeEntries = yield* Effect.tryPromise({
+    try: () => packVerifiedBuildTrees(contextTrees),
+    catch: (cause) =>
+      internalError(
+        providerId,
+        `Unable to pack verified build context: ${cause instanceof Error ? cause.message : "read failed"}.`,
+      ),
+  });
   const descriptors = yield* uniqueDescriptors(steps, providerId);
   const caEntries = yield* Effect.forEach(descriptors, (descriptor) => readCaEntry(descriptor, providerId), {
     concurrency: "unbounded",
@@ -134,10 +189,23 @@ export const prepareDerivedBuild = Effect.fn("RuntimeProvider.prepareDerivedBuil
   )
     ? [{ kind: "directory", name: ".lando-empty/", mode: 0o755 }]
     : [];
-  return { steps, caEntries: [...caEntries, ...directoryEntries] };
+  return { steps, entries: [...caEntries, ...directoryEntries, ...treeEntries] };
 });
+
+const caDestination = (name: string) => `/usr/local/share/ca-certificates/${name}`;
+const descriptorsForCopy = (steps: readonly PreparedBuildStep[]) =>
+  steps.flatMap((step) => [
+    ...step.caFiles.map(({ archiveName }) => caDestination(archiveName)),
+    ...(typeof step.command === "object" && "directories" in step.command ? step.command.directories : []),
+  ]);
 
 export const copyInstructions = (step: PreparedBuildStep): ReadonlyArray<string> =>
   [...new Set(step.caFiles.map(({ archiveName }) => archiveName))]
     .sort()
-    .map((archiveName) => `COPY .lando-ca/${archiveName} /usr/local/share/ca-certificates/${archiveName}`);
+    .map((archiveName) => `COPY .lando-ca/${archiveName} ${caDestination(archiveName)}`)
+    .concat(
+      step.acquisitions.map(
+        ({ contextName, destination }) =>
+          `COPY ${JSON.stringify([treeArchivePath(contextName), `${destination}/`])}`,
+      ),
+    );

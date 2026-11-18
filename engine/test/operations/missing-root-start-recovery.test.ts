@@ -183,7 +183,7 @@ test.each(["completion-failure", "interruption"] as const)(
 
     const retried = await f.run();
 
-    expect(Exit.isSuccess(retried)).toBe(true);
+    expect(retried).toMatchObject({ _tag: "Success", value: { dataVolumesRemoved: false } });
     expect(await f.journal()).toBeNull();
     expect(f.removed).toEqual([volume.ref.store]);
     expect(f.harness.calls.filter((call) => call.startsWith("terminate:"))).toEqual(["terminate:old"]);
@@ -196,7 +196,7 @@ test("missing-root destroy skips a target that earlier teardown already removed"
 
   const result = await f.run();
 
-  expect(Exit.isSuccess(result)).toBe(true);
+  expect(result).toMatchObject({ _tag: "Success", value: { dataVolumesRemoved: false } });
   expect(f.removed).toEqual([]);
   expect(await f.journal()).toBeNull();
 });

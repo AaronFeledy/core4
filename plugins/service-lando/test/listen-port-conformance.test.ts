@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { Buffer } from "node:buffer";
 import { ServiceConfig } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { serviceTypes } from "../src/index.ts";
 import { listenerContracts } from "../src/service-type-facts.ts";
+import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const PORT = 43210;
@@ -14,7 +16,13 @@ const metadata = {
 const mechanisms: Readonly<
   Record<
     string,
-    { readonly env?: string; readonly value?: string; readonly command?: string; readonly build?: string }
+    {
+      readonly env?: string;
+      readonly value?: string;
+      readonly command?: string;
+      readonly build?: string;
+      readonly generatedFile?: { readonly stepId: string; readonly contains: string };
+    }
   >
 > = {
   mysql: { env: "MYSQL_TCP_PORT" },
@@ -22,6 +30,7 @@ const mechanisms: Readonly<
   postgres: { env: "PGPORT" },
   mssql: { env: "MSSQL_TCP_PORT" },
   rabbitmq: { env: "RABBITMQ_NODE_PORT" },
+  adminer: { command: `php -S [::]:${PORT}` },
   phpmyadmin: { env: "APACHE_PORT" },
   elasticsearch: { env: "http.port" },
   opensearch: { env: "http.port" },
@@ -50,6 +59,9 @@ const mechanisms: Readonly<
   php: { command: `Listen ${PORT}` },
   static: { command: String(PORT) },
   tomcat: { build: `port="${PORT}"` },
+  "static:caddy": {
+    generatedFile: { stepId: LANDO_ERROR_PAGES_BUILD_STEP_ID, contains: `http://:${PORT} {` },
+  },
 };
 const exemptions: Readonly<Record<string, string>> = {
   compose: "Raw Compose has no bundled launcher.",
@@ -62,7 +74,7 @@ describe("bundled catalog listen-port conformance", () => {
   for (const [id, serviceType] of serviceTypes) {
     test(`${id} classifies and honors an authored non-default listen port`, async () => {
       const family = id.split(":")[0] ?? id;
-      const mechanism = mechanisms[family];
+      const mechanism = mechanisms[id] ?? mechanisms[family];
       if (mechanism === undefined) {
         expect(exemptions[family]).toBeDefined();
         return;
@@ -106,6 +118,21 @@ describe("bundled catalog listen-port conformance", () => {
         expect(commandText(Schema.decodeUnknownSync(Schema.Array(Schema.String))(step?.command))).toContain(
           mechanism.build,
         );
+      }
+      if (mechanism.generatedFile !== undefined) {
+        const features = Schema.decodeUnknownSync(
+          Schema.Struct({
+            buildSteps: Schema.Array(Schema.Struct({ id: Schema.String, command: Schema.Unknown })),
+          }),
+        )(plan.extensions["@lando/core/service-features"]);
+        const step = features.buildSteps.find(
+          (candidate) => candidate.id === mechanism.generatedFile?.stepId,
+        );
+        const command = commandText(Schema.decodeUnknownSync(Schema.Array(Schema.String))(step?.command));
+        const written = [...command.matchAll(/'([A-Za-z0-9+/=]{16,})'/gu)]
+          .map((match) => Buffer.from(match[1] ?? "", "base64").toString("utf8"))
+          .join("\n");
+        expect(written).toContain(mechanism.generatedFile.contains);
       }
     });
   }

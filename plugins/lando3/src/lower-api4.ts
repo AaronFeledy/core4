@@ -247,6 +247,12 @@ export const lowerApi4Service = (
   }
   if (endpoints.length > 0) {
     patch.endpoints = endpoints;
+    // A translated HTTPS publication means the app serves TLS on that listener.
+    // Ask for a generated leaf unless the author already decided `certs`, so the
+    // router can verify the backend instead of rejecting a self-signed listener.
+    if (patch.certs === undefined && endpoints.some((entry) => entry.protocol === "https")) {
+      patch.certs = true;
+    }
     rewrite(["ports"]);
   }
   if (ports.length > 0) patch.ports = ports;

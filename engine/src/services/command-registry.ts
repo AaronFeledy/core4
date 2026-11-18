@@ -1,6 +1,7 @@
 import { inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import { provenanceOf } from "@lando/landofile/provenance";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import type { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
@@ -101,7 +102,8 @@ export const layerWith = (
 
           const loaded = yield* loadUserLandofile(landofileService, { env });
           const landofile = loaded.document;
-          const sourcePath = getLandofileValueSource(loaded, [])?.file ?? loaded.context.appRoot;
+          const provenance = provenanceOf(loaded);
+          const sourcePath = getLandofileValueSource(provenance, [])?.file ?? loaded.context.appRoot;
           const scripts = yield* discoverScriptsForCwd(yield* discoveryCwd());
           const hasServices = Object.keys(landofile.services ?? {}).length > 0;
           if (hasServices) {
@@ -114,10 +116,11 @@ export const layerWith = (
               : createRedactor("secrets", { values: collectSecretEnvValues(env) });
           const entries = compileInspectedAppCommands({
             landofile,
+            provenance,
             sourcePath,
             toolingSource: (name) => ({
-              path: getLandofileValueSource(loaded, ["tooling", name])?.file ?? sourcePath,
-              locate: (path) => getLandofileValueSource(loaded, path),
+              path: getLandofileValueSource(provenance, ["tooling", name])?.file ?? sourcePath,
+              locate: (path) => getLandofileValueSource(provenance, path),
             }),
             inspection: scripts,
             redact: redactor.redactString,
@@ -128,6 +131,7 @@ export const layerWith = (
             env,
             sourceScripts: fingerprintsFromInspection(scripts),
             landofile,
+            provenance,
             entries,
             ...cacheOptions,
           });

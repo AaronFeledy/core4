@@ -11,9 +11,9 @@ import {
   SqlDatabasePathError,
   SqlRecoveryUnavailableError,
 } from "@lando/sdk/errors";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { EphemeralRunSpec } from "@lando/sdk/services";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, DateTime, Effect, Exit, Option } from "effect";
 import {
   prepareSqliteHelper,
   removeSqliteHelperScratch,
@@ -106,6 +106,46 @@ test("borrows the inspected accelerated app mounts and binds only private scratc
   expect(helper.spec.binds).toEqual([{ source: helper.scratchHost, target: helper.scratchTarget }]);
   expect(statSync(join(helper.scratchHost, "..")).mode & 0o777).toBe(0o700);
   expect(statSync(join(helper.scratchHost, "../..")).mode & 0o777).toBe(0o700);
+  await Effect.runPromise(removeSqliteHelperScratch(helper.scratchHost));
+});
+
+test("creates a new database inside the service container's user namespace", async () => {
+  const f = setup();
+  const projectUser = { name: "www-data", uid: 33, gid: 33 };
+  const appliedService: ServicePlan = {
+    name: ServiceName.make("appserver"),
+    type: "php:8.3",
+    provider: ProviderId.make("test"),
+    primary: true,
+    environment: {},
+    projectUser,
+    mounts: [],
+    endpoints: [],
+    routes: [],
+    dependsOn: [],
+    hostAliases: [],
+    metadata: {
+      resolvedAt: DateTime.makeUnsafe("2026-11-16T00:00:00Z"),
+      source: "test",
+      runtime: 4,
+    },
+    extensions: {},
+  };
+  const helper = await Effect.runPromise(
+    prepareSqliteHelper(
+      {
+        ...f.deps,
+        applied: { ...f.deps.applied, services: { [appliedService.name]: appliedService } },
+        run: () => Effect.succeed({ exitCode: 0, stdout: "missing\n0:0\n", stderr: "" }),
+      },
+      f.service,
+      f.target,
+      true,
+    ),
+  );
+  expect(helper.spec.user).toBe("33:33");
+  expect(helper.spec.usernsMode).toBe("keep-id:uid=33,gid=33");
+  expect(helper.spec.entrypoint).toEqual([]);
   await Effect.runPromise(removeSqliteHelperScratch(helper.scratchHost));
 });
 

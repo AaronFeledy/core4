@@ -58,7 +58,7 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
       destroy: () =>
         Effect.sync(() => {
           calls.push("destroy");
-          return { kind: "destroyed" as const };
+          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
         }),
       removeObservedService: () =>
         Effect.sync(() => {
@@ -68,7 +68,7 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
       cleanupOwnedResources: () =>
         Effect.sync(() => {
           calls.push("owned");
-          return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: 0 };
+          return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     let evidence: AppliedTeardownEvidence;
@@ -191,7 +191,12 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
         expect(calls.indexOf("task.tree.start")).toBeGreaterThan(0);
         expect(calls.indexOf("routes")).toBeGreaterThan(calls.indexOf("task.tree.start"));
         expect(calls.at(-1)).toBe("post-global-destroy");
-        expect(events[0]).toMatchObject({ evidence: kind, purge: false, app: { kind: "global", root } });
+        expect(events[0]).toMatchObject({
+          evidence: kind,
+          volumes: false,
+          purge: false,
+          app: { kind: "global", root },
+        });
         expect(events.at(-1)).toMatchObject({ outcome: "destroyed", evidence: kind });
       }
     } finally {

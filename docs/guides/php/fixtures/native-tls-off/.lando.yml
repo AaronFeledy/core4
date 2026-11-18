@@ -1,0 +1,5 @@
+name: php-native-tls-off
+services:
+  app:
+    type: "php:8.3"
+    certs: false

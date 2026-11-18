@@ -183,6 +183,7 @@ export * from "./service-feature-validation.ts";
 export * from "./service-info.ts";
 export * from "./service-mount.ts";
 export * from "./service-probe.ts";
+export * from "./service-resolution.ts";
 export * from "./service-run-observation.ts";
 export * from "./service-shutdown.ts";
 export * from "./services/index.ts";
@@ -201,3 +202,4 @@ export {
   VolumeInitializationPhase,
   VolumeInitializationRecord,
 } from "./volume-initialization.ts";
+export * from "./volume-removal.ts";

@@ -66,6 +66,8 @@ export const providerMemberPolicy = {
   execStream: ["app-output", "stream"],
   run: ["owner-output", "effect"],
   runStream: ["owner-output", "stream"],
+  exportVolume: ["artifact-bytes", "stream"],
+  importVolume: ["lifecycle", "effect"],
   logs: ["app-output", "stream"],
   inspect: ["metadata", "effect"],
   list: ["metadata", "effect"],

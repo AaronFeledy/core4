@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppPlanner, LandofileService } from "@lando/core/services";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import type { LoadScopedLandofile } from "@lando/sdk/schema";
 import { Effect } from "effect";
@@ -112,6 +113,8 @@ const providerCapabilities = {
   routeProvider: true,
   tlsCertificates: "lando" as const,
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "native" as const,
@@ -153,6 +156,7 @@ const planLandofile = (landofile: LoadScopedLandofile) =>
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
+      Effect.provide(BunFileSystem.layer),
     ),
   );
 

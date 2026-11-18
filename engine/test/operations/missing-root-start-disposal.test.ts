@@ -65,7 +65,7 @@ test.each([
       const provider = yield* registry.select(acceleratedPlan);
       const { fileSyncTargets: _targets, ...genericCapabilities } = provider.capabilities;
       const fs = yield* FileSystem;
-      yield* destroyAppAtRoot(app.root, {
+      const receipt = yield* destroyAppAtRoot(app.root, {
         volumes: volumes !== false,
         yes: true,
       }).pipe(
@@ -115,7 +115,7 @@ test.each([
             }),
         }),
       );
-      return { journal: yield* bucket.get };
+      return { journal: yield* bucket.get, receipt };
     }).pipe(Effect.provide(Layer.merge(harness.layer, BunFileSystem.layer)), Effect.result),
   );
   if (typeof volumes === "string" && volumes !== "journal-only") {
@@ -133,7 +133,13 @@ test.each([
       });
   } else {
     expect(result._tag).toBe("Success");
-    if (result._tag === "Success") expect(result.success.journal === null).toBe(volumes !== false);
+    if (result._tag === "Success") {
+      expect(result.success.journal === null).toBe(volumes !== false);
+      expect(result.success.receipt).toMatchObject({
+        dataVolumesRemoved: volumes !== false,
+        cacheVolumesRemoved: false,
+      });
+    }
     expect(harness.calls).toEqual(
       volumes === "journal-only" ? ["terminate:old"] : ["terminate:old", `destroy:${volumes}`],
     );

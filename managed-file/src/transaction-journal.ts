@@ -165,7 +165,6 @@ export const openJournal = Effect.fnUntraced(function* (
   const acquireLock = Effect.fn("ManagedFileJournal.acquireLock")(function* (phase: "prepare" | "recover") {
     const { lock } = yield* Effect.acquireRelease(
       acquireAdvisoryLockAt(join(dir, "transaction.lock"), "transaction", {
-        expireLiveOwner: false,
         privateFileAccess,
       }).pipe(
         Effect.map((file) => ({ file, lock: new HeldTransactionLock(dir) })),
@@ -213,7 +212,6 @@ export const openJournal = Effect.fnUntraced(function* (
     if (removed) yield* transactionIO("cleanup", () => syncDirectory(dir));
   }, Effect.uninterruptible);
   return {
-    directory: dir,
     path: bucket.path,
     read,
     acquireLock,

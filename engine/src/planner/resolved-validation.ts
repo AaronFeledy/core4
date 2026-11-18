@@ -1,3 +1,4 @@
+import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { type NormalizedRoute, normalizeRoute } from "@lando/landofile/route-normalize";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import {
@@ -23,14 +24,21 @@ import { httpsAlternative, httpsRouteCoverageGap } from "./route-coverage.ts";
 
 export type PlannerIssue = ValidationIssue & { readonly rule: ConfigLintRuleId };
 
-export const attributePlannerIssue = (landofile: LandofileShape, issue: PlannerIssue): PlannerIssue => {
-  const source = getLandofileValueSource(landofile, issue.path);
+export const attributePlannerIssue = (
+  provenance: LandofileProvenance | undefined,
+  issue: PlannerIssue,
+): PlannerIssue => {
+  // A producer that already knows the physical source (for example a service type's project
+  // file) is more specific than the Landofile value origin for the issue's destination path.
+  if (issue.source !== undefined) return issue;
+  const source = getLandofileValueSource(provenance, issue.path);
   return { ...issue, ...(source === undefined ? {} : { source }) };
 };
 
 /** Validate authored fields only after every available planner scope has materialized. */
 export const validateResolvedLandofile = (input: {
   readonly landofile: LandofileShape;
+  readonly provenance?: LandofileProvenance | undefined;
   readonly landofilePath: string;
   readonly blocked: ReadonlySet<string>;
   readonly appSlug?: string;
@@ -71,7 +79,7 @@ export const validateResolvedLandofile = (input: {
     const normalized: NormalizedRoute[] = [];
     for (const [index, entry] of (entries ?? []).entries()) {
       const path = [...prefix, index];
-      const source = getLandofileValueSource(landofile, path);
+      const source = getLandofileValueSource(input.provenance, path);
       const result = normalizeRoute(entry, {
         path,
         file: source?.file ?? input.landofilePath,
@@ -218,7 +226,7 @@ export const validateResolvedLandofile = (input: {
           break;
       }
       if (role === "readiness" && healthcheck.target === "host" && typeof healthcheck.command === "string") {
-        issues.push(...hostReadinessShellIssues(landofile, name, healthcheck.command, isBlocked));
+        issues.push(...hostReadinessShellIssues(input.provenance, name, healthcheck.command, isBlocked));
       }
     }
   }
@@ -236,5 +244,5 @@ export const validateResolvedLandofile = (input: {
       });
     }
   }
-  return { routes, issues: issues.map((issue) => attributePlannerIssue(landofile, issue)) };
+  return { routes, issues: issues.map((issue) => attributePlannerIssue(input.provenance, issue)) };
 };

@@ -58,6 +58,15 @@ describe("provider-podman capabilities", () => {
     expect(linuxPodmanCapabilities.rootless).toBe(true);
   });
 
+  test("maps a project user by keep-id when rootless and by image renumbering when rootful", () => {
+    expect(linuxPodmanCapabilities.projectUserMapping).toBe("userns-keep-id");
+    expect(linuxPodmanCapabilities.bindOwnership).toBe("root-is-host-user");
+    const rootful = podmanCapabilitiesForPlatform("linux", [], false);
+    expect(rootful.projectUserMapping).toBe("image-renumber");
+    expect(rootful.bindOwnership).toBe("host-ids");
+    expect(podmanCapabilitiesForPlatform("darwin", [], false).projectUserMapping).toBe("unsupported");
+  });
+
   test("declares slow bind-mount performance on macOS and Windows (VM-mediated)", () => {
     expect(macosPodmanCapabilities.bindMountPerformance).toBe("slow");
     expect(windowsPodmanCapabilities.bindMountPerformance).toBe("slow");

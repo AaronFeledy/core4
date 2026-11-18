@@ -12,6 +12,7 @@ import {
 import { type AppliedOrphanGroup, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
+import { shellArg } from "../services/shell-quote.ts";
 import { pendingStartDisposal, readDiscardableStart } from "./accelerated-start-disposal.ts";
 import type { TeardownResolution } from "./applied-state-target.ts";
 import { ownedSnapshots } from "./destroy-snapshots.ts";
@@ -54,6 +55,7 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
     readonly desired: Effect.Effect<ResolvedAppTarget | undefined, E, R>;
     readonly snapshotRoots?: ReadonlyArray<AbsolutePath>;
     readonly missingRoot?: boolean;
+    readonly retryCommand?: string;
   },
 ) {
   let applied: ResolvedAppTarget | undefined;
@@ -121,6 +123,7 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
     request.missingRoot === true && first?.pending != null
       ? yield* prepareMissingRootStartDisposal(first.app, first.pending, {
           volumes: options.volumes === true,
+          retryCommand: request.retryCommand ?? `lando destroy --root ${shellArg(root)}`,
         })
       : undefined;
   if (first !== undefined && missingStart === undefined) {

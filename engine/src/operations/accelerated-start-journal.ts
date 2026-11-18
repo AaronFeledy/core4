@@ -14,7 +14,8 @@ import {
   pendingStartTransitions,
   sameStartIdentity,
 } from "./accelerated-start-record.ts";
-import { appRootIdentityKey, canonicalAppRoot } from "./app-root-identity.ts";
+import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
+import { appRootIdentityKey } from "./app-root-identity.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 
 const journalError = (message: string, cause?: unknown, journalPath = "accelerated-starts") =>
@@ -25,12 +26,12 @@ const journalError = (message: string, cause?: unknown, journalPath = "accelerat
     ...(cause === undefined ? {} : { cause }),
   });
 const journalRoot = (root: string) =>
-  canonicalAppRoot(root).pipe(
+  canonicalMissingAppRoot(root).pipe(
     mapFailures((cause) => journalError("The app root cannot be verified.", cause)),
   );
 
 export const openJournal = (app: AppRef) =>
-  canonicalAppRoot(String(app.root)).pipe(
+  journalRoot(String(app.root)).pipe(
     Effect.flatMap((canonicalRoot) =>
       StateStore.pipe(
         Effect.flatMap((store) =>

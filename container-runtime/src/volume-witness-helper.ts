@@ -1,4 +1,6 @@
-export const VOLUME_WITNESS_FILE = ".lando-volume-witness.json";
+import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_STAGE_PREFIX } from "./volume-archive-reserved.ts";
+
+export { VOLUME_WITNESS_FILE };
 export const VOLUME_WITNESS_MOUNT = "/lando-data";
 
 // Runs inside the scoped helper, not the host. Directory/file descriptors prevent
@@ -30,7 +32,7 @@ try {
   } catch (error) { fs.closeSync(rootFd); throw error; }
   try {
     const root = descriptor(rootFd);
-    const witnessPath = root + "/.lando-volume-witness.json";
+    const witnessPath = root + "/${VOLUME_WITNESS_FILE}";
     const read = () => {
       let fd;
       try { fd = fs.openSync(witnessPath, C.O_RDONLY | C.O_NOFOLLOW | C.O_NONBLOCK); }
@@ -51,7 +53,7 @@ try {
       const candidate = { version: 1, generation: input.generation, ownerRoot: input.ownerRoot };
       if (!valid(candidate) || Buffer.byteLength(JSON.stringify(candidate), "utf8") > 8192) fail();
       process.umask(63);
-      const stage = fs.mkdtempSync(root + "/.lando-witness-stage-");
+      const stage = fs.mkdtempSync(root + "/${VOLUME_WITNESS_STAGE_PREFIX}");
       const stageFd = fs.openSync(stage, C.O_RDONLY | C.O_DIRECTORY | C.O_NOFOLLOW);
       const staged = descriptor(stageFd) + "/record";
       try {

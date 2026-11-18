@@ -214,8 +214,16 @@ describe("API-4 service lowering", () => {
       { _tag: "published", protocol: "tcp", port: 80, publication: {} },
     ]);
     expect(result.patch.ports ?? []).toEqual([]);
+    expect(result.patch.certs).toBe(true);
     expect(paths(result, "rewritten")).toEqual([path("ports")]);
   });
+  test.each([false, "custom.crt", { cert: "custom.crt", key: "custom.key" }] as const)(
+    "keeps an authored certs value (%j) over a translated HTTPS publication",
+    (certs) => {
+      const result = lowerApi4Service({ certs, ports: ["8443/https"] }, ctx);
+      expect(result.patch.certs).toEqual(certs);
+    },
+  );
   test("converts healthcheck timing and preserves its user", () => {
     const result = lowerApi4Service(
       { healthcheck: { command: "true", user: "root", retry: 100, delay: 1000 } },

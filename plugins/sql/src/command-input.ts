@@ -1,4 +1,5 @@
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { planCredentialClassification } from "@lando/redaction/plan-values";
 import { CommandInputValidationError, CommandStdioError } from "@lando/sdk/errors";
 import type { ExecutableCommandInput } from "@lando/sdk/plugins";
 import type { EnvironmentValue } from "@lando/sdk/schema";
@@ -6,7 +7,6 @@ import { isUsableExactRedactionValue } from "@lando/sdk/secrets";
 import { Effect, Match, type Stream } from "effect";
 import type { DbAction, DbCommandInput } from "./command-types.ts";
 import { type DumpCompression, compressionFromExportPath } from "./compression.ts";
-import { classifySqlPlan } from "./environment.ts";
 
 import type { SqlPlan } from "./views.ts";
 
@@ -93,7 +93,7 @@ export const secretTokens = (
   plan: SqlPlan,
 ): string[] => {
   // Result tokens are substring-only; never promote whole-token or public values.
-  const classified = classifySqlPlan(plan);
+  const classified = planCredentialClassification(plan);
   const tokens: string[] = [];
   for (const value of [creds.password, creds.rootPassword]) {
     if (typeof value !== "string" || value.length === 0) continue;

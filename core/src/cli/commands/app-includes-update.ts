@@ -96,14 +96,18 @@ export const appIncludesUpdate = Effect.fn("AppIncludesUpdate.update")(function*
   const { prepared, runtime } = root;
   const loadScope = {
     ...(yield* buildLandofileLoadScope(
-      prepared.map(({ layer, landofile }) => ({ file: layer.filePath, value: landofile })),
+      prepared.map(({ layer, landofile }) => ({
+        file: layer.filePath,
+        value: landofile.value,
+        provenance: landofile.provenance,
+      })),
       runtime.compilationContext?.env,
       runtime.pendingSites,
     )),
     recorder: runtime.recorder,
   };
   for (const { landofile: overlay } of prepared) {
-    const landofile = includeAcquisitionView(overlay);
+    const landofile = includeAcquisitionView(overlay.value);
     includes.push(...(landofile.includes ?? []));
     composeIncludes.push(...(landofile.include ?? []));
   }

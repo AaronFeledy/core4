@@ -79,6 +79,40 @@ export const collectStdoutBytes = <E, R>(
 
 export const cloneBytes = (payload: Uint8Array): Uint8Array => new Uint8Array(payload);
 
+/**
+ * The bytes of one regular `payload` member in an uncompressed ustar archive.
+ * Test doubles use it to mirror what a real extractor places on disk without
+ * implementing a general tar reader.
+ */
+export const tarPayloadMember = (archive: Uint8Array): Uint8Array | undefined => {
+  const decoder = new TextDecoder();
+  let offset = 0;
+  const field = (start: number, length: number): string => {
+    const bytes = archive.subarray(offset + start, offset + start + length);
+    const end = bytes.indexOf(0);
+    return decoder.decode(end === -1 ? bytes : bytes.subarray(0, end));
+  };
+  while (offset + 512 <= archive.byteLength) {
+    const block = archive.subarray(offset, offset + 512);
+    if (block.every((byte) => byte === 0)) return undefined;
+    const name = field(0, 100);
+    const prefix = field(345, 155);
+    const sizeText = field(124, 12).trim();
+    const size = sizeText.length === 0 ? 0 : Number.parseInt(sizeText, 8);
+    if (!Number.isSafeInteger(size) || size < 0) return undefined;
+    const typeflag = block[156] ?? 0;
+    const start = offset + 512;
+    const end = start + size;
+    if (end > archive.byteLength) return undefined;
+    const normalized = (prefix.length === 0 ? name : `${prefix}/${name}`).replace(/^\.\//u, "");
+    if (normalized === "payload" && (typeflag === 0 || typeflag === 0x30)) {
+      return archive.slice(start, end);
+    }
+    offset = start + Math.ceil(size / 512) * 512;
+  }
+  return undefined;
+};
+
 export const bytesEqual = (left: Uint8Array, right: Uint8Array): boolean => {
   if (left.byteLength !== right.byteLength) return false;
   return left.every((byte, index) => byte === right[index]);
@@ -105,6 +139,7 @@ export const testCapabilities: ProviderCapabilities = {
   copyMounts: true,
   copyOnWriteAppRoot: false,
   volumeSnapshot: "native",
+  volumeArchive: true,
   serviceFileCopy: "exec",
   artifactExport: true,
   artifactImport: true,
@@ -113,6 +148,8 @@ export const testCapabilities: ProviderCapabilities = {
   routeProvider: false,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported",
+  bindOwnership: "unknown",
   privilegedServices: false,
   architectureEmulation: true,
   composeSpec: "native",
@@ -208,6 +245,7 @@ export const OPTIONAL_CAPABILITY_KEYS = new Set<keyof typeof ProviderCapabilitie
   "composeServiceFields",
   "fileSyncTargets",
   "hostProxy",
+  "volumeArchive",
 ]);
 export const REQUIRED_CAPABILITY_KEYS = CAPABILITY_KEYS.filter((key) => !OPTIONAL_CAPABILITY_KEYS.has(key));
 

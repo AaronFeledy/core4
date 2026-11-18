@@ -80,7 +80,7 @@ const remainingDataVolumesForRoot = Effect.fnUntraced(function* (root: AbsoluteP
 /**
  * Clear the folder's data-identity record only with complete evidence that root data volumes are
  * removed or already absent: `--volumes` requested, no skipped cleanup resources, and no provider
- * still holding data for the root. Never trusts `volumesRemoved` booleans. Plain/cache-only destroy
+ * still holding data for the root. Never trusts the removal booleans. Plain/cache-only destroy
  * and incomplete observation keep the record. Scratch/global never write.
  */
 export const clearAppDataIdentityWhenComplete = Effect.fn("AppDataIdentity.clearWhenComplete")(function* (

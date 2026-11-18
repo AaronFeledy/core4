@@ -3,7 +3,7 @@ import { internalErrorRemediation } from "@lando/sdk/command-result";
 export const runtimeRemediation =
   "Run `lando doctor` to check the container runtime, then retry the command.";
 
-export type SocketHttpErrorKind = "connect" | "write" | "read" | "parse" | "http";
+export type SocketHttpErrorKind = "connect" | "write" | "read" | "parse" | "http" | "stdin";
 export type SocketReadSystemCode = "ECONNABORTED" | "ECONNRESET" | "EPIPE" | "ETIMEDOUT";
 
 const remediationByKind = {
@@ -11,6 +11,7 @@ const remediationByKind = {
   write: runtimeRemediation,
   read: runtimeRemediation,
   http: runtimeRemediation,
+  stdin: runtimeRemediation,
   parse: internalErrorRemediation,
 } satisfies Readonly<Record<SocketHttpErrorKind, string>>;
 

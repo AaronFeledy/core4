@@ -55,7 +55,7 @@ lando mariadb -e 'SELECT 1 AS ok;'
 | `web` | `nginx`, `backend: appserver`, webroot `.`, HTTP and HTTPS routes, not primary |
 | `appserver` | `php:8.4`, `framework: none`, `via: fpm`, webroot `.`, primary, depends on `database` |
 | `database` | `type: mariadb` (MariaDB 11.4) |
-| Tooling | `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
+| Tooling | `lando composer`, `lando create-project <package> [<version>] [--no-scripts]`, and `lando php` on `appserver`, plus `lando mariadb` from the database service. [Run a Craft CMS site on the LAMP recipe](./craft-workflow.mdx) shows `create-project` installing a project. |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` when you want PHP 8.2 instead.
 

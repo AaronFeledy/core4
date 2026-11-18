@@ -73,6 +73,22 @@ const throughDecompression = <E, R>(
     ),
   );
 
+/** Compress an archive stream, preserving the source failure identity. */
+export const encodeCompressionStream = <E, R>(
+  source: Stream.Stream<Uint8Array, E, R>,
+  format: Exclude<ArchiveStreamFormat, "tar">,
+  path: string,
+): Stream.Stream<Uint8Array, E | ArchiveFormatError, R> =>
+  preserveSourceFailure(source, (body) => throughCompression(body, format, path));
+
+/** Decompress an archive stream, preserving the source failure identity. */
+export const decodeCompressionStream = <E, R>(
+  source: Stream.Stream<Uint8Array, E, R>,
+  format: Exclude<ArchiveStreamFormat, "tar">,
+  path: string,
+): Stream.Stream<Uint8Array, E | ArchiveFormatError, R> =>
+  preserveSourceFailure(source, (body) => throughDecompression(body, format, path));
+
 export const encodeArchiveStream = <E, R>(input: {
   readonly body: Stream.Stream<Uint8Array, E, R>;
   readonly sizeBytes: number;
@@ -92,11 +108,7 @@ export const encodeArchiveStream = <E, R>(input: {
     Stream.make(header),
     Stream.concat(input.body, Stream.make(new Uint8Array(padding + blockSize * 2))),
   );
-  return input.format === "tar"
-    ? tar
-    : preserveSourceFailure(tar, (body) =>
-        throughCompression(body, input.format === "tar.gz" ? "tar.gz" : "tar.zst", input.path),
-      );
+  return input.format === "tar" ? tar : encodeCompressionStream(tar, input.format, input.path);
 };
 
 const append = (left: Uint8Array, right: Uint8Array): Uint8Array => {
@@ -115,7 +127,10 @@ const tarPayload = async function* (
 ): AsyncGenerator<Uint8Array> {
   let buffered: Uint8Array<ArrayBufferLike> = new Uint8Array();
   let remaining: number | undefined;
+  let payloadComplete = false;
   for await (const chunk of source) {
+    // Keep consuming to EOF after the payload so a decompressor trailer failure surfaces.
+    if (payloadComplete) continue;
     buffered = append(buffered, chunk);
     if (remaining === undefined) {
       if (buffered.byteLength < blockSize) continue;
@@ -128,14 +143,20 @@ const tarPayload = async function* (
         throw archiveError(format, path, `Archive payload size exceeded ${maxPayloadBytes} bytes.`);
       }
       buffered = buffered.subarray(blockSize);
-      if (remaining === 0) return;
+      if (remaining === 0) {
+        payloadComplete = true;
+        buffered = new Uint8Array();
+      }
     }
     if (remaining > 0 && buffered.byteLength > 0) {
       const count = Math.min(remaining, buffered.byteLength);
       yield buffered.subarray(0, count);
       buffered = buffered.subarray(count);
       remaining -= count;
-      if (remaining === 0) return;
+      if (remaining === 0) {
+        payloadComplete = true;
+        buffered = new Uint8Array();
+      }
     }
   }
   if (remaining === undefined)

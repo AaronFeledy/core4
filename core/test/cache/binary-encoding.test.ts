@@ -32,6 +32,7 @@ const appCommandPayload = {
   landoVersion: "0.0.0",
   appName: "fixture-app",
   sourceFile: "/workspace/fixture-app/.lando.yml",
+  sourceProjectFiles: [],
   sourceEnvironment: {
     _tag: "Names" as const,
     names: [],
@@ -116,8 +117,9 @@ describe("binary cache encoding policy", () => {
       name: "app-command",
       magic: APP_COMMAND_MAGIC,
       version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "app-command-v13.bin",
+      fixture: "app-command-v14.bin",
       previousFixtures: [
+        "app-command-v13.bin",
         "app-command-v12.bin",
         "app-command-v11.bin",
         "app-command-v9.bin",

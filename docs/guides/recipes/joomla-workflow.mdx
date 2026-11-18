@@ -58,14 +58,7 @@ unset JOOMLA_ADMIN_PASSWORD
 
 Match `--db-name` to the app name (here `joomla-demo`). `--db-type=mysqli` uses Joomla's default MySQLi driver. Stock PHP services already ship mysqli, so no extra build step is needed.
 
-The download and the installer ran as root. Give the web user only the directories Joomla writes to, so your editor keeps the code:
-
-```sh
-lando exec appserver -- chown -R www-data:www-data \
-  /app/administrator/cache /app/administrator/logs /app/cache /app/images /app/tmp
-```
-
-Add `/app/configuration.php` to that list if you save Global Configuration from the admin. Don't chown all of `/app`. That reowns the app root, `.lando.yml`, and your code, so your editor and host `lando` commands lose write access.
+On Linux with the default managed provider, the download, installer, and PHP web workers use `www-data`, mapped to your host user. If Joomla reports a directory it cannot write on another platform or provider, see [Who owns your app files](../services/file-ownership.mdx).
 
 Then confirm the day-to-day tools:
 

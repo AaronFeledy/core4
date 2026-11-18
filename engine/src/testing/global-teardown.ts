@@ -169,7 +169,7 @@ export const globalTeardownHarness = async (
         calls.push("destroy");
         destroyOptions.push(options);
         if (target.plan !== undefined) destroyed.push(target.plan);
-        return input.destroyOutcome ?? { kind: "destroyed" as const };
+        return input.destroyOutcome ?? { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     removeObservedService: Effect.fnUntraced(function* (service: ServiceRuntimeInfo) {
       calls.push("removeObservedService");

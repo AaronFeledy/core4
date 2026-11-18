@@ -20,12 +20,7 @@ import {
   landoAppNetworkName,
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
-import {
-  BuildOrchestrator,
-  CertificateAuthority,
-  PathsService,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
+import { CertificateAuthority, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TEST_CERTIFICATES } from "@lando/sdk/test";
 import { Effect, Layer, Redacted, Result } from "effect";
 
@@ -107,6 +102,7 @@ const restartAfterIssuing = async (rootAfterStart: "kept" | "rotated") => {
 
     const mutations: string[] = [];
     let running = true;
+    let containerId = "retained-container";
     const privateNetworkName = landoAppNetworkName(applied);
     const sharedNetworkName = landoSharedNetworkName(applied);
     if (privateNetworkName === undefined || sharedNetworkName === undefined)
@@ -132,16 +128,22 @@ const restartAfterIssuing = async (rootAfterStart: "kept" | "rotated") => {
             request.path === `/networks/${encodeURIComponent(sharedNetworkName)}`
           )
             return { status: 200, body: "{}" };
+          if (request.method === "GET" && request.path.startsWith("/containers/json"))
+            return { status: 200, body: "[]" };
           if (request.method === "GET" && request.path.endsWith("/json"))
             return {
               status: 200,
               body: JSON.stringify({
-                Id: "retained-container",
+                Id: containerId,
                 Config: { Labels: labels },
                 State: { Running: running },
                 Mounts: [],
               }),
             };
+          if (request.method === "POST" && request.path.startsWith("/containers/create")) {
+            containerId = "recreated-container";
+            return { status: 201, body: "{}" };
+          }
           if (request.path.endsWith("/start")) running = true;
           return { status: 204, body: "" };
         }),
@@ -162,7 +164,7 @@ const restartAfterIssuing = async (rootAfterStart: "kept" | "rotated") => {
           ...options,
           api,
           ctx,
-          ensureImage: () => Effect.die("restart must not pull"),
+          ensureImage: () => Effect.void,
           resolveServiceEnvironment: () => Effect.succeed({}),
         });
       },
@@ -179,15 +181,11 @@ const restartAfterIssuing = async (rootAfterStart: "kept" | "rotated") => {
           ...harness.runtimeProviderRegistry,
           resolveAppliedPlan: () => Effect.succeed(applied),
         }),
-        Effect.provideService(BuildOrchestrator, {
-          build: () => Effect.die("restart must not build"),
-          buildApp: () => Effect.die("restart must not build app"),
-        }),
         Effect.provide(certificates),
         Effect.provide(harness.layer),
       ),
     );
-    return { outcome, mutations };
+    return { outcome, mutations, containerId };
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -199,11 +197,9 @@ test("selected restart keeps a container whose certificate material is unchanged
   expect(mutations).toEqual(["stop", "apply"]);
 });
 
-test("selected restart rejects changed certificate material before any service stops", async () => {
-  const { outcome, mutations } = await restartAfterIssuing("rotated");
-  expect(Result.isFailure(outcome) ? outcome.failure : undefined).toMatchObject({
-    _tag: "ServiceRestartWouldRecreateError",
-    reason: "config",
-  });
-  expect(mutations).toEqual([]);
+test("selected restart replaces a container whose certificate material rotated", async () => {
+  const { outcome, mutations, containerId } = await restartAfterIssuing("rotated");
+  expect(Result.isSuccess(outcome)).toBe(true);
+  expect(mutations).toEqual(["stop", "apply"]);
+  expect(containerId).toBe("recreated-container");
 });

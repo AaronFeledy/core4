@@ -86,6 +86,8 @@ const capabilities: ProviderCapabilities = {
   routeProvider: false,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
@@ -278,7 +280,7 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
       Effect.sync(() => {
         lifecycleOrder.push("destroy");
         destroyCalls.push({ target, options });
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     inspect: (target) =>
       Effect.succeed({
@@ -381,7 +383,7 @@ const makeCachedBuildLayer = () => {
       Effect.sync(() => {
         containerGeneration += 1;
         applied = undefined;
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     inspect: (target) =>
       Effect.succeed({
@@ -489,14 +491,14 @@ describe("lando rebuild", () => {
       {
         reconcile: true,
         services: ["database", "api"],
-        recordedServices: ["api", "database", "dependent", "unrelated"],
+        recordedServices: ["database", "api"],
       },
     ]);
     expect(harness.recordedPlans[0]?.services[api.name]?.artifact).toEqual({
       kind: "ref",
       ref: "api:new-built-artifact",
     });
-    expect(harness.recordedPlans[0]?.services[unrelated.name]).toEqual(unrelated);
+    expect(harness.recordedPlans[0]?.routes).toEqual(scopedPlan.routes);
     expect(harness.buildAppCalls).toEqual([{ force: true, services: ["database", "api"] }]);
     expect(result.servicesRebuilt).toEqual(["database", "api"]);
   });

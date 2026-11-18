@@ -1,6 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { parseEnvFile } from "@lando/landofile/env-file";
 import { attributeEffectiveLintIssue } from "@lando/landofile/lint";
+import { provenanceOf } from "@lando/landofile/provenance";
 import type { ConfigLintViolation, LoadScopedLandofile } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
 import { Cache, type Context, Effect, Result } from "effect";
@@ -17,7 +18,7 @@ export const snapshotLintFileSystem = Effect.fnUntraced(function* (
 });
 
 export const lintEnvFiles = Effect.fnUntraced(function* (
-  compiled: Pick<LoadScopedLandofile, "document" | "pendingSites">,
+  compiled: Pick<LoadScopedLandofile, "document" | "pendingSites" | "provenance">,
   file: string,
   fileSystem: Context.Service.Shape<typeof FileSystem> | undefined,
   authored: LoadScopedLandofile["document"],
@@ -31,6 +32,7 @@ export const lintEnvFiles = Effect.fnUntraced(function* (
     })),
   ];
   const findings: ConfigLintViolation[] = [];
+  const provenance = provenanceOf(compiled);
   for (const ref of refs) {
     for (const [index, authoredPath] of ref.files.entries()) {
       const path = [...ref.path, index];
@@ -43,11 +45,11 @@ export const lintEnvFiles = Effect.fnUntraced(function* (
       )
         continue;
       const source = resolve(dirname(file), authoredPath);
-      const attributed = attributeEffectiveLintIssue(authored, {
-        rule: "env-file.read",
-        path,
-        message: "",
-      });
+      const attributed = attributeEffectiveLintIssue(
+        authored,
+        { rule: "env-file.read", path, message: "" },
+        provenance,
+      );
       const content =
         fileSystem === undefined ? undefined : yield* fileSystem.readText(source).pipe(Effect.result);
       if (content === undefined || Result.isFailure(content)) {

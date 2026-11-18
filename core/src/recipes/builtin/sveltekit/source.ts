@@ -28,10 +28,9 @@ export const source = {
       svelte: {
         service: "web",
         description: "Run the Svelte CLI inside the web service.",
-        cmds: ["npx svelte-kit"],
+        cmd: [":node-local", "svelte-kit"],
         wrapper: true,
       },
-      npm: { service: "web", description: "Run npm inside the web service.", cmds: ["npm"], wrapper: true },
     },
   },
   variants: [optionalWebDatabase],

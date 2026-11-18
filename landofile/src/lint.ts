@@ -21,8 +21,8 @@ import { prepareIncludeAcquisition } from "./load-acquisition.ts";
 import type { DeferredLoadRefusal } from "./load-failures.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
-import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs, TemplateEngineInputs } from "./ports.ts";
+import type { AuthoredDocument, SourceDocument } from "./provenance.ts";
 import { inspectLandofileRootLayers } from "./root-compile.ts";
 import { findDiscoveredLandofilePath } from "./service.ts";
 import { prepareLandofileValue } from "./source.ts";
@@ -71,11 +71,13 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   const templates = options.templates ?? inputs?.templates;
   const { filePath: file } = yield* findDiscoveredLandofilePath(options.cwd);
   let documents: readonly SourceDocument[] = [];
+  let knownDocuments: ReadonlySet<SourceDocument> = new Set();
   let scope: "fragment" | "effective" = "fragment";
   const violations: ConfigLintViolation[] = [];
   let recordedFailures: readonly LandofileLoadFailure[] = [];
   let deferredRefusals: readonly DeferredLoadRefusal[] = [];
   let composed: unknown;
+  let assembled: AuthoredDocument | undefined;
   const finalized = yield* Effect.gen(function* () {
     const acquired = yield* inspectLandofileRootLayers(
       dirname(file),
@@ -123,11 +125,12 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
         ...(inputs === undefined ? {} : { inputs }),
       },
     );
-    composed = merged;
+    composed = merged.value;
     const roots = new Set(documents.map((document) => document.file));
-    const retained = getSourceDocuments(merged);
+    const retained = merged.provenance.documents;
     violations.push(...retained.filter((document) => !roots.has(document.file)).flatMap(fragmentIssues));
     documents = retained;
+    knownDocuments = new Set(documents);
     const effective = yield* finalizeLandofile(file, merged, {
       scope: loadScope,
       appRoot: dirname(file),
@@ -135,16 +138,18 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       pendingSites: acquired.runtime.pendingSites,
       loadPolicy: acquired.runtime.policy,
       logger: acquired.runtime.logger,
+      onAssembled: (document) => {
+        assembled = document;
+      },
       ...(templates?.context?.env === undefined ? {} : { env: templates.context.env }),
     }).pipe(Effect.result);
-    const knownDocuments = new Set(documents);
-    const finalizedDocuments = getSourceDocuments(merged);
+    const finalizedDocuments = merged.provenance.documents;
     violations.push(
       ...finalizedDocuments.filter((document) => !knownDocuments.has(document)).flatMap(fragmentIssues),
     );
     documents = finalizedDocuments;
     if (Result.isFailure(effective)) return yield* Effect.fail(effective.failure);
-    violations.push(...healthcheckWarnings(merged, documents), ...routerBindWarnings(merged, documents));
+    violations.push(...healthcheckWarnings(merged), ...routerBindWarnings(merged));
     for (const [name, service] of Object.entries(effective.success.document.services ?? {})) {
       for (const role of ["healthcheck", "readiness"] as const) {
         const probe = service[role];
@@ -174,14 +179,24 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       finalized.failure._tag === "LandofileLoadError"
         ? landofileLoadFailures(finalized.failure)
         : [finalized.failure];
-    if (deferredRefusals.length > 0 || errors.some((error) => isToolingRefusal(composed, violations, error)))
-      violations.push(...unreportedToolingRefusals(composed, violations, documents));
+    // A refused root stops finalization before the composed value exists; the assembled
+    // document still holds the tooling tasks the include contributed.
+    const assembledValue = assembled?.value ?? composed;
+    const assembledDocuments = assembled?.provenance.documents ?? documents;
+    violations.push(
+      ...assembledDocuments.filter((document) => !knownDocuments.has(document)).flatMap(fragmentIssues),
+    );
+    if (
+      deferredRefusals.length > 0 ||
+      errors.some((error) => isToolingRefusal(assembledValue, violations, error))
+    )
+      violations.push(...unreportedToolingRefusals(assembledValue, violations, assembledDocuments));
     for (const error of errors) {
       // A rejected Compose key or refused tooling key already has a located finding; a pathless copy only repeats it.
       const reportedRejection =
         (error._tag === "ComposeKeyRejectedError" &&
           violations.some((violation) => violation.rule === "landofile.compose-rejection")) ||
-        isToolingRefusal(composed, violations, error) ||
+        isToolingRefusal(assembledValue, violations, error) ||
         deferredRefusals.some((refusal) => refusal.error === error);
       if (error._tag === "LandofileValidationError")
         violations.push(

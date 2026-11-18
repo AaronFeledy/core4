@@ -144,7 +144,7 @@ const makeProvider = (
     stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => Effect.succeed({ kind: "destroyed" as const }),
+    destroy: () => Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
     readAppEnvironment: () => Effect.succeed([]),
     exec: (target, spec) => {
@@ -214,6 +214,8 @@ const makeProvider = (
     removeVolume: () => Effect.void,
     copyToService: () => Effect.die("not used"),
     copyFromService: () => Stream.empty,
+    exportVolume: () => Stream.empty,
+    importVolume: () => Effect.void,
     exportArtifact: () => Stream.empty,
     importArtifact: () => Effect.die("not used"),
   };

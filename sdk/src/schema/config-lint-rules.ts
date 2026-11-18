@@ -107,6 +107,13 @@ export const CONFIG_LINT_RULES = {
       "Service `networks:` keys are declared at the top level, no `networks.default`, `name` only with `external: true`, no `driver` on an external network, and valid keys.",
     examplePaths: ["services.web.networks.backend", "networks.backend.name"],
   },
+  "service.projectUser": {
+    stages: ["planning"],
+    severities: ["warning"],
+    summary:
+      "A project user the plan deliberately did not realize: an explicit `projectUser: false` opt-out, or a provider that cannot map one container id to the host user.",
+    examplePaths: ["services.web.projectUser"],
+  },
   "landofile.capability": {
     stages: ["resolve", "planning"],
     severities: ["error", "warning"],
@@ -161,6 +168,13 @@ export const CONFIG_LINT_RULES = {
     summary:
       "A Landofile `router.bindAddress` does not bind the shared router; the key is installation-wide.",
     examplePaths: ["router.bindAddress"],
+  },
+  "service.router-tls-termination": {
+    stages: ["resolve"],
+    severities: ["warning"],
+    summary:
+      "Generated Apache serves HTTPS routes while native TLS is off because `certs: false`, custom certificate material, or a non-root `user:`; TLS terminates at the router and an app force-HTTPS rule redirects in a loop.",
+    examplePaths: ["services.appserver.certs", "services.appserver.user"],
   },
   "healthcheck.bare-compose-marker": {
     stages: ["effective"],

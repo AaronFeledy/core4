@@ -95,7 +95,7 @@ When both streams reach your terminal, Lando erases the live tree, writes each o
     </Step>
     <Step name="cleanup-container">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 </Guide>

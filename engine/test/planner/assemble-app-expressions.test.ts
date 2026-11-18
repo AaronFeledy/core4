@@ -2,22 +2,18 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "@lando/landofile/load-expression-file";
 import { loadLandofileFile } from "@lando/landofile/service";
-import {
-  getInternalToolingTasks,
-  rememberInternalToolingTasks,
-} from "@lando/landofile/tooling-include-provenance";
 import { ConfigExpressionError } from "@lando/sdk/errors";
 import { AbsolutePath, type LoadScopedLandofile, ServiceName } from "@lando/sdk/schema";
 import { PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Result, Schema } from "effect";
-import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
+import { effectiveToolingForPlan, internalToolingNamesForPlan } from "../../src/planner/effective-tooling.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { planApp } from "../plan-app.ts";
+import { withAppRoot, withInternalToolingTasks } from "../provenance-support.ts";
 
 const serviceType: ServiceType = {
   id: "expression-database",
@@ -125,8 +121,8 @@ test("rejects a non-string result at a plan-time text site", async () => {
 test("materializes app and proxy expressions before service resolution and tooling compilation", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-app-expression-"));
   try {
-    const landofile = rememberInternalToolingTasks(
-      rememberLandofileAppRoot(
+    const landofile = withInternalToolingTasks(
+      withAppRoot(
         {
           name: "DCMS Demo",
           services: {
@@ -147,14 +143,12 @@ test("materializes app and proxy expressions before service resolution and tooli
       ["install"],
     );
     const compiled = await Effect.runPromise(compileTestLandofile(landofile, root));
-    rememberInternalToolingTasks(compiled.document, getInternalToolingTasks(landofile));
-    const app = await Effect.runPromise(plan(compiled));
+    const app = await Effect.runPromise(plan(withInternalToolingTasks(compiled, ["install"])));
     expect(app.slug).toBe("dcms-demo");
     expect(app.services[ServiceName.make("database")]?.environment.FRAMEWORK).toBe("dcms-demo");
     const tooling = effectiveToolingForPlan(app);
     expect(tooling?.install?.cmd).toBe("install dcms-demo.lndo.site");
-    if (tooling === undefined) throw new Error("Expected attached tooling");
-    expect(getInternalToolingTasks(tooling)).toEqual(["install"]);
+    expect(internalToolingNamesForPlan(app)).toEqual(["install"]);
     expect(app.extensions.compose).toMatchObject({ "x-expression": "dcms-demo.lndo.site" });
     expect(landofile.services[ServiceName.make("database")]?.framework).toBe("{{ app.name }}");
   } finally {
@@ -181,7 +175,7 @@ test("expands app.name inside Backdrop settings JSON without changing the author
         },
       });
     const deferred = settings("{{ app.name }}");
-    const landofile = rememberLandofileAppRoot(
+    const landofile = withAppRoot(
       {
         name: "Issue1077 Before",
         services: {
@@ -208,7 +202,7 @@ test("expands app.name inside Backdrop settings JSON without changing the author
 test("fails the plan with a ConfigExpressionError at the deferred value path", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-app-expression-error-"));
   try {
-    const landofile = rememberLandofileAppRoot(
+    const landofile = withAppRoot(
       {
         name: "DCMS Demo",
         services: {

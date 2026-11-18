@@ -50,6 +50,25 @@ describe("deferred proxy certificate authority", () => {
     expect(resolutions).toBe(0);
   });
 
+  test("reports the selected authority's id without resolving it", async () => {
+    // Given: selection chose an authority that has not been loaded.
+    let resolutions = 0;
+    const resolver: CertificateAuthorityResolverShape = {
+      selectedId: "mkcert",
+      resolve: Effect.suspend(() => {
+        resolutions += 1;
+        return Effect.die("the id must not need a resolved authority");
+      }),
+    };
+
+    // When
+    const authority = await Effect.runPromise(buildAuthority(resolver));
+
+    // Then: the id is the planned authority's, and nothing was loaded.
+    expect(authority.id).toBe("mkcert");
+    expect(resolutions).toBe(0);
+  });
+
   test("resolves once on first operation and delegates subsequent operations", async () => {
     // Given: a resolver with a reusable active authority.
     let resolutions = 0;

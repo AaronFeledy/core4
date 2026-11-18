@@ -54,6 +54,8 @@ export const createSecretRedactor = (
   typeof redactedInspection & {
     /** Replay pre-redacted fragments as one lexical stream, preserving fragment order. */
     readonly redactChunks: (chunks: readonly string[]) => readonly string[];
+    /** True when a value overlaps the sentinel, so redacted output can match again. */
+    readonly crossesSentinel: boolean;
   } => {
   const authoritative = [...authoritativeValues].filter((value) => value.length > 0);
   const unsafe = authoritative.filter((value) => !isUsableExactRedactionValue(value));
@@ -76,6 +78,7 @@ export const createSecretRedactor = (
       redact: (text) => text,
       redactBounded: retainWithinBytes,
       redactChunks: (chunks) => chunks,
+      crossesSentinel: false,
     };
   }
 
@@ -109,6 +112,7 @@ export const createSecretRedactor = (
 
   return {
     ...redactedInspection,
+    crossesSentinel: canCrossSentinel,
     redact: (text) =>
       containsUnsafe(text) ? REDACTED : (redactWithin(text, Number.MAX_SAFE_INTEGER) ?? REDACTED),
     redactBounded: (text, maxBytes) => {

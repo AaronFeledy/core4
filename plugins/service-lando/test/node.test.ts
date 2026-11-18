@@ -12,14 +12,13 @@ import { Result, Schema, SchemaIssue } from "effect";
 
 import {
   NODE_FEATURE_ID,
-  SUPPORTED_NODE_MAJORS,
-  SUPPORTED_NODE_VERSIONS,
   node22ServiceType,
   node24ServiceType,
   node26ServiceType,
   nodeLtsServiceType,
   nodeServiceFeature,
 } from "../src/services/node.ts";
+import { SUPPORTED_NODE_MAJORS, SUPPORTED_NODE_VERSIONS } from "../src/services/node-versions.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -88,7 +87,7 @@ describe("node:lts ServiceType", () => {
     const plan = await composeNodePlan(nodeLtsServiceType, { type: "node:lts" });
 
     expect(plan.type).toBe("node:lts");
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "node:24" });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "node:26" });
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
     expect(String(serviceAppMount(plan)?.target)).toBe("/app");

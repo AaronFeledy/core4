@@ -1,4 +1,8 @@
-import { boundedDiagnosticSummary, projectToolingDiagnostic } from "@lando/sdk/command-result";
+import {
+  boundedDiagnosticSummary,
+  projectToolingDiagnostic,
+  structuralRedaction,
+} from "@lando/sdk/command-result";
 import { ValidationIssue } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Result, Schema } from "effect";
@@ -104,8 +108,12 @@ const toolingRecord = (record: McpDiagnostic, redactor: Redactor, maxBytes: numb
   return { ...metadata, ...diagnostic, ...(source === undefined ? {} : { source }) };
 };
 
+const diagnosticsPolicy = structuralRedaction(McpDiagnostics);
+
 const encodedBytes = (value: McpDiagnostics, redactor: Redactor): number | undefined => {
-  const encoded = Effect.runSync(Effect.result(stringifyBoundedJson(value, "MCP diagnostics", redactor)));
+  const encoded = Effect.runSync(
+    Effect.result(stringifyBoundedJson(value, "MCP diagnostics", redactor, diagnosticsPolicy)),
+  );
   return Result.isSuccess(encoded) ? Buffer.byteLength(encoded.success) : undefined;
 };
 

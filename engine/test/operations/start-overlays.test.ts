@@ -10,7 +10,7 @@ import * as Ssh from "../../src/operations/start-ssh-agent.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
-for (const operation of ["start", "restart", "rebuild", "selected-rebuild"] as const) {
+for (const operation of ["start", "restart", "rebuild", "selected-restart", "selected-rebuild"] as const) {
   for (const failure of [
     "ssh-capability",
     "gpg-capability",
@@ -101,7 +101,11 @@ for (const operation of ["start", "restart", "rebuild", "selected-rebuild"] as c
             ? startApp({}, target)
             : operation === "restart"
               ? restartApp({}, target)
-              : rebuildApp(operation === "selected-rebuild" ? { services: [web.name] } : {}, target);
+              : operation === "rebuild"
+                ? rebuildApp({}, target)
+                : operation === "selected-restart"
+                  ? restartApp({ services: [web.name] }, target)
+                  : rebuildApp({ services: [web.name] }, target);
         // When the real lifecycle operation is invoked.
         const result = await Effect.runPromise(
           run.pipe(

@@ -127,6 +127,8 @@ After that, Lando retires the old applied state without removing named data or c
 
 Start refuses the switch and leaves everything in place when it can't do that safely: an unresolved file conflict, a session whose history is gone, an engine it can't reach, applied state it doesn't recognize, a failed flush, or an unfinished accelerated start recorded for a different plan. Fix the reported problem, or restore the previous settings, then run `lando start` again. An interrupted switch resumes from where it stopped.
 
+`lando restart -s` and `lando rebuild -s` don't prepare or retire sync targets. When a selected service's accelerated mount is new, changed, or removed, they refuse and tell you to run `lando start`, which prepares a new target and flushes a retired one first.
+
 ## Stop and resume the app
 
 ```sh

@@ -180,7 +180,10 @@ test("an authored apache mount replaces app-source intent at an equivalent desti
   if (!Exit.isSuccess(exit)) throw new Error("Expected planning success");
   const web = exit.value.services[ServiceName.make("web")];
   expect(serviceAppMount(web ?? { mounts: [] })).toBeUndefined();
-  expect(web?.mounts).toMatchObject([{ type: "bind", source: `${APP_ROOT}/alternate`, target: "/site" }]);
+  // The route-demanded certificate pair adds service-owned binds; app-source intent is what was replaced.
+  expect(web?.mounts.filter((mount) => mount.origin !== "service")).toMatchObject([
+    { type: "bind", source: `${APP_ROOT}/alternate`, target: "/site" },
+  ]);
   expect(web?.environment).toMatchObject({ LANDO_APP_ROOT: "/site", LANDO_PROJECT_MOUNT: "/site" });
   expect(String(web?.workingDirectory)).toBe("/site");
 });

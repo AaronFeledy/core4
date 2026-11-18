@@ -6,6 +6,12 @@ import { join } from "node:path";
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { installSupervisedExecFixture } from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
+import {
+  makeVolumeArchiveFakeState,
+  volumeArchiveFakeReadsStdin,
+  volumeArchiveFakeStart,
+  volumeArchiveFakeStdin,
+} from "@lando/container-runtime/testing/volume-archive-fake";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import type { PodmanApiClient } from "@lando/provider-podman";
 import { ServiceCopyError } from "@lando/sdk/errors";
@@ -409,10 +415,19 @@ const collectAsyncBytes = async (input: AsyncIterable<Uint8Array> | undefined): 
 
 const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) => {
   const calls: EngineHttpRequest[] = [];
-  const containers = new Map<string, { readonly body: unknown; stdout: Uint8Array; exitCode: number }>();
+  const containers = new Map<
+    string,
+    {
+      readonly body: unknown;
+      stdout: Uint8Array;
+      exitCode: number;
+      readonly stdinDone?: { readonly promise: Promise<void>; readonly resolve: () => void };
+    }
+  >();
   const volumes = new Map<string, Uint8Array>();
   const volumeLabels = new Map<string, Readonly<Record<string, string>>>();
   const snapshots = new Map<string, Uint8Array>();
+  const volumeArchive = makeVolumeArchiveFakeState(volumes);
   const serviceFiles = new Map<string, Uint8Array>();
   const artifacts = new Map<string, Uint8Array>();
   let artifactCount = 0;
@@ -423,21 +438,61 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     request: (request) =>
       Effect.promise(async (): Promise<EngineHttpResponse> => {
         calls.push(request);
+        if (
+          request.method === "GET" &&
+          request.path.startsWith("/libpod/images/") &&
+          request.path.endsWith("/json")
+        ) {
+          const ref = decodeURIComponent(request.path.slice("/libpod/images/".length, -"/json".length));
+          const at = ref.lastIndexOf("@");
+          if (at !== -1) {
+            const name = ref.slice(0, at).replace(/:[^/:]+$/u, "");
+            return {
+              status: 200,
+              body: JSON.stringify({ RepoDigests: [`${name}${ref.slice(at)}`] }),
+            };
+          }
+        }
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
-          containers.set(name, { body: request.body, stdout: new Uint8Array(), exitCode: 0 });
+          const createBody = request.body as { Cmd?: ReadonlyArray<string> } | undefined;
+          let resolveStdin: (() => void) | undefined;
+          const stdinDone = volumeArchiveFakeReadsStdin(createBody?.Cmd ?? [])
+            ? {
+                promise: new Promise<void>((resolve) => {
+                  resolveStdin = resolve;
+                }),
+                resolve: () => resolveStdin?.(),
+              }
+            : undefined;
+          containers.set(name, {
+            body: request.body,
+            stdout: new Uint8Array(),
+            exitCode: 0,
+            ...(stdinDone === undefined ? {} : { stdinDone }),
+          });
           return { status: 201, body: JSON.stringify({ Id: `${name}-id` }) };
         }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/start")) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/start".length));
           const container = containers.get(name);
           const body = container?.body as
-            | { Cmd?: ReadonlyArray<string>; HostConfig?: { Binds?: ReadonlyArray<string> } }
+            | { Cmd?: ReadonlyArray<string>; Image?: string; HostConfig?: { Binds?: ReadonlyArray<string> } }
             | undefined;
           const binds = body?.HostConfig?.Binds ?? [];
           const volume = binds[0]?.split(":")[0];
           const snapshotVolume = binds[1]?.split(":")[0];
           const command = body?.Cmd?.join(" ");
+          const helperStdout =
+            container === undefined
+              ? undefined
+              : volumeArchiveFakeStart({
+                  state: volumeArchive,
+                  command: body?.Cmd ?? [],
+                  volume,
+                  image: body?.Image,
+                });
+          if (container !== undefined && helperStdout !== undefined) container.stdout = helperStdout;
           if (container !== undefined && volume !== undefined && command === "sh -c cat /data/payload")
             container.stdout = volumes.get(volume) ?? new Uint8Array();
           if (container !== undefined && volume !== undefined && command === "tar -C /lando-data -cf - .")
@@ -480,8 +535,11 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           }
           return { status: 204, body: "" };
         }
-        if (request.path.startsWith("/containers/") && request.path.endsWith("/wait"))
+        if (request.path.startsWith("/containers/") && request.path.endsWith("/wait")) {
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/wait".length));
+          await containers.get(name)?.stdinDone?.promise;
           return { status: 200, body: JSON.stringify({ StatusCode: 0 }) };
+        }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
           return {
@@ -606,20 +664,20 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
               | { Cmd?: ReadonlyArray<string>; HostConfig?: { Binds?: ReadonlyArray<string> } }
               | undefined;
             const volume = body?.HostConfig?.Binds?.[0]?.split(":")[0];
-            if (
-              container !== undefined &&
-              volume !== undefined &&
-              body?.Cmd?.join(" ") === "sh -c cat > /data/payload"
-            ) {
-              volumes.set(volume, await collectAsyncBytes(request.stdin));
+            const stdinBytes =
+              request.stdin === undefined ? undefined : await collectAsyncBytes(request.stdin);
+            if (volume !== undefined && stdinBytes !== undefined) {
+              if (body?.Cmd?.join(" ") === "sh -c cat > /data/payload") {
+                volumes.set(volume, stdinBytes);
+              }
+              volumeArchiveFakeStdin({
+                state: volumeArchive,
+                command: body?.Cmd ?? [],
+                volume,
+                bytes: stdinBytes,
+              });
             }
-            if (
-              container !== undefined &&
-              volume !== undefined &&
-              body?.Cmd?.join(" ") === "tar -C /lando-data -xf -"
-            ) {
-              volumes.set(volume, await collectAsyncBytes(request.stdin));
-            }
+            container?.stdinDone?.resolve();
             return Stream.make(attachBytesFrame(1, container?.stdout ?? new Uint8Array()));
           }),
         );
@@ -1039,6 +1097,20 @@ describe("provider-podman RuntimeProvider contract", () => {
         providerId,
       }),
     );
+  });
+
+  test("returns what apply did to each service container", async () => {
+    // Given a plan whose containers do not exist yet.
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ podmanApi: fake.api, platform: "linux", env: {} })),
+      ),
+    );
+    // When the provider applies it.
+    const result = await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: false })));
+    // Then the provider's container outcome passes through unchanged.
+    expect(result.services).toEqual({ web: { action: "created" } });
   });
 
   test("persists applied plans for follow-up CLI invocations", async () => {

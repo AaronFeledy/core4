@@ -195,3 +195,91 @@ for (const replacement of ["root-rotation", "default-renewal"] as const) {
     },
   );
 }
+
+const managedTlsRoute = (
+  overrides: Omit<Partial<typeof route>, "scheme"> & { scheme?: "http" | "https" | "both" } = {},
+) => ({
+  ...route,
+  backend: {
+    service: route.backend.service,
+    protocol: "https" as const,
+    port: 443,
+    host: "web.app.internal",
+    tls: { caId: "fixture-ca", serverName: "web.app.internal" },
+  },
+  ...overrides,
+});
+
+const transportNamesIn = (content: string | undefined): ReadonlyArray<string> => {
+  const parsed = Bun.YAML.parse(content ?? "") as
+    | { http?: { serversTransports?: Record<string, unknown> } }
+    | undefined;
+  return Object.keys(parsed?.http?.serversTransports ?? {});
+};
+
+test("an HTTP frontend with a managed HTTPS backend reads the root without issuing frontend leaves", async () => {
+  // Given
+  const f = makeCertificateFixture();
+  const service = f.makeService();
+  // When
+  await f.run(service.applyRoutes([managedTlsRoute({ scheme: "http" })], app));
+  // Then: the root was read for the backend transport only.
+  expect(f.state.rootReads).toBe(1);
+  expect(f.calls).toEqual([]);
+  expect([...f.files.keys()].filter((path) => path.endsWith(".crt"))).toEqual([]);
+  expect(transportNamesIn(f.files.get(f.watched))).toHaveLength(1);
+});
+
+test("publishes a managed backend transport when the router's CA handle reports another id", async () => {
+  // Given: production hands the router a lazily resolved CA whose id is not the
+  // active authority's; the planned caId names the transport instead.
+  const f = makeCertificateFixture();
+  f.seed(pem.current);
+  // When
+  await f.run(
+    f.makeService().applyRoutes(
+      [
+        managedTlsRoute({
+          backend: {
+            ...managedTlsRoute().backend,
+            tls: { caId: "other-ca", serverName: "web.app.internal" },
+          },
+        }),
+      ],
+      app,
+    ),
+  );
+  // Then
+  expect(transportNamesIn(f.files.get(f.watched))).toHaveLength(1);
+});
+
+test("root rotation changes the content-addressed transport name and rewrites the owned file", async () => {
+  // Given
+  const f = makeCertificateFixture("linux");
+  f.seed(pem.current);
+  const service = f.makeService();
+  await f.run(service.applyRoutes([managedTlsRoute()], app));
+  const firstNames = transportNamesIn(f.files.get(f.watched));
+  // When: rotate the authority and the material it issues together.
+  f.state.root = pem.rootB;
+  f.state.issued = pem.rotated;
+  f.state.rootReads = 0;
+  await f.run(f.makeService().applyRoutes([managedTlsRoute()], app));
+  // Then
+  const secondNames = transportNamesIn(f.files.get(f.watched));
+  expect(firstNames).toHaveLength(1);
+  expect(secondNames).toHaveLength(1);
+  expect(secondNames[0]).not.toBe(firstNames[0]);
+  expect(f.state.rootReads).toBe(1);
+});
+
+test("withdrawal removes the owned transport with its route file", async () => {
+  // Given
+  const f = makeCertificateFixture();
+  f.seed(pem.current);
+  await f.run(f.makeService().applyRoutes([managedTlsRoute()], app));
+  // When
+  await f.run(f.makeService().applyRoutes([], app));
+  // Then
+  expect(f.files.has(f.watched)).toBe(false);
+});

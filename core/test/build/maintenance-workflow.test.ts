@@ -363,5 +363,7 @@ test("both failure jobs declare repository scope without requiring checkout", ()
   for (const job of jobs) {
     const { GH_REPO } = job.failureEnv;
     expect(GH_REPO).toBe("${{ github.repository }}");
+    expect(job.failure).not.toContain("--assignee");
+    expect(job.failure).not.toContain("NEEDS_JSON");
   }
 });

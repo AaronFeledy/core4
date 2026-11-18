@@ -53,7 +53,11 @@ export class OutputCapture {
     this.#bodyRedactor = bodyRedactor;
   }
 
-  append(chunk: CommandOutputChunk, originalText: string): void {
+  append(
+    chunk: CommandOutputChunk,
+    originalText: string,
+    profileChanged = chunk.chunk !== originalText,
+  ): void {
     if (this.#prepared) throw stdioTransportError("MCP final output capture is already finalized.");
     if (this.#knownValues === undefined) {
       const values = this.#currentValues();
@@ -61,7 +65,7 @@ export class OutputCapture {
       this.#knownValues = new RedactionValues([...values.substring, ...values.wholeToken]);
     }
     // Only retain the lost-context bit, never the pre-profile text, even after chunk eviction.
-    this.#profileChanged ||= chunk.chunk !== originalText;
+    this.#profileChanged ||= profileChanged;
     this.#chunks.push(Object.freeze({ ...chunk }));
     this.#bytes += contribution(chunk);
     this.#fit(OUTPUT_CHUNK_BUDGET);

@@ -55,12 +55,12 @@ In JSON, each entry under `services[]` carries a `home` object with one of four 
 
 ## When Lando knows where home is
 
-Catalog service types declare the users inside the image they ship and where each of those users lives. Lando picks the home for whichever user the service actually runs as, which is the one you set with `services.<name>.user`, or the image's own default when you set nothing.
+Catalog service types declare the users inside the image they ship and where each of those users lives. A realized [project user](./file-ownership.mdx) selects the home for user commands, even when the main process runs as another user. Without a realized project user, Lando uses `services.<name>.user`, or the image's own default when you set nothing. An explicit `home.path` overrides that path; `home: false` disables automatic persistence.
 
 | Your service | What happens |
 | --- | --- |
 | `type: "node:22"` | Home persists at `/home/node` or `/root`, depending on `user:` |
-| `type: "php:8.3"` | Home persists at `/root`. With `user: www-data`, home persists at `/var/www` |
+| `type: "php:8.3"` | With a realized project user, home persists at `/var/www` for `www-data`. Otherwise the default is `/root`; `user: www-data` selects `/var/www` |
 | `type: apache` with `user: www-data` | Home persists at `/home/www-data` |
 | `type: nginx` or `type: static` with `user: nginx` | No home store; that account's home is nginx's cache directory. Root keeps `/root` |
 | `type: compose` | No home store; set `home.path` to keep one |
@@ -74,7 +74,7 @@ The php image ships `/var/www` owned by root. Lando creates it for `www-data` in
 
 The store belongs to that one service in that one app folder, and to the user it was planned for. Its name is `<container>--home--<user>-<8-hex digest>`, where `<container>` is built from the folder's **data name** (the name this folder's data was first created under, usually the current app name) and the service key, as `lando-<data slug>--<service>`. Running containers use the current app name in their own names; home and other data stores keep the data-name form so a rename does not orphan them. The readable user part contains lowercase words joined by hyphens, capped at 32 characters; the digest distinguishes the original user names. Only an explicit `home.path` on a service with no known user gets `<container>--home--default`. Planning the app again reuses the volume instead of stacking a second copy.
 
-Changing `user:` changes the home. The new user gets a fresh, empty volume, and the previous user's volume stays in place with its contents, so switching back finds everything where it was. Nothing is copied between them.
+Changing the effective home user, through `projectUser:`, `user:`, or a provider change, changes the home store. The new user gets a fresh, empty volume, and the previous user's volume stays in place with its contents, so switching back finds everything where it was. Nothing is copied between them.
 
 ### Read a volume transition notice
 

@@ -29,7 +29,7 @@ import { apacheServiceType } from "../../src/services/apache.ts";
 import { landoErrorPageBytes } from "../../src/services/http-errors.ts";
 import { nginxServiceType } from "../../src/services/nginx.ts";
 import { php83ServiceType } from "../../src/services/php.ts";
-import { staticNginxServiceType } from "../../src/services/static.ts";
+import { staticCaddyServiceType, staticNginxServiceType } from "../../src/services/static.ts";
 import { composeServicePlan } from "./compose-harness.ts";
 import type { ErrorPageCase } from "./http-error-pages-cases.ts";
 
@@ -48,7 +48,8 @@ export type ErrorPageServer =
   | "apache"
   | "apache-static"
   | "apache-port"
-  | "apache-upload-dirs";
+  | "apache-upload-dirs"
+  | "caddy";
 
 const HOST_PORTS: Readonly<Record<ErrorPageServer, number>> = {
   static: 31088,
@@ -59,6 +60,7 @@ const HOST_PORTS: Readonly<Record<ErrorPageServer, number>> = {
   "apache-upload-dirs": 31093,
   "apache-static": 31094,
   "apache-port": 31095,
+  caddy: 31096,
 };
 
 interface ServiceSpec {
@@ -95,6 +97,14 @@ const serviceSpecs = (server: ErrorPageServer, hostPort: number): ReadonlyArray<
           name: "web",
           serviceType: nginxServiceType,
           config: { type: "nginx", webroot: "/app/dist", ports },
+        },
+      ];
+    case "caddy":
+      return [
+        {
+          name: "web",
+          serviceType: staticCaddyServiceType,
+          config: { type: "static:caddy", webroot: "/app/dist", ports },
         },
       ];
     case "nginx-fpm":

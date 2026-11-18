@@ -80,7 +80,7 @@ test.each([204, 404])(
     expect(result).toEqual({
       servicesRemoved: status === 204 ? [container.service] : [],
       networksRemoved: 0,
-      volumesRemoved: 0,
+      volumesRemoved: { data: 0, cache: 0 },
     });
   },
 );
@@ -234,7 +234,11 @@ test("missing ownership inventory authorizes no native discovery or deletion", a
   const fixture = ownershipFixture({ missingInventory: true });
   expect(await fixture.run()).toMatchObject({
     _tag: "Success",
-    success: { servicesRemoved: [], volumesRemoved: 0, networksRemoved: 0 },
+    success: {
+      servicesRemoved: [],
+      volumesRemoved: { data: 0, cache: 0 },
+      networksRemoved: 0,
+    },
   });
   expect(fixture.calls).toEqual([]);
 });

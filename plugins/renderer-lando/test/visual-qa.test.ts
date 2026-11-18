@@ -234,7 +234,7 @@ describe("provider-free injected-event pipeline", () => {
     const destroyed = await Effect.runPromise(
       TestRuntimeProvider.destroy({ app: plan.id }, { volumes: false }),
     );
-    expect(destroyed).toEqual({ kind: "destroyed" });
+    expect(destroyed).toEqual({ kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } });
 
     const io = {
       ...createBufferedRendererIO({ isTTY: true, terminalColumns: 100 }),

@@ -8,6 +8,7 @@ export {
   ConfigTranslateSpan,
 } from "./config-translate-diagnostic.ts";
 
+import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { LandofileAuthoringFragmentWire, LandofileAuthoringShapeWire } from "./landofile-authoring.ts";
 import { LandofileLayer } from "./landofile-reference.ts";
 import { PortablePath, ServiceName } from "./primitives.ts";
@@ -91,18 +92,27 @@ export const ConfigTranslateSecretReference = Schema.Union([
     }).annotate({
       description: "One canonical ${secret:...} reference, never the secret value.",
     }),
-  }).annotate(metadata("ConfigTranslateStoredSecretReference", "Approved stored-secret reference.")),
+  }).annotate({
+    ...metadata("ConfigTranslateStoredSecretReference", "Approved stored-secret reference."),
+    [SchemaNotCredentialAnnotationId]: true,
+  }),
   Schema.Struct({
     disposition: Schema.Literal("postInit.stdin").annotate({
       description: "Init-only standard-input secret sink.",
     }),
-  }).annotate(metadata("ConfigTranslateStdinSecretReference", "Approved standard-input secret sink.")),
+  }).annotate({
+    ...metadata("ConfigTranslateStdinSecretReference", "Approved standard-input secret sink."),
+    [SchemaNotCredentialAnnotationId]: true,
+  }),
   Schema.Struct({
     disposition: Schema.Literal("postInit.secretEnv").annotate({
       description: "Init-only environment secret sink.",
     }),
     name: Schema.String.annotate({ description: "Approved secret environment variable name." }),
-  }).annotate(metadata("ConfigTranslateEnvSecretReference", "Approved environment secret sink.")),
+  }).annotate({
+    ...metadata("ConfigTranslateEnvSecretReference", "Approved environment secret sink."),
+    [SchemaNotCredentialAnnotationId]: true,
+  }),
 ]).annotate(
   metadata(
     "ConfigTranslateSecretReference",

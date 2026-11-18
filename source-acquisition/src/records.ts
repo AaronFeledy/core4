@@ -33,6 +33,13 @@ export const NpmIndexRecord = Schema.Struct({
   sha256: Schema.String.check(Schema.isPattern(/^[a-f\d]{64}$/u)),
   integrity: Schema.optionalKey(Schema.String),
   shasum: Schema.optionalKey(Schema.String),
+  tarballDigests: Schema.optionalKey(
+    Schema.Struct({
+      sha224: Schema.String.check(Schema.isPattern(/^[a-f\d]{56}$/u)),
+      sha384: Schema.String.check(Schema.isPattern(/^[a-f\d]{96}$/u)),
+      sha512: Schema.String.check(Schema.isPattern(/^[a-f\d]{128}$/u)),
+    }),
+  ),
 });
 export const RefRecord = Schema.Struct({ commit: Schema.String.check(Schema.isPattern(/^[a-f\d]{40}$/u)) });
 export const RootRecord = Schema.Struct({ lockfile: Schema.String, updatedAt: Schema.Number });

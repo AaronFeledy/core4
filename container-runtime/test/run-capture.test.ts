@@ -16,7 +16,11 @@ test("runStream captures complete large output before log retention can discard 
   const plane = makeProviderDataPlane({
     providerId: "test",
     capabilities: { volumeSnapshot: "none" },
-    redactor: { redactString: (value) => value, redactValue: (value) => value },
+    redactor: {
+      redactString: (value) => value,
+      redactPrefix: (value) => value,
+      redactValue: (value) => value,
+    },
     api: engine.api,
   });
   const chunks = await Effect.runPromise(

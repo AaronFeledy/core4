@@ -5,6 +5,8 @@ import { Clock, DateTime, Effect, Option, Schema, Semaphore } from "effect";
 import { makeLockReentryGuard } from "./lock-reentry.ts";
 import type { PrivateFileAccess } from "./private-file-access.ts";
 
+// Grace period before an unreadable lock record (a crashed exclusive create) is reclaimed.
+// A readable record is reclaimed only when its owner process has exited.
 const LOCK_STALE_MS = 30_000;
 const LOCK_RETRY_MS = 10;
 const LOCK_ATTEMPTS = 200;
@@ -106,7 +108,6 @@ export const peekAdvisoryLockRecord = (lockPath: string): Promise<LockRecord | n
   readLockRecord(lockPath);
 
 export interface AdvisoryLockWaitOptions {
-  readonly expireLiveOwner?: boolean;
   /** Overall acquire deadline. Defaults to {@link LOCK_ATTEMPTS} × {@link LOCK_RETRY_MS}. */
   readonly timeoutMs?: number;
   readonly retryMs?: number;
@@ -119,7 +120,6 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
   token: string,
   options: {
     readonly operation: string;
-    readonly expireLiveOwner?: boolean;
     readonly timeoutMs?: number;
     readonly retryMs?: number;
     readonly onWait?: Effect.Effect<void>;
@@ -176,11 +176,7 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
             if (isErrnoCode(error, "EACCES")) return null;
             throw error;
           });
-          const takeover =
-            current === null
-              ? staleByMtime
-              : (options.expireLiveOwner !== false && now - current.createdAt > LOCK_STALE_MS) ||
-                processIsDead(current.pid);
+          const takeover = current === null ? staleByMtime : processIsDead(current.pid);
           if (takeover) {
             const latest = await lockIdentity(lockPath);
             if (
@@ -242,17 +238,17 @@ const release = (
 
 /**
  * Acquire an advisory lock at an EXACT lock path (no derived `${file}.lock`
- * suffix) and return its token plus a token-checked release effect. Reuses the
- * same stale-takeover semantics as {@link withAdvisoryLockUsing} so a dead or expired
- * holder is reclaimed. Callers that need scope-managed acquire/use/release
- * should prefer {@link withAdvisoryLockUsing}; this lower-level handle exists for
+ * suffix) and return its token plus a token-checked release effect. A lock is
+ * reclaimed only from a holder whose process has exited, or from an unreadable
+ * record whose lock file is older than the grace period; a live owner's lock is
+ * never taken. Callers that need scope-managed acquire/use/release should
+ * prefer {@link withAdvisoryLockUsing}; this lower-level handle exists for
  * surfaces that hold the lock outside an `acquireUseRelease` bracket.
  */
 export const acquireAdvisoryLockAt = (
   lockPath: string,
   operation: string,
   options: {
-    readonly expireLiveOwner?: boolean;
     readonly timeoutMs?: number;
     readonly retryMs?: number;
     readonly onWait?: Effect.Effect<void>;
@@ -303,5 +299,3 @@ export const withAdvisoryLockUsing =
         );
       }),
     );
-
-export const LOCK_STALE_THRESHOLD_MS = LOCK_STALE_MS;

@@ -370,6 +370,14 @@ For JSON streams, read warnings from the terminal result frame's
 `envelope.warnings`; YAML streaming commands put them in the terminal
 envelope document. Human warning output is unchanged.
 
+`lando exec` and tooling commands add `LANDO_NODE_PACKAGE_MANAGER_STALE` when
+a Node service's Yarn or pnpm pin in `package.json` changed after the service
+was built. The warning's `context.service` names the service,
+`context.built` and `context.declared` name the two releases, and its
+`remediation` is `lando start`. The command still runs, with the package
+manager the service was built with. See
+[Change the version](./services/node.mdx#change-the-version).
+
 `--jq` output is jq's output, whatever the format. `--format=yaml --jq .ok`
 prints `true`, byte for byte what `--format=json --jq .ok` prints. Do not
 expect a YAML document from a jq selection.
@@ -620,7 +628,11 @@ that value. `source` names the layer that supplied it:
 | `env` | `variable`, `path` | `Unset <variable> or set it to a valid value.` |
 | `host` | `path` | `` Fix the `<key>` host config option. `` |
 
-Landofile issues keep their `{ file, layer, path }` source. Branch on
+Landofile issues keep their `{ file, layer, path }` source. An issue caused by
+a project file a service reads, such as a `.nvmrc` that conflicts with
+`package.json` for `type: node`, carries
+`{ layer: "project-file", file, path }` with that file's absolute path; fix the
+named file rather than the Landofile. Branch on
 `source.layer` to pick the fix; do not parse `error.message`, which prefixes
 the first issue with `Invalid config file <path>` or `Invalid global
 configuration (<sources>)` depending on which layers failed:

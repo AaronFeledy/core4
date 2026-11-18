@@ -1,5 +1,5 @@
 import { CapabilityError, PublicationUnsupportedError } from "@lando/sdk/errors";
-import type { ProviderCapabilities, ProviderId, ServicePlan } from "@lando/sdk/schema";
+import type { ProviderCapabilities, ProviderId, ServicePlan, ServiceProjectUser } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { SSH_AGENT_FEATURE_ID } from "../subsystems/ssh/api.ts";
 import {
@@ -159,3 +159,70 @@ export const publicationCapabilityError = (
         remediation: `Choose a provider with host port publish support or make service ${intent.name} endpoints internal.`,
       })
     : undefined;
+
+/**
+ * The one project-user admission rule: a provider that cannot map one
+ * container id to the host user fails an explicit request. Fresh planning and
+ * a cache hit both call it, so a plan written under a different engine never
+ * runs with a mapping the current provider cannot make.
+ */
+export const projectUserMappingCapabilityError = (
+  provider: ProviderId,
+  capabilities: ProviderCapabilities,
+  serviceName: string,
+): CapabilityError | undefined =>
+  capabilities.projectUserMapping !== "unsupported"
+    ? undefined
+    : missingCapability(
+        provider,
+        serviceName,
+        "project user mapping",
+        "projectUserMapping",
+        `Set services.${serviceName}.projectUser to false to keep the container default identity, or choose a provider that maps one container id to the host user.`,
+      );
+
+export const projectUserCapabilityErrors = (
+  provider: ProviderId,
+  capabilities: ProviderCapabilities,
+  services: ReadonlyArray<{
+    readonly name: string;
+    readonly projectUser?: ServiceProjectUser | undefined;
+    readonly projectUserExplanation?: {
+      readonly state: string;
+      readonly explicit: boolean;
+    };
+  }>,
+): readonly CapabilityError[] =>
+  services.flatMap((service) => {
+    const realizationRequired =
+      service.projectUser !== undefined ||
+      (service.projectUserExplanation?.state === "provider-unsupported" &&
+        service.projectUserExplanation.explicit);
+    if (!realizationRequired) return [];
+    const error = projectUserMappingCapabilityError(provider, capabilities, service.name);
+    return error === undefined ? [] : [error];
+  });
+
+/**
+ * Fails a plan whose services require a project-user mapping the provider
+ * cannot realize. Fresh planning fails explicit authoring before it builds the
+ * plan; a cache hit runs the same admission so a plan written under another
+ * engine cannot run unmapped.
+ */
+export const assertProjectUserSupported = (
+  provider: ProviderId,
+  capabilities: ProviderCapabilities,
+  services: Readonly<
+    Record<
+      string,
+      {
+        readonly name: string;
+        readonly projectUser?: ServiceProjectUser | undefined;
+        readonly projectUserExplanation?: { readonly state: string; readonly explicit: boolean };
+      }
+    >
+  >,
+): Effect.Effect<void, CapabilityError> =>
+  Effect.forEach(projectUserCapabilityErrors(provider, capabilities, Object.values(services)), Effect.fail, {
+    discard: true,
+  });

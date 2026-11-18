@@ -51,13 +51,17 @@ lando mariadb -e 'SELECT 1 AS ok;'
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.4`, `framework: none`, port `80`, webroot `.`, Composer 2, HTTP and HTTPS routes, depends on `database` |
+| `appserver` | `php:8.4`, `framework: none`, port `80`, webroot `.`, `allowOverride: true`, Composer 2, HTTP and HTTPS routes, depends on `database` |
 | `database` | `type: mariadb:11.4` |
-| Tooling | `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
+| Tooling | `lando composer`, `lando create-project <package> [<version>] [--no-scripts]`, and `lando php` on `appserver`, plus `lando mariadb` from the database service. [Run a Craft CMS site on the LAMP recipe](./craft-workflow.mdx) shows `create-project` installing a project. |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` when you want PHP 8.2 instead. Other init answers: `database=mysql:8.0`, `composer=2.7.7` or `composer=false`, and `webroot=public`.
 
 `appserver` is Apache plus PHP in one service. That is the LAMP shape: no separate nginx front. A request that hits PHP reports `sapi=apache2handler`, not `cli`.
+
+Apache reads `.htaccess` rules by default because the recipe sets
+`allowOverride: true`. Set `services.appserver.allowOverride: false` in
+`.lando.yml` if your app should ignore those files.
 
 ## Connect PHP to MariaDB
 
@@ -114,6 +118,7 @@ Init answers set the first Landofile. After that, edit `.lando.yml` and start. S
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*80" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"allowOverride\":\\s*true" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"[.]\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
@@ -161,6 +166,7 @@ Init answers set the first Landofile. After that, edit `.lando.yml` and start. S
 
 ## Next
 
+- [Run a Craft CMS site on the LAMP recipe](./craft-workflow.mdx)
 - [LAMP recipe](../../../recipes/lamp/)
 - [Change a LAMP stack after init](../lamp-stack-variants/)
 - [Run a TYPO3 site on the LAMP recipe](./typo3-workflow.mdx)

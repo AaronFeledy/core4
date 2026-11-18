@@ -291,6 +291,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | Drupal recipe day-to-day workflow | `docs/guides/recipes/drupal-workflow.mdx` | Shipped |
 | - | - | Drupal CMS recipe day-to-day workflow | `docs/guides/recipes/drupal-cms-workflow.mdx` | Shipped |
 | - | - | Joomla recipe day-to-day workflow | `docs/guides/recipes/joomla-workflow.mdx` | Shipped |
+| - | - | Craft CMS site on the LAMP recipe | `docs/guides/recipes/craft-workflow.mdx` | Shipped |
 | - | - | TYPO3 site on the LAMP recipe | `docs/guides/recipes/typo3-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | MinIO BYO image/build, API and console listeners | `docs/guides/services/minio.mdx` | Shipped |
@@ -315,6 +316,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | route shorthand strings and route filters | `docs/guides/proxy/route-shorthand.mdx` | Shipped |
 | - | - | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |
 | - | - | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |
+| - | - | project user, app-file ownership, execution identity, and platform limits | `docs/guides/services/file-ownership.mdx` | Shipped |
 | - | - | service locale via build step and `LANG` | `docs/guides/services/locale.mdx` | Shipped |
 | - | - | router enablement, endpoint-aware URL scans and scanner overrides | `docs/guides/services/router-and-scanner.mdx` | Shipped |
 | - | - | unmatched proxy host diagnostic pages | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
@@ -329,3 +331,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | independent health/readiness authoring, host/user probes, disabling, and pre-action validation | `docs/guides/services/wait-for-your-app.mdx` | Shipped |
 | - | - | local LLM with Ollama via Compose passthrough | `docs/guides/services/ollama.mdx` | Shipped |
 | - | - | profile PHP requests with XHProf and XHGui | `docs/guides/tooling/xhprof-xhgui.mdx` | Shipped |
+| - | - | Adminer service for Postgres, MySQL, MariaDB, and SQLite | `docs/guides/services/adminer.mdx` | Shipped |

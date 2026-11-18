@@ -11,11 +11,10 @@ import {
   type LandofileValidationError,
   type NotImplementedError,
 } from "@lando/sdk/errors";
-import { type ValueOrigins, isPlainRecord, mergeLandofiles } from "@lando/sdk/landofile";
+import { isPlainRecord, mergeLandofiles } from "@lando/sdk/landofile";
 import { type LandofileLayer, type LandofileShape, ToolingTaskInput } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { rejectComposeKeys } from "./compose/rejections.ts";
-import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { materializeIncludeConditions } from "./include-conditions.ts";
 import type { LandofileRelaxedRead } from "./include-context.ts";
 import { assertUnderRoot } from "./include-guard.ts";
@@ -27,13 +26,17 @@ import {
   resolveLandofileLoadExpressions,
 } from "./load-expression.ts";
 import type { LandofileLoadPolicy } from "./load-expression-file.ts";
-import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import type { LoadFailureRecorder } from "./load-failures.ts";
 import { parseLandofile } from "./parser.ts";
 import { type LandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
-import { getOrigins, rememberOrigins } from "./pipeline/origins.ts";
-import { type AuthoredOrigin, prepareOverlay } from "./pipeline/prepare.ts";
-import { type SourceDocument, getSourceDocuments, rememberSourceDocuments } from "./pipeline/source-table.ts";
+import { prepareOverlay } from "./pipeline/prepare.ts";
+import {
+  type AuthoredDocument,
+  type LandofileReferencedFile,
+  type SourceDocument,
+  emptyProvenance,
+  normalizeReferencedFiles,
+} from "./provenance.ts";
 import { assertToolingFragment } from "./tooling-fragment.ts";
 import type { NormalizedToolingInclude } from "./tooling-include-entries.ts";
 import { rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
@@ -52,8 +55,7 @@ export type ToolingIncludeError =
 interface ToolingFragment {
   readonly filePath: string;
   readonly tooling: unknown;
-  readonly origins: ValueOrigins<AuthoredOrigin>;
-  readonly sources: readonly SourceDocument[];
+  readonly document: AuthoredDocument;
   readonly nested: Pick<LandofileShape, "includes" | "toolingIncludes">;
   readonly referencedFiles: readonly LandofileReferencedFile[];
 }
@@ -95,143 +97,95 @@ export const locateFragment = (
         ? cause
         : includeReadError(resolve(sourceRoot, entry.source), entry.source, cause),
   });
-export const loadFragment = (
+export const loadFragment = Effect.fnUntraced(function* (
   entry: NormalizedToolingInclude,
   filePath: string,
   context: ToolingSourceContext,
-): Effect.Effect<ToolingFragment, ToolingIncludeError> =>
-  readFragmentText(filePath, entry.source).pipe(
-    Effect.flatMap((content) =>
-      parseLandofile({ file: filePath, content, cwd: dirname(filePath) }).pipe(
-        Effect.map((parsed) =>
-          isPlainRecord(parsed)
-            ? rememberSourceDocuments(parsed, [
-                {
-                  file: filePath,
-                  layer: context.layer ?? "canonical",
-                  form: "yaml",
-                  content,
-                  digest: sha256Hex(content),
-                  document: parsed,
-                },
-              ])
-            : parsed,
-        ),
-      ),
-    ),
-    Effect.tap((parsed) =>
-      assertToolingFragment(isPlainRecord(parsed) ? mergeLandofiles([parsed]) : parsed, entry.source, {
-        filePath,
-        layer: context.layer ?? "canonical",
-        recorder: context.recorder,
-      }),
-    ),
-    Effect.tap((parsed) => {
-      const check = rejectComposeKeys(entry.source, parsed).pipe(
-        Effect.flatMap(() => rejectUnsupportedToolingFeatures(filePath, parsed)),
-      );
-      if (context.recorder === undefined) return check;
-      context.recorder.effectiveChecks.push(check);
-      return Effect.void;
-    }),
-    Effect.flatMap((parsed) =>
-      resolveLandofileLoadExpressions({
-        value: parsed,
-        source: {
-          appRoot: context.appRoot,
-          sourcePath: filePath,
-          sourceRoot: dirname(filePath),
-          layer: context.layer ?? "canonical",
+) {
+  const layer = context.layer ?? "canonical";
+  const content = yield* readFragmentText(filePath, entry.source);
+  const parsed = yield* parseLandofile({ file: filePath, content, cwd: dirname(filePath) });
+  const documents: readonly SourceDocument[] = isPlainRecord(parsed)
+    ? [
+        {
+          file: filePath,
+          layer,
+          form: "yaml",
+          content,
+          digest: sha256Hex(content),
+          document: parsed,
         },
-        policy: context.loadPolicy,
-        pendingSites: context.loadScope.pendingSites,
-        recorder: context.recorder,
-        environmentRecorder: context.loadScope.environmentRecorder,
-      }).pipe(
-        Effect.map((resolved) => ({
-          ...resolved,
-          value:
-            isPlainRecord(parsed) && isPlainRecord(resolved.value)
-              ? copyLandofileProvenance(parsed, resolved.value)
-              : resolved.value,
-        })),
-      ),
-    ),
-    Effect.tap(({ relaxedReads }) => {
-      const onRelaxedRead = context.onRelaxedRead;
-      return onRelaxedRead === undefined
-        ? Effect.void
-        : Effect.forEach(relaxedReads, (read) =>
-            onRelaxedRead({ ...read, sourcePath: filePath, appRoot: context.appRoot }),
-          ).pipe(Effect.asVoid);
-    }),
-    Effect.flatMap(({ value, dependencies }) =>
-      prepareOverlay(
-        value,
-        { file: filePath, layer: context.layer ?? "canonical" },
-        isPlainRecord(value) ? (getSourceDocuments(value)[0]?.document ?? value) : value,
-      ).pipe(
-        Effect.flatMap((prepared) =>
-          materializeIncludeConditions(
-            isPlainRecord(value)
-              ? copyLandofileProvenance(value, rememberOrigins(prepared.value, prepared.origins))
-              : rememberOrigins(prepared.value, prepared.origins),
-            {
-              source: {
-                sourcePath: filePath,
-                sourceRoot: dirname(filePath),
-                appRoot: context.appRoot,
-                layer: context.layer ?? "canonical",
-              },
-              policy: context.loadPolicy,
-              scope: context.loadScope,
-              ...(context.onRelaxedRead === undefined ? {} : { onRelaxedRead: context.onRelaxedRead }),
-            },
-          ),
-        ),
-        Effect.flatMap((conditioned) => materializeLandofileLayer(filePath, conditioned, context.loadScope)),
-        Effect.tap((materialized) =>
-          assertToolingFragment(
-            isPlainRecord(materialized) ? mergeLandofiles([materialized]) : materialized,
-            entry.source,
-            { filePath, layer: context.layer ?? "canonical", recorder: context.recorder },
-          ),
-        ),
-        Effect.tap((materialized) => {
-          if (context.recorder?.blocked.some((source) => "file" in source && source.file === filePath))
-            return Effect.void;
-          const projection = isPlainRecord(materialized) ? mergeLandofiles([materialized]) : materialized;
-          return Schema.decodeUnknownEffect(ToolingWire)(projection, { errors: "all" }).pipe(
-            mapFailures((cause) => validationErrorFromCause(filePath, materialized, cause)),
-          );
-        }),
-        Effect.flatMap((decoded) =>
-          Effect.try({
-            try: () => {
-              const document = isPlainRecord(decoded) ? decoded : {};
-              const acquired =
-                context.recorder === undefined
-                  ? document
-                  : prepareIncludeAcquisition(document, {
-                      recorder: context.recorder,
-                      source: { file: filePath, layer: context.layer ?? "canonical", path: [] },
-                    });
-              return {
-                filePath,
-                tooling: document.tooling,
-                nested: includeAcquisitionView(acquired),
-                origins: getOrigins(acquired) ?? {
-                  source: { file: filePath, layer: context.layer ?? "canonical", path: [] },
-                  deleted: false,
-                  children: new Map(),
-                },
-                sources: getSourceDocuments(document),
-                referencedFiles: dependencies,
-              };
-            },
-            catch: (cause) => validationErrorFromCause(filePath, decoded, cause),
-          }),
-        ),
-      ),
-    ),
+      ]
+    : [];
+  yield* assertToolingFragment(isPlainRecord(parsed) ? mergeLandofiles([parsed]) : parsed, entry.source, {
+    filePath,
+    layer,
+    recorder: context.recorder,
+  });
+  const check = rejectComposeKeys(entry.source, parsed).pipe(
+    Effect.flatMap(() => rejectUnsupportedToolingFeatures(filePath, parsed)),
   );
+  if (context.recorder === undefined) yield* check;
+  else context.recorder.effectiveChecks.push(check);
+  const resolved = yield* resolveLandofileLoadExpressions({
+    value: parsed,
+    source: {
+      appRoot: context.appRoot,
+      sourcePath: filePath,
+      sourceRoot: dirname(filePath),
+      layer,
+    },
+    policy: context.loadPolicy,
+    pendingSites: context.loadScope.pendingSites,
+    recorder: context.recorder,
+    environmentRecorder: context.loadScope.environmentRecorder,
+  });
+  const onRelaxedRead = context.onRelaxedRead;
+  if (onRelaxedRead !== undefined)
+    yield* Effect.forEach(resolved.relaxedReads, (read) =>
+      onRelaxedRead({ ...read, sourcePath: filePath, appRoot: context.appRoot }),
+    ).pipe(Effect.asVoid);
+  const prepared = yield* prepareOverlay(
+    resolved.value,
+    { file: filePath, layer },
+    documents[0]?.document ?? resolved.value,
+  );
+  const documented: AuthoredDocument = {
+    value: prepared.value,
+    provenance: {
+      ...emptyProvenance(prepared.origins),
+      documents,
+      referencedFiles: normalizeReferencedFiles(resolved.dependencies),
+    },
+  };
+  const conditioned = yield* materializeIncludeConditions(documented, {
+    source: { sourcePath: filePath, sourceRoot: dirname(filePath), appRoot: context.appRoot, layer },
+    policy: context.loadPolicy,
+    scope: context.loadScope,
+    ...(context.onRelaxedRead === undefined ? {} : { onRelaxedRead: context.onRelaxedRead }),
+  });
+  const materialized = yield* materializeLandofileLayer(filePath, conditioned, context.loadScope);
+  yield* assertToolingFragment(mergeLandofiles([materialized.value]), entry.source, {
+    filePath,
+    layer,
+    recorder: context.recorder,
+  });
+  if (!context.recorder?.blocked.some((source) => "file" in source && source.file === filePath))
+    yield* Schema.decodeUnknownEffect(ToolingWire)(mergeLandofiles([materialized.value]), {
+      errors: "all",
+    }).pipe(mapFailures((cause) => validationErrorFromCause(filePath, materialized.value, cause)));
+  const acquired =
+    context.recorder === undefined
+      ? materialized
+      : prepareIncludeAcquisition(materialized, {
+          recorder: context.recorder,
+          source: { file: filePath, layer, path: [] },
+        });
+  return {
+    filePath,
+    tooling: materialized.value.tooling,
+    document: acquired,
+    nested: includeAcquisitionView(acquired.value),
+    referencedFiles: normalizeReferencedFiles(resolved.dependencies),
+  } satisfies ToolingFragment;
+});

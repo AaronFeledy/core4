@@ -99,14 +99,6 @@ export class GlobalAutoStartError extends Schema.TaggedError<GlobalAutoStartErro
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
-export class GlobalDestroyConfirmationError extends Schema.TaggedError<GlobalDestroyConfirmationError>()(
-  "GlobalDestroyConfirmationError",
-  {
-    message: Schema.String,
-    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-  },
-) {}
-
 export class GlobalDistConflictError extends Schema.TaggedError<GlobalDistConflictError>()(
   "GlobalDistConflictError",
   {

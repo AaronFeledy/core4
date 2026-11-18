@@ -3,16 +3,18 @@ import { CommandResultEnvelope, ListenerObservation } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { acquireListenerApp, publicationFor } from "./listener-cli.ts";
 
+// The report's `checks` entries carry their section plus the finding fields; only the
+// fields this journey asserts are declared, so an added finding field stays valid.
 const doctorResult = Schema.Struct({
-  appListeners: Schema.Struct({
-    checks: Schema.Array(
-      Schema.Struct({
-        name: Schema.String,
-        status: Schema.String,
-        context: Schema.Record(Schema.String, Schema.String),
-      }),
-    ),
-  }),
+  checks: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      section: Schema.String,
+      name: Schema.String,
+      status: Schema.String,
+      context: Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Array(Schema.String)])),
+    }),
+  ),
 });
 const failedStart = Schema.Struct({
   ok: Schema.Literal(false),
@@ -90,8 +92,9 @@ export const runListenerDiagnosticJourney = Effect.fnUntraced(function* (
   const envelope = envelopeFrom(output);
   expect(envelope.ok).toBe(true);
   const report = Schema.decodeUnknownSync(doctorResult)(envelope.result);
-  const checks = report.appListeners.checks.filter(
+  const checks = report.checks.filter(
     (check) =>
+      check.section === "app-listeners" &&
       check.name === "app-listener" &&
       check.context.service === "subject" &&
       check.context.port === String(port),

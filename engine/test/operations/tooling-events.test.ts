@@ -44,6 +44,7 @@ import { outputRegisteredTestProvider } from "../../src/testing/output-provider.
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
+import { provenanceIn } from "../provenance-support.ts";
 
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"),
@@ -299,7 +300,11 @@ test.each(["command", "task"] as const)(
     const tooling = compileEffectiveTooling({ landofile: compiled.document, services: [] });
     const h = harness({
       tooling,
-      provenance: resolveEffectiveTooling({ landofile: compiled.document, services: [] }).provenance,
+      provenance: resolveEffectiveTooling({
+        landofile: compiled.document,
+        provenance: provenanceIn(compiled),
+        services: [],
+      }).provenance,
       events: { "pre-build": [{ task: "off" }] },
     });
     const persisted = Schema.decodeUnknownSync(AppPlan)(Schema.encodeSync(AppPlan)(h.plan));

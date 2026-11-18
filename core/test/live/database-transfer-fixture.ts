@@ -2,7 +2,8 @@ import { expect } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Effect } from "effect";
+import { DestroyAppResult } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 import { decodeInfoCliEnvelope, runFixtureCli } from "./convergence-cli.ts";
 
 export const databaseJourneyTimeout = 30 * 120_000 + 60_000;
@@ -10,7 +11,36 @@ const cliEntry = resolve(import.meta.dir, "../../bin/lando.ts");
 
 // The shared child runner owns process cleanup; this fixture adds database-only
 // secret-safe artifacts and app/snapshot teardown, which that runner does not own.
-export const databaseTransferFixture = async (label: string) => {
+export interface DatabaseTransferCliResult {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly artifact: string;
+}
+
+export interface DatabaseTransferFixture {
+  readonly root: string;
+  readonly name: string;
+  readonly secretId: string;
+  readonly password: string;
+  readonly wrongPassword: string;
+  readonly marker: string;
+  readonly invalidBackup: string;
+  readonly lando: (args: readonly string[], credential?: string) => Promise<DatabaseTransferCliResult>;
+  readonly cleanup: () => Promise<void>;
+}
+
+export interface DatabaseTransferFixtureOptions {
+  /** Extra child environment, such as private Lando roots and a provider socket. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  /** Runs after a successful purge, before the private app root is removed. */
+  readonly afterDestroy?: (destroyed: DestroyAppResult) => Promise<void>;
+}
+
+export const databaseTransferFixture = async (
+  label: string,
+  options: DatabaseTransferFixtureOptions = {},
+): Promise<DatabaseTransferFixture> => {
   const root = await mkdtemp(join(tmpdir(), `lando-${label}-`));
   const name = `${label}-${crypto.randomUUID().slice(0, 8)}`;
   // An external root is caller-owned and survives app cleanup, including on failure.
@@ -26,12 +56,16 @@ export const databaseTransferFixture = async (label: string) => {
       text,
     );
   let invocation = 0;
-  const lando = async (args: readonly string[], credential = password) => {
+  const lando = async (
+    args: readonly string[],
+    credential = password,
+  ): Promise<DatabaseTransferCliResult> => {
     const binary = process.env.LANDO_SCENARIO_E2E_BINARY;
     const { BUN_BE_BUN: _bunBeBun, ...inherited } = process.env;
     const result = await Effect.runPromise(
       runFixtureCli([...(binary === undefined ? [process.execPath, cliEntry] : [binary]), ...args], root, {
         ...inherited,
+        ...options.env,
         LANDO_TELEMETRY_ENABLED: "false",
         [`LANDO_SECRET_${secretId}`]: credential,
       }),
@@ -63,17 +97,20 @@ export const databaseTransferFixture = async (label: string) => {
         JSON.stringify({ name, root, exitCode: result.exitCode, artifact: result.artifact }),
       );
       expect(result.exitCode, `Retained app/snapshots: ${name}; cwd: ${root}; ${result.artifact}`).toBe(0);
-      expect(decodeInfoCliEnvelope(result.stdout).ok, result.artifact).toBe(true);
-      await rm(root, { recursive: true, force: true });
+      const envelope = decodeInfoCliEnvelope(result.stdout);
+      expect(envelope.ok, result.artifact).toBe(true);
+      const destroyed = Schema.decodeUnknownSync(DestroyAppResult)(envelope.result);
+      try {
+        await options.afterDestroy?.(destroyed);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
       console.log("DATABASE_TRANSFER_CLEANED", JSON.stringify({ name, root }));
     },
   };
 };
 
-export const mssqlTransferLandofile = (
-  fixture: Awaited<ReturnType<typeof databaseTransferFixture>>,
-  version: "2019" | "2022",
-) =>
+export const mssqlTransferLandofile = (fixture: DatabaseTransferFixture, version: "2019" | "2022") =>
   [
     `name: ${fixture.name}`,
     "runtime: 4",

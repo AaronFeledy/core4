@@ -178,3 +178,50 @@ describe("payload byte redaction", () => {
     expect(redactor.flush().length).toBe(0);
   });
 });
+
+describe("payload expiry for a live surface", () => {
+  test("commits a held prefix as masked and keeps the matcher state", () => {
+    // Given a registered value whose newline is withheld with its prefix.
+    const values = ["left\nright"];
+    const redactor = createPayloadRedactor(() => values);
+    // When the caller's clock runs out before the continuation arrives.
+    const first = redactor.write(encoder.encode("before left\n"));
+    expect(redactor.holdsPending()).toBe(true);
+    expect(redactor.retainedBytes()).toBe(encoder.encode("left\n").length);
+    const expiry = redactor.expire();
+    // Then the prefix is committed masked, including the held newline.
+    expect(decode(first)).toBe("before ");
+    expect(decode(expiry.bytes)).toBe(REDACTED);
+    expect(expiry.heldNewline).toBe(true);
+    expect(redactor.holdsPending()).toBe(false);
+    // When the value completes after the commit.
+    const rest = redactor.write(encoder.encode("right after\n"));
+    // Then only the uncovered continuation flows.
+    expect(decode(rest)).toBe(" after\n");
+    expect(decode(redactor.flush())).toBe("");
+  });
+
+  test("flows a divergent continuation after the commit", () => {
+    // Given a held proper prefix.
+    const values = ["secret"];
+    const redactor = createPayloadRedactor(() => values);
+    expect(decode(redactor.write(encoder.encode("before sec")))).toBe("before ");
+    // When expiry commits the prefix and unrelated bytes follow.
+    expect(redactor.expire().heldNewline).toBe(false);
+    // Then the unrelated continuation is not swallowed.
+    expect(decode(redactor.write(encoder.encode("tion")))).toBe("tion");
+  });
+
+  test("reports no newline and emits nothing when the region is already covered", () => {
+    // Given a committed prefix.
+    const values = ["secret"];
+    const redactor = createPayloadRedactor(() => values);
+    redactor.write(encoder.encode("sec"));
+    expect(redactor.expire()).toEqual({ bytes: encoder.encode(REDACTED), heldNewline: false });
+    // When expiry runs again before any new bytes arrive.
+    const again = redactor.expire();
+    // Then nothing is emitted twice.
+    expect(again.bytes.length).toBe(0);
+    expect(again.heldNewline).toBe(false);
+  });
+});

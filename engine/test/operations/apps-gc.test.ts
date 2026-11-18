@@ -82,7 +82,7 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
           );
         destroyed.push(target.app);
         plans = plans.filter((plan) => plan.id !== target.app);
-        return Effect.succeed({ kind: "destroyed" as const });
+        return Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } });
       }),
   };
   const registry = RuntimeProviderRegistry.of({
@@ -423,7 +423,7 @@ test("an owner that cannot start does not block another owner's confirmation", a
     destroy: (target: Parameters<typeof TestRuntimeProvider.destroy>[0]) =>
       Effect.sync(() => {
         plans = plans.filter((plan) => plan.id !== target.app);
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
   });
   const registry = RuntimeProviderRegistry.of({

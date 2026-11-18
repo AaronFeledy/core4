@@ -1,0 +1,2 @@
+WARNING: option --ssl-verify-server-cert is disabled, because of an insecure passwordless login.
+ERROR 2002 (HY000): Can't connect to server on '127.0.0.1' (115)

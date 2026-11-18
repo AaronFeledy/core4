@@ -713,6 +713,15 @@ Arguments:
 | --- | --- |
 | `id` | Scratch app id. |
 
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--follow, -f` | Stream new log lines until interrupted. |
+| `--service, -s` | Filter logs to a single scratch service. |
+| `--since` | Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp. |
+| `--tail` | Show last N lines per service. |
+
 ## `lando apps:scratch:run`
 
 Run a one-off command in a disposable scratch app.
@@ -970,7 +979,7 @@ Flags:
 | `--fix` | Re-run the setup step of each degraded subsystem whose recovery is safe to automate. |
 | `--limit` | Return at most this many checks (1 to 1000). |
 | `--provider` | Report what would be selected if `--provider=…` were used (e.g. lando, docker, podman). |
-| `--section` | Run only the selected diagnostic sections (repeatable); always report global config. (one of `global-config`, `provider`, `app-listeners`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, `app-config`) |
+| `--section` | Run only the selected diagnostic sections (repeatable); always report global config. (one of `global-config`, `provider`, `app-listeners`, `database-credentials`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, `app-config`) |
 | `--status` | Include checks with this status (repeatable). (one of `pass`, `warn`, `fail`) |
 
 ## `lando meta:events:follow`
@@ -1082,8 +1091,9 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--provider` | Destroy the global app only on this provider. |
-| `--purge` | Also remove global service data volumes and built images. |
-| `--yes, -y` | Confirm destruction of global app provider resources. |
+| `--purge` | Also remove global service- and app-scoped data volumes and built images. |
+| `--volumes` | Also remove global service- and app-scoped data volumes; built images are released for reuse. |
+| `--yes, -y` | Skip the confirmation prompt. |
 
 ## `lando meta:global:disable`
 

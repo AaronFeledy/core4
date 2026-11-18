@@ -1,8 +1,7 @@
 import { isPlainRecord, valueOriginAt } from "@lando/sdk/landofile";
 import type { ConfigLintViolation } from "@lando/sdk/schema";
 import { attributeLintIssue } from "./lint-source.ts";
-import { getOrigins } from "./pipeline/origins.ts";
-import type { SourceDocument } from "./pipeline/source-table.ts";
+import type { AuthoredDocument } from "./provenance.ts";
 
 const LANDO_FIELDS = [
   "kind",
@@ -15,20 +14,18 @@ const LANDO_FIELDS = [
 ] as const;
 const COMPOSE_FIELDS = ["test", "interval", "timeout", "start_period", "start_interval"] as const;
 
-export const healthcheckWarnings = (
-  merged: Record<string, unknown>,
-  documents: readonly SourceDocument[],
-): readonly ConfigLintViolation[] => {
+export const healthcheckWarnings = (document: AuthoredDocument): readonly ConfigLintViolation[] => {
+  const merged = document.value;
+  const documents = document.provenance.documents;
   if (!isPlainRecord(merged.services)) return [];
-  const origins = getOrigins(merged);
+  const origins = document.provenance.origins;
   const warnings: ConfigLintViolation[] = [];
   for (const [name, service] of Object.entries(merged.services)) {
     if (!isPlainRecord(service)) continue;
     for (const role of ["healthcheck", "readiness"] as const) {
       const healthcheck = service[role];
       const path = ["services", name, role];
-      const sourceAt = (fieldPath: readonly string[]) =>
-        origins === undefined ? undefined : valueOriginAt(origins, fieldPath).source;
+      const sourceAt = (fieldPath: readonly string[]) => valueOriginAt(origins, fieldPath).source;
       if (Array.isArray(healthcheck) && ["CMD", "CMD-SHELL", "NONE"].includes(healthcheck[0])) {
         const source = sourceAt(path);
         warnings.push(
@@ -39,23 +36,22 @@ export const healthcheckWarnings = (
               path,
               message: `A Compose test marker in bare ${role} argv is executed literally.`,
               suggestion: `Remove the marker for literal argv, or use a block ${role} object with test: and the Compose marker.`,
-              ...(source === undefined ? {} : { source }),
+              source,
             },
             "effective",
             documents,
           ),
         );
       }
-      if (!isPlainRecord(healthcheck) || origins === undefined) continue;
+      if (!isPlainRecord(healthcheck)) continue;
       const lando = LANDO_FIELDS.filter((field) => Object.hasOwn(healthcheck, field));
       const compose = COMPOSE_FIELDS.filter((field) => Object.hasOwn(healthcheck, field));
       for (const field of lando) {
         const source = sourceAt([...path, field]);
         if (
-          source === undefined ||
           !compose.some((other) => {
             const origin = sourceAt([...path, other]);
-            return origin !== undefined && (origin.file !== source.file || origin.layer !== source.layer);
+            return origin.file !== source.file || origin.layer !== source.layer;
           })
         )
           continue;

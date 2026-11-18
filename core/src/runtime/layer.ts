@@ -76,12 +76,9 @@ import type * as HttpClient from "effect/http/HttpClient";
 
 import type { BuiltInCommandCatalog } from "../cli/built-in-command-catalog-service";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service";
-import {
-  makeGenerationAppBootstrapLayer,
-  makeGenerationHostBootstrapLayer,
-} from "./generated/layers/generation";
-import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index";
-import type { MinimalBootstrapServices } from "./generated/layers/minimal";
+import { makeGenerationAppBootstrapLayer, makeGenerationHostBootstrapLayer } from "./layers/generation";
+import { makeBootstrapLayer, mergeRuntimeWithHostLayers } from "./layers/index";
+import type { MinimalBootstrapServices } from "./layers/minimal";
 import "./engine-composition";
 import {
   CliInvocation,
@@ -178,6 +175,8 @@ type ScratchRuntimeServices =
   | AppPlanner
   | BuildOrchestrator
   | RouterService
+  | ToolingEngine
+  | EventCommandExecutor
   | ScratchResourceScanner
   | ScratchAppService;
 export type AppRuntimeServices =
@@ -222,7 +221,7 @@ export interface PreparedRuntime {
   readonly inputs: BootstrapLayerInputs;
 }
 
-/** Decode runtime options into the generated bootstrap inputs shared by every runtime factory. */
+/** Decode runtime options into the bootstrap layer inputs shared by every runtime factory. */
 export const prepareRuntime = (
   options: unknown,
   snapshot: GlobalConfigSnapshot["Service"] | undefined,
@@ -362,7 +361,7 @@ function buildLandoRuntime(
   const prepared = prepareRuntime(options, snapshot, invocation);
   if (Result.isFailure(prepared)) return Layer.effectDiscard(Effect.fail(prepared.failure));
   const { options: decoded, bootstrap, capturedCwd, lifecycle, embeddingLayers, inputs } = prepared.success;
-  const baseLayer = makeGeneratedBootstrapLayer(bootstrap, inputs) as RuntimeLayer;
+  const baseLayer = makeBootstrapLayer(bootstrap, inputs) as RuntimeLayer;
 
   // Library mode defaults prompts to non-interactive; the option overrides the
   // bootstrap default mode and is itself overridden by an explicit host

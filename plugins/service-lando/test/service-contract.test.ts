@@ -3,7 +3,7 @@ import { LandofileShape, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 import { runServiceCompositionContract } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
-
+import { adminer6ServiceType, adminerServiceType } from "../src/services/adminer.ts";
 import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
 import { dotnet80ServiceType, dotnet90ServiceType, dotnetServiceType } from "../src/services/dotnet.ts";
@@ -103,6 +103,8 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
   { serviceType: node26ServiceType, landofileService: { type: "node:26" } },
   { serviceType: opensearchServiceType, landofileService: { type: "opensearch" } },
   { serviceType: opensearch2ServiceType, landofileService: { type: "opensearch:2" } },
+  { serviceType: adminerServiceType, landofileService: { type: "adminer" } },
+  { serviceType: adminer6ServiceType, landofileService: { type: "adminer:6" } },
   { serviceType: phpmyadminServiceType, landofileService: { type: "phpmyadmin" } },
   { serviceType: phpmyadmin5ServiceType, landofileService: { type: "phpmyadmin:5" } },
   { serviceType: phpmyadminLatestServiceType, landofileService: { type: "phpmyadmin:latest" } },
@@ -193,6 +195,8 @@ describe("service catalog per-type checklist × composition contract suite", () 
 
   test("catalog contract covers every exported service type variant", () => {
     expect(catalogEntries.map((entry) => entry.serviceType.id).sort()).toEqual([
+      "adminer",
+      "adminer:6",
       "apache",
       "compose",
       "dotnet",

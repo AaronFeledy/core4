@@ -13,11 +13,14 @@ export const staleTime = new Date(NOW - 600_001).toISOString();
 export const freshTime = new Date(NOW - 60_000).toISOString();
 export const redactor = {
   redactString: (value: string) => value.replaceAll("SENSITIVE", "[REDACTED]"),
+  redactPrefix: (value: string) => value.replaceAll("SENSITIVE", "[REDACTED]"),
   redactValue: (value: unknown) => value,
 };
 
 export interface Helper {
   readonly id: string;
+  /** Container name; defaults to the id. */
+  readonly name?: string;
   readonly state: string;
   readonly labels: Readonly<Record<string, string>>;
   readonly finishedAt?: string;
@@ -59,6 +62,7 @@ export const helperEngine = (initial: ReadonlyArray<Helper>) => {
         return Effect.succeed({
           status: 200,
           body: JSON.stringify({
+            Name: `/${helper.name ?? helper.id}`,
             State: {
               Status: helper.state,
               StartedAt: helper.startedAt,

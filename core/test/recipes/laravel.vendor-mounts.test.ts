@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -75,7 +76,7 @@ test.each([
     }
 
     // Then npm runs in a private Node service on the same project bind in either mode.
-    expect(landofile.tooling?.npm).toMatchObject({ service: "node", cmds: ["npm"] });
+    expect(effectiveToolingForPlan(plan)?.npm).toMatchObject({ service: "node", cmd: ["npm"] });
     const node = plan.services[ServiceName.make("node")];
     expect(node).toMatchObject({
       type: "node:22",

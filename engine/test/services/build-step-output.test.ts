@@ -170,6 +170,43 @@ describe("openBuildStepOutput", () => {
     });
   });
 
+  test("masks a Bearer token whose introducer was released by the line bound", async () => {
+    await withTempRoots(async (root) => {
+      // Given an introducer and a token separated by more lines than the hold allows.
+      const token = "eyJhbGciOi.abc-123";
+      const publisher = makePublisher();
+      const redaction = await Effect.runPromise(makeRedaction());
+      const transcriptPath = transcriptFor(root, "bearer");
+
+      // When
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const recorder = yield* openBuildStepOutput({
+              events: publisher.events,
+              taskId: "web:app:install",
+              transcriptPath,
+              providerId: "test",
+              userDataRoot: root,
+              redaction,
+            });
+            yield* recorder.write(
+              "stdout",
+              encoder.encode(`Authorization: Bearer\n${"\n".repeat(65)}   ${token} rest\n`),
+            );
+            yield* recorder.end;
+          }),
+        ),
+      );
+
+      // Then the released introducer continues into the token line, which masks it.
+      const transcript = await readFile(transcriptPath, "utf8");
+      expect(transcript).toContain("[redacted] rest");
+      expect(transcript).not.toContain(token);
+      expect(JSON.stringify(publisher.published)).not.toContain(token);
+    });
+  });
+
   test("redacts a value registered after the recorder opened", async () => {
     await withTempRoots(async (root) => {
       // Given a live redaction scope.
@@ -534,6 +571,135 @@ describe("openBuildStepOutput", () => {
       }
       expect(tail?.split("\n")).toEqual(detailLines);
       expect(await readFile(transcriptPath, "utf8")).toBe(`${long}\n${long}${long}\n`);
+    });
+  });
+  test("masks multi-line credential shapes on both streams in the transcript and every detail event", async () => {
+    await withTempRoots(async (root) => {
+      // Given an assignment and a bearer whose values span framed lines on both streams.
+      const publisher = makePublisher();
+      const redaction = await Effect.runPromise(makeRedaction());
+      const transcriptPath = transcriptFor(root, "multiline-shapes");
+      const stdout = encoder.encode('password="first\ncanary-multiline-secret\nlast"\n');
+      const stderr = encoder.encode("Authorization: Bearer\ncanary-bearer-token\n");
+      let tail: string | undefined;
+
+      // When every byte arrives as its own write.
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const recorder = yield* openBuildStepOutput({
+              events: publisher.events,
+              taskId: "web:app:install",
+              transcriptPath,
+              providerId: "test",
+              userDataRoot: root,
+              redaction,
+            });
+            for (let offset = 0; offset < stdout.length; offset += 1) {
+              yield* recorder.write("stdout", stdout.subarray(offset, offset + 1));
+            }
+            for (let offset = 0; offset < stderr.length; offset += 1) {
+              yield* recorder.write("stderr", stderr.subarray(offset, offset + 1));
+            }
+            yield* recorder.end;
+            tail = recorder.tail();
+          }),
+        ),
+      );
+
+      // Then
+      expect(await readFile(transcriptPath, "utf8")).toBe(
+        "password=[redacted]\nAuthorization: Bearer [redacted]\n",
+      );
+      expect(
+        publisher.published.map((event) =>
+          event._tag === "task.detail" ? [event.stream, event.line] : undefined,
+        ),
+      ).toEqual([
+        ["stdout", "password=[redacted]"],
+        ["stderr", "Authorization: Bearer [redacted]"],
+      ]);
+      expect(JSON.stringify(publisher.published)).not.toContain("canary");
+      expect(tail).toBe("password=[redacted]\nAuthorization: Bearer [redacted]");
+    });
+  });
+
+  test("releases lines after a completed hold", async () => {
+    await withTempRoots(async (root) => {
+      // Given a quoted value that closes before ordinary output continues.
+      const publisher = makePublisher();
+      const redaction = await Effect.runPromise(makeRedaction());
+      const transcriptPath = transcriptFor(root, "after-hold");
+
+      // When
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const recorder = yield* openBuildStepOutput({
+              events: publisher.events,
+              taskId: "web:app:install",
+              transcriptPath,
+              providerId: "test",
+              userDataRoot: root,
+              redaction,
+            });
+            yield* recorder.write("stdout", encoder.encode('password="first\ncanary\nlast"\nafter\n'));
+            yield* recorder.end;
+          }),
+        ),
+      );
+
+      // Then
+      expect(await readFile(transcriptPath, "utf8")).toBe("password=[redacted]\nafter\n");
+      expect(JSON.stringify(publisher.published)).not.toContain("canary");
+      expect(
+        publisher.published.map((event) => (event._tag === "task.detail" ? event.line : undefined)),
+      ).toEqual(["password=[redacted]", "after"]);
+    });
+  });
+
+  test("flushes a held open construct fail-closed in the scope finalizer", async () => {
+    await withTempRoots(async (root) => {
+      // Given a recorder holding an open quoted value when its fiber is interrupted.
+      const publisher = makePublisher();
+      const redaction = await Effect.runPromise(makeRedaction());
+      const transcriptPath = transcriptFor(root, "interrupted-open-construct");
+      const wrote = Deferred.makeUnsafe<void>();
+
+      // When
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkChild(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const recorder = yield* openBuildStepOutput({
+                  events: publisher.events,
+                  taskId: "web:app:install",
+                  transcriptPath,
+                  providerId: "test",
+                  userDataRoot: root,
+                  redaction,
+                });
+                yield* recorder.write("stdout", encoder.encode('password="unterminated-canary'));
+                yield* Deferred.succeed(wrote, undefined);
+                yield* Effect.never;
+              }),
+            ),
+          );
+          yield* Deferred.await(wrote);
+          yield* Fiber.interrupt(fiber);
+          yield* Fiber.await(fiber);
+        }),
+      );
+
+      // Then
+      expect(await readFile(transcriptPath, "utf8")).toBe("password=[redacted]\n");
+      expect(
+        publisher.published.map((event) =>
+          event._tag === "task.detail" ? [event.stream, event.line] : undefined,
+        ),
+      ).toEqual([["stdout", "password=[redacted]"]]);
+      expect(JSON.stringify(publisher.published)).not.toContain("canary");
     });
   });
 });

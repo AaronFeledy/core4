@@ -1,4 +1,6 @@
 import { resolve } from "node:path";
+import nodeReleases from "../plugins/service-lando/node/releases.json" with { type: "json" };
+import { setupBunSteps } from "./_bun-workflow.ts";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
 import {
@@ -61,14 +63,6 @@ const timingNoticeStep = (label: string, timeoutMinutes: number): string => `   
         if: always()
         run: |
           echo "::notice title=ci-timing::${label} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: ${timeoutMinutes}m)"`;
-
-const setupBunSteps = `      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile`;
 
 const codegenStep = `      - name: Regenerate derived sources
         run: bun run codegen`;
@@ -414,9 +408,18 @@ export const landoRootlessPrereqSteps = `      - name: Provision rootless runtim
           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true`;
 
-const sqliteHelper = PROVIDER_IMAGES.images.sqliteHelper;
-if (sqliteHelper === undefined) throw new Error("PROVIDER_IMAGES is missing the sqliteHelper pin");
-const sqliteHelperImageRef = `${sqliteHelper.image}@${sqliteHelper.digest}`;
+const pinnedHelperImageRef = (name: "sqliteHelper" | "dataHelper"): string => {
+  const helper = PROVIDER_IMAGES.images[name];
+  if (helper === undefined) throw new Error(`PROVIDER_IMAGES is missing the ${name} pin`);
+  return `${helper.image}@${helper.digest}`;
+};
+const sqliteHelperImageRef = pinnedHelperImageRef("sqliteHelper");
+const dataHelperImageRef = pinnedHelperImageRef("dataHelper");
+// Pre-pull every supported Node major from the committed release pin so an LTS move needs no CI edit.
+// Reading the pin, not the plugin, keeps every workflow generator free of generated-module ordering.
+const nodeImagePullLines = nodeReleases.releases
+  .map((entry) => `          pull_image docker.io/library/node:${entry.major}`)
+  .join("\n");
 
 const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linux x64 runtime bundle
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -502,9 +505,10 @@ ${landoManagedPodmanRuntimeDirCommands}
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:24
+          # Every supported Node major is pre-pulled from the service-type table.
+${nodeImagePullLines}
           pull_image docker.io/library/node:22-alpine
-          pull_image docker.io/library/node:22
+          pull_image docker.io/library/adminer:6
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -527,6 +531,8 @@ ${landoManagedPodmanRuntimeDirCommands}
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image ${dataHelperImageRef}
           docker_pull_image ${sqliteHelperImageRef}`;
 
 // Each selection runs even after an earlier one fails, so one run reports every failing selection;
@@ -1027,6 +1033,10 @@ ${setupBunSteps}
       - name: Regenerate paired Tomcat catalog
         run: bun run codegen:tomcat-catalog
 
+      # Gitignored output that the Node service type imports, so bundled plugins need it first.
+      - name: Regenerate Node release table
+        run: bun run codegen:node-releases
+
       # Gitignored output that container-runtime imports, so bundled plugins need it first.
       - name: Regenerate provider images manifest
         run: bun run codegen:provider-images
@@ -1036,9 +1046,6 @@ ${setupBunSteps}
 
       - name: Regenerate bundled recipes
         run: bun run codegen:bundled-recipes
-
-      - name: Regenerate bootstrap layers
-        run: bun run codegen:bootstrap-layers
 
       - name: Regenerate Mutagen versions manifest
         run: bun run codegen:mutagen-versions

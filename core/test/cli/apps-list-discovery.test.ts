@@ -40,7 +40,7 @@ const runList = (
     readonly discoverContainersEvidence?: (root: string) => Promise<{
       readonly apps: ReadonlyArray<AppsListEntry>;
       readonly confirmedProviderIds: ReadonlyArray<string>;
-      readonly ownedAppIds?: ReadonlyArray<string>;
+      readonly ownedResources?: ReadonlyArray<{ readonly appId: string; readonly appRoot?: string }>;
     }>;
     readonly path?: string;
     readonly prune?: boolean;
@@ -238,7 +238,7 @@ describe("appsFromContainerList", () => {
 });
 
 describe("mergeAppsListEntries", () => {
-  test("unions services and prefers persisted roots over label-only rows", () => {
+  test("keeps a rootless running row separate and merges a cache row at the same root", () => {
     const merged = mergeAppsListEntries([
       {
         appId: "drupal-cms",
@@ -259,7 +259,7 @@ describe("mergeAppsListEntries", () => {
         appName: "drupal-cms",
         providerId: "cache",
         appRoot: "/srv/drupal-cms",
-        services: [],
+        services: ["database"],
       },
     ]);
     expect(merged).toEqual([
@@ -270,10 +270,17 @@ describe("mergeAppsListEntries", () => {
         appRoot: "/srv/drupal-cms",
         services: ["appserver", "database"],
       },
+      {
+        appId: "drupal-cms",
+        appName: "drupal-cms",
+        providerId: "lando",
+        appRoot: "",
+        services: ["appserver", "database"],
+      },
     ]);
   });
 
-  test("keeps the first nonempty plugin root over a longer leftover path", () => {
+  test("keeps the same id at different roots as separate rows", () => {
     const merged = mergeAppsListEntries([
       {
         appId: "drupal-cms",
@@ -284,9 +291,9 @@ describe("mergeAppsListEntries", () => {
       },
       {
         appId: "drupal-cms",
-        appName: "stale",
-        providerId: "docker",
-        appRoot: "/very/long/stale/legacy/path/to/app",
+        appName: "Drupal CMS",
+        providerId: "lando",
+        appRoot: "/very/long/other/path/to/app",
         services: ["database"],
       },
     ]);
@@ -296,14 +303,21 @@ describe("mergeAppsListEntries", () => {
         appName: "Drupal CMS",
         providerId: "lando",
         appRoot: "/srv/app",
-        services: ["appserver", "database"],
+        services: ["appserver"],
+      },
+      {
+        appId: "drupal-cms",
+        appName: "Drupal CMS",
+        providerId: "lando",
+        appRoot: "/very/long/other/path/to/app",
+        services: ["database"],
       },
     ]);
   });
 });
 
 describe("apps:list host-wide discovery", () => {
-  test("prefers plugin applied-plans over leftover legacy providers/*/apps for the same appId", async () => {
+  test("lists plugin applied plans and leftover legacy roots for the same appId separately", async () => {
     await withTempRoot(async (userDataRoot) => {
       const paths = makeLandoPaths({ userDataRoot });
       const appliedDir = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans");
@@ -333,7 +347,16 @@ describe("apps:list host-wide discovery", () => {
           appName: "Drupal CMS",
           providerId: "lando",
           appRoot: "/srv/drupal-cms",
-          services: ["appserver", "database"],
+          services: ["appserver"],
+          status: "unknown",
+          stale: true,
+        },
+        {
+          appId: "drupal-cms",
+          appName: "stale-name",
+          providerId: "docker",
+          appRoot: "/very/long/stale/legacy/drupal-cms",
+          services: ["database"],
           status: "unknown",
           stale: true,
         },
@@ -460,7 +483,7 @@ describe("apps:list host-wide discovery", () => {
           discoverContainersEvidence: async () => ({
             apps: [],
             confirmedProviderIds: ["lando"],
-            ownedAppIds: [],
+            ownedResources: [],
           }),
         }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
       );
@@ -490,7 +513,7 @@ describe("apps:list host-wide discovery", () => {
         discoverContainersEvidence: async () => ({
           apps: [],
           confirmedProviderIds: ["lando"],
-          ownedAppIds: [],
+          ownedResources: [],
         }),
       });
 
@@ -519,13 +542,102 @@ describe("apps:list host-wide discovery", () => {
         discoverContainersEvidence: async () => ({
           apps: [],
           confirmedProviderIds: ["lando"],
-          ownedAppIds: ["alpha"],
+          ownedResources: [{ appId: "alpha" }],
         }),
       });
 
       expect(result.pruned).toEqual([]);
       expect(result.apps.map((entry) => entry.appId)).toEqual(["alpha"]);
       expect(await Bun.file(statePath).exists()).toBe(true);
+    });
+  });
+
+  test("scopes runtime ownership to the proven root so a deleted checkout can be pruned", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const legacyDir = join(userDataRoot, "providers", "provider-lando", "apps");
+      await mkdir(legacyDir, { recursive: true });
+      const rootA = join(userDataRoot, "checkout-a");
+      const rootB = join(userDataRoot, "checkout-b");
+      await Promise.all([mkdir(rootA), mkdir(rootB)]);
+      const legacy = (root: string) => ({
+        version: 1,
+        providerId: "lando",
+        plan: { id: "twin", name: "twin", root, provider: "lando", services: {} },
+      });
+      const fileA = join(legacyDir, "a.json");
+      const fileB = join(legacyDir, "b.json");
+      await writeFile(fileA, JSON.stringify(legacy(rootA)));
+      await writeFile(fileB, JSON.stringify(legacy(rootB)));
+
+      await rm(rootB, { recursive: true });
+      const discoverEvidence = (ownsMissingRoot: boolean) => async () => ({
+        apps: appsFromContainerList([
+          labeled("twin", "web", {
+            "dev.lando.provider": "lando",
+            "dev.lando.app-root": rootA,
+          }),
+        ]),
+        confirmedProviderIds: ["lando"],
+        ownedResources: [
+          { appId: "twin", appRoot: rootA },
+          ...(ownsMissingRoot ? [{ appId: "twin", appRoot: rootB }] : []),
+        ],
+      });
+      const listed = await runList(userDataRoot, { discoverContainersEvidence: discoverEvidence(true) });
+      expect(
+        listed.apps.map(({ appId, appRoot, status, stale }) => ({ appId, appRoot, status, stale })),
+      ).toEqual([
+        { appId: "twin", appRoot: rootA, status: "active", stale: undefined },
+        { appId: "twin", appRoot: rootB, status: "stopped", stale: true },
+      ]);
+
+      const retained = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: discoverEvidence(true),
+      });
+      expect(retained.pruned).toEqual([]);
+      expect(await Bun.file(fileB).exists()).toBe(true);
+
+      const result = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: discoverEvidence(false),
+      });
+
+      expect(result.pruned?.map((entry) => entry.appRoot)).toEqual([rootB]);
+      expect(result.apps).toMatchObject([{ appId: "twin", appRoot: rootA, status: "active" }]);
+      expect(await Bun.file(fileA).exists()).toBe(true);
+      expect(await Bun.file(fileB).exists()).toBe(false);
+    });
+  });
+
+  test("keeps a rootless owned resource blocking by app id", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const legacyDir = join(userDataRoot, "providers", "provider-lando", "apps");
+      await mkdir(legacyDir, { recursive: true });
+      const rootA = join(userDataRoot, "checkout-a");
+      const rootB = join(userDataRoot, "checkout-b");
+      await mkdir(rootA, { recursive: true });
+      const legacy = (root: string) => ({
+        version: 1,
+        providerId: "lando",
+        plan: { id: "twin", name: "twin", root, provider: "lando", services: {} },
+      });
+      const fileA = join(legacyDir, "a.json");
+      const fileB = join(legacyDir, "b.json");
+      await writeFile(fileA, JSON.stringify(legacy(rootA)));
+      await writeFile(fileB, JSON.stringify(legacy(rootB)));
+
+      const result = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => ({
+          apps: appsFromContainerList([labeled("twin", "web", { "dev.lando.provider": "lando" })]),
+          confirmedProviderIds: ["lando"],
+        }),
+      });
+
+      expect(result.pruned).toEqual([]);
+      expect(await Bun.file(fileA).exists()).toBe(true);
+      expect(await Bun.file(fileB).exists()).toBe(true);
     });
   });
 
@@ -547,7 +659,7 @@ describe("apps:list host-wide discovery", () => {
           return {
             apps: [],
             confirmedProviderIds: ["lando"],
-            ownedAppIds: evidenceReads === 1 ? [] : ["alpha"],
+            ownedResources: evidenceReads === 1 ? [] : [{ appId: "alpha" }],
           };
         },
       });
@@ -617,7 +729,10 @@ describe("apps:list host-wide discovery", () => {
       );
       const result = await runList(userDataRoot, {
         discoverContainers: async () =>
-          appsFromContainerList([labeled("drupal-cms", "appserver"), labeled("drupal-cms", "database")]),
+          appsFromContainerList([
+            labeled("drupal-cms", "appserver", { "dev.lando.app-root": "/workspace/drupal-cms" }),
+            labeled("drupal-cms", "database", { "dev.lando.app-root": "/workspace/drupal-cms" }),
+          ]),
       });
       expect(result.apps).toEqual([
         {
@@ -629,6 +744,37 @@ describe("apps:list host-wide discovery", () => {
           status: "active",
           stale: true,
         },
+      ]);
+    });
+  });
+
+  test("lists the same id at two roots as two rows and matches active by full identity", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const rootA = join(userDataRoot, "one");
+      const rootB = join(userDataRoot, "two");
+      const paths = makeLandoPaths({ userDataRoot });
+      const appliedDir = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans");
+      await mkdir(appliedDir, { recursive: true });
+      await writeFile(
+        join(appliedDir, "one.json"),
+        JSON.stringify(stateEnvelope("twin", "twin", rootA, ["web"])),
+      );
+      await writeFile(
+        join(appliedDir, "two.json"),
+        JSON.stringify(stateEnvelope("twin", "twin", rootB, ["web"])),
+      );
+      const result = await runList(userDataRoot, {
+        discoverContainers: async () =>
+          appsFromContainerList([
+            labeled("twin", "web", {
+              "dev.lando.provider": "lando",
+              "dev.lando.app-root": rootA,
+            }),
+          ]),
+      });
+      expect(result.apps.map((app) => [app.appRoot, app.status]).sort()).toEqual([
+        [rootA, "active"],
+        [rootB, "stopped"],
       ]);
     });
   });
@@ -682,7 +828,17 @@ describe("apps:list host-wide discovery", () => {
           return;
         }
         response.end(
-          JSON.stringify({ Volumes: [{ Name: "alpha-data", Labels: { "dev.lando.app": "volume-only" } }] }),
+          JSON.stringify({
+            Volumes: [
+              {
+                Name: "alpha-data",
+                Labels: {
+                  "dev.lando.app": "volume-only",
+                  "dev.lando.volume-owner": "/volumes/alpha",
+                },
+              },
+            ],
+          }),
         );
       });
       await new Promise<void>((resolve, reject) => {
@@ -692,7 +848,10 @@ describe("apps:list host-wide discovery", () => {
       try {
         const evidence = await discoverRunningAppsEvidenceFromSockets(userDataRoot, [socketPath]);
         expect(evidence.apps).toEqual([]);
-        expect(Reflect.get(evidence, "ownedAppIds")).toEqual(["stopped", "volume-only"]);
+        expect(evidence.ownedResources).toEqual([
+          { appId: "stopped" },
+          { appId: "volume-only", appRoot: "/volumes/alpha" },
+        ]);
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }

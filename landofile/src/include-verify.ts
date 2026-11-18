@@ -23,6 +23,7 @@ import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
 import { createLoadFailureRecorder } from "./load-failures.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import type { LandofileRuntimePorts } from "./ports.ts";
+import { type AuthoredDocument, authoredDocumentFrom } from "./provenance.ts";
 
 export type IncludeVerifyStatus = "ok" | "mismatch" | "missing" | "stale";
 export interface IncludeVerifyEntry {
@@ -52,7 +53,7 @@ export interface VerifyLandofileIncludesOptions {
   readonly validate?: Effect.Effect<void, ResolveIncludesError>;
   readonly layers?: readonly {
     readonly layer: PresentLandofileLayer;
-    readonly landofile: Record<string, unknown>;
+    readonly landofile: AuthoredDocument;
   }[];
   readonly loadScope: LandofileLoadScope;
   readonly landofile: LandofileShape;
@@ -84,7 +85,11 @@ export const verifyLandofileIncludes = Effect.fn("Landofile.verifyIncludes")(fun
   const existing = pins.entries;
   const layers = options.layers ?? [
     {
-      landofile: options.landofile,
+      landofile: authoredDocumentFrom(options.landofile, {
+        file: join(options.appRoot, ".lando.yml"),
+        layer: "canonical",
+        path: [],
+      }),
       layer: {
         filePath: join(options.appRoot, ".lando.yml"),
         layer: "canonical" as const,
@@ -95,7 +100,7 @@ export const verifyLandofileIncludes = Effect.fn("Landofile.verifyIncludes")(fun
   const conditions = includeVerifyConditions(
     layers.map(({ layer, landofile }) => ({
       file: layer.filePath,
-      document: landofile,
+      document: landofile.value,
     })),
     options.loadScope,
   );

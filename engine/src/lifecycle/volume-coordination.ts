@@ -1,12 +1,8 @@
 import { type StateStoreError, VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
 import { planDataId } from "@lando/sdk/schema";
-import {
-  type ProviderError,
-  type RuntimeProviderShape,
-  type StateStoreShape,
-  physicalVolumeLockKey,
-} from "@lando/sdk/services";
+import type { ProviderError, RuntimeProviderShape, StateStoreShape } from "@lando/sdk/services";
+import { heldVolumeLocks, withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
 import { Context, Effect } from "effect";
 
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
@@ -22,9 +18,6 @@ export interface VolumeCoordination {
   readonly verify: Effect.Effect<void, ProviderError>;
 }
 
-const HeldCoordinationKeys = Context.Reference<ReadonlySet<string>>("@lando/engine/HeldCoordinationKeys", {
-  defaultValue: (): ReadonlySet<string> => new Set(),
-});
 const ActiveLocatedVolumes = Context.Reference<ReadonlyArray<LocatedPlanVolume>>(
   "@lando/engine/ActiveLocatedVolumes",
   {
@@ -162,17 +155,6 @@ export const verifyActiveVolumeCoordination = (
 ): Effect.Effect<void, ProviderError> =>
   ActiveLocatedVolumes.pipe(Effect.flatMap((volumes) => verifyLocatedVolumes(volumes, provider)));
 
-export const withVolumeCoordinationLock = <A, E>(
-  stateStore: StateStoreShape,
-  coordinationKey: string,
-  body: Effect.Effect<A, E>,
-): Effect.Effect<A, E | StateStoreError> =>
-  HeldCoordinationKeys.pipe(
-    Effect.flatMap((held) =>
-      held.has(coordinationKey) ? body : stateStore.withLock(physicalVolumeLockKey(coordinationKey), body),
-    ),
-  );
-
 export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoordination")(function* <
   A,
   E,
@@ -186,30 +168,23 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
 }): Effect.fn.Return<A, E | ProviderError | StateStoreError, R> {
   const located = yield* locateCoordinatedVolumes(input, input.provider);
   const keys = located.map((volume) => volume.locator.coordinationKey);
-  const held = yield* HeldCoordinationKeys;
+  const held = yield* heldVolumeLocks;
   const active = yield* ActiveLocatedVolumes;
   const coordination: VolumeCoordination = {
     locators: located.map((volume) => volume.locator),
     verify: verifyLocatedVolumes(located, input.provider),
   };
   const runBody = (
-    binding: { readonly held: ReadonlySet<string>; readonly active: ReadonlyArray<LocatedPlanVolume> },
+    volumes: ReadonlyArray<LocatedPlanVolume>,
     body: Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E, R> =>
-    body.pipe(
-      Effect.provideService(HeldCoordinationKeys, binding.held),
-      Effect.provideService(ActiveLocatedVolumes, binding.active),
-    );
-  if (keys.every((key) => held.has(key))) return yield* runBody({ held, active }, input.body(coordination));
+  ): Effect.Effect<A, E, R> => body.pipe(Effect.provideService(ActiveLocatedVolumes, volumes));
+  if (keys.every((key) => held.has(key))) return yield* runBody(active, input.body(coordination));
 
-  // Advisory locks are not reentrant: a nested phase whose plan adds volumes (a halt that tears
-  // down the applied plan inside a launch holding the desired plan's keys) takes only the new keys.
+  // A nested phase whose plan adds volumes (a halt that tears down the applied plan inside a
+  // launch holding the desired plan's keys) takes only the new keys.
   const missing = located.filter((volume) => !held.has(volume.locator.coordinationKey));
   yield* assertNestedLockOrder(missing, held);
-  const union = {
-    held: new Set([...held, ...keys]),
-    active: uniqueByCoordinationKey([...active, ...located]),
-  };
+  const union = uniqueByCoordinationKey([...active, ...located]);
   const lockAll = (index: number): Effect.Effect<A, E | ProviderError | StateStoreError, R> => {
     const volume = missing[index];
     if (volume === undefined) {
@@ -217,10 +192,7 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
         Effect.andThen(runBody(union, input.body(coordination))),
       );
     }
-    return input.stateStore.withLock(
-      physicalVolumeLockKey(volume.locator.coordinationKey),
-      lockAll(index + 1),
-    );
+    return withPhysicalVolumeLock(input.stateStore, volume.locator.coordinationKey, lockAll(index + 1));
   };
 
   return yield* lockAll(0);

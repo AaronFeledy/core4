@@ -19,9 +19,11 @@ import type {
   ServiceConfig,
   ServiceCreds,
   ServiceName,
+  ServiceProjectUser,
   ToolingTaskShape,
 } from "../schema/index.ts";
 import type { RegisteredCommand } from "../schema/registered-command.ts";
+import type { GeneratedCertificateEndpoint } from "../schema/service-resolution.ts";
 import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ServiceFeatureDefinition } from "./features.ts";
 
@@ -139,6 +141,16 @@ export interface ServiceTypeResolution {
    */
   readonly connectionClientNames?: readonly string[];
   readonly metadata?: Record<string, unknown>;
+  /**
+   * The owned launcher's generated HTTPS listener, when it can serve the
+   * service's own generated certificate. The resolver reports it for every
+   * Lando-owned launcher, including one whose authored `user:` cannot read the
+   * generated key, so route planning can explain that opt-out. It declares a
+   * port, not a certificate request: the demand phase requires a root parent and
+   * activates the association only for a materialized generated certificate and
+   * an HTTPS route that actually selects this port.
+   */
+  readonly generatedCertificateEndpoint?: GeneratedCertificateEndpoint;
 }
 
 /**
@@ -153,6 +165,12 @@ export interface ServiceImageIdentity {
   readonly defaultUser: ContainerUser;
   /** Home directory per user principal, keyed without any `:group` suffix. */
   readonly homes: Readonly<Record<string, AbsoluteContainerPath>>;
+  /**
+   * The identity that owns files this image's service creates on a provider
+   * that maps one container id to the host user. Omitted when the type's
+   * default user is root or the image ships no such principal.
+   */
+  readonly projectUser?: ServiceProjectUser;
   /** Principals whose passwd home the image does not create or give to that user.
    * Lando creates and owns it in a root build step so a fresh home store seeds correctly. */
   readonly preparedHomes?: ReadonlyArray<string>;

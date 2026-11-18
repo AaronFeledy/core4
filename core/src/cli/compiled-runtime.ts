@@ -184,6 +184,7 @@ export const runCompiledCommand = <A, E, R, RE>(
       redactor: import("@lando/sdk/secrets").Redactor,
     ) =>
       commandErrorMessage(failure, activeCommandId, redactor, options.context?.env, options.usage === true),
+    formatErrorAlreadyRedacted: true,
     ...(options.tracer === undefined ? {} : { tracer: options.tracer }),
   };
   const selection = activeTrace();

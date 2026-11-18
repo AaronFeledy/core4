@@ -30,6 +30,7 @@ for (const state of ["running", "exited"] as const) {
                     State: state,
                     Labels: {
                       "dev.lando.app": "retained",
+                      "dev.lando.app-root": root,
                       "dev.lando.provider": "lando",
                       "dev.lando.service": "web",
                     },
@@ -146,6 +147,7 @@ test.skipIf(process.platform === "win32")(
                   State: "running",
                   Labels: {
                     "dev.lando.app": "retained",
+                    "dev.lando.app-root": root,
                     "dev.lando.provider": "lando",
                     "dev.lando.service": "web",
                   },

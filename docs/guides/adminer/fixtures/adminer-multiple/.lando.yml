@@ -1,0 +1,8 @@
+name: adminer-multiple
+services:
+  reports:
+    type: postgres
+  store:
+    type: mariadb
+  adminer:
+    type: adminer

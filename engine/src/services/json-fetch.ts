@@ -11,7 +11,7 @@
  */
 
 import { RequestPolicy, layer as httpClientLayer } from "@lando/http-client/live";
-import { Duration, Effect, Layer, Stream } from "effect";
+import { type Context, Duration, Effect, Layer, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 export interface HttpJsonResult {
@@ -57,6 +57,7 @@ export const httpJsonFetch = async (
   url: string,
   options: HttpJsonOptions = {},
   client?: HttpClient.HttpClient,
+  requestContext?: Context.Context<never>,
 ): Promise<HttpJsonResult> => {
   options.signal?.throwIfAborted();
   return Effect.runPromise(
@@ -78,6 +79,7 @@ export const httpJsonFetch = async (
         ? (effect) => effect
         : Effect.timeout(Duration.millis(options.timeoutMs)),
       Effect.provide(client === undefined ? httpClientLayer : Layer.succeed(HttpClient.HttpClient, client)),
+      (effect) => (requestContext === undefined ? effect : effect.pipe(Effect.provide(requestContext))),
     )(),
     options.signal === undefined ? undefined : { signal: options.signal },
   );

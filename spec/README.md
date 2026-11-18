@@ -119,6 +119,7 @@ If you are looking for a public surface or policy:
 | Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Authored versus resolved service credentials and explicit credential claims | 06 | §6.11 + §6.12.4 |
+| Post-readiness database credential observation, the `LANDO_DATABASE_CREDENTIALS_REJECTED` and `LANDO_DATABASE_MISSING` warnings, and the `database-credentials` doctor section | 06 + 11 | §6.12.4 + §10.9.1 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
 | PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, and Mailpit sender diagnostics | 06 | §6.12.5 |
@@ -145,6 +146,7 @@ If you are looking for a public surface or policy:
 | Schema and generated-reference publication | 07 | §7.8 |
 | Shared resolved-Landofile validation, typed lint rule registry, generated rule reference, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
 | Authored HTTP route binding, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
+| Node runtime inference versus package-manager selection, offline launchers, BYO toolchains, and project-file validation headlines | 06 + 07 + 12 + 13 | §6.11.0 + §6.12.1 + §6.13.3 + §7.8 + §12.1 + §13.1 |
 | Canonical Landofile parser and serializer | 07 | §7.8.1 |
 | Command kinds and namespaces | 08 | §8.1 |
 | Top-level aliases and collision errors | 08 | §8.1.2 |
@@ -197,8 +199,8 @@ If you are looking for a public surface or policy:
 | Doctor diagnostics and resilience | 11 | §10.9 |
 | Host-proxy protocol and errors | 11 | §10.10 |
 | In-container helper: static Go client, Lando-built toolchain, embedding | 02 + 11 + 15 | §2.1 + §10.10.2 + §17.3 |
-| Host-proxy worker reuse, session recreation, and scoped rebuild | 11 | §10.10.1 + §12.4 |
-| `DataMover`, endpoints, role-aware host-file diagnostics, owner-keyed snapshot sidecars, handle-only mutations, and orphan GC | 11 | §10.11 |
+| Host-proxy worker reuse, session recreation, and selected restart and rebuild | 11 | §10.10.1 + §12.4 |
+| `DataMover`, endpoints, typed provider volume archives, role-aware host-file diagnostics, owner-keyed snapshot sidecars, handle-only mutations, and orphan GC | 11 | §10.11 |
 | Remote source and dataset contracts | 11 | §10.12 |
 | Code sync, post-processing, remote setup, and vendor tools | 11 | §10.12.1 + §10.12.4 |
 | Service tunnels, tethered sessions, and environment operations | 11 | §10.12.5 + §10.12.6 |

@@ -322,7 +322,6 @@ export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
   const timeoutMs = resolveAppLockTimeoutMs();
   return yield* Effect.acquireUseRelease(
     acquireAdvisoryLockAt(lockPath, "app-mutate", {
-      expireLiveOwner: false,
       timeoutMs,
       onWait: announceWait(),
       privateFileAccess,

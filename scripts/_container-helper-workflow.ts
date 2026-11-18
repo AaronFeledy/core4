@@ -4,6 +4,7 @@
  * it; every job that compiles `lando` downloads it before embedding.
  */
 
+import { setupBunSteps } from "./_bun-workflow.ts";
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
 import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
 import { testSelectionCommand } from "./test-selections.ts";
@@ -20,13 +21,7 @@ export const renderContainerHelperJob = (): string => `  ${CONTAINER_HELPER_JOB_
 
 ${isolateLandoRootsStep}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+${setupBunSteps}
 
       - name: Regenerate derived sources
         run: bun run codegen
@@ -68,13 +63,7 @@ export const renderContainerHelperArm64Job = (): string => `  ${CONTAINER_HELPER
 
 ${isolateLandoRootsStep}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+${setupBunSteps}
 
 ${containerHelperDownloadStep}
 

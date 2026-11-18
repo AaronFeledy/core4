@@ -13,6 +13,7 @@ import {
   logLinesToStreamFrames,
   logOptionsFromInput,
   logSignalFromInput,
+  redactLogLineStreams,
 } from "../logs-input";
 
 export interface LogsFlags {
@@ -79,10 +80,10 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
       return buildLogsApp({
         ...(options.service === undefined ? {} : { service: options.service }),
         ...(options.tail === undefined ? {} : { tail: options.tail }),
-      });
+      }).pipe(Effect.flatMap(redactLogLineStreams));
     }
     const options = logsOptionsFromInput(input);
-    if (!logsFollowFromInput(input)) return logsApp(options);
+    if (!logsFollowFromInput(input)) return logsApp(options).pipe(Effect.flatMap(redactLogLineStreams));
     const signal = logSignalFromInput(input);
     return followLogsApp({ ...options, follow: true, ...(signal === undefined ? {} : { signal }) });
   },

@@ -1,3 +1,4 @@
+import { DATABASE_FAMILY_LOCAL_CLIENT_ARGS } from "@lando/sdk/database-creds";
 import {
   AbsolutePath,
   type Environment,
@@ -37,6 +38,8 @@ export const MARIADB_LISTENER = {
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MARIADB_FEATURE_ID = "service-lando.mariadb";
 export const MARIADB_CONFIG_TARGET = PortablePath.make("/etc/mysql/conf.d/99-lando.cnf");
+
+const LOCAL_CLIENT_ARGS = DATABASE_FAMILY_LOCAL_CLIENT_ARGS.mariadb;
 
 const MARIADB_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -105,7 +108,7 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
       [
         "sh",
         "-c",
-        'MYSQL_PWD="$MYSQL_PASSWORD" exec mariadb-admin ping -h 127.0.0.1 -P "$1" -u "$MYSQL_USER" --silent',
+        `MYSQL_PWD="$MYSQL_PASSWORD" exec mariadb-admin ping -h 127.0.0.1 -P "$1" -u "$MYSQL_USER" ${LOCAL_CLIENT_ARGS.join(" ")} --silent`,
         "mariadb-healthcheck",
         String(port),
       ],
@@ -154,6 +157,7 @@ const mariadbToolingForConnection: NonNullable<ServiceType["toolingForConnection
             String(connection.port),
             "-u",
             connection.creds.user,
+            ...LOCAL_CLIENT_ARGS,
             connection.creds.database,
           ],
           wrapper: true,

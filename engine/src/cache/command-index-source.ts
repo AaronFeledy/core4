@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { findLandofilePath } from "@lando/landofile/discovery";
-import { getLocalIncludePaths } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
+import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { isPathWithin } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
@@ -45,8 +45,11 @@ const isRemoteInclude = (source: string): boolean =>
   source.startsWith("github:") ||
   /^https?:\/\//u.test(source);
 
-export const localIncludePathsForLandofile = (landofile: LandofileShape): ReadonlyArray<string> => {
-  const remembered = getLocalIncludePaths(landofile);
+export const localIncludePathsForLandofile = (
+  landofile: LandofileShape,
+  provenance: LandofileProvenance | undefined,
+): ReadonlyArray<string> => {
+  const remembered = provenance?.localIncludePaths ?? [];
   if (remembered.length > 0) return remembered;
   return (landofile.includes ?? [])
     .map((entry) => (typeof entry === "string" ? entry : entry.source))

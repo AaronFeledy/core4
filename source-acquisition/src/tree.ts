@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { lstat, readFile, readdir, readlink, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isPathWithin } from "@lando/paths";
+import { createSourceTreeDigest } from "@lando/sdk/digest";
 import { SourceAcquisitionError } from "./errors.ts";
 
 export const containedPath = (root: string, ...parts: readonly string[]): string => {
@@ -24,7 +24,7 @@ export const realContainedPath = async (root: string, path: string): Promise<str
 };
 
 export const treeDigest = async (root: string): Promise<string> => {
-  const digest = createHash("sha256");
+  const digest = createSourceTreeDigest();
   const walk = async (dir: string, prefix: string): Promise<void> => {
     const names = (await readdir(dir)).sort();
     for (const name of names) {
@@ -37,12 +37,10 @@ export const treeDigest = async (root: string): Promise<string> => {
         : stat.isDirectory()
           ? Buffer.alloc(0)
           : await readFile(path);
-      digest.update(JSON.stringify([rel, type, stat.isFile() && (stat.mode & 0o111) !== 0, bytes.length]));
-      digest.update("\0");
-      digest.update(bytes);
+      digest.entry(rel, type, stat.isFile() && (stat.mode & 0o111) !== 0, bytes);
       if (stat.isDirectory()) await walk(path, rel);
     }
   };
   await walk(root, "");
-  return digest.digest("hex");
+  return digest.hex();
 };

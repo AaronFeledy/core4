@@ -45,6 +45,10 @@ const shared = {
   context: CompilationContext.annotate({
     description: "Captured compilation inputs, not runtime lookup authority.",
   }),
+  provenance: Schema.optionalKey(Schema.Unknown).annotate({
+    description:
+      "Opaque Landofile provenance carried with the compiled value, so a spread or stage transition cannot drop it. Ephemeral: never part of an applied plan or cache record.",
+  }),
 };
 const prepared = {
   ...shared,

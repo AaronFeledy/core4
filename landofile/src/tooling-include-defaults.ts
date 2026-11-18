@@ -1,6 +1,6 @@
 import { type ValueOrigins, isPlainRecord } from "@lando/sdk/landofile";
 import type { LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
-import type { AuthoredOrigin } from "./pipeline/prepare.ts";
+import type { AuthoredOrigin } from "./provenance.ts";
 
 /** Include defaults stay separate from authored tasks until the strict runtime decode. */
 export interface ToolingIncludeDefaults {

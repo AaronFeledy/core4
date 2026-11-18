@@ -48,6 +48,8 @@ contributes:
     - "php:8.4"
     - "php:8.5"
     - "php:8.6"
+    - "adminer"
+    - "adminer:6"
     - "phpmyadmin"
     - "phpmyadmin:5"
     - "phpmyadmin:latest"
@@ -101,6 +103,7 @@ contributes:
     - "service-lando.node"
     - "service-lando.opensearch"
     - "service-lando.php"
+    - "service-lando.adminer"
     - "service-lando.phpmyadmin"
     - "service-lando.postgres"
     - "service-lando.python"
@@ -113,6 +116,7 @@ contributes:
     - "service-lando.valkey"
     - "service-lando.varnish"
   appFeatures:
+    - "service-lando.adminer.wire"
     - "service-lando.phpmyadmin.wire"
     - "service-lando.nginx.php-fpm.wire"
 

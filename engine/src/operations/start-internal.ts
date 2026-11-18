@@ -7,14 +7,16 @@ import {
   type ComposeKeyRejectedError,
   FileSyncStartError,
   GlobalAutoStartError,
+  type GpgAgentTransportError,
   type LandofileLoadExpressionError,
   ServiceNotReadyError,
 } from "@lando/sdk/errors";
 import { PostAppStartEvent, PostStartEvent, PreAppStartEvent, PreStartEvent } from "@lando/sdk/events";
-import type { PreparedFileSyncTarget } from "@lando/sdk/schema";
+import type { AppPlan, PreparedFileSyncTarget } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import {
   type AppPlanner,
+  type ApplyResult,
   type BuildOptions,
   BuildOrchestrator,
   EventService,
@@ -38,15 +40,23 @@ import { resolveRouterConfigForApp, routerEnabled } from "../config/router-confi
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
-import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
+import { type PreparedCertificates, prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { verifyPendingStartResume } from "./accelerated-start-resume.ts";
 import type { AdmittedApp } from "./app-activation.ts";
+import { applyAndObserveServices } from "./apply-observe.ts";
+import { publishApplyOutcomeNotices } from "./apply-outcome-notices.ts";
 import { collectPlanConnections, observeService, startedServices } from "./connection-collector.ts";
+import {
+  openDatabaseCredentialSession,
+  publishDatabaseCredentialWarningsSafely,
+} from "./database-credential-warnings.ts";
+import { databaseCredentialCheckScope } from "./database-credentials.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent } from "./events.ts";
 import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
@@ -63,7 +73,6 @@ import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { publishLowPortWarnings } from "./low-port-warning.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
-import { inspectAppliedService } from "./service-readiness.ts";
 import { convergeRemovedServices } from "./start-convergence.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { retireUnusedGpgAgentWorker } from "./start-gpg-agent.ts";
@@ -178,15 +187,31 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
     readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly preparedTargets?: readonly PreparedFileSyncTarget[];
+    /** Ordinary start announces replacements; a halt-and-relaunch recreates everything by design. */
+    readonly announceApplyOutcome?: boolean;
   },
 ): Effect.fn.Return<StartAppResult, StartAppError, BoundStartAppServices> {
-  const { target, provider, overlays: preparedOverlays } = admitted;
-  const bundle = yield* fileSyncBundle(target.plan);
   const resolvedOptions = options ?? {};
-  const events = yield* EventService;
-  const builds = yield* BuildOrchestrator;
-  const proxy = yield* RouterService;
+  const { plan, certificates } = yield* preflightAppLaunch(admitted.target, admitted.provider);
+  yield* announceAppLaunch({ target: admitted.target, plan, options: resolvedOptions });
+  return yield* activateAppLaunch({
+    admitted,
+    plan,
+    certificates,
+    options: resolvedOptions,
+    managed,
+    execution,
+  });
+});
 
+type DatabaseCredentialSession = Effect.Success<ReturnType<typeof openDatabaseCredentialSession>>;
+type PendingAcceleratedStart = Effect.Success<ReturnType<typeof prepareAcceleratedStart>>["pendingStart"];
+
+const preflightAppLaunch = Effect.fnUntraced(function* (
+  target: ResolvedAppTarget,
+  provider: PreparedRuntimeProvider,
+) {
+  const bundle = yield* fileSyncBundle(target.plan);
   const inspectAppliedFileSync = provider.inspectAppliedFileSync;
   const inspectPrior =
     inspectAppliedFileSync === undefined ? undefined : () => inspectAppliedFileSync(target.plan);
@@ -220,20 +245,30 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
       }),
     );
   // Prepare before hooks; the activation applier requires this proof to stamp the plan it applies.
-  const { plan, certificates } = yield* prepareServiceCertificates(resolvedPlan);
-  const engineId = bundle.kind === "accelerated" ? bundle.id : "unknown";
+  const prepared = yield* prepareServiceCertificates(resolvedPlan);
   if (bundle.kind === "accelerated" && inspectPrior !== undefined) {
     const prior = yield* inspectPrior();
     if (prior.status === "accelerated" && prior.engineId !== bundle.id) {
       return yield* Effect.fail(
         new FileSyncStartError({
-          engineId,
+          engineId: bundle.id,
           message: "The applied app used a different file sync engine.",
           remediation: "Restore the engine recorded in provider state before restarting this app.",
         }),
       );
     }
   }
+  return prepared;
+});
+
+const announceAppLaunch = Effect.fnUntraced(function* (input: {
+  readonly target: ResolvedAppTarget;
+  readonly plan: AppPlan;
+  readonly options: StartAppOptions;
+}) {
+  const { target, plan, options } = input;
+  const events = yield* EventService;
+  const proxy = yield* RouterService;
   const ref = target.app;
 
   yield* publishLowPortWarnings(plan);
@@ -269,7 +304,7 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
   if (neededGlobalServices.length > 0) {
     const ensureGlobals = ensureGlobalServicesRunning({
       services: neededGlobalServices,
-      ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
     }).pipe(
       mapFailureErrors((cause) =>
         cause instanceof ServiceNotReadyError || cause instanceof AppPlacementError
@@ -287,140 +322,257 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
     );
     yield* withGlobalStartProgress({ events, plan, serviceIds: neededGlobalServices, work: ensureGlobals });
   }
+});
+
+/** Capture the apply result separately because the progress tree returns only per-service rows. */
+const applyAppLaunch = Effect.fnUntraced(function* (input: {
+  readonly admitted: AdmittedApp;
+  readonly plan: AppPlan;
+  readonly runtimePlan: AppPlan;
+  readonly certificates: PreparedCertificates;
+  readonly options: StartAppOptions;
+  readonly environment: DatabaseCredentialSession;
+  readonly pendingStart: PendingAcceleratedStart;
+  readonly prepareGpgHome: Effect.Effect<void, GpgAgentTransportError>;
+}) {
+  const { admitted, plan, runtimePlan, certificates, options, environment, pendingStart } = input;
+  const { target, provider, overlays } = admitted;
+  const events = yield* EventService;
+  const services = Object.values(runtimePlan.services);
+  // Pre-apply observations, captured once for removed-service convergence and the
+  // credential check's before/after comparison.
+  let observedBefore: ReadonlyArray<ServiceRuntimeInfo> = [];
+  let applyOutcome: ApplyResult | undefined;
+  let initial: ReadonlyMap<string, ServiceRuntimeInfo> = new Map();
+  let servicesRemoved: ReadonlyArray<string> = [];
+  yield* withApplyProgress({
+    events,
+    plan,
+    services,
+    work: Effect.gen(function* () {
+      yield* verifyActiveVolumeCoordination(provider);
+      const observations = yield* provider.list({
+        app: runtimePlan.id,
+        includeUnplanned: true,
+      });
+      observedBefore = observations;
+      // Whole-app start names every service, so containers of services the Landofile no
+      // longer defines are pruned here, after accelerated-start preparation.
+      servicesRemoved = yield* convergeRemovedServices(runtimePlan, provider, {
+        app: target.app,
+        events,
+        observations,
+        verifyAdmission: verifyGlobalConsumerAdmission,
+      });
+      if (pendingStart !== undefined) yield* pendingStart.advance("record-apply-intent");
+      const observed = yield* applyAndObserveServices({
+        apply: applyActivation({
+          provider,
+          plan: runtimePlan,
+          certificates,
+          reconcile: options.reconcile ?? false,
+          complete: true,
+          ...(environment === undefined ? {} : { environment }),
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+          beforeApply: verifyGlobalConsumerAdmission,
+        }),
+        ...(pendingStart === undefined ? {} : { afterApply: pendingStart.complete }),
+        prepareGpgHome: input.prepareGpgHome,
+        beforeInspect: Effect.gen(function* () {
+          // Retire only after the apply replaced the previous realization, so a failed start
+          // keeps every worker the still-running app may still use.
+          yield* retireUnusedSshAgentWorker(plan, target.app);
+          yield* retireUnusedGpgAgentWorker(plan, target.app, overlays.gpgIntent);
+          yield* retireUnusedHostProxyWorker(plan, target.app, provider.capabilities);
+        }),
+        provider,
+        plan: runtimePlan,
+        services,
+      });
+      applyOutcome = observed.applied;
+      initial = observed.initial;
+      return observed.inspected.map((runtime) => observeService(runtimePlan, runtime));
+    }),
+  });
+  return { applyOutcome, initial, observedBefore, servicesRemoved };
+});
+
+/**
+ * Keep completion inside the activation scopes so the credential session and admission lease
+ * stay open until readiness and its checks are done.
+ */
+const completeAppLaunch = Effect.fnUntraced(function* (input: {
+  readonly admitted: AdmittedApp;
+  readonly plan: AppPlan;
+  readonly runtimePlan: AppPlan;
+  readonly options: StartAppOptions;
+  readonly environment: DatabaseCredentialSession;
+  readonly observedBefore: ReadonlyArray<ServiceRuntimeInfo>;
+  readonly initial: ReadonlyMap<string, ServiceRuntimeInfo>;
+  readonly applyOutcome: ApplyResult | undefined;
+  readonly forceAppBuild?: boolean;
+}) {
+  const { admitted, plan, runtimePlan, options, environment, observedBefore, initial, applyOutcome } = input;
+  const { target, provider } = admitted;
+  const ref = target.app;
+  const events = yield* EventService;
+  const builds = yield* BuildOrchestrator;
+  const proxy = yield* RouterService;
+  const services = Object.values(runtimePlan.services);
+  const ready = yield* completeStartup({
+    policy: "user-start",
+    builds,
+    router: proxy,
+    events,
+    ...(target.landofile?.document.router === undefined
+      ? {}
+      : { landofileRouter: target.landofile.document.router }),
+    ...(input.forceAppBuild === undefined ? {} : { forceAppBuild: input.forceAppBuild }),
+    provider,
+    plan: runtimePlan,
+    services: services.map((service) => service.name),
+    initial,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
+  const servicesStarted = startedServices(
+    yield* collectPlanConnections(runtimePlan, ready),
+    applyOutcome?.services,
+  );
+
+  yield* events.publish(
+    PostAppStartEvent.make({
+      eventName: "post-app-start",
+      appRef: ref,
+      providerId: plan.provider,
+      timestamp: now(),
+    }),
+  );
+  const postStart = PostStartEvent.make({
+    _tag: "post-start",
+    scope: "app",
+    app: ref,
+    plan,
+    timestamp: now(),
+  });
+  yield* publishAndRunPostAppEvent(plan, "post-start", postStart);
+  const scanner = yield* Effect.serviceOption(UrlScanner);
+  // A database service is checked only when this operation could change the answer: it
+  // started or recreated that container, has no pre-apply applied plan entry, or its
+  // connection descriptors changed. `lando doctor` is the always-on check.
+  const credentialScope = new Set(
+    databaseCredentialCheckScope({
+      plan: runtimePlan,
+      ...(admitted.placement.plan === undefined ? {} : { previousPlan: admitted.placement.plan }),
+      before: observedBefore,
+      after: initial,
+    }),
+  );
+  // The credential observation and the URL scan are independent post-readiness work.
+  const credentialCheck =
+    environment === undefined || credentialScope.size === 0
+      ? Effect.succeed(undefined)
+      : publishDatabaseCredentialWarningsSafely({
+          provider,
+          plan: runtimePlan,
+          services: ready.filter((service) => credentialScope.has(service.name)),
+          session: environment,
+          ...(admitted.placement.plan === undefined ? {} : { previousPlan: admitted.placement.plan }),
+        });
+  const scan = Option.isSome(scanner)
+    ? runPostStartScan({
+        scanner: scanner.value,
+        plan: runtimePlan,
+        events,
+        urls: startupScanUrls(runtimePlan, servicesStarted),
+        observeListener: (service) =>
+          observeTcpListener(service, (command) =>
+            provider.execStream({ app: runtimePlan.id, service: service.name, plan: runtimePlan }, command),
+          ),
+      })
+    : Effect.succeed(undefined);
+  const [, checks] = yield* Effect.all([credentialCheck, scan], { concurrency: 2 });
+  return { servicesStarted, checks };
+});
+
+const activateAppLaunch = Effect.fnUntraced(function* (input: {
+  readonly admitted: AdmittedApp;
+  readonly plan: AppPlan;
+  readonly certificates: PreparedCertificates;
+  readonly options: StartAppOptions;
+  readonly managed: StartManagedScope | undefined;
+  readonly execution: {
+    readonly buildOptions?: BuildOptions;
+    readonly forceAppBuild?: boolean;
+    readonly preparedTargets?: readonly PreparedFileSyncTarget[];
+    readonly announceApplyOutcome?: boolean;
+  };
+}) {
+  const { admitted, plan, certificates, options, managed, execution } = input;
+  const { target, provider, overlays } = admitted;
+  const events = yield* EventService;
+  const builds = yield* BuildOrchestrator;
 
   yield* markStartMutation(target.plan);
-  return yield* withAcquiredStartOverlays({ ...target, plan }, preparedOverlays, {
+  return yield* withAcquiredStartOverlays({ ...target, plan }, overlays, {
     provider,
     workerPlan: plan,
     reusePolicy: "exact",
     ...(managed === undefined ? {} : { managed }),
     use: Effect.fnUntraced(function* (applyPlan, prepareGpgHome) {
       const builtPlan = yield* withBuildProvider(builds.build(applyPlan, execution.buildOptions), provider);
-      const runtimePlan = projectDebuggerOverlay(builtPlan, preparedOverlays);
-      const serviceList = Object.values(runtimePlan.services);
-      const servicesRemoved: string[] = [];
-      const readyServices = yield* withGlobalConsumerAdmission(
+      const runtimePlan = projectDebuggerOverlay(builtPlan, overlays);
+      return yield* withGlobalConsumerAdmission(
         {
           plan: builtPlan,
-          ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
           ...(target.landofile?.document.router === undefined
             ? {}
             : { landofileRouter: target.landofile.document.router }),
         },
-        Effect.gen(function* () {
-          const { pendingStart } = yield* prepareAcceleratedStart(builtPlan, provider, {
-            app: ref,
-            events,
-            managed,
-            ...(execution.preparedTargets === undefined
-              ? {}
-              : { preparedTargets: execution.preparedTargets }),
-          });
-
-          const initialRuntime = new Map<string, ServiceRuntimeInfo>();
-          if (pendingStart !== undefined) yield* pendingStart.advance("record-sessions");
-          const applyAndInspect = Effect.gen(function* () {
-            yield* verifyActiveVolumeCoordination(provider);
-            // Whole-app start names every service, so containers of services the Landofile no
-            // longer defines are pruned here, after accelerated-start preparation.
-            servicesRemoved.push(
-              ...(yield* convergeRemovedServices(runtimePlan, provider, {
-                app: ref,
-                events,
-                verifyAdmission: verifyGlobalConsumerAdmission,
-              })),
-            );
-            if (pendingStart !== undefined) yield* pendingStart.advance("record-apply-intent");
-            yield* applyActivation({
-              provider,
-              plan: runtimePlan,
-              certificates,
-              reconcile: resolvedOptions.reconcile ?? false,
-              complete: true,
-              ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-              beforeApply: verifyGlobalConsumerAdmission,
+        Effect.scoped(
+          Effect.gen(function* () {
+            const environment = yield* openDatabaseCredentialSession(runtimePlan);
+            const { pendingStart } = yield* prepareAcceleratedStart(builtPlan, provider, {
+              app: target.app,
+              events,
+              managed,
+              ...(execution.preparedTargets === undefined
+                ? {}
+                : { preparedTargets: execution.preparedTargets }),
             });
-            if (pendingStart !== undefined) yield* pendingStart.complete;
-            yield* prepareGpgHome;
-            // Retire only after the apply replaced the previous realization, so a failed start
-            // keeps every worker the still-running app may still use.
-            yield* retireUnusedSshAgentWorker(plan, ref);
-            yield* retireUnusedGpgAgentWorker(plan, ref, preparedOverlays.gpgIntent);
-            yield* retireUnusedHostProxyWorker(plan, ref, provider.capabilities);
-            return yield* Effect.forEach(serviceList, (service) =>
-              inspectAppliedService({ provider, plan: runtimePlan, service: service.name }).pipe(
-                Effect.map((runtime) => {
-                  initialRuntime.set(String(service.name), runtime);
-                  return observeService(runtimePlan, runtime);
-                }),
-              ),
-            );
-          });
-          yield* withApplyProgress({
-            events,
-            plan,
-            services: serviceList,
-            work: applyAndInspect,
-          });
-
-          return yield* completeStartup({
-            policy: "user-start",
-            builds,
-            router: proxy,
-            events,
-            ...(target.landofile?.document.router === undefined
-              ? {}
-              : { landofileRouter: target.landofile.document.router }),
-            ...(execution.forceAppBuild === undefined ? {} : { forceAppBuild: execution.forceAppBuild }),
-            provider,
-            plan: runtimePlan,
-            services: serviceList.map((service) => service.name),
-            initial: initialRuntime,
-            ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-          });
-        }),
+            if (pendingStart !== undefined) yield* pendingStart.advance("record-sessions");
+            const launch = yield* applyAppLaunch({
+              admitted,
+              plan,
+              runtimePlan,
+              certificates,
+              options,
+              environment,
+              pendingStart,
+              prepareGpgHome,
+            });
+            if (execution.announceApplyOutcome === true)
+              yield* publishApplyOutcomeNotices(events, launch.applyOutcome?.services, { created: false });
+            const completed = yield* completeAppLaunch({
+              admitted,
+              plan,
+              runtimePlan,
+              options,
+              environment,
+              observedBefore: launch.observedBefore,
+              initial: launch.initial,
+              applyOutcome: launch.applyOutcome,
+              ...(execution.forceAppBuild === undefined ? {} : { forceAppBuild: execution.forceAppBuild }),
+            });
+            return {
+              app: plan.name,
+              servicesStarted: completed.servicesStarted,
+              servicesRemoved: launch.servicesRemoved,
+              ...(completed.checks === undefined ? {} : { checks: completed.checks }),
+            };
+          }),
+        ),
       );
-      const servicesStarted = startedServices(yield* collectPlanConnections(runtimePlan, readyServices));
-
-      yield* events.publish(
-        PostAppStartEvent.make({
-          eventName: "post-app-start",
-          appRef: ref,
-          providerId: plan.provider,
-          timestamp: now(),
-        }),
-      );
-      const postStart = PostStartEvent.make({
-        _tag: "post-start",
-        scope: "app",
-        app: ref,
-        plan,
-        timestamp: now(),
-      });
-      yield* publishAndRunPostAppEvent(plan, "post-start", postStart);
-      const scanner = yield* Effect.serviceOption(UrlScanner);
-      const checks = Option.isSome(scanner)
-        ? yield* runPostStartScan({
-            scanner: scanner.value,
-            plan: runtimePlan,
-            events,
-            urls: startupScanUrls(runtimePlan, servicesStarted),
-            observeListener: (service) =>
-              observeTcpListener(service, (command) =>
-                provider.execStream(
-                  { app: runtimePlan.id, service: service.name, plan: runtimePlan },
-                  command,
-                ),
-              ),
-          })
-        : undefined;
-
-      return {
-        app: plan.name,
-        servicesStarted,
-        servicesRemoved,
-        ...(checks === undefined ? {} : { checks }),
-      };
     }),
   });
 });

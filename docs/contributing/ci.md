@@ -597,6 +597,15 @@ export LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock
 LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test plugins/service-lando/test/postgres-config.integration.test.ts
 ```
 
+`plugins/service-lando/test/package-installs.integration.test.ts` bind-mounts
+fixture projects from a host temp directory. When the socket belongs to an
+engine that cannot see this host's temp tree, such as a Podman service in
+another WSL distribution, set `LANDO_TEST_PROJECT_BIND_ROOT` to a directory
+both sides share; otherwise the suite fails and names the unreachable path.
+Its Node package-manager cases download Yarn and pnpm releases from
+`registry.npmjs.org` on the host, not inside the image build, so the host
+running the suite needs registry access.
+
 The `providers` PR profile runs Linux x64 provider integration. Other platform-specific provider jobs remain part of broad CI. Fake-client provider contracts also run in the ordinary PR unit shards, independently of live socket availability.
 
 Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line. Linux x64 splits live coverage into three required lanes, each with a 35-minute timeout: `providers` runs the compiled-CLI suites under `core/test/live`, `engine` runs the suites that drive the engine directly (provider plugins, readiness, data helpers and SQLite), and `services` runs `plugins/service-lando` integration. All three lanes must pass. Linux arm64 has a 25-minute cap; macOS and Windows contract-only targets have 20-minute caps. Linux x64 diagnostic artifacts use `provider-integration-diagnostics-linux-x64-<runner>-<suite>` so each lane keeps its own results. If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
@@ -662,7 +671,9 @@ LANDO_GUIDE_E2E=1 LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 LANDO_SCENARIO_E2E_BINARY="
 LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun run test:selection nightly-provider-e2e
 ```
 
-Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting.
+Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. The job has a 90-minute timeout, including room for six additional Composer install scenarios at about three minutes each.
+
+On scheduled nightly runs on `main`, `report-failure` waits for every other job and reports any failed jobs, even when other dependencies were skipped. GitHub reports a job stopped by its `timeout-minutes` as cancelled, so the reporter also lists cancelled jobs, marked as timed out or cancelled. A run cancelled as a whole files nothing. It searches open issues for the exact title `nightly automation failure`, comments on the oldest match, and creates an issue assigned to `AaronFeledy` only when none is open. The issue or comment names the failed jobs and links the workflow run. Only the reporter receives `issues: write`; the workflow keeps `contents: read`. Manual dispatches and runs on other branches do not file reports.
 
 ## Nightly source-store acceptance
 

@@ -28,7 +28,7 @@ export const appConfigRedactionTokens = (result: unknown): readonly string[] => 
   if ("redactionTokens" in result && Array.isArray(result.redactionTokens))
     return result.redactionTokens.filter((token): token is string => typeof token === "string");
   if ("landofile" in result && Schema.is(LandofileShape)(result.landofile))
-    return collectAuthoredRedactionTokens(result.landofile).substring;
+    return collectAuthoredRedactionTokens(result.landofile, undefined).substring;
   return configRedactionTokens(result);
 };
 

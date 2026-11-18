@@ -12,7 +12,6 @@ import type {
   PluginRegistry,
   ServiceType,
   ServiceTypeHostFacts,
-  ServiceTypeProjectFileInput,
   ServiceTypeResolution,
 } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
@@ -185,7 +184,7 @@ export interface ResolvedService {
   readonly applicationConfigs: ReadonlyMap<number, ApplicationConfig>;
   readonly resolvedArtifactTag: string | undefined;
   readonly envFileInputs: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
-  readonly projectFiles: ReadonlyArray<ServiceTypeProjectFileInput>;
+  readonly projectFiles: readonly import("./project-files.ts").PlannedProjectFile[];
   readonly configSourceInputs: ReadonlyArray<ServiceConfigSource>;
 }
 
@@ -198,6 +197,9 @@ export const resolvedServiceCacheInput = (entry: ResolvedService) => ({
   connectionClientNames: entry.resolution.connectionClientNames ?? [],
   ...(entry.resolution.connection === undefined ? {} : { connection: entry.resolution.connection }),
   ...(entry.resolution.nonSqlCreds === undefined ? {} : { nonSqlCreds: entry.resolution.nonSqlCreds }),
+  ...(entry.resolution.generatedCertificateEndpoint === undefined
+    ? {}
+    : { generatedCertificateEndpoint: entry.resolution.generatedCertificateEndpoint }),
   logSources: entry.logSources,
   features: entry.prepared.features.map((feature) => ({
     id: feature.id,

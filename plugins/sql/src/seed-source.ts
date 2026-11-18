@@ -1,11 +1,11 @@
 import { resolve } from "node:path";
+import { databaseClientEnvironment } from "@lando/sdk/database-creds";
 import { SqlSeedSourceError, SqlServiceAmbiguousError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect, absurd } from "effect";
-
 import { secretTokens } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
-import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
+import { currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
 import { dumpCommand } from "./families.ts";
 import { type SqlTarget, resolveSqlTarget, sqlCandidates } from "./target.ts";
 import { toSqlPlan } from "./views.ts";
@@ -125,7 +125,7 @@ export const resolveSeedSource = Effect.fn("Sql.resolveSeedSource")(function* (
     providerId: deps.providerId,
   });
   const creds = resolveSqlCreds(connection);
-  const env = credsEnv(service.family, creds);
+  const env = databaseClientEnvironment(service.family, creds);
   const redactionTokens = secretTokens({ password: creds.password }, plan);
   return {
     plan,

@@ -21,18 +21,17 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
 ## Run Artisan, Composer, npm, and the clients
 
-`create-project` wants an empty directory, and `.lando.yml` is already there:
+Create Laravel in the app root. The recipe's `create-project` tool preserves
+`.lando.yml`, installs dependencies, and runs Laravel's Composer hooks in order:
 
 ```sh
-lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
+lando create-project laravel/laravel
 ```
 
-Copy the application into the root, keeping `.lando.yml`, then check its
-dependencies and tools:
+Laravel's hooks create `.env` and generate the application key. Check the
+installed application and tools:
 
 ```sh
-lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
-lando composer install --no-interaction
 lando artisan --version
 lando composer --version
 lando redis-cli ping
@@ -77,7 +76,7 @@ The appserver sets `uploadDirs: [storage]` beneath webroot `public` to keep PHP 
 | `cache` | `type: redis` |
 | `node` | `node:22`, `primary: false`, no `command`, idle until `lando npm` runs |
 | `worker` (optional) | `php:8.4`, `via: cli`, `command: php artisan queue:work` with `--answer=worker=true` |
-| Tooling | `lando artisan` and `lando composer` on `appserver`, `lando npm` on `node` |
+| Tooling | `lando artisan` and `lando composer` on `appserver`. The `node` service adds `lando npm` and `lando npx` |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=database=postgres:16` when you want Postgres instead.
 
@@ -98,7 +97,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"primary\":\\s*false" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
+      <Verify command="lando help npm --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"node\"[\\s\\S]*\"program\":\\s*\"npm\"" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />

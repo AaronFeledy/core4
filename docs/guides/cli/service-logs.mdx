@@ -112,12 +112,32 @@ it does not substitute their console output.
 
 Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Followers survive common log rotation (rename+create and copytruncate) and keep per-source order. Interrupting `lando logs` releases every follower. Lines are redacted once before they reach the CLI.
 
+Lando masks a credential that wraps onto the next line as one value, such as a quoted `password=` or `password: "..."` value that continues below or a token on the line after `Bearer`. Text, `--format=json`, and `--format=yaml` show the same masked lines. The masked value takes the place of the lines it covered. With `--follow`, Lando holds an unfinished value for at most half a second while it waits for the rest. If the value still hasn't closed, Lando prints the masked line and hides the rest of the value as it arrives, up to its closing quote. A value that never closes stops hiding after 64 lines or 16 KiB, so a stray quote can't swallow a service's output. Known secrets are masked in both modes, including a multi-line secret such as a private key, whichever line endings the service writes.
+
 For scripts, `lando logs --format=json` emits a buffered frame stream. Its
 terminal `result` frame carries the app name at `envelope.result.app` and the
 collected lines at `envelope.result.lines`. Each line carries `service`, `stream`,
 and `line`, plus `source` and a timestamp in epoch milliseconds when available.
 With `--follow --format=json`, lines arrive as stream frames instead; the final
 result contains `app` but omits `lines` rather than returning an empty array.
+
+## Read scratch and global logs
+
+Scratch and global apps take the same filters. Read the global app with `lando global:logs`, using `-s` to pick one service. Add `-f`, `--tail`, or `--since` exactly as for an app:
+
+```sh
+lando global:logs -s traefik --tail 50
+lando global:logs -s traefik --follow
+```
+
+Read a scratch app by its id, which `lando scratch:list` prints:
+
+```sh
+lando scratch:logs <id> --tail 50
+lando scratch:logs <id> -s <service> --since 15m
+```
+
+`lando scratch:logs` looks up the registry entry and that root's recorded plan. An id no registry entry names fails with `ScratchAppNotFoundError`. A scratch whose plan is no longer recorded prints no lines; Lando validates `--since` first, so a malformed duration fails the same way it does for an app.
 
 ## Print build output
 

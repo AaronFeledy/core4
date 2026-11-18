@@ -12,7 +12,7 @@ export const NEXTJS_SCAFFOLD_COMMAND = [
   "trap 'exit 1' HUP INT TERM",
   'mkdir -- "$lock_dir" 2>/dev/null || fail "Next.js scaffold cannot acquire $lock_dir; another invocation may be running. Wait for it to finish. If a previous invocation was interrupted, remove the empty lock directory yourself before retrying."',
   "lock_owned=1",
-  'if test -e "$app_root/package.json" || test -L "$app_root/package.json"; then fail "Next.js scaffold refuses an existing package.json. Use lando npm install for an existing app."; fi',
+  'if test -e "$app_root/package.json" || test -L "$app_root/package.json"; then fail "Next.js scaffold refuses an existing package.json. Install its dependencies through the package manager it declares instead, for example lando npm install, lando pnpm install, or lando yarn install."; fi',
   'staging_parent=$(printenv TMPDIR 2>/dev/null || true); if test -z "$staging_parent"; then staging_parent=/tmp; fi',
   "if printenv LANDO_NEXTJS_STAGING_ROOT >/dev/null 2>&1; then staging_parent=$(printenv LANDO_NEXTJS_STAGING_ROOT); fi",
   'staging_parent=$(cd "$staging_parent" && pwd -P) || fail "Next.js scaffold requires an existing temporary directory."',

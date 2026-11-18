@@ -41,6 +41,7 @@ test("omits MySQL-only GTID flags when building a MariaDB export", () => {
     "3306",
     "-u",
     "alice",
+    "--skip-ssl-verify-server-cert",
     "--single-transaction",
     "--quick",
     "--no-tablespaces",

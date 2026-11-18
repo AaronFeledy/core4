@@ -26,6 +26,7 @@ import {
   resolveAppCommandCacheSource,
   sourceContentHash,
 } from "./command-index-source.ts";
+import { commandProjectFilesFresh } from "./command-project-file-freshness.ts";
 import { commandScriptsFresh } from "./command-script-freshness.ts";
 import { appToolingCompilationCachePath, resolveUserCacheRoot } from "./paths.ts";
 
@@ -70,6 +71,11 @@ const readDetailed = async (
     return { status: "stale", staleReason: "environment", sourcePath };
   if (payload.sourceFile !== sourcePath || !Array.isArray(payload.sourceLocalIncludePaths))
     return { status: "stale", staleReason: "source", sourcePath };
+  if (
+    payload.sourceProjectFiles.length > 0 &&
+    !(await commandProjectFilesFresh(appRoot, payload.sourceProjectFiles))
+  )
+    return { status: "stale", staleReason: "referenced-file", sourcePath };
   if (!Array.isArray(payload.sourceReferencedFiles))
     return { status: "stale", staleReason: "referenced-file", sourcePath };
   for (const file of payload.sourceReferencedFiles) {

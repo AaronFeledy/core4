@@ -5,10 +5,7 @@ import type { ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
 
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
-import {
-  APACHE_LISTEN_BUILD_STEP_ID,
-  apacheForwardedDirectoryRedirectDirectives,
-} from "../src/services/apache.ts";
+import { APACHE_LISTEN_BUILD_STEP_ID } from "../src/services/apache.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID, apacheErrorPageDirectives } from "../src/services/http-errors.ts";
 import { apacheHiddenPathDirectives } from "../src/services/http-hidden-paths.ts";
 import {
@@ -487,6 +484,9 @@ describe("php serving modes (via:)", () => {
       'CustomLog "|/bin/cat" vhost_combined',
       "Listen 8080",
       "<VirtualHost *:8080>",
+      "ServerName localhost:80",
+      "UseCanonicalName Off",
+      "UseCanonicalPhysicalPort Off",
       'DocumentRoot "/app"',
       '<Directory "/app">',
       "Options -Indexes +FollowSymLinks",
@@ -497,7 +497,6 @@ describe("php serving modes (via:)", () => {
       '<FilesMatch "\\.(?!php$)(?i:php)$">',
       "Require all denied",
       "</FilesMatch>",
-      ...apacheForwardedDirectoryRedirectDirectives("rewrite"),
       ...apacheErrorPageDirectives(),
       ...apacheHiddenPathDirectives(),
       "</VirtualHost>",
@@ -531,7 +530,6 @@ describe("php serving modes (via:)", () => {
       '<FilesMatch "\\.(?!php$)(?i:php)$">',
       "Require all denied",
       "</FilesMatch>",
-      ...apacheForwardedDirectoryRedirectDirectives("rewrite"),
       ...apacheErrorPageDirectives(),
       ...apacheHiddenPathDirectives(),
     ]);

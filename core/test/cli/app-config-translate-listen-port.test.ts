@@ -3,6 +3,7 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { appConfigLint } from "@lando/engine/operations/app-config-lint";
 import { layerWith as pluginRegistryLayer } from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
@@ -13,7 +14,8 @@ import { Effect, Layer } from "effect";
 import { withCwd } from "../_support/temp-cwd.ts";
 import { withFixture } from "./translate-lando3-fixture.ts";
 
-const bundledCatalog = pluginRegistryLayer({ user: false, app: false });
+// Explicit Node types read package.json for the package manager, so planning needs FileSystem.
+const bundledCatalog = Layer.merge(pluginRegistryLayer({ user: false, app: false }), BunFileSystem.layer);
 
 test.each([
   ["mysql:8.0", "MYSQL_TCP_PORT", 3307],
