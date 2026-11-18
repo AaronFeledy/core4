@@ -244,7 +244,13 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
     if (statusFilter !== undefined && !statusFilter.includes(app.status)) return false;
     return true;
   });
-  filtered.sort((a, b) => a.appName.localeCompare(b.appName));
+  // Same-named apps at different roots get a stable order instead of filesystem read order.
+  filtered.sort(
+    (a, b) =>
+      a.appName.localeCompare(b.appName) ||
+      a.appRoot.localeCompare(b.appRoot) ||
+      a.providerId.localeCompare(b.providerId),
+  );
   const visible =
     pruneCandidate === undefined ? filtered : filtered.filter((entry) => !pruned.includes(entry));
   return { apps: visible, ...(pruneCandidate === undefined ? {} : { pruned }) };
