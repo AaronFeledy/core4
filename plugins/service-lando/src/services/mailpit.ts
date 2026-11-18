@@ -16,7 +16,7 @@ import { resolveMailListeners } from "./_mail-listeners.ts";
 
 export { MAILPIT_LISTENER } from "./_mail-listeners.ts";
 
-import { MAILPIT_IMAGE } from "../mailpit-constants.ts";
+import { MAILPIT_IMAGE, MAILPIT_READINESS_COMMAND } from "../mailpit-constants.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const MAILPIT_FEATURE_ID = "service-lando.mailpit";
@@ -27,7 +27,7 @@ const applyMailpitFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? MAILPIT_IMAGE });
   ctx.addEnv("MP_SMTP_BIND_ADDR", resolveMailListeners(service, "mailpit").smtpAddress);
-  ctx.setHealthcheck(commandHealthcheck(["/mailpit", "readyz"], 15));
+  ctx.setHealthcheck(commandHealthcheck([...MAILPIT_READINESS_COMMAND], 15));
 
   applyAuthoredProcessFields(ctx);
 };

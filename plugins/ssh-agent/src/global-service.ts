@@ -5,7 +5,7 @@
  */
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { ServiceConfig } from "@lando/sdk/schema";
+import { ServiceConfig, sshAgentReadinessCommand } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import {
   SSH_AGENT_DIRECTORY,
@@ -30,6 +30,14 @@ export const createSshAgentServiceConfig = (paths = makeLandoPaths()): ServiceCo
     },
     // The sidecar keeps no per-user state, so there is no home to persist.
     home: false,
+    readiness: {
+      kind: "command",
+      command: sshAgentReadinessCommand(),
+      intervalSeconds: 0.5,
+      timeoutSeconds: 5,
+      startPeriodSeconds: 25,
+      retries: 2,
+    },
     command: [
       "sh",
       "-c",

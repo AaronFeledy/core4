@@ -14,6 +14,7 @@ import {
   type PortablePath,
   SSH_AGENT_SOCKET_NAME,
   ServiceName,
+  sshAgentReadinessCommand,
 } from "@lando/sdk/schema";
 import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Duration, Effect, Option, Ref } from "effect";
@@ -67,7 +68,7 @@ export const runtimeSshAgentCheck = Effect.gen(function* () {
       detail: `SSH agent sidecar container status: ${service.status}${service.exitCode === undefined ? "" : `; container exit code: ${service.exitCode}`}.`,
     };
   const result = yield* provider.exec(target, {
-    command: ["sh", "-c", "ssh-add -l >/dev/null 2>&1; result=$?; test $result -eq 0 -o $result -eq 1"],
+    command: sshAgentReadinessCommand(),
     stdin: "ignore",
     raw: true,
   });
