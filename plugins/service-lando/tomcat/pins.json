@@ -8,9 +8,9 @@
       "configSha256": "61a387d09173adabe22f0f6af7589304d666be3dc78b95280c2e73e02f0fbe90"
     },
     "10": {
-      "version": "10.1.61",
-      "indexDigest": "sha256:4ab853de82ffdbcb296ebd8b545f13ca32eb3d6c5feb5f5dc2c685658a83d978",
-      "upstreamCommit": "ed89280ad31d8dfcac3a3b498d759f6f8b5eb097",
+      "version": "10.1.62",
+      "indexDigest": "sha256:b1770e17c2efff1a5f711cf92939fcfa61966e0e01420c9ce4a1764cabdaea82",
+      "upstreamCommit": "a92462222d487e8e55a770c4eabc9a6f75a32a90",
       "configSha256": "5771ecf807db1a8390f6918b55f20e8565c0c8252f23ddde257e091e5a31a2ff"
     },
     "11": {
