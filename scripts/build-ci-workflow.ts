@@ -508,6 +508,7 @@ ${landoManagedPodmanRuntimeDirCommands}
           # Every supported Node major is pre-pulled from the service-type table.
 ${nodeImagePullLines}
           pull_image docker.io/library/node:22-alpine
+          pull_image docker.io/library/adminer:6
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
