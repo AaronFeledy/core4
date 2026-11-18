@@ -40,8 +40,16 @@ lando composer check-platform-reqs --no-dev
 
 Resolve any reported PHP or extension requirement before running the app. For
 a stock service with `user: www-data`, Lando prepares and persists `/var/www`
-as that user's home by default, so Composer's home cache survives rebuilds.
+as that user's home by default.
 You do not need `home: false` for non-root Composer use.
+
+Stock PHP services with Composer enabled share downloaded packages across apps
+on the same provider. Lando mounts `lando-cache-composer` at
+`/var/lib/lando/composer-cache` and sets `COMPOSER_CACHE_DIR` to that path unless
+you set it in the service's `environment:`. A custom image or replacement build
+doesn't get this default. The shared cache survives rebuilds and ordinary
+`lando destroy` runs. `lando destroy --purge-caches` can remove it when no other
+container is using it, so other apps may need to download packages again.
 
 ## Install global tools in the image
 
@@ -81,7 +89,7 @@ composer global require squizlabs/php_codesniffer
 
 ## Re-run after composer.json changes
 
-Lando doesn't read `composer.json`, so editing it doesn't change the step. A `lando start` on the running app still reports the install as cached. Every run of the step, in a new container or under `lando rebuild`, downloads only packages not already in the Composer cache volume. After you change `composer.json`, force the step:
+Lando doesn't read `composer.json`, so editing it doesn't change the step. A `lando start` on the running app still reports the install as cached. When the step runs again, Composer can reuse packages from its download cache. After you change `composer.json`, force the step:
 
 ```sh
 lando rebuild
