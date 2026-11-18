@@ -18,13 +18,11 @@ export const verifyAuthoredNpmDigest = (source: string, expected: NpmAuthoredInt
         }),
       );
 
-export const verifyNpmFile = (source: string, expected: NpmAuthoredIntegrity) =>
+export const verifyNpmFile = (source: string, expected: NpmAuthoredIntegrity & { readonly file: string }) =>
   Effect.fnUntraced(function* (root: string) {
-    const file = expected.file;
-    if (file === undefined) return;
     const actual = yield* Effect.tryPromise({
       try: async () => {
-        const path = containedPath(root, "package", file);
+        const path = containedPath(root, "package", expected.file);
         if ((await realpath(path)) !== path || !(await lstat(path)).isFile()) {
           throw new TypeError("Expected a regular file within the npm tree.");
         }
