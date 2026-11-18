@@ -1,5 +1,9 @@
 import { join } from "node:path";
-import { APPLIED_STATE_VERSION, openAppliedPlansRecord } from "@lando/container-runtime/applied-state";
+import {
+  APPLIED_STATE_VERSION,
+  appliedPlansPruneError,
+  openAppliedPlansRecord,
+} from "@lando/container-runtime/applied-state";
 import { mapFailures } from "@lando/sdk/command-result";
 
 import { StateStoreError } from "@lando/sdk/errors";
@@ -49,13 +53,15 @@ export const pruneAppliedPlanState = Effect.fnUntraced(function* (
 
   if (providerId === "podman") {
     const bucket = yield* openAppliedPlansRecord({ open: (spec) => stateStore.open({ ...spec, root }) });
-    return yield* bucket.mutate<boolean>((current) => {
-      if (current === null || !Object.hasOwn(current, id) || current[id]?.root !== entry.appRoot) {
-        return Effect.succeed({ _tag: "Keep", result: false });
-      }
-      const { [id]: _removed, ...remaining } = current;
-      return Effect.succeed({ _tag: "Set", value: remaining, result: true });
-    });
+    return yield* bucket
+      .mutate<boolean>((current) => {
+        if (current === null || !Object.hasOwn(current, id) || current[id]?.root !== entry.appRoot) {
+          return Effect.succeed({ _tag: "Keep", result: false });
+        }
+        const { [id]: _removed, ...remaining } = current;
+        return Effect.succeed({ _tag: "Set", value: remaining, result: true });
+      })
+      .pipe(mapFailures(appliedPlansPruneError));
   }
 
   const fs = yield* FileSystem;

@@ -1,32 +1,119 @@
-import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { AppId, AppPlan } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Effect, Schema, SchemaIssue } from "effect";
+import { APPLIED_STATE_VERSION } from "./applied-state-migrate.ts";
 
-export class AppliedStateMigrationError extends Error {}
+type DecodeDetail = {
+  readonly foundVersion: number | null;
+  readonly expectedVersion: number;
+  readonly coordinate: string;
+};
 
-const migrationDetail = (error: StateStoreError) =>
-  error.cause instanceof AppliedStateMigrationError ? { detail: error.cause.message } : {};
+export class AppliedStateMigrationError extends Error {
+  constructor(
+    readonly foundVersion: number,
+    readonly coordinate: string,
+  ) {
+    super(`Cannot read applied state v${foundVersion} as v${APPLIED_STATE_VERSION}: ${coordinate}.`);
+  }
+}
+
+const coordinateAnnotation = "appliedStateCoordinate";
+
+export const appliedStateIssue = (coordinate: string) =>
+  new SchemaIssue.InvalidValue({
+    [coordinateAnnotation]: coordinate,
+    message: `Invalid applied state at ${coordinate}.`,
+  });
+
+const annotatedCoordinate = (issue: SchemaIssue.Issue): string | undefined => {
+  switch (issue._tag) {
+    case "InvalidValue": {
+      const coordinate = issue.annotations?.[coordinateAnnotation];
+      return typeof coordinate === "string" ? coordinate : undefined;
+    }
+    case "Composite":
+      return issue.issues.map(annotatedCoordinate).find((coordinate) => coordinate !== undefined);
+    case "Encoding":
+    case "Filter":
+      return annotatedCoordinate(issue.issue);
+    default:
+      return undefined;
+  }
+};
+
+const appliedStateDecodeDetail = (
+  error: StateStoreError,
+  root: "plan" | "apps",
+): { readonly detail?: DecodeDetail } => {
+  const { cause } = error;
+  const expectedVersion = APPLIED_STATE_VERSION;
+  if (cause instanceof AppliedStateMigrationError) {
+    return { detail: { foundVersion: cause.foundVersion, expectedVersion, coordinate: cause.coordinate } };
+  }
+  if (error.reason !== "decode" || error.operation !== "get") return {};
+  return Schema.isSchemaError(cause)
+    ? {
+        detail: {
+          foundVersion: expectedVersion,
+          expectedVersion,
+          coordinate: annotatedCoordinate(cause.issue) ?? root,
+        },
+      }
+    : { detail: { foundVersion: null, expectedVersion, coordinate: "envelope" } };
+};
 
 export type AppliedPlanRead =
   | { readonly status: "missing" }
   | { readonly status: "readable"; readonly plan: AppPlan }
-  | { readonly status: "unreadable"; readonly path: string; readonly detail?: string };
+  | { readonly status: "unreadable"; readonly path: string; readonly detail?: DecodeDetail };
 
 export const unreadableAppliedStateError = (input: {
   readonly providerId: string;
   readonly path: string;
   readonly layout: "per-app" | "record";
-  readonly detail?: string;
+  readonly detail?: DecodeDetail;
+  readonly operation?: "persist" | "remove";
   /** The app whose record is unreadable; the global app is cleaned up by its own command. */
   readonly appId?: string;
 }) =>
   new ProviderUnavailableError({
     providerId: input.providerId,
-    operation: "applied-state.read",
-    message: `The applied provider state file "${input.path}" is unreadable; refusing to mutate runtime resources.${input.detail === undefined ? "" : ` ${input.detail}`}${input.layout === "record" ? " This file contains state for several apps; no app in this record can be safely mutated." : ""}`,
+    operation: `applied-state.${input.operation ?? "read"}`,
+    message: `The applied provider state file "${input.path}" is unreadable; refusing to mutate runtime resources.${input.detail === undefined ? "" : ` Found ${input.detail.foundVersion === null ? "an unreadable version" : `v${input.detail.foundVersion}`}, expected v${input.detail.expectedVersion}; invalid at ${input.detail.coordinate}.`}${input.layout === "record" ? " This file contains state for several apps; no app in this record can be safely mutated." : ""}`,
+    ...(input.detail === undefined ? {} : { details: { path: input.path, ...input.detail } }),
     remediation: `Restore "${input.path}" from backup; or, accepting that unflushed accelerated sync changes may be lost, move it aside and rerun ${input.appId === "global" ? "`lando global:destroy --yes`" : "`lando destroy`"}, which then cleans up by ownership labels.${input.layout === "record" ? " Moving this file aside affects every app in the record." : ""}`,
   });
+
+export const APPLIED_PLANS_KEY = "applied-plans.json";
+
+export const unreadableAppliedPlansMutation = (
+  error: StateStoreError,
+  owner: { readonly providerId: string; readonly operation?: "persist" | "remove" },
+) => {
+  const { detail } = appliedStateDecodeDetail(error, "apps");
+  return detail === undefined
+    ? undefined
+    : unreadableAppliedStateError({
+        ...owner,
+        layout: "record",
+        path: error.path ?? APPLIED_PLANS_KEY,
+        detail,
+      });
+};
+
+export const appliedPlansPruneError = (error: StateStoreError) => {
+  const cause = unreadableAppliedPlansMutation(error, { providerId: "podman", operation: "remove" });
+  if (cause === undefined) return error;
+  return new StateStoreError({
+    reason: error.reason,
+    operation: error.operation,
+    path: error.path ?? APPLIED_PLANS_KEY,
+    remediation: cause.remediation,
+    cause,
+  });
+};
 
 const inspectBucket = <A>(bucket: StateBucket<A>) =>
   bucket.exists.pipe(
@@ -53,7 +140,7 @@ export const inspectAppliedPlanBucket = (
           Effect.succeed<AppliedPlanRead>({
             status: "unreadable",
             path: bucket.path,
-            ...migrationDetail(error),
+            ...appliedStateDecodeDetail(error, "plan"),
           }),
         ),
       ),
@@ -76,7 +163,11 @@ export const inspectAppliedPlansRecordBucket = (
             : { status: "readable" as const, plans: value },
         ),
         Effect.catch((error) =>
-          Effect.succeed({ status: "unreadable" as const, path: bucket.path, ...migrationDetail(error) }),
+          Effect.succeed({
+            status: "unreadable" as const,
+            path: bucket.path,
+            ...appliedStateDecodeDetail(error, "apps"),
+          }),
         ),
       ),
     ),

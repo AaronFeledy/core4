@@ -973,7 +973,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
       const prior = yield* inspectAppliedPlan(state, target.app);
       if (prior.status === "unreadable")
         return yield* Effect.fail(
-          unreadableAppliedStateError({ providerId, path: prior.path, layout: "per-app", appId: target.app }),
+          unreadableAppliedStateError({ providerId, ...prior, layout: "per-app", appId: target.app }),
         );
       if (requireReceipt && prior.status === "missing") {
         return yield* Effect.fail(
