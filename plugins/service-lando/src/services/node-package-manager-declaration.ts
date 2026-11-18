@@ -20,7 +20,6 @@ const DEV_VERSION = [...DEV_MANAGER, "version"] as const;
 const DEV_ON_FAIL = [...DEV_MANAGER, "onFail"] as const;
 
 const PACKAGE_JSON_PATH = /(?:^|[/\\])package\.json$/u;
-const APP_ROOT_PACKAGE_JSON_PATH = /^package\.json$/u;
 
 const invalidDevVersion = (sourcePath: string, exact: boolean): NodeInferenceError =>
   new NodeInferenceError(
@@ -36,8 +35,8 @@ const packageJsonInputs = (
 ): ReadonlyArray<ServiceTypeProjectFileInput> => {
   const declared = inputs.filter((input) => PACKAGE_JSON_PATH.test(input.path));
   return [
-    ...declared.filter((input) => !APP_ROOT_PACKAGE_JSON_PATH.test(input.path)),
-    ...declared.filter((input) => APP_ROOT_PACKAGE_JSON_PATH.test(input.path)),
+    ...declared.filter((input) => input.path !== "package.json"),
+    ...declared.filter((input) => input.path === "package.json"),
   ];
 };
 

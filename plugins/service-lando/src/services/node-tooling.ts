@@ -1,16 +1,16 @@
 import type { ToolingTaskShape } from "@lando/sdk/schema";
+import type { NodePackageManagerName } from "./node-package-manager.ts";
 
-export const nodeManagerTooling = (service: string, manager: string | undefined) => {
-  const commands =
-    manager === "pnpm"
-      ? ["pnpm", "pnpx"]
-      : manager === "yarn"
-        ? ["yarn"]
-        : manager === "bun"
-          ? []
-          : ["npm", "npx"];
+const managerCommands = {
+  pnpm: ["pnpm", "pnpx"],
+  yarn: ["yarn"],
+  bun: [],
+  npm: ["npm", "npx"],
+} as const satisfies Record<NodePackageManagerName, readonly string[]>;
+
+export const nodeManagerTooling = (service: string, manager: NodePackageManagerName = "npm") => {
   return Object.fromEntries(
-    commands.map((command) => [
+    managerCommands[manager].map((command) => [
       command,
       {
         cmd: [command],
