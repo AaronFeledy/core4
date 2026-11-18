@@ -696,6 +696,11 @@ describe("ScenarioContextFactory", () => {
           exitCode: 0,
           relative: "site",
         });
+        const afterLandoFlag = await runFrom(["init", "--log-level", "debug", "site", "--recipe", "lamp"]);
+        expect(Exit.isSuccess(afterLandoFlag) ? afterLandoFlag.value : afterLandoFlag).toEqual({
+          exitCode: 0,
+          relative: "site",
+        });
         const byName = await runFrom(["init", "--recipe", "lamp", "--name", "lamp-app"]);
         expect(Exit.isSuccess(byName) ? byName.value : byName).toEqual({ exitCode: 0, relative: "lamp-app" });
         const escaped = await runFrom(["init", "../outside", "--recipe", "lamp"]);

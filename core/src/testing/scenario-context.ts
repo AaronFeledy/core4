@@ -532,7 +532,7 @@ const initFlagsByToken = flagDefinitionsByToken(initFlagDefinitions);
  * off the command registry so `@lando/core/testing` does not load every plugin.
  */
 const initTarget = (args: ReadonlyArray<string>): { destination?: string; name?: string } => {
-  const { command } = splitCommandTokens(args, specOwnerPolicy(initSpec, initFlagDefinitions), "output");
+  const { command } = splitCommandTokens(args, specOwnerPolicy(initSpec, initFlagDefinitions), "all");
   let destination: string | undefined;
   let name: string | undefined;
   for (let index = 0; index < command.argv.length; index += 1) {
