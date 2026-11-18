@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import { lstat, open, realpath } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open, realpath } from "node:fs/promises";
+import { dirname } from "node:path";
 import { Effect } from "effect";
 import { SourceAcquisitionError, acquisitionError } from "./errors.ts";
 import { containedPath } from "./tree.ts";
@@ -23,10 +25,12 @@ export const verifyNpmFile = (source: string, expected: NpmAuthoredIntegrity & {
     const actual = yield* Effect.tryPromise({
       try: async () => {
         const path = containedPath(root, "package", expected.file);
-        if ((await realpath(path)) !== path || !(await lstat(path)).isFile()) {
+        if ((await realpath(dirname(path))) !== dirname(path)) {
           throw new TypeError("Expected a regular file within the npm tree.");
         }
-        await using handle = await open(path, "r");
+        await using handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+        if (!(await handle.stat()).isFile())
+          throw new TypeError("Expected a regular file within the npm tree.");
         const hash = createHash(expected.algorithm);
         let size = 0;
         for await (const chunk of handle.createReadStream({ autoClose: false })) {

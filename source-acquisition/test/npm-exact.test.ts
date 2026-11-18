@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Effect } from "effect";
 import { makeSourceStore } from "../src/index.ts";
+import { verifyNpmFile } from "../src/npm-authored-integrity.ts";
 import { withTestSources } from "../src/testing.ts";
 import { makeFakeNpmRegistry, npmVersion, packageTarball, sriSha512 } from "./support.ts";
 
@@ -79,3 +83,24 @@ test("authenticates Berry's bundle separately from registry tarball bytes", asyn
     }),
   );
 });
+
+test.each(["regular file", "symlinked file"] as const)(
+  "hashes an authored file only when it is a %s",
+  async (kind) => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "lando-npm-file-")));
+    try {
+      await mkdir(join(root, "package", "bin"), { recursive: true });
+      await writeFile(join(root, "outside.js"), bundle);
+      const file = join(root, "package", "bin", "yarn.js");
+      if (kind === "symlinked file") await symlink(join(root, "outside.js"), file);
+      else await writeFile(file, bundle);
+      const hex = createHash("sha512").update(bundle).digest("hex");
+      const result = await Effect.runPromise(
+        Effect.result(verifyNpmFile("yarn", { algorithm: "sha512", hex, file: "bin/yarn.js" })(root)),
+      );
+      expect(result._tag).toBe(kind === "regular file" ? "Success" : "Failure");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
