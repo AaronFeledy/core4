@@ -139,7 +139,7 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
         retired?.shutdownObservations,
         quiesced?.shutdownObservations,
       ];
-      let volumesRemoved: VolumeRemovalCounts = retired?.volumesRemoved ?? { ...noVolumesRemoved };
+      let volumesRemoved: VolumeRemovalCounts = retired?.volumesRemoved ?? noVolumesRemoved;
       let changed = retired !== undefined || snapshotsRemoved > 0;
       let skipped: NonNullable<import("@lando/sdk/schema").OwnedResourcesCleanupResult["skipped"]> = [];
       const ownedCleanup = cleanup.pipe(
