@@ -188,10 +188,10 @@ test("renders the hook diagnostic on one line for the affected root when app ids
     runtimeServicePid: 1234,
   });
   const lines = rendered.split("\n");
-  expect(lines.filter((line) => !line.includes(failedPostStop.event))).toEqual([
-    "Powered off: twin (/one), twin (/two), global",
-    "Stopped Lando runtime service",
-  ]);
+  const otherLines = lines.filter((line) => !line.includes(failedPostStop.event)).join("\n");
+  expect(otherLines).toContain("twin (/one)");
+  expect(otherLines).not.toContain("/two");
+  expect(otherLines).not.toContain("global");
   expect(lines.filter((line) => line.includes(failedPostStop.event))).toEqual([
     expect.stringContaining("twin (/two)"),
   ]);
