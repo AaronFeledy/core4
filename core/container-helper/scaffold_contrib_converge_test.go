@@ -26,6 +26,10 @@ func runContribSync(t *testing.T, f *scaffoldFixture, constraint string) {
 	}
 }
 
+func contribMarker(f *scaffoldFixture) string {
+	return filepath.Join(f.appRoot, ".lando-drupal-contrib-sync-complete")
+}
+
 func clearContribCalls(t *testing.T, f *scaffoldFixture) {
 	t.Helper()
 	if err := os.Remove(f.logPath); err != nil {
@@ -42,7 +46,7 @@ func TestDrupalContribSyncChangesCoreConstraint(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
-			record := filepath.Join(f.appRoot, ".lando-drupal-contrib-sync.json")
+			record := contribMarker(f)
 			before, err := os.ReadFile(record)
 			if err != nil {
 				t.Fatal(err)
@@ -125,14 +129,17 @@ func TestDrupalContribSyncInstallsMissingVendor(t *testing.T) {
 	}
 }
 
-func TestDrupalContribSyncPreservesInheritedDependencyWhenExtensionDropsIt(t *testing.T) {
+func TestDrupalContribSyncLeavesSiteOwnedDependencies(t *testing.T) {
+	// acme/root comes from the recommended project, so the site owns it.
 	f, extension := completedContrib(t, `{"require":{"acme/root":"^9"}}`)
-	writeContribTestFile(t, extension, `{}`)
-	runContribSync(t, f, "^11")
-	assertContribCalls(t, f)
+	for _, declared := range []string{`{"require":{"acme/root":"^10"}}`, `{}`} {
+		writeContribTestFile(t, extension, declared)
+		runContribSync(t, f, "^11")
+		assertContribCalls(t, f)
+	}
 	site, err := readContribComposer(f.appRoot)
 	if err != nil || site.Require["acme/root"] != "^1" {
-		t.Fatalf("inherited requirement changed: %+v (%v)", site, err)
+		t.Fatalf("site-owned requirement changed: %+v (%v)", site, err)
 	}
 }
 
@@ -151,21 +158,14 @@ func TestDrupalContribSyncConvergesUnderSharedLock(t *testing.T) {
 }
 
 func TestDrupalContribSyncTreatsUnusableRecordAsEmpty(t *testing.T) {
-	for _, tc := range []struct{ name, content string }{{"missing", ""}, {"corrupt", "{"}, {"unsupported", `{"version":2,"require":{},"requireDev":{}}`}} {
+	for _, tc := range []struct{ name, content string }{{"empty", ""}, {"corrupt", "{"}, {"unsupported", `{"version":2,"require":{},"requireDev":{}}`}} {
 		t.Run(tc.name, func(t *testing.T) {
 			f, _ := completedContrib(t, `{}`)
-			path := filepath.Join(f.appRoot, ".lando-drupal-contrib-sync.json")
-			if tc.content == "" {
-				if err := os.Remove(path); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				writeContribTestFile(t, path, tc.content)
-			}
+			writeContribTestFile(t, contribMarker(f), tc.content)
 			runContribSync(t, f, "^11")
 			assertContribCalls(t, f, []string{"--working-dir=" + f.appRoot, "update", "--with-all-dependencies", "--no-interaction",
 				"drupal/coder", "drupal/core-composer-scaffold", "drupal/core-dev", "drupal/core-project-message", "drupal/core-recommended", "drush/drush"})
-			if record := loadContribSyncRecord(f.appRoot); record.Version != 1 || record.Require["drupal/core-recommended"] != "^11" {
+			if record := loadContribSyncRecord(contribMarker(f)); record.Version != 1 || record.Require["drupal/core-recommended"] != "^11" {
 				t.Fatalf("record was not recovered: %+v", record)
 			}
 		})
@@ -176,19 +176,27 @@ func TestDesiredContribRequirements(t *testing.T) {
 	for _, tc := range []struct {
 		name            string
 		site, extension contribComposerManifest
+		previous        contribSyncRecord
 		prod, dev       map[string]string
 	}{
-		{"defaults", contribComposerManifest{}, contribComposerManifest{},
+		{"defaults", contribComposerManifest{}, contribComposerManifest{}, contribSyncRecord{},
 			map[string]string{"drupal/core-recommended": "^11", "drush/drush": "*"},
 			map[string]string{"drupal/core-dev": "^11", "drupal/coder": "*"}},
 		{"optional core, skip rules, explicit tools and buckets", contribComposerManifest{Require: map[string]string{"drupal/core-project-message": "^10"}}, contribComposerManifest{
 			Name: "drupal/example", Require: map[string]string{"php": "^8.4", "ext-json": "*", "drupal/core": "^10", "drupal/example": "*", "drupal/coder": "^8", "acme/a": "^1"},
 			RequireDev: map[string]string{"drush/drush": "^13", "drupal/core-composer-scaffold": "^10", "acme/a": "^2", "acme/b": "^3"}},
+			contribSyncRecord{},
 			map[string]string{"drupal/core-recommended": "^11", "drupal/core-project-message": "^11", "drupal/coder": "^8", "acme/a": "^1"},
 			map[string]string{"drupal/core-dev": "^11", "drush/drush": "^13", "acme/b": "^3"}},
+		{"site-owned package stays with the site until a sync manages it",
+			contribComposerManifest{Require: map[string]string{"acme/site": "^1", "acme/managed": "^1"}},
+			contribComposerManifest{Require: map[string]string{"acme/site": "^2", "acme/managed": "^2"}},
+			contribSyncRecord{Version: 1, Require: map[string]string{"acme/managed": "^1"}, RequireDev: map[string]string{}},
+			map[string]string{"drupal/core-recommended": "^11", "drush/drush": "*", "acme/managed": "^2"},
+			map[string]string{"drupal/core-dev": "^11", "drupal/coder": "*"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := desiredContribRequirements("^11", tc.site, tc.extension)
+			got, err := desiredContribRequirements("^11", tc.site, tc.extension, tc.previous)
 			if err != nil || !maps.Equal(got.Require, tc.prod) || !maps.Equal(got.RequireDev, tc.dev) {
 				t.Fatalf("desired = %+v, err = %v, want %v / %v", got, err, tc.prod, tc.dev)
 			}

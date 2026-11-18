@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -21,14 +22,15 @@ const (
 // so a run killed at any point can resume the same staged generation without
 // replaying a step that already happened.
 type scaffoldManifest struct {
-	Version          int                `json:"version"`
-	Command          string             `json:"command"`
-	Phase            string             `json:"phase"`
-	Stage            string             `json:"stage"`
-	Hooks            map[string]bool    `json:"hooks,omitempty"`
-	Entries          []scaffoldEntry    `json:"entries"`
-	Contrib          *contribSyncRecord `json:"contrib,omitempty"`
-	ContribInherited *contribSyncRecord `json:"contribInherited,omitempty"`
+	Version int             `json:"version"`
+	Command string          `json:"command"`
+	Phase   string          `json:"phase"`
+	Stage   string          `json:"stage"`
+	Hooks   map[string]bool `json:"hooks,omitempty"`
+	Entries []scaffoldEntry `json:"entries"`
+	// Applied is command-owned state recorded while staging and written as the
+	// completion marker's contents, so a later run knows what this one applied.
+	Applied json.RawMessage `json:"applied,omitempty"`
 }
 
 // scaffoldEntry records one top-level staged path and the exact filesystem
@@ -67,7 +69,6 @@ type scaffold struct {
 	stageDir        string
 	manifestPath    string
 	markerPath      string
-	markerData      []byte
 	streams         helperIO
 	crash           func(string)
 	lock            *scaffoldLock
@@ -77,7 +78,6 @@ type scaffoldOptions struct {
 	preflight    func(resumed bool, manifest *scaffoldManifest) error
 	generate     func(stage string, manifest *scaffoldManifest) error
 	afterPromote func(manifest *scaffoldManifest) error
-	beforeFinish func(manifest *scaffoldManifest) error
 	complete     func(appRoot string) bool
 }
 
@@ -206,10 +206,5 @@ func (s *scaffold) executeLocked(options scaffoldOptions) error {
 	if !options.complete(s.appRoot) {
 		return fmt.Errorf("%s scaffold did not produce %s.", s.label, s.outputs)
 	}
-	if options.beforeFinish != nil {
-		if err := options.beforeFinish(manifest); err != nil {
-			return err
-		}
-	}
-	return s.finish()
+	return s.finish(manifest.Applied)
 }

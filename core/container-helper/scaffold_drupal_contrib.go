@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -97,19 +96,6 @@ func runDrupalContribSync(args []string, streams helperIO, crash func(string)) i
 	return scaffoldResult(s.executeLocked(scaffoldOptions{
 		generate:     func(_ string, manifest *scaffoldManifest) error { return stageDrupalContrib(s, manifest, o) },
 		afterPromote: func(manifest *scaffoldManifest) error { return installDrupalContrib(s, manifest, o) },
-		beforeFinish: func(manifest *scaffoldManifest) error {
-			if manifest.Contrib == nil {
-				return errors.New("Drupal contrib sync recovery manifest is missing its managed requirements.")
-			}
-			if manifest.ContribInherited != nil {
-				data, err := json.Marshal(manifest.ContribInherited)
-				if err != nil {
-					return err
-				}
-				s.markerData = data
-			}
-			return manifest.Contrib.save(o.appRoot)
-		},
 		complete:     drupalContribComplete,
 	}), streams)
 }

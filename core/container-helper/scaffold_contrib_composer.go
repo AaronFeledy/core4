@@ -76,29 +76,13 @@ func stageDrupalContrib(s *scaffold, manifest *scaffoldManifest, o drupalContrib
 	if err != nil {
 		return err
 	}
-	desired, err := desiredContribRequirements(o.constraint, site, extension)
+	desired, err := desiredContribRequirements(o.constraint, site, extension, contribSyncRecord{})
 	if err != nil {
 		return err
 	}
-	baseline := site.declaredPackages()
-	inherited := contribSyncRecord{Version: 1, Require: map[string]string{}, RequireDev: map[string]string{}}
+	changes := planContribChanges(contribSyncRecord{}, desired, site)
 	for _, dev := range []bool{false, true} {
-		var packages []string
-		for name, constraint := range desired.bucket(dev) {
-			// Keep non-core requirements inherited from the template on the first
-			// build, even when the extension lists them in a different bucket.
-			if isManagedContribCore(name) {
-				if site.bucket(dev)[name] == constraint {
-					continue
-				}
-			} else if baseline[name] {
-				inherited.bucket(dev)[name] = constraint
-				delete(desired.bucket(dev), name)
-				continue
-			}
-			packages = append(packages, name+":"+constraint)
-		}
-		if err := s.streams.contribComposerEdit(stage, "require", dev, packages); err != nil {
+		if err := s.streams.contribComposerEdit(stage, "require", dev, changes.require[dev]); err != nil {
 			return err
 		}
 	}
@@ -107,10 +91,11 @@ func stageDrupalContrib(s *scaffold, manifest *scaffoldManifest, o drupalContrib
 		"--no-install", "--no-scripts", "--no-plugins", "--no-interaction"}); err != nil {
 		return err
 	}
-	manifest.Contrib = &desired
-	if len(inherited.Require)+len(inherited.RequireDev) > 0 {
-		manifest.ContribInherited = &inherited
+	applied, err := json.Marshal(desired)
+	if err != nil {
+		return err
 	}
+	manifest.Applied = applied
 	return nil
 }
 
@@ -121,17 +106,24 @@ func (manifest contribComposerManifest) bucket(dev bool) map[string]string {
 	return manifest.Require
 }
 
-func (manifest contribComposerManifest) declaredPackages() map[string]bool {
-	declared := make(map[string]bool, len(manifest.Require)+len(manifest.RequireDev))
+func (manifest contribComposerManifest) declares(name string) bool {
 	for _, bucket := range []map[string]string{manifest.Require, manifest.RequireDev} {
-		for name := range bucket {
-			declared[strings.ToLower(name)] = true
+		for declared := range bucket {
+			if strings.EqualFold(declared, name) {
+				return true
+			}
 		}
 	}
-	return declared
+	return false
 }
 
-func desiredContribRequirements(constraint string, site, extension contribComposerManifest) (contribSyncRecord, error) {
+// desiredContribRequirements is the managed set: core at the constraint, the
+// extension's own requirements, and Drush and Coder where the extension names
+// neither. A package the site already declares without the previous sync
+// having added it belongs to the site, as the recommended project's own
+// requirements and anything added with lando composer do, and keeps its
+// constraint.
+func desiredContribRequirements(constraint string, site, extension contribComposerManifest, previous contribSyncRecord) (contribSyncRecord, error) {
 	desired := contribSyncRecord{
 		Version:    1,
 		Require:    map[string]string{"drupal/core-recommended": constraint},
@@ -153,6 +145,9 @@ func desiredContribRequirements(constraint string, site, extension contribCompos
 				return contribSyncRecord{}, fmt.Errorf("Invalid Composer package name in the extension's dependencies: %q", name)
 			}
 			seen[key] = true
+			if site.declares(key) && !previous.manages(key) {
+				continue
+			}
 			desired.bucket(dev)[key] = version
 		}
 	}

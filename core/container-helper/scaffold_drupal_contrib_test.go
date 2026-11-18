@@ -154,7 +154,7 @@ func TestDrupalContribSyncInstallsAroundMountAndMergesDeps(t *testing.T) {
 	if !isRegularFile(filepath.Join(f.appRoot, ".lando-drupal-contrib-sync-complete")) {
 		t.Fatal("sync did not mark the site complete")
 	}
-	record := loadContribSyncRecord(f.appRoot)
+	record := loadContribSyncRecord(filepath.Join(f.appRoot, ".lando-drupal-contrib-sync-complete"))
 	if record.Version != 1 || record.Require["acme/use"] != "^2 || ^3" || record.RequireDev["acme/test"] != "^3" ||
 		record.Require["acme/root-dev"] != "" || record.RequireDev["acme/root"] != "" {
 		t.Fatalf("record should contain applied requirements only: %+v", record)
@@ -186,7 +186,9 @@ func TestDrupalContribSyncResumesInstall(t *testing.T) {
 				want = append(want, []string{"install", "--no-interaction"})
 			}
 			assertContribCalls(t, f, want...)
-			assertFileText(t, filepath.Join(f.appRoot, ".lando-drupal-contrib-sync-complete"), "")
+			if record := loadContribSyncRecord(filepath.Join(f.appRoot, ".lando-drupal-contrib-sync-complete")); record.Version != 1 {
+				t.Fatalf("resumed sync did not record its requirements: %+v", record)
+			}
 			assertDirectoryNames(t, filepath.Join(f.appRoot, "web/sites/simpletest/browser_output"), nil)
 		})
 	}
@@ -201,5 +203,7 @@ func TestDrupalContribSyncRepairsOrphanMarker(t *testing.T) {
 		t.Fatalf("repair exited %d: %s", code, f.stderr.String())
 	}
 	assertContribCalls(t, f, append(contribStageCalls(f), []string{"install", "--no-interaction"})...)
-	assertFileText(t, marker, "")
+	if record := loadContribSyncRecord(marker); record.Version != 1 {
+		t.Fatalf("repaired marker holds no record: %+v", record)
+	}
 }

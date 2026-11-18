@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -19,26 +18,10 @@ func convergeDrupalContrib(o drupalContribOptions, s *scaffold) error {
 	if err != nil {
 		return err
 	}
-	desired, err := desiredContribRequirements(o.constraint, site, extension)
+	previous := loadContribSyncRecord(s.markerPath)
+	desired, err := desiredContribRequirements(o.constraint, site, extension, previous)
 	if err != nil {
 		return err
-	}
-	previous := loadContribSyncRecord(o.appRoot)
-	// Template requirements skipped at first build stay unmanaged while the
-	// extension still declares the same constraint in the same bucket.
-	if data, err := os.ReadFile(s.markerPath); err == nil && len(data) > 0 && previous.Version == 1 {
-		var inherited contribSyncRecord
-		if json.Unmarshal(data, &inherited) == nil && inherited.Version == 1 {
-			for _, dev := range []bool{false, true} {
-				for name, constraint := range inherited.bucket(dev) {
-					_, prod := previous.Require[name]
-					_, devOwned := previous.RequireDev[name]
-					if current, wanted := desired.bucket(dev)[name]; wanted && current == constraint && !prod && !devOwned {
-						delete(desired.bucket(dev), name)
-					}
-				}
-			}
-		}
 	}
 	changes := planContribChanges(previous, desired, site)
 	if len(changes.names) == 0 && drupalContribComplete(o.appRoot) {
@@ -77,7 +60,7 @@ func convergeDrupalContrib(o drupalContribOptions, s *scaffold) error {
 	if !drupalContribComplete(o.appRoot) {
 		return fmt.Errorf("Drupal contrib sync did not produce %s.", drupalContribOutputs)
 	}
-	return desired.save(o.appRoot)
+	return desired.save(s.markerPath)
 }
 
 type contribChanges struct {

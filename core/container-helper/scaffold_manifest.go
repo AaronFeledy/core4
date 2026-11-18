@@ -31,8 +31,7 @@ func (s *scaffold) stage(manifest *scaffoldManifest, generate func(stage string,
 	manifest.Phase = "staging"
 	manifest.Entries = nil
 	manifest.Hooks = map[string]bool{}
-	manifest.Contrib = nil
-	manifest.ContribInherited = nil
+	manifest.Applied = nil
 	if err := s.saveManifest(manifest); err != nil {
 		return err
 	}
@@ -61,7 +60,7 @@ func (s *scaffold) cleanup() {
 	syncDir(s.appRoot)
 }
 
-func (s *scaffold) finish() error {
+func (s *scaffold) finish(applied []byte) error {
 	if err := os.RemoveAll(s.stageDir); err != nil {
 		return err
 	}
@@ -72,8 +71,8 @@ func (s *scaffold) finish() error {
 		if err != nil {
 			return err
 		}
-		if len(s.markerData) != 0 {
-			if _, err := file.Write(s.markerData); err != nil {
+		if len(applied) != 0 {
+			if _, err := file.Write(applied); err != nil {
 				return errors.Join(err, file.Close())
 			}
 		}
@@ -183,8 +182,7 @@ func (s *scaffold) validateStagedName(name string) error {
 	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\x00\n") {
 		return fmt.Errorf("Invalid %s scaffold entry: %s", s.label, name)
 	}
-	if name == scaffoldStageRoot || name == scaffoldLockName || name == contribSyncRecordName ||
-		strings.HasPrefix(name, contribSyncRecordName+".tmp.") || name == filepath.Base(s.manifestPath) ||
+	if name == scaffoldStageRoot || name == scaffoldLockName || name == filepath.Base(s.manifestPath) ||
 		(s.markerPath != "" && name == filepath.Base(s.markerPath)) {
 		return fmt.Errorf("Invalid %s scaffold entry: %s is reserved for Lando.", s.label, name)
 	}
