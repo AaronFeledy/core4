@@ -750,29 +750,31 @@ describe("apps:list host-wide discovery", () => {
 
   test("lists the same id at two roots as two rows and matches active by full identity", async () => {
     await withTempRoot(async (userDataRoot) => {
+      const rootA = join(userDataRoot, "one");
+      const rootB = join(userDataRoot, "two");
       const paths = makeLandoPaths({ userDataRoot });
       const appliedDir = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans");
       await mkdir(appliedDir, { recursive: true });
       await writeFile(
         join(appliedDir, "one.json"),
-        JSON.stringify(stateEnvelope("twin", "twin", "/workspace/one", ["web"])),
+        JSON.stringify(stateEnvelope("twin", "twin", rootA, ["web"])),
       );
       await writeFile(
         join(appliedDir, "two.json"),
-        JSON.stringify(stateEnvelope("twin", "twin", "/workspace/two", ["web"])),
+        JSON.stringify(stateEnvelope("twin", "twin", rootB, ["web"])),
       );
       const result = await runList(userDataRoot, {
         discoverContainers: async () =>
           appsFromContainerList([
             labeled("twin", "web", {
               "dev.lando.provider": "lando",
-              "dev.lando.app-root": "/workspace/one",
+              "dev.lando.app-root": rootA,
             }),
           ]),
       });
       expect(result.apps.map((app) => [app.appRoot, app.status]).sort()).toEqual([
-        ["/workspace/one", "active"],
-        ["/workspace/two", "stopped"],
+        [rootA, "active"],
+        [rootB, "stopped"],
       ]);
     });
   });
