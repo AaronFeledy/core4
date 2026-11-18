@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
 import { type AppPlan, ServiceName } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Clock, DateTime, Deferred, Effect, Stream } from "effect";
+import { Clock, DateTime, Deferred, Effect, Result, Stream } from "effect";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { waitForServiceReadiness } from "../../src/operations/service-readiness.ts";
+import { guardServiceRunning } from "../../src/operations/service-readiness-error.ts";
+import { makeServiceSupervision } from "../../src/operations/service-readiness-supervision.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { failureOf, runExitUnderClock, successOf } from "../subsystems/healthcheck/support.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
@@ -23,6 +25,43 @@ const logs = () =>
     stream: "stderr" as const,
     line: "PASSWORD=hunter2 worker is not installed",
   });
+
+test.each([
+  { phase: "warning", changed: { containerId: "replacement" } },
+  { phase: "final settlement", changed: { lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(1)) } },
+])("supervision rejects a different incarnation at $phase", async ({ phase, changed }) => {
+  const warnings = makeCommandWarnings(true);
+  const initial = {
+    app: plan.id,
+    service: web.name,
+    providerId: plan.provider,
+    status: "restarting",
+    containerId: "original",
+    lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
+    publications: { status: "unknown" },
+  } as const;
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      let snapshot = phase === "warning" ? { ...initial, ...changed } : initial;
+      const provider = { ...TestRuntimeProvider, inspect: () => Effect.sync(() => snapshot) };
+      const target = { provider, plan: supervised("on-failure"), service: web.name };
+      const supervision = yield* makeServiceSupervision([{ target, initial }]);
+      const row = yield* supervision.wait(
+        String(web.name),
+        guardServiceRunning(target, initial).pipe(
+          Effect.map((runtime) => ({ name: String(web.name), state: "running" as const, runtime, initial })),
+        ),
+      );
+      expect(row.state).toBe("restarting");
+      snapshot = { ...initial, ...changed };
+      return yield* supervision.finish(target, row);
+    }).pipe(Effect.provideService(CommandWarnings, warnings), Effect.result),
+  );
+
+  if (!Result.isFailure(result)) throw new Error("Expected readiness to reject the different incarnation");
+  expect(result.failure).toMatchObject({ _tag: "ServiceNotReadyError", reason: "not-running" });
+  expect(await Effect.runPromise(warnings.list)).toHaveLength(phase === "warning" ? 0 : 1);
+});
 
 test.each(["always", "unless-stopped", "on-failure"])(
   "%s supervised exits succeed with a redacted warning",
@@ -222,12 +261,10 @@ test("a supervised restart while a sibling waits is downgraded once", async () =
         app: plan.id,
         service: target.service,
         providerId: plan.provider,
-        status: "running" as const,
+        status: target.service === web.name && now >= 250 ? ("restarting" as const) : ("running" as const),
         publications: { status: "unknown" as const },
         containerId: "container",
-        lastStartedAt: DateTime.toDate(
-          DateTime.makeUnsafe(target.service === web.name && now >= 250 ? 250 : 0),
-        ),
+        lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
       })),
   };
   const timed = await runExitUnderClock(

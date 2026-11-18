@@ -1,4 +1,11 @@
-import { mapFailures } from "@lando/sdk/command-result";
+import { redactProviderError } from "@lando/redaction/provider-error";
+import {
+  FailureRoleAnnotation,
+  mapDefectCause,
+  mapFailures,
+  mergeFailure,
+  withDeadline,
+} from "@lando/sdk/command-result";
 import {
   EnvironmentValueResolutionError,
   PlanReplanRequiredError,
@@ -25,7 +32,7 @@ import {
   landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
 import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
-import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
+import { Cause, Context, DateTime, Duration, Effect, Exit, Option, Stream } from "effect";
 import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import { removeRuntimeContainer } from "../container-removal.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
@@ -75,10 +82,17 @@ import {
   prepareCreatePublishEndpoints,
   shouldProbeServicePublishPort,
 } from "../service-publish-ports.ts";
-import { runServiceStartSchedule } from "../service-start-schedule.ts";
-import { isServiceRestartExpected } from "../supervision.ts";
+import {
+  type CompletionWaitResult,
+  type DependencyExit,
+  type DependencyUnavailableReason,
+  type DependencyWatchResult,
+  type HostProbeObservation,
+  runServiceStartSchedule,
+} from "../service-start-schedule.ts";
+import { restartVerdict } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
-import { waitForExit } from "../wait-for-exit.ts";
+import { waitNativeContainer } from "../wait-for-exit.ts";
 import {
   ensureAuthoredNetwork,
   ensurePrivateNetwork,
@@ -92,12 +106,13 @@ import {
 } from "./bring-up-recreate.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { type ExecOptions, exec, execStream } from "./exec.ts";
-import { logs } from "./logs.ts";
+import { containerConsoleLogs } from "./logs.ts";
 import {
   listLabeledServiceContainers,
   removeStaleServiceContainers,
   selectStaleServiceContainers,
 } from "./stale-service-containers.ts";
+import { startObservation } from "./start-observation.ts";
 
 export { scratchLabelsForPlan } from "../labels.ts";
 
@@ -145,8 +160,19 @@ interface InspectResult {
   readonly body?: unknown;
 }
 
+/**
+ * `startedIdentity` is the ownership-verified native id this start owns (create 201
+ * body, 409 ownership read, or the already-verified reuse id). Gated services start
+ * by that id and post-start-inspect by planned name must still resolve to it.
+ */
 interface StartResult {
   readonly changed: boolean;
+  readonly startedIdentity?: string;
+  readonly dependencyUnavailable?: { readonly reason: DependencyUnavailableReason };
+  readonly startFailure?: {
+    readonly status: "exited" | "dead" | "not-running";
+    readonly exitCode?: number;
+  };
 }
 
 /**
@@ -587,6 +613,79 @@ const buildCreateRequest = Effect.fn("RuntimeProvider.buildCreateRequest")(funct
   });
 });
 
+/** True when another service waits on a non-started gate of `service` (healthy/completed). */
+const serviceNeedsStartIdentity = (plan: AppPlan, service: ServicePlan): boolean =>
+  Object.values(plan.services).some((dependent) =>
+    dependent.dependsOn.some((edge) => edge.condition !== "service_started" && edge.service === service.name),
+  );
+
+/** Native id from a successful create body (201/200). Create responses carry Id only, not labels. */
+const parseCreateResponseId = (body: string): string | undefined => {
+  if (body.length === 0) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    for (const key of ["Id", "ID", "id"] as const) {
+      const value = Reflect.get(parsed, key);
+      if (typeof value === "string" && value.length > 0) return value;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Proof of the container create produced or adopted. 201 keeps the response Id;
+ * 409 requires an ownership read of the planned name before adoption.
+ */
+const identityFromCreateResponse = (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  service: ServicePlan,
+  name: string,
+  response: EngineHttpResponse,
+): Effect.Effect<string | undefined, BringUpError> => {
+  if (response.status === 201 || response.status === 200) {
+    return Effect.succeed(parseCreateResponseId(response.body));
+  }
+  if (response.status !== 409) return Effect.succeed(undefined);
+  return inspectOwnedNativeId(
+    deps.api,
+    { kind: "container", name, labels: containerOwnershipLabels(plan, service.name) },
+    deps.options.ctx,
+  ).pipe(
+    Effect.flatMap((id) =>
+      id === undefined
+        ? Effect.fail(
+            podmanFailure(deps, {
+              service,
+              operation: "bringUp.create",
+              message: `provider-${deps.options.ctx.providerId} container create conflicted but no owned container named ${name} was found.`,
+              details: { status: response.status, body: response.body },
+            }),
+          )
+        : Effect.succeed(id),
+    ),
+    mapFailures((cause) =>
+      cause instanceof ServiceStartError
+        ? cause
+        : podmanFailure(deps, {
+            service,
+            operation: "bringUp.create",
+            message: `provider-${deps.options.ctx.providerId} could not verify ownership after a container create conflict for ${name}.`,
+            details: { status: response.status, body: response.body },
+            cause,
+          }),
+    ),
+  );
+};
+
+interface CreateContainerResult {
+  readonly endpoints: ReadonlyArray<EndpointPlan>;
+  readonly identity?: string;
+}
+
 const createContainer = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
@@ -594,14 +693,17 @@ const createContainer = Effect.fnUntraced(function* (
   name: string,
   endpoints: ReadonlyArray<EndpointPlan>,
   reassign: (exclude: ReadonlySet<number>) => Effect.Effect<ReadonlyArray<EndpointPlan>, BringUpError>,
-): Effect.fn.Return<ReadonlyArray<EndpointPlan>, BringUpError> {
+): Effect.fn.Return<CreateContainerResult, BringUpError> {
   yield* prepareCreationEnvironment(deps, plan, service);
   if (service.artifact?.kind === "ref" && deps.options.ensureImage !== undefined) {
     yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: false });
   }
   let createRequest = yield* buildCreateRequest(deps, plan, service, name, endpoints);
   const response = yield* request(deps, { method: "POST", ...createRequest });
-  if (response.status === 201 || response.status === 409) return endpoints;
+  if (response.status === 201 || response.status === 200 || response.status === 409) {
+    const identity = yield* identityFromCreateResponse(deps, plan, service, name, response);
+    return { endpoints, ...(identity === undefined ? {} : { identity }) };
+  }
   if (
     deps.options.retryCreateOnMissingImage === true &&
     deps.options.ensureImage !== undefined &&
@@ -617,7 +719,10 @@ const createContainer = Effect.fnUntraced(function* (
     }
     yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: true });
     const retry = yield* request(deps, { method: "POST", ...createRequest });
-    if (retry.status === 201 || retry.status === 409) return endpoints;
+    if (retry.status === 201 || retry.status === 200 || retry.status === 409) {
+      const identity = yield* identityFromCreateResponse(deps, plan, service, name, retry);
+      return { endpoints, ...(identity === undefined ? {} : { identity }) };
+    }
     if (!isHostPortBindRejection(retry)) {
       return yield* Effect.fail(
         podmanFailure(deps, {
@@ -646,7 +751,10 @@ const createContainer = Effect.fnUntraced(function* (
   const rebound = yield* reassign(createAssignedHostPorts(endpoints));
   createRequest = yield* buildCreateRequest(deps, plan, service, name, rebound);
   const bindRetry = yield* request(deps, { method: "POST", ...createRequest });
-  if (bindRetry.status === 201 || bindRetry.status === 409) return rebound;
+  if (bindRetry.status === 201 || bindRetry.status === 200 || bindRetry.status === 409) {
+    const identity = yield* identityFromCreateResponse(deps, plan, service, name, bindRetry);
+    return { endpoints: rebound, ...(identity === undefined ? {} : { identity }) };
+  }
   return yield* Effect.fail(
     podmanFailure(deps, {
       service,
@@ -778,6 +886,7 @@ const startService = Effect.fnUntraced(function* (
 ): Effect.fn.Return<StartResult, BringUpError> {
   const name = containerName(plan, service);
   const providerId = ProviderId.make(deps.options.ctx.providerId);
+  const needsIdentity = serviceNeedsStartIdentity(plan, service);
 
   if (deps.options.signal?.aborted === true) {
     yield* Effect.fail(
@@ -820,6 +929,7 @@ const startService = Effect.fnUntraced(function* (
   const recreateReasons = existedBefore ? bringUpRecreateReasons(plan, service, inspected) : [];
   let replacedReason: ServiceContainerChange["reason"];
   let before = inspected;
+  let startedIdentity: string | undefined = before.exists ? existingId : undefined;
   if (before.exists && (deps.options.reconcile === true || recreateReasons.length > 0)) {
     yield* prepareCreationEnvironment(deps, plan, service);
     if (existingId !== undefined) {
@@ -834,6 +944,7 @@ const startService = Effect.fnUntraced(function* (
       bindSources: undefined,
       networkNames: undefined,
     };
+    startedIdentity = undefined;
   }
   const publishHost = classifyServicePublishHost({
     platform: deps.options.platform ?? process.platform,
@@ -859,14 +970,26 @@ const startService = Effect.fnUntraced(function* (
       : service.endpoints;
   if (!before.exists) {
     createEndpoints = yield* prepareEndpoints();
-    createEndpoints = yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
+    const created = yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
+    createEndpoints = created.endpoints;
+    startedIdentity = created.identity;
     changed = true;
+  }
+  if (needsIdentity && startedIdentity === undefined) {
+    return yield* Effect.fail(
+      podmanFailure(deps, {
+        service,
+        operation: "bringUp.create",
+        message: `provider-${deps.options.ctx.providerId} could not establish a start identity for ${name}.`,
+      }),
+    );
   }
   for (const attachment of attachmentsAfterCreate(deps, plan, service, !before.exists)) {
     yield* connectNetwork(deps, service, name, attachment);
   }
+  const startRef = needsIdentity && startedIdentity !== undefined ? startedIdentity : name;
   if (!before.running) {
-    const response = yield* startContainer(deps, name);
+    const response = yield* startContainer(deps, startRef);
     if (response.status !== 204 && response.status !== 304) {
       const assigned = createAssignedHostPorts(
         createEndpoints.filter((_endpoint, index) => {
@@ -877,11 +1000,13 @@ const startService = Effect.fnUntraced(function* (
       let retry: EngineHttpResponse | undefined;
       if (isHostPortBindRejection(response) && assigned.size > 0) {
         yield* prepareCreationEnvironment(deps, plan, service);
-        const recoveryId = yield* inspectOwnedNativeId(
-          deps.api,
-          { kind: "container", name, labels: containerOwnershipLabels(plan, service.name) },
-          deps.options.ctx,
-        );
+        const recoveryId =
+          startedIdentity ??
+          (yield* inspectOwnedNativeId(
+            deps.api,
+            { kind: "container", name, labels: containerOwnershipLabels(plan, service.name) },
+            deps.options.ctx,
+          ));
         if (recoveryId !== undefined) {
           yield* stopContainerSilent(deps, recoveryId);
           yield* removeContainer(deps, service, recoveryId);
@@ -889,11 +1014,31 @@ const startService = Effect.fnUntraced(function* (
           if (existedBefore) replacedReason ??= "host-port";
         }
         createEndpoints = yield* prepareEndpoints(assigned);
-        yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
+        const recovered = yield* createContainer(
+          deps,
+          plan,
+          service,
+          name,
+          createEndpoints,
+          prepareEndpoints,
+        );
+        createEndpoints = recovered.endpoints;
+        // Bind recovery swaps the proof to the replacement container.
+        startedIdentity = recovered.identity;
+        if (needsIdentity && startedIdentity === undefined) {
+          return yield* Effect.fail(
+            podmanFailure(deps, {
+              service,
+              operation: "bringUp.create",
+              message: `provider-${deps.options.ctx.providerId} bind recovery could not establish a start identity for ${name}.`,
+            }),
+          );
+        }
         for (const attachment of attachmentsAfterCreate(deps, plan, service, true)) {
           yield* connectNetwork(deps, service, name, attachment);
         }
-        retry = yield* startContainer(deps, name);
+        const recoveryRef = needsIdentity && startedIdentity !== undefined ? startedIdentity : name;
+        retry = yield* startContainer(deps, recoveryRef);
       }
       if (retry === undefined || (retry.status !== 204 && retry.status !== 304)) {
         return yield* Effect.fail(
@@ -913,32 +1058,64 @@ const startService = Effect.fnUntraced(function* (
     changed = true;
   }
 
+  // Post-start inspect is always by planned name; gated proof must still match.
   const after = yield* inspectContainer(deps, name);
-  const state =
-    after.body !== undefined && typeof after.body === "object" && after.body !== null
-      ? Reflect.get(after.body, "State")
-      : undefined;
-  const engineStatus = typeof state === "object" && state !== null ? Reflect.get(state, "Status") : undefined;
-  const terminal = engineStatus === "exited" || engineStatus === "dead";
-  const completed =
-    completionIntentServices(deps.options.completionPlan ?? plan).has(String(service.name)) &&
-    after.exists &&
-    typeof state === "object" &&
-    state !== null &&
-    Reflect.get(state, "ExitCode") === 0 &&
-    terminal;
+  if (needsIdentity) {
+    const afterId = after.exists ? yield* verifiedStartId(deps, plan, service, after.body) : undefined;
+    if (afterId === undefined || afterId !== startedIdentity) {
+      return {
+        changed,
+        dependencyUnavailable: {
+          reason: !after.exists ? "missing" : afterId === undefined ? "unverified" : "replaced",
+        },
+      };
+    }
+  }
+  const observed = startObservation(after.body);
   const completionIntent = completionIntentServices(deps.options.completionPlan ?? plan).has(
     String(service.name),
   );
-  const exitCode = typeof state === "object" && state !== null ? Reflect.get(state, "ExitCode") : undefined;
+  const completed = completionIntent && observed.status === "exited" && observed.exitCode === 0;
   const supervised =
     !completionIntent &&
-    after.exists &&
-    (terminal || engineStatus === "restarting") &&
-    typeof exitCode === "number" &&
-    isServiceRestartExpected(service, exitCode);
-  if (!after.running && !completed && !supervised) {
-    yield* Effect.fail(
+    (observed.status === "restarting" || observed.status === "exited" || observed.status === "dead") &&
+    restartVerdict({
+      source: "planned",
+      service,
+      state: observed.status,
+      exitCode: "exitCode" in observed ? observed.exitCode : undefined,
+    }) === "expected";
+  if ((!after.running || observed.status === "restarting") && !completed && !supervised) {
+    // Gated services return evidence so a scheduled completion gate can project the
+    // same diagnostic without a redundant wait. Direct starts keep the Effect failure.
+    if (needsIdentity) {
+      const action =
+        replacedReason !== undefined
+          ? "replaced"
+          : !existedBefore
+            ? "created"
+            : before.running
+              ? "kept"
+              : "started";
+      const anonymousVolumes = action === "replaced" ? anonymousVolumePaths(service, inspected.body) : [];
+      deps.changes.set(String(service.name), {
+        action,
+        ...(replacedReason === undefined ? {} : { reason: replacedReason }),
+        ...(anonymousVolumes.length === 0 ? {} : { anonymousVolumes }),
+      });
+      return {
+        changed,
+        ...(startedIdentity === undefined ? {} : { startedIdentity }),
+        startFailure: {
+          status:
+            observed.status === "exited" || observed.status === "dead" ? observed.status : "not-running",
+          ...("exitCode" in observed && observed.exitCode !== undefined
+            ? { exitCode: observed.exitCode }
+            : {}),
+        },
+      };
+    }
+    return yield* Effect.fail(
       podmanFailure(deps, {
         service,
         operation: "bringUp.start",
@@ -973,8 +1150,90 @@ const startService = Effect.fnUntraced(function* (
     }),
   );
 
-  return { changed };
+  return {
+    changed,
+    ...(needsIdentity && startedIdentity !== undefined ? { startedIdentity } : {}),
+  };
 });
+
+const verifiedStartId = (deps: BringUpDeps, plan: AppPlan, service: ServicePlan, body: unknown) =>
+  verifiedNativeId(JSON.stringify(body), containerOwnershipLabels(plan, service.name), deps.options.ctx).pipe(
+    Effect.catchTag("ProviderUnavailableError", () => Effect.succeed(undefined)),
+  );
+
+const dependencyExitDetails = (service: string, gate: string, exit: DependencyExit) => ({
+  dependencyExit:
+    exit.status === "dead"
+      ? { service, gate, status: exit.status }
+      : {
+          service,
+          gate,
+          status: exit.status,
+          ...(exit.exitCode === undefined ? {} : { exitCode: exit.exitCode }),
+        },
+});
+
+const inspectStartedContainer = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  target: { readonly plan: AppPlan; readonly service: ServicePlan; readonly nativeId: string },
+) {
+  const { plan, service, nativeId } = target;
+  const inspected = yield* inspectContainer(deps, containerName(plan, service));
+  if (!inspected.exists) return { _tag: "Unavailable" as const, reason: "missing" as const };
+  const observedId = yield* verifiedStartId(deps, plan, service, inspected.body);
+  if (observedId === undefined) return { _tag: "Unavailable" as const, reason: "unverified" as const };
+  if (observedId !== nativeId) return { _tag: "Unavailable" as const, reason: "replaced" as const };
+  return { _tag: "Observed" as const, state: startObservation(inspected.body) };
+});
+
+const sanitizeDependencyInspect = <A, E extends ProviderError>(
+  deps: BringUpDeps,
+  inspect: Effect.Effect<A, E>,
+) =>
+  interruptOnAbort(
+    inspect.pipe(
+      Effect.catchCause((cause) =>
+        Effect.failCause(mapDefectCause(cause, () => "Dependency inspect defect.")),
+      ),
+      mapFailures((error) => redactProviderError(error, deps.redactor, { cause: "omit" })),
+    ),
+    deps.options.signal,
+  );
+
+/** A sample taken while the gate still retries: a slow inspect is inconclusive, never fatal. */
+const inspectDependency = (
+  deps: BringUpDeps,
+  target: { readonly plan: AppPlan; readonly service: ServicePlan; readonly nativeId: string },
+) =>
+  sanitizeDependencyInspect(
+    deps,
+    withDeadline(inspectStartedContainer(deps, target), Duration.seconds(1)).pipe(
+      Effect.map((checked) => (checked._tag === "Completed" ? checked.value : { _tag: "TimedOut" as const })),
+    ),
+  );
+
+const terminalDependency = (
+  state: ReturnType<typeof startObservation>,
+  containerId: string,
+): DependencyExit | undefined => {
+  if (state.status !== "exited" && state.status !== "dead") return undefined;
+  if (
+    restartVerdict({
+      source: "observed",
+      state: state.status,
+      policy: state.policy,
+      exitCode: state.exitCode,
+    }) !== "not-expected"
+  )
+    return undefined;
+  return state.status === "dead"
+    ? { status: "dead", containerId }
+    : {
+        status: "exited",
+        containerId,
+        ...(state.exitCode === undefined ? {} : { exitCode: state.exitCode }),
+      };
+};
 
 const SERVICE_START_LOG_TAIL_LINES = 50;
 const SERVICE_START_LOG_TAIL_MAX_CHARS = 4000;
@@ -1012,14 +1271,15 @@ const captureServiceLogTail = Effect.fnUntraced(
     deps: BringUpDeps,
     plan: AppPlan,
     service: ServicePlan,
-    extras?: { readonly exitCode?: number; readonly timedOut?: boolean },
+    extras?: { readonly containerId?: string; readonly exitCode?: number; readonly timedOut?: boolean },
   ): Effect.fn.Return<ServiceStartLogTail | undefined, ProviderError> {
     const collected = yield* Stream.runCollect(
-      logs(
-        plan,
-        { app: plan.id, service: service.name },
+      containerConsoleLogs(
+        deps.api,
+        deps.options.ctx,
+        extras?.containerId ?? containerName(plan, service),
+        service.name,
         { follow: false, tail: SERVICE_START_LOG_TAIL_LINES, sources: [] },
-        { api: deps.api, ctx: deps.options.ctx },
       ),
     );
     if (collected.length === 0) return undefined;
@@ -1035,10 +1295,19 @@ const captureServiceLogTail = Effect.fnUntraced(
       ...(extras?.timedOut === true ? { timedOut: true } : {}),
     };
   },
-  Effect.timeout(SERVICE_START_LOG_TAIL_TIMEOUT),
+  (effect) =>
+    withDeadline(effect, SERVICE_START_LOG_TAIL_TIMEOUT).pipe(
+      Effect.map((result) => (result._tag === "Completed" ? result.value : undefined)),
+    ),
   Effect.catchCause((cause) =>
-    Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.succeed(undefined),
+    cause.reasons.length === 1 &&
+    cause.reasons[0]?._tag === "Fail" &&
+    Context.getOrUndefined(Cause.reasonAnnotations(cause.reasons[0]), FailureRoleAnnotation) === undefined
+      ? Effect.succeed(undefined)
+      : Effect.failCause(mapDefectCause(cause, () => "Start log capture defect.")),
   ),
+  (effect, deps) =>
+    effect.pipe(mapFailures((error) => redactProviderError(error, deps.redactor, { cause: "omit" }))),
 );
 
 export const withServiceStartLogTail = (
@@ -1071,6 +1340,7 @@ const captureStartFailure = (
       : undefined;
   const capture = named === undefined ? Effect.succeed(undefined) : captureServiceLogTail(deps, plan, named);
   return capture.pipe(
+    Effect.catchCause((cause) => Effect.failCause(mergeFailure(Cause.fail(error), cause, "cleanup"))),
     Effect.flatMap((logTail) =>
       deps.options.signal?.aborted === true
         ? Effect.interrupt
@@ -1141,7 +1411,9 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       createdVolumes.push(fact);
     }
   }
+  const startedIds = new Map<ServiceName, string>();
   const result = yield* runServiceStartSchedule(plan, {
+    redactor: deps.redactor,
     redactProbeError: (error) =>
       deps.redactor.redactString(
         typeof error === "string"
@@ -1157,9 +1429,59 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       if (options.signal?.aborted === true) {
         return yield* Effect.interrupt;
       }
-      return yield* startService(deps, plan, service).pipe(
+      const started = yield* startService(deps, plan, service).pipe(
         Effect.catch((error) => (options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
       );
+      if (started.startedIdentity !== undefined) startedIds.set(service.name, started.startedIdentity);
+      if (started.dependencyUnavailable !== undefined)
+        return { changed: started.changed, dependencyUnavailable: started.dependencyUnavailable };
+      const failure = started.startFailure;
+      if (failure === undefined) return { changed: started.changed };
+      const containerId = started.startedIdentity;
+      if (containerId === undefined || failure.status === "not-running")
+        return { changed: started.changed, dependencyUnavailable: { reason: "unverified" as const } };
+      const terminalExit: DependencyExit =
+        failure.status === "dead"
+          ? { status: "dead", containerId }
+          : {
+              status: "exited",
+              containerId,
+              ...(failure.exitCode === undefined ? {} : { exitCode: failure.exitCode }),
+            };
+      return { changed: started.changed, terminalExit };
+    }),
+    checkHostProbeGreen: Effect.fnUntraced(function* (service): Effect.fn.Return<
+      HostProbeObservation,
+      ProviderError
+    > {
+      const nativeId = startedIds.get(service.name);
+      if (nativeId === undefined) return { _tag: "Retry", dependencyUnavailable: { reason: "missing" } };
+      const observed = yield* inspectDependency(deps, { plan, service, nativeId });
+      if (observed._tag === "Unavailable")
+        return { _tag: "Retry", dependencyUnavailable: { reason: observed.reason } };
+      if (observed._tag === "TimedOut") return { _tag: "Retry", timedOut: true };
+      if (observed.state.status === "running") return { _tag: "Running" };
+      const exit = terminalDependency(observed.state, nativeId);
+      return exit === undefined ? { _tag: "Retry" } : { _tag: "Terminal", exit };
+    }),
+    watchDependencyExit: Effect.fnUntraced(function* (service): Effect.fn.Return<
+      DependencyWatchResult,
+      ProviderError
+    > {
+      const nativeId = startedIds.get(service.name);
+      if (nativeId === undefined) return { _tag: "Disarmed", reason: "unverified" };
+      const waited = yield* waitNativeContainer(nativeId, {
+        api,
+        ctx: options.ctx,
+        dialect: (options.dialect ?? libpodLifecycleDialect).wait,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      });
+      if (waited._tag === "Missing") return { _tag: "Disarmed", reason: "missing" };
+      const observed = yield* inspectDependency(deps, { plan, service, nativeId });
+      if (observed._tag !== "Observed")
+        return { _tag: "Disarmed", reason: observed._tag === "Unavailable" ? observed.reason : "unverified" };
+      const exit = terminalDependency(observed.state, nativeId);
+      return exit === undefined ? { _tag: "Disarmed" } : { _tag: "Terminal", exit };
     }),
     execHealthcheck: (service, probe) =>
       interruptOnAbort(
@@ -1203,18 +1525,53 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
             ),
         options.signal,
       ),
-    waitForExit: (service) =>
-      waitForExit(
-        plan,
-        { app: plan.id, service: service.name },
-        {
-          api,
-          ctx: options.ctx,
-          dialect: (options.dialect ?? libpodLifecycleDialect).wait,
-          ...(options.signal === undefined ? {} : { signal: options.signal }),
-        },
-      ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
-  }).pipe(Effect.catch((error) => captureStartFailure(deps, plan, error)));
+    waitForExit: Effect.fnUntraced(function* (service): Effect.fn.Return<
+      CompletionWaitResult,
+      ProviderError
+    > {
+      const nativeId = startedIds.get(service.name);
+      if (nativeId === undefined) return { dependencyUnavailable: { reason: "missing" } };
+      const waited = yield* waitNativeContainer(nativeId, {
+        api,
+        ctx: options.ctx,
+        dialect: (options.dialect ?? libpodLifecycleDialect).wait,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      });
+      if (waited._tag === "Missing") return { dependencyUnavailable: { reason: "missing" } };
+      // The completion verdict is final, so a slow engine gets the whole inspect rather than a sampling bound.
+      const inspected = yield* sanitizeDependencyInspect(
+        deps,
+        inspectStartedContainer(deps, { plan, service, nativeId }),
+      );
+      if (inspected._tag === "Unavailable") return { dependencyUnavailable: { reason: inspected.reason } };
+      const observed = inspected.state;
+      if (observed.status === "dead") {
+        return { dependencyExit: { status: "dead", containerId: nativeId } };
+      }
+      if (observed.status === "exited") {
+        const exitCode = observed.exitCode;
+        // Conflicting wait/inspect codes cannot prove completion.
+        if (exitCode !== undefined && exitCode !== waited.exitCode) {
+          return { dependencyUnavailable: { reason: "unverified" } };
+        }
+        return {
+          dependencyExit: {
+            status: "exited",
+            containerId: nativeId,
+            ...(exitCode === undefined ? {} : { exitCode }),
+          },
+        };
+      }
+      return { dependencyUnavailable: { reason: "unverified" } };
+    }),
+  }).pipe(
+    Effect.catchCause((cause) => {
+      const [reason] = cause.reasons;
+      return cause.reasons.length === 1 && reason?._tag === "Fail"
+        ? captureStartFailure(deps, plan, reason.error)
+        : Effect.failCause(cause);
+    }),
+  );
 
   if (result._tag === "Cycle") {
     return yield* Effect.fail(
@@ -1232,15 +1589,22 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     const aborted = options.signal?.aborted === true;
     const service = plan.services[ServiceName.make(blocked.service)];
     const dependency = plan.services[ServiceName.make(blocked.dependency)];
+    const exit = blocked.dependencyExit;
+    const exitCode = exit === undefined ? blocked.lastExitCode : exit.exitCode;
+    const diagnoseListener =
+      exit === undefined &&
+      blocked.dependencyUnavailable === undefined &&
+      blocked.unmetGate.endsWith(":healthy");
     const capture =
-      aborted || dependency === undefined
+      aborted || dependency === undefined || blocked.dependencyUnavailable !== undefined
         ? Effect.succeed(undefined)
         : captureServiceLogTail(deps, plan, dependency, {
-            ...(blocked.lastExitCode === undefined ? {} : { exitCode: blocked.lastExitCode }),
+            ...(exit === undefined ? {} : { containerId: exit.containerId }),
+            ...(exitCode === undefined ? {} : { exitCode }),
             ...(blocked.timedOut === true ? { timedOut: true } : {}),
           });
     const observation =
-      aborted || dependency === undefined || !blocked.unmetGate.endsWith(":healthy")
+      aborted || dependency === undefined || !diagnoseListener
         ? Effect.succeed(undefined)
         : observeTcpListener(dependency, (command) =>
             execStream(plan, { app: plan.id, service: dependency.name, plan }, command, {
@@ -1248,8 +1612,8 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
               ctx: options.ctx,
             }),
           );
-    return yield* Effect.all([capture, observation], { concurrency: "unbounded" }).pipe(
-      Effect.flatMap(([logTail, listener]): Effect.Effect<never, BringUpError> => {
+    return yield* Effect.all([Effect.exit(capture), observation], { concurrency: "unbounded" }).pipe(
+      Effect.flatMap(([captured, listener]): Effect.Effect<never, BringUpError> => {
         if (options.signal?.aborted === true) return Effect.interrupt;
         if (service === undefined) {
           return Effect.fail(
@@ -1267,19 +1631,41 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
             ? listenerDiagnostic(listener, dependency)
             : undefined;
         const action =
-          diagnostic?.action ??
-          (blocked.unmetGate.endsWith(":healthy") ? listenerAuthorityAction(dependency) : undefined);
-        return Effect.fail(
-          podmanFailure(deps, {
-            service,
-            operation: "bringUp.schedule",
-            message: `${diagnostic === undefined ? "" : `Dependency ${blocked.dependency}: ${diagnostic.finding}. `}Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
-            remediation: `${action === undefined ? "" : `${deps.redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${deps.redactor.redactString(diagnostic.authority)}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
-            ...(listener === undefined ? {} : { listener }),
-            ...(blocked.lastError === undefined ? {} : { details: { readinessFailure: blocked.lastError } }),
-            ...(logTail === undefined ? {} : { logTail }),
-          }),
-        );
+          diagnostic?.action ?? (diagnoseListener ? listenerAuthorityAction(dependency) : undefined);
+        const unavailable = blocked.dependencyUnavailable;
+        const exitMessage =
+          exit === undefined
+            ? unavailable === undefined
+              ? ""
+              : `Dependency ${blocked.dependency} was ${unavailable.reason}. `
+            : `Dependency ${blocked.dependency} ${exit.status === "dead" ? "is dead" : "exited"}${exit.exitCode === undefined ? "" : ` with code ${exit.exitCode}`}. `;
+        const logTail = Exit.isSuccess(captured) ? captured.value : undefined;
+        const details =
+          exit !== undefined
+            ? dependencyExitDetails(blocked.dependency, blocked.unmetGate, exit)
+            : unavailable !== undefined
+              ? {
+                  dependencyUnavailable: {
+                    service: blocked.dependency,
+                    gate: blocked.unmetGate,
+                    reason: unavailable.reason,
+                  },
+                }
+              : blocked.lastError === undefined
+                ? undefined
+                : { readinessFailure: blocked.lastError };
+        const error = podmanFailure(deps, {
+          service,
+          operation: "bringUp.schedule",
+          message: `${exitMessage}${diagnostic === undefined ? "" : `Dependency ${blocked.dependency}: ${diagnostic.finding}. `}Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+          remediation: `${action === undefined ? "" : `${deps.redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${deps.redactor.redactString(diagnostic.authority)}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
+          ...(listener === undefined ? {} : { listener }),
+          ...(details === undefined ? {} : { details }),
+          ...(logTail === undefined ? {} : { logTail }),
+        });
+        return Exit.isFailure(captured)
+          ? Effect.failCause(mergeFailure(Cause.fail(error), captured.cause, "cleanup"))
+          : Effect.fail(error);
       }),
     );
   }

@@ -11,13 +11,16 @@ const importSpecifiersOf = (source: string): string[] =>
   ).filter((value): value is string => value !== undefined);
 
 describe("@lando/sdk/probe import boundary", () => {
-  test("imports only effect plus type-only sibling schema, never core or IO", async () => {
+  test("imports only Effect and pure SDK helpers, never core or IO", async () => {
     const source = await readFile(new URL("../../src/probe/index.ts", import.meta.url), "utf8");
     const specifiers = importSpecifiersOf(source);
 
     expect(specifiers.length).toBeGreaterThan(0);
     for (const specifier of specifiers) {
-      const permitted = specifier === "effect" || specifier.startsWith("../schema");
+      const permitted =
+        specifier === "effect" ||
+        specifier === "../command-result/failure.ts" ||
+        specifier.startsWith("../schema");
       expect(permitted).toBe(true);
       expect(specifier.startsWith("node:")).toBe(false);
       expect(specifier.startsWith("bun:")).toBe(false);

@@ -104,7 +104,7 @@ If you are looking for a public surface or policy:
 | Current/recorded app names, retained data name, and planned/applied project-file policy in info | 06 | §6.10 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
 | Logical endpoint identity, mandatory endpoint normalization, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
-| Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
+| Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, terminal dependency evidence, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
 | Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
 | Native-health observations and readiness configuration metadata, without last-proof inference | 06 | §6.10 |
 | Certificates and trust injection | 06 | §6.8 |
@@ -190,7 +190,7 @@ If you are looking for a public surface or policy:
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
 | Shared certificate-pair preparation, router leaf renewal, current-root checks, issuer repair, and watched certificate reload | 11 | §10.3 + §10.2.1 |
 | External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
-| SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent, relay reuse | 11 | §10.4 |
+| SSH identity, identities, managed key, sidecar and host agent forwarding, applied sidecar readiness, gpg agent, relay reuse | 11 | §10.4 + §10.5.1 |
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | Endpoint-scoped URL scan defaults, explicit override precedence and global disable policy | 06 + 11 | §6.6 + §10.5.3 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |

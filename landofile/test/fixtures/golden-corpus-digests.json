@@ -1402,12 +1402,20 @@
       "digest": "5844d2978bfa3f1a505f2e7126097ef4b0c34458826e3332b0abfd74e9a7de3c"
     },
     {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/failed-oneshot",
+      "digest": "ea328ad15e201fb3ae68bbbc9eb0c7dff6f47c7eaf34c58c04ebadff2cbbc1cb"
+    },
+    {
       "fixture": "docs/guides/wait-for-your-app/fixtures/host-command-missing",
       "digest": "a1efbc74f7ffddb808211b2e504bee96908cdd3537bf68d79154d77f2690a4f4"
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/host-user-invalid",
       "digest": "09a9279b30167833b6df809abb52b96fe7c839873d35aa76563dbc3883bc3adc"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/mixed-timing-corrected",
+      "digest": "3dc4ef3e61a3dcd96edb28a5880c84c5be9757616556b65a42d963b1a40c5807"
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/native-host-invalid",
@@ -1420,6 +1428,10 @@
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/object-form",
       "digest": "9856d6c4108ce53b022b2b7b3fa7ab1c81c9113c757ce3755f9037ed8b5d70d9"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/terminal-dependency",
+      "digest": "09a1d3e97f706e101cc5fcd41977a04b433dfe2992ddf4350e3c84a8d9b66d53"
     },
     {
       "fixture": "docs/guides/wordpress-multisite/fixtures/wp-network",

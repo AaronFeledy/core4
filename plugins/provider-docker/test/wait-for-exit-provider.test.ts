@@ -192,15 +192,40 @@ describe("provider-docker waitForExit", () => {
     ]);
   });
 
-  test("forwards cancellation to the HTTP wait request", async () => {
+  test("does not send a wait request after the caller aborts", async () => {
     // Given
     const fake = makeFakeApi([{ status: 200, body: '{"StatusCode":0}' }]);
     const controller = new AbortController();
+    controller.abort();
 
     // When
-    await waitForExit(fake.api, serviceName, controller.signal);
+    await expect(waitForExit(fake.api, serviceName, controller.signal)).rejects.toThrow();
 
     // Then
-    expect(fake.calls[0]?.signal).toBe(controller.signal);
+    expect(fake.calls).toEqual([]);
+  });
+
+  test("fails with ProviderInternalError when Docker wait Error is present under 200", async () => {
+    // Given
+    const fake = makeFakeApi([
+      { status: 200, body: JSON.stringify({ StatusCode: 0, Error: { Message: "removal failed" } }) },
+    ]);
+
+    // When
+    const failure = await waitFailure(fake.api);
+
+    // Then
+    expect(failure).toBeInstanceOf(ProviderInternalError);
+  });
+
+  test("fails with ServiceNotFoundError when the wait endpoint returns 404", async () => {
+    // Given
+    const fake = makeFakeApi([{ status: 404, body: '{"message":"No such container"}' }]);
+
+    // When
+    const failure = await waitFailure(fake.api);
+
+    // Then
+    expect(failure).toBeInstanceOf(ServiceNotFoundError);
   });
 });

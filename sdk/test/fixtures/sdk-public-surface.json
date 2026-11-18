@@ -582,10 +582,12 @@
       "primaryFailureReason",
       "projectEncodedResult",
       "projectToolingDiagnostic",
+      "raceJoined",
       "redactValueWithPolicy",
       "resolveCommandCompletion",
       "structuralRedaction",
-      "taggedErrorJson"
+      "taggedErrorJson",
+      "withDeadline"
     ],
     "./database-creds": [
       "DATABASE_FAMILY_DEFAULT_PORTS",
@@ -1174,6 +1176,7 @@
       "ProbeTimeoutError",
       "RetryPolicy",
       "runProbe",
+      "runProbeDetailed",
       "toSchedule"
     ],
     "./recipes": [

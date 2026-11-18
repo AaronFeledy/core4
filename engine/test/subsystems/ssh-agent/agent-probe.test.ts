@@ -5,7 +5,9 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-test("counts identities from a fake agent server", async () => {
+const unixSocketTest = test.skipIf(process.platform === "win32");
+
+unixSocketTest("counts identities from a fake agent server", async () => {
   const { probeSshAgent } = await import("../../../src/subsystems/ssh-agent/agent-probe.ts");
   // Given
   const root = await mkdtemp(join(tmpdir(), "agent-probe-"));
@@ -36,7 +38,7 @@ test("counts identities from a fake agent server", async () => {
   }
 });
 
-test("bounds a silent agent and rejects a malformed response", async () => {
+unixSocketTest("bounds a silent agent and rejects a malformed response", async () => {
   const { probeSshAgent } = await import("../../../src/subsystems/ssh-agent/agent-probe.ts");
   for (const response of [undefined, Buffer.from([0, 0, 0, 1, 5])]) {
     // Given

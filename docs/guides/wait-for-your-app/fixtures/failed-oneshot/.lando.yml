@@ -1,0 +1,19 @@
+name: failed-oneshot
+router:
+  enabled: false
+services:
+  init:
+    type: compose
+    image: docker.io/library/busybox:1.37
+    appMount: false
+    home: false
+    command: [sh, -c, "echo oneshot-fixture-exit; exit 7"]
+  web:
+    type: compose
+    image: docker.io/library/busybox:1.37
+    appMount: false
+    home: false
+    command: [sleep, "600"]
+    depends_on:
+      init:
+        condition: service_completed_successfully

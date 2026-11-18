@@ -238,6 +238,7 @@ describe("HealthcheckInput", () => {
       Schema.decodeUnknownSync(ServiceConfig)({ healthcheck: input }).healthcheck,
       Schema.decodeUnknownSync(ServiceConfig)({ healthcheck: input }, { onExcessProperty: "error" })
         .healthcheck,
+      Schema.decodeUnknownSync(ServiceConfig)({ readiness: input }, { onExcessProperty: "error" }).readiness,
     ];
 
     // Then

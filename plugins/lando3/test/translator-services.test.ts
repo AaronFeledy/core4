@@ -130,7 +130,7 @@ for (const service of ["api: 4, type: lando", "type: lando, services: {image: 'a
     `maps lifecycle healthcheck forms to readiness for ${service}: $authored`,
     async ({ authored, expected }) => {
       // Given
-      const text = `services: {web: {${service}, healthcheck: ${authored}, overrides: {healthcheck: {test: [CMD, native]}}}}`;
+      const text = `services: {web: {${service}, healthcheck: ${authored}, overrides: {healthcheck: {test: [CMD, native], interval: 1s, timeout: 2s}}}}`;
       // When
       const result = await translate(text);
       // Then
@@ -142,7 +142,7 @@ for (const service of ["api: 4, type: lando", "type: lando, services: {image: 'a
         services: {
           web: {
             readiness: expected,
-            healthcheck: { test: ["CMD", "native"] },
+            healthcheck: { test: ["CMD", "native"], interval: "1s", timeout: "2s" },
           },
         },
       });

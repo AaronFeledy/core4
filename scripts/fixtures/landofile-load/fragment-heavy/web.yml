@@ -9,7 +9,7 @@ services:
       LOG_LEVEL: info
     healthcheck:
       command: node --version
-      interval: 5s
+      intervalSeconds: 5
     appMount:
       target: /app
       excludes:

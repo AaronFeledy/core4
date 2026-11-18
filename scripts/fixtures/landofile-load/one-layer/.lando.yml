@@ -11,7 +11,7 @@ services:
       - http://one.lndo.site
     healthcheck:
       command: node --version
-      interval: 5s
+      intervalSeconds: 5
     appMount:
       target: /app
       excludes:
