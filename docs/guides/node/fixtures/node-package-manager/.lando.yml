@@ -1,5 +1,6 @@
 name: node-package-manager
 services:
   app:
-    type: node
+    type: node:lts
     primary: true
+    user: node

@@ -1,4 +1,3 @@
-import { causeMessage } from "@lando/sdk/errors";
 import type { ServiceTypeProjectFileInput } from "@lando/sdk/services";
 import { satisfies, subset, valid, validRange } from "semver";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
@@ -23,8 +22,17 @@ const NVMRC_REMEDIATION = [
 ].join(" ");
 
 export class NodeInferenceError extends ServiceConfigIssue {
-  constructor(message: string, remediation: string, projectFile?: string) {
-    super([], message, { suggestion: remediation, ...(projectFile === undefined ? {} : { projectFile }) });
+  constructor(
+    message: string,
+    remediation: string,
+    projectFile?: string,
+    projectFileSourcePath?: ReadonlyArray<string | number>,
+  ) {
+    super([], message, {
+      suggestion: remediation,
+      ...(projectFile === undefined ? {} : { projectFile }),
+      ...(projectFileSourcePath === undefined ? {} : { projectFileSourcePath }),
+    });
     this.name = "NodeInferenceError";
   }
 }
@@ -60,11 +68,7 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
     .map((line) => line.replace(/#.*$/u, "").trim().toLowerCase())
     .find((line) => line.length > 0);
   if (constraint === undefined) {
-    throw new NodeInferenceError(
-      `Unsupported Node version "" in ${input.path}.`,
-      NVMRC_REMEDIATION,
-      input.path,
-    );
+    throw new NodeInferenceError('Unsupported Node version "".', NVMRC_REMEDIATION, input.path);
   }
 
   if (constraint === "lts" || constraint === "lts/*") {
@@ -77,7 +81,7 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
     const major = NODE_LTS_MAJORS[NODE_LTS_MAJORS.length - 1 - offset];
     if (major === undefined) {
       throw new NodeInferenceError(
-        `Unsupported Node version "${constraint}" in ${input.path}.`,
+        `Unsupported Node version ${JSON.stringify(constraint)}.`,
         NVMRC_REMEDIATION,
         input.path,
       );
@@ -96,7 +100,7 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
       const normalized = constraint.replace(/^v/u, "");
       if (valid(normalized) === null) {
         throw new NodeInferenceError(
-          `Invalid Node version "${constraint}" in ${input.path}.`,
+          `Invalid Node version ${JSON.stringify(constraint)}.`,
           exactPinRemediation,
           input.path,
         );
@@ -125,30 +129,26 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
   }
 
   throw new NodeInferenceError(
-    `Unsupported Node version "${constraint}" in ${input.path}.`,
+    `Unsupported Node version ${JSON.stringify(constraint)}.`,
     NVMRC_REMEDIATION,
     input.path,
   );
 };
 
-/** Decode one present project file as a JSON object, naming the file on failure. */
 export const readPackageJson = (
   input: ServiceTypeProjectFileInput & { readonly present: true },
 ): Readonly<Record<string, unknown>> => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(input.text);
-  } catch (cause) {
-    throw new NodeInferenceError(
-      `Node inference could not parse ${input.path} as valid JSON: ${causeMessage(cause)}.`,
-      "Fix package.json or remove bare type: node.",
-      input.path,
-    );
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new NodeInferenceError("Expected valid JSON.", "Fix the manifest's JSON syntax.", input.path);
   }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new NodeInferenceError(
-      `${input.path} must contain a JSON object.`,
-      "Fix package.json or remove bare type: node.",
+      "Expected a JSON object.",
+      "Use a JSON object for the manifest.",
       input.path,
     );
   }
@@ -163,26 +163,29 @@ const packageEngine = (
   if (engines === undefined) return undefined;
   if (engines === null || typeof engines !== "object" || Array.isArray(engines)) {
     throw new NodeInferenceError(
-      `${input.path} engines must be an object.`,
-      "Set engines.node to a valid semver range.",
+      "Expected an object for engine constraints.",
+      "Use an object with a node entry containing a semver range.",
       input.path,
+      ["engines"],
     );
   }
   const node = Reflect.get(engines, "node");
   if (node === undefined) return undefined;
   if (typeof node !== "string") {
     throw new NodeInferenceError(
-      `${input.path} engines.node must be a string.`,
-      "Set engines.node to a valid semver range.",
+      "Expected a Node version range as a string.",
+      'Use a semver range such as "^22".',
       input.path,
+      ["engines", "node"],
     );
   }
   const constraint = node.trim();
   if (validRange(constraint) === null) {
     throw new NodeInferenceError(
-      `${input.path} engines.node is not a valid semver range: "${constraint}".`,
-      "Set engines.node to a valid semver range.",
+      "Expected a valid Node semver range.",
+      'Use a semver range such as "^22".',
       input.path,
+      ["engines", "node"],
     );
   }
   return constraint;
@@ -212,33 +215,33 @@ export const resolveNodeInference = (
     const selection = parseNvmrc(nvmrc);
     if (engine !== undefined && !compatibleWithEngine(selection, engine)) {
       throw new NodeInferenceError(
-        `${nvmrc.path} constraint "${selection.normalizedConstraint}" conflicts with package.json engines.node "${engine}".`,
+        `Node constraint ${JSON.stringify(selection.normalizedConstraint)} conflicts with package.json engines.node ${JSON.stringify(engine)}.`,
         "Make both project files describe compatible Node versions.",
         nvmrc.path,
       );
     }
     return selection;
   }
-  if (engine !== undefined) {
+  if (packageJson?.present === true && engine !== undefined) {
     const major = selectMajorForEngine(engine);
     if (major !== undefined) {
       return {
         artifact: `node:${major}`,
         normalizedConstraint: engine,
-        sourcePath: packageJson?.path ?? "package.json",
+        sourcePath: packageJson.path,
       };
     }
     throw new NodeInferenceError(
-      `package.json engines.node "${engine}" does not prove that a complete supported Node image channel (${NODE_MAJOR_IDS.join(", ")}) is compatible.`,
+      `The Node range ${JSON.stringify(engine)} does not prove that a complete supported Node image channel (${NODE_MAJOR_IDS.join(", ")}) is compatible.`,
       exactPinRemediation,
-      packageJson?.path,
+      packageJson.path,
+      ["engines", "node"],
     );
   }
   throw new NodeInferenceError(
     packageJson?.present === true
-      ? "package.json has no Node constraint in engines.node."
+      ? "Node inference found no .nvmrc and package.json declares no engines.node."
       : "Node inference found neither .nvmrc nor package.json.",
     "Add .nvmrc or package.json engines.node, then retry.",
-    packageJson?.present === true ? packageJson.path : undefined,
   );
 };

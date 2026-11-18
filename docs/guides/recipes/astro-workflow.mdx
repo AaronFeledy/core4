@@ -75,7 +75,7 @@ Init writes only `.lando.yml`; it does not create the Astro application. Follow 
 | --- | --- |
 | `web` | `node:lts` (or `node:22` when you pass `--answer=node=22`), port `4321`, `ASTRO_TELEMETRY_DISABLED=1` |
 | `database` | omitted by default; `postgres` with `--answer=database=postgres`; `mariadb` with `--answer=database=mariadb` |
-| Tooling | `lando astro` (`npx astro`) and `lando npm` on `web` |
+| Tooling | `lando astro` on `web`, which runs your project's installed `astro` binary. The `web` service adds `lando npm` and `lando npx` |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pick a database and `web` waits on that service.
 
@@ -92,7 +92,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pick a 
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*4321" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\"port\":\\s*3000" } } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando help npm --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"web\"[\\s\\S]*\"program\":\\s*\"npm\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"astro\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "ASTRO_TELEMETRY_DISABLED" } }} />
     </Step>

@@ -86,6 +86,7 @@ import { hostEventsShellIssues } from "./host-shell-issues.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
 import { normalizeNetworks } from "./networks.ts";
 import { assertRoutesCertificateCoverable, decodeAppPlan } from "./plan-decode.ts";
+import { attachProjectFileSnapshot } from "./project-file-snapshot.ts";
 import {
   agentSocketCapabilityErrors,
   assertProjectUserSupported,
@@ -434,10 +435,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposeFieldsSupported(capabilityContext, cached);
       yield* assertProjectUserSupported(provider, providerCapabilities, cached.services);
       const proven = withCommittedLiteralDigests(cached, authoredLandofile);
-      return attachCompiledInvocationPlan(
-        attachResolutionTooling(proven, toolingResolution),
-        executableSites,
-        effectiveEventsFor(cached.services),
+      return attachProjectFileSnapshot(
+        attachCompiledInvocationPlan(
+          attachResolutionTooling(proven, toolingResolution),
+          executableSites,
+          effectiveEventsFor(cached.services),
+        ),
+        resolvedServices,
       );
     }
   }
@@ -588,5 +592,5 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       Effect.catch(() => Effect.void),
     );
   }
-  return plan;
+  return attachProjectFileSnapshot(plan, resolvedServices);
 });

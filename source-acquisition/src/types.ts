@@ -26,7 +26,20 @@ export interface SourceSnapshot<P extends SourcePin = SourcePin> {
   readonly root: string;
   readonly key: SourceKey;
   readonly pin: P;
+  readonly treeDigest: string;
 }
+
+export type NpmAuthoredIntegrity = {
+  readonly algorithm: "sha224" | "sha256" | "sha384" | "sha512";
+  readonly hex: string;
+  readonly file?: string;
+};
+
+export type ExactNpmSource = {
+  readonly name: string;
+  readonly version: string;
+  readonly integrity?: NpmAuthoredIntegrity;
+};
 
 export interface GitTransport {
   readonly resolve?: (input: {
@@ -111,6 +124,10 @@ export interface SourceSession {
   readonly acquireNpm: (
     locator: { readonly name: string; readonly selector?: string },
     options?: AcquisitionOptions,
+  ) => Effect.Effect<SourceSnapshot<NpmPin>, SourceAcquisitionError>;
+  readonly acquireExactNpm: (
+    coordinate: ExactNpmSource,
+    options?: { readonly network?: boolean },
   ) => Effect.Effect<SourceSnapshot<NpmPin>, SourceAcquisitionError>;
   readonly lookupNpm: (input: {
     readonly name: string;

@@ -147,6 +147,7 @@ const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCap
         Layer.mergeAll(
           PluginRegistryLayer.layer,
           fileSyncEngineLayer({ ...TestFileSyncEngine, id: "mutagen" }),
+          BunFileSystem.layer,
         ),
       ),
       Effect.provideService(GlobalConfigSources, {
@@ -160,6 +161,16 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
+    ),
+  );
+
+const planWithoutFileSystem = (landofile: LandofileShape) =>
+  Effect.runPromiseExit(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerLandoCapabilities),
     ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
   );
 
@@ -1737,7 +1748,7 @@ describe("AppPlannerLayer.layer", () => {
     });
 
     // When
-    const exit = await planExit(landofile);
+    const exit = await planWithoutFileSystem(landofile);
 
     // Then
     const failure = expectSomeFailure(exit);
@@ -2987,6 +2998,78 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
+  test("infers bare Node from the root manifest when packageRoot is ./", async () => {
+    await withTempCwd(async (appRoot) => {
+      await writeFile(join(appRoot, "package.json"), JSON.stringify({ engines: { node: "22" } }));
+
+      const plan = await planWithFileSystem({
+        name: "node-root-alias",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "node", packageRoot: "./" } },
+      });
+
+      expect(plan.services[ServiceName.make("web")]?.type).toBe("node:22");
+      expect(plan.services[ServiceName.make("web")]?.provenance?.node).toMatchObject({
+        sourcePath: "package.json",
+        normalizedConstraint: "22",
+      });
+    });
+  });
+
+  test("skips project files for a catalog Node type that owns its toolchain", async () => {
+    await withTempCwd(async (appRoot) => {
+      await writeFile(join(appRoot, "package.json"), "{ not valid json");
+
+      const appPlan = await planWithFileSystem({
+        name: "node-custom-image",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: { type: "node:22", image: "node:22-alpine" },
+        },
+      });
+      const web = appPlan.services[ServiceName.make("web")];
+
+      expect(web?.artifact).toEqual({ kind: "ref", ref: "node:22-alpine" });
+      expect(web?.provenance).toMatchObject({ node: { artifact: "node:22", files: [] } });
+      expect(web?.provenance?.node).not.toHaveProperty("packageManager");
+    });
+  });
+
+  test("reads a nested manifest for an explicit Node type without letting it change the runtime", async () => {
+    await withTempCwd(async (appRoot) => {
+      await mkdir(join(appRoot, "apps", "web"), { recursive: true });
+      await writeFile(join(appRoot, "apps", "web", ".nvmrc"), "18\n");
+      await writeFile(
+        join(appRoot, "apps", "web", "package.json"),
+        JSON.stringify({ engines: { node: "18" }, packageManager: "pnpm@9.15.0" }),
+      );
+
+      const appPlan = await planWithFileSystem({
+        name: "node-explicit-manifest",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: { type: "node:22", packageRoot: "apps/web" },
+        },
+      });
+      const web = appPlan.services[ServiceName.make("web")];
+
+      expect(web?.type).toBe("node:22");
+      expect(web?.artifact).toEqual({ kind: "ref", ref: "node:22" });
+      expect(web?.provenance).toMatchObject({
+        node: {
+          artifact: "node:22",
+          packageManager: {
+            name: "pnpm",
+            version: "9.15.0",
+            sourcePath: "apps/web/package.json",
+            sourceField: "packageManager",
+          },
+        },
+      });
+      expect(web?.provenance?.node).not.toHaveProperty("sourcePath");
+    });
+  });
+
   test("tracks present and absent Node inference candidates in a nested package cache", async () => {
     await withTempCwd(async (appRoot) => {
       const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
@@ -3051,8 +3134,12 @@ describe("AppPlannerLayer.layer", () => {
       /services.web.type: Unsupported service type node:22\.11\.0 for service web\. Supported alternatives: node:22, node:24, node:26, node:lts\./,
     ],
     [{ type: "node", image: "node:22" }, /cannot combine bare type: node inference with image/i],
-    [{ type: "node:22", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
-    [{ type: "php:8.3", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
+    [
+      { type: "node", build: { context: "." } },
+      /cannot combine bare type: node inference with a Compose build/i,
+    ],
+    [{ type: "node:22", image: "node:22-alpine", packageRoot: "apps/web" }, /owns its toolchain/i],
+    [{ type: "php:8.3", packageRoot: "apps/web" }, /packageRoot only with a Node service type/i],
     [{ type: "node", packageRoot: "missing" }, /directory does not exist/i],
     [{ type: "node", packageRoot: "../outside" }, /escapes the app root/i],
   ] satisfies ReadonlyArray<readonly [ServiceConfig, RegExp]>)(
@@ -4923,7 +5010,7 @@ describe("AppPlannerLayer.layer", () => {
               ),
             ).pipe(
               Effect.provide(AppPlannerLayer.layer),
-              Effect.provide(PluginRegistryLayer.layer),
+              Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
               Effect.provide(AppCacheService.layer),
             ),
           );

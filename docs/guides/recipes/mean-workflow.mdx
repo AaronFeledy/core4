@@ -28,7 +28,7 @@ Init writes `.lando.yml`, `package.json`, and `server.js`. The Express scaffold 
 | `api` | `node:lts` (or `node:22` when you pass `--answer=node=22`), port `3000`, `MONGO_URL` pointed at `database` |
 | `database` | `type: mongodb` |
 | `cache` (optional) | `type: redis` plus `REDIS_URL` when you pass `--answer=redis=true` |
-| Tooling | `lando npm` and `lando node` against `api` |
+| Tooling | `lando node` against `api`. The `api` service adds `lando npm` and `lando npx` |
 | Scaffold | `package.json` with Express, `server.js` starter |
 
 Routes land on `{{ app.name }}.{{ proxy.defaultDomain }}` with both HTTP and HTTPS.
@@ -46,7 +46,7 @@ Routes land on `{{ app.name }}.{{ proxy.defaultDomain }}` with both HTTP and HTT
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"command\":\\s*\"npm install --no-audit --no-fund && exec node server\\.js\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mongodb\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
+      <Verify command="lando help npm --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"api\"[\\s\\S]*\"program\":\\s*\"npm\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
     </Step>
     <Step name="start">

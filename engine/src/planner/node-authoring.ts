@@ -1,9 +1,12 @@
-import { LandofileValidationError } from "@lando/sdk/errors";
+import { landofileValidationError } from "@lando/landofile/validation";
+import type { LandofileValidationError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
-import type { FileSystem, ServiceType, ServiceTypeProjectFileInput } from "@lando/sdk/services";
+import type { FileSystem, ServiceType } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
-import { loadServiceTypeProjectFiles } from "./project-files.ts";
+import { isComposeBuild } from "../services/compose-build-artifact.ts";
+import { hasCustomImage } from "./home.ts";
+import { type PlannedProjectFile, loadServiceTypeProjectFiles } from "./project-files.ts";
 
 export type AuthorizedProjectFileRequest = {
   readonly appRoot: string;
@@ -11,46 +14,70 @@ export type AuthorizedProjectFileRequest = {
   readonly service: ServiceConfig;
   readonly serviceType: ServiceType;
   readonly pinnedService: ServiceConfig;
+  /** The catalog artifact tag the planner resolved, so it is not mistaken for an authored image. */
+  readonly resolvedArtifactTag: string | undefined;
   readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
 };
 
+const landofileFailure = (
+  appRoot: string,
+  path: ReadonlyArray<string | number>,
+  message: string,
+  remediation: string,
+) =>
+  landofileValidationError(`${appRoot}/.lando.yml`, [validationIssue(path, message, remediation)], {
+    headline: "Landofile has invalid values",
+    remediation,
+  });
+
+const isNodeServiceType = (id: string): boolean => id === "node" || id.startsWith("node:");
+
 export const loadAuthorizedServiceProjectFiles = (
   input: AuthorizedProjectFileRequest,
-): Effect.Effect<ReadonlyArray<ServiceTypeProjectFileInput>, LandofileValidationError> => {
-  if (input.pinnedService.packageRoot !== undefined && input.serviceType.id !== "node") {
+): Effect.Effect<readonly PlannedProjectFile[], LandofileValidationError> => {
+  const packageRoot = input.pinnedService.packageRoot;
+  const node = isNodeServiceType(input.serviceType.id);
+  if (packageRoot !== undefined && !node) {
     return Effect.fail(
-      new LandofileValidationError({
-        message: `Service ${input.name} may use packageRoot only with bare type: node. Remove packageRoot or set type to node.`,
-        remediation: "Remove packageRoot or set type to node.",
-        file: `${input.appRoot}/.lando.yml`,
-        issues: [
-          validationIssue(
-            ["services", input.name, "packageRoot"],
-            `Service ${input.name} may use packageRoot only with bare type: node. Remove packageRoot or set type to node.`,
-          ),
-        ],
-      }),
+      landofileFailure(
+        input.appRoot,
+        ["services", input.name, "packageRoot"],
+        `Service ${input.name} may use packageRoot only with a Node service type.`,
+        "Remove packageRoot or use a Node service type.",
+      ),
     );
   }
-  if (input.service.type === "node" && input.service.image !== undefined) {
-    return Effect.fail(
-      new LandofileValidationError({
-        message: `Service ${input.name} cannot combine bare type: node inference with image. Remove image or use an explicit Node type.`,
-        remediation: "Remove image or use an explicit Node type.",
-        file: `${input.appRoot}/.lando.yml`,
-        issues: [
-          validationIssue(
-            ["services", input.name, "image"],
-            `Service ${input.name} cannot combine bare type: node inference with image. Remove image or use an explicit Node type.`,
-          ),
-        ],
-      }),
-    );
+  if (input.service.type === "node") {
+    const replacementBuild = input.service.build !== undefined && isComposeBuild(input.service.build);
+    if (input.service.image !== undefined || replacementBuild) {
+      const authored = input.service.image === undefined ? "a Compose build" : "image";
+      return Effect.fail(
+        landofileFailure(
+          input.appRoot,
+          ["services", input.name, input.service.image === undefined ? "build" : "image"],
+          `Service ${input.name} cannot combine bare type: node inference with ${authored}.`,
+          "Remove it or use an explicit Node type.",
+        ),
+      );
+    }
+  }
+  if (node && hasCustomImage(input.pinnedService, input.resolvedArtifactTag)) {
+    if (packageRoot !== undefined) {
+      return Effect.fail(
+        landofileFailure(
+          input.appRoot,
+          ["services", input.name, "packageRoot"],
+          `Service ${input.name} owns its toolchain through a custom image or build, so packageRoot is not allowed.`,
+          "Remove packageRoot or use a catalog Node type.",
+        ),
+      );
+    }
+    return Effect.succeed([]);
   }
   return loadServiceTypeProjectFiles({
     appRoot: input.appRoot,
     serviceName: input.name,
-    packageRoot: input.pinnedService.packageRoot ?? ".",
+    packageRoot: packageRoot ?? ".",
     declarations: input.serviceType.projectFiles?.(input.pinnedService) ?? [],
     fileSystem: input.fileSystem,
   });

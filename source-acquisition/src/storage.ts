@@ -145,7 +145,7 @@ export const makeStorage = (
       const tree = yield* io(keyId(key), () => realpath(containedPath(entryPath(key), "tree")));
       if (options.verify === true && (yield* io(keyId(key), () => treeDigest(tree))) !== record.treeDigest)
         return undefined;
-      return { key, pin, root: tree };
+      return { key, pin, root: tree, treeDigest: record.treeDigest };
     });
     return withLease(
       "use",
@@ -214,7 +214,12 @@ export const makeStorage = (
             });
           }
           yield* register(key);
-          return { key, pin, root: yield* io(input.source, () => realpath(containedPath(target, "tree"))) };
+          return {
+            key,
+            pin,
+            root: yield* io(input.source, () => realpath(containedPath(target, "tree"))),
+            treeDigest: existing !== undefined && !replace ? existing.treeDigest : digest,
+          };
         }),
       ),
     );

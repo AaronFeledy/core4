@@ -131,6 +131,7 @@ const resolveSeed = Effect.fnUntraced(function* (
     service,
     serviceType,
     pinnedService,
+    resolvedArtifactTag,
     fileSystem,
   });
   const resolution = yield* serviceType

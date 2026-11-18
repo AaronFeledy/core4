@@ -24,6 +24,7 @@ import { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { EventService, RuntimeProvider } from "@lando/sdk/services";
 import { Context, Layer } from "effect";
 import { BUILT_IN_COMMAND_IDS } from "../../cli/generated/command-ids.ts";
+import { buildSourceStoreLayer } from "../engine-composition.ts";
 import { makeCommandsBootstrapBaseLayer } from "./commands.ts";
 import type { MinimalBootstrapLayerInputs } from "./minimal.ts";
 
@@ -70,7 +71,10 @@ export const makeProviderBootstrapBaseLayer = (inputs: MinimalBootstrapLayerInpu
     globalAppServiceLayer,
   );
   const appPlannerLayer = AppPlannerLayer.layer.pipe(Layer.provide(baseProviderLayer));
-  const buildOrchestratorLayer = BuildOrchestratorLayer.layer.pipe(Layer.provide(baseProviderLayer));
+  const buildOrchestratorLayer = BuildOrchestratorLayer.layer.pipe(
+    Layer.provide(buildSourceStoreLayer),
+    Layer.provide(baseProviderLayer),
+  );
   const globalAppRuntimeLayer = GlobalAppRuntimeLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(baseProviderLayer, appPlannerLayer, buildOrchestratorLayer)),
   );

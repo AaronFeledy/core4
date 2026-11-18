@@ -109,7 +109,7 @@ describe("bare node version inference", () => {
   test("keeps the fix in the suggestion and lists supported majors", () => {
     expect(failure("18", undefined)).toMatchObject({
       path: [],
-      message: 'Unsupported Node version "18" in .nvmrc.',
+      message: 'Unsupported Node version "18".',
       suggestion: expect.stringMatching(
         /supported Node major \(22, 24, 26\), an LTS codename \(jod, krypton, lithium\)/,
       ),
@@ -137,9 +137,9 @@ describe("bare node version inference", () => {
     ["18", JSON.stringify({ engines: { node: "22" } }), /unsupported Node version/i],
     ["22.11", JSON.stringify({ engines: { node: ">=22.12.0" } }), /conflicts with package\.json/i],
     [undefined, JSON.stringify({ engines: { node: ">=22.11.0 <23" } }), /does not prove/i],
-    [undefined, JSON.stringify({ engines: { node: 22 } }), /engines\.node must be a string/i],
+    [undefined, JSON.stringify({ engines: { node: 22 } }), /^Expected a Node version range as a string\.$/u],
     [undefined, "{", /valid JSON/i],
-    [undefined, JSON.stringify({}), /no Node constraint/i],
+    [undefined, JSON.stringify({}), /declares no engines\.node/i],
     [undefined, undefined, /found neither \.nvmrc nor package\.json/i],
   ] satisfies ReadonlyArray<readonly [string | undefined, string | undefined, RegExp]>)(
     "rejects invalid or unprovable constraints",
@@ -203,6 +203,7 @@ describe("bare node version inference", () => {
         sourcePath: "apps/web/.nvmrc",
         normalizedConstraint: "22.11.0",
         artifact: "node:22.11.0",
+        packageManager: null,
         files: projectFiles.map((file) => ({
           path: file.path,
           present: file.present,
@@ -258,7 +259,7 @@ describe("bare node version inference", () => {
         issues: [
           {
             path: [],
-            message: '.nvmrc constraint "lts/*" conflicts with package.json engines.node "^24".',
+            message: 'Node constraint "lts/*" conflicts with package.json engines.node "^24".',
             suggestion: remediation,
             source: { layer: "project-file", file: ".nvmrc", path: [] },
           },
@@ -271,10 +272,9 @@ describe("bare node version inference", () => {
     ["# comment only", undefined, ".nvmrc"],
     ["18", undefined, ".nvmrc"],
     ["lts/-3", undefined, ".nvmrc"],
-    [undefined, JSON.stringify({ engines: { node: "^22" }, packageManager: "bun@1.2.0" }), "package.json"],
+    [undefined, JSON.stringify({ engines: { node: "18" }, packageManager: "bun@1.2.0" }), "package.json"],
     [undefined, JSON.stringify({ engines: { node: "^22" }, packageManager: "yarn" }), "package.json"],
     [undefined, "{", "package.json"],
-    [undefined, JSON.stringify({}), "package.json"],
   ] satisfies ReadonlyArray<readonly [string | undefined, string | undefined, string]>)(
     "attributes an inference failure to the project file that caused it",
     async (nvmrc, packageJson, expected) => {
@@ -296,14 +296,32 @@ describe("bare node version inference", () => {
       );
       expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
-        expect(result.failure.issues?.[0]?.source).toEqual({
+        expect(result.failure.issues?.[0]?.source).toMatchObject({
           layer: "project-file",
           file: expected,
-          path: [],
         });
       }
     },
   );
+
+  test("attributes a present manifest with no version input to the service declaration", async () => {
+    const result = await Effect.runPromise(
+      Effect.result(
+        nodeServiceType.resolve({
+          name: "web",
+          service: { type: "node" },
+          appRoot: "/app",
+          metadata: { resolvedAt: "2026-09-11T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },
+          projectFiles: [
+            absentProjectFile(".nvmrc"),
+            projectFile("package.json", JSON.stringify({ packageManager: "pnpm@9.15.0" })),
+          ],
+        }),
+      ),
+    );
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") expect(result.failure.issues?.[0]?.source).toBeUndefined();
+  });
 
   test("keeps a nested packageRoot in the attributed project-file path", async () => {
     const result = await Effect.runPromise(

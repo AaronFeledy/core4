@@ -223,6 +223,38 @@ describe("compileEffectiveTooling", () => {
       vars: { DEFAULT_VAR: "default", SERVICE_VAR: "service", SHARED_VAR: "service" },
     });
   });
+
+  test.each([
+    {
+      name: "the task's own service",
+      landofile: { tooling: { vite: { service: "web", cmd: [":node-local", "vite"] } } },
+    },
+    {
+      name: "the tooling default service",
+      landofile: { toolingDefaults: { service: "web" }, tooling: { vite: { cmd: [":node-local", "vite"] } } },
+    },
+    {
+      name: "the primary service",
+      landofile: {
+        services: { web: { type: "node", primary: true } },
+        tooling: { vite: { cmd: [":node-local", "vite"] } },
+      },
+    },
+  ])(":node-local runs through the manager of $name", ({ landofile }) => {
+    // Given a pnpm-provisioned web service
+    const services = [
+      { name: "web", serviceTypeId: "node", metadata: { node: { packageManager: { name: "pnpm" } } } },
+    ];
+
+    // When the effective tooling is compiled
+    const tooling = compileEffectiveTooling({
+      landofile: Schema.decodeUnknownSync(LandofileShape)(landofile),
+      services,
+    });
+
+    // Then the local bin runs through pnpm exec
+    expect(tooling.vite?.cmd).toEqual(["pnpm", "exec", "vite"]);
+  });
 });
 
 describe("compileEffectiveEvents", () => {

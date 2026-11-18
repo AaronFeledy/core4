@@ -80,12 +80,6 @@ describe("hugo decomposition", () => {
           cmds: ["hugo"],
           wrapper: true,
         },
-        npm: {
-          service: "builder",
-          description: "Run npm inside the builder service.",
-          cmds: ["npm"],
-          wrapper: true,
-        },
       },
     });
     expect<unknown>(result.fragment).toEqual({

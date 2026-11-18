@@ -77,7 +77,8 @@ otherwise, it chooses the highest compatible supported major. For example,
   </Scenario>
 
 The explicit-version example below keeps the version in the Landofile with
-`type: "node:22"`, without consulting project files.
+`type: "node:22"`. Lando doesn't read `.nvmrc` or `engines.node` for that
+service.
 
   <Scenario id="install-globals" render>
     <Step name="scaffold">
@@ -126,18 +127,22 @@ The explicit-version example below keeps the version in the Landofile with
 ## Run the app
 
 The default Node keep-alive process holds the container open and exits cleanly on
-SIGTERM or SIGINT. Declare an `npm` tooling alias targeting `app` before using the commands below; the Node service does not add that alias automatically. See [Run TypeScript on a Node service](./node-typescript.mdx) for a complete tooling block. Then install dependencies and start your server:
+SIGTERM or SIGINT. The Node service adds `lando npm` and `lando npx` for you, so install dependencies and start your server. Run these from the app directory on your host:
 
 ```sh
-# Declare an npm tooling alias to install dependencies inside the service
+# Install dependencies inside the service
 lando npm install
 
-# Run your server via a tooling alias; bind it to 3000 to be reached at the app URL
+# Run your server; bind it to 3000 to be reached at the app URL
 lando npm start
 
 # Or run a one-off process directly
 lando exec app -- node server.js
 ```
+
+A project that declares Yarn or pnpm gets `lando yarn`, or `lando pnpm` and
+`lando pnpx`, instead. See
+[Run your package manager from the host](#run-your-package-manager-from-the-host).
 
 ## Pass `port:` to your app
 
@@ -250,10 +255,25 @@ expect(lastRun.exitCode).toBe(1);`} displayCode={`lando app:cache:refresh --form
 
 ## Use your project's package manager
 
-With `type: node`, Lando also reads `packageManager` from `package.json` and
-installs that exact Yarn or pnpm release into the image. `yarn` and `pnpm` in
-the service then match what your team runs on the host, without a
-`globals` entry:
+Declare the exact Yarn or pnpm release once in `package.json`. Every bundled
+Node type (`node`, `node:lts`, `node:22`, `node:24`, and `node:26`) installs
+that release into the service image when Lando builds it, and adds the
+matching `lando` command. You don't need a `globals` entry, a tooling block,
+or Corepack.
+
+This Landofile pins the Node version and runs the service as the non-root
+`node` user:
+
+```yaml
+name: my-app
+services:
+  app:
+    type: node:lts
+    primary: true
+    user: node
+```
+
+Put the package manager in the `package.json` beside it:
 
 ```json
 {
@@ -263,46 +283,289 @@ the service then match what your team runs on the host, without a
 }
 ```
 
-Run it inside the service the same way you would on your host:
+Start the app, then run Yarn the way you would on your host, with `lando` in
+front. Run these from the app directory on your host:
 
 ```sh
-lando exec app -- yarn --version
-lando exec app -- yarn install
+lando start
+lando yarn --version
+lando yarn install
 ```
 
-`yarn --version` prints `4.18.1`. Lando installs the release with a pinned,
-checksum-verified Corepack while it builds the image and caches it there, so
-the command works offline and under any service `user:`. Changing
-`packageManager` rebuilds the image on the next `lando start`. If the value
-ends in a hash, such as `pnpm@9.15.0+sha512.<hex>`, Corepack checks the
-download against it.
+`lando yarn --version` prints `4.18.1`. Those last two commands check
+different things. The first proves the manager itself: it's already in the
+image, so it runs under any service `user:` and needs no network. The second
+downloads your dependencies, which still needs network access.
 
-- `npm@<version>` keeps the npm that ships with the Node image.
-- Any other manager, such as `bun`, fails before any container starts. Install
-  it through [`globals`](#install-global-npm-packages) instead.
-- With `packageRoot`, Lando reads the package's own `package.json` first, then
-  the one at the app root, because monorepos usually declare `packageManager`
-  once at the root.
-- Don't also list that manager in `globals`. Planning fails and tells you which
-  entry to remove.
+If your project uses `devEngines` instead, Lando reads that field too. This
+`package.json` gives you pnpm 9.15.0 with the same Landofile:
 
-Explicit types such as `type: "node:22"` don't read `package.json`, so install
-the package manager through `globals` there.
+```json
+{
+  "name": "my-app",
+  "private": true,
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "9.15.0"
+    }
+  }
+}
+```
+
+```sh
+lando pnpm --version
+```
+
+That prints `9.15.0`.
+
+### Run your package manager from the host
+
+A bundled Node service adds tooling commands for the manager its
+`package.json` selects:
+
+| `package.json` declares | Commands |
+| --- | --- |
+| pnpm | `lando pnpm`, `lando pnpx` |
+| Yarn | `lando yarn` |
+| npm, or no package manager | `lando npm`, `lando npx` |
+| Bun | none |
+
+Each command runs inside that service and passes everything after its name to
+the manager, so `lando pnpm add -D vitest` runs `pnpm add -D vitest`. To check
+what a command runs without starting anything:
+
+```sh
+lando help pnpm --format=json
+```
+
+The `result.target.runs` entry names the service and the program.
+
+The list follows `package.json`. Change the manager there and the next `lando`
+command you run shows the new set, with no refresh step. A custom `image:` or
+replacement Compose build gets no commands, because that image owns its
+toolchain.
+
+Your Landofile wins over these commands. Define `tooling.npm` yourself to
+change the service, `dir:`, or command, or set a name to `false` to turn it
+off:
+
+```yaml
+tooling:
+  npx: false
+```
+
+#### Apps with more than one Node service
+
+Lando adds a command only when exactly one bundled Node service claims that
+name. Two npm services both claim `npm` and `npx`, so neither gets them. A pnpm
+service beside a Yarn service keeps `lando pnpm`, `lando pnpx`, and
+`lando yarn`, because no name collides.
+
+When names collide, say which service you mean in the Landofile:
+
+```yaml
+services:
+  web:
+    type: node:lts
+    primary: true
+  worker:
+    type: node:lts
+tooling:
+  npm:
+    service: web
+    cmd: [npm]
+    wrapper: true
+  worker-npm:
+    service: worker
+    cmd: [npm]
+    wrapper: true
+```
+
+`lando exec worker -- npm install` also works without any tooling.
+
+### Where the release comes from
+
+Lando downloads the Yarn or pnpm release on your host, not inside the image
+build. The download goes through Lando's own HTTP client, so it uses the npm
+registry, proxy, and certificate authorities you configured for Lando. Behind
+a corporate proxy, set those up once as described in
+[Trust a corporate CA and proxy](../config/corporate-network-trust.mdx).
+
+Lando verifies the release against the registry's integrity value before it
+copies anything into the image. Verified releases stay in Lando's source
+cache, so the registry is contacted once per release:
+
+| Situation | Needs the registry? |
+| --- | --- |
+| First build with a release | Yes |
+| Rebuild with that release already cached | No |
+| Start an app whose image is already built | No |
+| `lando yarn install`, `lando pnpm install` | Yes, for your dependencies |
+
+Lando doesn't install or run Corepack for any of this.
+
+Three limits apply:
+
+- Yarn 2.0.0 through 2.4.0 fail planning. Upgrade to 2.4.1 or later, or bring
+  your own image as described in [Pin the service type](#pin-the-service-type).
+- Global installs through the manager Lando installed, such as `pnpm add -g`
+  and `yarn global add`, aren't supported. Put image-wide tools in
+  [`globals`](#install-global-npm-packages).
+- Yarn Classic before 1.22.21 can still refuse to run in a project whose
+  `package.json` names a different manager.
+
+### Pin an exact version
+
+Only the Yarn or pnpm declaration that wins must name one exact release, such
+as `yarn@4.18.1` or `pnpm@9.15.0`.
+[Know which declaration wins](#know-which-declaration-wins) explains how Lando
+picks it. An integrity suffix is fine: with `pnpm@9.15.0+sha512.<hex>`, the
+download is also checked against that hash. For pnpm and Yarn 1, the hash
+covers the release tarball from the npm registry. For Yarn 2 and later, it
+covers the release's `bin/yarn.js`. A release that doesn't match fails the
+build.
+
+In the winning declaration, ranges such as `^9`, tags such as `latest`, a `v`
+prefix, and URLs fail planning before any container starts. The error names
+the file and the field to fix. Because the cause is a project file, the
+message leads with that file, for example `package.json has invalid values`,
+or `apps/web/package.json has invalid values` for a nested package. It doesn't
+blame the Landofile.
+
+### Know which declaration wins
+
+Lando reads `package.json` in the service's
+[`packageRoot`](#read-a-nested-package) first, then the one at the app root.
+The first file that declares a manager wins, so a monorepo can declare it once
+at the root. Inside one file, top-level `packageManager` wins.
+
+When one file has both fields, `devEngines.packageManager` stops being a pin
+and becomes a compatibility check on the top-level one. Its `version` can be
+left out, or it can be a range that admits the pinned release:
+
+```json
+{
+  "packageManager": "pnpm@9.15.0",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^9"
+    }
+  }
+}
+```
+
+A different manager name, or a range that excludes the pin, fails planning.
+Set `onFail` to `warn` or `ignore` on that `devEngines` entry and Lando accepts
+the mismatch. It doesn't print a warning.
+
+Lando opens both files before it picks one. An app-root `package.json` that is
+unreadable, too large, a symbolic link, or not a regular file fails planning
+even when the nested file would win. A readable one that loses is never parsed
+for a manager.
+
+Two manager names get no install. They still end the search, so Lando doesn't
+fall back to the app root:
+
+- `npm`: the service keeps the npm that ships with the Node image.
+- `bun`: the Node service doesn't provision Bun. Lando accepts the declaration
+  and installs nothing for it.
+
+### Change the version
+
+Edit the pin in `package.json` and run `lando start`. Lando rebuilds the image
+with the new release. Editing other `package.json` fields, such as `scripts`,
+doesn't rebuild it.
+
+Until you run `lando start`, the running service still has the release it was
+built with. `lando exec` and tooling commands notice the difference, print a
+warning, and then run your command anyway:
+
+```text
+Service app was built with pnpm@9.15.0, but package.json now selects pnpm@10.19.0. Run `lando start` to rebuild it.
+```
+
+Adding a pin, removing one, and changing its manager, version, or integrity
+hash all count. With `--format=json`, the same warning is in the envelope's
+`warnings` array with code `LANDO_NODE_PACKAGE_MANAGER_STALE`, the service
+name under `context.service`, and the built and declared releases under
+`context.built` and `context.declared`.
+
+Lando publishes its own `yarn` or `pnpm` launcher in the service for the
+manager you selected, and that launcher always runs the release Lando planned.
+It turns off pnpm's switch to the version a project asks for, and it ignores a
+vendored Yarn `yarnPath`. `yarn set version`, `corepack`, `npx corepack`, and
+binaries inside your project are separate entry points that the launcher
+doesn't control, so change versions through `package.json` and `lando start`.
 
   <Scenario id="package-manager-from-package-json" layer="e2e" render>
     <Step name="start">
       <UseFixture name="node-package-manager" />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true" } }} />
     </Step>
-    <Step name="node-follows-lts">
+    <Step name="node-stays-on-lts">
       <Verify command="lando exec app -- node --version" expect={{ stdout: { regex: "^v26[.]" } }} />
     </Step>
+    <Step name="runs-as-non-root">
+      <Verify command="lando exec app -- id -u" expect={{ stdout: { regex: "^[1-9][0-9]*\\s*$" } }} />
+    </Step>
     <Step name="yarn-from-package-json">
-      <Verify command="lando exec app -- yarn --version" expect={{ stdout: { regex: "^4[.]18[.]1" } }} />
+      <Verify command="lando exec app -- yarn --version" expect={{ stdout: { regex: "^4[.]18[.]1\\s*$" } }} />
+    </Step>
+    <Step name="yarn-tooling-command">
+      <Verify command="lando yarn --version" expect={{ stdout: { regex: "4[.]18[.]1" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="package-manager-from-dev-engines" layer="e2e" tags={["@smoke"]} render>
+    <Step name="start">
+      <UseFixture name="node-dev-package-manager" />
+      <Verify file="node-dev-package-manager/package.json" expect={{ regex: "^(?![\\s\\S]*\"packageManager\":\\s*\")[\\s\\S]*\"devEngines\"" }} />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true" } }} />
+    </Step>
+    <Step name="runs-as-non-root">
+      <Verify command="lando exec app -- id -u" expect={{ stdout: { regex: "^[1-9][0-9]*\\s*$" } }} />
+    </Step>
+    <Step name="pnpm-from-dev-engines">
+      <Verify command="lando exec app -- pnpm --version" expect={{ stdout: { regex: "^9[.]15[.]0\\s*$" } }} />
+    </Step>
+    <Step name="pnpm-tooling-command">
+      <Verify command="lando pnpm --version" expect={{ stdout: { regex: "9[.]15[.]0" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="tooling-follows-package-manager" render={false} reason="The contributed pnpm commands come from package.json without any authored tooling">
+    <Step name="scaffold">
+      <UseFixture name="node-dev-package-manager" />
+    </Step>
+    <Step name="pnpm-command-targets-app">
+      <Verify command="lando help pnpm --format=json" expect={{ stdout: { regex: "\"typeable\":\\s*\"pnpm\"[\\s\\S]*\"name\":\\s*\"app\"[\\s\\S]*\"program\":\\s*\"pnpm\"" } }} />
+      <Verify command="lando help pnpx --format=json" expect={{ stdout: { regex: "\"program\":\\s*\"pnpx\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-package-manager-range" render={false} reason="Plan-time tagged failure for a package manager range in package.json">
+    <Step name="scaffold">
+      <UseFixture name="node-package-manager-range" />
+    </Step>
+    <Step name="reject">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "packageManager" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
     </Step>
   </Scenario>
 
@@ -315,31 +578,33 @@ services:
   app:
     type: "node:22"
     globals:
-      yarn: "1.22.4"
       gulp-cli: "latest"
 ```
 
-They install with `npm install -g` while the image is baked, so `gulp` is on `PATH` without an extra `lando npm install -g` every rebuild.
-
-Official Node 26 images, which `node:lts` selects, include neither Yarn nor
-Corepack. Node 22 and Node 24 images include Yarn 1, but not pnpm. With bare
-`type: node`, declare
-[`packageManager`](#use-your-projects-package-manager) instead. With an
-explicit type, add the release you need to `globals`, such as
-`globals: { yarn: "1.22.22" }`. See the
-[Node image's package-manager notes](https://github.com/nodejs/docker-node#yarn-v1-classic-bundling).
+They install with `npm install -g` while the image is baked, so `gulp` is on `PATH` after every rebuild without a manual install.
 
 Lando normalizes the map first: names and version specifiers are validated at plan time, and packages install in sorted order. Reordering the YAML does not rebuild the image. Adding, removing, or re-pinning a package does, on the next `lando start`, because the normalized list is part of the image build key.
 
 Specifiers are ordinary npm spellings such as `1.22.4`, `^17.0.0`, `>=5 <6`, or a dist-tag like `latest`. Anything else fails at plan time, before any container work, naming the package that broke.
 
+Keep Yarn and pnpm out of `globals` on a bundled Node type. The pin in
+`package.json` already
+[installs the manager](#use-your-projects-package-manager). A `globals.yarn`
+or `globals.pnpm` entry with the same version as that pin is redundant, and
+Lando skips it without a message. A different version fails planning with
+`Landofile has invalid values`. That error points at
+`services.<name>.globals.<manager>` in the Landofile, because removing the
+entry is the fix. Keep the pin in `package.json`.
+
 `globals` applies to a custom `image:` too, so the image you bring needs `npm`.
+Lando installs no package manager and adds no tooling commands for a custom
+image, so `globals` is where Yarn or pnpm goes there. See [Pin the service type](#pin-the-service-type).
 
 ## Read a nested package
 
-Set `packageRoot` when the Node package lives below the app root. This changes
-only where Lando reads `.nvmrc` and `package.json`. It does not change mounts or
-the container working directory.
+Set `packageRoot` when the Node package lives below the app root. It defaults
+to `.` and selects which `package.json` Lando reads. It never changes mounts
+or the container working directory.
 
 ```yaml
 services:
@@ -348,8 +613,27 @@ services:
     packageRoot: apps/web
 ```
 
-The directory must exist inside the app root. Lando rejects absolute paths,
-parent traversal, and symbolic links for inference inputs.
+With bare `type: node`, Lando infers the Node version from `.nvmrc` and
+`engines.node` in that directory. `packageRoot` works with explicit types too.
+There it only chooses where Lando looks for the package manager:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    packageRoot: apps/web
+```
+
+Either way, Lando reads `apps/web/package.json` for the package manager first,
+then the app-root `package.json`.
+
+`packageRoot` must be a directory inside the app root. Lando rejects absolute
+paths, paths that escape the app root, and symbolic links for these project
+files.
+
+`lando npm` and the other package-manager commands start in the directory
+that matches where you ran them, not in `packageRoot`. Run them from
+`apps/web` on your host, or define the command with a `dir:`.
 
 For a PHP app whose theme lives under the webroot, add a Node sidecar and set
 tooling `dir:`. See [Compile PHP theme assets with Node](./node-theme-assets.mdx).
@@ -367,6 +651,13 @@ services:
     type: node:lts
 ```
 
+Project files never change an explicit version. `type: "node:22"` stays on
+Node 22 even when `.nvmrc` or `engines.node` asks for something else. Lando
+still reads `package.json` for the
+[package manager](#use-your-projects-package-manager).
+
+Custom `image:` values work with explicit Node types:
+
 ```yaml
 services:
   app:
@@ -374,9 +665,17 @@ services:
     image: node:24-bookworm
 ```
 
-Custom `image:` values work with explicit Node types. Don't combine `image:`
-with bare `type: node`; inference must choose the image without a second source
-of truth.
+A custom `image:`, or a Compose `build.context` that replaces the image, owns
+its own toolchain. Lando reads no Node project files for that service,
+installs no package manager into it, and adds no `lando npm`, `lando yarn`, or
+`lando pnpm`. Bake Yarn or pnpm into the image, or add it through
+[`globals`](#install-global-npm-packages), then declare the tooling you want
+in the Landofile.
+
+Bare `type: node` can't be combined with `image:` or a replacement Compose
+build, and planning fails if you try. Use an explicit Node type with a custom
+image or replacement Compose build, and remove `packageRoot`; Lando rejects it
+when your build owns the toolchain.
 
 ## Next
 

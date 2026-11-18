@@ -3,16 +3,26 @@ import { decodeLogStream } from "@lando/container-runtime/streams";
 import { makePodmanApiClient } from "@lando/provider-lando";
 import { Effect, Schema, Stream } from "effect";
 
+/** Container name prefix for every create from this helper; force-removed in the finalizer. */
+export const BUILT_IMAGE_CONTAINER_PREFIX = "lando-build-test-" as const;
+
+export interface RunBuiltImageOptions {
+  readonly user?: string;
+  readonly env?: Readonly<Record<string, string>>;
+  /** Run with no network so a test proves the image already holds what the command needs. */
+  readonly offline?: boolean;
+  /** Shell script used in place of `command` (for multi-step checks that still keep network none). */
+  readonly script?: string;
+  /** Override an image-configured user (e.g. root sabotage of image paths). */
+  readonly asRoot?: boolean;
+  readonly binds?: readonly string[];
+}
+
 export const runBuiltImage = async (
   socketPath: string,
   image: string,
   command: readonly string[],
-  options: {
-    readonly user?: string;
-    readonly env?: Readonly<Record<string, string>>;
-    /** Run with no network so a test proves the image already holds what the command needs. */
-    readonly offline?: boolean;
-  } = {},
+  options: RunBuiltImageOptions = {},
 ) =>
   Effect.runPromise(
     Effect.scoped(
@@ -22,14 +32,20 @@ export const runBuiltImage = async (
         const stream = api.stream;
         if (request === undefined || stream === undefined)
           throw new TypeError("Container API requests and logs are required");
+
+        const hostConfig: Record<string, unknown> = {};
+        if (options.offline === true) hostConfig.NetworkMode = "none";
+        if (options.binds !== undefined) hostConfig.Binds = [...options.binds];
+
         const created = yield* request({
           method: "POST",
-          path: `/containers/create?name=lando-build-test-${crypto.randomUUID()}`,
+          path: `/containers/create?name=${BUILT_IMAGE_CONTAINER_PREFIX}${crypto.randomUUID()}`,
           body: {
             Image: image,
-            Cmd: command,
+            Cmd: options.script === undefined ? command : ["sh", "-c", options.script],
             ...(options.user === undefined ? {} : { User: options.user }),
-            ...(options.offline === true ? { HostConfig: { NetworkMode: "none" } } : {}),
+            ...(options.asRoot === true ? { User: "0" } : {}),
+            ...(Object.keys(hostConfig).length === 0 ? {} : { HostConfig: hostConfig }),
             ...(options.env === undefined
               ? {}
               : { Env: Object.entries(options.env).map(([name, value]) => `${name}=${value}`) }),

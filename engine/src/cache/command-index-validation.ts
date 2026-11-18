@@ -228,6 +228,26 @@ const isVersionConstraint = (value: unknown): boolean => {
   }
 };
 
+const isProjectFile = (value: unknown): boolean => {
+  if (!isCacheMapping(value) || !isString(own(value, "path"))) return false;
+  const size = own(value, "size");
+  const sha256 = own(value, "sha256");
+  switch (own(value, "present")) {
+    case false:
+      return size === undefined && sha256 === undefined;
+    case true:
+      return (
+        typeof size === "number" &&
+        Number.isSafeInteger(size) &&
+        size >= 0 &&
+        typeof sha256 === "string" &&
+        /^[a-f0-9]{64}$/.test(sha256)
+      );
+    default:
+      return false;
+  }
+};
+
 const hasCommonFields = (value: Readonly<Record<string, unknown>>): boolean => {
   const entries = own(value, "entries");
   return (
@@ -245,6 +265,8 @@ export const isAppCommandIndexPayload = (value: unknown): value is AppCommandInd
   isString(own(value, "appName")) &&
   isString(own(value, "sourceFile")) &&
   isEnvironment(own(value, "sourceEnvironment")) &&
+  isDenseArray(value.sourceProjectFiles) &&
+  value.sourceProjectFiles.every(isProjectFile) &&
   isFiniteNumber(own(value, "sourceMtimeMs")) &&
   isFiniteNumber(own(value, "sourceSize")) &&
   (!Object.hasOwn(value, "sourceContentHash") || isString(value.sourceContentHash)) &&

@@ -1,0 +1,5 @@
+name: node-package-manager-range
+services:
+  app:
+    type: node:lts
+    primary: true

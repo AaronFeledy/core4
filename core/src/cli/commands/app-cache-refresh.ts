@@ -15,6 +15,7 @@ import {
   effectiveToolingForPlan,
   toolingSourceResolverForPlan,
 } from "@lando/engine/planner/effective-tooling";
+import { projectFileSnapshotFor } from "@lando/engine/planner/project-file-snapshot";
 import { registerPlanRedaction } from "@lando/engine/services/plan-redaction";
 import { type BunShellScriptDiscoveryError, inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
@@ -247,6 +248,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
 
   const appCachePath = yield* writeAppCommandCacheStrict({
     env,
+    sourceProjectFiles: projectFileSnapshotFor(plan),
     sourceScripts: fingerprintsFromInspection(inspection),
     dataIdentityFingerprint,
     landofile: landofile.document,

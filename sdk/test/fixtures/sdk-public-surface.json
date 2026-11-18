@@ -598,7 +598,7 @@
       "databaseClientEnvironment",
       "databaseLocalCheck"
     ],
-    "./digest": ["canonicalJson", "sha256Hex"],
+    "./digest": ["canonicalJson", "createSourceTreeDigest", "sha256Hex"],
     "./docs/components": [
       "AxisToken",
       "CleanupProps",
@@ -2193,6 +2193,7 @@
       "SchemaValidator",
       "ScratchAppService",
       "SecretStore",
+      "ServiceBuildAcquisition",
       "ServiceBuildDirectoryCommand",
       "ServiceCaFileDescriptor",
       "ServiceReadiness",

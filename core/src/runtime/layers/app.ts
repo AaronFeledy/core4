@@ -1,7 +1,6 @@
 import { bundledPluginModules } from "@lando/engine/composition";
 import * as GlobalAppRuntimeLayer from "@lando/engine/global-app/runtime";
 import * as SubscriberRuntimeLayer from "@lando/engine/lifecycle/subscribers";
-import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import * as RouterServiceRegistryLayer from "@lando/engine/subsystems/proxy/registry";
@@ -17,12 +16,8 @@ import { makeProviderBootstrapBaseLayer } from "./provider.ts";
 export const makeAppBootstrapLayer = (inputs: MinimalBootstrapLayerInputs) => {
   const providerGraph = makeProviderBootstrapBaseLayer(inputs);
   const providerBase = Layer.suspend(() => providerGraph);
-  const buildOrchestratorLayer = Layer.suspend(() =>
-    BuildOrchestratorLayer.layer.pipe(Layer.provide(providerBase)),
-  );
   const appBase = Layer.mergeAll(
     providerBase,
-    buildOrchestratorLayer,
     AppPlannerLayer.layer.pipe(Layer.provide(providerBase)),
     ProviderExecToolingEngine.layer.pipe(Layer.provide(providerBase)),
   );

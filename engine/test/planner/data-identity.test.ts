@@ -14,6 +14,7 @@ import {
   recordAppDataIdentity,
 } from "../../src/planner/data-identity.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
@@ -41,7 +42,7 @@ test("renaming retains every derived store and database credential while runtime
   const root = await mkdtemp(join(tmpdir(), "lando-data-plan-"));
   const store = makeTestStateStore();
   const layer = AppPlannerLayer.layer.pipe(
-    Layer.provide(Layer.merge(PluginRegistryLayer.layer, store.layer)),
+    Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, store.layer, BunFileSystem.layer)),
   );
   const services = {
     database: { type: "mariadb" },
@@ -87,7 +88,7 @@ test("corrupt user records fail closed while scratch and global planning ignore 
   const root = await mkdtemp(join(tmpdir(), "lando-data-isolation-"));
   const store = makeTestStateStore();
   const layer = AppPlannerLayer.layer.pipe(
-    Layer.provide(Layer.merge(PluginRegistryLayer.layer, store.layer)),
+    Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, store.layer, BunFileSystem.layer)),
   );
   try {
     const identity = await Effect.runPromise(resolveAppIdentity(root));

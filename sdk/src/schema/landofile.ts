@@ -699,7 +699,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     framework: Schema.optionalKey(Schema.String),
     packageRoot: Schema.optionalKey(Schema.String).annotate({
       description:
-        "App-root-relative source directory used only by service-type project-file inference; it does not change mounts or the container working directory.",
+        "App-root-relative source directory for project-file inputs: bare Node infers the Node version from .nvmrc and package.json engines, and catalog Node types select the package manager from package.json (packageManager or devEngines.packageManager). It changes neither mounts nor the container working directory. A custom image or replacement Compose build owns its toolchain and rejects an authored packageRoot.",
     }),
     webroot: Schema.optionalKey(PortablePath).annotate({
       description:

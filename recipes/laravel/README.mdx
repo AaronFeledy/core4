@@ -146,7 +146,7 @@ For day-to-day tooling and DB/Redis hosts, see [Run the Laravel recipe](/guides/
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.1\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
+      <Verify command="lando help npm --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"node\"[\\s\\S]*\"program\":\\s*\"npm\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres:16\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\\.7\\.7\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
