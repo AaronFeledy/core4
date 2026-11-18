@@ -10,13 +10,17 @@ import { type PendingStart, digest, pendingStartTransitions } from "./accelerate
 import { acquireFileSyncEngine } from "./file-sync-acquire.ts";
 
 export const prepareMissingRootStartDisposal = Effect.fn("AppOperation.prepareMissingRootStartDisposal")(
-  function* (app: AppRef, record: PendingStart, options: { readonly volumes: boolean }) {
+  function* (
+    app: AppRef,
+    record: PendingStart,
+    options: { readonly volumes: boolean; readonly retryCommand: string },
+  ) {
     const failure = (message: string) =>
       new FileSyncStopError({
         engineId: record.engineId,
         sessionRef: record.appId,
         message,
-        remediation: `Restore access to the recorded provider ${record.providerId} and file-sync engine ${record.engineId}, then retry the same lando apps:gc --prune command. Keep journal attempt ${record.attemptId} until its file-sync copies are removed.`,
+        remediation: `Restore access to the recorded provider ${record.providerId} and file-sync engine ${record.engineId}, then retry \`${options.retryCommand}\` with the same options. Keep journal attempt ${record.attemptId} until its file-sync copies are removed.`,
       });
     const recordedApp: AppRef = { kind: "user", id: AppId.make(record.appId), root: app.root };
     const selected = yield* TeardownProvider;

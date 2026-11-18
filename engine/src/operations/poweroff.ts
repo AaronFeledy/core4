@@ -71,7 +71,7 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
     `${left.appRoot}\0${left.appId}`.localeCompare(`${right.appRoot}\0${right.appId}`),
   );
   for (const target of userOrder) {
-    const stopped = yield* stopAppAtRoot(target.appRoot, { providerId: target.providerId }).pipe(
+    const stopped = yield* stopAppAtRoot(target.appRoot, { providerId: target.providerId }, "poweroff").pipe(
       Effect.result,
     );
     if (Result.isFailure(stopped)) {

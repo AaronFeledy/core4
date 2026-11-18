@@ -195,6 +195,7 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
 export const destroyAppAtRoot = Effect.fn("AppOperation.destroyAtRoot")(function* (
   root: string,
   options: DestroyAppOptions = {},
+  retryCommand?: string,
 ): Effect.fn.Return<
   DestroyAppResult,
   DestroyAppError | FileIoError | FileNotFoundError | FilePermissionError,
@@ -202,7 +203,7 @@ export const destroyAppAtRoot = Effect.fn("AppOperation.destroyAtRoot")(function
 > {
   if (options.providerId !== undefined) {
     const { providerId, ...scopedOptions } = options;
-    return yield* destroyAppAtRoot(root, scopedOptions).pipe(
+    return yield* destroyAppAtRoot(root, scopedOptions, retryCommand).pipe(
       Effect.provideService(TeardownProvider, providerId),
     );
   }
@@ -211,6 +212,7 @@ export const destroyAppAtRoot = Effect.fn("AppOperation.destroyAtRoot")(function
       desired: Effect.succeed(undefined),
       snapshotRoots: candidates,
       missingRoot: true,
+      ...(retryCommand === undefined ? {} : { retryCommand }),
     }),
   );
 });

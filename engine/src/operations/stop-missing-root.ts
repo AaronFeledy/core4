@@ -1,9 +1,11 @@
 import type { StopAppResult } from "@lando/sdk/app";
-import { type AbsolutePath, AppId, type AppRef } from "@lando/sdk/schema";
+import { FileSyncStopError } from "@lando/sdk/errors";
+import { type AbsolutePath, AppId, type AppRef, type ServiceShutdownObservation } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { routeOwnerFromPlan, routeOwnerFromRoot } from "../lifecycle/route-owner.ts";
 import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
+import { shellArg } from "../services/shell-quote.ts";
 import { readDiscardableStart } from "./accelerated-start-disposal.ts";
 import type { TeardownResolution } from "./applied-state-target.ts";
 import { cleanupAppWorkers } from "./destroy-provider.ts";
@@ -46,6 +48,7 @@ export const journalPending = Effect.fnUntraced(function* (root: AbsolutePath, i
 const stopMissingRootWriters = Effect.fnUntraced(function* (app: AppRef, resolution: TeardownResolution) {
   const registry = yield* RuntimeProviderRegistry;
   const services: string[] = [];
+  let shutdownObservations: readonly ServiceShutdownObservation[] | undefined;
   switch (resolution.kind) {
     case "applied": {
       const target = resolution.target;
@@ -55,6 +58,7 @@ const stopMissingRootWriters = Effect.fnUntraced(function* (app: AppRef, resolut
           { app: target.plan.id, plan: target.plan },
           { volumes: false, removeState: false },
         );
+        shutdownObservations = outcome.shutdownObservations;
         if (outcome.kind === "destroyed")
           services.push(
             ...Object.values(target.plan.services)
@@ -73,6 +77,7 @@ const stopMissingRootWriters = Effect.fnUntraced(function* (app: AppRef, resolut
     case "orphans": {
       const removed = yield* stopOrphans(resolution);
       services.push(...removed.servicesStopped);
+      shutdownObservations = removed.shutdownObservations;
       break;
     }
     case "owned": {
@@ -93,20 +98,36 @@ const stopMissingRootWriters = Effect.fnUntraced(function* (app: AppRef, resolut
       ? routeOwnerFromPlan(resolution.target.plan)
       : routeOwnerFromRoot(String(app.id), app.root),
   );
-  return {
-    app: resolution.kind === "applied" ? resolution.target.plan.name : String(app.id),
-    outcome: "stopped",
-    servicesStopped: [...new Set(services)],
-  } satisfies StopAppResult;
+  return withShutdownObservations(
+    {
+      app: resolution.kind === "applied" ? resolution.target.plan.name : String(app.id),
+      outcome: "stopped",
+      servicesStopped: [...new Set(services)],
+    } satisfies StopAppResult,
+    shutdownObservations,
+  );
 });
 
 export const stopMissingRootStart = Effect.fnUntraced(function* (
-  root: AbsolutePath,
+  { root, retryCommand }: { readonly root: AbsolutePath; readonly retryCommand: string },
   pending: NonNullable<Effect.Success<ReturnType<typeof journalPending>>>,
   resolution: TeardownResolution,
 ) {
+  if (resolution.kind === "applied") {
+    const expected = resolution.target;
+    if (expected.app.id !== pending.appId || expected.plan.provider !== pending.providerId) {
+      return yield* Effect.fail(
+        new FileSyncStopError({
+          engineId: pending.engineId,
+          sessionRef: pending.appId,
+          message: "The applied app or provider differs from the pending file-sync journal.",
+          remediation: `Restore the app folder or run \`lando destroy --root ${shellArg(root)}\`.`,
+        }),
+      );
+    }
+  }
   const app = journalRef(root, pending.appId);
-  const disposal = yield* prepareMissingRootStartDisposal(app, pending, { volumes: false });
+  const disposal = yield* prepareMissingRootStartDisposal(app, pending, { volumes: false, retryCommand });
   const result = yield* stopMissingRootWriters(app, resolution);
   // Writers are gone; termination never flushes and the journal stays for the next start.
   yield* disposal.terminate;

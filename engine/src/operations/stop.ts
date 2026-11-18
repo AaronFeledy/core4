@@ -39,6 +39,7 @@ import {
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
 import { TeardownProvider, resolveAppPlacement } from "../providers/app-placement.ts";
+import { shellArg } from "../services/shell-quote.ts";
 import { readDiscardableStart } from "./accelerated-start-disposal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
@@ -89,6 +90,7 @@ type StopExecution = {
 type StopScope = {
   readonly root: AbsolutePath;
   readonly rootExists: boolean;
+  readonly retryCommand: string;
   readonly options: StopAppOptions;
   readonly desired: Effect.Effect<ResolvedAppTarget, StopAppError, StopAppServices>;
   /** The cwd command keeps its missing-Landofile error; an explicit root reports unchanged. */
@@ -336,9 +338,8 @@ const stopRetainedStart = Effect.fnUntraced(function* (
   scope: StopScope,
   pending: NonNullable<Effect.Success<ReturnType<typeof journalPending>>>,
   resolution: TeardownResolution,
-  expected?: AppRef,
 ): Effect.fn.Return<StopAppResult, StopAppError, StopAppServices> {
-  if (!scope.rootExists) return yield* stopMissingRootStart(scope.root, pending, resolution);
+  if (!scope.rootExists) return yield* stopMissingRootStart(scope, pending, resolution);
   const desired = yield* scope.desired;
   if (desired.root !== scope.root) {
     return yield* Effect.fail(
@@ -350,7 +351,7 @@ const stopRetainedStart = Effect.fnUntraced(function* (
       }),
     );
   }
-  if (expected !== undefined && desired.app.id !== expected.id) {
+  if (resolution.kind === "applied" && desired.app.id !== resolution.target.app.id) {
     return yield* Effect.fail(
       new FileSyncStopError({
         engineId: pending.engineId,
@@ -375,7 +376,7 @@ const stopResolution = (
       case "applied": {
         const target = resolution.target;
         const pending = yield* journalPending(scope.root, String(target.app.id));
-        if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution, target.app);
+        if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution);
         return (yield* stopAppWithResolvedPlan(scope.options, target, {
           revalidate: false,
           requireAppliedEvidence: false,
@@ -440,7 +441,7 @@ const stopResolution = (
 const stopAtRoot = Effect.fnUntraced(function* <E, R>(
   requested: string,
   options: StopAppOptions,
-  mode: "cwd" | "root",
+  mode: "cwd" | "root" | "poweroff",
   rootExistsAt: (root: AbsolutePath) => Effect.Effect<boolean, E, R>,
 ) {
   const root = yield* canonicalStopRoot(requested);
@@ -459,6 +460,7 @@ const stopAtRoot = Effect.fnUntraced(function* <E, R>(
         {
           root,
           rootExists,
+          retryCommand: mode === "poweroff" ? "lando poweroff" : `lando stop --root ${shellArg(root)}`,
           options,
           desired: mode === "cwd" ? resolveDesiredAppTarget : resolveDesiredAppTargetAtRoot(root),
           loadDesiredOnAbsent: mode === "cwd",
@@ -487,9 +489,10 @@ export const stopApp = Effect.fn("AppOperation.stop")(function* (
 export const stopAppAtRoot = Effect.fn("AppOperation.stopAtRoot")(function* (
   root: string,
   options: StopAppAtRootOptions = {},
+  mode: "root" | "poweroff" = "root",
 ): Effect.fn.Return<StopAppResult, StopAppError, StopAppServices | FileSystem> {
   const { providerId, ...stopOptions } = options;
-  const effect = stopAtRoot(root, stopOptions, "root", appRootExists);
+  const effect = stopAtRoot(root, stopOptions, mode, appRootExists);
   return yield* providerId === undefined
     ? effect
     : effect.pipe(Effect.provideService(TeardownProvider, providerId));

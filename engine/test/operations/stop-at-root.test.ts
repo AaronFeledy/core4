@@ -15,6 +15,7 @@ import {
   ProviderId,
   type ResourceOwnership,
   ServiceName,
+  type ServiceShutdownObservation,
   type VolumeInfo,
   type VolumeRef,
   appIdentityKey,
@@ -122,6 +123,7 @@ const makeHarness = (input: {
   readonly orphans?: ReadonlyArray<AppliedOrphanGroup>;
   readonly ownership?: ReadonlyArray<ResourceOwnership>;
   readonly volumes?: readonly VolumeInfo[];
+  readonly shutdownObservation?: ServiceShutdownObservation;
 }) => {
   const destroyCalls: AppPlan[] = [];
   const calls: string[] = [];
@@ -150,7 +152,13 @@ const makeHarness = (input: {
         if (target.plan !== undefined) destroyCalls.push(target.plan);
         if (options.removeState) appliedPlan = undefined;
         if (options.volumes) volumes.clear();
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return {
+          kind: "destroyed" as const,
+          volumesRemoved: { data: 0, cache: 0 },
+          ...(input.shutdownObservation === undefined
+            ? {}
+            : { shutdownObservations: [input.shutdownObservation] }),
+        };
       }),
     removeObservedService: (service: ServiceRuntimeInfo) =>
       Effect.sync(() => {
@@ -159,7 +167,12 @@ const makeHarness = (input: {
           service: String(service.service),
           containerId: service.containerId,
         });
-        return { kind: "removed" as const };
+        return {
+          kind: "removed" as const,
+          ...(input.shutdownObservation === undefined
+            ? {}
+            : { shutdownObservations: [input.shutdownObservation] }),
+        };
       }),
     removeVolume: (ref: VolumeRef) =>
       Effect.sync(() => {
@@ -188,7 +201,11 @@ const makeHarness = (input: {
     appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     list: Effect.succeed([providerId, otherProviderId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    select: () => Effect.succeed(provider),
+    select: (target?: AppPlan | ProviderId) =>
+      Effect.succeed({
+        ...provider,
+        id: typeof target === "string" ? target : (target?.provider ?? provider.id),
+      }),
     resolveAppliedPlan: () => Effect.sync(() => appliedPlan),
     resolveTeardownEvidence: (root: AbsolutePath) =>
       Effect.gen(function* () {
@@ -406,24 +423,44 @@ describe("stopAppAtRoot", () => {
     { kind: "orphans", writers: ["removeObservedService:web", "cleanupAppWorkers"], services: ["web"] },
     { kind: "owned", writers: ["cleanupOwnedResources(volumes:false)"], services: ["owned-web"] },
     { kind: "absent", writers: [], services: [] },
+    { kind: "foreign-app", writers: [], services: [] },
+    { kind: "foreign-provider", writers: [], services: [] },
+    { kind: "unavailable-engine", writers: [], services: [] },
+    { kind: "poweroff-unavailable-engine", writers: [], services: [] },
   ])(
-    "stops a missing-root unfinished start in order and keeps its data ($kind evidence)",
+    "checks identity before stopping a missing-root unfinished start and keeps its data ($kind)",
     async ({ kind, writers, services }) => {
       await withTempRoot(async (root) => {
         const plan = acceleratedPlanAt(root);
         const app = {
           kind: "user" as const,
-          id: kind === "absent" ? AppId.make(basename(root)) : plan.id,
+          id:
+            kind === "absent"
+              ? AppId.make(basename(root))
+              : kind === "foreign-app"
+                ? AppId.make("foreign-app")
+                : plan.id,
           root: plan.root,
         };
-        const startPlan =
-          app.id === plan.id
-            ? plan
-            : {
-                ...plan,
-                id: app.id,
-                fileSync: plan.fileSync.map((entry) => ({ ...entry, session: { ...entry.session, app } })),
-              };
+        const startPlan = {
+          ...plan,
+          id: app.id,
+          provider: kind === "foreign-provider" ? otherProviderId : plan.provider,
+          fileSync: plan.fileSync.map((entry) => ({ ...entry, session: { ...entry.session, app } })),
+        };
+        const applied = kind === "applied" || kind === "foreign-app" || kind === "foreign-provider";
+        const observation =
+          kind === "applied" || kind === "orphans"
+            ? ({
+                appId: app.id,
+                providerId,
+                service: web.name,
+                containerId: "container-web",
+                status: "exited",
+                exitCode: 137,
+                oomKilled: false,
+              } satisfies ServiceShutdownObservation)
+            : undefined;
         const targetNames = startPlan.fileSync.flatMap(({ session }) =>
           session.target._tag === "volume" ? [session.target.name] : [],
         );
@@ -440,7 +477,8 @@ describe("stopAppAtRoot", () => {
         }));
         const harness = makeHarness({
           volumes,
-          ...(kind === "applied" ? { appliedPlan: plan } : {}),
+          ...(applied ? { appliedPlan: plan } : {}),
+          ...(observation === undefined ? {} : { shutdownObservation: observation }),
           ...(kind === "orphans" ? { orphans: [{ ...orphanGroup(root, ["web"], app.id), volumes }] } : {}),
           ...(kind === "owned" ? { ownership: [{ ...ownershipAt(root), appIds: [app.id] }] } : {}),
         });
@@ -465,6 +503,9 @@ describe("stopAppAtRoot", () => {
         const engine = {
           ...TestFileSyncEngine,
           id: "mutagen",
+          isAvailable: Effect.succeed(
+            kind !== "unavailable-engine" && kind !== "poweroff-unavailable-engine",
+          ),
           listSessions: (filter: { readonly app?: { readonly id?: string; readonly root?: string } }) =>
             Effect.sync(() => {
               harness.calls.push("verifyJournal");
@@ -506,9 +547,39 @@ describe("stopAppAtRoot", () => {
         const before = await Effect.runPromise(readJournal(app).pipe(Effect.provide(layer)));
         expect(before.pending?.targets.map((target) => target.volumeName)).toEqual(targetNames);
 
-        const result = await Effect.runPromise(stopAppAtRoot(root).pipe(Effect.provide(layer)));
+        const poweroff = kind === "poweroff-unavailable-engine";
+        const stopped = await Effect.runPromise(
+          stopAppAtRoot(root, poweroff ? { providerId } : {}, poweroff ? "poweroff" : "root").pipe(
+            Effect.provide(layer),
+            Effect.result,
+          ),
+        );
+        if (
+          kind === "foreign-app" ||
+          kind === "foreign-provider" ||
+          kind === "unavailable-engine" ||
+          poweroff
+        ) {
+          expect(stopped).toMatchObject({
+            _tag: "Failure",
+            failure: { _tag: "FileSyncStopError", sessionRef: app.id },
+          });
+          if ((kind === "unavailable-engine" || poweroff) && stopped._tag === "Failure") {
+            expect(stopped.failure.remediation).toContain(
+              poweroff ? "`lando poweroff`" : "`lando stop --root ",
+            );
+          }
+          expect(harness.calls).toEqual([]);
+          expect((await Effect.runPromise(readJournal(app).pipe(Effect.provide(layer)))).pending).toEqual(
+            before.pending,
+          );
+          return;
+        }
+        if (stopped._tag === "Failure") throw stopped.failure;
+        const result = stopped.success;
 
         expect(result).toMatchObject({ app: String(app.id), outcome: "stopped", servicesStopped: services });
+        expect(result.shutdownObservations).toEqual(observation === undefined ? undefined : [observation]);
         expect(harness.calls).toEqual([
           "verifyJournal",
           ...writers,
