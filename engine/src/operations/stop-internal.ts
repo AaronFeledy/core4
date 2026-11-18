@@ -256,7 +256,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     }),
   );
   const postStop = PostStopEvent.make({ _tag: "post-stop", scope: "app", app: ref, timestamp: now() });
-  yield* publishAndRunPostAppEvent(eventPlan, "post-stop", postStop);
+  const failedPostEvent = yield* publishAndRunPostAppEvent(eventPlan, "post-stop", postStop);
 
   return {
     result: {
@@ -264,7 +264,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
       runtimeState,
       ...(runtimeState === "idle" ? { outcome: "stopped" as const } : {}),
       servicesStopped: runtimeState === "idle" ? [] : services.map((service) => String(service.name)),
-      landofileEvents,
+      landofileEvents: failedPostEvent ?? landofileEvents,
       ...(shutdownObservations === undefined ? {} : { shutdownObservations }),
     },
     plan,

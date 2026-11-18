@@ -65,6 +65,7 @@ import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { compileAuthoredEventPlan } from "../authored-invocations.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
 import { layerTransactionGuard } from "../services/landofile-layer.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 import { emptySnapshotsLayer } from "./data-mover-support.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
@@ -1414,7 +1415,7 @@ describe("Landofile events on applied-state teardown", () => {
       const harness = makeLayer({ appliedPlan, desiredPlan });
 
       // When
-      await Effect.runPromise(
+      const result = await Effect.runPromise(
         withResolvedCwd(
           root,
           teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
@@ -1423,6 +1424,7 @@ describe("Landofile events on applied-state teardown", () => {
 
       // Then every Landofile step ran, in lifecycle order, and nothing was skipped
       expect(executed).toEqual(events.map((event) => `echo ${event}`));
+      expect(result.landofileEvents).toEqual({ status: "ran" });
       expect(notices(harness.published)).toEqual([]);
       expect(harness.destroyCalls).toEqual([appliedPlan]);
     });
@@ -1457,23 +1459,50 @@ describe("Landofile events on applied-state teardown", () => {
   );
 
   test.each(["stop", "destroy"] as const)(
-    "%s reports in its result that Landofile events ran",
+    "%s completes teardown and reports a failed post-step",
     async (operation) => {
       await withTempRoot(async (root) => {
         // Given
         const appliedPlan = withWeb(planAt(root));
-        const harness = makeLayer({ appliedPlan, desiredPlan: appliedPlan });
+        const event = `post-${operation}` as const;
+        const desiredPlan = withProjectEvents(appliedPlan, {
+          [event]: [{ service: ":host", cmd: "exit 7" }],
+        });
+        const harness = makeLayer({ appliedPlan, desiredPlan });
+        const shell = BunShellRunner.layer(() => {
+          throw new TypeError("Interactive shell IO was not expected in this test.");
+        });
 
         // When
         const result = await Effect.runPromise(
           withResolvedCwd(
             root,
-            teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime([]), harness.layer))),
+            teardown(operation).pipe(Effect.provide(Layer.mergeAll(eventRuntime([]), harness.layer, shell))),
           ),
         );
 
         // Then
-        expect(result.landofileEvents).toEqual({ status: "ran" });
+        expect(harness.destroyCalls).toEqual([appliedPlan]);
+        const outcome = result.landofileEvents;
+        expect(outcome).toEqual({
+          status: "failed",
+          event,
+          stepFailure: {
+            _tag: "LandofileEventStepFailedError",
+            message: expect.stringContaining("7"),
+            remediation: expect.stringContaining(event),
+          },
+        });
+        if (outcome?.status !== "failed") throw new TypeError("Expected a failed post-step outcome.");
+        const { message, remediation } = outcome.stepFailure;
+        expect(
+          harness.published.filter(
+            (notice) =>
+              notice._tag === "message.warn" &&
+              notice.body.includes(message) &&
+              notice.body.includes(remediation),
+          ),
+        ).toHaveLength(1);
       });
     },
   );

@@ -258,6 +258,6 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
     }),
   });
   const builtImages = yield* removeBuildOutput;
-  yield* publishDestroyCompletion({ ...plan, evidence }, result);
-  return { ...result, builtImages, ...(hooks === undefined ? {} : { landofileEvents: hooks.outcome }) };
+  const landofileEvents = yield* publishDestroyCompletion({ ...plan, evidence }, result);
+  return { ...result, builtImages, ...(landofileEvents === undefined ? {} : { landofileEvents }) };
 });
