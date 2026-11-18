@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 import { ScratchAppNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -12,9 +13,10 @@ import {
 import { RuntimeProviderRegistry, ScratchAppService, type ScratchHandle } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { type Context, DateTime, Effect, Layer, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import { followScratchLogs, scratchLogs } from "../../src/cli/commands/scratch.ts";
 
-const root = AbsolutePath.make("/tmp/lando-scratch-logs-app");
+const root = AbsolutePath.make(resolve("lando-scratch-logs-app"));
 const scratchId = "scratch-demo-abc123";
 const providerId = ProviderId.make("test");
 
@@ -160,12 +162,16 @@ const failure = <A, E>(current: Harness, effect: Effect.Effect<A, E, HarnessServ
 describe("scratch:logs", () => {
   test("resolves the applied plan by exact scratch identity and forwards log flags", async () => {
     const current = harness({ plan: appliedPlan() });
-    const result = await run(current, scratchLogs(scratchId, { service: "db", tail: 5, since: "15m" }));
+    const result = await run(
+      current,
+      TestClock.setTime(3_600_000).pipe(
+        Effect.andThen(scratchLogs(scratchId, { service: "db", tail: 5, since: "15m" })),
+        Effect.provide(TestClock.layer()),
+      ),
+    );
 
     expect(current.resolutions).toEqual([{ root, app: { kind: "scratch", id: scratchId }, lookup: "exact" }]);
-    expect(current.calls).toHaveLength(1);
-    expect(current.calls[0]).toMatchObject({ service: "db", follow: false, tail: 5 });
-    expect(current.calls[0]?.since).toMatch(/^\d+$/u);
+    expect(current.calls).toEqual([{ service: "db", follow: false, tail: 5, since: "2700" }]);
     expect(result.app).toBe(scratchId);
     expect(result.lines).toEqual([{ service: "db", stream: "stdout", line: "db line" }]);
   });
