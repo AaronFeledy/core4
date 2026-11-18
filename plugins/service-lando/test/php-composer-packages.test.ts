@@ -1,18 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { linuxMvpCapabilities } from "@lando/provider-lando";
+import { LandofileShape, PortablePath, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import {
   PHP_COMPOSER_COMMAND,
   PHP_COMPOSER_PACKAGES_STEP_ID,
   PHP_COMPOSER_STEP_ID,
   PHP_FEATURE_ID,
   php83ServiceType,
+  php84ServiceType,
   php85ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
 import { PHP_COMPOSER_RELEASES } from "../src/services/php-prerequisites.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { acquireTempAppRoot } from "./support/live-app-scope.ts";
+import { planPhpFixture, requireWeb } from "./support/php-ownership-stack.ts";
 
 const BuildSteps = Schema.Struct({
   buildSteps: Schema.optionalKey(
@@ -68,6 +72,62 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
   );
   expect(rejected).toBe(true);
 };
+
+describe("shared Composer cache", () => {
+  test.each([
+    { label: "default", overrides: {}, cacheDir: "/var/lib/lando/composer-cache" },
+    {
+      label: "authored cache directory",
+      overrides: { environment: { COMPOSER_CACHE_DIR: "/tmp/my-cache" } },
+      cacheDir: "/tmp/my-cache",
+    },
+  ])("mounts the shared cache with $label", async ({ overrides, cacheDir }) => {
+    const app = await Effect.runPromise(
+      Effect.scoped(
+        Effect.flatMap(acquireTempAppRoot("php-composer-cache-"), (root) =>
+          planPhpFixture(
+            root,
+            { id: "php-composer-cache", service: { type: "php:8.4", ...overrides } },
+            linuxMvpCapabilities,
+          ),
+        ),
+      ),
+    );
+    const plan = requireWeb(app);
+
+    expect(app.stores.filter((store) => store.kind === "cache")).toEqual([
+      { name: "lando-cache-composer", scope: "global", kind: "cache", key: "composer" },
+    ]);
+    expect(plan.mounts.filter((mount) => mount.target === "/var/lib/lando/composer-cache")).toEqual([
+      {
+        type: "volume",
+        origin: "service",
+        store: "lando-cache-composer",
+        target: PortablePath.make("/var/lib/lando/composer-cache"),
+        readOnly: false,
+      },
+    ]);
+    expect(plan.environment.COMPOSER_CACHE_DIR).toBe(cacheDir);
+    expect(plan.projectUser).toEqual({ name: "www-data", uid: 33, gid: 33 });
+    const prepare = buildStepsFor(plan).find((step) => step.id === "lando.storage:own-data-trees");
+    expect(prepare?.command).toEqual([
+      "sh",
+      "-c",
+      expect.stringContaining("chown -R '33:33' '/var/lib/lando/composer-cache'"),
+    ]);
+  });
+
+  test.each([
+    { label: "Composer is disabled", overrides: { composer: false } },
+    { label: "the image is custom", overrides: { image: "my/php:8.4" } },
+    { label: "the build replaces the image", overrides: { build: { context: "." } } },
+  ])("does not configure a shared cache when $label", async ({ overrides }) => {
+    const plan = await composePhpPlan(overrides, php84ServiceType);
+
+    expect(plan.mounts.some((mount) => mount.target === "/var/lib/lando/composer-cache")).toBe(false);
+    expect(plan.environment.COMPOSER_CACHE_DIR).toBeUndefined();
+  });
+});
 
 describe("composer object form", () => {
   test("plans a sorted composer-packages step depending on the composer install", async () => {

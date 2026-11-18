@@ -42,7 +42,7 @@ import { endpointValidationError, normalizeEndpoints } from "../services/endpoin
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
 import { missingCapability } from "./compose-capabilities.ts";
-import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
+import { dataTreeOwnershipStep, projectUserVolumeTrees, resolveDataTreeOwnership } from "./data-tree.ts";
 import { resolveRoute } from "./endpoint-routes.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
@@ -54,7 +54,6 @@ import {
   type ResolvedProjectUser,
   projectUserRenumberStep,
   projectUserTmpfsMounts,
-  projectUserVolumeTrees,
   resolveProjectUser,
 } from "./project-user.ts";
 import {
@@ -65,7 +64,7 @@ import {
 import { stampGeneratedBackendTls } from "./route-certificate-defaults.ts";
 import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import { resolveServiceArtifact } from "./service-artifact.ts";
-import { type PlannedServiceDraft, servicePlanError } from "./service-types.ts";
+import { type AuthoredStorageInfo, type PlannedServiceDraft, servicePlanError } from "./service-types.ts";
 import type { ShadowHostCheck } from "./shadow-host-checks.ts";
 
 export { resolveRoute } from "./endpoint-routes.ts";
@@ -313,6 +312,21 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         : { projectUser: projectUserResolution.projectUser }),
     });
     if (homePlan instanceof LandofileValidationError) return yield* Effect.fail(homePlan);
+    const cacheStores = new Set<string>();
+    const storageByTarget = new Map<string, AuthoredStorageInfo>();
+    for (const mount of homePlan.mounts) {
+      if (mount.type !== "volume") continue;
+      const resolvedStorageTarget = (draft.normalizedConfig.storage ?? []).some((entry) => {
+        if (typeof entry === "string") return false;
+        const destination = parseContainerDestination(entry.target);
+        return destination.ok && destination.value === mount.target;
+      });
+      const storageInfo =
+        preparedMounts.storageByTarget.get(mount.target) ??
+        (mount.origin !== "derived" && resolvedStorageTarget ? authored.byStore.get(mount.store) : undefined);
+      if (storageInfo !== undefined) storageByTarget.set(mount.target, storageInfo);
+      if (storageInfo?.kind === "cache") cacheStores.add(mount.store);
+    }
     // Data-tree ownership resolves here, where the composed `draft.user` and
     // the service type's image identity are both final. The step it produces
     // prepares the tree during the image build, so the planned user owns the
@@ -355,6 +369,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ownershipTrees.push(
         ...projectUserVolumeTrees({
           mounts: homePlan.mounts,
+          cacheStores,
           ...(projectUserResolution.projectUser === undefined
             ? {}
             : { projectUser: projectUserResolution.projectUser }),
@@ -507,20 +522,13 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     services[name] = yield* encodeServicePlan(input.appRoot, name, servicePlanWithRoutes);
     for (const mount of servicePlanWithRoutes.mounts) {
       if (mount.type !== "volume") continue;
-      const resolvedStorageTarget = (draft.normalizedConfig.storage ?? []).some((entry) => {
-        if (typeof entry === "string") return false;
-        const destination = parseContainerDestination(entry.target);
-        return destination.ok && destination.value === mount.target;
-      });
-      const authoredInfo =
-        preparedMounts.storageByTarget.get(mount.target) ??
-        (mount.origin !== "derived" && resolvedStorageTarget ? authored.byStore.get(mount.store) : undefined);
+      const storageInfo = storageByTarget.get(mount.target);
       const error = pushStore(
         {
           name: mount.store,
-          scope: authoredInfo?.scope ?? "service",
-          kind: authoredInfo?.kind ?? "data",
-          ...(authoredInfo?.key === undefined ? {} : { key: authoredInfo.key }),
+          scope: storageInfo?.scope ?? "service",
+          kind: storageInfo?.kind ?? "data",
+          ...(storageInfo?.key === undefined ? {} : { key: storageInfo.key }),
         },
         name,
       );

@@ -31,16 +31,17 @@ on the page needs a real provider:
   </Step>
   <Step name="cleanup">
     <Cleanup />
-    <Run command="lando destroy -y" />
+    <Run command="lando destroy -y --volumes" />
   </Step>
 </Scenario>
 ```
 
 Rules the generator and linter enforce:
 
-- Every `layer="e2e"` scenario has a `<Cleanup />` step, normally right
-  before the teardown command. The provider is shared across scenarios, so a leaked app
-  breaks the next one.
+- Put `<Cleanup />` and `lando destroy -y --volumes` (or `--purge`) in the
+  same step. The harness runs that step once after the other steps, even if the
+  scenario fails or is interrupted. Keep teardown safe to run before the app
+  exists. The provider is shared, so a leaked app can break the next run.
 - `<Run runtime="library">` cannot appear in an e2e scenario. The binary is
   the only entry point.
 - `<Verify event>` has nothing to match. The binary does not stream events

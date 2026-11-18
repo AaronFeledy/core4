@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -27,6 +28,9 @@ type scaffoldManifest struct {
 	Stage   string          `json:"stage"`
 	Hooks   map[string]bool `json:"hooks,omitempty"`
 	Entries []scaffoldEntry `json:"entries"`
+	// Applied is command-owned state recorded while staging and written as the
+	// completion marker's contents, so a later run knows what this one applied.
+	Applied json.RawMessage `json:"applied,omitempty"`
 }
 
 // scaffoldEntry records one top-level staged path and the exact filesystem
@@ -72,7 +76,7 @@ type scaffold struct {
 
 type scaffoldOptions struct {
 	preflight    func(resumed bool, manifest *scaffoldManifest) error
-	generate     func(stage string) error
+	generate     func(stage string, manifest *scaffoldManifest) error
 	afterPromote func(manifest *scaffoldManifest) error
 	complete     func(appRoot string) bool
 }
@@ -106,9 +110,13 @@ func newScaffold(
 		crash:           crash,
 	}
 	if markerPrefix != "" && completeMessage != "" {
-		s.markerPath = filepath.Join(appRoot, ".lando-"+markerPrefix+"-complete")
+		s.markerPath = scaffoldMarkerPath(appRoot, markerPrefix)
 	}
 	return s
+}
+
+func scaffoldMarkerPath(appRoot, markerPrefix string) string {
+	return filepath.Join(appRoot, ".lando-"+markerPrefix+"-complete")
 }
 
 // point is the test seam that proves a kill after any single step resumes.
@@ -118,7 +126,7 @@ func (s *scaffold) point(name string) {
 	}
 }
 
-func (s *scaffold) execute(options scaffoldOptions) (err error) {
+func (s *scaffold) execute(options scaffoldOptions) error {
 	if err := os.MkdirAll(s.appRoot, 0o755); err != nil {
 		return err
 	}
@@ -128,28 +136,28 @@ func (s *scaffold) execute(options scaffoldOptions) (err error) {
 	}
 	s.lock = lock
 	defer s.releaseLock()
+	return s.executeLocked(options)
+}
 
+func (s *scaffold) executeLocked(options scaffoldOptions) error {
 	manifest, resumed, err := s.loadManifest()
 	if err != nil {
 		return err
 	}
-	if resumed && s.markerPath != "" && pathExists(s.markerPath) {
-		if options.complete(s.appRoot) {
-			s.cleanup()
-			return &scaffoldAlreadyComplete{message: s.completeMessage}
-		}
-		// A completion marker whose outputs are gone is repair work, not a
-		// completed scaffold: remove it and rebuild from the same manifest.
-		if err := os.Remove(s.markerPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-	}
-	if !resumed && s.markerPath != "" && pathExists(s.markerPath) && options.complete(s.appRoot) {
+	hasMarker := s.markerPath != "" && pathExists(s.markerPath)
+	if hasMarker && options.complete(s.appRoot) {
 		s.cleanup()
 		return &scaffoldAlreadyComplete{message: s.completeMessage}
 	}
 	if options.preflight != nil {
 		if err := options.preflight(resumed, manifest); err != nil {
+			return err
+		}
+	}
+	if resumed && hasMarker {
+		// A completion marker whose outputs are gone is repair work, not a
+		// completed scaffold: remove it and rebuild from the same manifest.
+		if err := os.Remove(s.markerPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	}
@@ -190,13 +198,13 @@ func (s *scaffold) execute(options scaffoldOptions) (err error) {
 		}
 		s.point("promoted")
 	}
-	if !options.complete(s.appRoot) {
-		return fmt.Errorf("%s scaffold did not produce %s.", s.label, s.outputs)
-	}
 	if options.afterPromote != nil {
 		if err := options.afterPromote(manifest); err != nil {
 			return err
 		}
 	}
-	return s.finish()
+	if !options.complete(s.appRoot) {
+		return fmt.Errorf("%s scaffold did not produce %s.", s.label, s.outputs)
+	}
+	return s.finish(manifest.Applied)
 }

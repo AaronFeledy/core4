@@ -29,16 +29,20 @@ func (s *scaffold) outputCommand(dir string, name string, args ...string) (strin
 }
 
 func (s *scaffold) runCommand(dir string, name string, args ...string) error {
-	binary, err := lookPathIn(s.streams.env, name)
+	return s.streams.runCommand(dir, name, args...)
+}
+
+func (streams helperIO) runCommand(dir string, name string, args ...string) error {
+	binary, err := lookPathIn(streams.env, name)
 	if err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 	command := exec.Command(binary, args...)
 	command.Dir = dir
-	command.Stdin = s.streams.stdin
-	command.Stdout = s.streams.stdout
-	command.Stderr = s.streams.stderr
-	command.Env = environSlice(s.streams.env)
+	command.Stdin = streams.stdin
+	command.Stdout = streams.stdout
+	command.Stderr = streams.stderr
+	command.Env = environSlice(streams.env)
 	return command.Run()
 }
 

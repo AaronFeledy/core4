@@ -39,6 +39,8 @@ func dispatch(argv0 string, args []string, streams helperIO) int {
 		return runDrupalScaffold(args, streams, nil)
 	case "lando-drupal-cms-scaffold":
 		return runDrupalCmsScaffold(args, streams, nil)
+	case "lando-" + drupalContribSyncCommand:
+		return runDrupalContribSync(args, streams, nil)
 	}
 	if len(args) > 0 {
 		switch args[0] {
@@ -54,6 +56,6 @@ func dispatch(argv0 string, args []string, streams helperIO) int {
 			return 0
 		}
 	}
-	fmt.Fprintln(streams.stderr, "Usage: lando [args...] (host-proxy client) | lando-container-helper exec-run -- <argv> | lando-container-helper log-file | lando-create-project <package> [<version>] [--no-scripts] | lando-drupal-scaffold [<major>] | lando-drupal-cms-scaffold")
+	fmt.Fprintln(streams.stderr, "Usage: lando [args...] (host-proxy client) | lando-container-helper exec-run -- <argv> | lando-container-helper log-file | lando-create-project <package> [<version>] [--no-scripts] | lando-drupal-scaffold [<major>] | lando-drupal-cms-scaffold | lando-drupal-contrib-sync <type> <project> <constraint>")
 	return 64
 }

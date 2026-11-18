@@ -555,8 +555,9 @@ describe("php serving modes (via:)", () => {
     });
 
     expect(serviceAppMount(plan)).toBeUndefined();
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]).toMatchObject({
+    const appMounts = plan.mounts.filter((mount) => mount.target === "/app");
+    expect(appMounts).toHaveLength(1);
+    expect(appMounts[0]).toMatchObject({
       type: "bind",
       source: "/srv/apps/myapp/alternate",
       target: "/app",
@@ -571,8 +572,10 @@ describe("php serving modes (via:)", () => {
       mounts: [{ source: "./alternate", target: "/site/" }],
     });
 
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]).toMatchObject({ type: "bind", source: "/srv/apps/myapp/alternate" });
+    expect(serviceAppMount(plan)).toBeUndefined();
+    const siteMounts = plan.mounts.filter((mount) => mount.target === "/site");
+    expect(siteMounts).toHaveLength(1);
+    expect(siteMounts[0]).toMatchObject({ type: "bind", source: "/srv/apps/myapp/alternate" });
   });
 
   test("plans authored PHP ini bind mounts alongside the app mount", async () => {

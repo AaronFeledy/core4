@@ -2,7 +2,9 @@ import {
   ARTIFACT_REFRESH_EXTENSION,
   DEBUGGER_HOST_ALIAS,
   HOST_GATEWAY_TARGET,
+  PortablePath,
   STOCK_TAG_REFRESH_AFTER_MS,
+  landoCacheStoreName,
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Schema, absurd } from "effect";
@@ -41,6 +43,13 @@ import { phpXdebugBuildStep, phpXdebugConfigEnv, resolvePhpXdebug } from "./php-
 
 export const PHP_FEATURE_ID = "service-lando.php";
 export const PHP_FEATURE_PRIORITY = 600;
+export const PHP_COMPOSER_CACHE = {
+  store: landoCacheStoreName("composer"),
+  target: PortablePath.make("/var/lib/lando/composer-cache"),
+  readOnly: false,
+  kind: "cache",
+  key: "composer",
+} as const;
 const PhpFeatureConfig = Schema.Struct({
   allowOverride: Schema.Boolean,
   version: Schema.Literals(SUPPORTED_PHP_VERSIONS),
@@ -64,6 +73,11 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   if (stock) ctx.addExtension(ARTIFACT_REFRESH_EXTENSION, { afterMs: STOCK_TAG_REFRESH_AFTER_MS });
   const xdebug = resolvePhpXdebug(service.xdebug);
   const composerRelease = resolvePhpComposer(service.composer);
+  if (stock && composerRelease !== false) {
+    const { store, target, readOnly } = PHP_COMPOSER_CACHE;
+    ctx.addStorage({ store, target, readOnly });
+    if (service.environment?.COMPOSER_CACHE_DIR === undefined) ctx.addEnv("COMPOSER_CACHE_DIR", target);
+  }
   if (stock) {
     const baseline = phpBaselineBuildStep();
     if (baseline !== undefined) ctx.addBuildStep(baseline);

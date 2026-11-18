@@ -50,7 +50,7 @@ func runDrupalScaffold(args []string, streams helperIO, crash func(string)) int 
 		crash,
 	)
 	err := s.execute(scaffoldOptions{
-		generate: func(stage string) error {
+		generate: func(stage string, _ *scaffoldManifest) error {
 			if err := s.runCommand(
 				appRoot,
 				"composer",
