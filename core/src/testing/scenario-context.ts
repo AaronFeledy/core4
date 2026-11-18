@@ -28,8 +28,12 @@ import {
   type Scope,
   Stream,
 } from "effect";
+import { initSpec } from "../cli/command-specs/apps/init.ts";
 import { resolveInitDestination } from "../cli/commands/init-destination";
-import { compiledCommandInputFromArgv } from "../cli/compiled-input.ts";
+import { specOwnerPolicy } from "../cli/flag-claims";
+import { flagDefinitionsByToken } from "../cli/flag-tokens";
+import { formatFlagDefsForCommand } from "../cli/format-flags";
+import { splitCommandTokens } from "../cli/invocation";
 import { redactDetails } from "../cli/redact";
 import { type GuideCommandSyntaxError, guideCommandArgv } from "../docs/guide-compiler/command-argv.ts";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
@@ -519,10 +523,42 @@ type ArgvRunner = (
   options?: ScenarioRunOptions,
 ) => Effect.Effect<ScenarioRunResult, unknown>;
 
+const initFlagDefinitions = formatFlagDefsForCommand(initSpec);
+const initFlagsByToken = flagDefinitionsByToken(initFlagDefinitions);
+
+/**
+ * The destination argument and `--name` of an `init` argv, read with init's
+ * own flag spec after the CLI's token split removes Lando's flags. This stays
+ * off the command registry so `@lando/core/testing` does not load every plugin.
+ */
+const initTarget = (args: ReadonlyArray<string>): { destination?: string; name?: string } => {
+  const { command } = splitCommandTokens(args, specOwnerPolicy(initSpec, initFlagDefinitions), "output");
+  let destination: string | undefined;
+  let name: string | undefined;
+  for (let index = 0; index < command.argv.length; index += 1) {
+    const token = command.argv[index];
+    if (token === undefined) continue;
+    if (token === "--") {
+      destination ??= command.argv[index + 1];
+      break;
+    }
+    if (!token.startsWith("-")) {
+      destination ??= token;
+      continue;
+    }
+    const [flag = token, inline] = token.split(/=(.*)/su, 2);
+    const definition = initFlagsByToken.get(flag);
+    if (definition === undefined || definition.boolean === true) continue;
+    const value = inline ?? command.argv[index + 1];
+    if (inline === undefined) index += 1;
+    if (flag === "--name") name = value;
+  }
+  return { ...(destination === undefined ? {} : { destination }), ...(name === undefined ? {} : { name }) };
+};
+
 // `init` writes the app where `resolveInitDestination` points: its destination
-// argument, else a `<name>` subdirectory. Parse the argv with the real command
-// spec and advance the scenario cwd there so later commands find the generated
-// `.lando.yml`. Shared by both runners.
+// argument, else a `<name>` subdirectory. Advance the scenario cwd there so
+// later commands find the generated `.lando.yml`. Shared by both runners.
 const advanceWorkingDirectoryAfterInit = (
   args: ReadonlyArray<string>,
   options: ScenarioRunOptions | undefined,
@@ -531,9 +567,7 @@ const advanceWorkingDirectoryAfterInit = (
   setWorkingDirectory: (path: string) => void,
 ): void => {
   if ((args[0] !== "init" && args[0] !== "apps:init") || exitCode !== 0) return;
-  const input = compiledCommandInputFromArgv("apps:init", args.slice(1));
-  const destination = typeof input.args.destination === "string" ? input.args.destination : undefined;
-  const flagName = typeof input.flags.name === "string" ? input.flags.name : undefined;
+  const { destination, name: flagName } = initTarget(args.slice(1));
   const name = flagName ?? options?.answers?.name;
   if (destination === undefined && (name === undefined || name === "")) return;
   setWorkingDirectory(
