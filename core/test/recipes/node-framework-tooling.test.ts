@@ -15,6 +15,7 @@ test.each([
   { pin: "npm@10.10.0", prefix: ["npm", "exec", "--no", "--"] },
   { pin: "pnpm@10.10.0", prefix: ["pnpm", "exec"] },
   { pin: "yarn@4.9.2", prefix: ["yarn", "run"] },
+  { pin: "bun@1.2.0", prefix: ["npm", "exec", "--no", "--"] },
 ])(
   "runs the Next.js recipe alias with $pin from the caller's directory",
   async ({ pin, prefix }) => {

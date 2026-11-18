@@ -13,8 +13,7 @@ export const lowerNodeLocalTooling = (task: ToolingTaskShape, metadata: unknown)
       ? ["pnpm", "exec"]
       : name === "yarn"
         ? ["yarn", "run"]
-        : name === "bun"
-          ? ["bun", "run"]
-          : ["npm", "exec", "--no", "--"];
+        : // npm, Bun (which Lando does not provision), or no declaration: run the local bin from node_modules.
+          ["npm", "exec", "--no", "--"];
   return { ...task, cmd: [...prefix, ...task.cmd.slice(1)] };
 };
