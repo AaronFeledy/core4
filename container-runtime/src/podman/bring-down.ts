@@ -331,14 +331,14 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
     );
     networkRemoved = networkRemoved || removed;
   }
-  const volumesRemoved: { data: number; cache: number } = { ...noVolumesRemoved };
+  let volumesRemoved = { ...noVolumesRemoved };
   let prunedChanged = false;
   if (options.volumes === true || options.purgeCaches === true) {
-    const removed = yield* removeAppScopedVolumes(deps, plan).pipe(
-      mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
-    );
-    volumesRemoved.data += removed.data;
-    volumesRemoved.cache += removed.cache;
+    volumesRemoved = {
+      ...(yield* removeAppScopedVolumes(deps, plan).pipe(
+        mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
+      )),
+    };
     if ((options.dialect ?? libpodLifecycleDialect).volumePrune !== undefined) {
       for (const volumeClass of teardownVolumeClasses(options)) {
         const pruned = yield* pruneAppScopedVolumes(deps, plan, volumeClass).pipe(
