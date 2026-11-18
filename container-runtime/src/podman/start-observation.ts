@@ -26,16 +26,23 @@ export const startObservation = (body: unknown) => {
   const status = runStatusFromEngineState(state.Status);
   if (state.Paused === true || (state.Dead === true && status !== "dead"))
     return { status: "unknown" as const };
-  if (status === "restarting" || ((status === "exited" || status === "dead") && state.Restarting === true)) {
+  if (
+    status === "restarting" ||
+    (status === "exited" && state.Restarting === true) ||
+    (status === "running" && state.Restarting === true)
+  ) {
     return { status: "restarting" as const };
   }
-  if (state.Running === true || state.Restarting === true) return { status: "unknown" as const };
+  if (state.Restarting === true || (status === "dead" && state.Running === true))
+    return { status: "unknown" as const };
+  if (status === "running" && state.Running !== false) return { status: "running" as const };
+  if (state.Running === true) return { status: "unknown" as const };
   if (status !== "exited" && status !== "dead") return { status: "unknown" as const };
   const restart = Schema.decodeUnknownOption(RestartConfig)(HostConfig);
   const policy = Option.getOrUndefined(restart)?.RestartPolicy.Name;
   if (status === "dead") return { status, policy, exitCode: undefined };
   const exitCode =
-    typeof state.ExitCode === "number" && Number.isInteger(state.ExitCode) && state.ExitCode >= 0
+    typeof state.ExitCode === "number" && Number.isSafeInteger(state.ExitCode) && state.ExitCode >= 0
       ? state.ExitCode
       : undefined;
   return { status, exitCode, policy };

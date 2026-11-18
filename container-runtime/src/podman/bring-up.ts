@@ -81,7 +81,7 @@ import {
   type DependencyObservation,
   runServiceStartSchedule,
 } from "../service-start-schedule.ts";
-import { isServiceRestartExpected } from "../supervision.ts";
+import { restartVerdict } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
 import {
@@ -928,8 +928,13 @@ const startService = Effect.fnUntraced(function* (
   const completed = completionIntent && observed.status === "exited" && observed.exitCode === 0;
   const supervised =
     !completionIntent &&
-    (observed.status === "restarting" ||
-      (observed.status === "exited" && isServiceRestartExpected(service, observed.exitCode)));
+    (observed.status === "restarting" || observed.status === "exited" || observed.status === "dead") &&
+    restartVerdict({
+      source: "planned",
+      service,
+      state: observed.status,
+      exitCode: "exitCode" in observed ? observed.exitCode : undefined,
+    }) === "expected";
   if ((!after.running || observed.status === "restarting") && !completed && !supervised) {
     yield* Effect.fail(
       podmanFailure(deps, {
