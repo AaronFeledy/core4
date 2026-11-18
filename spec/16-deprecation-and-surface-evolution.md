@@ -26,7 +26,7 @@ This part defines the single machine-readable deprecation contract for every pub
 
 The unreleased `ToolingVarDefault` and `ToolingVarPrompt` schemas are removed without aliases or a deprecation cycle: a literal var replaces `{ default }`, and a declared flag or arg, or a `vars.<name>.sh` command, replaces `{ prompt }` (§8.5.3). The removal updates the public-surface fixture and schema artifacts.
 
-The unreleased authored endpoint `_tag` and route-filter `type` discriminators are replaced by `kind` without aliases or a deprecation cycle; plan representations retain endpoint `_tag` and filter `type` (§6.6).
+The unreleased endpoint `_tag` and route-filter `type` discriminators are replaced by `kind` on authored input, plan, and applied surfaces without aliases or a deprecation cycle (`EndpointPlan.kind`, `RouteFilter.kind`, `RouteFilterKind`). Plugin `declareEndpoints` returns encoded `EndpointDeclaration` / Landofile-compatible wire values, including optional HTTP(S) `scan` only on the plugin declaration schema; there is no live dual-key API. Applied-state envelope 7 migrates to 8 on read; desired app-plan cache revision 57 and scratch plan envelope 2 discard older frames. Public-surface fixtures and derived schema artifacts update with the change (§6.6, §5.5.2, §12.1).
 
 ### 18.2 The `DeprecationNotice` schema
 

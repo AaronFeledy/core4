@@ -89,7 +89,7 @@ If you are looking for a public surface or policy:
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
 | Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
-| `AppPlan` and `ServicePlan` schema families | 05 | §5.5 |
+| `AppPlan` and `ServicePlan` schema families, applied-state v7-to-v8 `kind` migration | 05 | §5.5 |
 | Runtime-owned helper creation mount, logical/applied-plan exclusion, non-root cache permissions, and file-log delivery | 05 + 06 + 12 | §5.5 + §6.2.1 + §6.4 + §6.14.3 + §12.1 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
@@ -103,7 +103,7 @@ If you are looking for a public surface or policy:
 | Canonical file-sync execution bundle and retained flat session history | 06 | §6.4 |
 | Current/recorded app names, retained data name, and planned/applied project-file policy in info | 06 | §6.10 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
-| Logical endpoint identity, authored endpoint shorthand and `kind` objects, mandatory endpoint normalization, hostnames, routes, authored filter `kind` vs plan `type`, and cross-app priority | 06 | §6.6 |
+| Logical endpoint identity, authored endpoint shorthand and `kind` objects, plan and applied `kind` discriminators, mandatory endpoint normalization, hostnames, routes, `RouteFilter.kind`, and cross-app priority | 06 | §6.6 |
 | Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, terminal dependency evidence, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
 | Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
 | Native-health observations and readiness configuration metadata, without last-proof inference | 06 | §6.10 |
@@ -111,7 +111,7 @@ If you are looking for a public surface or policy:
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
-| Provider-independent service/app endpoint declarations, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
+| Provider-independent service/app endpoint declarations (`EndpointDeclaration.Encoded`, strict decode once, tagged feature failures), immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
 | Read-only service-type resolution metadata in app-feature declaration and application | 06 | §6.11.4 |
 | Generated companion services: `addClonedService`, `AppFeatureCloneError`, shared and non-inherited parent facts, naming, provenance, selection, and removal | 06 | §6.11.4 + §6.11.5 |
 | In-build acquisition of pinned third-party artifacts by Lando-contributed build steps | 06 + 11 | §6.13.3 + §10.3.3 |
@@ -228,6 +228,7 @@ If you are looking for a public surface or policy:
 | Paired Tomcat image/config maintenance and offline catalog generation | 15 | §17.2 |
 | Signing, supply chain, update, and installation | 15 | §17.4 + §17.7 |
 | Release workflow and shipping criteria | 15 | §17.8 + §17.9 |
+| Unreleased endpoint/filter `kind` vocabulary, declaration wire form, and applied/cache bumps | 16 | §18.1 |
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |
 | Deprecation presentation, removal, and gates | 16 | §18.6 + §18.8 |
 | Executable-guide model, components, scenario runtime, and display vs. execute bindings | 17 | §19.2 + §19.4 + §19.5 |

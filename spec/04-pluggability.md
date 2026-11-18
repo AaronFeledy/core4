@@ -49,10 +49,10 @@ This part is the master contract index for replaceable abstractions, selection, 
 | Plugin source | `PluginSource` | Registry, git, local, tarball | `pluginSources:`; implementations MUST pass the plugin-source contract suite (§13.1). |
 | Init source | `InitSource` | Built-in `cwd`, `git`, and `tarball` | `initSources:`; selected by `apps:init --source`. Implementations supply prompts, source auth, dynamic choices, and locators only; core acquires and commits, and implementations MUST pass the init-source contract suite (§8.8.13, §13.1). |
 | Service type | `ServiceType` | Bundled canonical catalog (§6.11) | `serviceTypes:` adds or replaces types under collision rules. |
-| Service feature | `ServiceFeature` | Plugin-only | `serviceFeatures:`. |
-| App feature | `AppFeature` | Plugin-only | `appFeatures:`; selector-driven, app-scoped, and idempotent (§6.11.4). |
+| Service feature | `ServiceFeature` | Plugin-only | `serviceFeatures:`; optional `declareEndpoints` returns encoded `EndpointDeclaration` wire values (shorthand or `kind` objects, optional HTTP(S) `scan`), decoded once into plan `EndpointPlan` facts (§6.11.0). |
+| App feature | `AppFeature` | Plugin-only | `appFeatures:`; selector-driven, app-scoped, and idempotent (§6.11.4); the same encoded declaration contract keyed by selected service. |
 | Global service | No service tag | Plugin-only | `globalServices:` contributes `ServiceConfig`; owner-scoped policy in `<userConfRoot>/global.config.yml` applies an individual override, package policy, then the recorded initial default. `meta:global:enable`/`meta:global:disable` change intent; `meta:global:reconcile` preserves it (§20). |
-| Route filter | `RouteFilter` | `requestHeader`, `responseHeader`, `redirect`, `stripPrefix`, `addPrefix` | `routeFilters:`; implementations MUST pass the route-filter contract suite (§13.1). |
+| Route filter | `RouteFilter` | `requestHeader`, `responseHeader`, `redirect`, `stripPrefix`, `addPrefix` (`RouteFilterKind`) | `routeFilters:`; authored and plan filters use `kind`; implementations MUST pass the route-filter contract suite (§13.1). |
 | Telemetry | `Telemetry` | Core collector, enabled by default | Sinks compose only through Telemetry and MUST honor disablement. |
 | Update channel | `UpdateService` | Registry-channel updater | Replace for air-gapped or vendor-managed distributions. |
 | Secret store | `SecretStore` | `env` (default bare ids), `lando` (persistent writable), `1password` (exclusive `op` owner) | `secretStores:`; schemes route to their owner, bare ids to `defaultSecretStore`. Contract includes ids-only `list` and metadata-only `describe`; writable stores add `put`/`remove`. `lando` is the only bundled persistent writable store (§9.5.1). |

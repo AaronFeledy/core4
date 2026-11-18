@@ -367,6 +367,8 @@ Published JSON Schema artifacts (`dist/schemas/**`, `dist/command-schemas/**`) a
 
 An invalid endpoint scalar produces an indexed `landofile.validation` finding at `["services", <name>, "endpoints", <i>]` with remediation naming the accepted forms. The finding attributes the value to its authored source, including the producing expression site when applicable. Strict resolved encoding always emits `kind` objects for endpoints and filters; `--source raw` and `--source merged` preserve authored scalar spelling or object keys, while default `--source resolved` and selected resolved paths read the encoded `LandofileShape` tree so `.kind` agrees with the full document.
 
+Invalid `EndpointDeclaration` output is a plugin finding, with the contributing plugin and feature, the affected service and declaration index when known, and a safe declaration path. Lint MUST NOT treat that path as a Landofile source location.
+
 `LANDOFILE_EDITOR_SCHEMA_URL` in `@lando/sdk/schema` is the one URL for the editor Landofile artifact; the docs build publishes the artifact at exactly that URL. New Landofiles written by `lando init` and `lando app:config:translate` start with `# yaml-language-server: $schema=<url>`; existing files are never rewritten to add it.
 
 `@lando/sdk/schema/standard` exports Standard Schema V1 and Standard JSON Schema V1 views of the Landofile input, global config, plugin manifest, and recipe manifest schemas. The subpath imports individual schema modules and schema-projection helpers, never aggregate schema or service barrels, runtime loaders, or host I/O.
