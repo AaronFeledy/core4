@@ -558,7 +558,7 @@ describe("apps:list host-wide discovery", () => {
       await mkdir(legacyDir, { recursive: true });
       const rootA = join(userDataRoot, "checkout-a");
       const rootB = join(userDataRoot, "checkout-b");
-      await mkdir(rootA, { recursive: true });
+      await Promise.all([mkdir(rootA), mkdir(rootB)]);
       const legacy = (root: string) => ({
         version: 1,
         providerId: "lando",
@@ -569,17 +569,38 @@ describe("apps:list host-wide discovery", () => {
       await writeFile(fileA, JSON.stringify(legacy(rootA)));
       await writeFile(fileB, JSON.stringify(legacy(rootB)));
 
+      await rm(rootB, { recursive: true });
+      const discoverEvidence = (ownsMissingRoot: boolean) => async () => ({
+        apps: appsFromContainerList([
+          labeled("twin", "web", {
+            "dev.lando.provider": "lando",
+            "dev.lando.app-root": rootA,
+          }),
+        ]),
+        confirmedProviderIds: ["lando"],
+        ownedResources: [
+          { appId: "twin", appRoot: rootA },
+          ...(ownsMissingRoot ? [{ appId: "twin", appRoot: rootB }] : []),
+        ],
+      });
+      const listed = await runList(userDataRoot, { discoverContainersEvidence: discoverEvidence(true) });
+      expect(
+        listed.apps.map(({ appId, appRoot, status, stale }) => ({ appId, appRoot, status, stale })),
+      ).toEqual([
+        { appId: "twin", appRoot: rootA, status: "active", stale: undefined },
+        { appId: "twin", appRoot: rootB, status: "stopped", stale: true },
+      ]);
+
+      const retained = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: discoverEvidence(true),
+      });
+      expect(retained.pruned).toEqual([]);
+      expect(await Bun.file(fileB).exists()).toBe(true);
+
       const result = await runList(userDataRoot, {
         prune: true,
-        discoverContainersEvidence: async () => ({
-          apps: appsFromContainerList([
-            labeled("twin", "web", {
-              "dev.lando.provider": "lando",
-              "dev.lando.app-root": rootA,
-            }),
-          ]),
-          confirmedProviderIds: ["lando"],
-        }),
+        discoverContainersEvidence: discoverEvidence(false),
       });
 
       expect(result.pruned?.map((entry) => entry.appRoot)).toEqual([rootB]);
