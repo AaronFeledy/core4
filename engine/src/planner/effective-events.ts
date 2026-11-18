@@ -16,8 +16,10 @@ import {
   LANDO_HOST_EVENT_ENV,
   resolveLifecycleCommandId,
 } from "@lando/sdk/schema";
-import { Predicate } from "effect";
 import { sitesUnder } from "./invocation-authority.ts";
+import { primaryServiceName } from "./primary-service.ts";
+
+export { primaryServiceName } from "./primary-service.ts";
 
 const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
@@ -37,15 +39,6 @@ export const stampPlanServices = (
       { primary: planServicePrimary(name, service?.primary) },
     ]),
   );
-
-export const primaryServiceName = (
-  services: Readonly<Record<string, unknown>> | undefined,
-): string | undefined => {
-  if (services === undefined) return undefined;
-  return Object.entries(services).find(
-    ([, service]) => Predicate.isObject(service) && service.primary === true,
-  )?.[0];
-};
 
 const commandKind = (step: EventStep): "cmd" | "task" | "command" => {
   if (typeof step === "string") return "cmd";
