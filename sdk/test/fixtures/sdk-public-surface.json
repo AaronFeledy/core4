@@ -1249,6 +1249,7 @@
       "AUTHORING_EXPRESSION_SCOPES",
       "AbsoluteContainerPath",
       "AbsolutePath",
+      "AdminerServiceConfig",
       "AgentEnvConfig",
       "AgentSocketBridgeInput",
       "AgentSocketBridgeResult",
@@ -2079,6 +2080,7 @@
       "withSchemaDeprecations"
     ],
     "./schema/services": [
+      "AdminerServiceConfig",
       "DotnetServiceConfig",
       "LocalStackServiceConfig",
       "MAILHOG_DEPRECATION_NOTICE",
@@ -2093,6 +2095,7 @@
       "TomcatServiceConfig",
       "VarnishServiceConfig"
     ],
+    "./schema/services/adminer": ["AdminerServiceConfig"],
     "./schema/services/dotnet": ["DotnetServiceConfig"],
     "./schema/services/localstack": ["LocalStackServiceConfig"],
     "./schema/services/mailhog": ["MAILHOG_DEPRECATION_NOTICE", "MailhogServiceConfig"],

@@ -46,6 +46,38 @@ Rules the generator and linter enforce:
 - `<Verify event>` has nothing to match. The binary does not stream events
   back to the harness. Assert on stdout, stderr, exit code, or files instead.
 
+## Prove a URL answers
+
+`lando start` checks every routed URL through the proxy after the app is ready.
+Read that result from JSON in a hidden step, not from the progress lines it
+prints on stderr, which are written for people and change without notice:
+
+```mdx
+<Hidden reason="The routed URL answers through the proxy">
+  <Step name="route">
+    <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"web\",\\s*\"url\":\\s*\"[^\"]+\",\\s*\"verdict\":\\s*\"ready\"" } }} />
+  </Step>
+</Hidden>
+```
+
+A second `lando start` changes nothing on a running app, so the step only
+repeats the check.
+
+## Pin a known limitation
+
+When a page tells readers about a limitation or a workaround that an open issue
+tracks, add a hidden step that asserts the limitation still holds and name the
+issue in its reason. The fix then fails the scenario, and the page gets updated
+instead of teaching a workaround nobody needs:
+
+```mdx
+<Hidden reason="Tripwire for #1234: the web worker still cannot write uploads">
+  <Step name="tripwire">
+    <Verify command="lando exec appserver --user www-data -- test -w /app/uploads" expectExit={1} />
+  </Step>
+</Hidden>
+```
+
 ## Where it runs
 
 An e2e scenario is `test.skip` unless three things are set: `LANDO_GUIDE_E2E=1`,

@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
 import { CapabilityError } from "@lando/sdk/errors";
 import type { ProviderCapabilities } from "@lando/sdk/schema";
@@ -160,10 +163,52 @@ describe("projectUserRenumberStep", () => {
     const command = JSON.stringify(step?.command);
     expect(command).toContain("usermod -o -u '1000'");
     expect(command).toContain("groupmod -o -g '1000'");
-    expect(command).toContain("-uid 0");
+    expect(command).toContain("! -user 0");
     expect(command).toContain("chown -h '1000:1000'");
     expect(command).toContain("getent passwd '33'");
   });
+
+  test.skipIf(process.platform === "win32")(
+    "renumbers local account records without shadow-utils, including a target-id collision",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "lando-local-ids-"));
+      const passwd = join(dir, "passwd");
+      const group = join(dir, "group");
+      try {
+        for (const name of ["awk", "cat", "find", "mktemp", "rm"]) {
+          const executable = Bun.which(name);
+          if (!executable) throw new TypeError(`Missing test command ${name}`);
+          await symlink(executable, join(dir, name));
+        }
+        await Bun.write(
+          passwd,
+          "root:x:0:0::/root:/bin/sh\nweb:x:33:33::/srv:/bin/sh\nother:x:1000:1000::/home/other:/bin/sh\n",
+        );
+        await Bun.write(group, "root:x:0:\nweb:x:33:web\nother:x:1000:\n");
+        const step = projectUserRenumberStep({
+          identity: phpIdentity,
+          mapping,
+          projectUser: realized(host.uid, host.gid),
+          host,
+        });
+        const command = step?.command;
+        if (!Array.isArray(command) || typeof command[2] !== "string")
+          throw new TypeError("Expected renumber shell command");
+        const script = command[2]
+          .replaceAll("/etc/passwd", '"$1/passwd"')
+          .replaceAll("/etc/group", '"$1/group"')
+          .replace("find / -xdev", 'find "$1" -xdev');
+        const proc = Bun.spawnSync(["/bin/sh", "-c", script, "sh", dir], { env: { PATH: dir } });
+        expect(proc.exitCode, proc.stderr.toString()).toBe(0);
+        expect(await Bun.file(passwd).text()).toBe(
+          "root:x:0:0::/root:/bin/sh\nweb:x:1000:1000::/srv:/bin/sh\nother:x:1000:1000::/home/other:/bin/sh\n",
+        );
+        expect(await Bun.file(group).text()).toBe("root:x:0:\nweb:x:1000:web\nother:x:1000:\n");
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("renumbers only the id that differs", () => {
     const step = projectUserRenumberStep({

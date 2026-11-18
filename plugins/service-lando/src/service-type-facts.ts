@@ -2,6 +2,7 @@ import type { ServiceType } from "@lando/sdk/services";
 import { MAILPIT_WEB_PORT } from "./mailpit-constants.ts";
 import { APP_MOUNT_TARGET as LANGUAGE_APP_MOUNT } from "./services/_language-runtime.ts";
 import type { ListenerContract } from "./services/_port-helpers.ts";
+import { ADMINER_LISTENER } from "./services/adminer.ts";
 import { APP_MOUNT_TARGET as APACHE_APP_MOUNT, APACHE_LISTENER } from "./services/apache.ts";
 import { APP_MOUNT_TARGET as COMPOSE_APP_MOUNT } from "./services/compose.ts";
 import { APP_MOUNT_TARGET as DOTNET_APP_MOUNT, DOTNET_LISTENER } from "./services/dotnet.ts";
@@ -64,6 +65,7 @@ export const listenerContracts = (): Readonly<Record<string, ListenerContract>> 
   opensearch: OPENSEARCH_LISTENER,
   php: PHP_LISTENER,
   "php/fpm": PHP_LISTENERS.fpm,
+  adminer: ADMINER_LISTENER,
   phpmyadmin: PHPMYADMIN_LISTENER,
   postgres: POSTGRES_LISTENER,
   python: PYTHON_LISTENERS.none,
@@ -126,6 +128,7 @@ export const buildServiceTypeFacts = (
     node: { ...http(NODE_LISTENER), appMountTarget: NODE_APP_MOUNT },
     opensearch: http(OPENSEARCH_LISTENER),
     php: { ...http(PHP_LISTENER), appMountTarget: PHP_APP_MOUNT },
+    adminer: { listener: ADMINER_LISTENER, httpPort: ADMINER_LISTENER.port },
     phpmyadmin: { listener: PHPMYADMIN_LISTENER, httpPort: PHPMYADMIN_LISTENER.port },
     postgres: { listener: POSTGRES_LISTENER, configTargets: { server: POSTGRES_CONFIG_TARGET } },
     python: { ...http(PYTHON_LISTENERS.none), appMountTarget: LANGUAGE_APP_MOUNT },

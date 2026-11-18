@@ -1,3 +1,4 @@
+export * from "./adminer.ts";
 export * from "./dotnet.ts";
 export * from "./localstack.ts";
 export * from "./mailhog.ts";

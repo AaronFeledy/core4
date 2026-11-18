@@ -538,6 +538,7 @@ import {
   ServiceShutdownObservation,
 } from "./service-shutdown.ts";
 import {
+  AdminerServiceConfig,
   DotnetServiceConfig,
   LocalStackServiceConfig,
   MailhogServiceConfig,
@@ -593,6 +594,7 @@ const schemaRegistry = <const Name extends string>(
 ): Readonly<Record<Name, PublicSchema>> => schemas;
 
 const catalogServiceSchemaRegistry = schemaRegistry({
+  AdminerServiceConfig,
   DotnetServiceConfig,
   LocalStackServiceConfig,
   MailhogServiceConfig,
@@ -1316,6 +1318,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ScheduleConfig: "Scheduled jobs for a service.",
 } satisfies Partial<Record<keyof typeof rawPublicSchemaRegistry, string>>;
 const CATALOG_SERVICE_SCHEMA_DESCRIPTIONS = {
+  AdminerServiceConfig: "Landofile configuration accepted by the Adminer catalog service.",
   DotnetServiceConfig: "Landofile configuration accepted by the .NET catalog service.",
   LocalStackServiceConfig: "Landofile configuration accepted by the LocalStack catalog service.",
   MailhogServiceConfig: "Landofile configuration accepted by the deprecated MailHog catalog service.",

@@ -1,0 +1,6 @@
+name: adminer-mariadb
+services:
+  db:
+    type: mariadb
+  adminer:
+    type: adminer

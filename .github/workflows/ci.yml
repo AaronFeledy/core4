@@ -1013,6 +1013,7 @@ jobs:
           pull_image docker.io/library/node:24
           pull_image docker.io/library/node:26
           pull_image docker.io/library/node:22-alpine
+          pull_image docker.io/library/adminer:6
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -2278,6 +2279,7 @@ jobs:
           pull_image docker.io/library/node:24
           pull_image docker.io/library/node:26
           pull_image docker.io/library/node:22-alpine
+          pull_image docker.io/library/adminer:6
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18

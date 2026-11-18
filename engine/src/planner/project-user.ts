@@ -384,7 +384,7 @@ export const projectUserRenumberStep = (input: {
   const host = hostIdentity(input.host);
   if (host === undefined || host.uid === 0 || host.gid === 0) return undefined;
   if (host.uid === declared.uid && host.gid === declared.gid) return undefined;
-  const commands = [
+  const shadowCommands = [
     `lando_user=$(getent passwd '${declared.uid}' | cut -d: -f1 | head -n1)`,
     'test -n "$lando_user"',
     ...(declared.gid === host.gid ? [] : [`groupmod -o -g '${host.gid}' "$(id -gn "$lando_user")"`]),
@@ -395,7 +395,24 @@ export const projectUserRenumberStep = (input: {
     // uid's offset, which a large host uid turns into a huge sparse file in the
     // derived layer. Emptying the files after usermod keeps the image small.
     ...["/var/log/lastlog", "/var/log/faillog"].map((file) => `test ! -e '${file}' || : > '${file}'`),
-    `find / -xdev \\( -uid '${declared.uid}' -o -gid '${declared.gid}' \\) ! -uid 0 -exec chown -h '${host.uid}:${host.gid}' {} +`,
+  ];
+  // Minimal images may not ship shadow-utils. Rewrite only the selected local
+  // records, keeping the existing files' metadata and permitting id collisions.
+  const localCommands = [
+    `lando_user=$(awk -F: '$3 == ${declared.uid} { print $1; exit }' /etc/passwd)`,
+    'test -n "$lando_user"',
+    ...(declared.gid === host.gid
+      ? []
+      : [
+          `awk 'BEGIN { FS=OFS=":" } !changed && $3 == ${declared.gid} { $3=${host.gid}; changed=1 } { print } END { if (!changed) exit 1 }' /etc/group > "$lando_ids/group"`,
+        ]),
+    `awk -v user="$lando_user" 'BEGIN { FS=OFS=":" } $1 == user && $3 == ${declared.uid} { $3=${host.uid}; $4=${host.gid} } { print }' /etc/passwd > "$lando_ids/passwd"`,
+    ...(declared.gid === host.gid ? [] : ['cat "$lando_ids/group" > /etc/group']),
+    'cat "$lando_ids/passwd" > /etc/passwd',
+  ];
+  const commands = [
+    `if command -v usermod >/dev/null && command -v groupmod >/dev/null; then ${shadowCommands.join("; ")}; else lando_ids=$(mktemp -d); trap 'rm -rf "$lando_ids"' EXIT; ${localCommands.join("; ")}; fi`,
+    `find / -xdev \\( -user '${declared.uid}' -o -group '${declared.gid}' \\) ! -user 0 -exec chown -h '${host.uid}:${host.gid}' {} +`,
   ];
   return {
     id: projectUserRenumberStepId,

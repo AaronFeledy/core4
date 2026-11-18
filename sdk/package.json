@@ -34,6 +34,7 @@
     "./schema/services/mailpit": "./src/schema/services/mailpit.ts",
     "./schema/services/minio": "./src/schema/services/minio.ts",
     "./schema/services/rabbitmq": "./src/schema/services/rabbitmq.ts",
+    "./schema/services/adminer": "./src/schema/services/adminer.ts",
     "./schema/services/dotnet": "./src/schema/services/dotnet.ts",
     "./schema/services/mssql": "./src/schema/services/mssql.ts",
     "./schema/services/mysql": "./src/schema/services/mysql.ts",

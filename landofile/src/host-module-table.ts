@@ -21,6 +21,7 @@ import * as recipes from "@lando/sdk/recipes";
 import * as renderer from "@lando/sdk/renderer";
 import * as schema from "@lando/sdk/schema";
 import * as servicesSchema from "@lando/sdk/schema/services";
+import * as adminer from "@lando/sdk/schema/services/adminer";
 import * as dotnet from "@lando/sdk/schema/services/dotnet";
 import * as localstack from "@lando/sdk/schema/services/localstack";
 import * as mailhog from "@lando/sdk/schema/services/mailhog";
@@ -90,6 +91,7 @@ export const hostModules: Readonly<Record<string, object>> = {
   "@lando/sdk/schema/services/mssql": mssql,
   "@lando/sdk/schema/services/mysql": mysql,
   "@lando/sdk/schema/services/php": php,
+  "@lando/sdk/schema/services/adminer": adminer,
   "@lando/sdk/schema/services/phpmyadmin": phpmyadmin,
   "@lando/sdk/schema/services/rabbitmq": rabbitmq,
   "@lando/sdk/schema/services/tomcat": tomcat,
