@@ -194,6 +194,12 @@ func TestDesiredContribRequirements(t *testing.T) {
 			contribSyncRecord{Version: 1, Require: map[string]string{"acme/managed": "^1"}, RequireDev: map[string]string{}},
 			map[string]string{"drupal/core-recommended": "^11", "drush/drush": "*", "acme/managed": "^2"},
 			map[string]string{"drupal/core-dev": "^11", "drupal/coder": "*"}},
+		{"without a valid record the extension's requirements win",
+			contribComposerManifest{Require: map[string]string{"acme/site": "^1"}},
+			contribComposerManifest{Require: map[string]string{"acme/site": "^2"}},
+			contribSyncRecord{},
+			map[string]string{"drupal/core-recommended": "^11", "drush/drush": "*", "acme/site": "^2"},
+			map[string]string{"drupal/core-dev": "^11", "drupal/coder": "*"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := desiredContribRequirements("^11", tc.site, tc.extension, tc.previous)

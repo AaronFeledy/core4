@@ -76,7 +76,9 @@ func stageDrupalContrib(s *scaffold, manifest *scaffoldManifest, o drupalContrib
 	if err != nil {
 		return err
 	}
-	desired, err := desiredContribRequirements(o.constraint, site, extension, contribSyncRecord{})
+	// A first build has applied nothing yet: the template's own requirements stay with the site.
+	nothingApplied := contribSyncRecord{Version: 1, Require: map[string]string{}, RequireDev: map[string]string{}}
+	desired, err := desiredContribRequirements(o.constraint, site, extension, nothingApplied)
 	if err != nil {
 		return err
 	}
@@ -122,7 +124,8 @@ func (manifest contribComposerManifest) declares(name string) bool {
 // neither. A package the site already declares without the previous sync
 // having added it belongs to the site, as the recommended project's own
 // requirements and anything added with lando composer do, and keeps its
-// constraint.
+// constraint. Without a valid previous record nothing proves who added a
+// package, so the extension's requirements win.
 func desiredContribRequirements(constraint string, site, extension contribComposerManifest, previous contribSyncRecord) (contribSyncRecord, error) {
 	desired := contribSyncRecord{
 		Version:    1,
@@ -145,7 +148,7 @@ func desiredContribRequirements(constraint string, site, extension contribCompos
 				return contribSyncRecord{}, fmt.Errorf("Invalid Composer package name in the extension's dependencies: %q", name)
 			}
 			seen[key] = true
-			if site.declares(key) && !previous.manages(key) {
+			if previous.Version == 1 && site.declares(key) && !previous.manages(key) {
 				continue
 			}
 			desired.bucket(dev)[key] = version
