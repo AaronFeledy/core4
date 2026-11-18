@@ -89,6 +89,10 @@ export const ServiceBuildDirectoryCommand = Schema.Struct({
 });
 export type ServiceBuildDirectoryCommand = typeof ServiceBuildDirectoryCommand.Type;
 
+const BuildAcquisitionFile = Schema.String.check(
+  Schema.isPattern(/^[A-Za-z0-9_-][A-Za-z0-9._-]*(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/u),
+);
+
 export const ServiceBuildAcquisition = Schema.Struct({
   kind: Schema.Literal("npm"),
   name: Schema.String.check(Schema.isPattern(/^(?:@[a-z0-9._-]+\/)?[a-z0-9][a-z0-9._-]*$/u)),
@@ -99,15 +103,22 @@ export const ServiceBuildAcquisition = Schema.Struct({
     Schema.isPattern(/^\/(?:[A-Za-z0-9_-][A-Za-z0-9._+-]*)(?:\/[A-Za-z0-9_-][A-Za-z0-9._+-]*)*$/u),
   ),
   integrity: Schema.optionalKey(
-    Schema.Struct({
-      algorithm: Schema.Literals(["sha224", "sha256", "sha384", "sha512"]),
-      hex: Schema.String.check(Schema.isMaxLength(128), Schema.isPattern(/^[a-f0-9]+$/u)),
-      file: Schema.optionalKey(
-        Schema.String.check(
-          Schema.isPattern(/^[A-Za-z0-9_-][A-Za-z0-9._-]*(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/u),
-        ),
+    Schema.Union(
+      (
+        [
+          ["sha224", 56],
+          ["sha256", 64],
+          ["sha384", 96],
+          ["sha512", 128],
+        ] as const
+      ).map(([algorithm, length]) =>
+        Schema.Struct({
+          algorithm: Schema.Literal(algorithm),
+          hex: Schema.String.check(Schema.isPattern(new RegExp(`^[a-f0-9]{${length}}$`, "u"))),
+          file: Schema.optionalKey(BuildAcquisitionFile),
+        }),
       ),
-    }),
+    ),
   ),
 });
 export type ServiceBuildAcquisition = typeof ServiceBuildAcquisition.Type;

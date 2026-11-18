@@ -105,6 +105,7 @@ test.each([
   "duplicate name",
   "nested destination",
   "unsafe destination",
+  "integrity length mismatch",
 ] as const)("verified build context handles %s before dispatch", async (scenario) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-image-tree-")));
   try {
@@ -116,7 +117,16 @@ test.each([
     const destination = scenario === "unsafe destination" ? "/usr/local/../bin" : "/usr/local/lib/manager";
     if (scenario === "symlink") await symlink("/etc/passwd", join(root, "cli.js"));
     else await writeFile(join(root, "cli.js"), scenario === "changed bytes" ? "another source" : bytes);
-    const acquisition = { kind: "npm", name: "manager", version: "1.0.0", contextName, destination };
+    const acquisition = {
+      kind: "npm",
+      name: "manager",
+      version: "1.0.0",
+      contextName,
+      destination,
+      ...(scenario === "integrity length mismatch"
+        ? { integrity: { algorithm: "sha512", hex: "a".repeat(64) } }
+        : {}),
+    };
     const acquisitions =
       scenario === "duplicate name"
         ? [acquisition, { ...acquisition, destination: "/elsewhere" }]
