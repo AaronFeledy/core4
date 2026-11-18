@@ -1081,7 +1081,7 @@ describe("lando destroy", () => {
     expect(harness.destroyCalls[0]?.options).toEqual({ volumes: true, removeState: true });
     expect(harness.volumes.has("test_destroy_database_data")).toBe(false);
     expect(harness.volumes.has("lando-cache-npm")).toBe(true);
-    expect(renderDestroyAppResult(result)).toContain("data volumes removed");
+    expect(result).toMatchObject({ dataVolumesRemoved: true, cacheVolumesRemoved: false });
   });
 
   test("removes cache volumes only when purgeCaches is requested", async () => {
@@ -1097,7 +1097,7 @@ describe("lando destroy", () => {
     });
     expect(harness.volumes.has("test_destroy_database_data")).toBe(true);
     expect(harness.volumes.has("lando-cache-npm")).toBe(false);
-    expect(renderDestroyAppResult(result)).toContain("cache volumes removed");
+    expect(result).toMatchObject({ dataVolumesRemoved: false, cacheVolumesRemoved: true });
   });
 
   test("--purge removes only this folder's snapshots and provider artifacts", async () => {
@@ -1123,9 +1123,11 @@ describe("lando destroy", () => {
       );
       // Equal creation times list by id.
       expect(listed.map((info) => info.id)).toEqual([legacy.info.id, sibling.info.id]);
-      expect(renderDestroyAppResult(result)).toBe(
-        "destroyed: test-destroy - database, web (data volumes and 1 snapshot removed)",
-      );
+      expect(result).toMatchObject({
+        servicesDestroyed: ["database", "web"],
+        dataVolumesRemoved: true,
+        cacheVolumesRemoved: false,
+      });
     });
   });
 
