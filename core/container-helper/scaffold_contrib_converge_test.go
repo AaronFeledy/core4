@@ -66,8 +66,9 @@ func TestDrupalContribSyncChangesCoreConstraint(t *testing.T) {
 				assertContribSiteMode(t, dir)
 				clearContribCalls(t, f)
 				delete(f.env, "LANDO_TEST_COMPOSER_MODE")
+				// The failed run restored composer.json, so the retry makes the same edits again.
 				runContribSync(t, f, "^10")
-				assertContribCalls(t, f, update)
+				assertContribCalls(t, f, prod, dev, update)
 			} else {
 				runContribSync(t, f, "^10")
 				assertContribCalls(t, f, prod, dev, update)
@@ -216,21 +217,49 @@ func TestDesiredContribRequirements(t *testing.T) {
 	}
 }
 
-func TestDrupalContribSyncReappliesAnEditAFailedUpdateLeft(t *testing.T) {
-	f, _ := completedContrib(t, `{}`)
+func TestDrupalContribSyncRestoresComposerFilesWhenItFails(t *testing.T) {
+	f, extension := completedContrib(t, `{}`)
+	files := []string{filepath.Join(f.appRoot, "composer.json"), filepath.Join(f.appRoot, "composer.lock")}
+	writeContribTestFile(t, files[1], `{"content-hash":"before"}`)
+	before := make([]string, len(files))
+	for i, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before[i] = string(data)
+	}
+	// The extension asks for a package Composer can't resolve.
+	writeContribTestFile(t, extension, `{"require":{"acme/missing":"^1"}}`)
 	f.env["LANDO_TEST_COMPOSER_MODE"] = "fail-update"
-	if code := f.run(t, contribSyncCommand, "module", "example", "^10"); code != 1 {
+	if code := f.run(t, contribSyncCommand, "module", "example", "^11"); code != 1 {
 		t.Fatalf("failing sync exited %d: %s", code, f.stderr.String())
 	}
+	for i, file := range files {
+		assertFileText(t, file, before[i])
+	}
+	// Once the extension drops it, nothing of the failed attempt is left to resolve.
 	delete(f.env, "LANDO_TEST_COMPOSER_MODE")
+	writeContribTestFile(t, extension, `{}`)
 	clearContribCalls(t, f)
-	// Back to the recorded constraint: composer.json still says ^10, so it is not up to date.
+	if code := f.run(t, contribSyncCommand, "module", "example", "^11"); code != 0 ||
+		!strings.Contains(f.stdout.String(), "is up to date") {
+		t.Fatalf("sync after the failure exited %d: %s", code, f.stderr.String())
+	}
+	assertContribCalls(t, f)
+}
+
+func TestDrupalContribSyncRestoresAHandEditedManagedPackage(t *testing.T) {
+	f, _ := completedContrib(t, `{}`)
+	site := filepath.Join(f.appRoot, "composer.json")
+	manifest := readFakeJSON(site)
+	manifest["require"].(map[string]any)["drush/drush"] = "^12"
+	writeFakeJSON(site, manifest)
 	runContribSync(t, f, "^11")
 	wd := "--working-dir=" + f.appRoot
 	assertContribCalls(t, f,
-		[]string{wd, "require", "--no-update", "--no-interaction", "drupal/core-composer-scaffold:^11", "drupal/core-project-message:^11", "drupal/core-recommended:^11"},
-		[]string{wd, "require", "--dev", "--no-update", "--no-interaction", "drupal/core-dev:^11"},
-		[]string{wd, "update", "--with-all-dependencies", "--no-interaction"})
+		[]string{wd, "require", "--no-update", "--no-interaction", "drush/drush:*"},
+		[]string{wd, "update", "--with-all-dependencies", "--no-interaction", "drush/drush"})
 }
 
 func TestDrupalContribSyncConvergesASiteWithoutMarker(t *testing.T) {

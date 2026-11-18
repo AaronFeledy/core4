@@ -35,36 +35,49 @@ func convergeDrupalContrib(o drupalContribOptions, s *scaffold, built bool) erro
 		return err
 	}
 
-	for _, dev := range []bool{false, true} {
-		if err := streams.contribComposerEdit(o.appRoot, "require", dev, changes.require[dev]); err != nil {
-			return err
-		}
+	// Like composer require, a sync that fails leaves the manifest as it was,
+	// so an entry it added can't linger and look like one the site owns.
+	manifests, err := snapshotContribManifests(o.appRoot)
+	if err != nil {
+		return err
 	}
-	for _, dev := range []bool{false, true} {
-		if err := streams.contribComposerEdit(o.appRoot, "remove", dev, changes.remove[dev]); err != nil {
-			return err
-		}
+	if err := applyContribChanges(streams, o.appRoot, changes); err != nil {
+		return errors.Join(err, manifests.restore())
 	}
+	return finishContribSync(o, s, desired)
+}
 
+func applyContribChanges(streams helperIO, root string, changes contribChanges) error {
+	for _, step := range []string{"require", "remove"} {
+		edits := changes.require
+		if step == "remove" {
+			edits = changes.remove
+		}
+		for _, dev := range []bool{false, true} {
+			if err := streams.contribComposerEdit(root, step, dev, edits[dev]); err != nil {
+				return err
+			}
+		}
+	}
 	step := "install"
-	args := []string{"--working-dir=" + o.appRoot, "install", "--no-interaction"}
+	args := []string{"--working-dir=" + root, "install", "--no-interaction"}
 	if len(changes.names) > 0 {
 		step = "update"
-		args = []string{"--working-dir=" + o.appRoot, "update", "--with-all-dependencies", "--no-interaction"}
+		args = []string{"--working-dir=" + root, "update", "--with-all-dependencies", "--no-interaction"}
 		// A core change moves the Symfony stack every tool shares, so the whole
 		// site resolves again; anything else updates only what changed.
 		if !slices.ContainsFunc(changes.names, isManagedContribCore) {
 			args = append(args, changes.names...)
 		}
 	}
-	restore, err := unlockInstalledSiteDirectory(filepath.Join(o.appRoot, "web", "sites", "default"))
+	restore, err := unlockInstalledSiteDirectory(filepath.Join(root, "web", "sites", "default"))
 	if err != nil {
 		return err
 	}
-	runErr := streams.contribComposer(o.appRoot, step, args)
-	if err := errors.Join(runErr, restore()); err != nil {
-		return err
-	}
+	return errors.Join(streams.contribComposer(root, step, args), restore())
+}
+
+func finishContribSync(o drupalContribOptions, s *scaffold, desired contribSyncRecord) error {
 	if err := o.prepareTestSite(); err != nil {
 		return err
 	}
@@ -136,4 +149,66 @@ func unlockInstalledSiteDirectory(dir string) (func() error, error) {
 		return nil, fmt.Errorf("Could not make %s writable for Drupal contrib sync: %w", dir, err)
 	}
 	return func() error { return os.Chmod(dir, mode) }, nil
+}
+
+// contribManifests holds the site's composer.json and composer.lock bytes
+// from before a sync changed them; a lock that did not exist stays absent.
+type contribManifests map[string][]byte
+
+func snapshotContribManifests(root string) (contribManifests, error) {
+	saved := contribManifests{}
+	for _, name := range []string{"composer.json", "composer.lock"} {
+		path := filepath.Join(root, name)
+		data, err := os.ReadFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			saved[path] = nil
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		saved[path] = data
+	}
+	return saved, nil
+}
+
+func (saved contribManifests) restore() error {
+	var errs []error
+	for path, data := range saved {
+		if data == nil {
+			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				errs = append(errs, err)
+			}
+			continue
+		}
+		errs = append(errs, replaceFileAtomically(path, data))
+	}
+	return errors.Join(errs...)
+}
+
+// replaceFileAtomically writes data beside path and renames it into place,
+// keeping the current file's mode, so a crash keeps either version whole.
+func replaceFileAtomically(path string, data []byte) error {
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	file, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp.")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err := file.Write(data); err != nil {
+		return errors.Join(err, file.Close())
+	}
+	if err := file.Chmod(mode); err != nil {
+		return errors.Join(err, file.Close())
+	}
+	if err := file.Sync(); err != nil {
+		return errors.Join(err, file.Close())
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(file.Name(), path)
 }
