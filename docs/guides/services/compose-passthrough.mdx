@@ -101,7 +101,7 @@ For LAN binds and short-syntax ports, see [Reach an app from another device](../
     </Step>
   </Scenario>
 
-  <Scenario id="whoami-route" layer="e2e" render>
+  <Scenario id="whoami-route" layer="e2e" tags={["@smoke"]} render>
     <Step name="scaffold-e2e">
       <UseFixture name="compose-passthrough-demo" />
     </Step>
