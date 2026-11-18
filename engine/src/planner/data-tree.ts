@@ -42,6 +42,8 @@ interface DataTreeOwnership {
   readonly target: string;
   readonly owner: string;
   readonly mountParents?: ReadonlyArray<string>;
+  /** An app tree another service may serve, such as an nginx edge, stays readable to it. */
+  readonly shared?: boolean;
 }
 
 const ROOT_PRINCIPALS = new Set(["root", "0"]);
@@ -172,7 +174,14 @@ export const projectUserVolumeTrees = (input: {
       const child = nestedTarget(mount.target, other.target);
       if (child !== undefined) parents.add(posix.dirname(child));
     }
-    return [{ target: mount.target, owner, ...(parents.size === 0 ? {} : { mountParents: [...parents] }) }];
+    return [
+      {
+        target: mount.target,
+        owner,
+        ...(parents.size === 0 ? {} : { mountParents: [...parents] }),
+        ...(enclosesApp ? { shared: true } : {}),
+      },
+    ];
   });
 };
 
@@ -210,7 +219,7 @@ export const dataTreeOwnershipStep = (
     return [
       `mkdir -p ${directories.join(" ")}`,
       `chown -R '${tree.owner}' ${target}`,
-      `chmod 0770 ${target}`,
+      `chmod ${tree.shared === true ? "0775" : "0770"} ${target}`,
     ];
   });
   return {

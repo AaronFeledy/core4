@@ -90,7 +90,7 @@ test("#2461 prepares authored storage and the nested app bind's parents in the i
         command: [
           "sh",
           "-c",
-          "set -eu; mkdir -p '/var/www'; chown -R 'www-data' '/var/www'; chmod 0770 '/var/www'; mkdir -p '/app' '/app/web/modules/custom'; chown -R '33:33' '/app'; chmod 0770 '/app'",
+          "set -eu; mkdir -p '/var/www'; chown -R 'www-data' '/var/www'; chmod 0770 '/var/www'; mkdir -p '/app' '/app/web/modules/custom'; chown -R '33:33' '/app'; chmod 0775 '/app'",
         ],
       },
     ]),
