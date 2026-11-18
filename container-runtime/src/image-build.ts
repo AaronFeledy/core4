@@ -170,7 +170,11 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
   if (service.user !== undefined) {
     yield* validateDockerfileUser(service.user, "final service user", options.providerId);
   }
-  const { steps, caEntries } = yield* prepareDerivedBuild(service, options.providerId);
+  const { steps, entries: derivedEntries } = yield* prepareDerivedBuild(
+    service,
+    options.providerId,
+    input.contextTrees,
+  );
   const needsInheritedUser = service.user !== undefined || steps.some((step) => step.user !== undefined);
   const tag = input.ref;
   let digest: string | undefined;
@@ -236,7 +240,7 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
       });
       const entries: ReadonlyArray<BuildContextEntry> = [
         { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
-        ...caEntries,
+        ...derivedEntries,
       ];
       digest = (yield* requestContainerBuild({
         request,
@@ -287,7 +291,7 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
     });
     const entries: ReadonlyArray<BuildContextEntry> = [
       { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
-      ...caEntries,
+      ...derivedEntries,
     ];
     digest = (yield* requestContainerBuild({
       request,

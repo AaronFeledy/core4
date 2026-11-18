@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type ContainerBuildHttpRequest, buildContainerArtifact } from "@lando/container-runtime/image-build";
+import { createSourceTreeDigest } from "@lando/sdk/digest";
 import {
   AbsolutePath,
   AppId,
@@ -14,7 +15,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
-import { prepareDerivedBuild } from "../src/image-build-ca.ts";
+import { copyInstructions, prepareDerivedBuild } from "../src/image-build-ca.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("ca-build-app");
@@ -97,6 +98,71 @@ const descriptor = (path: string, content: Uint8Array) => {
   return { path, digest, archiveName: `lando-${digest}.crt` };
 };
 
+test.each([
+  "valid",
+  "changed bytes",
+  "symlink",
+  "duplicate name",
+  "nested destination",
+  "unsafe destination",
+] as const)("verified build context handles %s before dispatch", async (scenario) => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "lando-image-tree-")));
+  try {
+    const bytes = new TextEncoder().encode("verified bytes");
+    const digest = createSourceTreeDigest();
+    digest.entry("cli.js", "file", false, bytes);
+    const hex = digest.hex();
+    const contextName = "manager";
+    const destination = scenario === "unsafe destination" ? "/usr/local/../bin" : "/usr/local/lib/manager";
+    if (scenario === "symlink") await symlink("/etc/passwd", join(root, "cli.js"));
+    else await writeFile(join(root, "cli.js"), scenario === "changed bytes" ? "another source" : bytes);
+    const acquisition = { kind: "npm", name: "manager", version: "1.0.0", contextName, destination };
+    const acquisitions =
+      scenario === "duplicate name"
+        ? [acquisition, { ...acquisition, destination: "/elsewhere" }]
+        : scenario === "nested destination"
+          ? [acquisition, { ...acquisition, contextName: "second", destination: `${destination}/child` }]
+          : [acquisition];
+    const input = {
+      ...service({ kind: "ref", ref: "debian:12" }, []),
+      extensions: {
+        "@lando/core/service-features": { buildSteps: [{ phase: "build", command: "true", acquisitions }] },
+      },
+    };
+    const result = await Effect.runPromise(
+      Effect.result(
+        prepareDerivedBuild(
+          input,
+          providerId,
+          acquisitions.map(({ contextName, destination }) => ({
+            contextName,
+            destination,
+            root,
+            digest: hex,
+          })),
+        ),
+      ),
+    );
+    if (scenario !== "valid") {
+      expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ProviderInternalError" } });
+      return;
+    }
+    expect(result._tag).toBe("Success");
+    if (result._tag !== "Success") return;
+    expect(result.success.entries).toContainEqual({
+      kind: "file",
+      name: ".lando-trees/manager/cli.js",
+      mode: 0o644,
+      content: Buffer.from(bytes),
+    });
+    expect(result.success.steps.flatMap(copyInstructions)).toEqual([
+      'COPY [".lando-trees/manager/","/usr/local/lib/manager/"]',
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("ignores malformed CA descriptors outside the build phase", async () => {
   // Given
   const servicePlan = service({ kind: "ref", ref: "debian:12" }, []);
@@ -121,7 +187,7 @@ test("ignores malformed CA descriptors outside the build phase", async () => {
   const prepared = await Effect.runPromise(prepareDerivedBuild(withMalformedAppStep, providerId));
 
   // Then
-  expect(prepared).toEqual({ steps: [], caEntries: [] });
+  expect(prepared).toEqual({ steps: [], entries: [] });
 });
 
 test("packs verified CAs and renders COPY before the owning trust-store RUN", async () => {
