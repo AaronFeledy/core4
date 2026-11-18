@@ -483,13 +483,14 @@ built with. `lando exec` and tooling commands notice the difference, print a
 warning, and then run your command anyway:
 
 ```text
-Node package-manager build inputs changed for service app. Run `lando start`.
+Service app was built with pnpm@9.15.0, but package.json now selects pnpm@10.19.0. Run `lando start` to rebuild it.
 ```
 
 Adding a pin, removing one, and changing its manager, version, or integrity
 hash all count. With `--format=json`, the same warning is in the envelope's
-`warnings` array with code `LANDO_NODE_PACKAGE_MANAGER_STALE` and the service
-name under `context.service`.
+`warnings` array with code `LANDO_NODE_PACKAGE_MANAGER_STALE`, the service
+name under `context.service`, and the built and declared releases under
+`context.built` and `context.declared`.
 
 Lando publishes its own `yarn` or `pnpm` launcher in the service for the
 manager you selected, and that launcher always runs the release Lando planned.

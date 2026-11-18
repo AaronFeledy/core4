@@ -372,7 +372,8 @@ envelope document. Human warning output is unchanged.
 
 `lando exec` and tooling commands add `LANDO_NODE_PACKAGE_MANAGER_STALE` when
 a Node service's Yarn or pnpm pin in `package.json` changed after the service
-was built. The warning's `context.service` names the service and its
+was built. The warning's `context.service` names the service,
+`context.built` and `context.declared` name the two releases, and its
 `remediation` is `lando start`. The command still runs, with the package
 manager the service was built with. See
 [Change the version](./services/node.mdx#change-the-version).

@@ -20,6 +20,11 @@ const pin = (service: ServicePlan | undefined) => {
   return { name: raw.name, version: raw.version, launcher: raw.launcher, integrity: raw.integrity };
 };
 
+type Pin = Exclude<ReturnType<typeof pin>, undefined>;
+
+const describe = (value: Pin): string =>
+  value === null ? "no provisioned package manager" : `${value.name}@${value.version}`;
+
 export const publishNodePackageManagerWarning = Effect.fnUntraced(function* (
   desired: ServicePlan | undefined,
   applied: ServicePlan | undefined,
@@ -38,11 +43,16 @@ export const publishNodePackageManagerWarning = Effect.fnUntraced(function* (
         before.launcher === after.launcher
   )
     return;
+  const built = describe(before);
+  const declared = describe(after);
   const warning = {
     code: "LANDO_NODE_PACKAGE_MANAGER_STALE",
-    message: `Node package-manager build inputs changed for service ${desired.name}.`,
-    remediation: "Run `lando start`.",
-    context: { service: desired.name },
+    message:
+      built === declared
+        ? `Service ${desired.name} was built from a different install of ${built}.`
+        : `Service ${desired.name} was built with ${built}, but package.json now selects ${declared}.`,
+    remediation: "Run `lando start` to rebuild it.",
+    context: { service: desired.name, built, declared },
   };
   yield* recordCommandWarning(warning);
   if (yield* commandWarningsUseMachineOutput) return;

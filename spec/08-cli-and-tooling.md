@@ -409,7 +409,7 @@ Catalog-owned Node types contribute wrapper tasks bound to their service: `pnpm`
 
 Bundled Node framework aliases retain their explicit service targets. The planner lowers their `:node-local` argv prefix using that service's selected manager: `pnpm exec`, `yarn run` (including Plug'n'Play), or `npm exec --no --` for npm, Bun, or no declaration (Lando provisions no Bun). Aliases run local tools without automatically installing missing packages. They preserve ordinary tooling cwd selection; `packageRoot` selects manifest candidates and does not change the command's cwd.
 
-`app:exec` and container tooling compare the target's desired and applied Node package-manager provenance when both are available from the same provider. A pin addition, removal, or change to the name, version, integrity, or launcher revision emits `LANDO_NODE_PACKAGE_MANAGER_STALE` once per target service with remediation `lando start`. Execution continues; no broader image or build-key comparison is performed.
+`app:exec` and container tooling compare the target's desired and applied Node package-manager provenance when both are available from the same provider. A pin addition, removal, or change to the name, version, integrity, or launcher revision emits `LANDO_NODE_PACKAGE_MANAGER_STALE` once per target service, naming the built and declared releases in `context.built` and `context.declared`, with remediation `lando start`. Execution continues; no broader image or build-key comparison is performed.
 
 `tooling:` is a Taskfile-inspired surface, not Taskfile compatibility. Its durable concepts are `cmds`, `deps`, `vars`, `sources`, `generates`, `status`, `preconditions`, and `run`.
 

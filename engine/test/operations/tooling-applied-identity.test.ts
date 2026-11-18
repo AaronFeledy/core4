@@ -117,15 +117,36 @@ test("tooling identity never borrows an enclosing app's project user", async () 
 const currentPin = { name: "pnpm", version: "10.10.0", launcher: "launcher-2" };
 
 test.each([
-  { label: "version change", before: { ...currentPin, version: "10.9.0" }, warn: true },
-  { label: "manager change", before: { ...currentPin, name: "yarn" }, warn: true },
-  { label: "integrity change", before: { ...currentPin, integrity: "sha256.changed" }, warn: true },
-  { label: "launcher change", before: { ...currentPin, launcher: "launcher-1" }, warn: true },
-  { label: "pin added", before: null, warn: true },
-  { label: "pin removed", before: currentPin, remove: true, warn: true },
-  { label: "same pin", before: currentPin, warn: false },
-  { label: "no stored evidence", before: undefined, warn: false },
-  { label: "other provider", before: null, provider: "docker", warn: false },
+  {
+    label: "version change",
+    before: { ...currentPin, version: "10.9.0" },
+    warn: ["pnpm@10.9.0", "pnpm@10.10.0"],
+  },
+  {
+    label: "manager change",
+    before: { ...currentPin, name: "yarn" },
+    warn: ["yarn@10.10.0", "pnpm@10.10.0"],
+  },
+  {
+    label: "integrity change",
+    before: { ...currentPin, integrity: "sha256.changed" },
+    warn: ["pnpm@10.10.0", "pnpm@10.10.0"],
+  },
+  {
+    label: "launcher change",
+    before: { ...currentPin, launcher: "launcher-1" },
+    warn: ["pnpm@10.10.0", "pnpm@10.10.0"],
+  },
+  { label: "pin added", before: null, warn: ["no provisioned package manager", "pnpm@10.10.0"] },
+  {
+    label: "pin removed",
+    before: currentPin,
+    remove: true,
+    warn: ["pnpm@10.10.0", "no provisioned package manager"],
+  },
+  { label: "same pin", before: currentPin, warn: undefined },
+  { label: "no stored evidence", before: undefined, warn: undefined },
+  { label: "other provider", before: null, provider: "docker", warn: undefined },
 ])("tooling warning with $label", async ({ before, remove, provider, warn }) => {
   const node = (packageManager: unknown, providerId: string): ServicePlan => ({
     ...service(),
@@ -180,14 +201,15 @@ test.each([
 
   expect(result.stdout).toBe("ran\nran\n");
   expect(
-    (await Effect.runPromise(warnings.list)).map(({ code, context, remediation }) => ({
+    (await Effect.runPromise(warnings.list)).map(({ code, context }) => ({
       code,
       service: context?.service,
-      remediation,
+      built: context?.built,
+      declared: context?.declared,
     })),
   ).toEqual(
-    warn
-      ? [{ code: "LANDO_NODE_PACKAGE_MANAGER_STALE", service: "web", remediation: "Run `lando start`." }]
-      : [],
+    warn === undefined
+      ? []
+      : [{ code: "LANDO_NODE_PACKAGE_MANAGER_STALE", service: "web", built: warn[0], declared: warn[1] }],
   );
 });
