@@ -42,7 +42,7 @@ import { endpointValidationError, normalizeEndpoints } from "../services/endpoin
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
 import { missingCapability } from "./compose-capabilities.ts";
-import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
+import { dataTreeOwnershipStep, projectUserVolumeTrees, resolveDataTreeOwnership } from "./data-tree.ts";
 import { resolveRoute } from "./endpoint-routes.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
@@ -54,7 +54,6 @@ import {
   type ResolvedProjectUser,
   projectUserRenumberStep,
   projectUserTmpfsMounts,
-  projectUserVolumeTrees,
   resolveProjectUser,
 } from "./project-user.ts";
 import {

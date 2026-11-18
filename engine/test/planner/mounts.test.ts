@@ -15,13 +15,19 @@ import {
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
+import { DATA_TREE_OWNERSHIP_STEP_ID } from "../../src/planner/data-tree.ts";
+import { SERVICE_FEATURES_EXTENSION_KEY } from "../../src/planner/extensions.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { fileSyncEngineLayer } from "../file-sync-engine.ts";
 
-const plan = async (service: Record<string, unknown>, accelerated = false): Promise<AppPlan> => {
+const plan = async (
+  service: Record<string, unknown>,
+  accelerated = false,
+  keepId = false,
+): Promise<AppPlan> => {
   const root = await mkdtemp(join(tmpdir(), "lando-mount-list-"));
   try {
     const document = Schema.decodeUnknownSync(LandofileShape)({
@@ -45,6 +51,7 @@ const plan = async (service: Record<string, unknown>, accelerated = false): Prom
           ...TestRuntimeProvider.capabilities,
           bindMountPerformance: accelerated ? "slow" : "native",
           fileSyncTargets: "prepared-volume",
+          ...(keepId ? { projectUserMapping: "userns-keep-id", artifactBuild: true } : {}),
         }),
       ).pipe(Effect.provide(layer)),
     );
@@ -62,6 +69,33 @@ const web = (app: AppPlan) => {
 /** The planned list in wire form, so expectations can use plain target strings. */
 const wireMounts = (app: AppPlan): ReadonlyArray<typeof MountPlan.Encoded> =>
   Schema.encodeSync(Schema.Array(MountPlan))(web(app).mounts);
+
+test("#2461 prepares authored storage and the nested app bind's parents in the image", async () => {
+  const app = await plan(
+    {
+      type: "php:8.4",
+      home: {},
+      storage: ["/app"],
+      appMount: { target: "/app/web/modules/custom/example", includes: ["vendor", "node_modules", "tmp"] },
+    },
+    false,
+    true,
+  );
+  expect(web(app).extensions[SERVICE_FEATURES_EXTENSION_KEY]).toMatchObject({
+    buildSteps: expect.arrayContaining([
+      {
+        id: DATA_TREE_OWNERSHIP_STEP_ID,
+        user: "root",
+        phase: "build",
+        command: [
+          "sh",
+          "-c",
+          "set -eu; mkdir -p '/var/www'; chown -R 'www-data' '/var/www'; chmod 0770 '/var/www'; mkdir -p '/app' '/app/web/modules/custom'; chown -R '33:33' '/app'; chmod 0770 '/app'",
+        ],
+      },
+    ]),
+  });
+});
 
 test("nested authored bind coexists with its parent shadow", async () => {
   const app = await plan({ mounts: ["./vendor/acme/sdk:/app/vendor/acme/sdk"] });
