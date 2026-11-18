@@ -25,6 +25,8 @@ Each app stops through the same lifecycle as `lando stop` from its own app root,
 
 If one app fails, poweroff still stops the others and then reports every failure with its remediation. It also reports a provider that cannot be observed while it still records apps, and an accelerated-start journal it cannot read. Every failure leaves the global app and the managed runtime running, so you can fix the problem and run `lando poweroff` again.
 
+A failed `post-stop` step does not prevent poweroff from continuing or change its exit code. The summary names the affected app, event, failure, and remediation. With `--format=json`, look for `landofileEvents.status: "failed"` on the affected app in `result.apps`, or in `error.apps` if another app could not stop. `landofileEvents.stepFailure` carries the error tag, redacted message, and remediation.
+
 <Guide>
   <Scenario id="stop-every-app" render>
     <Step name="scaffold">

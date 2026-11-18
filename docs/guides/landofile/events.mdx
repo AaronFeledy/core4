@@ -103,7 +103,7 @@ Every non-internal tooling task also gets `pre-<task>` and `post-<task>`. See [R
 
 A failed `pre-*` step prevents the lifecycle operation from running. If the operation itself fails, its `post-*` steps do not run.
 
-A failed `post-start` or `post-stop` step produces a warning with the step's redacted output tail, but does not fail the completed operation. Other `post-*` failures fail the command with `LandofileEventStepFailedError` and a redacted output tail. Event output uses Lando's normal secret redaction.
+A failed `post-start`, `post-stop`, or `post-destroy` step produces a warning with remediation and the step's redacted output tail, if available. The completed operation still succeeds. Other `post-*` failures fail the command with `LandofileEventStepFailedError` and a redacted output tail. Event output uses Lando's normal secret redaction.
 
 ## Change stop and destroy hooks
 
@@ -115,10 +115,11 @@ If that root has no Landofile, Lando prints an info notice and skips the Landofi
 
 For scripts, inspect the result of `lando stop --format=json` or `lando destroy --format=json`. When the operation tears down an app whose steps could have run, [`landofileEvents`](../../reference/schemas/landofile-events-outcome.mdx) contains:
 
-- `{ status: "ran" }` when Lando could use the Landofile's event plan.
+- `{ status: "ran" }` when Lando used the event plan and no step failed. Individual steps can still be skipped.
 - `{ status: "skipped", reason }` when it could not.
+- `{ status: "failed", event, stepFailure }` when teardown completed but a `post-stop` or `post-destroy` step failed. `stepFailure` carries the error's `_tag`, redacted `message`, and `remediation`.
 
-`ran` describes how the event plan was sourced, not whether every step succeeded. Steps may still warn or be skipped under the rules on this page. The field can be absent for a no-op or cleanup without an applied app.
+The field can be absent for a no-op or cleanup without an applied app.
 
 Cleaning up leftovers, such as orphaned containers, ownership records, or snapshots after the app is gone, skips your steps. Destroy still publishes the plugin lifecycle events; a destroy that fails partway does not publish `post-destroy`.
 

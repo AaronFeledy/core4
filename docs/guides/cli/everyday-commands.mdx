@@ -77,6 +77,8 @@ Bare `restart` stops then starts the app, removing and recreating its containers
 
 `lando start`, `lando restart`, and `lando rebuild` also remove the containers of services you deleted from the Landofile; see [Remove a service](../tutorial/app-lifecycle.mdx#remove-a-service).
 
+If a `post-stop` step fails after the app stops, `lando stop` still exits zero. Lando warns with remediation, and `--format=json` reports `result.landofileEvents.status` as `failed` with the event and step diagnostic.
+
 All of these keep named volumes and drop a removed container's anonymous volumes. For what counts as retained storage, how to declare it, and how to read `services[].mounts` in `lando info --format=json`, see [Keep data across stop, restart, and destroy](../tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
 
 The `stopped:` and `destroyed:` lines repeat how the runtime said each container ended, such as `app (exit 143)` after SIGTERM, and `--format=json` carries the same facts under `result.shutdownObservations`. Lando reports the code; it does not decide whether the stop was clean. Exit `0` is not proof your app finished its cleanup, and `137` alone is not proof Lando killed it. Only an explicit `OOMKilled` report or a failed inspection adds a warning. See [Read what stop reports](../tutorial/app-lifecycle.mdx#read-what-stop-reports).
@@ -185,6 +187,8 @@ lando destroy -y
 `-y` skips the confirmation prompt.
 
 `pre-destroy` fires before anything is removed, and `post-destroy` only after everything, leftovers included, is gone. When Lando finds no trace of the app, destroy reports `unchanged` and fires neither.
+
+If a `post-destroy` step fails after cleanup, `lando destroy` still exits zero. Lando warns with remediation, and `--format=json` reports the failure under [`result.landofileEvents`](../landofile/events.mdx#change-stop-and-destroy-hooks).
 
 If you've deleted or moved app folders before tearing them down, inspect their
 leftovers with `lando apps:gc`. `lando apps:gc --prune` asks once before cleaning
