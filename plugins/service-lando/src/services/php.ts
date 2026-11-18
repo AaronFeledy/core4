@@ -7,7 +7,7 @@ import { resolveWebroot } from "./_webroot.ts";
 import { apacheGeneratedCertificateEndpoint } from "./apache-native-tls.ts";
 import { resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
-import { PHP_FEATURE_ID } from "./php-feature.ts";
+import { PHP_COMPOSER_CACHE, PHP_FEATURE_ID } from "./php-feature.ts";
 import { assertPhpComposerCompatible, resolvePhpComposer } from "./php-prerequisites.ts";
 import { PHP_RUNTIME_POLICY_KEY, resolvePhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
@@ -87,7 +87,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   resolve: (input) =>
     serviceTypeResolve(`php:${version}`, `Failed to resolve php:${version}`, () => {
       const resolvedVersion = validateVersion(input.service.type, version);
-      resolvePhpComposer(input.service.composer);
+      const composer = resolvePhpComposer(input.service.composer);
       resolvePhpComposerPackages(input.service.composer);
       assertPhpComposerCompatible(resolvedVersion, input.service.composer);
       const via = resolvePhpVia(input.service.via);
@@ -105,7 +105,13 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       });
       return {
         base: "lando" as const,
-        normalizedConfig: { ...input.service, type: `php:${resolvedVersion}` } satisfies ServiceConfig,
+        normalizedConfig: {
+          ...input.service,
+          type: `php:${resolvedVersion}`,
+          ...(policy.artifactSource === "stock" && composer !== false
+            ? { storage: [PHP_COMPOSER_CACHE, ...(input.service.storage ?? [])] }
+            : {}),
+        } satisfies ServiceConfig,
         metadata: { [PHP_RUNTIME_POLICY_KEY]: policy },
         logSources: phpLogSources(policy.logMode),
         ...(generatedCertificateEndpoint === undefined ? {} : { generatedCertificateEndpoint }),

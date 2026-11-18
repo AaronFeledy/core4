@@ -74,6 +74,7 @@ test("#2461 prepares authored storage and the nested app bind's parents in the i
   const app = await plan(
     {
       type: "php:8.4",
+      composer: false,
       home: {},
       storage: ["/app"],
       appMount: { target: "/app/web/modules/custom/example", includes: ["vendor", "node_modules", "tmp"] },
