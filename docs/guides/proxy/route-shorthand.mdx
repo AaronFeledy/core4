@@ -11,9 +11,14 @@ Put a `hostname[:port][/path]` string under a service's `routes:` to send matchi
 requests to that service through Lando's proxy. Use an object when you need to
 specify a scheme, a named endpoint, or filters.
 
-The following `.lando.yml` shows several route patterns. The optional port selects
-a backend endpoint, not a public listener port; the service must provide that
-endpoint. Quote wildcard strings so YAML does not interpret `*` as an alias.
+A numeric `:port` selects the HTTP backend and, when the service has no network
+listener at that container port, declares an unnamed internal HTTP listener there.
+That is how one route sets both the hostname and the backend. Use endpoint-only
+authoring when you want the default HTTPS hostname, a named reusable listener, or
+an HTTPS backend. Quote wildcard strings so YAML does not interpret `*` as an alias.
+
+The following `.lando.yml` shows several route patterns. The optional port is a
+backend selector, not a public host listener.
 
 ```yaml
 name: route-shorthand-demo
@@ -35,8 +40,9 @@ services:
 ```
 
 Save the Landofile in your app directory, then lint it before starting containers.
-A successful lint checks route syntax and binds each authored route to a declared
-HTTP or HTTPS listener. It does not contact the service to prove that it is serving HTTP:
+A successful lint checks route syntax and binds each authored route to an HTTP or
+HTTPS listener, including listeners a numeric route declares. It does not contact
+the service to prove that it is serving HTTP:
 
 ```sh
 lando app:config:lint
@@ -141,12 +147,18 @@ lando app:cache:refresh --format=json
 An explicit `endpoints:` list replaces the service type's default endpoints and
 anything inferred from `ports:` or `expose:`. This applies to catalog types such
 as Redis, PHP, and nginx as well as raw `lando` and `compose` services. An explicit
-`endpoints: []` contributes no service endpoints; omit the key to keep defaults.
+`endpoints: []` clears those contributions. Valid numeric routes on the service still
+declare internal HTTP listeners after that list, in first-route order, one per port.
+Omit the key to keep defaults.
 
 This does not change what the daemon listens on or disable its healthcheck.
-Keep endpoint ports aligned with the daemon's configuration. Routes must target
-an HTTP or HTTPS endpoint that remains in the list; Lando won't restore a default
-endpoint to satisfy a route. Normal Landofile layer merging still happens first,
+Keep endpoint ports aligned with the daemon's configuration. A string selector, an
+omitted selector, and a generated default route never declare a listener. A numeric
+selector never invents a host bind. If the service already declares `tcp` or `udp` at
+that port, lint reports a protocol conflict at the route entry rather than changing
+the protocol; write `http:N` or `https:N` only when that is what runs. An HTTPS backend
+must be declared as `https` on the selected port; the route's public scheme does not
+upgrade an implied listener. Normal Landofile layer merging still happens first,
 including merging endpoint entries by exact name when every entry on both sides is named.
 
 A route that names no `endpoint` targets the HTTP or HTTPS listener marked
@@ -184,12 +196,15 @@ an ambiguous generated default route fails only during planning. Both report a
 `primary: true` or name the endpoint. `lando app:cache:refresh` reports it
 without starting containers.
 
-For a raw Compose service, declare the real listener with shorthand such as
-`http:80` or `https:443`, or with a `kind` object. An image name, port 80,
-`expose:`, and a TCP endpoint's `appProtocol: http` do not prove HTTP. Service and app features may contribute declared listeners. Lint uses
-the same declarations as planning without applying features or acquiring a provider.
-If a service cannot resolve, its bindings are skipped rather than reported as
-missing HTTP. See [Fix a route's HTTP endpoint](../landofile/config-lint.mdx#fix-a-routes-http-endpoint).
+For a raw Compose service, a numeric route such as `whoami.{{ app.name }}.lndo.site:80`
+declares the HTTP listener and the hostname together. Prefer that when the custom URL
+is the point. Use endpoint-only authoring (`http:80`, `https:443`, or a `kind` object)
+for the default hostname, named reusable listeners, or an HTTPS backend. An image name,
+port 80, `expose:`, and a TCP endpoint's `appProtocol: http` do not prove HTTP. Service
+and app features may contribute declared listeners. Lint uses the same declarations as
+planning without applying features or acquiring a provider. If a service cannot resolve,
+its bindings are skipped rather than reported as missing HTTP. See
+[Fix a route's HTTP endpoint](../landofile/config-lint.mdx#fix-a-routes-http-endpoint).
 
 `primary: true` is the only accepted value; leave the key off the other entries.
 It only chooses which listener Lando treats as the main one. It doesn't change
@@ -228,9 +243,10 @@ lando info
 
 Use the HTTPS URLs and ports printed by `lando info`. Matching uses the scheme,
 case-insensitive hostname and path prefix on the router's selected listener port.
-The shorthand `:port` selects a **backend endpoint**, not a new listener. Two
-declarations that differ only in backend port therefore conflict, rather than
-creating two public ports. Set listener ports under `router:` instead.
+The shorthand `:port` selects a **backend** container port. It can declare an internal
+HTTP listener there when none exists, but it never opens a new public host port. Two
+declarations that differ only in backend port therefore conflict, rather than creating
+two public ports. Set public listener ports under `router:` instead.
 
 The proxy merges every running app into one router table, so this ordering spans
 all apps running at the same time, not just yours. Exact hostnames beat wildcard

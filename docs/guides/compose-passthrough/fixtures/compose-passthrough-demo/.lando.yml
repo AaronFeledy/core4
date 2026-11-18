@@ -3,5 +3,5 @@ services:
   whoami:
     type: compose
     image: traefik/whoami:v1.10
-    endpoints:
-      - http:80
+    routes:
+      - whoami.{{ app.name }}.lndo.site:80

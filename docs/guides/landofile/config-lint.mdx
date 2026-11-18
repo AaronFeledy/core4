@@ -63,31 +63,43 @@ A Landofile that lints clean can still fail there.
 
 ## Fix a route's HTTP endpoint
 
-Declare the listener your service actually runs. Use endpoint shorthand such as
-`http:80`, or a `kind` object. A raw Compose image, `ports:`, `expose:`, or a TCP
-endpoint's `appProtocol: http` does not declare an HTTP listener:
+A numeric route declares the HTTP listener and the hostname together. No separate
+`endpoints:` entry is required when the selector is the container port that serves
+HTTP:
 
 ```yaml
 services:
   web:
     type: compose
     image: nginx:alpine
-    endpoints:
-      - http:80
     routes:
-      - web.lndo.site
+      - web.lndo.site:80
 ```
 
-Lint checks authored routes against service and app features' endpoint declarations
-during resolve. After a clean resolve with offline provider capabilities, final
-planning applies those features and builds the same default routes start would,
-still without issuing certificates or reading or writing a plan cache.
-An explicit `endpoints:` list replaces those declarations; `endpoints: []` removes
-them all. With multiple HTTP listeners, select one by name or port in the route,
-or mark one listener `primary: true`. A primary TCP listener does not hide the
-service's only HTTP listener.
+Use endpoint-only authoring when you want the default HTTPS hostname, a named
+reusable listener, or an HTTPS backend. Write `https:N` (or a `kind` object with
+`protocol: https`) when the process speaks TLS on that port; the route's public
+scheme does not upgrade an implied HTTP listener. A string selector, an omitted
+selector, and a generated default route never declare a listener. Keep an explicit
+`endpoints:` entry when a named or unselected listener is missing and no numeric
+route covers it. A raw Compose image, `ports:`, `expose:`, or a TCP endpoint's
+`appProtocol: http` still does not prove HTTP on its own.
 
-A missing listener, unmatched selector, or ambiguous selection is an indexed
+Lint checks authored routes against service and app features' endpoint declarations
+during resolve, including listeners numeric routes declare. After a clean resolve
+with offline provider capabilities, final planning applies those features and builds
+the same default routes start would, still without issuing certificates or reading
+or writing a plan cache. An explicit `endpoints:` list replaces type and app-feature
+declarations and synthesis from `ports:` and `expose:`; it does not suppress numeric
+route declarations. `endpoints: []` clears those contributions and still accepts
+implied listeners from valid numeric routes afterward. With multiple HTTP listeners,
+select one by name or port in the route, or mark one listener `primary: true`. A
+primary TCP listener does not hide the service's only HTTP listener.
+
+A TCP or UDP listener already declared at the selected port is a protocol conflict
+at the route entry: change the route to the real HTTP(S) port, or change the
+declaration to `http:N` or `https:N` if that is what runs. A missing named or
+unselected listener, an unmatched alias, or ambiguous selection is an indexed
 `landofile.route` finding. Start and cache refresh reject the same entries. Lint
 also rejects a top-level `proxy:` route whose target service is not declared.
 Correct the proxy key or declare the target under `services:`.

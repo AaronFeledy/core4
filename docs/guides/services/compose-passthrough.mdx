@@ -7,10 +7,23 @@ tags: [docs, compose, service]
 
 # Add a Compose service
 
-Add `type: compose` under `services` in `.lando.yml` to run a third-party image outside the catalog. Declare the HTTP listener the image actually serves, then let Lando route it. The app root is mounted at `/app` by default:
+Add `type: compose` under `services` in `.lando.yml` to run a third-party image outside the catalog. A numeric route picks the hostname and the HTTP backend in one line. Use an endpoint alone when you want the default HTTPS hostname. The app root is mounted at `/app` by default:
 
 ```yaml
 name: compose-passthrough-demo
+services:
+  whoami:
+    type: compose
+    image: traefik/whoami:v1.10
+    routes:
+      - whoami.{{ app.name }}.lndo.site:80
+```
+
+The `:80` selects container port 80 as the HTTP backend. When the service has no declared network listener there, Lando adds an unnamed internal HTTP listener on that port. It does not publish a host port. Because the image comes from your Landofile, Lando plans no home store for it.
+
+For the default HTTPS hostname without choosing a custom host, declare the listener only:
+
+```yaml
 services:
   whoami:
     type: compose
@@ -19,7 +32,7 @@ services:
       - http:80
 ```
 
-`endpoints: [http:80]` is shorthand for an internal HTTP listener on container port 80. It does not publish a host port. Lando gives the service a default HTTPS URL on the shared router. Because the image comes from your Landofile, Lando plans no home store for it.
+`endpoints: [http:80]` is shorthand for an internal HTTP listener on container port 80. Lando gives the service the default HTTPS URL on the shared router.
 
 Save the Landofile in your app directory, then lint, start, and read the URL:
 
@@ -63,7 +76,7 @@ endpoints:
       hostPort: 9000
 ```
 
-`kind: internal` stays on the app network. `kind: published` with `publication` is how you bind a host port. Do not add an internal list next to `ports:` and expect the publication to stay; an explicit `endpoints:` list is authoritative and replaces anything inferred from `ports:` or `expose:`. For LAN binds and short-syntax ports, see [Reach an app from another device](../subsystems/external-access.mdx). For named endpoints, filters, and routes, see [Write routes as shorthand strings and add filters](../proxy/route-shorthand.mdx).
+`kind: internal` stays on the app network. `kind: published` with `publication` is how you bind a host port. An explicit `endpoints:` list, including `endpoints: []`, replaces type and app-feature declarations and anything inferred from `ports:` or `expose:`. It does not suppress listeners that valid numeric routes declare. A numeric selector never invents a host bind: keep `kind: published` (or Compose `ports:`) when you need one. A TCP or UDP listener already declared at that port blocks the implication and fails the route entry instead of changing the protocol. For LAN binds and short-syntax ports, see [Reach an app from another device](../subsystems/external-access.mdx). For named endpoints, filters, and routes, see [Write routes as shorthand strings and add filters](../proxy/route-shorthand.mdx).
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -90,8 +103,8 @@ endpoints:
     </Step>
     <Hidden reason="whoami HTTPS route answers ready with status 200">
       <Step name="route-ready">
-        <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"checks\":\\s*\\[[^\\]]*?\\{[^}]*\"service\":\\s*\"whoami\"[^}]*\"url\":\\s*\"https://whoami[.][^\"}]+\"[^}]*\"verdict\":\\s*\"ready\"[^}]*\"statusCode\":\\s*200(?=\\s*[,}])" } }} />
-        <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"connections\":\\s*\\[.*?\"source\":\\s*\"route\"[^}]*\"protocol\":\\s*\"https\"[^}]*\"url\":\\s*\"https://whoami[.][^\"}]+\"" } }} />
+        <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"checks\":\\s*\\[[^\\]]*?\\{[^}]*\"service\":\\s*\"whoami\"[^}]*\"url\":\\s*\"https://whoami[.]compose-passthrough-demo[.]lndo[.]site(?::[0-9]+)?/?\"[^}]*\"verdict\":\\s*\"ready\"[^}]*\"statusCode\":\\s*200(?=\\s*[,}])" } }} />
+        <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"connections\":\\s*\\[.*?\"source\":\\s*\"route\"[^}]*\"protocol\":\\s*\"https\"[^}]*\"url\":\\s*\"https://whoami[.]compose-passthrough-demo[.]lndo[.]site(?::[0-9]+)?/?\"" } }} />
       </Step>
     </Hidden>
     <Step name="cleanup-e2e">

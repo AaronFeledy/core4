@@ -3,7 +3,5 @@ services:
   web:
     type: compose
     image: nginx:alpine
-    endpoints:
-      - http:80
     routes:
-      - web.lndo.site
+      - web.lndo.site:80

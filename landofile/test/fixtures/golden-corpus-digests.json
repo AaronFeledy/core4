@@ -1509,7 +1509,7 @@
         "digest": "37a441e3a9e7a061e9fc859c5b3c6d012eab5ef87378b7b0768e7b9c7db2d64b"
       },
       "after": {
-        "digest": "738eb73d0bb6f246a987902600982a444b5dc690f57283240561ccb6cc243f93"
+        "digest": "745e3aa4ca77b0ced83c408f69db29fdc29c4c1a8f8e2c15375ad3c716233a5a"
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     },
@@ -1560,7 +1560,7 @@
         "digest": "4d49aacd279230fe3efc6458589504641f955efae6f4f4b9465527706608d1de"
       },
       "after": {
-        "digest": "4f467888db5fef6a09e3a4d4f592afa38fbb103848dd8b26747477b0b55092a9"
+        "digest": "434e6e6d46e821503501283611cf3deb175356d9f0744dd6ecb28e3b8b08abdf"
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     },
