@@ -32,11 +32,12 @@ lists the shipped runtime matrix and pinned artifacts directly from ServiceType 
 | `dotnet`   | n/a                                  | Uses the .NET SDK image, mounts the app at `/app`, and persists the NuGet package cache. |
 | `mssql`    | n/a                                  | Runs SQL Server Developer Edition with persistent database storage and `sqlcmd` tooling. |
 | `phpmyadmin` | n/a                                | Serves phpMyAdmin and wires it to app-local MySQL or MariaDB services unless `hosts:` is set. |
+| `adminer` | n/a | Serves Adminer and wires it to app-local PostgreSQL, MySQL, MariaDB, and declared SQLite files. |
 
 The data-store, search-engine, and webserver `ServiceType`s (`mariadb`,
 `mysql`, `mssql`, `postgres`, `mongodb`, `redis`, `valkey`, `memcached`, `rabbitmq`,
 `minio`, `localstack`, `mailpit`, `mailhog`, `solr`, `elasticsearch`, `opensearch`, `meilisearch`,
-`phpmyadmin`, `nginx`, `apache`, `tomcat`, `varnish`, `static`, `compose`) do not accept a `framework:` field.
+`phpmyadmin`, `adminer`, `nginx`, `apache`, `tomcat`, `varnish`, `static`, `compose`) do not accept a `framework:` field.
 
 ## Authored web settings
 

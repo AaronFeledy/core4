@@ -30,6 +30,7 @@ const EXPECTED_OWNED_MATRICES = {
     "8.5": "php:8.5-apache-bookworm",
     "8.6": "php:8.6-rc-apache-bookworm",
   },
+  adminer: { "6": "adminer:6" },
   phpmyadmin: { "5": "phpmyadmin:5", latest: "phpmyadmin:latest" },
   postgres: { "15": "postgres:15", "16": "postgres:16", "17": "postgres:17", "18": "postgres:18" },
   python: { "3.12": "python:3.12-slim" },

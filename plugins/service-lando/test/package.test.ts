@@ -43,6 +43,8 @@ const expectedServiceTypes = [
   "php:8.4",
   "php:8.5",
   "php:8.6",
+  "adminer",
+  "adminer:6",
   "phpmyadmin",
   "phpmyadmin:5",
   "phpmyadmin:latest",

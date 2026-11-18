@@ -4,6 +4,7 @@ import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { runAppFeatureContract } from "@lando/sdk/test";
 import { Effect } from "effect";
 
+import { adminerWireFeature } from "../src/services/adminer.ts";
 import { phpMyAdminWireFeature } from "../src/services/phpmyadmin.ts";
 
 describe("service-lando catalog × app-feature contract suite", () => {
@@ -50,6 +51,33 @@ describe("service-lando catalog × app-feature contract suite", () => {
               connection: DatabaseConnection.make({
                 family: "mysql",
                 port: PortNumber.make(3306),
+                creds: {
+                  user: "app",
+                  database: "app",
+                  password: { _tag: "SecretRef", reference: "DB_PASSWORD" },
+                },
+              }),
+            },
+          ],
+        }),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  test("shipped adminer wire feature satisfies runAppFeatureContract", async () => {
+    return expect(
+      Effect.runPromise(
+        runAppFeatureContract({
+          feature: adminerWireFeature,
+          services: [
+            { serviceName: "adminer", serviceType: "adminer", base: "lando" },
+            {
+              serviceName: "database",
+              serviceType: "postgres",
+              base: "lando",
+              connection: DatabaseConnection.make({
+                family: "postgres",
+                port: PortNumber.make(5432),
                 creds: {
                   user: "app",
                   database: "app",

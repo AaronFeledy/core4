@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { serviceTypes } from "../src/index.ts";
 
 const CATALOG_FAMILIES = [
+  "adminer",
   "apache",
   "compose",
   "dotnet",
