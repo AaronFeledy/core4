@@ -14,13 +14,17 @@ import { routeEndpointDeclarations } from "./route-endpoint-declarations.ts";
 
 /** Replay original declarations, never a previous normalization's synthesized facets. */
 export const normalizeEndpointFacts = (
-  contributions: readonly EndpointPlan[] | undefined,
+  contributions: readonly EndpointPlan[],
   config: ServiceConfig,
-  authored?: { readonly service: string; readonly routes: readonly NormalizedRoute[] },
+  authored?: {
+    readonly service: string;
+    readonly routes: readonly NormalizedRoute[];
+    readonly allowImplication?: boolean;
+  },
 ) => {
   const endpoints: EndpointPlan[] =
     config.endpoints === undefined
-      ? (contributions ?? []).map((endpoint) => ({ ...endpoint }))
+      ? contributions.map((endpoint) => ({ ...endpoint }))
       : config.endpoints.map((endpoint) =>
           endpoint.protocol === "unix"
             ? { ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) }
@@ -32,8 +36,8 @@ export const normalizeEndpointFacts = (
       : routeEndpointDeclarations({
           ...authored,
           effective: endpoints,
-          replaced: config.endpoints === undefined ? [] : (contributions ?? []),
-          allowImplication: contributions !== undefined,
+          replaced: config.endpoints === undefined ? [] : contributions,
+          allowImplication: authored.allowImplication ?? true,
         });
   if (routeDeclarations !== undefined) endpoints.push(...routeDeclarations.implied);
 
@@ -47,7 +51,7 @@ export const normalizeEndpointFacts = (
         else declarations.push(endpoint);
       }
     }
-    const scans = endpointScanPolicies(contributions ?? []);
+    const scans = endpointScanPolicies(contributions);
     for (const entry of config.ports ?? []) {
       const identity = `${entry.target}/${entry.protocol}`;
       const declarations = declarationsByIdentity.get(identity) ?? [];

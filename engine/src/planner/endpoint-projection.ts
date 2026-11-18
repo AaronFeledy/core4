@@ -61,7 +61,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
   };
   for (const [name, reasons] of input.unavailable) {
     const failure = unavailable(reasons);
-    rows.set(name, { preparation: failure, contributions: failure, endpoints: failure });
+    rows.set(name, { preparation: failure, contributions: { ...failure, value: [] }, endpoints: failure });
   }
   for (const seed of input.services) {
     const { resolution, name, serviceType } = seed;
@@ -74,7 +74,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
     );
     if (Result.isFailure(loaded)) {
       const failure = unavailable(record(loaded.failure));
-      rows.set(name, { preparation: failure, contributions: failure, endpoints: failure });
+      rows.set(name, { preparation: failure, contributions: { ...failure, value: [] }, endpoints: failure });
       continue;
     }
     const prepared = prepareServiceComposition({
@@ -111,7 +111,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
       );
       rows.set(name, {
         preparation: { _tag: "Available", value: declared.prepared },
-        contributions: failure,
+        contributions: { ...failure, value: declared.contributions },
         endpoints: failure,
       });
     } else {
@@ -175,14 +175,16 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
     const normalizedConfig =
       row.preparation._tag === "Available" ? row.preparation.value.facts.normalizedConfig : config;
     if (normalizedConfig.endpoints === undefined && row.contributions._tag === "Unavailable") {
-      rows.set(name, { ...row, endpoints: row.contributions });
+      rows.set(name, { ...row, endpoints: unavailable(row.contributions.reasons) });
       continue;
     }
     const routes = input.routes.get(name);
     const normalized = normalizeEndpointFacts(
-      row.contributions._tag === "Available" ? row.contributions.value : undefined,
+      row.contributions.value,
       normalizedConfig,
-      routes === undefined ? undefined : { service: name, routes },
+      routes === undefined
+        ? undefined
+        : { service: name, routes, allowImplication: row.contributions._tag === "Available" },
     );
     const error = endpointValidationError(normalized.endpoints, {
       appRoot: input.appRoot,
@@ -208,9 +210,13 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
     if (row === undefined || row.endpoints._tag === "Unavailable") continue;
     const facetsFor = endpointsForRoutes(row.endpoints.value);
     for (const route of routes ?? []) {
+      const conflict = conflicts.get(route);
+      const numericFacets = facetsFor(route);
+      if (row.contributions._tag === "Unavailable" && numericFacets?.length === 0 && conflict === undefined)
+        continue;
       const binding = bindRoute(name, row.endpoints.value, route, generatedCertificates.has(name), {
-        conflict: conflicts.get(route),
-        numericFacets: facetsFor(route),
+        conflict,
+        numericFacets,
       });
       if (Result.isFailure(binding) && !reported.has(binding.failure)) {
         reported.add(binding.failure);
