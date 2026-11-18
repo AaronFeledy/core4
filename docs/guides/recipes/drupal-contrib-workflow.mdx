@@ -21,7 +21,8 @@ lando start
 ```
 
 `--yes` keeps Drupal `^11`, PHP 8.4, Apache, MariaDB 11.4, Composer 2, type
-`module`, machine name `example`, and webroot `/app/web`. The machine name must
+`module`, and machine name `example`. The site's webroot is always `/app/web`,
+where the scaffold installs Drupal. The machine name must
 match the root info file (`example.info.yml`). Pass `--answer=type=theme` or
 `--answer=type=profile` when that file says so.
 
@@ -103,7 +104,9 @@ The command updates `drupal/core-recommended`, `drupal/core-dev`, and the
 Composer scaffold and project-message packages if present. It also lets
 Composer update Drush. After Composer succeeds, the command saves the constraint
 as `recipe.options.drupal` in your `.lando.yml`. Check that Composer reports a
-10.x version. This changes packages, not the database schema of an installed site.
+10.x version. This changes packages, not the database schema of an installed site. On an
+installed site, the command briefly makes `web/sites/default` writable so
+Composer can update Drupal's scaffold files there, then restores its permissions.
 If an earlier scaffold didn't finish, `core-version` changes nothing and asks you
 to rerun `lando drupal-contrib-scaffold` first.
 
