@@ -2070,7 +2070,6 @@
       "serviceListenerTarget",
       "snapshotHandle",
       "sqliteAppRelativePathIssue",
-      "sshAgentReadinessCommand",
       "structuralDeprecationKey",
       "suggestionForUnknownKey",
       "validateDeprecationNotice",

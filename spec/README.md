@@ -190,7 +190,7 @@ If you are looking for a public surface or policy:
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
 | Shared certificate-pair preparation, router leaf renewal, current-root checks, issuer repair, and watched certificate reload | 11 | §10.3 + §10.2.1 |
 | External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
-| SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent, relay reuse | 11 | §10.4 |
+| SSH identity, identities, managed key, sidecar and host agent forwarding, applied sidecar readiness, gpg agent, relay reuse | 11 | §10.4 + §10.5.1 |
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | Endpoint-scoped URL scan defaults, explicit override precedence and global disable policy | 06 + 11 | §6.6 + §10.5.3 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |

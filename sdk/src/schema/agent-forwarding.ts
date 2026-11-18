@@ -6,12 +6,6 @@ export const AGENT_SOCKET_CONTAINER_DIR = {
   gpg: "/run/lando/gpg-agent",
 } as const;
 export const SSH_AGENT_SOCKET_NAME = "agent.sock";
-
-export const sshAgentReadinessCommand = () => [
-  "sh",
-  "-c",
-  'output=$(LC_ALL=C ssh-add -l 2>&1); code=$?; [ "$code" -eq 0 ] || { [ "$code" -eq 1 ] && [ "$output" = "The agent has no identities." ]; }',
-];
 export const GPG_AGENT_SOCKET_NAME = "S.gpg-agent";
 
 // ====

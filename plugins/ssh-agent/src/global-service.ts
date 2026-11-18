@@ -5,7 +5,7 @@
  */
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { ServiceConfig, sshAgentReadinessCommand } from "@lando/sdk/schema";
+import { ServiceConfig } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import {
   SSH_AGENT_DIRECTORY,
@@ -32,7 +32,11 @@ export const createSshAgentServiceConfig = (paths = makeLandoPaths()): ServiceCo
     home: false,
     readiness: {
       kind: "command",
-      command: sshAgentReadinessCommand(),
+      command: [
+        "sh",
+        "-c",
+        'output=$(LC_ALL=C ssh-add -l 2>&1); code=$?; [ "$code" -eq 0 ] || { [ "$code" -eq 1 ] && [ "$output" = "The agent has no identities." ]; }',
+      ],
       intervalSeconds: 0.5,
       timeoutSeconds: 5,
       startPeriodSeconds: 25,
