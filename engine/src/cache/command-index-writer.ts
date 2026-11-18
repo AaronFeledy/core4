@@ -28,6 +28,7 @@ import {
 } from "./command-index-source.ts";
 import { type CommandScriptFingerprint, commandScriptFingerprints } from "./command-script-freshness.ts";
 import { appCommandCachePath, appToolingCompilationCachePath, resolveUserCacheRoot } from "./paths.ts";
+import type { ProjectFileFingerprint } from "./project-file-fingerprint.ts";
 
 export {
   type AppCommandCacheReadResult,
@@ -71,6 +72,7 @@ export interface WriteAppCommandCacheOptions {
   readonly cacheRoot?: string;
   readonly now?: () => number;
   readonly sourceScripts?: readonly CommandScriptFingerprint[];
+  readonly sourceProjectFiles?: readonly ProjectFileFingerprint[];
 }
 
 interface ReadAppCommandCacheTaskOptions extends WriteAppCommandCacheOptions {
@@ -103,6 +105,8 @@ const readAppCommandCacheTask = async (
       JSON.stringify(payload.sourceReferencedFiles) !==
       JSON.stringify(options.provenance?.referencedFiles ?? [])
     )
+      return null;
+    if (JSON.stringify(payload.sourceProjectFiles) !== JSON.stringify(options.sourceProjectFiles ?? []))
       return null;
     if (
       payload.sourceContentHash !==
@@ -159,6 +163,7 @@ const writeAppCommandCacheTask = async (
   if (hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION, options.env)) return undefined;
   const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile, options.provenance);
   const sourceReferencedFiles = options.provenance?.referencedFiles ?? [];
+  const sourceProjectFiles = options.sourceProjectFiles ?? [];
   const sourceScripts = options.sourceScripts ?? (await commandScriptFingerprints(appRoot));
   const contentHash = await sourceContentHash(
     source,
@@ -180,6 +185,7 @@ const writeAppCommandCacheTask = async (
       sourceContentHash: contentHash,
       sourceLocalIncludePaths,
       sourceReferencedFiles,
+      sourceProjectFiles,
       sourceScripts,
       sourceMtimeMs: stats.mtimeMs,
       sourceSize: stats.size,
@@ -200,6 +206,7 @@ const writeAppCommandCacheTask = async (
     sourceContentHash: contentHash,
     sourceLocalIncludePaths,
     sourceReferencedFiles,
+    sourceProjectFiles,
     sourceScripts,
     sourceMtimeMs: stats.mtimeMs,
     sourceSize: stats.size,

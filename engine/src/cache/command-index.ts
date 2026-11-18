@@ -12,7 +12,9 @@ import { canonicalCacheJson } from "./canonical.ts";
 import { isAppCommandIndexPayload } from "./command-index-validation.ts";
 import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 13n;
+import type { ProjectFileFingerprint } from "./project-file-fingerprint.ts";
+
+export const COMMAND_INDEX_SCHEMA_VERSION = 14n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 
@@ -92,6 +94,7 @@ export interface AppCommandIndexPayload {
   readonly sourceContentHash?: string;
   readonly sourceLocalIncludePaths?: ReadonlyArray<string>;
   readonly sourceReferencedFiles?: ReadonlyArray<LandofileReferencedFile>;
+  readonly sourceProjectFiles: readonly ProjectFileFingerprint[];
   readonly sourceScripts?: readonly CommandScriptFingerprint[];
   readonly sourceMtimeMs: number;
   readonly sourceSize: number;
