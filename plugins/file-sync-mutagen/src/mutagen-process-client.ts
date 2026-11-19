@@ -167,10 +167,13 @@ const commandFailed = (args: ReadonlyArray<string>, result: ProcessResult): File
 const prompterRace = (result: ProcessResult): boolean =>
   result.exitCode !== 0 && result.stderr.includes("unable to message prompter: prompter not found");
 
-const createFailed = (args: ReadonlyArray<string>, result: ProcessResult): FileSyncStartError =>
-  prompterRace(result)
-    ? startError("Mutagen's daemon lost a prompter race while creating the session.")
-    : commandFailed(args, result);
+/** Identified by reference, so only a `sync create` that lost the race is attempted again. */
+const PROMPTER_RACE = new FileSyncStartError({
+  engineId: ENGINE_ID,
+  message: "Mutagen's daemon lost a race with its own prompter while creating the sync session.",
+  remediation:
+    "Run `lando start` again. Lando adopts or recreates the sync session that Mutagen left behind.",
+});
 
 const stopError = (message: string, name: string): FileSyncStopError =>
   new FileSyncStopError({ engineId: ENGINE_ID, sessionRef: name, message, remediation: REMEDIATION });
@@ -1283,164 +1286,153 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
       ),
     ).pipe(mapFailures((error) => stopError(error.message, String(app.id))));
 
-  const create = ({ name, spec }: { readonly name: string; readonly spec: FileSyncSessionSpec }) =>
-    withAppLock(
-      spec.app,
+  const createOwned = (name: string, spec: FileSyncSessionSpec) =>
+    withLedger((bucket) =>
       Effect.gen(function* () {
-        const owned = yield* withLedger((bucket) =>
-          Effect.gen(function* () {
-            if (spec.target._tag !== "volume" || spec.permissions !== undefined) {
-              return yield* Effect.fail(
-                startError(
-                  "This Mutagen client requires a named volume and currently supports default permissions only.",
-                  spec,
-                ),
-              );
-            }
-            const loaded = yield* readKnownLedger(bucket);
-            yield* directMutationAllowed(loaded, spec.app);
-            const current = yield* reconcilePreparing(bucket, loaded);
-            const completed = appDrain(current, spec.app)?.phase === "completed";
-            if (completed && appReceipts(current, spec.app).length !== 0)
-              return yield* Effect.fail(
-                startError("Completed app disposal still has Mutagen session receipts."),
-              );
-            const target = yield* options.resolveTarget(spec);
-            if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(target.containerId) || !target.path.startsWith("/")) {
-              return yield* Effect.fail(
-                startError("The provider returned an invalid Mutagen helper endpoint.", spec),
-              );
-            }
-            const previous = current.sessions.filter((entry) => entry.name === name);
-            if (previous.length > 1) {
-              return yield* Effect.fail(
-                startError(`Mutagen session "${name}" has duplicate ownership receipts.`, spec),
-              );
-            }
-            if (previous[0] !== undefined) {
-              const owned = yield* receiptOwned(previous[0]);
-              if (!sameOwnedSessionSpec(owned.spec, spec) || !isDeepStrictEqual(owned.target, target)) {
-                return yield* Effect.fail(
-                  startError(`Mutagen session "${name}" differs from its ownership receipt.`, spec),
-                );
-              }
-              return owned;
-            }
-            yield* validateAppSet(current, spec.app);
-            const sameAppIdentifiers = new Set(
-              appReceipts(current, spec.app)
-                .filter((entry) => entry.phase === "committed")
-                .map((entry) => entry.identifier),
+        if (spec.target._tag !== "volume" || spec.permissions !== undefined) {
+          return yield* Effect.fail(
+            startError(
+              "This Mutagen client requires a named volume and currently supports default permissions only.",
+              spec,
+            ),
+          );
+        }
+        const loaded = yield* readKnownLedger(bucket);
+        yield* directMutationAllowed(loaded, spec.app);
+        const current = yield* reconcilePreparing(bucket, loaded);
+        const completed = appDrain(current, spec.app)?.phase === "completed";
+        if (completed && appReceipts(current, spec.app).length !== 0)
+          return yield* Effect.fail(startError("Completed app disposal still has Mutagen session receipts."));
+        const target = yield* options.resolveTarget(spec);
+        if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(target.containerId) || !target.path.startsWith("/")) {
+          return yield* Effect.fail(
+            startError("The provider returned an invalid Mutagen helper endpoint.", spec),
+          );
+        }
+        const previous = current.sessions.filter((entry) => entry.name === name);
+        if (previous.length > 1) {
+          return yield* Effect.fail(
+            startError(`Mutagen session "${name}" has duplicate ownership receipts.`, spec),
+          );
+        }
+        if (previous[0] !== undefined) {
+          const owned = yield* receiptOwned(previous[0]);
+          if (!sameOwnedSessionSpec(owned.spec, spec) || !isDeepStrictEqual(owned.target, target)) {
+            return yield* Effect.fail(
+              startError(`Mutagen session "${name}" differs from its ownership receipt.`, spec),
             );
-            const claims = (session: InspectedSession) =>
+          }
+          return owned;
+        }
+        yield* validateAppSet(current, spec.app);
+        const before = yield* inspectAll;
+        const sameAppIdentifiers = new Set(
+          appReceipts(current, spec.app)
+            .filter((entry) => entry.phase === "committed")
+            .map((entry) => entry.identifier),
+        );
+        if (
+          before.some(
+            (session) =>
               session.name === name ||
               (session.beta.protocol === "docker" &&
                 session.beta.host === target.containerId &&
                 session.beta.path === target.path) ||
               (session.alpha.protocol === "local" &&
                 sameRealpath(spec.source, session.alpha.path) &&
-                !sameAppIdentifiers.has(session.identifier));
-            const unproven = startError(
+                !sameAppIdentifiers.has(session.identifier)),
+          )
+        ) {
+          return yield* Effect.fail(
+            startError(
               "A Mutagen session already uses the requested name, source, or helper target; its ownership cannot be proven.",
               spec,
-            );
-            if ((yield* inspectAll).some(claims)) return yield* Effect.fail(unproven);
-            if (completed) {
-              yield* writeAppDrain(bucket, { app: spec.app, operation: "clear-completion" });
-            }
-            const preparing: SessionReceipt = {
-              phase: "preparing",
-              name,
+            ),
+          );
+        }
+        if (completed) {
+          yield* writeAppDrain(bucket, { app: spec.app, operation: "clear-completion" });
+        }
+        const preparing: SessionReceipt = {
+          phase: "preparing",
+          name,
+          spec,
+          target,
+          dataDir: options.dataDir,
+          dockerHost: options.dockerHost,
+        };
+        yield* writeLedger(bucket, {
+          receipt: preparing,
+          name,
+          operation: "prepare-create",
+        });
+        const args = [
+          "sync",
+          "create",
+          "--no-global-configuration",
+          "--name",
+          name,
+          "--mode",
+          spec.mode,
+          "--no-ignore-vcs",
+          ...spec.excludes.flatMap((exclude) => ["--ignore", exclude]),
+          ...(target.permissions === undefined
+            ? []
+            : [
+                "--default-owner-beta",
+                `id:${target.permissions.owner}`,
+                "--default-group-beta",
+                `id:${target.permissions.group}`,
+                "--default-file-mode-beta",
+                target.permissions.defaultFileMode,
+                "--default-directory-mode-beta",
+                target.permissions.defaultDirectoryMode,
+              ]),
+          spec.source,
+          `docker://${target.containerId}${target.path}`,
+        ];
+        const result = yield* exec(args);
+        if (prompterRace(result)) return yield* Effect.fail(PROMPTER_RACE);
+        if (result.exitCode !== 0) return yield* Effect.fail(commandFailed(args, result));
+        const identifiers = result.stdout.match(/sync_[A-Za-z0-9]+/gu) ?? [];
+        const identifier = identifiers[0];
+        if (identifiers.length !== 1 || identifier === undefined) {
+          return yield* Effect.fail(
+            startError(
+              "Mutagen created a session but did not return one unambiguous ID; inspect the isolated daemon before retrying.",
               spec,
-              target,
-              dataDir: options.dataDir,
-              dockerHost: options.dockerHost,
-            };
-            yield* writeLedger(bucket, {
-              receipt: preparing,
-              name,
-              operation: "prepare-create",
-            });
-            const args = [
-              "sync",
-              "create",
-              "--no-global-configuration",
-              "--name",
-              name,
-              "--mode",
-              spec.mode,
-              "--no-ignore-vcs",
-              ...spec.excludes.flatMap((exclude) => ["--ignore", exclude]),
-              ...(target.permissions === undefined
-                ? []
-                : [
-                    "--default-owner-beta",
-                    `id:${target.permissions.owner}`,
-                    "--default-group-beta",
-                    `id:${target.permissions.group}`,
-                    "--default-file-mode-beta",
-                    target.permissions.defaultFileMode,
-                    "--default-directory-mode-beta",
-                    target.permissions.defaultDirectoryMode,
-                  ]),
-              spec.source,
-              `docker://${target.containerId}${target.path}`,
-            ];
-            const commit = Effect.fnUntraced(function* (identifier: string) {
-              const owned = { identifier, name, spec, target };
-              yield* inspectOwned(owned);
-              const committed: SessionReceipt = { ...preparing, phase: "committed", identifier };
-              yield* writeLedger(bucket, { receipt: committed, name, operation: "commit-create" });
-              return owned;
-            });
-            let result = yield* exec(args);
-            // The daemon sends the prompter ID before registering it. This failure happens before
-            // the session is saved, so one retry is safe once inspection finds no session claiming its name,
-            // source, or helper target.
-            // Remove the retry once the pinned Mutagen includes the fix from upstream PR mutagen-io/mutagen#579.
-            if (prompterRace(result)) {
-              const race = Cause.fail(createFailed(args, result));
-              const afterRace = <A, E>(effect: Effect.Effect<A, E>) =>
-                effect.pipe(
-                  Effect.catchCause((cause) =>
-                    Effect.failCause(
-                      Cause.hasInterruptsOnly(cause) ? cause : mergeFailure(cause, race, "peer"),
-                    ),
-                  ),
-                );
-              const claimed = (yield* afterRace(inspectAll)).filter(claims);
-              const [session] = claimed;
-              if (session !== undefined) {
-                // A session saved despite the race is adopted on an exact match, like an interrupted create.
-                return yield* afterRace(
-                  claimed.length === 1 && session.name === name
-                    ? commit(session.identifier)
-                    : Effect.fail(unproven),
-                );
-              }
-              yield* Effect.logDebug("Retrying Mutagen sync create after a daemon prompter race.");
-              result = yield* afterRace(
-                exec(args).pipe(
-                  Effect.flatMap((retry) =>
-                    retry.exitCode === 0 ? Effect.succeed(retry) : Effect.fail(createFailed(args, retry)),
+            ),
+          );
+        }
+        const owned = { identifier, name, spec, target };
+        yield* inspectOwned(owned);
+        const committed: SessionReceipt = { ...preparing, phase: "committed", identifier };
+        yield* writeLedger(bucket, { receipt: committed, name, operation: "commit-create" });
+        return owned;
+      }),
+    );
+
+  const create = ({ name, spec }: { readonly name: string; readonly spec: FileSyncSessionSpec }) =>
+    withAppLock(
+      spec.app,
+      Effect.gen(function* () {
+        // Mutagen's daemon sends a prompter ID before registering it, so `sync create` can fail before the
+        // session is saved. A second attempt starts with the same reconciliation as the next call would:
+        // it adopts a session the daemon saved anyway, drops an uncreated receipt, or fails closed.
+        // Remove this once the pinned Mutagen includes the upstream fix (mutagen-io/mutagen#579).
+        const owned = yield* createOwned(name, spec).pipe(
+          Effect.catchIf(
+            (error) => error === PROMPTER_RACE,
+            (race) =>
+              Effect.logDebug("Mutagen sync create lost the daemon prompter race; attempting it again.").pipe(
+                Effect.andThen(createOwned(name, spec)),
+                Effect.catchCause((cause) =>
+                  Effect.failCause(
+                    Cause.hasInterruptsOnly(cause) ? cause : mergeFailure(cause, Cause.fail(race), "peer"),
                   ),
                 ),
-              );
-            } else if (result.exitCode !== 0) {
-              return yield* Effect.fail(commandFailed(args, result));
-            }
-            const identifiers = result.stdout.match(/sync_[A-Za-z0-9]+/gu) ?? [];
-            const identifier = identifiers[0];
-            if (identifiers.length !== 1 || identifier === undefined) {
-              return yield* Effect.fail(
-                startError(
-                  "Mutagen created a session but did not return one unambiguous ID; inspect the isolated daemon before retrying.",
-                  spec,
-                ),
-              );
-            }
-            return yield* commit(identifier);
-          }),
+              ),
+          ),
         );
         // A committed durable session may still hold beta writes or an expensive
         // initial scan. Keep its receipt and history if readiness fails.
