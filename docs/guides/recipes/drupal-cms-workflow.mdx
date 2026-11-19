@@ -60,7 +60,7 @@ Each prints `200`. Anything else means Drupal didn't render the page, so check `
 | --- | --- |
 | `appserver` | `php:8.4`, `framework: drupal`, webroot `web`, Composer `2`, Apache on port `80`, depends on `database`, `.lando/php/drupal-cms.ini` at 512M, Git installed at build for the pinned SVG Image source |
 | `database` | `type: mariadb:11.4` |
-| Tooling | `lando drush`, `lando composer`, `lando drupal-cms-scaffold`, and `lando drupal-cms-install` on `appserver`, plus `lando mariadb` from the database service |
+| Tooling | `lando drush`, `lando composer`, `lando phpcs`, `lando phpcbf`, `lando phpstan`, `lando drupal-cms-scaffold`, and `lando drupal-cms-install` on `appserver`, plus `lando mariadb` from the database service |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, or `--answer=database=postgres:16` when you want those instead. `--answer=php=8.6` uses the PHP 8.6 release-candidate image; Xdebug isn't available there yet.
 
@@ -104,6 +104,26 @@ lando drush status --format=json
 ```
 
 Drush gets `status --format=json` and prints its own JSON. Lando's flags go before the task name: `lando --format=json drush status` returns Lando's result envelope instead.
+
+## Lint PHP
+
+`lando phpcs`, `lando phpcbf`, and `lando phpstan` run in `appserver`. With no
+arguments, phpcs and phpcbf lint `web/modules/custom` and `web/themes/custom`
+when those directories exist (the same paths under a custom webroot).
+`lando phpstan` with no arguments runs `analyse` on those paths. Pass your own
+arguments when you want a different target.
+
+The recipe does not install the binaries. Require `drupal/coder` for phpcs and
+phpcbf, or `phpstan/phpstan` or `drupal/core-dev` for phpstan, then
+`lando composer install`. A missing binary prints that package name and exits.
+
+```sh
+lando composer require --dev drupal/coder
+lando phpcs
+lando phpcbf
+lando composer require --dev drupal/core-dev
+lando phpstan
+```
 
 ## Import, export, and snapshot the database
 
@@ -204,6 +224,9 @@ lando exec appserver -- php -v
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drush\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpcs\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpcbf\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpstan\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-cms-scaffold\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-cms-install\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify file="{{appName}}/.lando/php/drupal-cms.ini" expect={{ regex: "memory_limit\\s*=\\s*512M" }} />

@@ -32,4 +32,11 @@ version supports every PHP version. Choose a version supported by your project.
 
 - `lando drush …`: Drush.
 - `lando composer …`: Composer inside the appserver.
+- `lando phpcs …` / `lando phpcbf …`: PHP_CodeSniffer. With no arguments, lints
+  `web/modules/custom` and `web/themes/custom` when those directories exist
+  (or the same paths under a custom webroot). Require `drupal/coder`; Lando
+  does not install it.
+- `lando phpstan …`: PHPStan. With no arguments, runs `analyse` on those same
+  custom paths when they exist. Require `phpstan/phpstan` or `drupal/core-dev`;
+  Lando does not install it.
 - `lando drupal-scaffold`: Scaffold pinned Drupal 11 and project-local Drush, with recovery on retry.

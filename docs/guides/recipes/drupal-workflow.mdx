@@ -62,7 +62,7 @@ lando open --print
 | --- | --- |
 | `appserver` | `php:8.4`, `framework: drupal`, webroot `web`, Composer `2`, Apache on port `80`, depends on `database` |
 | `database` | `type: mariadb:11.4` |
-| Tooling | `lando drush`, `lando composer`, and `lando drupal-scaffold` on `appserver`, plus `lando mariadb` from the database service |
+| Tooling | `lando drush`, `lando composer`, `lando phpcs`, `lando phpcbf`, `lando phpstan`, and `lando drupal-scaffold` on `appserver`, plus `lando mariadb` from the database service |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, `--answer=database=postgres:16`, or `--answer=drupal=10` when you want those instead. `--answer=php=8.6` uses the PHP 8.6 release-candidate image; Xdebug isn't available there yet.
 
@@ -123,6 +123,26 @@ lando drush status --format=json
 ```
 
 Drush gets `status --format=json` and prints its own JSON. Lando's flags go before the task name: `lando --format=json drush status` returns Lando's result envelope instead.
+
+## Lint PHP
+
+`lando phpcs`, `lando phpcbf`, and `lando phpstan` run in `appserver`. With no
+arguments, phpcs and phpcbf lint `web/modules/custom` and `web/themes/custom`
+when those directories exist (the same paths under a custom webroot).
+`lando phpstan` with no arguments runs `analyse` on those paths. Pass your own
+arguments when you want a different target.
+
+The recipe does not install the binaries. Require `drupal/coder` for phpcs and
+phpcbf, or `phpstan/phpstan` or `drupal/core-dev` for phpstan, then
+`lando composer install`. A missing binary prints that package name and exits.
+
+```sh
+lando composer require --dev drupal/coder
+lando phpcs
+lando phpcbf
+lando composer require --dev drupal/core-dev
+lando phpstan
+```
 
 ## Run Drupal cron on a schedule
 
@@ -242,6 +262,9 @@ lando exec appserver -- php -v
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drush\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpcs\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpcbf\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpstan\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-scaffold\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
     </Step>
     <Step name="start">

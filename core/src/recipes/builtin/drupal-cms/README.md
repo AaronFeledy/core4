@@ -52,5 +52,12 @@ the Composer project (`drupal/cms`) and its bundled install profile / recipes.
 
 - `lando drush`: Drush (via `vendor/bin/drush` after scaffolding).
 - `lando composer`: Composer inside the appserver.
+- `lando phpcs …` / `lando phpcbf …`: PHP_CodeSniffer. With no arguments, lints
+  `web/modules/custom` and `web/themes/custom` when those directories exist
+  (or the same paths under a custom webroot). Require `drupal/coder`; Lando
+  does not install it.
+- `lando phpstan …`: PHPStan. With no arguments, runs `analyse` on those same
+  custom paths when they exist. Require `phpstan/phpstan` or `drupal/core-dev`;
+  Lando does not install it.
 - `lando drupal-cms-scaffold`: Scaffold Drupal CMS 2 and project-local Drush into the mounted app root. Handles empty volume directories atomically.
 - `lando drupal-cms-install`: Install Drupal CMS 2 using the drupal_cms_starter recipe with wired database credentials.

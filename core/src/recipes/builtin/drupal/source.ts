@@ -1,6 +1,19 @@
 import type { RecipeSource } from "@lando/sdk/schema";
 import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
-import { composerTool, drupalOptions, drupalWebVariants, phpAppserver } from "../source-php.ts";
+import {
+  PHPCBF_TOOLING_COMMAND,
+  PHPCS_TOOLING_COMMAND,
+  PHPSTAN_TOOLING_COMMAND,
+} from "../php-quality-command.ts";
+import {
+  composerTool,
+  drupalOptions,
+  drupalWebVariants,
+  phpAppserver,
+  phpcbfTool,
+  phpcsTool,
+  phpstanTool,
+} from "../source-php.ts";
 
 export const source = {
   id: "drupal",
@@ -28,6 +41,9 @@ export const source = {
         wrapper: true,
       },
       composer: composerTool,
+      phpcs: { ...phpcsTool, cmds: [PHPCS_TOOLING_COMMAND] },
+      phpcbf: { ...phpcbfTool, cmds: [PHPCBF_TOOLING_COMMAND] },
+      phpstan: { ...phpstanTool, cmds: [PHPSTAN_TOOLING_COMMAND] },
       "drupal-scaffold": {
         service: "appserver",
         description: "Scaffold Drupal and project-local Drush into the mounted app root.",
