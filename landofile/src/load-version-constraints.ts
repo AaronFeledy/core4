@@ -38,6 +38,7 @@ export const loadVersionConstraints = Effect.fnUntraced(function* (
           column: undefined,
           remediation: `Edit the lando: field in ${entry.source} to a valid npm semver range such as ">=4.1 <5", "^4", or "4.x".`,
         }),
+        { kind: "local", source, block: false },
       );
       continue;
     }

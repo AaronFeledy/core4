@@ -1,6 +1,10 @@
 import { dirname, resolve } from "node:path";
 import { parseEnvFile } from "@lando/landofile/env-file";
-import { attributeEffectiveLintIssue } from "@lando/landofile/lint";
+import {
+  type LoadUnavailableSite,
+  attributeEffectiveLintIssue,
+  overlapsUnavailable,
+} from "@lando/landofile/lint";
 import { provenanceOf } from "@lando/landofile/provenance";
 import type { ConfigLintViolation, LoadScopedLandofile } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
@@ -22,6 +26,7 @@ export const lintEnvFiles = Effect.fnUntraced(function* (
   file: string,
   fileSystem: Context.Service.Shape<typeof FileSystem> | undefined,
   authored: LoadScopedLandofile["document"],
+  unavailable: readonly LoadUnavailableSite[] = [],
 ) {
   const landofile = compiled.document;
   const refs = [
@@ -34,6 +39,7 @@ export const lintEnvFiles = Effect.fnUntraced(function* (
   const findings: ConfigLintViolation[] = [];
   const provenance = provenanceOf(compiled);
   for (const ref of refs) {
+    if (overlapsUnavailable(ref.path, unavailable)) continue;
     for (const [index, authoredPath] of ref.files.entries()) {
       const path = [...ref.path, index];
       if (

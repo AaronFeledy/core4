@@ -1,10 +1,9 @@
 import { expect, test } from "bun:test";
 import { LandofileShape } from "@lando/sdk/schema";
 import { Schema } from "effect";
-import { deferredSiteKey } from "../../src/planner/landofile-scopes.ts";
 import { validateResolvedLandofile } from "../../src/planner/resolved-validation.ts";
 
-const validate = (value: unknown, blocked: ReadonlySet<string> = new Set()) =>
+const validate = (value: unknown, blocked: readonly (readonly (string | number)[])[] = []) =>
   validateResolvedLandofile({
     landofile: Schema.decodeUnknownSync(LandofileShape)(value),
     landofilePath: "/app/.lando.yml",
@@ -95,17 +94,16 @@ test("skips blocked aliases without suppressing independent DNS collisions", () 
       {
         services: { web: {}, api: { hostnames: ["web", "WEB"] } },
       },
-      new Set([deferredSiteKey(["services", "api", "hostnames", 0])]),
+      [["services", "api", "hostnames", 0]],
     ),
   ).toMatchObject([{ path: ["services", "api", "hostnames", 1] }]);
 });
 
 test("still reports a key collision when a field inside the service is blocked", () => {
   // Given Web's hostname depends on a value that could not be resolved.
-  const issues = validate(
-    { services: { Web: { hostnames: ["{{ services.bad.creds.host }}"] }, web: {} } },
-    new Set([deferredSiteKey(["services", "Web", "hostnames", 0])]),
-  );
+  const issues = validate({ services: { Web: { hostnames: ["{{ services.bad.creds.host }}"] }, web: {} } }, [
+    ["services", "Web", "hostnames", 0],
+  ]);
   // Then the concrete keys Web and web still collide.
   expect(issues).toHaveLength(1);
   expect(issues[0]).toMatchObject({ path: ["services", "web"], rule: "landofile.dns-name" });
@@ -119,7 +117,7 @@ test("rejects two services whose derived container names collide", () => {
     }),
     landofilePath: "/app/.lando.yml",
     appSlug: "a".repeat(57),
-    blocked: new Set(),
+    blocked: [],
   }).issues.filter(({ rule }) => rule === "landofile.dns-name");
   // Then the second service is reported with the shared container name.
   expect(issues).toHaveLength(1);
