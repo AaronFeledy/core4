@@ -1,6 +1,6 @@
 # Lando v4: Executable Guides and Scenarios
 
-> **Part 17 of 20** · [Index](./README.md)
+> **Part 17 of 21** · [Index](./README.md)
 > **Read next:** [18 The Global App](./18-global-app.md)
 
 This part defines how MDX-authored user guides generate runnable scenarios without turning reader prose into test syntax.
@@ -167,7 +167,7 @@ The author workflow MUST run a guide, scenario, variant, step, or fixture; prese
 
 ### 19.13 Recipe README integration
 
-`recipes/<id>/README.mdx` is the canonical recipe guide (§8.8.2). `scripts/build-recipe-readmes.ts` generates one prose-only scaffold README per legal variant cell and selects the cell from resolved recipe answers.
+`recipes/<id>/README.mdx` is the canonical recipe guide (§8.8.2). `templates/<id>/README.mdx` is the canonical guide of a bundled template (§23.3) and follows the same rules. `scripts/build-recipe-readmes.ts` generates one prose-only scaffold README per legal variant cell and selects the cell from resolved recipe answers.
 
 Strip-and-flatten consumes the resolved scenario (§19.7). It MUST unwrap the guide and rendered reader scenario, keep authored scenario and step order including steps from the selected tab, turn steps into numbered headings, render displayed commands as fences, omit hidden and test-only content, substitute variable displays, flatten cleanup into a final section, resolve tabs to the selected cell, and include inspected public output only when captured. The cleanup section hoists the cleanup step's ordered fences and coalesces only adjacent fences of the same language; it does not change cleanup execution semantics. Output MUST contain no MDX JSX, imports, test-only content, or unresolved guide references; opaque foreign template syntax inside literal props is not a guide reference and is preserved. `scaffoldStrip={false}` MAY explicitly preserve MDX.
 

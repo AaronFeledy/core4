@@ -1,6 +1,6 @@
 # Lando v4: Binary Build and Release Engineering
 
-> **Part 15 of 20** · [Index](./README.md)
+> **Part 15 of 21** · [Index](./README.md)
 > **Read next:** [16 Deprecation and Surface Evolution](./16-deprecation-and-surface-evolution.md)
 
 This part specifies how the §13 distribution artifacts are built, signed, published, installed, and updated.
@@ -55,6 +55,7 @@ The deprecation gate runs immediately after codegen. For Lando-owned surfaces, i
 | `provider-images` | Pinned provider image table | Generated provider-image table | Derived drift and provider tests |
 | `compose-fixture-manifest` | Compose fixtures | Fixture rejection manifest | Derived drift and fixture tests |
 | `bundled-recipes` | Recipe ship list and manifests | Static recipe index; target embedded recipe assets | Derived drift and recipe tests |
+| `bundled-templates` | Template ship list and `templates/*/template.yml` | Static template index and embedded template trees | Derived drift and template tests |
 | `bootstrap-layers` | Service registry, bootstrap ranks, plugin contributions | One generated Layer per bootstrap level | Derived drift, boundary, and perf gates |
 | `schema-snapshot` | Public schema, command-result, and bundled-manifest registries | Schema artifacts, references, fixtures, package mirrors | Derived regeneration and schema compatibility |
 | `setup-plugin-flags` | Ship list and setup contributions | Setup flag metadata | Derived drift and command tests |
@@ -77,7 +78,7 @@ The deprecation gate runs immediately after codegen. For Lando-owned surfaces, i
 | `tomcat-bump-workflow` | Paired Tomcat maintenance policy and action pins | Tomcat maintenance workflow | Committed-workflow regeneration, proposal behavior, and CI dispatch checks |
 | `node-releases-bump-workflow` | Node release maintenance policy and action pins | Node release-schedule maintenance workflow | Committed-workflow regeneration and diff |
 
-Network-dependent maintenance generators for runtime bundles, Compose vendor bytes, upstream Compose fixtures, paired Tomcat images/configuration, and the Node release-schedule pin remain outside `bun run codegen`; their dedicated workflows or maintainer commands own pin updates and live verification. Planned error, event, service, recipe-action, API-report, acceptance-index, Mutagen-client, and plugin-template generators remain deferred until corresponding scripts exist.
+Network-dependent maintenance generators for runtime bundles, Compose vendor bytes, upstream Compose fixtures, paired Tomcat images/configuration, and the Node release-schedule pin remain outside `bun run codegen`; their dedicated workflows or maintainer commands own pin updates and live verification. Planned error, event, service, template-step, API-report, acceptance-index, Mutagen-client, and plugin-template generators remain deferred until corresponding scripts exist.
 
 The explicit `update:tomcat` command MUST verify the multi-platform image index, required Linux architectures, release identity, and matching immutable Apache baseline before writing paired inputs. Same-version image rebuilds count as updates. The update report MUST distinguish a same-version image rebuild from a release change and MUST NOT present an unchanged major as updated. Network or validation failures MUST leave existing inputs untouched. Image pins, baseline XML, and upstream notices remain committed; the embedded TypeScript catalog is derived offline. Every codegen consumer, including standalone CI jobs, MUST materialize that catalog before importing bundled plugins. Dedicated maintenance automation MAY propose paired changes after focused checks and MUST request live compatibility checks for supported majors, but MUST NOT auto-merge. Upstream drift requires maintenance review, not network discovery during normal builds or app startup.
 

@@ -1,6 +1,6 @@
 # Lando v4: Testing, Distribution, and Quality Gates
 
-> **Part 13 of 20** · [Index](./README.md)
+> **Part 13 of 21** · [Index](./README.md)
 > **Read next:** [14 Appendices](./14-appendices.md)
 
 This part defines the release quality bar, test architecture, distribution forms, CI cadences, and release channels.
@@ -69,7 +69,9 @@ All tests run under `bun test` unless a gate names another tool.
 | Config dataset contract | Test tracked/unignored targets and unsafe sibling stages/backups/snapshots, private ACLs, adoption/user-edit conflicts, comment/local-key preservation, unreadable keys without sendable placeholders, topology omission/local mapping, explicit outbound key allowlists, no implicit deletion/bulk secret export, and no next-process overlay (§10.12.7). |
 | Tether and tunnel contract | Test actual-resource production/staging/unknown/protected/unlisted refusal; CLI-only typed confirmation; stopped-app precondition; provider/container reachability; TLS identity; direct-endpoint forwarding without credential bypass; crash/lease revocation; disconnect-before-consumer cleanup; race blocking; no local-volume purge (§10.12.5). |
 | CodeSync contract | Exercise pull-with-code and switch through the same refresh/hook/revalidation sequence, including an already-current ref. Test exact branches/tags, source/artifact consent, FF-only updates, ignored/untracked collisions, dirty/in-progress trees, no reset/push, fresh target hook context, no implicit second metadata fetch, final binding re-resolution, noPull invalidation, and truthful code-only failure receipts against doubles and real host Git. |
-| InitSource contract | Test credential-free local/public sources, HTTPS without SSH, missing-auth refusal, ordered prompts/choices, locator-only resolution, acquisition-only staging, canonical preview, destination conflicts/rechecks, final-root transactions with no relocated journals/ledgers, metadata publication before post-init/start, and honest receipts after placement or commit failure (§8.8.13). |
+| InitSource contract | Test credential-free local/public sources, HTTPS without SSH, missing-auth refusal, ordered prompts/choices, locator-only resolution, acquisition-only staging, canonical preview, destination conflicts/rechecks, final-root transactions with no relocated journals/ledgers, metadata publication before auxiliaries, and honest receipts after placement or commit failure (§8.8.13). |
+| Template contract | The §23.18 cases: provider-free files-only runs, flag-only answers, suffix rendering, never-overwrite and marked replacement, `--add` fragments and instances, step rollback, resume and `--abort`, consent storage and invalidation, trust reasons, and host-code refusal. |
+| Template-step contract | A plugin step kind's `plan` is pure and describes what `run` does; `run` honors cancellation and reports an observed exit. |
 | Translation refresh contract | Test zero API calls during automatic refresh, complete fingerprint/plan keys, unchanged-input no-op, explicit fetch failure without stale fallback, missing metadata remediation, environment/branch cache isolation on switch, local-only check, blocking diagnostics, and managed-file conflicts (§7.4.2). |
 | Remote integration profiles | Exercise the same contracts with six capability fixtures: hosted-Git/SSH CMS, API-backup enterprise CMS, certificate/branch PaaS, Git-deployed branch config, marketplace-backed app hosting, and managed database/object storage. Cover multisite units, deploy-only refs, source/build refs, write-only config, unavailable exports, and direct/tunneled clients; fixtures MUST NOT assert unverified live-vendor support. |
 | Managed-file contract | Plan/apply parity, atomic replacement, containment, ownership markers, ledger integrity, adoption, release, and redaction are enforced. |
@@ -130,7 +132,7 @@ The schema snapshot is the complete generated set: public SDK JSON Schemas and i
 
 Changes are classified as `compatible`, `breaking`, or `unknown` using explicit input/output polarity. Unaccepted `breaking` and `unknown` changes fail. Exceptions MUST name an exact surface, change kind, JSON path, and justification; wildcards and whole-schema exceptions are forbidden.
 
-Every public schema MUST have canonical annotations, stable JSON Schema output, successful examples, and round-trip tests. Generated schema, command, API, event, service, recipe-action, and error references MUST build without hand edits. The Starlight site MUST build authored Markdown/MDX together with generated references and required public guide transcripts.
+Every public schema MUST have canonical annotations, stable JSON Schema output, successful examples, and round-trip tests. Generated schema, command, API, event, service, template-step, and error references MUST build without hand edits. The Starlight site MUST build authored Markdown/MDX together with generated references and required public guide transcripts.
 
 ### 13.3 Type gates
 

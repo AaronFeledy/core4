@@ -1,6 +1,6 @@
 # Lando v4: Scratch Apps
 
-> **Part 19 of 20** · [Index](./README.md)
+> **Part 19 of 21** · [Index](./README.md)
 > **Read next:** [20 Programmable Execution](./20-programmable-execution.md)
 
 **Scratch apps** are short-lived Lando apps whose resources and materialized state are owned by an Effect `Scope`. They support isolated forks of existing apps, recipe-backed temporary stacks, and library-hosted test environments.
@@ -64,7 +64,7 @@ The entire scratch tree MUST be excluded from cwd discovery. After resource dest
 
 #### 21.4.2 Scratch mode
 
-`apps:scratch:start --from <recipe-ref>` materializes through the standard recipe pipeline (§8.8). Recipe `postInit:` actions MUST NOT run unless `--run-post-init` is set.
+`apps:scratch:start --from <recipe-ref>` materializes through the standard recipe pipeline (§8.8). `<recipe-ref>` is a `SourceLocator` (§23.3).
 
 Recipe resolution, prompt precedence, validation, fragments, and assets follow §8.8. Missing non-interactive answers fail through the recipe error contract and remove partial state. The generated Landofile uses the scratch id. Scratch mode defaults to `baked` isolation (§21.7).
 
@@ -75,6 +75,8 @@ The `config` source requires strict authoring-wire validation, one conversion to
 Copy the workspace under fork containment/exclusion rules; default isolation is `full`. The supplied document is authoritative over copied `.lando.*` and ambient local/user layers. Explicit includes and load inputs follow canonical policy inside the managed workspace. Standard scratch planning, build, and readiness apply, with session admission before materialization (§22.6).
 
 Retain the `LoadScopedLandofile` and managed-root provenance with the handle/plan for later operations and cleanup; never rediscover copied configuration. Registry/listing summaries contain kind, root identity, and digest, not authored input or resolved secrets. Existing applied-plan persistence and orphan recovery remain authoritative.
+
+A `config` acquisition MAY name a `workspace` mount: one authorized host directory bound read-write at the primary service's working directory in place of a copy. Template step environments use it for the destination (§23.8). Inside a session it requires `policy.mountRoots` admission (§22.6.1).
 
 ### 21.5 `ScratchAppService` core service
 
@@ -185,7 +187,7 @@ Every command uses `scratch` bootstrap. `apps:list --include-scratch` adds runni
 
 #### 21.10.1 `apps:scratch:start` flags
 
-Behavior-defining flags are `--fork`, `--from`, `--source`, `--isolate=full|baked|cwd`, `--mount-cwd`, `--share-global-storage`, `--no-hostname-suffix`, `--hostname`, `--name`, `--exclude`, `--no-local-overrides`, recipe-answer and interaction flags, `--run-post-init`, `--detach`, `--keep-volumes`, and `--keep-on-failure`.
+Behavior-defining flags are `--fork`, `--from`, `--source`, `--isolate=full|baked|cwd`, `--mount-cwd`, `--share-global-storage`, `--no-hostname-suffix`, `--hostname`, `--name`, `--exclude`, `--no-local-overrides`, recipe-answer and interaction flags, `--detach`, `--keep-volumes`, and `--keep-on-failure`.
 
 Foreground mode owns the scratch in the command scope and blocks until exit or interruption. Detached mode records the identity, source, isolation, policy, owner, and start state in `<userDataRoot>/scratch/registry.bin` and returns. `--keep-volumes` applies to foreground and explicit stop cleanup but MUST NOT prevent `apps:poweroff` cleanup. `--keep-on-failure` retains failed state for explicit inspection and destruction.
 

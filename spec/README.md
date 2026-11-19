@@ -5,7 +5,7 @@
 
 This is an architecture-level specification: every public contract (services, schemas, errors, events, commands, manifest keys, and invariants) is named and its rules stated; shapes, bodies, and mechanics live in code and generated reference docs.
 
-The specification lives in twenty focused parts. Files are canonical; **cross-references use stable `§N` section numbers independent of file numbers**, so a reference such as §4.2 remains valid when parts move. Use the topic lookup to map a section to its part.
+The specification lives in twenty-one focused parts. Files are canonical; **cross-references use stable `§N` section numbers independent of file numbers**, so a reference such as §4.2 remains valid when parts move. Use the topic lookup to map a section to its part.
 
 The split is almost one section per file, with these principled merges and additions:
 
@@ -18,6 +18,7 @@ The split is almost one section per file, with these principled merges and addit
 - **§20** is filed as part 18 because the global app is a cross-cutting host-level app used by routing and shared services.
 - **§21** is filed as part 19 because scratch apps are scope-bounded peers to user and global apps with distinct identity and persistence rules.
 - **§22** is filed as part 20 because programmable execution composes existing environments, operations, and scopes without changing Lando's local-development focus.
+- **§23** is filed as part 21 because templates compose recipes, the template engine, source acquisition, scratch apps, and execution sessions into project generation.
 
 ---
 
@@ -45,6 +46,7 @@ The split is almost one section per file, with these principled merges and addit
 | 18 | [`18-global-app.md`](./18-global-app.md) | §20 | Defines global-app identity and Landofile, plugin contributions, lifecycle and CLI, networking, storage, proxy realization, errors, and non-goals. |
 | 19 | [`19-scratch-apps.md`](./19-scratch-apps.md) | §21 | Defines scratch identity and sources, scoped lifecycle, isolation, storage rewriting, routing, CLI and library access, cleanup, errors, and non-goals. |
 | 20 | [`20-programmable-execution.md`](./20-programmable-execution.md) | §22 | Defines opt-in execution sessions, borrowed/owned environments, programmatic configuration, admission, process handles, private artifacts, and local-development compatibility. |
+| 21 | [`21-templates-and-create.md`](./21-templates-and-create.md) | §23 | Defines templates, `lando create`, the shared source locator and reviewed index, questions, file rendering and merges, steps and step environments, composition, consent, run snapshots and rollback, and plugin extension points. |
 
 ---
 
@@ -142,6 +144,7 @@ If you are looking for a public surface or policy:
 | Global config keys, root defaults, and pure path resolution | 07 | §7.5 + §7.5.1 |
 | Environment override naming | 07 | §7.6 |
 | Includes, fragments, lockfile, cache, and security | 07 | §7.7 |
+| Project host approval for host code and host exposure | 07 | §7.9 |
 | Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
 | Schema and generated-reference publication, indexed endpoint diagnostics, resolved `kind` encoding, and shared provider-free route listener derivation | 07 | §7.8 |
 | Shared resolved-Landofile validation, typed lint rule registry, generated rule reference, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
@@ -165,7 +168,7 @@ If you are looking for a public surface or policy:
 | Shared CLI cancellation tag, signal status, and cleanup failure preservation | 08 | §8.4.1 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
-| Bounded recipe post-init, prepared-script integrity, and public failure context | 08 | §8.8.8 |
+| Recipe messages and the removal of recipe-run actions | 08 | §8.8.8 |
 | Single preparation, immutable pre-publication review, and unattended init paths | 08 | §8.8.7 + §8.8.9 |
 | Init sources, source auth, and hoster init | 08 | §8.8.13 |
 | Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |
@@ -254,6 +257,18 @@ If you are looking for a public surface or policy:
 | Effect composition and future integration boundary | 20 | §22.9 |
 | Local-development UX/performance and execution acceptance | 20 | §22.10 + §22.12 |
 | Execution tagged errors | 20 | §22.11 |
+| Templates versus recipes, and the `@lando/scaffold` seam | 21 | §23.1 |
+| `apps:create`, `--add`, and the `meta:templates:*` commands | 21 | §23.2 |
+| `SourceLocator` grammar and the reviewed source index | 21 | §23.3 |
+| Template manifest, questions, per-question flags, and secret answers | 21 | §23.4 + §23.5 |
+| Suffix rendering, never-overwrite rule, and declared merges | 21 | §23.6 |
+| Step kinds, the `command` step allowlist, and step environments | 21 | §23.7 + §23.8 |
+| Template Lando part: wrapped recipe, fragments, and include edits | 21 | §23.9 |
+| Template inheritance, nested templates, requirements, and instances | 21 | §23.10 |
+| Template consent, runnable digest, and trust reasons | 21 | §23.11 |
+| Run lifecycle, snapshots, resume, and rollback | 21 | §23.12 |
+| Template plugin contributions and persistence | 21 | §23.14 + §23.15 |
+| Template tagged errors and non-goals | 21 | §23.16 + §23.17 |
 
 ---
 
@@ -276,13 +291,13 @@ Public surfaces MUST have one canonical registry. Narrative sections may explain
 
 Canonical owners:
 
-- Built-in commands, aliases, flags, args, bootstrap levels, completion policies, recipe post-init eligibility, and command docs metadata: the `LandoCommandSpec` registry (§8.2, §8.3).
+- Built-in commands, aliases, flags, args, bootstrap levels, completion policies, template-step eligibility, and command docs metadata: the `LandoCommandSpec` registry (§8.2, §8.3).
 - Plugin command identity, aliases, listing metadata, and MCP eligibility: manifest command descriptors (§9.4); plugin command inputs and execution: the command module's `ExecutableCommandSpec` (§8.3, §9.7).
 - Public schemas, event payload schemas, tagged errors, and plugin-facing contract metadata: the `@lando/sdk` schema, error, and event registries (§7.8, §13.2).
 - Core service tags and public service exports: §3.4 plus `@lando/core/services` (§16.2).
 - Secret and PII redaction: `@lando/sdk/secrets` owns the value layer, pattern-class catalog, `secrets`/`telemetry`/`transcript` profiles, and `[redacted]` sentinel, surfaced through `RedactionService` (§3.7, §3.4). This invariant is non-replaceable, has no `redactors:` plugin surface (§4.2), composes into every sensitive emitter, and is protected by the §13.4 boundary gate.
 - Package entry points and public library exports: `package.json#exports` plus the API report gate (§2.7, §16.2, §13.4).
-- Recipe action types and the `postInit.command` allowlist: generated from command metadata (§8.8.8).
+- Template step kinds and the `command` step allowlist: generated from command metadata (§23.7).
 - Acceptance checklist items: stable ids mapped to tests and public surfaces (§15, §17.9).
 - Deprecation notices: schema annotations, contract fields, manifest fields, or TSDoc tags per §18.5, merged by `DeprecationService` (§18.3) and published as `dist/schemas/deprecation-notice.json` (§18.2).
 - Executable-guide vocabulary: prop schemas, `GuideFrontmatter`, `ScenarioProps`, `MatcherSchema`, `Transcript`/`TranscriptFrame`, `TabAxis`/`TabAxisValue`, `TabsProps`/`TabProps`, and redactions belong to `@lando/sdk/docs/components` and `@lando/sdk/docs/redactions` (§19.3, §19.6, §19.16). JSX/Astro runtime implementations and Starlight integration belong to `@lando/core/docs/components`; `ScenarioContext` belongs to `@lando/core/testing` (§19.4, §16.8).

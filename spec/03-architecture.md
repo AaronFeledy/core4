@@ -1,6 +1,6 @@
 # Lando v4: Architecture, Lifecycle, and Events
 
-> **Part 3 of 20** · [Index](./README.md)
+> **Part 3 of 21** · [Index](./README.md)
 > **Read next:** [04 Pluggability](./04-pluggability.md)
 
 This part defines the runtime structure, bootstrap levels, core services, lifecycle taxonomy, event bus, and imperative shells.
@@ -115,6 +115,8 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `GlobalAppService` | Global app regeneration, planning, lifecycle, and auto-start (§20) |
 | `ScratchAppService` | Scoped scratch app acquisition, lifecycle, registry, and reap (§21) |
 | `ExecutionSessionService` | Opt-in in-process ownership, admission, observations, process handles, and local artifact access over existing services (§22); not plugin-replaceable |
+| `TemplateService` | Resolve, plan, and run templates over sessions, source acquisition, and managed files (§23); not plugin-replaceable |
+| `HostApprovalStore` | Read and record per-project host approvals (§7.9) |
 | `Telemetry` | Non-blocking usage telemetry (§2.4) |
 | `RedactionService` | Canonical secret and PII masking (§3.7); never plugin-replaceable |
 | `AppOutputRedaction` | Plugin-facing app-output preparation backed by the engine's shared registration step; reads current provider and trusted worker credentials, never resolves or persists secret-store values (§3.7) |
@@ -158,6 +160,7 @@ Events are typed, schema-validated, and drawn from a closed registry. Plugin sub
 | Config refresh | `pre-config-refresh`, `post-config-refresh`, `config-source-drift` |
 | Init source | `pre-init-source-auth`, `post-init-source-auth`, `pre-init-source-acquire`, `post-init-source-acquire` |
 | Execution | `execution-session-opened`, `execution-session-closing`, `execution-session-closed`, `execution-operation-started`, `execution-operation-finished` |
+| Template | `pre-template-acquire`, `post-template-acquire`, `pre-template-run`, `post-template-run`, `template-step-start`, `template-step-complete`, `template-step-fail`, `template-step-rollback`, `pre-template-rollback`, `post-template-rollback` |
 | Cross-cutting | `deprecation-used` |
 
 Service events bracket one service's lifecycle action. `pre-service-stop` fires before an ownership-authorized stop or removal is attempted and `post-service-stop` only after that attempt succeeds, including when the container was already gone; a failed attempt publishes no `post-service-stop`, and one action never publishes two pairs. The operation that performs the action publishes them, including a whole-app user start that removes the containers of services its desired plan no longer names (§5.3.1). That removal runs no authored `pre-stop` or `post-stop` steps (§8.5.7).

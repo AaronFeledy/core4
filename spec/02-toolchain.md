@@ -1,6 +1,6 @@
 # Lando v4: Toolchain
 
-> **Part 2 of 20** · [Index](./README.md)
+> **Part 2 of 21** · [Index](./README.md)
 > **Read next:** [03 Architecture](./03-architecture.md)
 
 This part defines the technology stack and the architectural rules each component imposes.
@@ -131,7 +131,7 @@ Effect plus a small set of YAML/CA primitives are the only target runtime depend
 
 ### 2.7 Package surface
 
-`@lando/core` is one public ESM package containing the CLI, native dispatcher, runtime, schemas, and errors. A separate public runtime/CLI split is rejected (§16). Approved private seams include `@lando/paths`, `@lando/state-store`, `@lando/landofile`, `@lando/engine`, `@lando/redaction`, `@lando/http-client`, and `@lando/managed-file`; additional seams require package-DAG ownership and payment of the scanner-retirement ratchet. Private seams MUST NOT become a second public runtime, plugins MUST NOT depend on `@lando/core` or `@lando/engine`, and Effect-free pure seams are preferred where applicable.
+`@lando/core` is one public ESM package containing the CLI, native dispatcher, runtime, schemas, and errors. A separate public runtime/CLI split is rejected (§16). Approved private seams include `@lando/paths`, `@lando/state-store`, `@lando/landofile`, `@lando/engine`, `@lando/redaction`, `@lando/http-client`, `@lando/managed-file`, and `@lando/scaffold` (§23.1); additional seams require package-DAG ownership and payment of the scanner-retirement ratchet. Private seams MUST NOT become a second public runtime, plugins MUST NOT depend on `@lando/core` or `@lando/engine`, and Effect-free pure seams are preferred where applicable.
 
 | Subpath | Purpose |
 |---|---|

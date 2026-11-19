@@ -1,6 +1,6 @@
 # Lando v4: Embedding and Library Use
 
-> **Part 9 of 20** · [Index](./README.md)
+> **Part 9 of 21** · [Index](./README.md)
 > **Read next:** [10 Plugins](./10-plugins.md)
 
 An embedding host is a Bun program that uses the same Effect runtime, planner, providers, plugins, and lifecycle bus as the CLI (§3.6), with resource lifetime owned by `Scope`.
