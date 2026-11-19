@@ -5,6 +5,7 @@ import {
   containerHelperDownloadStep,
   renderContainerHelperJob,
 } from "./_container-helper-workflow.ts";
+import { pinnedAction } from "./action-pins.ts";
 
 import { landoRootlessPrereqSteps, restoreOrAssembleRuntimeBundleSteps } from "./build-ci-workflow.ts";
 import { CI_PLATFORMS, type CiPlatform, type PlatformReadinessCell } from "./ci-platforms.ts";
@@ -33,10 +34,10 @@ const renderJob = (cell: PlatformReadinessCell): string => {
     env:
       ${DOCKER_HUB_LOGIN_ENV}: \${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ${pinnedAction("oven-sh/setup-bun")}
         with:
           bun-version-file: .bun-version
 
@@ -142,7 +143,7 @@ ${landoRootlessPrereqSteps}
 
       - name: Upload workflow performance report and trend
         if: always() && steps.performance.outcome != 'skipped'
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: workflow-performance-${cell.id}
           path: |

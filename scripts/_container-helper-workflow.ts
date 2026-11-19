@@ -1,3 +1,4 @@
+import { pinnedAction } from "./action-pins.ts";
 /**
  * Shared workflow pieces for the in-container helper. One Linux job builds the
  * static Go helper with Lando itself (Docker provider, no host Go) and uploads
@@ -17,7 +18,7 @@ export const renderContainerHelperJob = (): string => `  ${CONTAINER_HELPER_JOB_
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${isolateLandoRootsStep}
 
@@ -36,7 +37,7 @@ ${setupBunSteps}
           ${testSelectionCommand("container-helper")}
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: ${CONTAINER_HELPER_ARTIFACT}
           path: core/container-helper/dist/
@@ -45,7 +46,7 @@ ${setupBunSteps}
 
 // Artifacts drop the executable bit; tests run the downloaded helpers directly.
 export const containerHelperDownloadStep = `      - name: Download container helper
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: ${pinnedAction("actions/download-artifact")}
         with:
           name: ${CONTAINER_HELPER_ARTIFACT}
           path: core/container-helper/dist
@@ -59,7 +60,7 @@ export const renderContainerHelperArm64Job = (): string => `  ${CONTAINER_HELPER
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${isolateLandoRootsStep}
 
