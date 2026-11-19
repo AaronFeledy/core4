@@ -39,8 +39,7 @@ for (const options of [{ subcommand: "get", key: "services.web" }, { path: "serv
       sources: [],
       redactionTokens: ["selection-canary"],
       value: {
-        // Resolved selection reads the encoded Landofile tree so map forms match full JSON/YAML.
-        dependsOn: { database: { condition: "service_healthy", restart: true } },
+        dependsOn: [{ service: "database", condition: "service_healthy", restart: true }],
         type: "node:lts",
       },
     });

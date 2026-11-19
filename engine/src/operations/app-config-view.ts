@@ -8,7 +8,7 @@ import {
 import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { encodeLandofileSourceValue } from "@lando/sdk/landofile";
-import { LandofileShape, LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
+import { LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { getAtPath } from "../config-write/dot-path.ts";
@@ -178,8 +178,7 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
         redactionTokens,
       };
       if (selector === undefined) return { source, ...metadata, landofile };
-      const encoded = yield* Schema.encodeEffect(LandofileShape)(landofile).pipe(Effect.orDie);
-      const selected = getAtPath(encoded, selector);
+      const selected = getAtPath(landofile, selector);
       return {
         source,
         ...metadata,
