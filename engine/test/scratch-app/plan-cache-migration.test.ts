@@ -5,8 +5,24 @@ import { Schema } from "effect";
 import { decodeScratchPlan } from "../../src/scratch-app/service.ts";
 import { plan, web } from "../operations/start-progress-topology-support.ts";
 
+/** Scratch cache bytes from before endpoint/filter `kind` used `_tag` / `type`. */
+const asPreKindWire = (wire: typeof AppPlan.Encoded) => ({
+  ...wire,
+  services: Object.fromEntries(
+    Object.entries(wire.services).map(([name, service]) => [
+      name,
+      { ...service, endpoints: service.endpoints.map(({ kind, ...rest }) => ({ ...rest, _tag: kind })) },
+    ]),
+  ),
+  routes: wire.routes.map((route) =>
+    route.filters === undefined
+      ? route
+      : { ...route, filters: route.filters.map(({ kind, ...rest }) => ({ ...rest, type: kind })) },
+  ),
+});
+
 test("scratch cache migration preserves the legacy app, storage, and raw volume mounts", () => {
-  const wire = Schema.encodeSync(AppPlan)(plan);
+  const wire = asPreKindWire(Schema.encodeSync(AppPlan)(plan));
   const legacy = {
     ...wire,
     services: {
@@ -52,7 +68,7 @@ test("scratch cache migration preserves the legacy app, storage, and raw volume 
 });
 
 test("scratch cache migration fails closed for an ambiguous legacy target", () => {
-  const wire = Schema.encodeSync(AppPlan)(plan);
+  const wire = asPreKindWire(Schema.encodeSync(AppPlan)(plan));
   const legacy = {
     ...wire,
     services: {

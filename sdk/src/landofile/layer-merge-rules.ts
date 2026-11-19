@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import type { Schema } from "effect";
+import { endpointShorthandAlias } from "../schema/endpoint-shorthand.ts";
 import type { LayerMergeRule } from "../schema/layer-merge.ts";
 import { layerMergeRuleAt } from "./layer-merge-trie.ts";
 import { isPlainRecord } from "./record.ts";
@@ -7,13 +8,13 @@ import { expandRouteSchemes, routeInputKey, routeInputObject } from "./route-inp
 
 export type RouteFilterIdentity =
   | { readonly kind: "name"; readonly value: unknown }
-  | { readonly kind: "type"; readonly value: unknown };
+  | { readonly kind: "kind"; readonly value: unknown };
 
 /** Named filters never match unnamed filters, even when their text is identical. */
 export const routeFilterIdentity = (item: unknown): RouteFilterIdentity | undefined => {
   if (!isPlainRecord(item)) return undefined;
   if (Object.hasOwn(item, "name")) return { kind: "name", value: item.name };
-  if (Object.hasOwn(item, "type")) return { kind: "type", value: item.type };
+  if (Object.hasOwn(item, "kind")) return { kind: "kind", value: item.kind };
   return undefined;
 };
 
@@ -72,6 +73,15 @@ const ruleImplementation = (identity: Extract<LayerMergeRule, { kind: "keyed" }>
         matched: (value: unknown) => value,
       };
     case "endpoint-name":
+      return {
+        entries,
+        key: (item: unknown) =>
+          typeof item === "string" ? endpointShorthandAlias(item) : fieldKey("name")(item),
+        preserveDuplicates: false,
+        // A list may repeat a name across facets; such a list has no keyed identity.
+        requiresUniqueKeys: true,
+        matched: (value: unknown) => value,
+      };
     case "port-name":
       return {
         entries,
@@ -79,7 +89,7 @@ const ruleImplementation = (identity: Extract<LayerMergeRule, { kind: "keyed" }>
         preserveDuplicates: false,
         matched: (value: unknown) => value,
       };
-    case "filter-name-or-type":
+    case "filter-name-or-kind":
       return {
         preserveDuplicates: false,
         entries,
@@ -101,6 +111,7 @@ export const resolveLayerMergeRule = (root: Schema.Top, path: ReadonlyArray<stri
     ? {
         descriptor,
         preserveDuplicates: false,
+        requiresUniqueKeys: false,
         parts: (value: unknown): ReadonlyArray<unknown> => [value],
         entries,
         key: (_item: unknown): string | undefined => undefined,
@@ -109,6 +120,7 @@ export const resolveLayerMergeRule = (root: Schema.Top, path: ReadonlyArray<stri
     : {
         descriptor,
         parts: (value: unknown): ReadonlyArray<unknown> => [value],
+        requiresUniqueKeys: false,
         ...ruleImplementation(descriptor.identity),
       };
 };

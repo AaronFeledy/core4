@@ -148,7 +148,7 @@ describe("mssql ServiceType", () => {
         expect(plan.type).toBe("mssql");
         expect(plan.artifact).toEqual({ kind: "ref", ref: image });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 1433, protocol: "tcp", name: "database", primary: true },
+          { kind: "internal", port: 1433, protocol: "tcp", name: "database", primary: true },
         ]);
         const volumes = plan.mounts.filter((mount) => mount.type === "volume");
         expect(volumes).toHaveLength(1);
@@ -273,7 +273,7 @@ describe("mssql ServiceType", () => {
 
         expect(plan.artifact).toEqual({ kind: "ref", ref: "mcr.microsoft.com/mssql/server:custom" });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 14333, protocol: "tcp", name: "database", primary: true },
+          { kind: "internal", port: 14333, protocol: "tcp", name: "database", primary: true },
         ]);
         expect(plan.command).toEqual(["/opt/mssql/bin/sqlservr"]);
         expect(plan.user).toBe("1000:1000");

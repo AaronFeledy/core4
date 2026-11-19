@@ -82,7 +82,7 @@ export const directivePathProblem = (input: unknown, path: DirectivePath): strin
           const identityFields = {
             "route-match": ["hostname", "scheme", "pathPrefix"],
             "dependency-service": ["service"],
-            "filter-name-or-type": ["name", "type"],
+            "filter-name-or-kind": ["name", "kind"],
             "endpoint-name": ["name"],
             "port-name": ["name"],
             "log-id": ["id", "path"],

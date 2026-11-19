@@ -72,7 +72,7 @@ describe("ProviderUrlScanner.layer", () => {
         ...plan,
         id: AppId.make(name),
         services: {
-          [web]: { ...webPlan, endpoints: [{ _tag: "internal", protocol: "http", port: 80 }] },
+          [web]: { ...webPlan, endpoints: [{ kind: "internal", protocol: "http", port: 80 }] },
         },
         routes: [
           {
@@ -149,13 +149,13 @@ describe("ProviderUrlScanner.layer", () => {
               ...webPlan,
               endpoints: [
                 {
-                  _tag: "published",
+                  kind: "published",
                   protocol: "http",
                   port: 8080,
                   publication: { hostPort: 18080 },
                   scan: { path: "/health", okCodes: [418] },
                 },
-                { _tag: "internal", protocol: "http", port: 8181 },
+                { kind: "internal", protocol: "http", port: 8181 },
               ],
             },
             [worker]: { ...webPlan, name: worker },

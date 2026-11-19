@@ -28,8 +28,8 @@ test("retains the MariaDB primary listener when only another port is published",
   const plan = await planService(mariadbServiceType, service);
   // Then
   expect(plan.endpoints).toEqual([
-    { _tag: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
-    { _tag: "published", port: 80, protocol: "tcp", publication: { hostPort: 8080 } },
+    { kind: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
+    { kind: "published", port: 80, protocol: "tcp", publication: { hostPort: 8080 } },
   ]);
   expect(plan.serviceTypeId).toBe("mariadb");
   expect(plan.connection).toMatchObject({
@@ -51,9 +51,9 @@ test("keeps a matching publication as a facet of the same primary listener", asy
   const plan = await planService(mariadbServiceType, service);
   // Then
   expect(plan.endpoints).toEqual([
-    { _tag: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
+    { kind: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
     {
-      _tag: "published",
+      kind: "published",
       port: 3307,
       protocol: "tcp",
       name: "server",
@@ -84,10 +84,10 @@ test.each([nginxServiceType, node22ServiceType])(
     const plan = await planService(serviceType, service);
     // Then
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 3187, protocol: "http", name: "server", primary: true },
-      { _tag: "published", port: 3188, protocol: "tcp", publication: { hostPort: 13188 } },
+      { kind: "internal", port: 3187, protocol: "http", name: "server", primary: true },
+      { kind: "published", port: 3188, protocol: "tcp", publication: { hostPort: 13188 } },
       {
-        _tag: "published",
+        kind: "published",
         port: 3187,
         protocol: "http",
         name: "primary",
@@ -96,14 +96,14 @@ test.each([nginxServiceType, node22ServiceType])(
         publication: { bindAddress: "127.0.0.1", hostPort: 13187 },
       },
       {
-        _tag: "published",
+        kind: "published",
         port: 3187,
         protocol: "http",
         primary: true,
         name: "server",
         publication: { hostPort: 23187 },
       },
-      { _tag: "published", port: 3189, protocol: "tcp", publication: { hostPort: 13189 } },
+      { kind: "published", port: 3189, protocol: "tcp", publication: { hostPort: 13189 } },
     ]);
     expect(selectHttpEndpoint([...plan.endpoints].reverse())).toEqual({
       status: "selected",
@@ -129,8 +129,8 @@ test("retains TCP when UDP publishes the same port number", async () => {
   const plan = await planService(mariadbServiceType, service);
   // Then
   expect(plan.endpoints).toEqual([
-    { _tag: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
-    { _tag: "published", port: 3307, protocol: "udp", publication: { hostPort: 13307 } },
+    { kind: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
+    { kind: "published", port: 3307, protocol: "udp", publication: { hostPort: 13307 } },
   ]);
 });
 
@@ -145,11 +145,11 @@ test("selects the TCP publication when UDP with the same port is authored first"
   const plan = await planService(node22ServiceType, service);
   // Then
   expect(plan.endpoints).toEqual([
-    { _tag: "internal", port: 3187, protocol: "http", primary: true, name: "server" },
-    { _tag: "published", port: 3187, protocol: "udp", publication: { hostPort: 13187 } },
-    { _tag: "published", port: 3188, protocol: "tcp", publication: { hostPort: 13188 } },
+    { kind: "internal", port: 3187, protocol: "http", primary: true, name: "server" },
+    { kind: "published", port: 3187, protocol: "udp", publication: { hostPort: 13187 } },
+    { kind: "published", port: 3188, protocol: "tcp", publication: { hostPort: 13188 } },
     {
-      _tag: "published",
+      kind: "published",
       port: 3187,
       protocol: "http",
       primary: true,
@@ -172,7 +172,7 @@ test.each([{ scenario: "absent" }, { scenario: "empty", ports: [] }])(
     const plan = await planService(mariadbServiceType, service);
     // Then
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
+      { kind: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
     ]);
   },
 );

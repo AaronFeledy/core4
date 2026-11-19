@@ -85,7 +85,7 @@ test("the generated global Landofile preserves the real router services' route o
       }
       expect(
         plan.services[ServiceName.make("traefik")]?.endpoints.filter(
-          (endpoint) => endpoint._tag === "published",
+          (endpoint) => endpoint.kind === "published",
         ),
       ).toHaveLength(2);
     });

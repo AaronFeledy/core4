@@ -22,7 +22,7 @@ const service: ServicePlan = {
   hostAliases: [],
   extensions: {},
   endpoints: [
-    { _tag: "internal", protocol: "tcp", port: PortNumber.make(27017), name: "database", primary: true },
+    { kind: "internal", protocol: "tcp", port: PortNumber.make(27017), name: "database", primary: true },
   ],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-01T00:00:00Z"), source: "probe", runtime: 4 },
 };

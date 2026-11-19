@@ -180,7 +180,7 @@ test("published schema artifacts carry serializable collection policies", () => 
   const artifact = JSON.stringify(getJsonSchema("LandofileShape"));
   expect(artifact).toContain('"x-lando-merge"');
   expect(artifact).toContain('"route-match"');
-  expect(artifact).toContain('"filter-name-or-type"');
+  expect(artifact).toContain('"filter-name-or-kind"');
   expect(artifact).not.toContain("lando/schema/LayerMerge");
   expect(JSON.stringify(getEditorJsonSchema("LandofileShape"))).toContain('"x-lando-merge"');
   expect(Schema.decodeUnknownSync(LayerMergeRule)({ kind: "replace" })).toEqual({ kind: "replace" });

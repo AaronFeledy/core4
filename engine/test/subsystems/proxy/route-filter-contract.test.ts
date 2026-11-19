@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { attachRouteFilter } from "@lando/landofile/route-filters";
-import { RouteFilter, RouteFilterType } from "@lando/sdk/schema";
+import { RouteFilter, RouteFilterKind, RouteObjectInput } from "@lando/sdk/schema";
 import { type RouteFilterContractHarness, runRouteFilterContractSuite } from "@lando/sdk/test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 /**
  * RouteFilter built-in invocation.
@@ -12,7 +12,7 @@ import { Effect } from "effect";
  * `attachRouteFilter` onto the route's `filters` array.
  */
 
-const SHIPPED_FILTER_IDS = RouteFilterType.literals;
+const SHIPPED_FILTER_IDS = RouteFilterKind.literals;
 
 const [stripPrefixSchema, addPrefixSchema, requestHeaderSchema, responseHeaderSchema, redirectSchema] =
   RouteFilter.members;
@@ -30,21 +30,31 @@ type Filter<Options> = RouteFilterContractHarness<Route, Options>;
 const baseRoute: Route = { hostname: "app.lndo.site", scheme: "https", service: "appserver" };
 
 const applyShipped = (route: Route, filter: unknown): Effect.Effect<Route> =>
-  Effect.succeed(attachRouteFilter(route, filter));
+  Effect.sync(() => {
+    const encode = Schema.encodeUnknownSync(RouteObjectInput);
+    const { service, ...routeFields } = route;
+    const wire = encode(routeFields);
+    const [authoredFilter] = encode({ hostname: route.hostname, filters: [filter] }).filters ?? [];
+    return {
+      ...route,
+      ...Schema.decodeUnknownSync(RouteObjectInput)(attachRouteFilter(wire, authoredFilter)),
+      service,
+    };
+  });
 
-const stripPrefixFilter = { type: "stripPrefix", prefix: "/api" } as const;
+const stripPrefixFilter = { kind: "stripPrefix", prefix: "/api" } as const;
 const stripPrefix: Filter<typeof stripPrefixFilter> = {
   id: "stripPrefix",
   schema: stripPrefixSchema,
   validOptions: stripPrefixFilter,
-  invalidOptions: { type: "stripPrefix", prefix: false },
+  invalidOptions: { kind: "stripPrefix", prefix: false },
   input: baseRoute,
   apply: applyShipped,
   expected: { ...baseRoute, filters: [stripPrefixFilter] },
   applySequence: [baseRoute, { ...baseRoute, hostname: "other.lndo.site" }],
 };
 
-const addPrefixFilter = { type: "addPrefix", prefix: "/api" } as const;
+const addPrefixFilter = { kind: "addPrefix", prefix: "/api" } as const;
 const addPrefix: Filter<typeof addPrefixFilter> = {
   id: "addPrefix",
   schema: addPrefixSchema,
@@ -56,36 +66,36 @@ const addPrefix: Filter<typeof addPrefixFilter> = {
   applySequence: [baseRoute, { ...baseRoute, hostname: "other.lndo.site" }],
 };
 
-const requestHeaderFilter = { type: "requestHeader", header: "X-Lando", value: "1" } as const;
+const requestHeaderFilter = { kind: "requestHeader", header: "X-Lando", value: "1" } as const;
 const requestHeader: Filter<typeof requestHeaderFilter> = {
   id: "requestHeader",
   schema: requestHeaderSchema,
   validOptions: requestHeaderFilter,
-  invalidOptions: { type: "requestHeader", header: "X-Lando" },
+  invalidOptions: { kind: "requestHeader", header: "X-Lando" },
   input: baseRoute,
   apply: applyShipped,
   expected: { ...baseRoute, filters: [requestHeaderFilter] },
   applySequence: [baseRoute, { ...baseRoute, hostname: "other.lndo.site" }],
 };
 
-const responseHeaderFilter = { type: "responseHeader", header: "X-Frame-Options", value: "DENY" } as const;
+const responseHeaderFilter = { kind: "responseHeader", header: "X-Frame-Options", value: "DENY" } as const;
 const responseHeader: Filter<typeof responseHeaderFilter> = {
   id: "responseHeader",
   schema: responseHeaderSchema,
   validOptions: responseHeaderFilter,
-  invalidOptions: { type: "responseHeader", value: 0 },
+  invalidOptions: { kind: "responseHeader", value: 0 },
   input: baseRoute,
   apply: applyShipped,
   expected: { ...baseRoute, filters: [responseHeaderFilter] },
   applySequence: [baseRoute, { ...baseRoute, hostname: "other.lndo.site" }],
 };
 
-const redirectFilter = { type: "redirect", to: "https://app.example.test", permanent: true } as const;
+const redirectFilter = { kind: "redirect", to: "https://app.example.test", permanent: true } as const;
 const redirect: Filter<typeof redirectFilter> = {
   id: "redirect",
   schema: redirectSchema,
   validOptions: redirectFilter,
-  invalidOptions: { type: "redirect", to: "https://app.example.test", permanent: "yes" },
+  invalidOptions: { kind: "redirect", to: "https://app.example.test", permanent: "yes" },
   input: baseRoute,
   apply: applyShipped,
   expected: { ...baseRoute, filters: [redirectFilter] },
@@ -101,7 +111,7 @@ const builtInFilters = [
 ] as const;
 
 describe("RouteFilter contract — built-in filters", () => {
-  test("the shipped RouteFilterType declares every documented built-in", () => {
+  test("the shipped RouteFilterKind declares every documented built-in", () => {
     expect([...SHIPPED_FILTER_IDS]).toEqual([
       "stripPrefix",
       "addPrefix",

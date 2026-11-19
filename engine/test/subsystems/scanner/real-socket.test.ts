@@ -78,7 +78,7 @@ const planWith = (scanner: ScanPlan): AppPlan => ({
       hostAliases: [],
       extensions: {},
       metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "real-socket.test", runtime: 4 },
-      endpoints: [{ _tag: "published", protocol: "http", port: 80, publication: {} }],
+      endpoints: [{ kind: "published", protocol: "http", port: 80, publication: {} }],
     },
   },
 });

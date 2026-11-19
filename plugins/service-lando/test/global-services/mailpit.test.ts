@@ -13,7 +13,7 @@ import {
 
 const decodeConfig = async (): Promise<ServiceConfig> => {
   const value = await Effect.runPromise(mailpitGlobalService);
-  return Schema.decodeUnknownSync(ServiceConfig)(value);
+  return Schema.decodeUnknownSync(Schema.toType(ServiceConfig))(value);
 };
 
 describe("mailpit global service ServiceConfig", () => {
@@ -37,8 +37,8 @@ describe("mailpit global service ServiceConfig", () => {
   test("declares SMTP and web UI as internal endpoints reached over the shared network and Traefik route", async () => {
     const config = await decodeConfig();
     const endpoints = config.endpoints ?? [];
-    expect(endpoints).toContainEqual({ _tag: "internal", port: MAILPIT_SMTP_PORT, protocol: "tcp" });
-    expect(endpoints).toContainEqual({ _tag: "internal", port: MAILPIT_WEB_PORT, protocol: "http" });
+    expect(endpoints).toContainEqual({ kind: "internal", port: MAILPIT_SMTP_PORT, protocol: "tcp" });
+    expect(endpoints).toContainEqual({ kind: "internal", port: MAILPIT_WEB_PORT, protocol: "http" });
     expect(MAILPIT_SMTP_PORT).toBe(1025);
     expect(MAILPIT_WEB_PORT).toBe(8025);
   });

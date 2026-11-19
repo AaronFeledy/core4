@@ -106,7 +106,7 @@ describe("apache ServiceType", () => {
     ).toEqual([]);
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 80, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toEqual({
       kind: "command",
@@ -123,7 +123,7 @@ describe("apache ServiceType", () => {
     const plan = await composeApachePlan({ type: "apache", port: 8080 }, "backend");
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 8080, protocol: "http", name: "backend", primary: true },
+      { kind: "internal", port: 8080, protocol: "http", name: "backend", primary: true },
     ]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck).toEqual(tcpProbe(8080, 10));

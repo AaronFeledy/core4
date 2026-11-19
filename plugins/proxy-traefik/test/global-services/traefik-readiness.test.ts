@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
-import { ServiceName, effectiveReadiness } from "@lando/sdk/schema";
+import { ServiceConfig, ServiceName, effectiveReadiness } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import diagnostics from "../../src/global-services/diagnostics.ts";
 import { buildTraefikServiceConfig } from "../../src/global-services/traefik.ts";
 
@@ -13,6 +13,7 @@ test("the bundled Traefik plan gates startup on ping with subsecond retries", as
   const config = buildTraefikServiceConfig({ http: 38080, https: 38443 });
   const diagnosticConfig = await Effect.runPromise(diagnostics);
   const root = process.cwd();
+  const encode = Schema.encodeSync(ServiceConfig);
   const compiled = await Effect.runPromise(
     loadAuthoredDocuments(
       [
@@ -20,7 +21,7 @@ test("the bundled Traefik plan gates startup on ping with subsecond retries", as
           file: `${root}/.lando.yml`,
           value: {
             name: "traefik-readiness",
-            services: { traefik: config, "traefik-diagnostics": diagnosticConfig },
+            services: { traefik: encode(config), "traefik-diagnostics": encode(diagnosticConfig) },
           },
         },
       ],

@@ -103,7 +103,7 @@ for (const { serviceType, framework, port: defaultPort, variables } of listeners
       // Then
       for (const variable of variables) expect(plan.environment[variable]).toBe(String(port ?? defaultPort));
       expect(plan.endpoints).toContainEqual({
-        _tag: "internal",
+        kind: "internal",
         port: port ?? defaultPort,
         protocol: "http",
         name: "web",

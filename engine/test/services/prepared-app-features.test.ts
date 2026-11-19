@@ -50,7 +50,7 @@ test("prepared app selection and decoded declaration config survive changed sele
         return Object.fromEntries(
           ctx.selected.map((view) => [
             view.serviceName,
-            [{ _tag: "internal" as const, protocol: "http" as const, port: 8123 }],
+            [{ kind: "internal" as const, protocol: "http" as const, port: 8123 }],
           ]),
         );
       }),
@@ -99,7 +99,7 @@ test("direct app composer uses declarations and reuses their decoded config", as
         return true;
       }),
     ),
-    declareEndpoints: () => Effect.succeed({ web: [{ _tag: "internal", protocol: "http", port: 8123 }] }),
+    declareEndpoints: () => Effect.succeed({ web: [{ kind: "internal", protocol: "http", port: 8123 }] }),
     apply: (ctx) => Effect.sync(() => ctx.forEachSelected((selected) => selected.addEnv("APPLIED", "yes"))),
   };
   await Effect.runPromise(
@@ -109,7 +109,7 @@ test("direct app composer uses declarations and reuses their decoded config", as
       features: [{ id: definition.id, definition }],
     }),
   );
-  expect(service.endpoints).toEqual([{ _tag: "internal", protocol: "http", port: 8123 }]);
+  expect(service.endpoints).toEqual([{ kind: "internal", protocol: "http", port: 8123 }]);
   expect(service.environment.APPLIED).toBe("yes");
   expect(decodes).toBe(1);
 });

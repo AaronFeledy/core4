@@ -214,7 +214,7 @@ export const containerHostConfigFragment = (
 ): Record<string, unknown> => {
   const portBindings = containerPortBindings(
     (options.endpoints ?? service.endpoints).flatMap((endpoint) =>
-      endpoint._tag === "published" ? [endpoint] : [],
+      endpoint.kind === "published" ? [endpoint] : [],
     ),
   );
   const { binds, mounts, tmpfs } = containerMountIntent(plan, service);

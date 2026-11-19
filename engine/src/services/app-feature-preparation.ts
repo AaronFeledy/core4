@@ -8,6 +8,7 @@ import {
   snapshotAppFeatureEnv,
 } from "./app-feature-selection.ts";
 import type { ActivationPlan, AppFeatureSelectionInput, OrderedAppFeature } from "./app-feature-types.ts";
+import { decodeAppEndpointDeclarations } from "./endpoint-declaration.ts";
 
 export interface PreparedAppFeature extends ActivationPlan {
   readonly originalDecodedConfig?: Readonly<Record<string, unknown>>;
@@ -45,19 +46,24 @@ export const declarePreparedAppFeature = Effect.fnUntraced(function* (
     return { activation, contributions };
   }
   const config = yield* decodeAppFeatureConfig(feature);
-  const contributions = yield* declare({
+  const raw = yield* declare({
     featureId: feature.id,
     appName: input.appName,
     appRoot: input.appRoot,
     config,
     selected: input.services.filter((view) => activation.selectedServices.includes(view.serviceName)),
   });
+  const contributions = yield* decodeAppEndpointDeclarations(raw, {
+    feature: feature.id,
+    pluginId: feature.pluginId ?? "unregistered",
+    selected: activation.selectedServices,
+  });
   const unselected = Object.keys(contributions).filter((name) => !activation.selectedServices.includes(name));
   if (unselected.length > 0)
     return yield* Effect.fail(
       new AppFeatureSelectorMatchedNothingError({
         feature: feature.id,
-        message: `App feature ${feature.id} declared endpoints for unselected services: ${unselected.join(", ")}.`,
+        message: `App feature ${feature.id} declared endpoints for ${unselected.length} unselected service(s).`,
         remediation: "Return endpoint declarations only for selected services.",
       }),
     );

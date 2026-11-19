@@ -22,7 +22,7 @@ import type {
   CommandSpec,
   DatabaseConnection,
   DependencyPlan,
-  EndpointPlan,
+  EndpointDeclaration,
   EnvironmentValue,
   HealthcheckPlan,
   HostAliasPlan,
@@ -244,7 +244,7 @@ export interface ServiceFeatureDefinition {
   /** Declare listeners without applying features or acquiring runtime resources. */
   readonly declareEndpoints?: (
     ctx: ServiceEndpointContext,
-  ) => Effect.Effect<readonly EndpointPlan[], ServiceFeatureError>;
+  ) => Effect.Effect<readonly (typeof EndpointDeclaration.Encoded)[], ServiceFeatureError>;
   readonly apply: (ctx: ServiceFeatureContext) => Effect.Effect<void, ServiceFeatureError>;
 }
 

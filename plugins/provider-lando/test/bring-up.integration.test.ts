@@ -114,7 +114,7 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
     name === "node"
       ? [
           {
-            _tag: "published",
+            kind: "published",
             port: 31080,
             protocol: "http",
             name: "http",
@@ -123,7 +123,7 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
         ]
       : [
           {
-            _tag: "published",
+            kind: "published",
             port: 55432,
             protocol: "tcp",
             name: "database",

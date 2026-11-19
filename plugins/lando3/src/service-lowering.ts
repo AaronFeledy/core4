@@ -19,7 +19,7 @@ import { lowerCatalogCommon } from "./lower-catalog-common.ts";
 import { lowerEvents } from "./lower-events.ts";
 import { lowerListenPort } from "./lower-listen-port.ts";
 import { lowerPhpOptions } from "./lower-php.ts";
-import { declareRouteEndpoints, lowerProxy } from "./lower-proxy.ts";
+import { bindPortlessRouteDefaults, lowerProxy } from "./lower-proxy.ts";
 import { lowerRawService } from "./lower-raw-service.ts";
 import { withHomeIntent } from "./lower-runtime-intent.ts";
 import { lowerTooling } from "./lower-tooling.ts";
@@ -216,7 +216,7 @@ export const lowerServiceViews = (
         }
       }
     }
-    declareRouteEndpoints(proxy.fragment, services, report, {
+    bindPortlessRouteDefaults(proxy.fragment, services, report, {
       serviceFacts,
       external: inherited.recipeServiceWires ?? new Map(),
     });

@@ -45,6 +45,70 @@ const curated: ReadonlyArray<{ readonly id: string; readonly input: unknown }> =
     input: { name: "demo", services: { web: { build: { dockerfile_inline: "FROM nginx" } } } },
   },
   { id: "event-steps", input: { name: "demo", events: { "pre-start": ["echo ready"] } } },
+  {
+    id: "endpoint-shorthand",
+    input: {
+      name: "demo",
+      services: { web: { type: "compose", image: "nginx:alpine", endpoints: ["http:80", "ui=https:443"] } },
+    },
+  },
+  {
+    id: "endpoint-kind-object",
+    input: {
+      name: "demo",
+      services: {
+        web: {
+          type: "compose",
+          image: "nginx:alpine",
+          endpoints: [{ kind: "internal", protocol: "http", port: 80, name: "web" }],
+        },
+      },
+    },
+  },
+  {
+    id: "endpoint-legacy-tag",
+    input: {
+      name: "demo",
+      services: {
+        web: {
+          type: "compose",
+          image: "nginx:alpine",
+          endpoints: [{ kind: "internal", protocol: "http", port: 80 }],
+        },
+      },
+    },
+  },
+  {
+    id: "filter-kind",
+    input: {
+      name: "demo",
+      services: {
+        web: {
+          type: "nginx",
+          routes: [{ hostname: "app.test", filters: [{ kind: "stripPrefix", prefix: "/api" }] }],
+        },
+      },
+    },
+  },
+  {
+    id: "filter-legacy-type",
+    input: {
+      name: "demo",
+      services: {
+        web: {
+          type: "nginx",
+          routes: [{ hostname: "app.test", filters: [{ kind: "stripPrefix", prefix: "/api" }] }],
+        },
+      },
+    },
+  },
+  {
+    id: "endpoint-malformed-port",
+    input: {
+      name: "demo",
+      services: { web: { type: "compose", image: "nginx:alpine", endpoints: ["http:65536"] } },
+    },
+  },
 ];
 
 const paths = [

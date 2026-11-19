@@ -1,6 +1,6 @@
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import type {
-  EndpointPlan,
+  EndpointDeclaration,
   Environment,
   EnvironmentValue,
   HealthcheckPlan,
@@ -94,7 +94,7 @@ export const serviceFeatureValidateEffective =
 export const serviceFeatureDeclareEndpoints =
   (
     featureId: string,
-    declare: (ctx: ServiceEndpointContext) => readonly EndpointPlan[],
+    declare: (ctx: ServiceEndpointContext) => readonly (typeof EndpointDeclaration.Encoded)[],
   ): NonNullable<ServiceFeatureDefinition["declareEndpoints"]> =>
   (ctx) =>
     Effect.try({

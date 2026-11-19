@@ -51,7 +51,7 @@ const baseService: ServicePlan = {
   ],
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: 8080,
       protocol: "http",
       name: "http",

@@ -1,5 +1,7 @@
 import { isAbsolute, resolve, win32 } from "node:path";
+import { isPlainRecord } from "@lando/sdk/landofile";
 import {
+  AppId,
   AppPlan,
   type AppPlan as AppPlanShape,
   type MountPlan,
@@ -10,9 +12,10 @@ import {
 import { Option, Predicate, Schema } from "effect";
 import { migrateAppliedInit } from "./applied-init-migrate.ts";
 import { migrateAppliedNames } from "./applied-names-migrate.ts";
+import { visitAppliedNetworkVocabulary } from "./applied-network-vocabulary.ts";
 
-/** Durable applied-plan frame version with canonical mounts, init intent, names, exclusive SQLite targets, and pull policy. */
-export const APPLIED_STATE_VERSION = 7;
+/** Durable applied-plan frame version with canonical endpoint and route-filter kinds. */
+export const APPLIED_STATE_VERSION = 8;
 
 const APP_MOUNT_KEY = "app-mount";
 
@@ -250,39 +253,53 @@ const migrateV1PlanRaw = (raw: unknown): unknown | null => {
   return { ...rest, services: nextServices };
 };
 
-const isMigratableVersion = (version: number): boolean => version >= 1 && version <= 6;
+const isMigratableVersion = (version: number): boolean =>
+  Number.isInteger(version) && version >= 1 && version <= 7;
+const isAppId = Schema.is(Schema.toEncoded(AppId));
+const decodePlan = Schema.decodeUnknownOption(AppPlan);
 
 /**
  * State-store `onVersionMismatch` migrator for a single applied `AppPlan`.
  * Receives the raw frame payload and stamped version; returns a decoded plan or
  * null when the shape cannot be converted (bucket treats null as absent).
  */
-export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppPlanShape | null => {
-  if (!isMigratableVersion(fromVersion)) return null;
+export const migrateAppliedPlanWithCoordinate = (
+  raw: unknown,
+  fromVersion: number,
+): AppPlanShape | string => {
+  if (!isMigratableVersion(fromVersion)) return "version";
   // v4 records predate the exclusive SQLite branch, v5 records predate the optional service
   // pullPolicy, and v6 records predate the optional project-user plan fields; all decode
   // unchanged. No v5 record holds a Compose pull_policy knob, because no provider ever declared it.
   const initialized =
     fromVersion >= 3 ? raw : migrateAppliedInit(fromVersion === 1 ? migrateV1PlanRaw(raw) : raw);
   const transformed = fromVersion >= 4 ? initialized : migrateAppliedNames(initialized);
-  if (transformed === null) return null;
-  return Option.getOrNull(Schema.decodeUnknownOption(AppPlan)(transformed));
+  const migrated = visitAppliedNetworkVocabulary(transformed, true);
+  if (typeof migrated === "string") return migrated;
+  return Option.getOrElse(decodePlan(migrated), () => "plan");
+};
+
+export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppPlanShape | null => {
+  const result = migrateAppliedPlanWithCoordinate(raw, fromVersion);
+  return typeof result === "string" ? null : result;
 };
 
 /**
  * Record-layout migration is atomic: losing any app would erase its ownership claim.
  */
-export const migrateAppliedPlansRecord = (
+export const migrateAppliedPlansRecordWithCoordinate = (
   raw: unknown,
   fromVersion: number,
-): Readonly<Record<string, AppPlanShape>> | null => {
-  if (!isMigratableVersion(fromVersion)) return null;
-  if (!Predicate.isObject(raw) || Array.isArray(raw)) return null;
-  const next: Record<string, AppPlanShape> = {};
-  for (const [id, plan] of Object.entries(raw)) {
-    const migrated = migrateAppliedPlan(plan, fromVersion);
-    if (migrated === null) return null;
-    next[id] = migrated;
+): Readonly<Record<string, AppPlanShape>> | string => {
+  if (!isMigratableVersion(fromVersion)) return "version";
+  if (!isPlainRecord(raw)) return "apps";
+  const next: [string, AppPlanShape][] = [];
+  for (const [index, [id, plan]] of Object.entries(raw).entries()) {
+    if (!isAppId(id)) return `apps[${index}].id`;
+    const migrated = migrateAppliedPlanWithCoordinate(plan, fromVersion);
+    if (typeof migrated === "string") return `apps[${index}].${migrated}`;
+    if (id !== migrated.id) return `apps[${index}].id`;
+    next.push([id, migrated]);
   }
-  return next;
+  return Object.fromEntries(next);
 };

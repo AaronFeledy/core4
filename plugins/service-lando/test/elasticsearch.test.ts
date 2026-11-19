@@ -74,7 +74,7 @@ describe("elasticsearch ServiceType", () => {
       expect(String(volumes[0]?.target)).toBe("/usr/share/elasticsearch/data");
       expect(volumes[0]?.readOnly).toBe(false);
       expect(plan.endpoints).toEqual([
-        { _tag: "internal", port: 9200, protocol: "tcp", name: "search", primary: true },
+        { kind: "internal", port: 9200, protocol: "tcp", name: "search", primary: true },
       ]);
     });
 
@@ -183,7 +183,7 @@ describe("elasticsearch ServiceType", () => {
     );
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 9200, protocol: "tcp", name: "indexer", primary: true },
+      { kind: "internal", port: 9200, protocol: "tcp", name: "indexer", primary: true },
     ]);
     expect(plan.environment).toMatchObject({
       LANDO_SERVICE_NAME: "indexer",

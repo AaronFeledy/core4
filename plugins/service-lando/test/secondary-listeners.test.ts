@@ -64,7 +64,7 @@ describe("LocalStack DNS listener", () => {
     });
     // Then
     expect(result.endpoints).toContainEqual({
-      _tag: "internal",
+      kind: "internal",
       port: 53,
       protocol: "http",
       name: "gateway-53",

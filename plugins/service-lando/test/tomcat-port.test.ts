@@ -116,7 +116,7 @@ describe("Tomcat authored HTTP port", () => {
       expect(result.exitCode).toBe(0);
       expect(result.xml).toBe(TOMCAT_CATALOG["11"].serverXml.replace("{{HTTP_PORT}}", String(selectedPort)));
       expect(result.plan.endpoints).toContainEqual({
-        _tag: "internal",
+        kind: "internal",
         port: selectedPort,
         protocol: "http",
         name: "web",

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type AppPlan, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { APPLIED_STATE_VERSION, inspectAppliedPlan, migrateAppliedPlan } from "../src/applied-state.ts";
+import { APPLIED_STATE_VERSION, inspectAppliedPlan } from "../src/applied-state.ts";
 
 describe("provider-lando applied plan inspection versioning", () => {
   test("opens the applied-plan bucket at the current version with the shared migrator", async () => {
@@ -19,12 +19,15 @@ describe("provider-lando applied plan inspection versioning", () => {
 
     expect(opens).toHaveLength(1);
     expect(opens[0]?.version).toBe(APPLIED_STATE_VERSION);
-    expect(APPLIED_STATE_VERSION).toBe(7);
-    // Same migration function identity as container-runtime export.
-    expect(opens[0]?.onVersionMismatch).toBe(migrateAppliedPlan);
+    // Unconvertible historical payloads throw.
+    expect(typeof opens[0]?.onVersionMismatch).toBe("function");
+    const migrate = opens[0]?.onVersionMismatch as (raw: unknown, version: number) => unknown;
+    expect(() => migrate({ not: "a plan" }, 1)).toThrow(
+      `Cannot read applied state v1 as v${APPLIED_STATE_VERSION}`,
+    );
   });
 
-  test("reports unreadable when migration returns null for an unconvertible v1 plan", async () => {
+  test("reports unreadable when migration throws for an unconvertible v1 plan", async () => {
     const appId = AppId.make("broken");
     const state: PluginStateStore = {
       open: (spec) =>
@@ -35,55 +38,60 @@ describe("provider-lando applied plan inspection versioning", () => {
             const migrate = spec.onVersionMismatch;
             if (typeof migrate !== "function") return null;
             // Simulate bucket handing the migrator a v1 payload with an accelerated non-app bind.
-            return migrate(
-              {
-                id: "broken",
-                name: "broken",
-                slug: "broken",
-                root: "/tmp/broken",
-                provider: "lando",
-                services: {
-                  web: {
-                    name: "web",
-                    type: "web",
-                    provider: "lando",
-                    primary: true,
-                    environment: {},
-                    mounts: [
-                      {
-                        type: "bind",
-                        source: "/x",
-                        target: "/x",
-                        readOnly: false,
-                        realization: "accelerated",
+            // onVersionMismatch throws; the real bucket surfaces that as a read failure.
+            try {
+              return migrate(
+                {
+                  id: "broken",
+                  name: "broken",
+                  slug: "broken",
+                  root: "/tmp/broken",
+                  provider: "lando",
+                  services: {
+                    web: {
+                      name: "web",
+                      type: "web",
+                      provider: "lando",
+                      primary: true,
+                      environment: {},
+                      mounts: [
+                        {
+                          type: "bind",
+                          source: "/x",
+                          target: "/x",
+                          readOnly: false,
+                          realization: "accelerated",
+                        },
+                      ],
+                      storage: [],
+                      endpoints: [],
+                      routes: [],
+                      dependsOn: [],
+                      hostAliases: [],
+                      metadata: {
+                        resolvedAt: "2026-10-23T00:00:00.000Z",
+                        source: "test",
+                        runtime: 4,
                       },
-                    ],
-                    storage: [],
-                    endpoints: [],
-                    routes: [],
-                    dependsOn: [],
-                    hostAliases: [],
-                    metadata: {
-                      resolvedAt: "2026-10-23T00:00:00.000Z",
-                      source: "test",
-                      runtime: 4,
+                      extensions: {},
                     },
-                    extensions: {},
                   },
+                  networks: [],
+                  routes: [],
+                  stores: [],
+                  fileSync: [],
+                  metadata: {
+                    resolvedAt: "2026-10-23T00:00:00.000Z",
+                    source: "test",
+                    runtime: 4,
+                  },
+                  extensions: {},
                 },
-                networks: [],
-                routes: [],
-                stores: [],
-                fileSync: [],
-                metadata: {
-                  resolvedAt: "2026-10-23T00:00:00.000Z",
-                  source: "test",
-                  runtime: 4,
-                },
-                extensions: {},
-              },
-              1,
-            );
+                1,
+              );
+            } catch {
+              return null;
+            }
           }),
           set: () => Effect.die("unused"),
           update: () => Effect.die("unused"),

@@ -209,7 +209,7 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     expect(web.artifact).toEqual({ kind: "ref", ref: "nginx:1.26-alpine" });
     expect(web.endpoints).toEqual([
       {
-        _tag: "internal",
+        kind: "internal",
         port: 80,
         protocol: "http",
         name: "web",
@@ -239,7 +239,7 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     expect(serviceAppMount(web)?.readOnly).toBe(true);
     expect(web.endpoints).toEqual([
       {
-        _tag: "internal",
+        kind: "internal",
         port: 80,
         protocol: "http",
         name: "web",

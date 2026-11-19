@@ -209,6 +209,13 @@
       }
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/malformed-endpoint",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/marker-warning",
       "digest": "8243d238dba13dd7175234aea03cbdbc7a953c2b5568aa9618c133b83c709102"
     },
@@ -1134,11 +1141,11 @@
     },
     {
       "fixture": "docs/guides/route-shorthand/fixtures/ambiguous-default-route",
-      "digest": "fd0f10e651a4982ec3a8369cdc2a26ba4cf5d3ba5d574221cbd67f76828a04bb"
+      "digest": "bceac2ac958ed627a22627fea4f759b074b23919bcd6c885340c5d9a58e5bec7"
     },
     {
       "fixture": "docs/guides/route-shorthand/fixtures/catalog-endpoints",
-      "digest": "f7b43479c39b1adc7a95655db4d2c3bb4b91ae20c3bd84ee665c4c120470fe4a"
+      "digest": "4d81be1085512c72a378155258eb37af2e9f7f879d5cc5ef84d22312b46e0c0b"
     },
     {
       "fixture": "docs/guides/route-shorthand/fixtures/route-identity",
@@ -1158,7 +1165,7 @@
     },
     {
       "fixture": "docs/guides/route-shorthand/fixtures/route-shorthand-layered",
-      "digest": "37aa5ec2e995864e8213e3076c89b6b1aa8327f22393052d89f998faa6445390"
+      "digest": "851762db56b4e2562b7b4cf54f492885a85ed43fe392790552f389ef404447dc"
     },
     {
       "fixture": "docs/guides/router-and-scanner/fixtures/router-and-scanner-disabled",
@@ -1502,7 +1509,7 @@
         "digest": "37a441e3a9e7a061e9fc859c5b3c6d012eab5ef87378b7b0768e7b9c7db2d64b"
       },
       "after": {
-        "digest": "7e881845ad5976118d84bada503017aa51dfb8e27d7665250e607e2602c9d585"
+        "digest": "745e3aa4ca77b0ced83c408f69db29fdc29c4c1a8f8e2c15375ad3c716233a5a"
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     },
@@ -1553,7 +1560,7 @@
         "digest": "4d49aacd279230fe3efc6458589504641f955efae6f4f4b9465527706608d1de"
       },
       "after": {
-        "digest": "8010a9f789e56e914dab484e7d1a4f5cd76dbef5321b8662f56291df055f291c"
+        "digest": "434e6e6d46e821503501283611cf3deb175356d9f0744dd6ecb28e3b8b08abdf"
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     },
@@ -1769,7 +1776,7 @@
         "digest": "a05a7da1df7e4e0880b520fa518a450cfd2ce591ebc275113f5e2c9d70c22e83"
       },
       "after": {
-        "digest": "28d568a6b5f7ea70efb72d047a6f59a095355bfcff057898b1ff9d08ca8c15a2"
+        "digest": "6ecf1f44534b9372f8e240d53515ba77df696940ee4b85e25a8acce3764a0614"
       },
       "reason": "The route shorthand guide now explicitly declares its Compose listener as HTTP. This records the authored protocol change while retaining the previous fixture digest; publishing a TCP port alone no longer implies an HTTP listener. Its two deep-wildcard routes now use the object form with scheme: http, because an HTTPS route with a wildcard below the leftmost label cannot get a certificate."
     },
@@ -1826,7 +1833,7 @@
         "digest": "031653c61f162c7c09b55cd0d6a8097da6c5a47538467235c91da55180531e9e"
       },
       "after": {
-        "digest": "d2b87f8d1c2dfa909616ec98dc42f2a97d9541b5e201b41c354d04bca8e3f938"
+        "digest": "9fdf87b9d0a5377cd80ee8c7d1fc01bd6b1e08d61df2e2dd754e34221992945c"
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false and adds read-only nginx and PHP ini mounts for the large-profile troubleshooting configuration."
     }

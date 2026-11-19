@@ -29,7 +29,7 @@ const redis: ServicePlan = {
   command: ["redis-server"],
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: 6379,
       protocol: "tcp",
       name: "redis",

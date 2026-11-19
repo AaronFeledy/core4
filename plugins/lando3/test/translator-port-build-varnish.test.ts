@@ -37,7 +37,7 @@ test.each([
     // When
     const result = lowerApi4Service(service, { ...ctx, cursor });
     // Then
-    expect(result.patch.endpoints).toEqual([{ _tag: "published", protocol, port: target, publication }]);
+    expect(result.patch.endpoints).toEqual([{ kind: "published", protocol, port: target, publication }]);
     expect(result.patch).not.toHaveProperty("ports");
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ kind: "rewritten" }));
     expect(cursor.residuals(result.diagnostics)).toEqual([]);
@@ -94,7 +94,7 @@ test.each([
   [
     "api: 4, type: lando, image: alpine:3.21, ports: ['5173:5173/http']",
     "endpoints",
-    [{ _tag: "published", protocol: "http", port: 5173, publication: { hostPort: 5173 } }],
+    [{ kind: "published", protocol: "http", port: 5173, publication: { hostPort: 5173 } }],
   ],
   ["type: lando, services: {image: alpine:3.21, ports: ['0:80']}", "ports", ["80"]],
   ["type: compose, services: {image: alpine:3.21, ports: ['0:80']}", "ports", ["80"]],

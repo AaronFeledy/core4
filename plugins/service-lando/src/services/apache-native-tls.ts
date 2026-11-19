@@ -1,5 +1,5 @@
 import {
-  type EndpointPlan,
+  type EndpointDeclaration,
   type GeneratedCertificateEndpoint,
   PortNumber,
   isRootContainerUser,
@@ -66,8 +66,8 @@ export const apacheGeneratedCertificateEndpoint = (input: {
 export const generatedHttpsEndpoint = (input: {
   readonly serviceName: string;
   readonly plainPort: number;
-}): EndpointPlan => ({
-  _tag: "internal",
+}): typeof EndpointDeclaration.Encoded => ({
+  kind: "internal",
   port: generatedTlsListenerPort(input.plainPort),
   protocol: "https",
   name: generatedTlsEndpointName(input.serviceName),

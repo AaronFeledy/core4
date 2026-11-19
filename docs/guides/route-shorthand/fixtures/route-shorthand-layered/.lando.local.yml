@@ -5,8 +5,8 @@ services:
         pathPrefix: /v1
         filters:
           - name: strip-v1
-            type: stripPrefix
+            kind: stripPrefix
             prefix: /v2
-          - type: responseHeader
+          - kind: responseHeader
             header: X-Served-By
             value: local

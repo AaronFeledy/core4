@@ -180,7 +180,10 @@
       }
     },
     {
-      "includes": ["**/container-runtime/test/fixtures/applied-state-v3/**/*.json"],
+      "includes": [
+        "**/container-runtime/test/fixtures/applied-state-v3/**/*.json",
+        "**/container-runtime/test/fixtures/applied-state-v7/**/*.json"
+      ],
       "formatter": {
         "enabled": false
       }

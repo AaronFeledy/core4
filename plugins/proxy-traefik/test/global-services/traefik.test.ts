@@ -17,7 +17,7 @@ import { acquisitionStateFile } from "../../src/proxy-paths.ts";
 
 const decodeConfig = async (): Promise<ServiceConfig> => {
   const value = await Effect.runPromise(traefikGlobalService);
-  return Schema.decodeUnknownSync(ServiceConfig)(value);
+  return Schema.decodeUnknownSync(Schema.toType(ServiceConfig))(value);
 };
 
 const commandText = (config: ServiceConfig): string =>
@@ -52,17 +52,17 @@ describe("traefik global service ServiceConfig", () => {
 
   test("publishes rootless-safe loopback ingress endpoints", async () => {
     const config = await decodeConfig();
-    const published = (config.endpoints ?? []).filter((endpoint) => endpoint._tag === "published");
+    const published = (config.endpoints ?? []).filter((endpoint) => endpoint.kind === "published");
     expect(published).toHaveLength(2);
     expect(published[0]).toMatchObject({
-      _tag: "published",
+      kind: "published",
       name: "web",
       protocol: "http",
       port: 80,
       publication: { bindAddress: "127.0.0.1" },
     });
     expect(published[1]).toMatchObject({
-      _tag: "published",
+      kind: "published",
       name: "websecure",
       protocol: "https",
       port: 443,
@@ -161,14 +161,14 @@ describe("buildTraefikServiceConfig", () => {
     // Then: endpoints publish 8080/8443 on container 80/443 at 127.0.0.1, not 38080/38443.
     expect(config.endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         name: "web",
         protocol: "http",
         port: 80,
         publication: { bindAddress: "127.0.0.1", hostPort: 8080 },
       },
       {
-        _tag: "published",
+        kind: "published",
         name: "websecure",
         protocol: "https",
         port: 443,
@@ -176,7 +176,7 @@ describe("buildTraefikServiceConfig", () => {
       },
     ]);
     const hostPorts = (config.endpoints ?? []).flatMap((endpoint) =>
-      endpoint._tag === "published" ? [endpoint.publication.hostPort] : [],
+      endpoint.kind === "published" ? [endpoint.publication.hostPort] : [],
     );
     expect(hostPorts).not.toContain(38080);
     expect(hostPorts).not.toContain(38443);
@@ -192,7 +192,7 @@ describe("buildTraefikServiceConfig", () => {
     // Then: both ingress endpoints publish on the IPv4 loopback address.
     expect(
       (config.endpoints ?? [])
-        .filter((endpoint) => endpoint._tag === "published")
+        .filter((endpoint) => endpoint.kind === "published")
         .map((endpoint) => endpoint.publication.bindAddress),
     ).toEqual(["127.0.0.1", "127.0.0.1"]);
   });
@@ -207,14 +207,14 @@ describe("buildTraefikServiceConfig", () => {
     // Then: both ingress endpoints publish on the configured bind, not loopback.
     expect(config.endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         name: "web",
         protocol: "http",
         port: 80,
         publication: { bindAddress: "0.0.0.0", hostPort: 8080 },
       },
       {
-        _tag: "published",
+        kind: "published",
         name: "websecure",
         protocol: "https",
         port: 443,
@@ -241,7 +241,7 @@ describe("buildTraefikServiceConfig", () => {
     );
 
     // Then: both ingress endpoints publish on that bind.
-    const published = (config.endpoints ?? []).filter((endpoint) => endpoint._tag === "published");
+    const published = (config.endpoints ?? []).filter((endpoint) => endpoint.kind === "published");
     expect(published.map((endpoint) => endpoint.publication.bindAddress)).toEqual(["10.0.0.8", "10.0.0.8"]);
   });
 
@@ -251,7 +251,7 @@ describe("buildTraefikServiceConfig", () => {
     process.env.LANDO_ROUTER_BIND_ADDRESS = "localhost";
     try {
       const config = await decodeConfig();
-      const published = (config.endpoints ?? []).filter((endpoint) => endpoint._tag === "published");
+      const published = (config.endpoints ?? []).filter((endpoint) => endpoint.kind === "published");
       expect(published.map((endpoint) => endpoint.publication.bindAddress)).toEqual([
         "127.0.0.1",
         "127.0.0.1",
@@ -297,7 +297,7 @@ describe("buildTraefikServiceConfig", () => {
           ),
         ),
       );
-      const published = (config.endpoints ?? []).filter((endpoint) => endpoint._tag === "published");
+      const published = (config.endpoints ?? []).filter((endpoint) => endpoint.kind === "published");
       expect(published.map((endpoint) => endpoint.publication.bindAddress)).toEqual(["10.0.0.8", "10.0.0.8"]);
       expect(published.map((endpoint) => endpoint.publication.hostPort)).toEqual([8080, 8443]);
     } finally {
@@ -314,7 +314,7 @@ describe("buildTraefikServiceConfig", () => {
       const config = await decodeConfig();
 
       // Then: both ingress endpoints publish on that bind.
-      const published = (config.endpoints ?? []).filter((endpoint) => endpoint._tag === "published");
+      const published = (config.endpoints ?? []).filter((endpoint) => endpoint.kind === "published");
       expect(published.map((endpoint) => endpoint.publication.bindAddress)).toEqual([
         "192.168.4.2",
         "192.168.4.2",
@@ -337,7 +337,7 @@ describe("buildTraefikServiceConfig", () => {
 
     // Then: those host ports are present on the published endpoints.
     const hostPorts = (config.endpoints ?? []).flatMap((endpoint) =>
-      endpoint._tag === "published" ? [endpoint.publication.hostPort] : [],
+      endpoint.kind === "published" ? [endpoint.publication.hostPort] : [],
     );
     expect(hostPorts).toContain(38080);
     expect(hostPorts).toContain(38443);

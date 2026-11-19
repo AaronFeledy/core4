@@ -23,7 +23,7 @@ import {
 
 const metadata = { resolvedAt: DateTime.makeUnsafe(0), source: "physical-publications", runtime: 4 as const };
 const publication = {
-  _tag: "published",
+  kind: "published",
   port: 8080,
   protocol: "http",
   publication: { hostPort: 18080 },
@@ -91,7 +91,7 @@ test("keeps physical fingerprints stable when facets or application metadata cha
   // Given retained internal facets and aliases for the same TCP listener.
   const endpoints: readonly EndpointPlan[] = [
     alias,
-    { _tag: "internal", port: 8080, protocol: "http", name: "internal" },
+    { kind: "internal", port: 8080, protocol: "http", name: "internal" },
     publication,
   ];
   // When
@@ -134,7 +134,7 @@ test("allocates once when dynamic publication aliases share physical identity", 
   // Then
   expect(probes).toBe(1);
   expect(
-    result.map((endpoint) => (endpoint._tag === "published" ? endpoint.publication.hostPort : undefined)),
+    result.map((endpoint) => (endpoint.kind === "published" ? endpoint.publication.hostPort : undefined)),
   ).toEqual([30000, 30000]);
 });
 

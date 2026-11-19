@@ -174,6 +174,7 @@ The optional `invokeOperation` helper from `@lando/core/cli/operations` returns 
 - Manifest plugins are compatibility-checked through `requires."@lando/core"`; hosts supplying raw Layers own compatibility.
 - Persisted schemas and caches carry version discriminators; hosts retaining caches across versions MUST honor §12.2.
 - Docs component/redaction entry points are unstable; the core runtime, services, schema, errors, events, paths, landofile, and CLI entry points are semver-stable within a major.
+- Unreleased endpoint and route-filter discriminators use `kind` on authored, plan, and applied surfaces (`EndpointPlan.kind`, `RouteFilter.kind`, `RouteFilterKind`); plugin `declareEndpoints` returns encoded `EndpointDeclaration` wire values. Applied-state v7 migrates to v8 on read; app-plan cache 57 and scratch plan envelope 2 discard older frames. There is no live dual-key API (§18.1, §5.5.2, §12.1).
 
 ### 16.10 Non-goals
 

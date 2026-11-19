@@ -53,7 +53,7 @@ export const withListenerApp = async <A>(run: (plan: AppPlan) => Promise<A>): Pr
       artifact: { kind: "ref", ref: "python:3" },
       environment: {},
       mounts: [],
-      endpoints: [{ _tag: "internal", protocol: "tcp", port: 8080, primary: true }],
+      endpoints: [{ kind: "internal", protocol: "tcp", port: 8080, primary: true }],
       routes: [],
       dependsOn: [],
       hostAliases: [],

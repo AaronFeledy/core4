@@ -230,12 +230,12 @@ describe("layer deltas", () => {
       services: { web: { endpoints: override([{ name: "a", config: { x: 1 } }, { name: "b" }]) } },
     });
   });
-  test("filter type replacement needs no relocation", () => {
+  test("filter kind replacement needs no relocation", () => {
     check([
-      prefix("dist", routes([{ hostname: "a.test", filters: [{ name: "a", type: "redirect", to: "/" }] }])),
+      prefix("dist", routes([{ hostname: "a.test", filters: [{ name: "a", kind: "redirect", to: "/" }] }])),
       prefix(
         "local",
-        routes([{ hostname: "a.test", filters: [{ name: "a", type: "addPrefix", prefix: "/x" }] }]),
+        routes([{ hostname: "a.test", filters: [{ name: "a", kind: "addPrefix", prefix: "/x" }] }]),
       ),
     ]);
   });
@@ -308,7 +308,7 @@ describe("layer deltas", () => {
         services: {
           web: {
             routes: [
-              { hostname: "a.test", filters: [{ type: "redirect", to: "/" }] },
+              { hostname: "a.test", filters: [{ kind: "redirect", to: "/" }] },
               { hostname: "b.test" },
             ],
           },
@@ -326,11 +326,11 @@ describe("layer deltas", () => {
     check([
       prefix("dist", {
         ...routes([
-          { hostname: "a.test", filters: [{ name: "f", type: "redirect", to: "/", config: { old: true } }] },
+          { hostname: "a.test", filters: [{ name: "f", kind: "redirect", to: "/", config: { old: true } }] },
         ]),
       }),
       prefix("local", {
-        ...routes([{ hostname: "a.test", filters: [{ name: "f", type: "addPrefix", prefix: "/new" }] }]),
+        ...routes([{ hostname: "a.test", filters: [{ name: "f", kind: "addPrefix", prefix: "/new" }] }]),
       }),
     ]);
   });

@@ -6,5 +6,5 @@ services:
     routes:
       - hostname: web.lndo.site
         filters:
-          - type: stripPrefix
+          - kind: stripPrefix
             prefix: 5

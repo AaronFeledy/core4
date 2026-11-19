@@ -36,7 +36,7 @@ const service: ServicePlan = {
   mounts: [],
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: 8080,
       protocol: "http",
       name: "http",
@@ -329,7 +329,7 @@ describe("bringUpRecreateReasons", () => {
       ...service,
       endpoints: [
         {
-          _tag: "published",
+          kind: "published",
           port: 8080,
           protocol: "http",
           name: "http",

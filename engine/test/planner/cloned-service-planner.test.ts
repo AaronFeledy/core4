@@ -195,7 +195,7 @@ const web = {
   mounts: [{ source: ".", target: "/src", excludes: ["vendor"] }],
   networks: { default: { aliases: ["db-alias"] } },
   build: { artifact: ["echo artifact"], app: ["composer install"] },
-  endpoints: [{ _tag: "published", protocol: "http", port: 80, publication: { hostPort: 8099 } }],
+  endpoints: [{ kind: "published", protocol: "http", port: 80, publication: { hostPort: 8099 } }],
   hostnames: ["web.example.internal"],
   routes: ["app.lndo.site"],
   healthcheck: { command: "true" },
@@ -234,7 +234,7 @@ describe("cloned services in a planned app", () => {
     expect(buildSteps(clone).map((step) => step.phase)).toEqual(["build"]);
 
     expect(parent.endpoints).toContainEqual(
-      expect.objectContaining({ _tag: "published", publication: { hostPort: 8099 } }),
+      expect.objectContaining({ kind: "published", publication: { hostPort: 8099 } }),
     );
     expect(clone.endpoints).toEqual([]);
     expect(clone.routes).toEqual([]);
@@ -424,7 +424,7 @@ describe("cloned services in a planned app", () => {
     if (parent === undefined || clone === undefined) throw new Error("expected both services");
 
     expect(parent.endpoints).toContainEqual(
-      expect.objectContaining({ _tag: "published", publication: { hostPort: 8099 } }),
+      expect.objectContaining({ kind: "published", publication: { hostPort: 8099 } }),
     );
     expect(clone.endpoints).toEqual([]);
   });

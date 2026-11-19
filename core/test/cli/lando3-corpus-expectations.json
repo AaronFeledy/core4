@@ -1533,6 +1533,22 @@
     "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
   },
   {
+    "fixture": "mariadb/examples/11.4",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "message": "Route for service database selects port 3306, which declares tcp, not HTTP.",
+          "path": ["proxy", "database", 0],
+          "rule": "landofile.route"
+        }
+      ]
+    },
+    "category": "expected-rejection",
+    "reason": "The legacy proxy entry targets MariaDB's TCP listener on port 3306, which cannot serve an HTTP route."
+  },
+  {
     "fixture": "mariadb/examples/11.5",
     "outcome": {
       "stage": "unsupported",

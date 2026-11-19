@@ -30,8 +30,8 @@ const service = {
   extensions: {},
   metadata,
   endpoints: [
-    { _tag: "published", protocol: "https", port: 443, name: "websecure", publication: {} },
-    { _tag: "published", protocol: "tcp", port: 6379, name: "redis", publication: {} },
+    { kind: "published", protocol: "https", port: 443, name: "websecure", publication: {} },
+    { kind: "published", protocol: "tcp", port: 6379, name: "redis", publication: {} },
   ],
 } as const satisfies ServicePlan;
 const plan: AppPlan = {

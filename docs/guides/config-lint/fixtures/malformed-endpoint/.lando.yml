@@ -1,0 +1,9 @@
+# lando-lint: expect-invalid Port 65536 is outside 1-65535; use protocol:port or name=protocol:port.
+name: malformed-endpoint
+services:
+  web:
+    type: compose
+    image: nginx:alpine
+    endpoints:
+      - tcp:9000
+      - http:65536

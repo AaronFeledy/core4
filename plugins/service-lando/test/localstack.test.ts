@@ -78,7 +78,7 @@ describe("localstack ServiceType", () => {
       },
     ]);
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 4566, protocol: "http", name: "cloud", primary: true },
+      { kind: "internal", port: 4566, protocol: "http", name: "cloud", primary: true },
     ]);
   });
 
@@ -91,7 +91,7 @@ describe("localstack ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "localstack/localstack:4.7" });
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 14566, protocol: "http", name: "cloud", primary: true },
+      { kind: "internal", port: 14566, protocol: "http", name: "cloud", primary: true },
     ]);
     expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "0.0.0.0:14566" });
   });
@@ -118,8 +118,8 @@ describe("localstack ServiceType", () => {
 
     expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: " [::]:14566, :4566 " });
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 14566, protocol: "http", name: "cloud", primary: true },
-      { _tag: "internal", port: 4566, protocol: "http", name: "gateway-4566" },
+      { kind: "internal", port: 14566, protocol: "http", name: "cloud", primary: true },
+      { kind: "internal", port: 4566, protocol: "http", name: "gateway-4566" },
     ]);
     expect(plan.healthcheck).toMatchObject({
       command: ["sh", "-c", "curl -sf http://localhost:14566/_localstack/health"],
@@ -136,7 +136,7 @@ describe("localstack ServiceType", () => {
 
       expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: gateway });
       expect(plan.endpoints).toEqual([
-        { _tag: "internal", port: 4566, protocol: "http", name: "cloud", primary: true },
+        { kind: "internal", port: 4566, protocol: "http", name: "cloud", primary: true },
       ]);
       expect(plan.healthcheck).toMatchObject({
         command: ["sh", "-c", "curl -sf http://localhost:4566/_localstack/health"],

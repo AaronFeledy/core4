@@ -7,7 +7,7 @@ tags: [docs, compose, service]
 
 # Add a Compose service
 
-Add `type: compose` under `services` in `.lando.yml` to run a third-party image outside the catalog. Compose ports use the short form, which maps to the container port. The app root is mounted at `/app` by default:
+Add `type: compose` under `services` in `.lando.yml` to run a third-party image outside the catalog. A numeric route picks the hostname and the HTTP backend in one line. Use an endpoint alone when you want the default HTTPS hostname. The app root is mounted at `/app` by default:
 
 ```yaml
 name: compose-passthrough-demo
@@ -15,18 +15,81 @@ services:
   whoami:
     type: compose
     image: traefik/whoami:v1.10
-    ports:
-      - 80:80
+    routes:
+      - whoami.{{ app.name }}.lndo.site:80
 ```
 
-Because the image comes from your Landofile, Lando plans no home store for it. The example publishes host port `80`, which must be free; choose another host-side port in `ports:` if needed and use it in the probe below.
+The `:80` selects container port 80 as the HTTP backend. When the service has no declared network listener there, Lando adds an unnamed internal HTTP listener on that port. It does not publish a host port. Because the image comes from your Landofile, Lando plans no home store for it.
 
-Start it. Lando puts the passthrough service on the app network:
+For the default HTTPS hostname without choosing a custom host, declare the listener only:
+
+```yaml
+services:
+  whoami:
+    type: compose
+    image: traefik/whoami:v1.10
+    endpoints:
+      - http:80
+```
+
+`endpoints: [http:80]` is shorthand for an internal HTTP listener on container port 80. Lando gives the service the default HTTPS URL on the shared router.
+
+Save the Landofile in your app directory, then lint, start, and read the URL:
+
+```sh
+lando app:config:lint
+lando start
+lando info
+```
+
+`lando info` prints the HTTPS URL for `whoami`. Open that URL in a browser. The [whoami image](https://github.com/traefik/whoami/blob/v1.10.0/Dockerfile) returns request headers; its `Hostname:` line shows the container name, `lando-compose-passthrough-demo--whoami`.
+
+Name a listener when a route should target it, or when several listeners share a service:
+
+```yaml
+services:
+  whoami:
+    type: compose
+    image: traefik/whoami:v1.10
+    endpoints:
+      - ui=http:80
+    routes:
+      - hostname: whoami.{{ app.name }}.lndo.site
+        endpoint: ui
+```
+
+`ui=http:80` is the same internal listener with alias `ui`. Shorthand covers only internal network listeners as `protocol:port` or `name=protocol:port`. Protocols are lowercase `http`, `https`, `tcp`, and `udp`. Ports are decimal 1 through 65535 with no leading zero. There is no host-port, Unix socket, `primary`, or `appProtocol` shorthand.
+
+Use a `kind` object when you need those fields, a Unix socket, or an explicit host publication:
+
+```yaml
+endpoints:
+  - kind: internal
+    protocol: http
+    port: 80
+    primary: true
+  - kind: published
+    protocol: tcp
+    port: 9000
+    publication:
+      bindAddress: 127.0.0.1
+      hostPort: 9000
+```
+
+`kind: internal` stays on the app network. `kind: published` with `publication` is how you bind a host port. An explicit `endpoints:` list, including `endpoints: []`, replaces type and app-feature declarations and anything inferred from `ports:` or `expose:`. Valid numeric routes can still declare internal HTTP listeners, but they do not bind a host port.
+
+An existing HTTP(S) listener still works beside an independent UDP listener on the same port. Without HTTP(S), a known TCP or UDP listener blocks the numeric route. Clearing a service type's or feature's endpoints with `endpoints: []` does not change the protocol the service is known to speak. Declare `http:N` or `https:N` if the backend speaks that protocol. A Compose UDP publication alone does not block an implied HTTP listener.
+
+For LAN binds and short-syntax ports, see [Reach an app from another device](../subsystems/external-access.mdx). For named endpoints, filters, and routes, see [Write routes as shorthand strings and add filters](../proxy/route-shorthand.mdx).
 
 <Guide>
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="compose-passthrough-demo" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -35,6 +98,22 @@ Start it. Lando puts the passthrough service on the app network:
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="whoami-route" layer="e2e" tags={["@smoke"]} render>
+    <Step name="scaffold-e2e">
+      <UseFixture name="compose-passthrough-demo" />
+    </Step>
+    <Hidden reason="whoami HTTPS route answers ready with status 200">
+      <Step name="route-ready">
+        <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"checks\":\\s*\\[[^\\]]*?\\{[^}]*\"service\":\\s*\"whoami\"[^}]*\"url\":\\s*\"https://whoami[.]compose-passthrough-demo[.]lndo[.]site(?::[0-9]+)?/?\"[^}]*\"verdict\":\\s*\"ready\"[^}]*\"statusCode\":\\s*200(?=\\s*[,}])" } }} />
+        <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"connections\":\\s*\\[.*?\"source\":\\s*\"route\"[^}]*\"protocol\":\\s*\"https\"[^}]*\"url\":\\s*\"https://whoami[.]compose-passthrough-demo[.]lndo[.]site(?::[0-9]+)?/?\"" } }} />
+      </Step>
+    </Hidden>
+    <Step name="cleanup-e2e">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 
@@ -70,16 +149,6 @@ services:
 ```
 
 Init forwards the signal to the process it started, which is the first word of your argv. With `sh -c '...'` that is the shell; use `exec` so your program takes its place. Catalog services such as `type: node` already default to `init: true`; see [Stop cleanly](./node.mdx#stop-cleanly).
-
-## Probe the service
-
-From your host terminal, curl the published HTTP port after the service starts:
-
-```sh
-curl -sf http://localhost:80/
-```
-
-Use your chosen host port if you changed the mapping. The response's `Hostname:` line shows the container name, `lando-compose-passthrough-demo--whoami`. The [whoami image](https://github.com/traefik/whoami/blob/v1.10.0/Dockerfile) contains a standalone binary, not a shell or curl, so probe it from the host rather than running those tools inside the service.
 
 ## Control when the image is pulled
 

@@ -142,7 +142,7 @@ export const minioServiceFeature: ServiceFeatureDefinition = {
     const { apiPort, consolePort } = minioPorts(ctx);
     return [
       {
-        _tag: "internal",
+        kind: "internal",
         port: apiPort,
         protocol: "http",
         name: ctx.serviceName,
@@ -150,7 +150,7 @@ export const minioServiceFeature: ServiceFeatureDefinition = {
         scan: { path: "/minio/health/live" },
       },
       {
-        _tag: "internal",
+        kind: "internal",
         port: consolePort,
         protocol: "http",
         name: "console",

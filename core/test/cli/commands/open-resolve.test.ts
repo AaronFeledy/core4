@@ -21,7 +21,7 @@ const plan: Pick<AppPlan, "services"> = {
         primary: false,
         environment: {},
         mounts: [],
-        endpoints: [{ _tag: "internal", protocol: "http", port: 80 }],
+        endpoints: [{ kind: "internal", protocol: "http", port: 80 }],
         routes: [],
         dependsOn: [],
         hostAliases: [],
@@ -78,8 +78,8 @@ describe("resolveOpenTargets", () => {
     "selects a marked primary listener when secondary observations arrive first: %j",
     (selection) => {
       const declared = withWebEndpoints([
-        { _tag: "internal", protocol: "http", port: 8080 },
-        { _tag: "internal", protocol: "http", port: 80, primary: true },
+        { kind: "internal", protocol: "http", port: 8080 },
+        { kind: "internal", protocol: "http", port: 80, primary: true },
       ]);
       const observed: readonly StartedService[] = [
         {
@@ -106,8 +106,8 @@ describe("resolveOpenTargets", () => {
       // A plain primary plus a non-primary HTTPS listener: each scheme's route binds its own listener.
       const declared = withWebEndpoints(
         [
-          { _tag: "internal", protocol: "http", port: 80, primary: true },
-          { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+          { kind: "internal", protocol: "http", port: 80, primary: true },
+          { kind: "internal", protocol: "https", port: 443, name: "web-https" },
         ],
         { generatedCertificate: true },
       );
@@ -143,8 +143,8 @@ describe("resolveOpenTargets", () => {
     (selection) => {
       // A plain primary plus an unmarked HTTPS listener with its own certificate.
       const declared = withWebEndpoints([
-        { _tag: "internal", protocol: "http", port: 80, primary: true },
-        { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+        { kind: "internal", protocol: "http", port: 80, primary: true },
+        { kind: "internal", protocol: "https", port: 443, name: "web-https" },
       ]);
       const primary = { port: 80, transport: "tcp", names: ["web"], primary: true } as const;
       const tls = { port: 443, transport: "tcp", names: ["web-https"], primary: false } as const;
@@ -173,8 +173,8 @@ describe("resolveOpenTargets", () => {
 
   test.each([{}, { service: "web" }])("leaves two unmarked HTTP listeners unresolved: %j", (selection) => {
     const declared = withWebEndpoints([
-      { _tag: "internal", protocol: "http", port: 80 },
-      { _tag: "internal", protocol: "http", port: 8080 },
+      { kind: "internal", protocol: "http", port: 80 },
+      { kind: "internal", protocol: "http", port: 8080 },
     ]);
     const observed: readonly StartedService[] = [
       {
