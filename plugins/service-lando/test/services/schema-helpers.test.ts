@@ -24,7 +24,7 @@ const validPlanInput = {
       realization: "passthrough",
     },
   ],
-  endpoints: [{ _tag: "internal", port: 80, protocol: "http", name: "web" }],
+  endpoints: [{ kind: "internal", port: 80, protocol: "http", name: "web" }],
   routes: [],
   dependsOn: [],
   hostAliases: [],
@@ -57,7 +57,7 @@ describe("service schema helpers", () => {
   test("decodeServicePlan throws the same malformed-plan error shape as the raw decoder", () => {
     const malformedPlanInput = {
       ...validPlanInput,
-      endpoints: [{ _tag: "internal", port: "eighty", protocol: "http", name: "web" }],
+      endpoints: [{ kind: "internal", port: "eighty", protocol: "http", name: "web" }],
     };
 
     expect(thrownShape(() => decodeServicePlan(malformedPlanInput))).toEqual(

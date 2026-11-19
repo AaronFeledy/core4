@@ -2,7 +2,7 @@ import type { AppId, RoutePlan } from "@lando/sdk/schema";
 
 /** Shared authored provider config; Traefik omits false redirect permanence. */
 export const routeMiddlewareConfig = (filter: NonNullable<RoutePlan["filters"]>[number]) => {
-  switch (filter.type) {
+  switch (filter.kind) {
     case "stripPrefix":
       return { stripPrefix: { prefixes: [filter.prefix] } };
     case "addPrefix":

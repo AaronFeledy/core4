@@ -172,4 +172,32 @@ describe("Standard Schema views", () => {
       "effect",
     ]);
   });
+
+  test.each([
+    { endpoints: ["http:80"], ok: true },
+    { endpoints: ["{{ env.EP }}"], ok: true },
+    { endpoints: ["http:{{ env.PORT }}"], ok: true },
+    { endpoints: ["${EP}"], ok: true },
+    { endpoints: [{ kind: "internal", protocol: "http", port: 8080 }], ok: true },
+    { endpoints: [{ _tag: "internal", protocol: "http", port: 8080 }], ok: false },
+    { endpoints: ["http:0"], ok: false },
+  ] as const)("Standard Schema endpoint wire %j", async ({ endpoints, ok }) => {
+    const input = { name: "demo", services: { web: { endpoints: [...endpoints] } } };
+    const result = await LandofileStandardSchema["~standard"].validate(input);
+    if (ok) expect(result).toHaveProperty("value");
+    else expect(result.issues?.some((issue) => issue.path?.[0] === "services")).toBe(true);
+  });
+
+  test.each([
+    { filters: [{ kind: "addPrefix", prefix: "/v1" }], ok: true },
+    { filters: [{ type: "addPrefix", prefix: "/v1" }], ok: false },
+  ] as const)("Standard Schema route filter wire %j", async ({ filters, ok }) => {
+    const input = {
+      name: "demo",
+      services: { web: { routes: [{ hostname: "app.test", filters: [...filters] }] } },
+    };
+    const result = await LandofileStandardSchema["~standard"].validate(input);
+    if (ok) expect(result).toHaveProperty("value");
+    else expect(result.issues?.length ?? 0).toBeGreaterThan(0);
+  });
 });

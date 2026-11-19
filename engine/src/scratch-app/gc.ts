@@ -75,6 +75,7 @@ export const makeScratchGc = Effect.fnUntraced(function* (services: {
               { id, instanceRoot },
               Effect.gen(function* () {
                 if (!(yield* candidatesNow).candidates.includes(id)) return false;
+                // Desired cache may miss after a frame bump; reap recovers the applied plan first.
                 const plan = yield* services.readCachedPlan(planCache);
                 yield* services.reap({
                   id,

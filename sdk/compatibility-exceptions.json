@@ -1,5 +1,101 @@
 [
   {
+    "surface": "schema:AdminerServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Unreleased endpoint authoring accepts shorthand and uses kind for objects; decoded listeners are unchanged (#2456, #2109)."
+  },
+  {
+    "surface": "schema:AdminerServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:LayerMergeRule",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Filter merge metadata now names the authored kind discriminator (#2109)."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:RouteObjectInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.filters.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+  },
+  {
     "surface": "command:app:destroy",
     "changeKind": "union-widened",
     "path": "$.landofileEvents.anyOf",
@@ -1085,10 +1181,10 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Reviewed credential publication: ServicePlan becomes a strict union of the existing connection-or-no-credentials shape and nonSqlCreds for Redis. Generated fragments preserve all 25 original properties and required fields in the first arm, and all 24 non-connection properties in the second; ServiceCreds is unchanged. Both arms additionally accept optional nonempty serviceTypeId, retaining declaration identity separately from normalized type. Optional Never anti-fields forbid competing credential sources. Historical records remain readable; generated clients refuse missing applied declaration identity instead of guessing. Typed environment/connection evolution is intentional; observation never resolves descriptors. Both arms now also add optional startup readiness alongside ongoing health, and command probes accept an optional declared listener target; these additions preserve previously accepted records without weakening credential exclusivity. Tests cover coexistence rejection, Redis planning, strict serialization, exact child-factory lookup, historical refusal, persistence, readiness selection, and target realization. Both arms accept optional structured listenerAuthority configuration advice; readiness and startup errors accept optional listener diagnosis evidence. These fields are outside create identity; historical records remain readable for observation and teardown. SQLite file targets add a third exclusive arm: required sqlite: SqliteTargetConfig with Never anti-fields for connection and nonSqlCreds, while the existing arms gain an optional Never sqlite anti-field. Applied-state advances to version 5; v4 records decode unchanged, and a historical record pairing sqlite with credentials is refused. Both ServicePlan arms additively gain optional pullPolicy (always, never, or build), the engine-owned image acquisition intent normalized from Compose pull_policy; omission keeps the previous pull-if-missing behavior. Applied-state advances to version 6 with an identity migration for v5 records; no v5 record holds a Compose pull_policy knob because no provider declared it. Both arms also add the additive optional `projectUser` identity and `projectUserExplanation` absence reason (GitHub #2304); historical records decode with them absent and keep the previous identity behavior, so applied-state advances to version 7 only to record the additive shape; v6 records decode unchanged.",
+    "justification": "ServicePlan anyOf evolves with endpoint kind discriminators and nested plan fields (#2456, #2109). applied-state version 8 migrates endpoint _tag\u2192kind and route filter type\u2192kind under data.services and data.routes (map: data[appId].\u2026) on read only; no write-back. Historical applied ServicePlan values remain readable after that pass; v8 never accepts old keys.",
     "persistedState": {
       "store": "applied-state",
-      "version": 7
+      "version": 8
     }
   },
   {
@@ -3399,10 +3495,10 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "ServicePlan additively gains optional service-type provenance and an optional resolved post-start scan block. Optional structured listenerAuthority records configuration ownership; optional listener diagnosis records socket evidence separately. Historical plans remain readable for observation and teardown. Nested service plans gain the exclusive SQLite arm (sqlite: SqliteTargetConfig) without changing any existing required field or credential arm. Applied-state advances to version 5 with an identity migration for v4 records. Both ServicePlan arms additively gain optional pullPolicy (always, never, or build), the engine-owned image acquisition intent normalized from Compose pull_policy; omission keeps the previous pull-if-missing behavior. Applied-state advances to version 6 with an identity migration for v5 records; no v5 record holds a Compose pull_policy knob because no provider declared it. The nested ServicePlan values also gain only the additive optional `projectUser` identity and `projectUserExplanation` absence reason from GitHub #2304; historical AppPlan records decode unchanged.",
+    "justification": "AppPlan.services additionalProperties tracks ServicePlan endpoint/filter kind vocabulary (#2456). applied-state version 8 rewrites the two paths data.services[service].endpoints[i]._tag\u2192kind and data.routes[r].filters[f].type\u2192kind (map-prefixed for Podman) in memory on read; ordinary successful persist writes v8. Prior additive ServicePlan fields remain valid.",
     "persistedState": {
       "store": "applied-state",
-      "version": 7
+      "version": 8
     }
   },
   {
@@ -5469,19 +5565,23 @@
     "surface": "schema:EndpointInput",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+    "justification": "Unreleased EndpointInput decodes shorthand to an internal object and encodes object form with kind; optional primary/appProtocol on network variants (#2456, #2109). Unix and publication rules unchanged. Authoring-only; applied plans use EndpointPlan after migration."
   },
   {
     "surface": "schema:EndpointPlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Approved plan extensions add optional primary:true and opaque appProtocol to network endpoints and sparse plan-only scan path/okCodes metadata to endpoint variants. No existing field becomes required; historical ownership-bearing applied plans remain decodable without migration. Scan defaults do not add authoring syntax or readiness semantics."
+    "justification": "Unreleased endpoint vocabulary (#2456, #2109): plan endpoint variants use kind (internal|published) instead of _tag. applied-state migrates data.services[service].endpoints[i]._tag \u2192 kind (and data[appId].\u2026 for the Podman map) on read only: one in-memory pass, no write-back, lock, or provider contact; ordinary persist writes envelope version 8. Historical v7 bytes remain readable; current v8 decode never accepts old discriminators. Optional primary/appProtocol/scan fields stay optional.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 8
+    }
   },
   {
     "surface": "schema:InternalEndpoint",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Approved internal endpoint extensions add optional primary:true and opaque appProtocol to network listeners and optional sparse plan-only scan path/okCodes metadata to endpoint variants. No field becomes required; historical applied endpoints remain decodable. Authoring and readiness semantics remain separate."
+    "justification": "Unreleased InternalEndpoint uses kind (internal) instead of _tag, with optional primary:true, opaque appProtocol, and sparse plan-only scan metadata (#2456, #2109). No field becomes newly required beyond the discriminator rename. applied-state version 8 migrates data.services[service].endpoints[i]._tag\u2192kind (and data[appId].\u2026) on read only; historical applied endpoints remain decodable. Authoring and readiness stay separate."
   },
   {
     "surface": "schema:LocalStackServiceConfig",
@@ -6668,5 +6768,163 @@
     "changeKind": "unsupported-construct",
     "path": "$.related.items.source.anyOf",
     "justification": "PR #2229 adds a project-file arm { layer: \"project-file\", file, path } to ValidationIssueSource so a service type's inference failure names the .nvmrc or package.json that caused it instead of the Landofile. Every existing source arm is unchanged and LandofileLayer is not widened; the new arm is produced only for issues whose service type declared and read that project file. Consumers that switch on source.layer must accept the new value; SDK schema round-trip, planner attribution, and CLI rendering tests cover it."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.filters.items.anyOf",
+    "justification": "AppPlan nested route filters use kind instead of type (#2109, #2456). applied-state version 8 migrates data.routes[r].filters[f].type\u2192kind (and data[appId].\u2026) on read only alongside endpoint _tag\u2192kind; no write-back. Filter semantics and optional absence are preserved.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 8
+    }
+  },
+  {
+    "surface": "schema:PublishedEndpoint",
+    "changeKind": "property-removed",
+    "path": "$._tag",
+    "justification": "Unreleased PublishedEndpoint drops TaggedStruct _tag for plain kind: \"published\" (#2456). applied-state rewrites nested endpoint discriminators at data.services[service].endpoints[i] (_tag \u2192 kind) and the map-prefixed form on read only; no write-back. Historical applied endpoints remain decodable after migration to envelope v8.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 8
+    }
+  },
+  {
+    "surface": "schema:PublishedEndpoint",
+    "changeKind": "property-added",
+    "path": "$.kind",
+    "justification": "Unreleased PublishedEndpoint requires kind: \"published\" in place of _tag (#2456). Same applied-state read-time migration of endpoint leaves (data.services[\u2026].endpoints[i] and data[appId].\u2026) to version 8; no rewrite on disk until ordinary persist. Publication fields and Unix variants are otherwise unchanged.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 8
+    }
+  },
+  {
+    "surface": "schema:RouteFilter",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "RouteFilter anyOf is kind-discriminated (was type); RouteFilterType renamed to RouteFilterKind (#2109, #2456). applied-state version 8 migrates filter type\u2192kind at data.routes[r].filters[f] (and data[appId].\u2026) on read only with endpoint _tag\u2192kind; historical applied filters remain readable.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 8
+    }
+  },
+  {
+    "surface": "schema:RoutePlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.filters.items.anyOf",
+    "justification": "RoutePlan.filters items use kind instead of type (#2109, #2456). applied-state version 8 migrates data.routes[r].filters[f].type\u2192kind (map: data[appId].\u2026) on read only; endpoint leaves migrate _tag\u2192kind in the same pass. No write-back until ordinary persist.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 8
+    }
+  },
+  {
+    "surface": "schema:CurrentExecutableAppPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:PostScratchDestroyEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:PreScratchDestroyEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.routes.items.filters.items.anyOf",
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+  },
+  {
+    "surface": "schema:ProxyApplyResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.appliedRoutes.items.filters.items.anyOf",
+    "justification": "ProxyApplyResult.appliedRoutes filters use kind (#2109, #2456). In-memory/evidence only (not applied-state); vocabulary matches RoutePlan. When routes originate from migrated applied plans, filters already carry kind after the read-time type\u2192kind rewrite. No separate persisted bump."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.proxy.additionalProperties",
+    "justification": "Landofile proxy map additionalProperties tracks route authoring that requires filter kind and endpoint shorthand/objects with kind (#2109, #2456, US-615). Runtime plan filters and endpoints use the same kind vocabulary after applied-state v8 migration on read. Not a separate persisted store."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.proxy.additionalProperties",
+    "justification": "Landofile proxy map additionalProperties tracks route authoring that requires filter kind and endpoint shorthand/objects with kind (#2109, #2456, US-615). Runtime plan filters and endpoints use the same kind vocabulary after applied-state v8 migration on read. Not a separate persisted store."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.proxy.additionalProperties",
+    "justification": "Landofile proxy map additionalProperties tracks route authoring that requires filter kind and endpoint shorthand/objects with kind (#2109, #2456, US-615). Runtime plan filters and endpoints use the same kind vocabulary after applied-state v8 migration on read. Not a separate persisted store."
+  },
+  {
+    "surface": "schema:RouteFilterType",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Unreleased rename: public schema surface RouteFilterType is removed in favor of RouteFilterKind (#2109, #2456). No dual export. Applied plans store filter objects under routes, not the type alias name; read-time applied-state v8 migration rewrites filter discriminator type\u2192kind at the two plan paths. Callers and generated artifacts must use RouteFilterKind."
   }
 ]

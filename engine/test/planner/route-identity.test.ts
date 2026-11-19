@@ -31,7 +31,7 @@ test.each(["http", "https"] as const)(
     // When
     const result = await Effect.runPromise(
       Effect.result(
-        accumulator.add(route({ scheme, filters: [{ type: "addPrefix", prefix: "/v2" }] }), {
+        accumulator.add(route({ scheme, filters: [{ kind: "addPrefix", prefix: "/v2" }] }), {
           key: "proxy.web[0]",
           file: "/app/local.yml",
         }),
@@ -68,14 +68,14 @@ test("dedupes filter execution semantics regardless of merge identity names", as
   // Given
   const accumulator = makeRouteAccumulator();
   await Effect.runPromise(
-    accumulator.add(route({ filters: [{ type: "redirect", name: "first", to: "https://new.test" }] }), {
+    accumulator.add(route({ filters: [{ kind: "redirect", name: "first", to: "https://new.test" }] }), {
       key: "routes[0]",
     }),
   );
   // When
   const refs = await Effect.runPromise(
     accumulator.add(
-      route({ filters: [{ type: "redirect", name: "second", to: "https://new.test", permanent: false }] }),
+      route({ filters: [{ kind: "redirect", name: "second", to: "https://new.test", permanent: false }] }),
       { key: "routes[1]" },
     ),
   );

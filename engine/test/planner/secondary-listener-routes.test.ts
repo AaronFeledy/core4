@@ -1,25 +1,35 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ServiceName } from "@lando/sdk/schema";
 import { PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { planApp } from "../plan-app.ts";
 
 const planService = async (service: Record<string, unknown>) => {
-  const landofile = await Effect.runPromise(
-    compileTestLandofile({ name: "listeners", services: { web: service } }, "/srv/apps/listeners"),
-  );
-  return Effect.runPromise(
-    Effect.gen(function* () {
-      const registry = yield* PluginRegistry;
-      return yield* planApp(
-        { landofile, providerCapabilities: TestRuntimeProvider.capabilities, appRoot: "/srv/apps/listeners" },
-        Layer.succeed(PluginRegistry, registry),
-      );
-    }).pipe(Effect.provide(PluginRegistryLayer.layer)),
-  );
+  const appRoot = await mkdtemp(join(tmpdir(), "lando-listeners-"));
+  try {
+    return await Effect.runPromise(
+      Effect.gen(function* () {
+        const landofile = yield* compileTestLandofile(
+          { name: "listeners", services: { web: service } },
+          appRoot,
+        );
+        const registry = yield* PluginRegistry;
+        return yield* planApp(
+          { landofile, providerCapabilities: TestRuntimeProvider.capabilities, appRoot },
+          Layer.succeed(PluginRegistry, registry),
+        );
+      }).pipe(Effect.provide(PluginRegistryLayer.layer), Effect.provide(BunFileSystem.layer)),
+    );
+  } finally {
+    await rm(appRoot, { recursive: true, force: true });
+  }
 };
 
 test.each([
@@ -75,6 +85,77 @@ test("MailHog split HTTP listeners require explicit route selection", async () =
       expect.objectContaining({
         path: ["services", "web", "routes"],
         message: expect.stringContaining("ambiguous between HTTP listeners"),
+      }),
+    ],
+  });
+});
+
+test("numeric routes share a listener and classify only the TCP publication", async () => {
+  const plan = await planService({
+    type: "compose",
+    image: "traefik/whoami:v1.10",
+    ports: [
+      { target: 8080, published: "18080", host_ip: "127.0.0.1", name: "web", app_protocol: "http" },
+      "18081:8080/udp",
+    ],
+    expose: [8081],
+    routes: [
+      "web.lndo.site:8080",
+      { hostname: "both.lndo.site", endpoint: 8080, scheme: "both" },
+      { hostname: "side.lndo.site", endpoint: "{{ 8081 }}" },
+    ],
+  });
+  const scan = { okCodes: [], path: "/" };
+  expect(plan.services[ServiceName.make("web")]?.endpoints).toEqual([
+    { kind: "internal", protocol: "http", port: 8080, scan },
+    { kind: "internal", protocol: "http", port: 8081, scan },
+    {
+      kind: "published",
+      protocol: "http",
+      port: 8080,
+      name: "web",
+      appProtocol: "http",
+      publication: { hostPort: 18080, bindAddress: "127.0.0.1" },
+      scan,
+    },
+    { kind: "published", protocol: "udp", port: 8080, publication: { hostPort: 18081 } },
+  ]);
+  expect(
+    plan.routes.map(({ hostname, scheme, backend }) => [hostname, scheme, backend.protocol, backend.port]),
+  ).toEqual([
+    ["web.lndo.site", "https", "http", 8080],
+    ["both.lndo.site", "http", "http", 8080],
+    ["both.lndo.site", "https", "http", 8080],
+    ["side.lndo.site", "https", "http", 8081],
+  ]);
+});
+
+test("retains a Node application listener and declares a numeric secondary", async () => {
+  const plan = await planService({
+    type: "node:22",
+    port: 3000,
+    routes: ["node.lndo.site:3000", "secondary.lndo.site:8080"],
+  });
+  expect(
+    plan.services[ServiceName.make("web")]?.endpoints.map((facet) =>
+      facet.protocol === "unix" ? [facet.socketPath, facet.protocol] : [facet.port, facet.protocol],
+    ),
+  ).toEqual([
+    [3000, "http"],
+    [8080, "http"],
+  ]);
+  expect(plan.routes.map(({ backend }) => backend.port)).toEqual([3000, 8080]);
+});
+
+test("clearing endpoints does not turn PHP-FPM into HTTP", async () => {
+  await expect(
+    planService({ type: "php:8.3", via: "fpm", endpoints: [], routes: ["fpm.lndo.site:9000"] }),
+  ).rejects.toMatchObject({
+    _tag: "LandofileValidationError",
+    issues: [
+      expect.objectContaining({
+        path: ["services", "web", "routes", 0],
+        message: expect.stringMatching(/9000.*tcp/i),
       }),
     ],
   });

@@ -38,12 +38,12 @@ import {
 } from "../plugins/file-sync-policy.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { sortRecord } from "../services/draft.ts";
-import { endpointValidationError, normalizeEndpoints } from "../services/endpoint-normalizer.ts";
+import { endpointValidationError, normalizeEndpointFacts } from "../services/endpoint-normalizer.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
 import { missingCapability } from "./compose-capabilities.ts";
-import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
-import { resolveRoute } from "./endpoint-routes.ts";
+import { dataTreeOwnershipStep, projectUserVolumeTrees, resolveDataTreeOwnership } from "./data-tree.ts";
+import { endpointsForRoutes, resolveRoute } from "./endpoint-routes.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-host-checks.ts";
@@ -54,7 +54,6 @@ import {
   type ResolvedProjectUser,
   projectUserRenumberStep,
   projectUserTmpfsMounts,
-  projectUserVolumeTrees,
   resolveProjectUser,
 } from "./project-user.ts";
 import {
@@ -65,7 +64,7 @@ import {
 import { stampGeneratedBackendTls } from "./route-certificate-defaults.ts";
 import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import { resolveServiceArtifact } from "./service-artifact.ts";
-import { type PlannedServiceDraft, servicePlanError } from "./service-types.ts";
+import { type AuthoredStorageInfo, type PlannedServiceDraft, servicePlanError } from "./service-types.ts";
 import type { ShadowHostCheck } from "./shadow-host-checks.ts";
 
 export { resolveRoute } from "./endpoint-routes.ts";
@@ -313,6 +312,21 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         : { projectUser: projectUserResolution.projectUser }),
     });
     if (homePlan instanceof LandofileValidationError) return yield* Effect.fail(homePlan);
+    const cacheStores = new Set<string>();
+    const storageByTarget = new Map<string, AuthoredStorageInfo>();
+    for (const mount of homePlan.mounts) {
+      if (mount.type !== "volume") continue;
+      const resolvedStorageTarget = (draft.normalizedConfig.storage ?? []).some((entry) => {
+        if (typeof entry === "string") return false;
+        const destination = parseContainerDestination(entry.target);
+        return destination.ok && destination.value === mount.target;
+      });
+      const storageInfo =
+        preparedMounts.storageByTarget.get(mount.target) ??
+        (mount.origin !== "derived" && resolvedStorageTarget ? authored.byStore.get(mount.store) : undefined);
+      if (storageInfo !== undefined) storageByTarget.set(mount.target, storageInfo);
+      if (storageInfo?.kind === "cache") cacheStores.add(mount.store);
+    }
     // Data-tree ownership resolves here, where the composed `draft.user` and
     // the service type's image identity are both final. The step it produces
     // prepares the tree during the image build, so the planned user owns the
@@ -355,6 +369,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ownershipTrees.push(
         ...projectUserVolumeTrees({
           mounts: homePlan.mounts,
+          cacheStores,
           ...(projectUserResolution.projectUser === undefined
             ? {}
             : { projectUser: projectUserResolution.projectUser }),
@@ -381,7 +396,11 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         ...redirectSteps,
       ],
     };
-    const endpoints = normalizeEndpoints(draft.endpoints, draft.normalizedConfig);
+    const { endpoints, conflicts } = normalizeEndpointFacts(
+      draft.endpoints,
+      draft.normalizedConfig,
+      authoredRoutes === undefined ? undefined : { service: name, routes: authoredRoutes },
+    );
     const endpointError = endpointValidationError(endpoints, { appRoot: input.appRoot, serviceName: name });
     if (endpointError !== undefined) return yield* Effect.fail(endpointError);
     const planned = applyHostReachability(
@@ -423,6 +442,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     const tls = { certificate: draft.certs, generated: generatedCertificate };
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
     if (authoredRoutes !== undefined) {
+      const facetsFor = endpointsForRoutes(servicePlanWithHome.endpoints);
       for (const [routeIndex, route] of authoredRoutes.entries()) {
         for (const plan of stampGeneratedBackendTls(
           yield* resolveRoute(
@@ -431,6 +451,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
             servicePlanWithHome.endpoints,
             route,
             generatedCertificate,
+            { conflict: conflicts?.get(route), numericFacets: facetsFor(route) },
           ),
           tls,
         )) {
@@ -486,7 +507,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
 
     const publicationError = publicationCapabilityError(input.provider, input.providerCapabilities, {
       name,
-      published: servicePlanWithRoutes.endpoints.some((endpoint) => endpoint._tag === "published"),
+      published: servicePlanWithRoutes.endpoints.some((endpoint) => endpoint.kind === "published"),
     });
     if (publicationError !== undefined) yield* Effect.fail(publicationError);
 
@@ -507,20 +528,13 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     services[name] = yield* encodeServicePlan(input.appRoot, name, servicePlanWithRoutes);
     for (const mount of servicePlanWithRoutes.mounts) {
       if (mount.type !== "volume") continue;
-      const resolvedStorageTarget = (draft.normalizedConfig.storage ?? []).some((entry) => {
-        if (typeof entry === "string") return false;
-        const destination = parseContainerDestination(entry.target);
-        return destination.ok && destination.value === mount.target;
-      });
-      const authoredInfo =
-        preparedMounts.storageByTarget.get(mount.target) ??
-        (mount.origin !== "derived" && resolvedStorageTarget ? authored.byStore.get(mount.store) : undefined);
+      const storageInfo = storageByTarget.get(mount.target);
       const error = pushStore(
         {
           name: mount.store,
-          scope: authoredInfo?.scope ?? "service",
-          kind: authoredInfo?.kind ?? "data",
-          ...(authoredInfo?.key === undefined ? {} : { key: authoredInfo.key }),
+          scope: storageInfo?.scope ?? "service",
+          kind: storageInfo?.kind ?? "data",
+          ...(storageInfo?.key === undefined ? {} : { key: storageInfo.key }),
         },
         name,
       );

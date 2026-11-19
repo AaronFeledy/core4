@@ -9,14 +9,28 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const http = (port: number, extra: Readonly<Record<string, unknown>> = {}) => ({
-  _tag: "internal",
+  kind: "internal",
   protocol: "http",
   port,
   ...extra,
 });
 test.each([
   { label: "ambiguous", endpoints: [http(80), http(90)], route: "app.lndo.site", valid: false },
-  { label: "unmatched numeric", endpoints: [http(80)], route: "app.lndo.site:90", valid: false },
+  { label: "new numeric listener", endpoints: [http(80)], route: "app.lndo.site:90", valid: true },
+  { label: "numeric after clear", endpoints: [], route: "app.lndo.site:90", valid: true },
+  {
+    label: "evaluated string alias",
+    endpoints: [],
+    route: { hostname: "app.lndo.site", endpoint: "{{ '90' }}" },
+    valid: false,
+  },
+  {
+    label: "invalid numeric port",
+    endpoints: [],
+    route: { hostname: "app.lndo.site", endpoint: 65536 },
+    field: "endpoint",
+    valid: false,
+  },
   {
     label: "unmatched name",
     endpoints: [http(80, { name: "web" })],
@@ -38,23 +52,23 @@ test.each([
   },
   {
     label: "TCP hint",
-    endpoints: [{ _tag: "internal", protocol: "tcp", port: 80, appProtocol: "http" }],
+    endpoints: [{ kind: "internal", protocol: "tcp", port: 80, appProtocol: "http" }],
     route: "app.lndo.site",
     valid: false,
   },
   {
     label: "non-HTTP primary",
-    endpoints: [{ _tag: "internal", protocol: "tcp", port: 25, primary: true }, http(80)],
+    endpoints: [{ kind: "internal", protocol: "tcp", port: 25, primary: true }, http(80)],
     route: "app.lndo.site",
     valid: true,
   },
   {
     label: "logical facets",
-    endpoints: [http(80, { name: "web" }), http(80, { _tag: "published", publication: { hostPort: 8080 } })],
+    endpoints: [http(80, { name: "web" }), http(80, { kind: "published", publication: { hostPort: 8080 } })],
     route: "app.lndo.site",
     valid: true,
   },
-])("lints $label HTTP selection", async ({ endpoints, route, valid }) => {
+])("lints $label HTTP selection", async ({ endpoints, route, valid, field }) => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-binding-selection-"));
   try {
@@ -75,7 +89,14 @@ test.each([
     // Then
     expect(result.valid).toBe(valid);
     expect(result.violations.map(({ rule, path }) => ({ rule, path }))).toEqual(
-      valid ? [] : [{ rule: "landofile.route", path: ["services", "web", "routes", 0] }],
+      valid
+        ? []
+        : [
+            {
+              rule: "landofile.route",
+              path: ["services", "web", "routes", 0, ...(field === undefined ? [] : [field])],
+            },
+          ],
     );
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -153,7 +174,7 @@ test("accumulates proxy binding failures without endpoint or missing-service cas
           },
           unavailable: { type: "unknown-service", routes: ["unknown.lndo.site"] },
         },
-        proxy: { web: ["proxy.lndo.site", "second.lndo.site:9000"] },
+        proxy: { web: ["proxy.lndo.site", { hostname: "second.lndo.site", endpoint: "admin" }] },
       }),
     );
     // When
@@ -201,6 +222,55 @@ test("retains independent route findings when LocalStack requires a literal gate
     ]);
     expect(result.violations[0]?.message).toContain("GATEWAY_LISTEN requires literal text");
     expect(result.violations[0]?.source).toMatchObject({ file: join(root, ".lando.yml") });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reports only effective UDP conflicts with their original overlay indexes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-overlay-route-conflict-"));
+  const base = join(root, ".lando.yml");
+  const overlay = join(root, ".lando.local.yml");
+  try {
+    await writeFile(
+      base,
+      emitYamlDocument({
+        name: "binding",
+        services: {
+          web: {
+            type: "compose",
+            image: "alpine:3",
+            endpoints: ["udp:9000"],
+            routes: ["clear.lndo.site:9000"],
+          },
+        },
+        proxy: {
+          web: [
+            { hostname: "replace.lndo.site", endpoint: 9000 },
+            { hostname: "conflict.lndo.site", endpoint: 9000, scheme: "both" },
+          ],
+        },
+      }),
+    );
+    await writeFile(
+      overlay,
+      emitYamlDocument({
+        services: { web: { routes: [] } },
+        proxy: {
+          web: [
+            { hostname: "replace.lndo.site", endpoint: 8080 },
+            { hostname: "another.lndo.site", endpoint: 9000 },
+          ],
+        },
+      }),
+    );
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    expect(result.violations).toMatchObject([
+      { reason: "route-endpoint-protocol-conflict", source: { file: base, path: ["proxy", "web", 1] } },
+      { reason: "route-endpoint-protocol-conflict", source: { file: overlay, path: ["proxy", "web", 1] } },
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

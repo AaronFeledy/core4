@@ -14,8 +14,8 @@ const plans = Schema.decodeUnknownSync(Schema.Array(EndpointPlan));
 test("selects explicit HTTP port when a valid UDP listener shares that port", () => {
   // Given
   const endpoints = plans([
-    { _tag: "internal", protocol: "http", port: 80, primary: true },
-    { _tag: "internal", protocol: "udp", port: 80 },
+    { kind: "internal", protocol: "http", port: 80, primary: true },
+    { kind: "internal", protocol: "udp", port: 80 },
   ]);
   // When
   const selection = selectHttpEndpoint(endpoints, 80);
@@ -40,18 +40,18 @@ test.each([
 
 test.each([
   {
-    first: { _tag: "internal", protocol: "http", port: 80, name: "shared" },
+    first: { kind: "internal", protocol: "http", port: 80, name: "shared" },
     identities: ["80/tcp", "unix:/run/web.sock"],
   },
   {
-    first: { _tag: "internal", protocol: "unix", socketPath: "/run/other.sock", name: "shared" },
+    first: { kind: "internal", protocol: "unix", socketPath: "/run/other.sock", name: "shared" },
     identities: ["unix:/run/other.sock", "unix:/run/web.sock"],
   },
 ])("rejects alias ownership across distinct listeners: %j", ({ first, identities }) => {
   // Given
   const endpoints = plans([
     first,
-    { _tag: "internal", protocol: "unix", socketPath: "/run/web.sock", name: "shared" },
+    { kind: "internal", protocol: "unix", socketPath: "/run/web.sock", name: "shared" },
   ]);
   // When
   const issues = endpointInvariantIssues(endpoints);
@@ -62,8 +62,8 @@ test.each([
 test("allows repeated aliases on one Unix socket without creating a network listener", () => {
   // Given
   const endpoints = plans([
-    { _tag: "internal", protocol: "unix", socketPath: "/run/web.sock", name: "shared" },
-    { _tag: "internal", protocol: "unix", socketPath: "/run/web.sock", name: "shared" },
+    { kind: "internal", protocol: "unix", socketPath: "/run/web.sock", name: "shared" },
+    { kind: "internal", protocol: "unix", socketPath: "/run/web.sock", name: "shared" },
   ]);
   // When
   const issues = endpointInvariantIssues(endpoints);
@@ -79,8 +79,8 @@ test.each([
 ])("prefers an available $preferred listener under an HTTP primary", ({ preferred, port, protocol }) => {
   // Given
   const endpoints = plans([
-    { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
-    { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+    { kind: "internal", protocol: "http", port: 80, name: "web", primary: true },
+    { kind: "internal", protocol: "https", port: 443, name: "web-https" },
   ]);
   // When
   const selection = selectHttpEndpoint(endpoints, undefined, preferred);
@@ -90,7 +90,7 @@ test.each([
 
 test("falls back to the HTTP(S) set when no listener serves the preferred protocol", () => {
   // Given
-  const endpoints = plans([{ _tag: "internal", protocol: "http", port: 80, primary: true }]);
+  const endpoints = plans([{ kind: "internal", protocol: "http", port: 80, primary: true }]);
   // When
   const selection = selectHttpEndpoint(endpoints, undefined, "https");
   // Then
@@ -100,8 +100,8 @@ test("falls back to the HTTP(S) set when no listener serves the preferred protoc
 test("keeps ambiguity between two preferred-protocol listeners", () => {
   // Given
   const endpoints = plans([
-    { _tag: "internal", protocol: "https", port: 443, name: "a" },
-    { _tag: "internal", protocol: "https", port: 8443, name: "b" },
+    { kind: "internal", protocol: "https", port: 443, name: "a" },
+    { kind: "internal", protocol: "https", port: 8443, name: "b" },
   ]);
   // When
   const selection = selectHttpEndpoint(endpoints, undefined, "https");
@@ -114,8 +114,8 @@ test.each([{ selector: "web" as const }, { selector: 80 as const }])(
   ({ selector }) => {
     // Given
     const endpoints = plans([
-      { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
-      { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+      { kind: "internal", protocol: "http", port: 80, name: "web", primary: true },
+      { kind: "internal", protocol: "https", port: 443, name: "web-https" },
     ]);
     // When
     const selection = selectHttpEndpoint(endpoints, selector, "https");

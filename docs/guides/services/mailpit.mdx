@@ -29,6 +29,8 @@ inbox URL from `lando info` and check that the inbox loads.
 This is separate from the **global** Mailpit that lives in the host-level
 Lando app at `https://mailpit.lndo.site`. Its hostname follows global
 `proxy.defaultDomain`; see [Change the default domain](../subsystems/proxy-traefik.mdx#change-the-default-domain).
+
+Global startup waits for Mailpit's own readiness check. This confirms Mailpit answers inside its service. Use the global URL to check routing, or send a message from your app to check SMTP delivery.
 Keep the global one when every app on the machine should share one inbox.
 Use `type: mailpit` when this app needs its own capture server.
 

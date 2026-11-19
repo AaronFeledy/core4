@@ -315,28 +315,6 @@ export const resolveProjectUser = (
 };
 
 /**
- * Volume mounts whose fresh store the project user must own after the image
- * seeds it. `homeStore` names a home the catalog already prepares, which is
- * skipped; authored `storage:` mounts own their declared identity. An exclude shadow is included: on a
- * provider without file-sync it starts empty, and the project user must be
- * able to create in it.
- */
-export const projectUserVolumeTrees = (input: {
-  readonly mounts: ReadonlyArray<MountPlan>;
-  readonly projectUser?: ServiceProjectUser;
-  readonly homeStore?: string | undefined;
-}): ReadonlyArray<{ readonly target: string; readonly owner: string }> => {
-  const projectUser = input.projectUser;
-  if (projectUser === undefined) return [];
-  const owner = `${projectUser.uid}:${projectUser.gid}`;
-  return input.mounts.flatMap((mount) => {
-    if (mount.type !== "volume" || mount.origin !== "derived") return [];
-    if (mount.store === input.homeStore) return [];
-    return [{ target: mount.target, owner }];
-  });
-};
-
-/**
  * Gives tmpfs mounts the project user's ids and a writable group mode unless
  * the mount already declares that option. Authored options are preserved.
  */

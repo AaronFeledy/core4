@@ -158,3 +158,49 @@ test("keeps deferred reference descriptors under secret-named environment keys",
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("resolved JSON exposes endpoint kind while raw keeps authored shorthand", async () => {
+  await writeFile(
+    join(root, ".lando.yml"),
+    "name: wire\nservices:\n  web:\n    type: compose\n    image: nginx:alpine\n    endpoints: [http:80]\n",
+  );
+  const run = async (source: string, format: string, path?: string) => {
+    const process = Bun.spawn({
+      cmd: [
+        Bun.which("bun") ?? "bun",
+        cli,
+        "app:config",
+        "--source",
+        source,
+        `--format=${format}`,
+        ...(path === undefined ? [] : ["--path", path]),
+      ],
+      cwd: root,
+      env: {
+        ...globalThis.process.env,
+        LANDO_USER_CONF_ROOT: join(root, "conf"),
+        LANDO_USER_DATA_ROOT: join(root, "data"),
+        LANDO_USER_CACHE_ROOT: join(root, "cache"),
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [code, output, stderr] = await Promise.all([
+      process.exited,
+      new Response(process.stdout).text(),
+      new Response(process.stderr).text(),
+    ]);
+    expect({ code, stderr }).toEqual({ code: 0, stderr: "" });
+    return output;
+  };
+
+  const resolved = JSON.parse(await run("resolved", "json"));
+  expect(JSON.stringify(resolved)).toContain('"kind":"internal"');
+  expect(JSON.stringify(resolved)).not.toContain('"_tag"');
+  const selected = JSON.parse(await run("resolved", "json", "services.web.endpoints[0].kind"));
+  expect(selected.result?.value).toBe("internal");
+
+  const raw = await run("raw", "yaml");
+  expect(raw).toContain("http:80");
+  expect(raw).not.toContain("kind: internal");
+});

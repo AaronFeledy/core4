@@ -7,7 +7,7 @@ services:
     routes:
       - http://six.lndo.site
     healthcheck:
-      interval: 5s
+      intervalSeconds: 5
     appMount:
       target: /app
 tooling:

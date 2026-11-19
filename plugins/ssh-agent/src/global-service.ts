@@ -30,6 +30,18 @@ export const createSshAgentServiceConfig = (paths = makeLandoPaths()): ServiceCo
     },
     // The sidecar keeps no per-user state, so there is no home to persist.
     home: false,
+    readiness: {
+      kind: "command",
+      command: [
+        "sh",
+        "-c",
+        'output=$(LC_ALL=C ssh-add -l 2>&1); code=$?; [ "$code" -eq 0 ] || { [ "$code" -eq 1 ] && [ "$output" = "The agent has no identities." ]; }',
+      ],
+      intervalSeconds: 0.5,
+      timeoutSeconds: 5,
+      startPeriodSeconds: 25,
+      retries: 2,
+    },
     command: [
       "sh",
       "-c",

@@ -23,8 +23,8 @@ for (const providerId of ["lando", "docker", "custom-runtime"]) {
                 provider,
                 user: "www-data",
                 endpoints: [
-                  { _tag: "internal" as const, protocol: "http" as const, port: 80 },
-                  { _tag: "published" as const, protocol: "http" as const, port: 80, publication: {} },
+                  { kind: "internal" as const, protocol: "http" as const, port: 80 },
+                  { kind: "published" as const, protocol: "http" as const, port: 80, publication: {} },
                 ],
               },
             },

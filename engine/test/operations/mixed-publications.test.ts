@@ -3,7 +3,7 @@ import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { DateTime } from "effect";
 import { projectServiceConnections } from "../../src/operations/service-connections.ts";
 
-const dynamic = { _tag: "published", protocol: "http", port: 3000, publication: {} } as const;
+const dynamic = { kind: "published", protocol: "http", port: 3000, publication: {} } as const;
 const fixed = { ...dynamic, publication: { hostPort: 8080 } };
 const service: ServicePlan = {
   name: ServiceName.make("web"),

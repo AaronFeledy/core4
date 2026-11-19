@@ -222,7 +222,7 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     expect(web.type).toBe("go:1.22");
     expect(web.endpoints).toEqual([
       {
-        _tag: "internal",
+        kind: "internal",
         port: 8080,
         protocol: "http",
         name: "web",

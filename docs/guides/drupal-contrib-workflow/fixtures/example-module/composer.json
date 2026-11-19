@@ -1,0 +1,9 @@
+{
+  "name": "drupal/example",
+  "description": "Example module for testing the Drupal contrib workflow.",
+  "type": "drupal-module",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "drupal/core": "^10 || ^11"
+  }
+}

@@ -146,6 +146,20 @@ export const decodeImageInspectDigest = (json: unknown, reference: string): stri
   return undefined;
 };
 
+/** Accept only a finite integer exit code (rejects NaN, floats, and sentinel negatives). */
+const decodeValidExitCode = (value: unknown): number | undefined => {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return undefined;
+  return value;
+};
+
+/**
+ * Docker wait body is `{ StatusCode, Error? }`. Moby can return both under HTTP 200; a non-null
+ * Error means the StatusCode is not trustworthy process evidence.
+ * @see https://github.com/moby/moby/blob/v28.5.2/api/server/router/container/container_routes.go
+ */
+const dockerWaitHasError = (json: object): boolean =>
+  "Error" in json && json.Error !== null && json.Error !== undefined;
+
 export const dockerWaitDialect: WaitDialect = {
   request: (containerName, signal) => ({
     method: "POST",
@@ -153,8 +167,11 @@ export const dockerWaitDialect: WaitDialect = {
     ...(signal === undefined ? {} : { signal }),
   }),
   decodeExitCode: (json) => {
-    if (typeof json !== "object" || json === null || !("StatusCode" in json)) return undefined;
-    return typeof json.StatusCode === "number" ? json.StatusCode : undefined;
+    if (typeof json !== "object" || json === null) return undefined;
+    // Reject Error before accepting StatusCode (Moby may send both under 200).
+    if (dockerWaitHasError(json)) return undefined;
+    if (!("StatusCode" in json)) return undefined;
+    return decodeValidExitCode(json.StatusCode);
   },
 };
 
@@ -164,7 +181,7 @@ export const libpodWaitDialect: WaitDialect = {
     path: `/libpod/containers/${encodeURIComponent(containerName)}/wait`,
     ...(signal === undefined ? {} : { signal }),
   }),
-  decodeExitCode: (json) => (typeof json === "number" ? json : undefined),
+  decodeExitCode: (json) => decodeValidExitCode(json),
 };
 
 export const libpodLifecycleDialect: LifecycleDialect = {

@@ -43,7 +43,7 @@ const planFor = async (): Promise<{ plan: AppPlan; root: string }> => {
     primary: true,
     environment: {},
     mounts: [],
-    endpoints: [{ _tag: "internal", protocol: "tcp", port: 3306, primary: true }],
+    endpoints: [{ kind: "internal", protocol: "tcp", port: 3306, primary: true }],
     routes: [],
     dependsOn: [],
     hostAliases: [],

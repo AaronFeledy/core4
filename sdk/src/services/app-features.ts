@@ -12,7 +12,7 @@ import type { AppFeatureError } from "../errors/index.ts";
 import type {
   CommandSpec,
   DatabaseConnection,
-  EndpointPlan,
+  EndpointDeclaration,
   EnvironmentValue,
   ProviderCapabilities,
   ServiceConfig,
@@ -170,7 +170,10 @@ export interface AppFeatureDefinition {
   /** Declare listeners for selected services without applying mutations or acquiring resources. */
   readonly declareEndpoints?: (
     ctx: AppEndpointDeclarationContext,
-  ) => Effect.Effect<Readonly<Record<string, readonly EndpointPlan[]>>, AppFeatureError>;
+  ) => Effect.Effect<
+    Readonly<Record<string, readonly (typeof EndpointDeclaration.Encoded)[]>>,
+    AppFeatureError
+  >;
   readonly requires?: {
     readonly providerCapabilities?: ReadonlyArray<keyof ProviderCapabilities>;
     readonly globalServices?: ReadonlyArray<string>;

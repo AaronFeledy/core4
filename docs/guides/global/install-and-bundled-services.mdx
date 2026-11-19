@@ -150,6 +150,8 @@ global routes unchanged rather than publishing a partial set. A later start that
 succeeds for every selected group publishes the current routes. A failed user-app
 start never undoes shared global services.
 
+The bundled services check that they can serve before their group reports ready. Traefik checks its ping endpoint, its diagnostics service checks its local HTTP response, Mailpit checks its readiness endpoint, and the SSH sidecar waits for an agent response through its socket. Independent groups can finish at different times.
+
 Exhausted readiness checks fail even supervised services. Restart and rebuild
 revalidate the router after a readiness failure only when that operation actually
 applied it. A disabled router isn't probed or reported ready. Diagnose with `lando global:logs -s <service>`, or `lando doctor` for an `inspect-failed` provider observation. Fix the cause, then start that service to converge on its retained resources:

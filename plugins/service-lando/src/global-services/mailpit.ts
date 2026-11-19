@@ -21,6 +21,7 @@ import { Effect, Schema } from "effect";
 import {
   MAILPIT_DASHBOARD_HOSTNAME_EXPRESSION,
   MAILPIT_IMAGE,
+  MAILPIT_READINESS_COMMAND,
   MAILPIT_SHARED_NETWORK_HOST,
   MAILPIT_SMTP_PORT,
   MAILPIT_WEB_PORT,
@@ -30,16 +31,20 @@ const mailpitServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   api: 4,
   type: "compose",
   image: MAILPIT_IMAGE,
+  readiness: {
+    kind: "command",
+    command: MAILPIT_READINESS_COMMAND,
+    intervalSeconds: 0.5,
+    timeoutSeconds: 2,
+    retries: 12,
+  },
   appMount: false,
   // Mail capture keeps no per-user state, so there is no home to persist.
   home: false,
   // Internal endpoints: SMTP is reached over the shared cross-app network,
   // and the web UI is reached through Traefik's hostname route below —
   // neither needs a host-published port.
-  endpoints: [
-    { _tag: "internal", port: MAILPIT_SMTP_PORT, protocol: "tcp" },
-    { _tag: "internal", port: MAILPIT_WEB_PORT, protocol: "http" },
-  ],
+  endpoints: [`tcp:${MAILPIT_SMTP_PORT}`, `http:${MAILPIT_WEB_PORT}`],
   hostnames: [MAILPIT_SHARED_NETWORK_HOST],
   routes: [{ hostname: MAILPIT_DASHBOARD_HOSTNAME_EXPRESSION, endpoint: MAILPIT_WEB_PORT }],
   environment: {},

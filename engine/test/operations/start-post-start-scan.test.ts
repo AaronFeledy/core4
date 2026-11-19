@@ -180,7 +180,7 @@ test("projects the latest binding only after readiness changes the final observa
     services: {
       [web.name]: {
         ...web,
-        endpoints: [{ _tag: "published", protocol: "http", port: 3000, publication: {} }],
+        endpoints: [{ kind: "published", protocol: "http", port: 3000, publication: {} }],
         healthcheck: {
           kind: "command",
           command: ["check"],

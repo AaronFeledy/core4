@@ -22,6 +22,11 @@ const {
   defaults: drupalCmsDefaults,
   producer: drupalCmsProducer,
 } = bundledRecipe("drupal-cms");
+const {
+  decomposer: drupalContribDecomposer,
+  defaults: drupalContribDefaults,
+  producer: drupalContribProducer,
+} = bundledRecipe("drupal-contrib");
 
 const loadTranslator = (): Effect.Effect<ConfigTranslatorShape> => {
   const loader = configTranslators.get(LANDO4_TRANSLATOR_ID);
@@ -121,5 +126,53 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
       },
       true,
     );
+  });
+});
+
+describe("the decomposed Drupal contrib Landofile on the native load path", () => {
+  test("loads the nested mount, site volume, chrome service, and site sync", async () => {
+    const options = {
+      ...drupalContribDefaults,
+      type: "theme",
+      project: "hello_theme",
+      drupal: ">=10 <11 || ^11",
+    };
+    const decomposer = drupalContribDecomposer({ redactor: createStandaloneRedactor("secrets") });
+    const decomposed = Effect.runSync(
+      decomposer.decompose({
+        producer: drupalContribProducer,
+        options,
+        secrets: {},
+      }),
+    );
+    const context = { name: "drupalcontribload", ...(decomposed.fragment as Record<string, unknown>) };
+    const encode = (await Effect.runPromise(loadTranslator())).encode;
+    if (encode === undefined) throw new Error("The lando4 translator must publish an encoder.");
+    const encoded = await Effect.runPromise(encode({ context, fragment: context }));
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-drupal-contrib-load-"));
+    try {
+      await writeFile(join(appRoot, ".lando.yml"), encoded.text);
+      const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
+      const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
+      const services = landofile.document.services as Record<string, Record<string, unknown>>;
+      expect(tooling["drupal-contrib-sync"]?.cmd).toEqual([
+        "lando-drupal-contrib-sync",
+        "theme",
+        "hello_theme",
+        ">=10 <11 || ^11",
+      ]);
+      expect(landofile.document.events).toEqual({ "post-start": [{ task: "drupal-contrib-sync" }] });
+      expect(tooling.composer?.dir).toBe("/app");
+      expect(tooling.phpunit?.user).toBe("www-data");
+      expect(services.appserver?.webroot).toBe("/app/web");
+      expect(services.appserver?.appMount).toEqual({
+        target: "/app/web/themes/custom/hello_theme",
+        includes: ["vendor", "node_modules", "tmp"],
+      });
+      expect(services.chrome?.type).toBe("compose");
+      expect(services.chrome?.image).toBe("selenium/standalone-chromium:155.0-20261010");
+    } finally {
+      await rm(appRoot, { recursive: true, force: true });
+    }
   });
 });

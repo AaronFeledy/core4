@@ -732,7 +732,7 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
         "ports",
         "[8080/http]",
         "endpoints",
-        [{ _tag: "published", protocol: "http", port: 8080, publication: {} }],
+        [{ kind: "published", protocol: "http", port: 8080, publication: {} }],
       ],
       ["volumes", "['data:/data']", "volumes", ["data:/data"]],
       ["networks", "{net: null}", "networks", { net: null }],
@@ -1158,7 +1158,7 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
       output(
         "proxy: {s: [{hostname: example.test, middlewares: [{name: test, key: headers.customrequestheaders.X-Test, value: yes}]}]}\n",
         ["proxy", "s", "0", "filters"],
-        [{ type: "requestHeader", name: "test", header: "X-Test", value: "yes" }],
+        [{ kind: "requestHeader", name: "test", header: "X-Test", value: "yes" }],
       ),
     ],
   },

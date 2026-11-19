@@ -101,7 +101,7 @@ export const scannerFixture = Effect.fnUntraced(function* (path: "/scan" | "/fai
         "    volumes:",
         `      - ${root}:/proof`,
         "    endpoints:",
-        "      - _tag: published",
+        "      - kind: published",
         "        protocol: http",
         "        port: 8080",
         "        publication:",

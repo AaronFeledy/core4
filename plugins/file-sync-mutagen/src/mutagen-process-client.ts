@@ -2,13 +2,14 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { sameRealpath } from "@lando/paths";
-import { mapFailures } from "@lando/sdk/command-result";
+import { makeDiagnosticTail } from "@lando/redaction";
+import { mapFailures, mergeFailure } from "@lando/sdk/command-result";
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { runProbe } from "@lando/sdk/probe";
 import type { FileSyncDisposalPhase, FileSyncSessionSpec, FileSyncSessionStatus } from "@lando/sdk/schema";
 import type { ProcessResult, ProcessRunner, StateBucket } from "@lando/sdk/services";
-import { type Context, DateTime, Duration, Effect, Stream } from "effect";
+import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect";
 
 import type { MutagenClient, MutagenSessionRecord } from "./mutagen-client.ts";
 import { mutagenHostInstallPath, readInstalledMutagenStatus } from "./provision.ts";
@@ -161,8 +162,43 @@ const startError = (message: string, spec?: FileSyncSessionSpec): FileSyncStartE
     remediation: REMEDIATION,
   });
 
-const stopError = (message: string, name: string): FileSyncStopError =>
-  new FileSyncStopError({ engineId: ENGINE_ID, sessionRef: name, message, remediation: REMEDIATION });
+const encoder = new TextEncoder();
+
+/** Mutagen writes the reason it failed to stderr; the error keeps a bounded, redacted copy. */
+const commandFailed = Effect.fnUntraced(function* (args: ReadonlyArray<string>, result: ProcessResult) {
+  const diagnostics = yield* makeDiagnosticTail();
+  diagnostics.write(encoder.encode(result.stderr));
+  const outputTail = diagnostics.finish()?.trimEnd();
+  return new FileSyncStartError({
+    engineId: ENGINE_ID,
+    message: `Mutagen command exited with code ${result.exitCode}: ${args.slice(0, 2).join(" ")}.`,
+    remediation: REMEDIATION,
+    ...(outputTail ? { outputTail } : {}),
+  });
+});
+
+const prompterRace = (result: ProcessResult): boolean =>
+  result.exitCode !== 0 && result.stderr.includes("unable to message prompter: prompter not found");
+
+/** Identified by reference, so only a `sync create` that lost the race is attempted again. */
+const PROMPTER_RACE = new FileSyncStartError({
+  engineId: ENGINE_ID,
+  message: "Mutagen's daemon lost a race with its own prompter while creating the sync session.",
+  remediation:
+    "Run `lando start` again. Lando adopts or recreates the sync session that Mutagen left behind.",
+});
+
+const stopError = (
+  { message, outputTail }: { readonly message: string; readonly outputTail?: string | undefined },
+  name: string,
+): FileSyncStopError =>
+  new FileSyncStopError({
+    engineId: ENGINE_ID,
+    sessionRef: name,
+    message,
+    remediation: REMEDIATION,
+    ...(outputTail === undefined ? {} : { outputTail }),
+  });
 
 const knownLedger = (bucket: StateBucket<SessionLedger>, value: SessionLedger | null) =>
   value !== null
@@ -610,7 +646,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           ),
         );
 
-  const run = Effect.fn("MutagenProcessClient.run")(
+  const exec = Effect.fn("MutagenProcessClient.exec")(
     (args: ReadonlyArray<string>, timeoutMs = DEFAULT_TIMEOUT_MS) =>
       verifiedTransport.pipe(
         Effect.andThen(installed),
@@ -620,16 +656,17 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             ? error
             : startError(`Mutagen command failed: ${args.slice(0, 2).join(" ")}.`),
         ),
-        Effect.flatMap((result: ProcessResult) =>
-          result.exitCode === 0
-            ? Effect.succeed(result.stdout)
-            : Effect.fail(
-                startError(
-                  `Mutagen command exited with code ${result.exitCode}: ${args.slice(0, 2).join(" ")}.`,
-                ),
-              ),
-        ),
       ),
+  );
+
+  const run = Effect.fn("MutagenProcessClient.run")((args: ReadonlyArray<string>, timeoutMs?: number) =>
+    exec(args, timeoutMs).pipe(
+      Effect.flatMap((result) =>
+        result.exitCode === 0
+          ? Effect.succeed(result.stdout)
+          : commandFailed(args, result).pipe(Effect.flatMap(Effect.fail)),
+      ),
+    ),
   );
 
   const inspectAll = run(["sync", "list", "--template", LIST_TEMPLATE]).pipe(
@@ -1043,6 +1080,9 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
                   engineId: ENGINE_ID,
                   sessionRef: entry.identifier,
                   message: error.message,
+                  ...(error instanceof FileSyncStartError && error.outputTail !== undefined
+                    ? { outputTail: error.outputTail }
+                    : {}),
                   remediation:
                     error instanceof FileSyncStartError || error instanceof FileSyncDriftError
                       ? error.remediation
@@ -1086,9 +1126,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         );
       }),
     ).pipe(
-      mapFailures((error) =>
-        error instanceof FileSyncStopError ? error : stopError(error.message, String(app.id)),
-      ),
+      mapFailures((error) => (error instanceof FileSyncStopError ? error : stopError(error, String(app.id)))),
     );
 
   const disposeApp = (app: FileSyncSessionSpec["app"]) =>
@@ -1189,7 +1227,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }
         }),
       ),
-    ).pipe(mapFailures((error) => stopError(error.message, String(app.id))));
+    ).pipe(mapFailures((error) => stopError(error, String(app.id))));
 
   const completeAppDisposal = (app: FileSyncSessionSpec["app"]) =>
     withAppLock(
@@ -1234,7 +1272,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }));
         }),
       ),
-    ).pipe(mapFailures((error) => stopError(error.message, String(app.id))));
+    ).pipe(mapFailures((error) => stopError(error, String(app.id))));
 
   const disposalPhase = (app: FileSyncSessionSpec["app"]) =>
     withAppLock(
@@ -1271,135 +1309,155 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }),
         ),
       ),
-    ).pipe(mapFailures((error) => stopError(error.message, String(app.id))));
+    ).pipe(mapFailures((error) => stopError(error, String(app.id))));
+
+  const createOwned = (name: string, spec: FileSyncSessionSpec) =>
+    withLedger((bucket) =>
+      Effect.gen(function* () {
+        if (spec.target._tag !== "volume" || spec.permissions !== undefined) {
+          return yield* Effect.fail(
+            startError(
+              "This Mutagen client requires a named volume and currently supports default permissions only.",
+              spec,
+            ),
+          );
+        }
+        const loaded = yield* readKnownLedger(bucket);
+        yield* directMutationAllowed(loaded, spec.app);
+        const current = yield* reconcilePreparing(bucket, loaded);
+        const completed = appDrain(current, spec.app)?.phase === "completed";
+        if (completed && appReceipts(current, spec.app).length !== 0)
+          return yield* Effect.fail(startError("Completed app disposal still has Mutagen session receipts."));
+        const target = yield* options.resolveTarget(spec);
+        if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(target.containerId) || !target.path.startsWith("/")) {
+          return yield* Effect.fail(
+            startError("The provider returned an invalid Mutagen helper endpoint.", spec),
+          );
+        }
+        const previous = current.sessions.filter((entry) => entry.name === name);
+        if (previous.length > 1) {
+          return yield* Effect.fail(
+            startError(`Mutagen session "${name}" has duplicate ownership receipts.`, spec),
+          );
+        }
+        if (previous[0] !== undefined) {
+          const owned = yield* receiptOwned(previous[0]);
+          if (!sameOwnedSessionSpec(owned.spec, spec) || !isDeepStrictEqual(owned.target, target)) {
+            return yield* Effect.fail(
+              startError(`Mutagen session "${name}" differs from its ownership receipt.`, spec),
+            );
+          }
+          return owned;
+        }
+        yield* validateAppSet(current, spec.app);
+        const before = yield* inspectAll;
+        const sameAppIdentifiers = new Set(
+          appReceipts(current, spec.app)
+            .filter((entry) => entry.phase === "committed")
+            .map((entry) => entry.identifier),
+        );
+        if (
+          before.some(
+            (session) =>
+              session.name === name ||
+              (session.beta.protocol === "docker" &&
+                session.beta.host === target.containerId &&
+                session.beta.path === target.path) ||
+              (session.alpha.protocol === "local" &&
+                sameRealpath(spec.source, session.alpha.path) &&
+                !sameAppIdentifiers.has(session.identifier)),
+          )
+        ) {
+          return yield* Effect.fail(
+            startError(
+              "A Mutagen session already uses the requested name, source, or helper target; its ownership cannot be proven.",
+              spec,
+            ),
+          );
+        }
+        if (completed) {
+          yield* writeAppDrain(bucket, { app: spec.app, operation: "clear-completion" });
+        }
+        const preparing: SessionReceipt = {
+          phase: "preparing",
+          name,
+          spec,
+          target,
+          dataDir: options.dataDir,
+          dockerHost: options.dockerHost,
+        };
+        yield* writeLedger(bucket, {
+          receipt: preparing,
+          name,
+          operation: "prepare-create",
+        });
+        const args = [
+          "sync",
+          "create",
+          "--no-global-configuration",
+          "--name",
+          name,
+          "--mode",
+          spec.mode,
+          "--no-ignore-vcs",
+          ...spec.excludes.flatMap((exclude) => ["--ignore", exclude]),
+          ...(target.permissions === undefined
+            ? []
+            : [
+                "--default-owner-beta",
+                `id:${target.permissions.owner}`,
+                "--default-group-beta",
+                `id:${target.permissions.group}`,
+                "--default-file-mode-beta",
+                target.permissions.defaultFileMode,
+                "--default-directory-mode-beta",
+                target.permissions.defaultDirectoryMode,
+              ]),
+          spec.source,
+          `docker://${target.containerId}${target.path}`,
+        ];
+        const result = yield* exec(args);
+        if (prompterRace(result)) return yield* Effect.fail(PROMPTER_RACE);
+        if (result.exitCode !== 0) return yield* Effect.fail(yield* commandFailed(args, result));
+        const identifiers = result.stdout.match(/sync_[A-Za-z0-9]+/gu) ?? [];
+        const identifier = identifiers[0];
+        if (identifiers.length !== 1 || identifier === undefined) {
+          return yield* Effect.fail(
+            startError(
+              "Mutagen created a session but did not return one unambiguous ID; inspect the isolated daemon before retrying.",
+              spec,
+            ),
+          );
+        }
+        const owned = { identifier, name, spec, target };
+        yield* inspectOwned(owned);
+        const committed: SessionReceipt = { ...preparing, phase: "committed", identifier };
+        yield* writeLedger(bucket, { receipt: committed, name, operation: "commit-create" });
+        return owned;
+      }),
+    );
 
   const create = ({ name, spec }: { readonly name: string; readonly spec: FileSyncSessionSpec }) =>
     withAppLock(
       spec.app,
       Effect.gen(function* () {
-        const owned = yield* withLedger((bucket) =>
-          Effect.gen(function* () {
-            if (spec.target._tag !== "volume" || spec.permissions !== undefined) {
-              return yield* Effect.fail(
-                startError(
-                  "This Mutagen client requires a named volume and currently supports default permissions only.",
-                  spec,
+        // Mutagen's daemon sends a prompter ID before registering it, so `sync create` can fail before the
+        // session is saved. A second attempt starts with the same reconciliation as the next call would:
+        // it adopts a session the daemon saved anyway, drops an uncreated receipt, or fails closed.
+        // Remove this once the pinned Mutagen includes the upstream fix (mutagen-io/mutagen#579).
+        const owned = yield* createOwned(name, spec).pipe(
+          Effect.catchIf(
+            (error) => error === PROMPTER_RACE,
+            (race) =>
+              Effect.logDebug("Mutagen sync create lost the daemon prompter race; attempting it again.").pipe(
+                Effect.andThen(createOwned(name, spec)),
+                Effect.catchCause((cause) =>
+                  Effect.failCause(
+                    Cause.hasInterruptsOnly(cause) ? cause : mergeFailure(cause, Cause.fail(race), "peer"),
+                  ),
                 ),
-              );
-            }
-            const loaded = yield* readKnownLedger(bucket);
-            yield* directMutationAllowed(loaded, spec.app);
-            const current = yield* reconcilePreparing(bucket, loaded);
-            const completed = appDrain(current, spec.app)?.phase === "completed";
-            if (completed && appReceipts(current, spec.app).length !== 0)
-              return yield* Effect.fail(
-                startError("Completed app disposal still has Mutagen session receipts."),
-              );
-            const target = yield* options.resolveTarget(spec);
-            if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(target.containerId) || !target.path.startsWith("/")) {
-              return yield* Effect.fail(
-                startError("The provider returned an invalid Mutagen helper endpoint.", spec),
-              );
-            }
-            const previous = current.sessions.filter((entry) => entry.name === name);
-            if (previous.length > 1) {
-              return yield* Effect.fail(
-                startError(`Mutagen session "${name}" has duplicate ownership receipts.`, spec),
-              );
-            }
-            if (previous[0] !== undefined) {
-              const owned = yield* receiptOwned(previous[0]);
-              if (!sameOwnedSessionSpec(owned.spec, spec) || !isDeepStrictEqual(owned.target, target)) {
-                return yield* Effect.fail(
-                  startError(`Mutagen session "${name}" differs from its ownership receipt.`, spec),
-                );
-              }
-              return owned;
-            }
-            yield* validateAppSet(current, spec.app);
-            const before = yield* inspectAll;
-            const sameAppIdentifiers = new Set(
-              appReceipts(current, spec.app)
-                .filter((entry) => entry.phase === "committed")
-                .map((entry) => entry.identifier),
-            );
-            if (
-              before.some(
-                (session) =>
-                  session.name === name ||
-                  (session.beta.protocol === "docker" &&
-                    session.beta.host === target.containerId &&
-                    session.beta.path === target.path) ||
-                  (session.alpha.protocol === "local" &&
-                    sameRealpath(spec.source, session.alpha.path) &&
-                    !sameAppIdentifiers.has(session.identifier)),
-              )
-            ) {
-              return yield* Effect.fail(
-                startError(
-                  "A Mutagen session already uses the requested name, source, or helper target; its ownership cannot be proven.",
-                  spec,
-                ),
-              );
-            }
-            if (completed) {
-              yield* writeAppDrain(bucket, { app: spec.app, operation: "clear-completion" });
-            }
-            const preparing: SessionReceipt = {
-              phase: "preparing",
-              name,
-              spec,
-              target,
-              dataDir: options.dataDir,
-              dockerHost: options.dockerHost,
-            };
-            yield* writeLedger(bucket, {
-              receipt: preparing,
-              name,
-              operation: "prepare-create",
-            });
-            const args = [
-              "sync",
-              "create",
-              "--no-global-configuration",
-              "--name",
-              name,
-              "--mode",
-              spec.mode,
-              "--no-ignore-vcs",
-              ...spec.excludes.flatMap((exclude) => ["--ignore", exclude]),
-              ...(target.permissions === undefined
-                ? []
-                : [
-                    "--default-owner-beta",
-                    `id:${target.permissions.owner}`,
-                    "--default-group-beta",
-                    `id:${target.permissions.group}`,
-                    "--default-file-mode-beta",
-                    target.permissions.defaultFileMode,
-                    "--default-directory-mode-beta",
-                    target.permissions.defaultDirectoryMode,
-                  ]),
-              spec.source,
-              `docker://${target.containerId}${target.path}`,
-            ];
-            const output = yield* run(args, DEFAULT_TIMEOUT_MS);
-            const identifiers = output.match(/sync_[A-Za-z0-9]+/gu) ?? [];
-            const identifier = identifiers[0];
-            if (identifiers.length !== 1 || identifier === undefined) {
-              return yield* Effect.fail(
-                startError(
-                  "Mutagen created a session but did not return one unambiguous ID; inspect the isolated daemon before retrying.",
-                  spec,
-                ),
-              );
-            }
-            const owned = { identifier, name, spec, target };
-            yield* inspectOwned(owned);
-            const committed: SessionReceipt = { ...preparing, phase: "committed", identifier };
-            yield* writeLedger(bucket, { receipt: committed, name, operation: "commit-create" });
-            return owned;
-          }),
+              ),
+          ),
         );
         // A committed durable session may still hold beta writes or an expensive
         // initial scan. Keep its receipt and history if readiness fails.
@@ -1455,7 +1513,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             Effect.asVoid,
           ),
         ),
-      ).pipe(mapFailures((error) => stopError(error.message, name))),
+      ).pipe(mapFailures((error) => stopError(error, name))),
     resume: (name) =>
       withNamedApp(name, (app) =>
         withLedger((bucket) =>
@@ -1538,7 +1596,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             }),
           ),
         );
-      }).pipe(mapFailures((error) => stopError(error.message, name))),
+      }).pipe(mapFailures((error) => stopError(error, name))),
     list: withLedger((bucket) =>
       readKnownLedger(bucket).pipe(
         Effect.flatMap((value) => reconcilePreparing(bucket, value)),

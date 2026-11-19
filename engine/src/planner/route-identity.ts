@@ -15,15 +15,15 @@ export interface RouteSource {
 }
 
 const filterSemantics = (filter: RouteFilter): readonly unknown[] => {
-  switch (filter.type) {
+  switch (filter.kind) {
     case "stripPrefix":
     case "addPrefix":
-      return [filter.type, filter.prefix];
+      return [filter.kind, filter.prefix];
     case "requestHeader":
     case "responseHeader":
-      return [filter.type, filter.header.toLowerCase(), filter.value];
+      return [filter.kind, filter.header.toLowerCase(), filter.value];
     case "redirect":
-      return [filter.type, filter.to, filter.permanent ?? false];
+      return [filter.kind, filter.to, filter.permanent ?? false];
     default:
       return filter satisfies never;
   }

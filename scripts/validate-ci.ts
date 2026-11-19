@@ -13,7 +13,8 @@ if (import.meta.main) {
     Schema.Record(
       Schema.String,
       Schema.Struct({
-        result: Schema.Literals(["success", "skipped", "failure", "cancelled"]),
+        // GitHub can return undocumented results such as "abandoned".
+        result: Schema.String,
       }),
     ),
   )(JSON.parse(env.CI_NEEDS));

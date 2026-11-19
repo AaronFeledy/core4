@@ -1,4 +1,5 @@
 import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ScratchAppError } from "@lando/sdk/errors";
 import {
@@ -50,9 +51,16 @@ export const makeScratchReaper = Effect.gen(function* () {
   return Effect.fn("ScratchApp.reap")(
     function* (input: ScratchReapInput) {
       const entry = yield* registry.get(input.id);
-      const plan = input.plan;
       const reason = input.reason ?? "acquire-failure";
       if (reason === "acquire-failure" && entry === undefined) return;
+      // The desired cache may miss after a frame bump; recover the matching applied plan
+      // before planless orphan cleanup so snapshots and provider teardown still own the app.
+      const lookupRoot = AbsolutePath.make(entry?.rootPath ?? join(String(input.instanceRoot), "root"));
+      const plan =
+        input.plan ??
+        (yield* providers
+          .resolveTeardownEvidence(lookupRoot, { kind: "scratch", id: input.id })
+          .pipe(Effect.map((evidence) => (evidence.kind === "applied" ? evidence.plan : undefined))));
       if (plan !== undefined && plan.id !== input.id)
         return yield* Effect.fail(
           new ScratchAppError({
@@ -64,7 +72,7 @@ export const makeScratchReaper = Effect.gen(function* () {
       const app = {
         kind: "scratch" as const,
         id: input.id,
-        root: plan?.root ?? AbsolutePath.make(entry?.rootPath ?? input.instanceRoot),
+        root: plan?.root ?? lookupRoot,
       };
       const keepVolumes = input.keepVolumes === true;
       const scratchProviderId = String(plan?.provider ?? "lando");

@@ -71,7 +71,7 @@ describe("postgres ServiceType", () => {
     expect(String(volumes[0]?.target)).toBe("/var/lib/postgresql/data");
     expect(volumes[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 5432, protocol: "tcp", name: "db", primary: true },
+      { kind: "internal", port: 5432, protocol: "tcp", name: "db", primary: true },
     ]);
     expect(plan.mounts.find((m) => String(m.target) === POSTGRES_CONFIG_TARGET)).toBeUndefined();
     expect(plan.command).toBeUndefined();
@@ -95,7 +95,7 @@ describe("postgres ServiceType", () => {
       LANDO_DB_PORT: "15432",
     });
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 15432, protocol: "tcp", name: "db", primary: true },
+      { kind: "internal", port: 15432, protocol: "tcp", name: "db", primary: true },
     ]);
     expect(plan.healthcheck?.command).toEqual([
       "pg_isready",
@@ -145,7 +145,7 @@ describe("postgres ServiceType", () => {
     const plan = await planPostgres({ type: "postgres", port: 6543, environment: { PGPORT: "6543" } });
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 6543, protocol: "tcp", name: "db", primary: true },
+      { kind: "internal", port: 6543, protocol: "tcp", name: "db", primary: true },
     ]);
   });
 
@@ -241,9 +241,9 @@ describe("postgres ServiceType", () => {
     const plan = await planPostgres({ type: "postgres", ports: ["127.0.0.1:15432:5432"] });
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 5432, protocol: "tcp", name: "db", primary: true },
+      { kind: "internal", port: 5432, protocol: "tcp", name: "db", primary: true },
       {
-        _tag: "published",
+        kind: "published",
         port: 5432,
         protocol: "tcp",
         name: "db",

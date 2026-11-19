@@ -74,11 +74,11 @@ describe("runServiceFeatureContract", () => {
     const feature: ServiceFeatureDefinition = {
       id: "malformed-declaration",
       priority: 100,
-      declareEndpoints: () => Effect.succeed([{ _tag: "internal", protocol: "http", port }]),
+      declareEndpoints: () => Effect.succeed([{ kind: "internal", protocol: "http", port }]),
       apply: () => Effect.void,
     };
     // When / Then
-    await expectFeatureFailure(feature, "service feature endpoint declarations match EndpointPlan");
+    await expectFeatureFailure(feature, "service feature endpoint declarations match EndpointDeclaration");
   });
 
   test.each(["throw", "defect"] as const)("reports a declaration %s as ContractFailure", async (failure) => {
@@ -180,7 +180,7 @@ describe("runServiceFeatureContract", () => {
       declareEndpoints: () =>
         Effect.succeed([
           {
-            _tag: "internal" as const,
+            kind: "internal" as const,
             name: "web",
             port: 8080,
             protocol: "tcp" as const,
@@ -190,7 +190,7 @@ describe("runServiceFeatureContract", () => {
       apply: () => Effect.void,
     };
 
-    await expectFeatureFailure(feature, "feature emits endpoint intent without realization decisions");
+    await expectFeatureFailure(feature, "service feature endpoint declarations match EndpointDeclaration");
   });
 
   test("fails when a feature declares malformed requires capabilities", async () => {

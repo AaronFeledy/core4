@@ -17,7 +17,7 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "node:22-alpine" },
   environment: {},
   mounts: [],
-  endpoints: [{ _tag: "internal", protocol: "http", port: 3000, primary: true }],
+  endpoints: [{ kind: "internal", protocol: "http", port: 3000, primary: true }],
   routes: [],
   dependsOn: [],
   hostAliases: [],
@@ -128,7 +128,7 @@ test.each([
       : {}),
     endpoints: [
       ...service.endpoints,
-      ...(item.secondary ? [{ _tag: "internal" as const, protocol: "http" as const, port: item.port }] : []),
+      ...(item.secondary ? [{ kind: "internal" as const, protocol: "http" as const, port: item.port }] : []),
     ],
   };
   const diagnostic = listenerDiagnostic(

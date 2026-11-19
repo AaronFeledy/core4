@@ -11,6 +11,8 @@ Run Drupal's PHPUnit tests inside `appserver`, using the recipe's database and w
 
 Start with a running, scaffolded Drupal 11 app from [Run the Drupal recipe](./drupal-workflow.mdx). This example uses `drupal-demo` with Apache, MariaDB, and webroot `web`. You can skip the site-install step: browser tests install their own temporary sites. Keep this test setup local, and don't publish Selenium's ports or expose the test site to untrusted networks.
 
+If the git repository is the module, theme, or profile, use [Run the Drupal contrib recipe](./drupal-contrib-workflow.mdx) instead. That recipe bakes this Chrome service, SIMPLETEST environment, and `lando phpunit` task in.
+
 ## Install Drupal's test dependencies
 
 From the app directory on your host, install the development dependencies. `-W` allows Composer to update related locked packages, so review the changes to `composer.json` and `composer.lock` before committing:

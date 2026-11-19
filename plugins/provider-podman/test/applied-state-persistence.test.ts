@@ -76,18 +76,18 @@ const stateFor = (root: string) =>
     ownerOnlyFileAccess,
   );
 
-const withFailingModify = (state: PluginStateStore): PluginStateStore => ({
+const withFailingMutate = (state: PluginStateStore): PluginStateStore => ({
   open: <A, I>(spec: PluginStateBucketSpec<A, I>) =>
     state.open(spec).pipe(
       Effect.map((bucket) => ({
         ...bucket,
-        modify: <B>(_update: (current: A | null) => readonly [B, A]) =>
+        mutate: <_B, E, R>(_body: (current: A | null) => Effect.Effect<unknown, E, R>) =>
           Effect.fail(
             new StateStoreError({
               reason: "io",
-              operation: "modify",
+              operation: "mutate",
               path: String(bucket.path),
-              remediation: "Injected modify failure for podman applied-state fixture.",
+              remediation: "Injected mutate failure for podman applied-state fixture.",
             }),
           ),
       })),
@@ -391,7 +391,7 @@ describe("provider-podman applied state", () => {
       const plan = planFor("retained-app");
       await Effect.runPromise(persistAppliedPlan(state, plan));
 
-      const exit = await Effect.runPromiseExit(removeAppliedPlan(withFailingModify(state), plan.id));
+      const exit = await Effect.runPromiseExit(removeAppliedPlan(withFailingMutate(state), plan.id));
 
       expect(exit._tag).toBe("Failure");
       const failure = Exit.isFailure(exit)
@@ -400,7 +400,7 @@ describe("provider-podman applied state", () => {
       expect(failure).toBeInstanceOf(ProviderUnavailableError);
       expect(failure?.operation).toBe("applied-state.remove");
       expect(failure?.cause).toBeInstanceOf(StateStoreError);
-      expect((failure?.cause as StateStoreError | undefined)?.operation).toBe("modify");
+      expect((failure?.cause as StateStoreError | undefined)?.operation).toBe("mutate");
       expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toEqual(plan);
     });
   });

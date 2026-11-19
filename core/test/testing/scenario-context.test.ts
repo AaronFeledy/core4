@@ -2,11 +2,12 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { GuideFixtureNotFoundError, GuideFixtureSymlinkError, NotImplementedError } from "@lando/core/errors";
 import { ScenarioContext, ScenarioContextFactory, withScenarioContext } from "@lando/core/testing";
 import { Transcript } from "@lando/sdk/docs/components";
-import { Cause, Effect, Schema } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 // Scenario commands run the real CLI, including real starts that wait out service readiness.
 setDefaultTimeout(30_000);
@@ -650,6 +651,62 @@ describe("ScenarioContextFactory", () => {
       expect(result.where.stdout.trim().endsWith(join("e2e-app"))).toBe(true);
     } finally {
       process.env.LANDO_SCENARIO_E2E_BINARY = previous;
+      await rm(stubDir, { recursive: true, force: true });
+    }
+  });
+
+  test("e2e layer follows the init destination the CLI resolves, inside the scenario workspace", async () => {
+    const stubDir = await mkdtemp(join(tmpdir(), "lando-e2e-initdest-"));
+    const stub = join(stubDir, "lando-stub.sh");
+    // The stub creates every directory init could pick; the harness must choose the real one.
+    await writeFile(
+      stub,
+      [
+        "#!/bin/sh",
+        'if [ "$1" = "init" ]; then mkdir -p site json contrib-app lamp-app; exit 0; fi',
+        "pwd",
+        "exit 0",
+        "",
+      ].join("\n"),
+    );
+    await Bun.spawn(["chmod", "+x", stub]).exited;
+    const runFrom = (init: ReadonlyArray<string>) =>
+      Effect.runPromiseExit(
+        ScenarioContextFactory.e2e({ guideId: "node-postgres", scenarioId: "e2e-initdest" }, (context) =>
+          Effect.gen(function* () {
+            const created = yield* context.runCli(init);
+            const after = yield* context.runCli(["whereami"]);
+            return { exitCode: created.exitCode, relative: relative(context.testDir, after.stdout.trim()) };
+          }),
+        ),
+      );
+    try {
+      await withEnvVar("LANDO_SCENARIO_E2E_BINARY", stub, async () => {
+        const here = await runFrom([
+          "init",
+          ".",
+          "--recipe",
+          "drupal-contrib",
+          "--name=contrib-app",
+          "--yes",
+        ]);
+        expect(Exit.isSuccess(here) ? here.value : here).toEqual({ exitCode: 0, relative: "" });
+        const afterValueFlag = await runFrom(["init", "--format", "json", "site", "--recipe", "lamp"]);
+        expect(Exit.isSuccess(afterValueFlag) ? afterValueFlag.value : afterValueFlag).toEqual({
+          exitCode: 0,
+          relative: "site",
+        });
+        const afterLandoFlag = await runFrom(["init", "--log-level", "debug", "site", "--recipe", "lamp"]);
+        expect(Exit.isSuccess(afterLandoFlag) ? afterLandoFlag.value : afterLandoFlag).toEqual({
+          exitCode: 0,
+          relative: "site",
+        });
+        const byName = await runFrom(["init", "--recipe", "lamp", "--name", "lamp-app"]);
+        expect(Exit.isSuccess(byName) ? byName.value : byName).toEqual({ exitCode: 0, relative: "lamp-app" });
+        const escaped = await runFrom(["init", "../outside", "--recipe", "lamp"]);
+        expect(Exit.isFailure(escaped)).toBe(true);
+      });
+    } finally {
       await rm(stubDir, { recursive: true, force: true });
     }
   });

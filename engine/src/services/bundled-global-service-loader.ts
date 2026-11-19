@@ -74,7 +74,7 @@ export const makeBundledFirstGlobalServiceLoader = (
           ),
         ),
         Effect.flatMap((value) =>
-          Schema.decodeUnknownEffect(ServiceConfig)(value).pipe(
+          Schema.decodeUnknownEffect(Schema.toType(ServiceConfig))(value).pipe(
             mapFailures((cause) =>
               loaderError(
                 `Bundled global service ${entry.contribution.id} from plugin ${entry.plugin} did not return a valid ServiceConfig.`,

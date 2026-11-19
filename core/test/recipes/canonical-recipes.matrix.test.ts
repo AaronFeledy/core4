@@ -46,6 +46,10 @@ const CANONICAL_ANSWERS: Readonly<Record<string, CanonicalAnswers>> = {
   django: { name: "django-canon", extras: { celery: "true" } },
   drupal: { name: "drupal-canon", extras: { php: "8.3", database: "mariadb:11.4" } },
   "drupal-cms": { name: "drupal-cms-canon", extras: { php: "8.3", database: "mariadb:11.4" } },
+  "drupal-contrib": {
+    name: "drupal-contrib-canon",
+    extras: { php: "8.3", database: "mariadb:11.4", project: "example" },
+  },
   fastapi: { name: "fastapi-canon" },
   rails: { name: "rails-canon" },
   jekyll: { name: "jekyll-canon" },
@@ -73,6 +77,7 @@ const EXPECTED_PRIMARY_SERVICE: Readonly<Record<string, string | undefined>> = {
   django: "web",
   drupal: "appserver",
   "drupal-cms": "appserver",
+  "drupal-contrib": "appserver",
   fastapi: "web",
   rails: "web",
   jekyll: "builder",
@@ -118,7 +123,7 @@ const providerCapabilities = {
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "native" as const,
-  composeKnobs: { supported: ["restart", "extra_hosts"] as const },
+  composeKnobs: { supported: ["restart", "extra_hosts", "shm_size"] as const },
   providerExtensions: ["compose"],
 };
 

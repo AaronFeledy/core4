@@ -89,7 +89,7 @@ const expectations = {
     const web = servicePlan(context, "web");
     expect(web.endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         port: 8080,
         protocol: "tcp",
         publication: { bindAddress: "127.0.0.1", hostPort: 8443 },
@@ -166,7 +166,7 @@ const expectations = {
   "corpus/udp-port.compose.yaml": (context) => {
     expect(servicePlan(context, "dns").endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         port: 5353,
         protocol: "udp",
         publication: { hostPort: 5353 },
@@ -210,7 +210,7 @@ const expectations = {
     });
     expect(entry.endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         port: 8080,
         protocol: "tcp",
         publication: { hostPort: 8080 },

@@ -1,7 +1,7 @@
-import { Cause, Effect, Option, Schema } from "effect";
+import { Cause, Effect, Option, Result, Schema } from "effect";
 import { canonicalJson } from "../digest/index.ts";
 import type { AppFeatureError, ServiceFeatureError } from "../errors/index.ts";
-import { EndpointPlan } from "../schema/index.ts";
+import { EndpointDeclaration } from "../schema/index.ts";
 import type {
   AppEndpointDeclarationContext,
   AppFeatureContext,
@@ -11,8 +11,10 @@ import type {
 } from "../services/index.ts";
 import { ContractFailure } from "./_shared.ts";
 
-const isServiceDeclaration = Schema.is(Schema.Array(EndpointPlan));
-const isAppDeclaration = Schema.is(Schema.Record(Schema.String, Schema.Array(EndpointPlan)));
+const declarations = Schema.Array(EndpointDeclaration);
+const strict = { onExcessProperty: "error" } as const;
+const decodeServiceDeclaration = Schema.decodeUnknownResult(declarations, strict);
+const decodeAppDeclaration = Schema.decodeUnknownResult(Schema.Record(Schema.String, declarations), strict);
 
 const asContractFailure = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, ContractFailure> =>
   effect.pipe(
@@ -50,7 +52,7 @@ const invokeDeclaration = Effect.fnUntraced(function* <A, E>(
 export const serviceEndpointDeclarations = Effect.fnUntraced(function* (
   feature: ServiceFeatureDefinition,
   context: ServiceEndpointContext,
-): Effect.fn.Return<readonly EndpointPlan[], ContractFailure | ServiceFeatureError> {
+): Effect.fn.Return<readonly EndpointDeclaration[], ContractFailure | ServiceFeatureError> {
   const declare = feature.declareEndpoints;
   if (declare === undefined) return [];
   const facts: ServiceEndpointContext = {
@@ -70,20 +72,24 @@ export const serviceEndpointDeclarations = Effect.fnUntraced(function* (
     facts,
     "service feature endpoint declaration facts are immutable",
   );
-  if (!isServiceDeclaration(declared))
+  const decoded = decodeServiceDeclaration(declared);
+  if (Result.isFailure(decoded))
     return yield* Effect.fail(
       new ContractFailure({
-        assertion: "service feature endpoint declarations match EndpointPlan",
-        message: "ServiceFeature declared invalid EndpointPlan values",
+        assertion: "service feature endpoint declarations match EndpointDeclaration",
+        message: "ServiceFeature declared invalid endpoint values",
       }),
     );
-  return declared;
+  return decoded.success;
 }, asContractFailure);
 
 export const appEndpointDeclarations = Effect.fnUntraced(function* (
   feature: AppFeatureDefinition,
   context: AppFeatureContext,
-): Effect.fn.Return<Readonly<Record<string, readonly EndpointPlan[]>>, ContractFailure | AppFeatureError> {
+): Effect.fn.Return<
+  Readonly<Record<string, readonly EndpointDeclaration[]>>,
+  ContractFailure | AppFeatureError
+> {
   const declare = feature.declareEndpoints;
   if (declare === undefined) return {};
   const facts = {
@@ -98,11 +104,12 @@ export const appEndpointDeclarations = Effect.fnUntraced(function* (
     facts,
     "app feature endpoint declaration facts are immutable",
   );
-  if (!isAppDeclaration(declarations))
+  const decoded = decodeAppDeclaration(declarations);
+  if (Result.isFailure(decoded))
     return yield* Effect.fail(
       new ContractFailure({
-        assertion: "app feature endpoint declarations match EndpointPlan",
-        message: "AppFeature declared invalid EndpointPlan values",
+        assertion: "app feature endpoint declarations match EndpointDeclaration",
+        message: "AppFeature declared invalid endpoint values",
       }),
     );
   const before = canonicalJson(declarations);
@@ -111,11 +118,11 @@ export const appEndpointDeclarations = Effect.fnUntraced(function* (
     facts,
     "app feature endpoint declaration facts are immutable",
   );
-  if (!isAppDeclaration(repeated))
+  if (Result.isFailure(decodeAppDeclaration(repeated)))
     return yield* Effect.fail(
       new ContractFailure({
-        assertion: "app feature endpoint declarations match EndpointPlan",
-        message: "AppFeature declared invalid EndpointPlan values",
+        assertion: "app feature endpoint declarations match EndpointDeclaration",
+        message: "AppFeature declared invalid endpoint values",
       }),
     );
   const checks = [
@@ -126,12 +133,6 @@ export const appEndpointDeclarations = Effect.fnUntraced(function* (
       ),
       "app feature declares endpoints only for selected services",
     ],
-    [
-      !Object.values(declarations)
-        .flat()
-        .some((endpoint) => "realization" in endpoint),
-      "app feature emits endpoint intent without realization decisions",
-    ],
   ] as const;
   for (const [valid, assertion] of checks) {
     if (!valid)
@@ -139,9 +140,8 @@ export const appEndpointDeclarations = Effect.fnUntraced(function* (
         new ContractFailure({
           assertion,
           message: `AppFeature contract failed: ${assertion}`,
-          details: declarations,
         }),
       );
   }
-  return declarations;
+  return decoded.success;
 }, asContractFailure);

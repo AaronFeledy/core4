@@ -125,8 +125,8 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
       : [],
   endpoints:
     name === "web"
-      ? [{ _tag: "internal" as const, port: 3000, protocol: "http" as const, name: "http" }]
-      : [{ _tag: "internal" as const, port: 5432, protocol: "tcp" as const, name: "database" }],
+      ? [{ kind: "internal" as const, port: 3000, protocol: "http" as const, name: "http" }]
+      : [{ kind: "internal" as const, port: 5432, protocol: "tcp" as const, name: "database" }],
   routes: [],
   dependsOn:
     name === "web"

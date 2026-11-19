@@ -143,42 +143,29 @@ test("#2302 nightly reporter waits for every job with issue permission only on t
 });
 
 test.each([
-  ["schedule", "refs/heads/main", ["failure", "skipped", "cancelled"], false, true],
-  ["schedule", "refs/heads/main", ["success", "failure"], false, true],
-  // GitHub reports a job stopped by timeout-minutes as cancelled, not failed.
-  ["schedule", "refs/heads/main", ["success", "skipped", "cancelled"], false, true],
-  ["schedule", "refs/heads/main", ["success", "skipped"], false, false],
-  // A run cancelled by hand cancels its jobs too, and files nothing.
-  ["schedule", "refs/heads/main", ["success", "cancelled"], true, false],
-  ["workflow_dispatch", "refs/heads/main", ["failure"], false, false],
-  ["workflow_dispatch", "refs/heads/fix", ["failure"], false, false],
-  ["schedule", "refs/heads/fix", ["failure"], false, false],
-] as const)(
-  "#2302 reporter gate for %s on %s with %j (run cancelled: %p)",
-  (event, ref, results, runCancelled, expected) => {
-    const { jobs } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
-    const condition = jobs["report-failure"]?.if;
-    expect(condition).toBe(
-      "${{ !cancelled() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}",
-    );
-    if (condition === undefined) throw new TypeError("Missing reporter condition");
-    // This expression uses the common JavaScript/GitHub boolean subset once the
-    // needs.*.result object filter is bound to the direct dependency results.
-    const evaluate = new Function(
-      "cancelled",
-      "contains",
-      "github",
-      "results",
-      `return (${condition.slice(3, -2).replaceAll("needs.*.result", "results")});`,
-    );
-    expect(
-      evaluate(
-        () => runCancelled,
-        (values: ReadonlyArray<string>, value: string) => values.includes(value),
-        { event_name: event, ref },
-        results,
-      ),
-    ).toBe(expected);
+  ["schedule", "refs/heads/main", false, true],
+  ["schedule", "refs/heads/main", true, false],
+  ["workflow_dispatch", "refs/heads/main", false, false],
+  ["schedule", "refs/heads/fix", false, false],
+] as const)("#2302 reporter gate for %s on %s (run cancelled: %p)", (event, ref, runCancelled, expected) => {
+  const { jobs } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
+  const condition = jobs["report-failure"]?.if;
+  if (condition === undefined) throw new TypeError("Missing reporter condition");
+  // The gate uses the common JavaScript/GitHub boolean subset.
+  const evaluate = new Function("cancelled", "github", `return (${condition.slice(3, -2)});`);
+  expect(evaluate(() => runCancelled, { event_name: event, ref })).toBe(expected);
+});
+
+test.skipIf(process.platform === "win32")(
+  "#2302 nightly makes no gh calls when jobs succeed or skip",
+  async () => {
+    await using fixture = await createMaintenanceFixture({ domain: "tomcat" });
+    const result = await fixture.failure(renderNightlyWorkflow(), [], {
+      "container-helper": { result: "success" },
+      "provider-lando-e2e-linux-x64": { result: "skipped" },
+    });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(await fixture.commands()).toBe("");
   },
 );
 
@@ -188,26 +175,33 @@ test.skipIf(process.platform === "win32").each([true, false])(
     await using fixture = await createMaintenanceFixture({ domain: "tomcat", repository: "fork/core4" });
     const title = "nightly automation failure";
     const result = await fixture.failure(renderNightlyWorkflow(), existing ? [{ number: 42, title }] : [], {
-      NEEDS_JSON: JSON.stringify({
-        "container-helper": { result: "failure" },
-        "file-sync-contract-linux-x64": { result: "failure" },
-        "provider-lando-e2e-linux-x64": { result: "skipped" },
-        "refresh-test-timings-linux-x64": { result: "cancelled" },
-        "runtime-bundle-manifest-live": { result: "success" },
-      }),
+      "container-helper": { result: "failure" },
+      "file-sync-contract-linux-x64": { result: "neutral_new" },
+      "file-sync-contract-darwin-arm64": { result: "abandoned" },
+      "provider-lando-e2e-linux-x64": { result: "skipped" },
+      "refresh-test-timings-linux-x64": { result: "cancelled" },
+      "runtime-bundle-manifest-live": { result: "success" },
     });
     expect(result.exitCode, result.stderr).toBe(0);
     const commands = await fixture.commands();
+    expect(commands.match(/^gh issue (create|comment) /gm)).toHaveLength(1);
     expect(commands).toContain(
       existing ? "gh issue comment 42 --body" : `gh issue create --title ${title} --body`,
     );
-    expect(commands).toContain(
-      "Failed jobs: container-helper, file-sync-contract-linux-x64, refresh-test-timings-linux-x64 (timed out or cancelled)",
-    );
+    expect(
+      commands
+        .match(/^Failed jobs: (.+?)(?: --assignee \S+)? repo=\S+$/m)?.[1]
+        ?.split(", ")
+        .sort(),
+    ).toEqual([
+      "container-helper",
+      "file-sync-contract-darwin-arm64 (abandoned)",
+      "file-sync-contract-linux-x64 (neutral_new)",
+      "refresh-test-timings-linux-x64 (timed out or cancelled)",
+    ]);
     expect(commands).toContain("https://example.invalid/fork/core4/actions/runs/42");
     expect(commands).toContain("repo=fork/core4");
     expect(commands.includes("--assignee AaronFeledy")).toBe(!existing);
-    expect(commands).not.toContain("Failed jobs: provider-lando");
   },
 );
 

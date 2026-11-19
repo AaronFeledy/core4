@@ -9,7 +9,7 @@ test.each(["stopped", "completed", "paused", "error"] satisfies ServiceState[])(
   (state) => {
     const service = {
       ...web,
-      endpoints: [{ _tag: "published", protocol: "http", port: 3000, publication: { hostPort: 8080 } }],
+      endpoints: [{ kind: "published", protocol: "http", port: 3000, publication: { hostPort: 8080 } }],
     } satisfies typeof web;
     const row = {
       name: String(web.name),

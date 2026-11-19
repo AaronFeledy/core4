@@ -64,7 +64,7 @@ const expectedEndpoints = (
 ): ServicePlan["endpoints"] =>
   assertion === "published-endpoints"
     ? (service.ports ?? []).map((port) => ({
-        _tag: "published" as const,
+        kind: "published" as const,
         port: port.target,
         protocol: port.protocol === "udp" ? "udp" : "tcp",
         publication: {
@@ -74,7 +74,7 @@ const expectedEndpoints = (
         ...(port.name === undefined ? {} : { name: port.name }),
         ...(port.appProtocol === undefined ? {} : { appProtocol: port.appProtocol }),
       }))
-    : (service.expose ?? []).map((port) => ({ _tag: "internal" as const, port, protocol: "tcp" as const }));
+    : (service.expose ?? []).map((port) => ({ kind: "internal" as const, port, protocol: "tcp" as const }));
 
 const assertArtifact = (
   assertion: "artifact-build" | "artifact-ref",

@@ -63,32 +63,45 @@ A Landofile that lints clean can still fail there.
 
 ## Fix a route's HTTP endpoint
 
-Declare the listener your service actually runs. A raw Compose image, `ports:`,
-`expose:`, or a TCP endpoint's `appProtocol: http` does not declare an HTTP listener:
+A numeric route declares the HTTP listener and the hostname together. No separate
+`endpoints:` entry is required when the selector is the container port that serves
+HTTP:
 
 ```yaml
 services:
   web:
     type: compose
     image: nginx:alpine
-    endpoints:
-      - _tag: internal
-        protocol: http
-        port: 80
     routes:
-      - web.lndo.site
+      - web.lndo.site:80
 ```
 
-Lint checks authored routes against service and app features' endpoint declarations
-during resolve. After a clean resolve with offline provider capabilities, final
-planning applies those features and builds the same default routes start would,
-still without issuing certificates or reading or writing a plan cache.
-An explicit `endpoints:` list replaces those declarations; `endpoints: []` removes
-them all. With multiple HTTP listeners, select one by name or port in the route,
-or mark one listener `primary: true`. A primary TCP listener does not hide the
-service's only HTTP listener.
+Use endpoint-only authoring when you want the default HTTPS hostname, a named
+reusable listener, or an HTTPS backend. Write `https:N` (or a `kind` object with
+`protocol: https`) when the process speaks TLS on that port; the route's public
+scheme does not upgrade an implied HTTP listener. A string selector, an omitted
+selector, and a generated default route never declare a listener. Keep an explicit
+`endpoints:` entry when a named or unselected listener is missing and no numeric
+route covers it. A raw Compose image, `ports:`, `expose:`, or a TCP endpoint's
+`appProtocol: http` still does not prove HTTP on its own.
 
-A missing listener, unmatched selector, or ambiguous selection is an indexed
+Lint checks authored routes against service and app features' endpoint declarations
+during resolve, including listeners numeric routes declare. After a clean resolve
+with offline provider capabilities, final planning applies those features and builds
+the same default routes start would, still without issuing certificates or reading
+or writing a plan cache. An explicit `endpoints:` list replaces type and app-feature
+declarations and synthesis from `ports:` and `expose:`; it does not suppress numeric
+route declarations. `endpoints: []` clears those contributions. With multiple HTTP listeners,
+select one by name or port in the route, or mark one listener `primary: true`. A
+primary TCP listener does not hide the service's only HTTP listener.
+
+A numeric route can still use an existing HTTP(S) listener on the same port as
+an independent UDP listener. Without an HTTP(S) listener, known TCP or UDP at the
+selected port causes a protocol conflict, even if `endpoints: []` cleared a listener
+from the service type or a feature. Change the route to the actual HTTP(S) port,
+or declare `http:N` or `https:N` if the backend speaks that protocol. A Compose UDP
+publication alone does not block an implied HTTP listener. A missing named or
+unselected listener, an unmatched alias, or ambiguous selection is an indexed
 `landofile.route` finding. Start and cache refresh reject the same entries. Lint
 also rejects a top-level `proxy:` route whose target service is not declared.
 Correct the proxy key or declare the target under `services:`.
@@ -130,9 +143,14 @@ Text output prints each finding's path, severity, rule, and message, then where 
 That file is wrong on its own (`fragment`) and it breaks the composed app (`effective`), so it's one finding with both scopes. JSON reports it once, with `"scopes": ["fragment", "effective"]`. When the effective path differs from what you wrote, the location line adds `authored as <path>`.
 
 Wrong values name the expected shape, not an internal schema name. For example,
-`services.web: nginx` needs an object. A filter with `type: stripPrefix` and
+`services.web: nginx` needs an object. A filter with `kind: stripPrefix` and
 `prefix: 5` reports the prefix's wrong type once, with both scopes. It does not
-report errors for other filter types you didn't choose.
+report errors for other filter kinds you didn't choose.
+
+A malformed endpoint scalar is an indexed finding. For example,
+`endpoints: [tcp:9000, http:65536]` fails at `["services", "web", "endpoints", 1]`
+with a message that names the accepted `protocol:port` or `name=protocol:port`
+form (and `kind` objects). The `source.path` keeps the authored index.
 
 An unknown key gets a `suggestion` naming the closest allowed key, as long as the typo is within two edits. `imgae` suggests `image`. A key nowhere near anything valid gets a plain unknown-key message instead. Unknown keys are schema-only violations, never a `NotImplementedError`.
 
@@ -144,7 +162,7 @@ A rejected Compose key keeps its full authored path, for example `["services", "
 
 [`healthcheck.bare-compose-marker`](../../reference/config-lint-rules.mdx#healthcheck-bare-compose-marker) means a bare argv list starts with `CMD`, `CMD-SHELL`, or `NONE`. Bare lists execute literally, including that first item. Remove the marker, or move the list under `test:` in a block YAML healthcheck object.
 
-[`healthcheck.mixed-dialects`](../../reference/config-lint-rules.mdx#healthcheck-mixed-dialects) means different sources contributed surviving Lando-only and Compose-only healthcheck fields. Lando fields still win. Pick one dialect across layers rather than relying on that precedence. Discarded lower fields and shared `retries` or `disable` fields alone do not trigger the warning.
+[`healthcheck.mixed-dialects`](../../reference/config-lint-rules.mdx#healthcheck-mixed-dialects) reports conflicting Lando and Compose fields. It is an error when both fields come from the same source. For example, keep `command:` and change `interval: 1s` to `intervalSeconds: 1`. When the fields come from different sources, lint warns and Lando fields take precedence. Fields discarded during layering and shared `retries` do not trigger the rule.
 
 The same checks apply independently to `readiness`, using [`readiness.bare-compose-marker`](../../reference/config-lint-rules.mdx#readiness-bare-compose-marker) and [`readiness.mixed-dialects`](../../reference/config-lint-rules.mdx#readiness-mixed-dialects). Native `healthcheck` cannot select a host target or an explicit probe user; move that command to `readiness` instead of changing monitoring through execution metadata. Use `lando app:cache:refresh --format=json` to validate the effective plan without starting services. See [Make start wait for your app](../services/wait-for-your-app.mdx) for defaults and disabling either policy.
 
@@ -255,7 +273,7 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
     </Step>
     <Step name="cleanup-broken-includes"><Cleanup /></Step>
   </Scenario>
-  <Scenario id="filter-reports-only-selected-type" render>
+  <Scenario id="filter-reports-only-selected-kind" render>
     <Step name="lint-filter-prefix">
       <UseFixture name="wrong-filter-prefix" />
       <Run command="lando app:config:lint --format=json" expectExit={1} />
@@ -301,6 +319,18 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
     </Step>
     <Step name="refresh-declared-http"><Run command="lando app:cache:refresh --format=json" /></Step>
     <Step name="cleanup-declared-http"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="reject-malformed-endpoint" render>
+    <Step name="lint-malformed-endpoint">
+      <UseFixture name="malformed-endpoint" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.validation\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"endpoints\",\\s*1\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "protocol:port or name=protocol:port" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"scopes\":\\s*\\[\\s*\"fragment\",\\s*\"effective\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-malformed-endpoint"><Cleanup /></Step>
   </Scenario>
   <Scenario id="clean-landofile" render>
     <Step name="lint">

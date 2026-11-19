@@ -48,7 +48,7 @@ const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan => {
     services[name] = {
       name,
       routes: [],
-      endpoints: [{ _tag: "internal", protocol: "http", port: 80 }],
+      endpoints: [{ kind: "internal", protocol: "http", port: 80 }],
     };
   return {
     id: "myapp",
@@ -170,7 +170,7 @@ describe("openForPlan", () => {
             primary: false,
             environment: {},
             mounts: [],
-            endpoints: [{ _tag: "published", protocol: "http", port: 80, publication: {} }],
+            endpoints: [{ kind: "published", protocol: "http", port: 80, publication: {} }],
             routes: [],
             dependsOn: [],
             hostAliases: [],
@@ -341,7 +341,7 @@ describe("openForPlan", () => {
         web: {
           name: "web",
           routes: [],
-          endpoints: [{ _tag: "published", protocol: "http", port: 8080, publication: { hostPort: 8080 } }],
+          endpoints: [{ kind: "published", protocol: "http", port: 8080, publication: { hostPort: 8080 } }],
         },
       },
     } as AppPlan;
@@ -698,8 +698,8 @@ test("default open follows a generated HTTPS route when the service's primary li
       [ServiceName.make("web")]: {
         ...service,
         endpoints: [
-          { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
-          { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+          { kind: "internal", protocol: "http", port: 80, name: "web", primary: true },
+          { kind: "internal", protocol: "https", port: 443, name: "web-https" },
         ],
         certs: { cn: "web.myapp.internal", sans: ["web.myapp.internal"], caId: "mkcert" },
       },

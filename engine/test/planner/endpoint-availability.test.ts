@@ -156,7 +156,7 @@ test("declaration failure retains selector facts but app declarations cannot rep
     declareEndpoints: (ctx) =>
       Effect.sync(() => {
         selected.push(ctx.selected.map((view) => view.serviceName));
-        return { web: [{ _tag: "internal", protocol: "http", port: 8123 }] };
+        return { web: [{ kind: "internal", protocol: "http", port: 8123 }] };
       }),
     apply: () => Effect.void,
   };
@@ -206,8 +206,8 @@ test("endpoint invariant failures suppress dependent route binding errors", asyn
     priority: 100,
     declareEndpoints: () =>
       Effect.succeed([
-        { _tag: "internal", name: "same", protocol: "http", port: 8123 },
-        { _tag: "internal", name: "same", protocol: "http", port: 9234 },
+        { kind: "internal", name: "same", protocol: "http", port: 8123 },
+        { kind: "internal", name: "same", protocol: "http", port: 9234 },
       ]),
     apply: () => Effect.void,
   };
@@ -327,7 +327,7 @@ test("independent app declaration errors aggregate without suppressing a success
     id: "test.success",
     priority: 200,
     selectors: { names: ["worker"] },
-    declareEndpoints: () => Effect.succeed({ worker: [{ _tag: "internal", protocol: "http", port: 8123 }] }),
+    declareEndpoints: () => Effect.succeed({ worker: [{ kind: "internal", protocol: "http", port: 8123 }] }),
     apply: () => Effect.void,
   });
   const result = await resolve(
@@ -343,6 +343,6 @@ test("independent app declaration errors aggregate without suppressing a success
   if (failed?._tag === "Unavailable") expect(failed.reasons).toHaveLength(2);
   expect(rows.get("worker")?.endpoints).toEqual({
     _tag: "Available",
-    value: [{ _tag: "internal", protocol: "http", port: 8123 }],
+    value: [{ kind: "internal", protocol: "http", port: 8123 }],
   });
 });

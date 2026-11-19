@@ -207,7 +207,7 @@ Lando rejects a non-empty list where it can't apply the protection and reports `
 On Linux with the default managed provider, PHP commands run as the project user,
 `www-data`, and their app-file writes belong to your host user. Apache and FPM
 workers use the same account. User commands get a persisted `/var/www` home for
-Composer and shell caches, while the Apache master keeps its root identity and
+shell settings and history, while the Apache master keeps its root identity and
 image home. macOS, Windows, and Docker keep their previous behavior for now;
 without a realized project user or an authored `user:`, PHP's persisted home is
 `/root`. See [Who owns your app files](./file-ownership.mdx) for overrides,
@@ -232,7 +232,8 @@ services:
 Lando keeps `www-data`'s home at `/var/www`, the directory the account's
 passwd entry points at. The image ships it owned by root, so Lando prepares it
 for `www-data` during the image build. The fresh home volume starts owned by
-`www-data`, and Composer and shell caches there survive a rebuild. Run
+`www-data`, and files there survive a rebuild. Composer downloads use a
+[separate shared cache](../tooling/php-composer-workflows.mdx). Run
 `lando info` to see the mount labeled `(home)`; see
 [Keep a service home across rebuilds](./home-and-host.mdx) for volume naming
 and what happens when you change `user:`.

@@ -81,12 +81,20 @@ export const landofileValidationError = (
     readonly remediation?: string;
     /** Canonical app root for human project-file paths. Defaults to dirname(file). */
     readonly appRoot?: string;
+    /** Optional `file:line` prefix for an issue whose source carries a line. */
+    readonly location?: (issue: ValidationIssue) => string | undefined;
   },
 ): LandofileValidationError => {
   const appRoot = framing?.appRoot ?? dirname(file);
   const headline = framing?.headline ?? defaultHeadline(issues, appRoot);
   const remediation = framing?.remediation ?? "Fix each listed value.";
-  const lines = issues.map((issue) => oneLine(issue, appRoot).replace(/\.$/, "")).join("; ");
+  const lines = issues
+    .map((issue) => {
+      const location = framing?.location?.(issue);
+      const detail = oneLine(issue, appRoot).replace(/\.$/, "");
+      return location === undefined ? detail : `${location}: ${detail}`;
+    })
+    .join("; ");
   const source = issues[0]?.source;
   return new LandofileValidationError({
     file: source !== undefined && "file" in source ? source.file : file,

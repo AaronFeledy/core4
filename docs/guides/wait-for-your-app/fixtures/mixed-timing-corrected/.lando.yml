@@ -1,0 +1,10 @@
+name: wait-mixed-timing
+services:
+  db:
+    type: compose
+    image: docker.io/library/busybox:1.37
+    readiness:
+      command: [sh, -c, "exit 1"]
+      intervalSeconds: 1
+      timeoutSeconds: 1
+      retries: 4

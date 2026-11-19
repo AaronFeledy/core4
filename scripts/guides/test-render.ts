@@ -2,7 +2,7 @@ import type { GuidePlatform } from "../../sdk/src/docs/guide-frontmatter.ts";
 import type { GuideScenarioAst, GuideScenarioNode, GuideVariant } from "./model.ts";
 import { resolveScenario } from "./resolve.ts";
 import {
-  renderCleanupFinalizers,
+  renderCleanupFinalizer,
   renderStepComponent,
   renderVariableSetup,
   sourceComment,
@@ -20,19 +20,27 @@ export const renderScenarioTest = (
   const usesLibraryRuntime = resolved.runMode === "library";
   const usesE2eRuntime = scenarioLayer === "e2e";
   const variableSetup = renderVariableSetup(resolved.variables);
-  const cleanupFinalizers = renderCleanupFinalizers(resolved.steps, guide.sourcePath);
+  const finalizers = resolved.steps.map((step, index) =>
+    renderCleanupFinalizer(step, guide.sourcePath, index),
+  );
+  const cleanupFinalizers = finalizers.filter(Boolean).join("\n");
   const steps = resolved.steps
-    .map((step) => {
-      const components = step.components
-        .map((component) => renderStepComponent(component, guide.sourcePath))
-        .filter(Boolean)
-        .join("\n");
+    .map((step, index) => {
+      const isCleanup = finalizers[index] !== "";
+      const components = isCleanup
+        ? `    cleanup${index}();`
+        : step.components
+            .map((component) => renderStepComponent(component, guide.sourcePath))
+            .filter(Boolean)
+            .join("\n");
       const header = `${sourceComment(guide.sourcePath, step.line)}\n    // @step: ${step.stepName}`;
       if (step.hidden) {
         const hiddenHeader = `${header}\n    // @hidden: ${step.hiddenReason ?? ""}`;
         return components === ""
           ? hiddenHeader
-          : `${hiddenHeader}\n    yield* context.hidden(Effect.gen(function* () {\n${components}\n    }));`;
+          : isCleanup
+            ? `${hiddenHeader}\n${components}`
+            : `${hiddenHeader}\n    yield* context.hidden(Effect.gen(function* () {\n${components}\n    }));`;
       }
       return `${header}${components === "" ? "" : `\n${components}`}`;
     })
@@ -164,6 +172,26 @@ ${
   if (process.env.LANDO_SCENARIO_E2E_BINARY === undefined) throw new Error("LANDO_GUIDE_E2E=1 requires LANDO_SCENARIO_E2E_BINARY.");
 `
     : ""
+}${
+  cleanupFinalizers === ""
+    ? ""
+    : `  const controller = new AbortController();
+  // The first signal tears the app down; a second one terminates as usual.
+  const interrupt = () => {
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", interrupt);
+    controller.abort();
+  };
+  process.on("SIGINT", interrupt);
+  process.on("SIGTERM", interrupt);
+  // Bun records a timeout without stopping the test body, so stop it first and keep time to tear down.
+  let timedOut = false;
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, ${guide.frontmatter.timeout - Math.min(120_000, Math.floor(guide.frontmatter.timeout / 4))});
+  try {
+`
 }  const exit = await Effect.runPromiseExit(
     ${contextRunner}({ guideId: ${JSON.stringify(guide.frontmatter.id)}, scenarioId: ${JSON.stringify(scenario.id)}, render: ${scenario.render} }, (context) =>
       Effect.gen(function* () {
@@ -172,10 +200,24 @@ ${
         let lastEvents: ScenarioRunResult["events"] = [];
 ${variableSetup === "" ? "" : `${variableSetup}\n`}${cleanupFinalizers === "" ? "" : `${cleanupFinalizers}\n`}${steps}
       }),
-    ),
+    ),${cleanupFinalizers === "" ? "" : "\n    { signal: controller.signal },"}
   );
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
-  expect.hasAssertions();
+${
+  cleanupFinalizers === ""
+    ? ""
+    : `  if (timedOut) throw new Error("The scenario ran out of time; its cleanup steps ran before the test timeout.");
+`
+}  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
+  expect.hasAssertions();${
+    cleanupFinalizers === ""
+      ? ""
+      : `
+  } finally {
+    clearTimeout(deadline);
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", interrupt);
+  }`
+  }
 }, ${guide.frontmatter.timeout});
 ${skips === "" ? "" : `\n${skips}\n`}`;
 };

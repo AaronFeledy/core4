@@ -66,6 +66,9 @@ export const redactorForReadiness = Effect.gen(function* () {
     : createStandaloneRedactor("secrets", { sourceEnv: { ...process.env } });
 });
 
+const failureRuntimes = new WeakMap<ServiceNotReadyError, ServiceRuntimeInfo>();
+export const readinessFailureRuntime = (error: ServiceNotReadyError) => failureRuntimes.get(error);
+
 export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
   target: ReadinessTarget,
   evidence: {
@@ -121,27 +124,25 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
     diagnose && diagnostic === undefined
       ? " Check the readiness command; readiness: false disables startup readiness."
       : "";
-  return yield* Effect.fail(
-    new ServiceNotReadyError({
-      message: `Service ${name} is not ready (${evidence.reason})${diagnostic === undefined ? "" : `: ${diagnostic.finding}`}.${target.plan.extensions["@lando/core/scratch"] === undefined ? " The applied app has been retained." : ""}`,
-      app: String(target.plan.name),
-      service: name,
-      providerId: String(target.provider.id),
-      reason: evidence.reason,
-      remediation:
-        evidence.reason === "inspect-failed"
-          ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
-          : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}${credentialRemediation(service?.connection, logEvidence?.credentialState)}`,
-      ...(listener === undefined ? {} : { listener }),
-      ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
-      ...(evidence.runtime === undefined ? {} : { state: redactor.redactString(evidence.runtime.status) }),
-      ...(evidence.attempts === undefined ? {} : { attempts: evidence.attempts }),
-      ...(evidence.lastStatus === undefined
-        ? {}
-        : { lastStatus: redactor.redactString(evidence.lastStatus) }),
-      ...(logEvidence === undefined ? {} : { logTail: logEvidence.tail }),
-    }),
-  );
+  const error = new ServiceNotReadyError({
+    message: `Service ${name} is not ready (${evidence.reason})${diagnostic === undefined ? "" : `: ${diagnostic.finding}`}.${target.plan.extensions["@lando/core/scratch"] === undefined ? " The applied app has been retained." : ""}`,
+    app: String(target.plan.name),
+    service: name,
+    providerId: String(target.provider.id),
+    reason: evidence.reason,
+    remediation:
+      evidence.reason === "inspect-failed"
+        ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
+        : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}${credentialRemediation(service?.connection, logEvidence?.credentialState)}`,
+    ...(listener === undefined ? {} : { listener }),
+    ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
+    ...(evidence.runtime === undefined ? {} : { state: redactor.redactString(evidence.runtime.status) }),
+    ...(evidence.attempts === undefined ? {} : { attempts: evidence.attempts }),
+    ...(evidence.lastStatus === undefined ? {} : { lastStatus: redactor.redactString(evidence.lastStatus) }),
+    ...(logEvidence === undefined ? {} : { logTail: logEvidence.tail }),
+  });
+  if (evidence.runtime !== undefined) failureRuntimes.set(error, evidence.runtime);
+  return yield* Effect.fail(error);
 });
 
 export const inspectReadinessRuntime = Effect.fn("ServiceReadiness.inspect")(function* (
@@ -161,23 +162,30 @@ export const guardServiceRunning = Effect.fn("ServiceReadiness.guardRunning")(fu
 ) {
   const running = runtime.status === "running";
   const job = completionIntentServices(target.plan).has(String(target.service));
-  const restarted =
-    initial !== undefined &&
-    (initial.containerId !== runtime.containerId ||
-      (initial.lastStartedAt === undefined
-        ? undefined
-        : DateTime.toEpochMillis(DateTime.makeUnsafe(initial.lastStartedAt))) !==
-        (runtime.lastStartedAt === undefined
-          ? undefined
-          : DateTime.toEpochMillis(DateTime.makeUnsafe(runtime.lastStartedAt))));
-  if (restarted || (!running && !(job && runtime.exitCode === 0)))
+  if (initial !== undefined && !sameReadinessIncarnation(initial, runtime))
+    return yield* failReadinessIncarnation(target, runtime);
+  if (!running && !(job && runtime.status === "exited" && runtime.exitCode === 0))
     return yield* failReadiness(target, {
       reason: "not-running",
       runtime,
-      ...(restarted ? { lastStatus: "Container replaced or restarted during readiness." } : {}),
     });
   return runtime;
 });
+
+const startedAt = (runtime: ServiceRuntimeInfo) =>
+  runtime.lastStartedAt === undefined
+    ? undefined
+    : DateTime.toEpochMillis(DateTime.makeUnsafe(runtime.lastStartedAt));
+
+export const sameReadinessIncarnation = (left: ServiceRuntimeInfo, right: ServiceRuntimeInfo) =>
+  left.containerId === right.containerId && startedAt(left) === startedAt(right);
+
+export const failReadinessIncarnation = (target: ReadinessTarget, runtime: ServiceRuntimeInfo) =>
+  failReadiness(target, {
+    reason: "not-running",
+    runtime,
+    lastStatus: "Container replaced or restarted during readiness.",
+  });
 
 export const inspectServiceRunning = (target: ReadinessTarget, initial?: ServiceRuntimeInfo) =>
   inspectReadinessRuntime(target).pipe(

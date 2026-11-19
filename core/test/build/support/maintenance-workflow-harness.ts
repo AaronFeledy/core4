@@ -203,7 +203,7 @@ esac`,
       failure: (
         yaml: string,
         issues: readonly { readonly number: number; readonly title: string }[] = [],
-        extraEnv: Readonly<Record<string, string>> = {},
+        needs: Readonly<Record<string, { readonly result: string }>> = { bump: { result: "failure" } },
       ) => {
         const scripts = workflowScripts(yaml);
         const failureEnv = Object.fromEntries(
@@ -213,13 +213,13 @@ esac`,
               .replaceAll("${{ github.repository }}", scenario.repository ?? "fixture/repository")
               .replaceAll("${{ github.server_url }}", "https://example.invalid")
               .replaceAll("${{ github.run_id }}", "42")
-              .replaceAll("${{ github.token }}", "fixture-token"),
+              .replaceAll("${{ github.token }}", "fixture-token")
+              .replaceAll("${{ toJSON(needs) }}", () => JSON.stringify(needs)),
           ]),
         );
         return run(["bash", "-c", scripts.failure], runnerTemp, {
           ...failureEnv,
           ISSUES: JSON.stringify(issues),
-          ...extraEnv,
         });
       },
       commands: () => Bun.file(log).text(),

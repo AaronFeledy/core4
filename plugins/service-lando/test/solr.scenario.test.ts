@@ -209,7 +209,7 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
     expect(search.artifact).toEqual({ kind: "ref", ref: "solr:9" });
     expect(search.endpoints).toEqual([
       {
-        _tag: "internal",
+        kind: "internal",
         port: 8983,
         protocol: "http",
         name: "search",

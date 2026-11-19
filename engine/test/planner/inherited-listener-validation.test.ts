@@ -64,7 +64,7 @@ test("MinIO child feature override can reclaim the parent's default console port
   ]);
   expect(service?.endpoints).toContainEqual(
     expect.objectContaining({
-      _tag: "internal",
+      kind: "internal",
       port: 19001,
       protocol: "http",
       name: "console",

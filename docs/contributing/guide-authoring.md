@@ -107,8 +107,10 @@ What each part does:
 - `<Run>` runs the command and shows it. `<Verify command>` reruns the
   command and asserts on its output. Assert `--format=json` output, not boxed
   table output, because the table wraps at terminal width.
-- `<Cleanup />` registers scenario cleanup. Keep it in every scenario that
-  creates an app, and pair it with `lando destroy -y` on `layer="e2e"`.
+- `<Cleanup />` marks a step to run once after the scenario's other steps, even
+  on failure or interruption. Keep it in every scenario that creates an app.
+  For `layer="e2e"`, put `lando destroy -y --volumes` or `lando destroy -y --purge`
+  in the same step.
 - A regex inside `expect={{ ... }}` must contain no single quote. The prop is
   converted to JSON, and that conversion turns every `'` into `"`.
 

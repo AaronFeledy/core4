@@ -98,7 +98,9 @@ services:
 
 `CMD` becomes an argv command. `CMD-SHELL` takes one shell string. `NONE` shows up as `false`. A duration such as `5s` becomes seconds. `lando app:config --format=json` prints that stored object, not the spelling you typed.
 
-Pick one dialect and keep it across layers. When the merged object holds a Lando field such as `command` or `intervalSeconds`, Lando reads only the Lando command/timing fields and ignores `test`, `interval`, `timeout`, and `start_period`. If one layer wrote the Lando side and another wrote the Compose side, `lando app:config:lint` warns with `readiness.mixed-dialects` (or `healthcheck.mixed-dialects` under native health) so you can see which timing survived. The shared `target` and `user` fields work with either dialect; neither makes an otherwise Compose object mixed-dialect.
+Use one dialect per probe. If you wrote `command:` with `interval: 1s` or `timeout: 1s` in the same Landofile, `lando app:config:lint` and `lando start` report the conflicting keys. Keep `command:` and replace those durations with `intervalSeconds: 1` and `timeoutSeconds: 1`. To keep the Compose durations instead, use `test:` with a `CMD` or `CMD-SHELL` marker in place of `command:`. Run `lando app:config:lint` again to check the edit.
+
+If the two dialects come from different files or layers, lint warns with `readiness.mixed-dialects` (or `healthcheck.mixed-dialects`). The Lando command and timing fields still take precedence in that case. Match the lower layer's dialect when overriding individual fields, or use `!override` to replace the whole probe. The shared `target`, `user`, and `retries` fields work with either dialect.
 
 Both keys accept `false`, a command string, argv, or a command/timing object. Probe HTTP through a command such as `curl`; the bundled runner does not execute `kind: http` or `kind: tcp`. Unsupported kinds fail planning with `LandofileValidationError` before Lando touches a container. Use `lando app:cache:refresh --format=json` to validate the plan without starting services.
 
@@ -177,7 +179,7 @@ Choose which policy to disable. `healthcheck: false` turns off native monitoring
 
 Put the override in `.lando.local.yml` when only this machine should skip that policy. Literal `false` replaces its base value instead of merging with it. Disable both keys only if you intend to keep process supervision without either command policy. For [MongoDB](./mongodb.mdx#what-ready-checks-and-what-it-doesnt), native health off alone still preserves the stronger startup check.
 
-Object spellings such as `disable: true`, `test: [NONE]`, or `kind: none` are not that barrier. They merge into an inherited object like any other mapping, and Lando still validates every sibling you wrote next to them: a bad `interval` or an empty `command` fails even though the probe is off. If the merged object keeps a Lando field such as `command`, `disable: true` loses to it and the probe stays on. Reach for literal `false` when you mean off.
+Object spellings such as `disable: true`, `test: [NONE]`, or `kind: none` are not that barrier. They merge into an inherited object like any other mapping. A bad `interval` or an empty `command` can still fail validation when the probe is off. If you layer `disable: true` over a Lando `command`, the inherited command wins and the probe stays on. Use literal `false` when you mean off.
 
 ```yaml
 services:
@@ -188,6 +190,27 @@ services:
 
 ## Inspect a failed start
 
+If a `service_healthy` dependency exits and the runtime confirms it won't restart, Lando stops retrying that gate. The same exit report applies when a `service_completed_successfully` job finishes nonzero. `ServiceStartError` names the blocked service and the dependency. With `--format=json`, `error.details.dependencyExit` reports the dependency's state and its process exit code when available, even if the container logged nothing.
+
+If the dependency is missing, replaced, or unverified just after start, the gate can fail before the probe runs. If the runtime discovers the change while watching for an exit, the readiness probe keeps its original retry budget. If those attempts fail, `error.details.dependencyUnavailable` gives the reason (`missing`, `replaced`, or `unverified`). Lando leaves out logs and listener advice because those would describe a container it couldn't verify. Check the provider with `lando doctor`, then retry start.
+
+A oneshot that exits 7 while `web` waits on `init:completed` fails like this:
+
+```text
+Dependency init exited with code 7. Service web could not start because dependency gate init:completed was not satisfied.
+```
+
+```json
+{
+  "dependencyExit": {
+    "service": "init",
+    "gate": "init:completed",
+    "status": "exited",
+    "exitCode": 7
+  }
+}
+```
+
 Start, restart, and rebuild normally wait for effective readiness. If it exhausts its attempts, the command fails with `ServiceNotReadyError` and retains the applied app, routes, and volumes. When a restart policy allows recovery, an exit or observed restart can instead produce a warning and a `restarting` result before the probe passes.
 
 When the failing check targets a TCP port, Lando looks at the ports the service is actually listening on and leads the error with what it found:
@@ -196,7 +219,7 @@ When the failing check targets a TCP port, Lando looks at the ports the service 
 - **Loopback only.** The daemon listens on `127.0.0.1`, so other services can't reach it. Bind it to `0.0.0.0`.
 - **Port is bound.** Something listens on the expected port, but the check still failed. The error's `lastStatus` shows the check's last output.
 
-The same report appears when a `service_healthy` dependency or an app-build step waits on a service that never becomes healthy. With `--format=json`, it's on `error.listener` (`port`, `state`, and the observed `listening` addresses). The observation covers the container's network namespace, which pod siblings can share, so it shows which ports are bound, not which process bound them. If Lando can't read the container's socket table, the error leaves the report out rather than guess.
+The same report can appear when a `service_healthy` dependency or an app-build step waits on a service that never becomes healthy. If the provider verifies a terminal dependency exit, Lando reports the exit and skips both the listener check and its configuration advice. With `--format=json`, a listener report appears on `error.listener` (`port`, `state`, and the observed `listening` addresses). The observation covers the container's network namespace, which pod siblings can share, so it shows which ports are bound, not which process bound them. If Lando can't read the container's socket table, the error leaves the report out rather than guess.
 
 For a missing or loopback-only listener, the first remediation line gives one diagnostic action. When the service type records who must configure that port, a second line gives that owner's configuration advice. Your application may need to use Lando's port variables, an authored command or entrypoint may need a launcher argument, or your custom image may need a daemon setting. For an application-owned Node listener on port 3000 with no observed listeners, those lines read:
 
@@ -233,7 +256,27 @@ When present, the service's `listenerAuthority` records who must configure its p
 Info never executes probes or reports a durable last-readiness proof. `not-observed` means configured but not proved by this inspection, even after a successful start. The `ready` result returned by start is the observed gate success for that invocation; a running container or healthy native check is not a substitute.
 
 <Guide>
-  <Scenario id="execution-metadata" render={false} reason="Check canonical execution metadata and real planning without starting containers">
+  <Scenario id="terminal-dependency" layer="e2e" tags={["@smoke"]} render={false} reason="Check that a terminal dependency stops the gate and reports the process exit">
+    <Step name="observe-dependency-exit">
+      <UseFixture name="terminal-dependency" />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "\"_tag\":\\s*\"ServiceStartError\"[^\\n]*\"dependencyExit\":\\s*\\{[^}]*\"exitCode\":\\s*7" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+    <Scenario id="failed-oneshot" layer="e2e" tags={["@smoke"]} render={false} reason="Check that a failed oneshot completion gate reports dependencyExit for init:completed">
+    <Step name="observe-oneshot-exit">
+      <UseFixture name="failed-oneshot" />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "\"_tag\":\\s*\"ServiceStartError\"[^\\n]*\"dependencyExit\":\\s*\\{(?=[^}]*\"service\":\\s*\"init\")(?=[^}]*\"gate\":\\s*\"init:completed\")(?=[^}]*\"exitCode\":\\s*7)" } }} />
+    </Step>
+    <Step name="cleanup-oneshot">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+<Scenario id="execution-metadata" render={false} reason="Check canonical execution metadata and real planning without starting containers">
     <Step name="inspect-user-and-host">
       <UseFixture name="execution-metadata" />
       <Run command="lando app:config --format=json" />
@@ -288,6 +331,37 @@ Info never executes probes or reports a durable last-readiness proof. `not-obser
     </Step>
   </Scenario>
 
+  <Scenario id="reject-mixed-timing" render={false} reason="Check the same timing diagnosis in lint and start, then verify the corrected probe">
+    <Step name="reject-mixed-timing">
+      <UseFixture name="mixed-timing-corrected" />
+      <Run runtime="library" displayCode="Set interval: 1s and timeout: 1s under readiness" code={`const file = Bun.file(join(context.testDir, "mixed-timing-corrected", ".lando.yml"));
+const corrected = yield* Effect.promise(() => file.text());
+yield* Effect.promise(() => Bun.write(file, corrected.replace("intervalSeconds: 1", "interval: 1s").replace("timeoutSeconds: 1", "timeout: 1s")));`} />
+      <Run runtime="library" displayCode="lando app:config:lint --format=json" code={`{
+const run = yield* context.runCli("lando app:config:lint --format=json");
+expect(run.exitCode).toBe(1);
+expect(JSON.parse(run.stdout).result.violations).toContainEqual(expect.objectContaining({ rule: "readiness.mixed-dialects", severity: "error", suggestion: expect.stringContaining("intervalSeconds: 1") }));
+}`} />
+      <Run runtime="library" displayCode="lando start --format=json" code={`{
+const run = yield* context.runCli("lando start --format=json");
+expect(run.exitCode).toBe(1);
+const frame = JSON.parse(run.stdout.trim().split("\n").at(-1) ?? "null");
+expect(frame.envelope.error).toMatchObject({ _tag: "LandofileValidationError", issues: expect.arrayContaining([expect.objectContaining({ rule: "readiness.mixed-dialects", path: ["services", "db", "readiness", "interval"], suggestion: expect.stringContaining("intervalSeconds: 1") })]) });
+}`} />
+      <Run runtime="library" displayCode="lando app:config --format=json" code={`lastRun = yield* context.runCli("lando app:config --format=json");`} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "services\\.db\\.readiness\\.interval[\\s\\S]*intervalSeconds: 1" }} />
+    </Step>
+    <Step name="verify-lando-timing">
+      <Run runtime="library" displayCode="Set intervalSeconds: 1 and timeoutSeconds: 1 under readiness" code={`const file = Bun.file(join(context.testDir, "mixed-timing-corrected", ".lando.yml"));
+const mixed = yield* Effect.promise(() => file.text());
+yield* Effect.promise(() => Bun.write(file, mixed.replace("interval: 1s", "intervalSeconds: 1").replace("timeout: 1s", "timeoutSeconds: 1")));`} />
+      <Run runtime="library" displayCode="lando app:config --format=json" code={`{
+const run = yield* context.runCli("lando app:config --format=json");
+expect(run.exitCode).toBe(0);
+expect(JSON.parse(run.stdout).result.landofile.services.db.readiness).toMatchObject({ intervalSeconds: 1, timeoutSeconds: 1 });
+}`} />
+    </Step>
+  </Scenario>
   <Scenario id="object-form" render>
     <Step name="inspect-timing">
       <UseFixture name="object-form" />

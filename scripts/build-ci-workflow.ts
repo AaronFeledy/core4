@@ -555,6 +555,7 @@ const engineLaneRuns = laneRuns([
   ["providers-host-reachability", "host-reachability"],
   ["providers-listener-observation", "listener-observation"],
   ["proxy-traefik-certificate-live", "proxy-traefik-certificate-live"],
+  ["file-sync-mutagen-live", "file-sync-mutagen-live"],
   ["providers-sqlite-integrity", "sqlite-integrity"],
   ["providers-sqlite-borrowed-mounts", "sqlite-borrowed-mounts"],
   ["providers-schedule", "schedule"],
