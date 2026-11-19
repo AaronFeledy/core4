@@ -1653,7 +1653,7 @@ jobs:
 
   report-failure:
     needs: [container-helper, runtime-bundle-linux-x64, runtime-bundle-linux-arm64, runtime-bundle-reproducibility-linux-x64, runtime-bundle-reproducibility-linux-arm64, file-sync-contract-linux-x64, file-sync-contract-darwin-arm64, file-sync-contract-darwin-x64, file-sync-contract-windows-x64, provider-lando-e2e-linux-x64, service-listeners-linux-x64, service-listener-matrix-linux-x64, published-manifest-setup-linux-x64, mysql-arm-client-linux-arm64, source-store-acceptance-linux-x64, source-store-acceptance-darwin-arm64, source-store-acceptance-windows-x64, nightly-tier-unit-tests-linux-x64, refresh-test-timings-linux-x64, runtime-bundle-manifest-live, distribution-rehearsal-linux-x64]
-    if: ${{ !cancelled() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'abandoned')) }}
+    if: ${{ !cancelled() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -1667,8 +1667,18 @@ jobs:
       - name: Report automation failure
         run: |
           set -euo pipefail
+          FAILED_JOBS="$(jq -r '
+            [to_entries[] | .value.result as $result
+              | select($result != "success" and $result != "skipped")
+              | .key + (if $result == "failure" then ""
+                        elif $result == "cancelled" then " (timed out or cancelled)"
+                        else " (\($result))" end)] | join(", ")
+          ' <<< "$NEEDS_JSON")"
+          if [ -z "$FAILED_JOBS" ]; then
+            echo "No unsuccessful jobs."
+            exit 0
+          fi
           TITLE='nightly automation failure'
-          FAILED_JOBS="$(jq -r '[to_entries[] | select(.value.result | IN("failure", "cancelled", "abandoned")) | .key + (if .value.result == "cancelled" then " (timed out or cancelled)" elif .value.result == "abandoned" then " (abandoned)" else "" end)] | join(", ")' <<< "$NEEDS_JSON")"
           printf -v BODY 'Workflow run failed: %s\n\nFailed jobs: %s' "$RUN_URL" "$FAILED_JOBS"
           ISSUE_NUMBER="$(gh issue list --state open --search 'in:title "nightly automation failure" sort:created-asc' --limit 100 --json number,title --jq '[.[] | select(.title == "nightly automation failure")] | .[0].number // ""')"
           if [ -n "$ISSUE_NUMBER" ]; then
