@@ -43,7 +43,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -63,7 +63,7 @@ jobs:
           bun run test:selection container-helper
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: container-helper
           path: core/container-helper/dist/
@@ -152,16 +152,14 @@ jobs:
           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
 
+      # The credential lands in runner.temp, which is emptied when the job ends, so no logout step is needed.
       - name: Log in to Docker Hub
         if: env.WORKFLOW_PERF_DOCKER_HUB_LOGIN == 'true'
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.4.0
         env:
           DOCKER_CONFIG: ${{ runner.temp }}/workflow-performance-linux-x64-registry
-        with:
-          registry: docker.io
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          logout: true
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: printf '%s' "$DOCKERHUB_TOKEN" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
 
       - name: Run workflow performance samples
         id: performance
@@ -332,16 +330,14 @@ jobs:
           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
 
+      # The credential lands in runner.temp, which is emptied when the job ends, so no logout step is needed.
       - name: Log in to Docker Hub
         if: env.WORKFLOW_PERF_DOCKER_HUB_LOGIN == 'true'
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.4.0
         env:
           DOCKER_CONFIG: ${{ runner.temp }}/workflow-performance-linux-arm64-registry
-        with:
-          registry: docker.io
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          logout: true
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: printf '%s' "$DOCKERHUB_TOKEN" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
 
       - name: Run workflow performance samples
         id: performance
