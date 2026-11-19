@@ -516,7 +516,7 @@ ${nodeImagePullLines}
           pull_image docker.io/library/redis:7
           pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
-          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.19.25
           pull_image docker.io/getmeili/meilisearch:v1.11
           pull_image docker.io/axllent/mailpit:v1.30.1
           pull_image docker.io/library/mariadb:11.4

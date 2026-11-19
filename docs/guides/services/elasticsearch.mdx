@@ -7,7 +7,7 @@ tags: [docs, elasticsearch, service]
 
 # Add Elasticsearch
 
-Add `type: elasticsearch` under `services` in `.lando.yml`. Lando pulls `docker.elastic.co/elasticsearch/elasticsearch:8.17.0` and listens on `9200`:
+Add `type: elasticsearch` under `services` in `.lando.yml`. Lando pulls `docker.elastic.co/elasticsearch/elasticsearch:8.19.25` and listens on `9200`:
 
 ```yaml
 name: elasticsearch-demo
@@ -58,6 +58,8 @@ lando es-cli /_cat/indices
 ```
 
 ## Pin a version
+
+The default image moved from `8.17.0` to `8.19.25`. That is a same-major data-directory upgrade, so an existing volume typically starts on 8.19 after `lando rebuild`. If you want a rollback path, export a copy of the data volume first. You cannot start 8.17 on files 8.19 has already rewritten.
 
 Set `image:` when the default Elasticsearch 8 image isn't the version you want:
 

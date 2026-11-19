@@ -207,7 +207,7 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
     expect(search.type).toBe("elasticsearch");
     expect(search.artifact).toEqual({
       kind: "ref",
-      ref: "docker.elastic.co/elasticsearch/elasticsearch:8.17.0",
+      ref: "docker.elastic.co/elasticsearch/elasticsearch:8.19.25",
     });
     expect(search.endpoints).toEqual([
       { kind: "internal", port: 9200, protocol: "tcp", name: "search", primary: true },
