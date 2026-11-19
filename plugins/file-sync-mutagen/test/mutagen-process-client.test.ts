@@ -714,21 +714,20 @@ describe("Mutagen process client", () => {
     expect(calls.filter((call) => call.args[1] === "pause")).toHaveLength(1);
     const error = Cause.findErrorOption(exit.cause);
     if (error._tag !== "Some") throw new Error("Expected a typed pause failure.");
-    expect(error.value._tag).toBe("FileSyncStopError");
+    expect(error.value).toMatchObject({ _tag: "FileSyncStopError", outputTail: PROMPTER_RACE });
     expect(error.value.message).not.toMatch(/prompter/i);
   });
 
-  test("keeps Mutagen stderr out of the error", async () => {
+  test("reports Mutagen's stderr only as a redacted output tail", async () => {
     const secret = "super-secret-token";
-    const absPath = "/home/alice/.mutagen/private.key";
-    const { client } = fake({
-      createFailures: [{ exitCode: 1, stdout: "", stderr: `create failed ${secret} at ${absPath}\u0007` }],
-    });
+    const stderr = `Error: unable to connect to beta: token=${secret} was rejected`;
+    const { client } = fake({ createFailures: [{ exitCode: 1, stdout: "", stderr }] });
     const exit = await Effect.runPromiseExit(client.create({ name, spec }));
     if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
-    const shown = Bun.inspect(failureOutcomeFromCause(exit.cause).error);
-    expect(shown).not.toContain(secret);
-    expect(shown).not.toContain(absPath);
+    const error = failureOutcomeFromCause(exit.cause).error as FileSyncStartError;
+    expect(error.outputTail).toContain("unable to connect to beta");
+    expect(Bun.inspect(error)).not.toContain(secret);
+    expect(`${error.message} ${error.remediation}`).not.toContain("unable to connect to beta");
   });
 
   test("clears an interrupted sibling create that shares a committed session's source", async () => {

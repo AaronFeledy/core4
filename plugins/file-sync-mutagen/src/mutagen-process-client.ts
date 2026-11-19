@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { sameRealpath } from "@lando/paths";
+import { makeDiagnosticTail } from "@lando/redaction";
 import { mapFailures, mergeFailure } from "@lando/sdk/command-result";
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
@@ -161,8 +162,20 @@ const startError = (message: string, spec?: FileSyncSessionSpec): FileSyncStartE
     remediation: REMEDIATION,
   });
 
-const commandFailed = (args: ReadonlyArray<string>, result: ProcessResult): FileSyncStartError =>
-  startError(`Mutagen command exited with code ${result.exitCode}: ${args.slice(0, 2).join(" ")}.`);
+const encoder = new TextEncoder();
+
+/** Mutagen writes the reason it failed to stderr; the error keeps a bounded, redacted copy. */
+const commandFailed = Effect.fnUntraced(function* (args: ReadonlyArray<string>, result: ProcessResult) {
+  const diagnostics = yield* makeDiagnosticTail();
+  diagnostics.write(encoder.encode(result.stderr));
+  const outputTail = diagnostics.finish()?.trimEnd();
+  return new FileSyncStartError({
+    engineId: ENGINE_ID,
+    message: `Mutagen command exited with code ${result.exitCode}: ${args.slice(0, 2).join(" ")}.`,
+    remediation: REMEDIATION,
+    ...(outputTail ? { outputTail } : {}),
+  });
+});
 
 const prompterRace = (result: ProcessResult): boolean =>
   result.exitCode !== 0 && result.stderr.includes("unable to message prompter: prompter not found");
@@ -175,8 +188,17 @@ const PROMPTER_RACE = new FileSyncStartError({
     "Run `lando start` again. Lando adopts or recreates the sync session that Mutagen left behind.",
 });
 
-const stopError = (message: string, name: string): FileSyncStopError =>
-  new FileSyncStopError({ engineId: ENGINE_ID, sessionRef: name, message, remediation: REMEDIATION });
+const stopError = (
+  { message, outputTail }: { readonly message: string; readonly outputTail?: string | undefined },
+  name: string,
+): FileSyncStopError =>
+  new FileSyncStopError({
+    engineId: ENGINE_ID,
+    sessionRef: name,
+    message,
+    remediation: REMEDIATION,
+    ...(outputTail === undefined ? {} : { outputTail }),
+  });
 
 const knownLedger = (bucket: StateBucket<SessionLedger>, value: SessionLedger | null) =>
   value !== null
@@ -640,7 +662,9 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
   const run = Effect.fn("MutagenProcessClient.run")((args: ReadonlyArray<string>, timeoutMs?: number) =>
     exec(args, timeoutMs).pipe(
       Effect.flatMap((result) =>
-        result.exitCode === 0 ? Effect.succeed(result.stdout) : Effect.fail(commandFailed(args, result)),
+        result.exitCode === 0
+          ? Effect.succeed(result.stdout)
+          : commandFailed(args, result).pipe(Effect.flatMap(Effect.fail)),
       ),
     ),
   );
@@ -1056,6 +1080,9 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
                   engineId: ENGINE_ID,
                   sessionRef: entry.identifier,
                   message: error.message,
+                  ...(error instanceof FileSyncStartError && error.outputTail !== undefined
+                    ? { outputTail: error.outputTail }
+                    : {}),
                   remediation:
                     error instanceof FileSyncStartError || error instanceof FileSyncDriftError
                       ? error.remediation
@@ -1099,9 +1126,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         );
       }),
     ).pipe(
-      mapFailures((error) =>
-        error instanceof FileSyncStopError ? error : stopError(error.message, String(app.id)),
-      ),
+      mapFailures((error) => (error instanceof FileSyncStopError ? error : stopError(error, String(app.id)))),
     );
 
   const disposeApp = (app: FileSyncSessionSpec["app"]) =>
@@ -1202,7 +1227,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }
         }),
       ),
-    ).pipe(mapFailures((error) => stopError(error.message, String(app.id))));
+    ).pipe(mapFailures((error) => stopError(error, String(app.id))));
 
   const completeAppDisposal = (app: FileSyncSessionSpec["app"]) =>
     withAppLock(
@@ -1247,7 +1272,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }));
         }),
       ),
-    ).pipe(mapFailures((error) => stopError(error.message, String(app.id))));
+    ).pipe(mapFailures((error) => stopError(error, String(app.id))));
 
   const disposalPhase = (app: FileSyncSessionSpec["app"]) =>
     withAppLock(
@@ -1284,7 +1309,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }),
         ),
       ),
-    ).pipe(mapFailures((error) => stopError(error.message, String(app.id))));
+    ).pipe(mapFailures((error) => stopError(error, String(app.id))));
 
   const createOwned = (name: string, spec: FileSyncSessionSpec) =>
     withLedger((bucket) =>
@@ -1393,7 +1418,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         ];
         const result = yield* exec(args);
         if (prompterRace(result)) return yield* Effect.fail(PROMPTER_RACE);
-        if (result.exitCode !== 0) return yield* Effect.fail(commandFailed(args, result));
+        if (result.exitCode !== 0) return yield* Effect.fail(yield* commandFailed(args, result));
         const identifiers = result.stdout.match(/sync_[A-Za-z0-9]+/gu) ?? [];
         const identifier = identifiers[0];
         if (identifiers.length !== 1 || identifier === undefined) {
@@ -1488,7 +1513,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             Effect.asVoid,
           ),
         ),
-      ).pipe(mapFailures((error) => stopError(error.message, name))),
+      ).pipe(mapFailures((error) => stopError(error, name))),
     resume: (name) =>
       withNamedApp(name, (app) =>
         withLedger((bucket) =>
@@ -1571,7 +1596,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             }),
           ),
         );
-      }).pipe(mapFailures((error) => stopError(error.message, name))),
+      }).pipe(mapFailures((error) => stopError(error, name))),
     list: withLedger((bucket) =>
       readKnownLedger(bucket).pipe(
         Effect.flatMap((value) => reconcilePreparing(bucket, value)),

@@ -343,7 +343,7 @@ Target construction appends the effective path after any route path prefix exact
 - Network activity MUST honor §10.3.1. Sources outside the app root require `--allow-load-outside-root` or fail with `FileSyncSourceOutsideRootError`.
 - Engines MUST use provider ports rather than provider-native APIs and MUST preserve offline pause/resume once tools are cached.
 
-Tagged errors are `FileSyncEngineUnavailableError`, `FileSyncSessionFailedError`, `FileSyncDaemonUnreachableError`, `FileSyncBinaryMissingError`, `FileSyncSourceOutsideRootError`, `FileSyncCapabilityError`, `FileSyncConflictError`, and `FileSyncInternalError`.
+Engine selection fails with `FileSyncSelectionError`. `FileSyncError` is `FileSyncStartError` (acquisition, setup, availability, capability, target, ownership, create, and resume), `FileSyncDriftError` (a session that diverged, such as an unresolved conflict, with its conflicted paths and a suggested mode), or `FileSyncStopError` (pause, drain, terminate, and disposal). A start or stop failure caused by the engine's sync tool MAY carry `outputTail`, the last lines the tool wrote to stderr, redacted with full pattern context before they are clipped; the tool's raw output never reaches `message` or `remediation`.
 
 #### 10.6.2 Reference engine: `@lando/file-sync-mutagen`
 
