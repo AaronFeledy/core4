@@ -178,6 +178,8 @@ Releases include public schema and command-schema artifacts, declaration bundles
 
 Pull requests select a cumulative CI profile from their changed paths. `docs` runs the static gates and the docs job on Linux x64. `guides` adds the schema, library, recipe and container-helper jobs, the Linux x64 build and runtime bundle, and Linux x64 and Windows x64 guide scenarios with the Linux `@smoke` e2e subset. `runtime` adds the unit shards, isolation regressions, macOS process-signal tests, the Linux arm64 runtime bundle and the performance gates. `providers` adds live Linux x64 provider integration. Pushes to `main`, manual dispatches, and changes to `.bun-version` or a platform build path select broad CI, which also runs every platform job in the table below.
 
+CI MUST derive platform build test paths from the selections assigned to `build-*` jobs and MUST include their transitive relative-import dependencies, the platform build and smoke scripts, and the native libc binding module in the broad path rule. A unit test MUST NOT select broad CI merely because it lives under `core/test/build/`.
+
 | Cadence | Platforms/providers | Required scope |
 |---|---|---|
 | Broad CI: platform matrix | All six compile targets: macOS arm64/x64, Linux x64/arm64, Windows x64/arm64 | Portable static gates, builds, relocated-binary smoke (on the four POSIX targets, also native libc binding round trips and the shared-pipe stdio check, §8.11.2), and scenario guides. Compilation alone is not evidence of live-provider readiness. |
