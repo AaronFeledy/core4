@@ -28,6 +28,7 @@ export {
 } from "./import-boundary.ts";
 export * from "./interaction-contract.ts";
 export * from "./managed-file-contract.ts";
+export * from "./minting-certificate-authority.ts";
 export * from "./network-service-fixtures.ts";
 /**
  * runPluginContract arguments:

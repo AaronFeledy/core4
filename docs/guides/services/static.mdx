@@ -68,7 +68,26 @@ Wrong hostname? You get the proxy page (`404 · Lando proxy`) instead. See [Use 
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="caddy-static-config" render>
+    <Step name="scaffold">
+      <UseFixture name="static-caddy-demo" />
+    </Step>
+    <Step name="inspect">
+      <Verify
+        command="lando app:config --format=json"
+        expect={{ stdout: { regex: "\"type\":\\s*\"static:caddy\"" } }}
+      />
+      <Verify
+        command="lando app:config --format=json"
+        expect={{ stdout: { regex: "\"webroot\":\\s*\"dist\"" } }}
+      />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
     </Step>
   </Scenario>
 
@@ -85,6 +104,8 @@ services:
   web:
     type: static:caddy
 ```
+
+Lando generates a Caddyfile during the image build and starts `caddy run --config /usr/share/lando/caddy/Caddyfile --adapter caddyfile`. The site listens on plain HTTP only: automatic HTTPS and the admin API are off, so the router or a published host port owns TLS. Caddy serves the same shared 403 and 404 pages as the nginx variants, and it returns 403 for hidden path segments such as `/.git/config` and `/.env`. Only a segment named exactly `.well-known` is exempt, so `/.well-known/acme-challenge/token` stays reachable. Caddy answers a directory URL without its trailing slash with a relative 308, so the browser keeps the proxy's scheme, host, and port. `port:` moves the baked site address, the endpoint, and the healthcheck together.
 
 ## Run as a non-root user
 
@@ -106,17 +127,22 @@ bind below 1024 on the default `lando` provider, so pick something at or above
 `1024`.
 
 If you set your own `command:`, Lando preserves it instead of generating the
-launcher. Include the nginx `listen <port>;` directive or Caddy's
-`--listen :<port>` flag with your planned port number. Lando never appends it
-to your command. If startup fails, Lando includes a hint naming that setting.
-An authored `entrypoint:` alone still receives Lando's generated command.
+launcher. Include the nginx `listen <port>;` directive with your planned port.
+Lando never appends it to your command. If startup fails, Lando includes a hint
+naming that setting. An authored `entrypoint:` alone still receives Lando's
+generated nginx command.
 
-`static:caddy` writes nothing at start either, but it still listens on `80` by
-default, so the same port rule applies there.
+`static:caddy` reads its baked Caddyfile at start and writes nothing, so it also
+works under a non-root `user:`. It still listens on `80` by default, so the same
+port rule applies. An authored `command:` or `entrypoint:`, a different `image:`
+reference, or a replacement `build:` takes over server configuration instead:
+Lando bakes no Caddyfile for that service, so your configuration must serve the
+planned port.
 
 ## Pin a version
 
-Set `image:` to pin a specific nginx or Caddy version:
+Set `image:` to pin a specific nginx version. The generated nginx launcher still
+applies:
 
 ```yaml
 services:
@@ -125,11 +151,18 @@ services:
     image: nginx:1.27-alpine
 ```
 
+Caddy's generated configuration is baked for the bundled `caddy:2-alpine` image.
+Writing a different `image:` reference, including a pinned Caddy tag, a
+replacement `build:`, or an authored `command:` or `entrypoint:` means you own
+the server configuration. Lando then bakes no Caddyfile and runs no generated
+launcher:
+
 ```yaml
 services:
   web:
     type: static:caddy
     image: caddy:2.8-alpine
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
 ```
 
 </Guide>

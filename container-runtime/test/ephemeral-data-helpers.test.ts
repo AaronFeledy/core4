@@ -10,6 +10,7 @@ import {
 
 const redactor = {
   redactString: (value: string) => value.replaceAll("SENSITIVE", "[REDACTED]"),
+  redactPrefix: (value: string) => value.replaceAll("SENSITIVE", "[REDACTED]"),
   redactValue: (value: unknown) => value,
 } satisfies Redactor;
 
@@ -107,6 +108,7 @@ describe("data helper diagnostics", () => {
       const remediation = volumeInUseRemediation({
         ...redactor,
         redactString: (value) => value.replaceAll("lando doctor", "[REDACTED]"),
+        redactPrefix: (value) => value.replaceAll("lando doctor", "[REDACTED]"),
       });
       expect(remediation).toContain("[REDACTED]");
       expect(remediation).not.toContain("lando doctor");

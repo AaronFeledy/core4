@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { AbsolutePath, appIdentityKey } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { haltAppRuntime } from "../../src/operations/stop.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
 test.each(["stop", "destroy"] as const)("%s leaves runtime readiness untouched", async (operation) => {
@@ -70,4 +75,32 @@ test("idle stop uses the same status observation for coordination and provider a
   await Effect.runPromise(haltAppRuntime({}, target).pipe(Effect.provide(harness.layer)));
   expect(mutations).toEqual([]);
   expect(reads).toBe(1);
+});
+
+test("halt asks for this app's exact applied plan", async () => {
+  const base = await realpath(await mkdtemp(join(tmpdir(), "lando-halt-exact-")));
+  try {
+    const root = AbsolutePath.make(base);
+    const desired = { ...plan, root, identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) } };
+    const lookups: Array<string | undefined> = [];
+    const harness = makeHarness({
+      plannedApp: desired,
+      resolveAppliedPlan: (_root, _app, lookup) => {
+        lookups.push(lookup);
+        return Effect.succeed(desired);
+      },
+    });
+    const target = {
+      plan: desired,
+      root,
+      app: { kind: "user" as const, id: desired.id, root },
+      landofile: literalTestLandofile({ name: desired.name, services: {} }, root),
+    };
+
+    await Effect.runPromise(haltAppRuntime({}, target).pipe(Effect.provide(harness.layer)));
+
+    expect(lookups.at(-1)).toBe("exact");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
 });

@@ -145,7 +145,7 @@ lando exec app -- php --ri imagick
 An artifact step runs after Lando's own PHP prerequisite build steps, in
 the same image, so a manually compiled extension can depend on the apt
 packages Lando already installed. A `build.artifact` edit changes the
-build key, so the next `lando start` rebuilds that image. Bare `restart` also stop/starts and applies it. Selected `lando restart -s` stays in place and refuses the drift.
+build key, so the next `lando start` rebuilds that image. Bare `restart` also stop/starts and applies it. `lando restart -s app` applies it to that one service: it rebuilds the image and replaces the container.
 
 ## See the security baseline
 

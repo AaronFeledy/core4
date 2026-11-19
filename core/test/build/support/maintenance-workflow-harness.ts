@@ -5,7 +5,9 @@ import { Schema } from "effect";
 
 const Workflow = Schema.Struct({
   jobs: Schema.Struct({
-    bump: Schema.Struct({ steps: Schema.Array(Schema.Struct({ run: Schema.optionalKey(Schema.String) })) }),
+    bump: Schema.optionalKey(
+      Schema.Struct({ steps: Schema.Array(Schema.Struct({ run: Schema.optionalKey(Schema.String) })) }),
+    ),
     "report-failure": Schema.Struct({
       env: Schema.Record(Schema.String, Schema.String),
       steps: Schema.Array(Schema.Struct({ run: Schema.String })),
@@ -15,9 +17,9 @@ const Workflow = Schema.Struct({
 
 export const workflowScripts = (yaml: string) => {
   const { jobs } = Schema.decodeUnknownSync(Workflow)(Bun.YAML.parse(yaml));
-  const proposal = jobs.bump.steps.find((step) => step.run?.includes("gh auth setup-git"))?.run;
+  const proposal = jobs.bump?.steps.find((step) => step.run?.includes("gh auth setup-git"))?.run;
   const failure = jobs["report-failure"].steps[0]?.run;
-  if (proposal === undefined || failure === undefined) throw new TypeError("Missing workflow scripts");
+  if (failure === undefined) throw new TypeError("Missing failure script");
   return { proposal, failure, failureEnv: jobs["report-failure"].env };
 };
 
@@ -193,10 +195,15 @@ esac`,
       manualCommit,
       git,
       runnerTemp,
-      proposal: (yaml: string) => run(["bash", "-c", workflowScripts(yaml).proposal]),
+      proposal: (yaml: string) => {
+        const { proposal } = workflowScripts(yaml);
+        if (proposal === undefined) throw new TypeError("Missing proposal script");
+        return run(["bash", "-c", proposal]);
+      },
       failure: (
         yaml: string,
         issues: readonly { readonly number: number; readonly title: string }[] = [],
+        needs: Readonly<Record<string, { readonly result: string }>> = { bump: { result: "failure" } },
       ) => {
         const scripts = workflowScripts(yaml);
         const failureEnv = Object.fromEntries(
@@ -206,7 +213,8 @@ esac`,
               .replaceAll("${{ github.repository }}", scenario.repository ?? "fixture/repository")
               .replaceAll("${{ github.server_url }}", "https://example.invalid")
               .replaceAll("${{ github.run_id }}", "42")
-              .replaceAll("${{ github.token }}", "fixture-token"),
+              .replaceAll("${{ github.token }}", "fixture-token")
+              .replaceAll("${{ toJSON(needs) }}", () => JSON.stringify(needs)),
           ]),
         );
         return run(["bash", "-c", scripts.failure], runnerTemp, {

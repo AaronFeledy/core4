@@ -1,5 +1,5 @@
-import type { AppPlan, StartedService } from "@lando/sdk/schema";
-import { selectHttpEndpoint } from "@lando/sdk/schema";
+import type { AppPlan, EndpointPlan, EndpointRef, StartedService } from "@lando/sdk/schema";
+import { routeListenerPreference, selectHttpEndpoint } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
 export const OpenTargetSchema = Schema.Struct({
@@ -15,6 +15,33 @@ export interface OpenTargetSelection {
   readonly route?: string;
   readonly all?: boolean;
 }
+
+/**
+ * The listeners a service's default routes reach, chosen with the same rule the
+ * planner binds routes with. An HTTP route prefers an HTTP listener; an HTTPS
+ * route prefers an HTTPS listener only when the service holds a generated
+ * certificate the router can verify. Without one both schemes reach the plain
+ * primary or the single listener, so the union collapses to that listener.
+ */
+export const defaultHttpListeners = (
+  endpoints: readonly EndpointPlan[],
+  generatedCertificate: boolean,
+): readonly EndpointRef[] => {
+  const listeners = (["http", "https"] as const).flatMap((scheme) => {
+    const listener = selectHttpEndpoint(
+      endpoints,
+      undefined,
+      routeListenerPreference(scheme, generatedCertificate),
+    );
+    return listener.status === "selected" ? [listener.endpoint] : [];
+  });
+  return listeners.filter(
+    (listener, index) =>
+      listeners.findIndex(
+        (other) => other.port === listener.port && other.transport === listener.transport,
+      ) === index,
+  );
+};
 
 const preferHttps = (targets: readonly OpenTarget[]): readonly OpenTarget[] => {
   const target = targets.find((target) => target.scheme === "https") ?? targets[0];
@@ -60,25 +87,15 @@ export const resolveOpenTargets = (
   const listeners = new Map(
     Object.values(plan.services).map((service) => [
       String(service.name),
-      selectHttpEndpoint(service.endpoints),
+      defaultHttpListeners(service.endpoints, service.certs !== undefined),
     ]),
   );
   const scoped = candidates.filter(({ target, endpoint }) => {
     if (selection.service !== undefined && target.service !== selection.service) return false;
     if (selection.all === true) return true;
-    const listener = listeners.get(target.service);
-    if (listener === undefined) return false;
-    switch (listener.status) {
-      case "selected":
-        return endpoint.port === listener.endpoint.port && endpoint.transport === listener.endpoint.transport;
-      case "none":
-      case "ambiguous":
-        return false;
-      default: {
-        const unreachable: never = listener;
-        return unreachable;
-      }
-    }
+    return (listeners.get(target.service) ?? []).some(
+      (listener) => endpoint.port === listener.port && endpoint.transport === listener.transport,
+    );
   });
   const routes = scoped.filter(({ source }) => source === "route");
   const targets = (routes.length > 0 ? routes : scoped).map(({ target }) => target);

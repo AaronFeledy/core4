@@ -39,6 +39,29 @@ printf report > "$BODY_FILE"`,
     expect(await fixture.git("log", "-1", "--format=%s", `origin/${fixture.branch}`)).toBe(
       "candidate's update",
     );
-    expect(await fixture.commands()).toContain("gh issue comment 42 --body");
+    const commands = await fixture.commands();
+    expect(commands).toContain("gh issue comment 42 --body");
+    expect(commands).toContain("repo=fixture/repository");
+    expect(commands).not.toContain("gh issue create");
   },
 );
+
+test("the maintenance reporter is gated only on run cancellation and owns issue write access", () => {
+  const yaml = renderMaintenanceWorkflow({
+    name: "candidate",
+    cron: "0 4 * * *",
+    branch: "automation/candidate",
+    ownedPaths: ["file.txt"],
+    proposal: { name: "Prepare candidate", prepare: "true", checkAndReport: "true" },
+  });
+  const workflow = Bun.YAML.parse(yaml) as {
+    readonly permissions: Readonly<Record<string, string>>;
+    readonly jobs: Readonly<Record<string, { readonly permissions?: Readonly<Record<string, string>> }>>;
+  };
+  expect(workflow.jobs["report-failure"]).toMatchObject({
+    if: "${{ !cancelled() }}",
+    permissions: { issues: "write" },
+  });
+  expect(workflow.permissions.issues).not.toBe("write");
+  expect(workflow.jobs.bump?.permissions?.issues).not.toBe("write");
+});

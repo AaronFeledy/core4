@@ -8,6 +8,7 @@ import {
   type LandofileShape,
   ProviderId,
   ServiceName,
+  type ServicePlan,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -29,7 +30,9 @@ import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
 
-const fixture = () => {
+const fixture = (
+  options: { readonly projectUser?: ServicePlan["projectUser"]; readonly applied?: boolean } = {},
+) => {
   const metadata = {
     resolvedAt: DateTime.makeUnsafe("2026-05-18T00:00:00Z"),
     source: "captured",
@@ -51,6 +54,7 @@ const fixture = () => {
         provider: providerId,
         primary: true,
         environment: {},
+        ...(options.projectUser === undefined ? {} : { projectUser: options.projectUser }),
         mounts: [],
         endpoints: [],
         routes: [],
@@ -75,9 +79,11 @@ const fixture = () => {
   let failure: LandofileParseError | undefined;
   let global = Schema.decodeUnknownSync(GlobalConfig)({});
   const calls: CommandSpec[] = [];
+  const targets: ExecTarget[] = [];
   const provider = {
     ...makeTestRuntimeProvider(),
-    execStream: (_target: ExecTarget, spec: CommandSpec) => {
+    execStream: (target: ExecTarget, spec: CommandSpec) => {
+      targets.push(target);
       calls.push(spec);
       return Stream.make({ exitCode: 0 });
     },
@@ -107,7 +113,7 @@ const fixture = () => {
       RuntimeProviderRegistry.of({
         appliedPlansFor: () => Effect.succeed([]),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveAppliedPlan: () => Effect.succeed(options.applied === true ? plan : undefined),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -123,6 +129,7 @@ const fixture = () => {
     layer,
     target,
     calls,
+    targets,
     loads: () => loads,
     setLive: (value: LandofileShape) => {
       live = value;
@@ -141,6 +148,22 @@ const operations = {
   deep: (target?: ResolvedAppTarget) => infoApp({ deep: true }, target).pipe(Effect.asVoid),
   tooling: (target?: ResolvedAppTarget) => runTooling({ name: "probe" }, target).pipe(Effect.asVoid),
 } as const;
+
+test("exec keeps the container default when the applied plan is unreadable", async () => {
+  const f = fixture({ projectUser: { name: "www-data", uid: 33, gid: 33 } });
+  await Effect.runPromise(execApp({ command: ["env"] }, f.target).pipe(Effect.provide(f.layer)));
+  expect(f.targets).toHaveLength(1);
+  expect(f.calls).toHaveLength(1);
+  expect(f.targets[0]?.user).toBeUndefined();
+  expect(f.calls[0]?.env?.LANDO_USER).toBeUndefined();
+});
+
+test("exec uses the applied plan's realized project user", async () => {
+  const f = fixture({ projectUser: { name: "www-data", uid: 33, gid: 33 }, applied: true });
+  await Effect.runPromise(execApp({ command: ["env"] }, f.target).pipe(Effect.provide(f.layer)));
+  expect(f.targets[0]?.user).toBe("www-data");
+  expect(f.calls[0]?.env?.LANDO_USER).toBe("www-data");
+});
 
 test("direct tooling instantiates authored vars without activating copied data and normalizes env scalars", async () => {
   // Given

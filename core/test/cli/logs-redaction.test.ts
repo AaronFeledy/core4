@@ -55,6 +55,8 @@ const capabilities: ProviderCapabilities = {
   routeProvider: false,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
@@ -106,7 +108,11 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-const makeLayer = (rawLine: string) => {
+const makeLayer = (
+  rawLines: string | readonly string[],
+  providerValues: readonly string[] = [SECRET_VALUE],
+) => {
+  const lines = typeof rawLines === "string" ? [rawLines] : rawLines;
   const provider: RuntimeProviderShape = {
     id: "lando",
     displayName: "Lando Runtime Provider",
@@ -143,17 +149,22 @@ const makeLayer = (rawLine: string) => {
     stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => Effect.succeed({ kind: "destroyed" as const }),
+    destroy: () => Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
-    readAppEnvironment: () => Effect.succeed([Redacted.make(SECRET_VALUE)]),
+    readAppEnvironment: () => Effect.succeed(providerValues.map((value) => Redacted.make(value))),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     runStream: () => Stream.die("not used"),
     logs: (target: LogTarget): Stream.Stream<LogChunk, never> =>
-      Stream.fromIterable([
-        { service: target.service, source: LogSourceId.make("slow-query"), stream: "stderr", line: rawLine },
-      ]),
+      Stream.fromIterable(
+        lines.map((line) => ({
+          service: target.service,
+          source: LogSourceId.make("slow-query"),
+          stream: "stderr" as const,
+          line,
+        })),
+      ),
     inspect: () =>
       Effect.succeed({
         app: plan.id,
@@ -301,6 +312,73 @@ describe("lando logs redaction boundary", () => {
     expect(io.stdout()).toBe("");
     expect(io.stderr()).toBe("database stderr [slow-query]: value [redacted]\n");
     expect(io.stdout() + io.stderr()).not.toContain(SECRET_VALUE);
+  });
+
+  test("masks a quoted value that spans followed records for text and JSON", async () => {
+    const textIo = createBufferedRendererIO({ isTTY: false });
+    await runWithRendererHandling(
+      followLogsApp({ follow: true, service: "database", source: "slow-query" }),
+      {
+        runtime: makeLayer(['password="first', 'second"']),
+        rendererMode: "plain",
+        resultFormat: "text",
+        command: "app:logs",
+        resultSchema: LogsAppResult,
+        streaming: StreamFrame,
+        streamingMode: "live",
+        io: textIo,
+        formatError: ({ error }) => String(error),
+      },
+    );
+    expect(textIo.stdout()).toBe("");
+    expect(textIo.stderr()).toBe("database stderr [slow-query]: password=[redacted]\n");
+
+    const jsonIo = createBufferedRendererIO({ isTTY: false });
+    await runWithRendererHandling(
+      followLogsApp({ follow: true, service: "database", source: "slow-query" }),
+      {
+        runtime: makeLayer(['password="first', 'second"']),
+        rendererMode: "json",
+        resultFormat: "json",
+        command: "app:logs",
+        resultSchema: LogsAppResult,
+        streaming: StreamFrame,
+        streamingMode: "live",
+        io: jsonIo,
+        formatError: ({ error }) => String(error),
+      },
+    );
+    expect(
+      jsonIo
+        .stdout()
+        .trim()
+        .split("\n")
+        .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line))),
+    ).toContainEqual({
+      _tag: "stderr",
+      chunk: "password=[redacted]\n",
+      service: "database",
+      source: "slow-query",
+    });
+  });
+
+  test("masks a registered multi-line value across followed records", async () => {
+    const io = createBufferedRendererIO({ isTTY: false });
+    await runWithRendererHandling(
+      followLogsApp({ follow: true, service: "database", source: "slow-query" }),
+      {
+        runtime: makeLayer(["before left", "right after"], ["left\nright"]),
+        rendererMode: "plain",
+        resultFormat: "text",
+        command: "app:logs",
+        resultSchema: LogsAppResult,
+        streaming: StreamFrame,
+        streamingMode: "live",
+        io,
+        formatError: ({ error }) => String(error),
+      },
+    );
+    expect(io.stderr()).toBe("database stderr [slow-query]: before [redacted] after\n");
   });
 });
 

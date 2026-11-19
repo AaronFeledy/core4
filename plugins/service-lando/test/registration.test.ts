@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { MSSQL_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
@@ -42,13 +43,15 @@ const providerCapabilities = {
   routeProvider: true,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: true,
   composeSpec: "native",
   providerExtensions: ["compose", "labels", "registryCredentials"],
 } as const;
 
-const registryLayer = Layer.merge(services, PluginRegistryLayer.layer);
+const registryLayer = Layer.mergeAll(services, PluginRegistryLayer.layer, BunFileSystem.layer);
 
 const plan = (landofile: LandofileShape) =>
   Effect.runPromise(
@@ -107,6 +110,8 @@ describe("@lando/service-lando registration", () => {
       "php:8.4",
       "php:8.5",
       "php:8.6",
+      "adminer",
+      "adminer:6",
       "phpmyadmin",
       "phpmyadmin:5",
       "phpmyadmin:latest",

@@ -1,14 +1,42 @@
 import { describe, expect, test } from "bun:test";
+import { LEAF_RENEWAL_MARGIN_MS, certificatePairIsCurrent } from "@lando/sdk/certificates";
 import {
   ContractFailure,
   TEST_CERTIFICATES,
   TestCertificateAuthority,
+  makeMintingCertificateAuthority,
   makeTestCertificateAuthority,
   runCaContract,
 } from "@lando/sdk/test";
 import { Effect, Exit, Redacted } from "effect";
 
 describe("CertificateAuthority contract", () => {
+  test("makeMintingCertificateAuthority satisfies runCaContract", async () => {
+    const exit = await Effect.runPromiseExit(runCaContract(makeMintingCertificateAuthority()));
+    if (exit._tag === "Failure") {
+      throw new Error(`Contract failure: ${JSON.stringify(exit.cause, null, 2)}`);
+    }
+    expect(exit._tag).toBe("Success");
+  });
+
+  test("makeMintingCertificateAuthority issues a current pair for DNS, wildcard, and IP names", async () => {
+    const ca = makeMintingCertificateAuthority();
+    const issued = await Effect.runPromise(
+      ca.issueCert({
+        cn: "web.app.internal",
+        sans: ["*.web.app.internal", "localhost", "127.0.0.1", "::1"],
+      }),
+    );
+    const names = ["web.app.internal", "*.web.app.internal", "localhost", "127.0.0.1", "::1"];
+    const now = Date.now();
+    expect(
+      certificatePairIsCurrent(
+        { certificate: issued.certificate, privateKey: Redacted.value(issued.privateKey) },
+        { names, now, root: issued.root.certificate, renewalMarginMs: LEAF_RENEWAL_MARGIN_MS },
+      ),
+    ).toBe(true);
+  });
+
   test("TestCertificateAuthority satisfies runCaContract", async () => {
     const exit = await Effect.runPromiseExit(runCaContract(TestCertificateAuthority));
     if (exit._tag === "Failure") {

@@ -19,15 +19,15 @@ services:
 Your repository is mounted at `/app`. The default `webroot` is `.`, resolving to `/app` for `APACHE_DOCUMENT_ROOT`. Start it. Lando wires the service into the proxy:
 
 <Guide>
-  <Scenario id="happy-path" render>
+  <Scenario id="happy-path" layer="e2e" render>
     <Step name="start">
       <UseFixture name="apache-demo" />
       <Run command="lando start" />
-      <Verify event="post-start" />
+      <Run command="lando info --format=json" />
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 
@@ -35,7 +35,7 @@ Your repository is mounted at `/app`. The default `webroot` is `.`, resolving to
 
 The proxy derives an HTTPS hostname from the service's HTTP endpoint without a `proxy:` block. You'll get something like `web.<app>.lndo.site`.
 
-When a request for a directory arrives through the proxy without its trailing slash, Apache redirects to the same scheme, host, and port the browser used, with the slash added.
+A stock service serves native HTTPS too. When a route needs HTTPS and Lando owns Apache, Lando declares both a plain listener and an HTTPS listener on `443` (`8443` when your plain `port:` is already `443`), loads the image's SSL modules during the build, and serves a generated certificate on the TLS listener. The HTTPS listener is not primary and is not published; `routes:` and `lando info` still describe the public URL. An HTTPS route prefers that listener; an HTTP route, or an explicit `endpoint:` naming the plain listener, keeps plain HTTP. A request for a directory without its trailing slash redirects to the same scheme, host, and port the browser used, with the slash added.
 
 Hidden paths, meaning any path segment that starts with `.` such as `/.git/config` or `/.env`, get a 403, so your repository's dotfiles stay private even though the app root is the default webroot. `/.well-known/` stays served.
 
@@ -65,7 +65,13 @@ services:
     </Step>
   </Scenario>
 
-An explicit `environment.APACHE_DOCUMENT_ROOT` still wins for custom setups. If you replace `command:` or `entrypoint:`, your launcher owns the Apache config too.
+An explicit `environment.APACHE_DOCUMENT_ROOT` still wins for custom setups. If you replace `command:` or `entrypoint:`, your launcher owns the Apache config too, and Lando generates no TLS listener or certificate request.
+
+## Serve HTTPS from Apache
+
+A plain `type: apache` service with an HTTPS route gets a generated certificate and a TLS listener. Lando asks for the certificate because the route needs it, so the service needs no `certs:` key and adds no certificate-authority dependency to an HTTP-only service or an app with the router disabled. An explicit `certs: true` keeps its usual meaning and configures the TLS listener even without a route; `certs: false` or custom certificate material keeps plain Apache, with the router terminating TLS.
+
+The service's parent process runs as root by default and reads the certificate key before workers drop privileges. If you set `user:` to a non-root account, Lando keeps that account and the plain listener, because it will not weaken the key file's permissions or hand host material to a container user. HTTPS routes then terminate at the router and reach Apache as plain HTTP.
 
 ## Run as a non-root user
 

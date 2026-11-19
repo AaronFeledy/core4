@@ -70,7 +70,7 @@ test("init writes a complete theme-free Hugo site beside the Landofile", async (
         command: "hugo server --bind 0.0.0.0 --port 1313",
       },
     },
-    tooling: { hugo: { cmds: ["hugo"] }, npm: { cmds: ["npm"] } },
+    tooling: { hugo: { cmds: ["hugo"] } },
   });
 });
 

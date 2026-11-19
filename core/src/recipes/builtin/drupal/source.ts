@@ -1,7 +1,6 @@
 import type { RecipeSource } from "@lando/sdk/schema";
 import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
 import { composerTool, drupalOptions, drupalWebVariants, phpAppserver } from "../source-php.ts";
-import { drupalScaffoldCommand } from "./scaffold-command.ts";
 
 export const source = {
   id: "drupal",
@@ -33,7 +32,7 @@ export const source = {
         service: "appserver",
         description: "Scaffold Drupal and project-local Drush into the mounted app root.",
         arguments: false,
-        cmd: drupalScaffoldCommand("{{ recipe.drupal }}"),
+        cmd: "lando-drupal-scaffold {{ recipe.drupal }}",
       },
     },
   },

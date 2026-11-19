@@ -5,10 +5,7 @@ import type { ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
 
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
-import {
-  APACHE_LISTEN_BUILD_STEP_ID,
-  apacheForwardedDirectoryRedirectDirectives,
-} from "../src/services/apache.ts";
+import { APACHE_LISTEN_BUILD_STEP_ID } from "../src/services/apache.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID, apacheErrorPageDirectives } from "../src/services/http-errors.ts";
 import { apacheHiddenPathDirectives } from "../src/services/http-hidden-paths.ts";
 import {
@@ -487,6 +484,9 @@ describe("php serving modes (via:)", () => {
       'CustomLog "|/bin/cat" vhost_combined',
       "Listen 8080",
       "<VirtualHost *:8080>",
+      "ServerName localhost:80",
+      "UseCanonicalName Off",
+      "UseCanonicalPhysicalPort Off",
       'DocumentRoot "/app"',
       '<Directory "/app">',
       "Options -Indexes +FollowSymLinks",
@@ -497,7 +497,6 @@ describe("php serving modes (via:)", () => {
       '<FilesMatch "\\.(?!php$)(?i:php)$">',
       "Require all denied",
       "</FilesMatch>",
-      ...apacheForwardedDirectoryRedirectDirectives("rewrite"),
       ...apacheErrorPageDirectives(),
       ...apacheHiddenPathDirectives(),
       "</VirtualHost>",
@@ -531,7 +530,6 @@ describe("php serving modes (via:)", () => {
       '<FilesMatch "\\.(?!php$)(?i:php)$">',
       "Require all denied",
       "</FilesMatch>",
-      ...apacheForwardedDirectoryRedirectDirectives("rewrite"),
       ...apacheErrorPageDirectives(),
       ...apacheHiddenPathDirectives(),
     ]);
@@ -557,8 +555,9 @@ describe("php serving modes (via:)", () => {
     });
 
     expect(serviceAppMount(plan)).toBeUndefined();
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]).toMatchObject({
+    const appMounts = plan.mounts.filter((mount) => mount.target === "/app");
+    expect(appMounts).toHaveLength(1);
+    expect(appMounts[0]).toMatchObject({
       type: "bind",
       source: "/srv/apps/myapp/alternate",
       target: "/app",
@@ -573,8 +572,10 @@ describe("php serving modes (via:)", () => {
       mounts: [{ source: "./alternate", target: "/site/" }],
     });
 
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]).toMatchObject({ type: "bind", source: "/srv/apps/myapp/alternate" });
+    expect(serviceAppMount(plan)).toBeUndefined();
+    const siteMounts = plan.mounts.filter((mount) => mount.target === "/site");
+    expect(siteMounts).toHaveLength(1);
+    expect(siteMounts[0]).toMatchObject({ type: "bind", source: "/srv/apps/myapp/alternate" });
   });
 
   test("plans authored PHP ini bind mounts alongside the app mount", async () => {

@@ -38,7 +38,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
   const privateFileAccess = yield* PrivateFileAccessService;
   const landofile = yield* landofiles.discover;
   const authored = toSqlLandofile(landofile.document);
-  const planned = yield* registry.resolveAppliedPlan(landofile.context.appRoot);
+  const planned = yield* registry.resolveAppliedPlan(landofile.context.appRoot, undefined, "exact");
   if (planned === undefined)
     return yield* Effect.fail(
       new PlanReplanRequiredError({

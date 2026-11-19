@@ -1,4 +1,5 @@
-import { buildCommandResultEnvelope, taggedErrorJson } from "@lando/sdk/command-result";
+import { buildCommandResultEnvelope, structuralRedaction, taggedErrorJson } from "@lando/sdk/command-result";
+import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, getJsonSchemaWithDeprecations } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
@@ -11,6 +12,13 @@ import type { McpToolPublication } from "./session-catalog";
 export interface McpToolNotice extends McpToolPublication {
   readonly appPath: string;
 }
+
+// Only the closed MCP dispatch-error union makes its `_tag` public: the tag is a
+// schema literal, so it cannot carry user data. A generic tagged error keeps
+// ordinary free-text redaction.
+const dispatchErrorPolicy = structuralRedaction(
+  Schema.Union([McpToolNotAllowedError, McpToolInputError, McpTransportError]),
+);
 
 const noticeContent = (notice: McpToolNotice | undefined, redactor: Redactor) => {
   if (notice === undefined || notice.added.length + notice.changed.length === 0) return [];
@@ -51,8 +59,8 @@ export const rejectionResult = Effect.fnUntraced(function* (
   const fields = yield* Effect.forEach(
     Object.entries(data),
     Effect.fnUntraced(function* ([key, value]) {
-      const redacted =
-        key === "_tag" ? value : yield* redactBoundedJsonValue(value, redactor, "MCP tool failure");
+      const child = dispatchErrorPolicy.child(key, data);
+      const redacted = yield* redactBoundedJsonValue(value, redactor, "MCP tool failure", child);
       return [key, redacted] as const;
     }),
   );
@@ -71,14 +79,16 @@ export const rejectionResult = Effect.fnUntraced(function* (
   });
 });
 
-export const commandResult = Effect.fnUntraced(function* (
+export const commandResult = (
   result: McpDispatchResult,
   context: { readonly redactor: Redactor; readonly notice?: McpToolNotice },
-) {
-  const text = yield* stringifyBoundedJson(result.envelope, "MCP tool result");
-  return new McpSchema.CallToolResult({
-    content: [{ type: "text", text }, ...noticeContent(context.notice, context.redactor)],
-    structuredContent: result.envelope,
-    isError: !result.ok,
-  });
-});
+): Effect.Effect<McpSchema.CallToolResult> =>
+  Effect.succeed(
+    new McpSchema.CallToolResult({
+      // The dispatch already serialized with the result schema's policy; reusing
+      // that text keeps a schema literal or a `SecretRef` descriptor readable.
+      content: [{ type: "text", text: result.text }, ...noticeContent(context.notice, context.redactor)],
+      structuredContent: result.envelope,
+      isError: !result.ok,
+    }),
+  );

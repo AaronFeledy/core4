@@ -150,6 +150,7 @@ import type {
   Downloader,
   EventService,
   FileSystem,
+  FileSystemError,
   GlobalAppService,
   InteractionError,
   LandofileService,
@@ -245,6 +246,7 @@ export type StartAppError =
   | AppPlacementError
   | AppResolveError
   | CaError
+  | FileSystemError
   | ServiceNotReadyError
   | UserLandofileError
   | AppPlannerError

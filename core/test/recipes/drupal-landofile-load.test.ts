@@ -9,8 +9,6 @@ import type { ConfigTranslateError, RecipeDecomposeError } from "@lando/sdk/erro
 import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { drupalScaffoldCommand } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
-import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal-cms/commands.ts";
 import { DRUPAL_CMS_PHP_INI_TARGET } from "../../src/recipes/builtin/drupal-cms/php-config.ts";
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
 
@@ -24,6 +22,11 @@ const {
   defaults: drupalCmsDefaults,
   producer: drupalCmsProducer,
 } = bundledRecipe("drupal-cms");
+const {
+  decomposer: drupalContribDecomposer,
+  defaults: drupalContribDefaults,
+  producer: drupalContribProducer,
+} = bundledRecipe("drupal-contrib");
 
 const loadTranslator = (): Effect.Effect<ConfigTranslatorShape> => {
   const loader = configTranslators.get(LANDO4_TRANSLATOR_ID);
@@ -79,7 +82,7 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       const routes = services.appserver?.routes as ReadonlyArray<Record<string, unknown>>;
       const drupalVersion = drupalDefaults.drupal;
       if (typeof drupalVersion !== "string") throw new TypeError("Expected a Drupal version default");
-      expect(tooling["drupal-scaffold"]?.cmd).toBe(drupalScaffoldCommand(drupalVersion));
+      expect(tooling["drupal-scaffold"]?.cmd).toBe(`lando-drupal-scaffold ${drupalVersion}`);
       expect(tooling.drush?.wrapper).toBe(true);
       expect(tooling.composer?.wrapper).toBe(true);
       expect(services.appserver?.type).toBe(`php:${drupalDefaults.php}`);
@@ -97,7 +100,7 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       // Then
       const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
       const services = landofile.document.services as Record<string, Record<string, unknown>>;
-      expect(tooling["drupal-scaffold"]?.cmd).toBe(drupalScaffoldCommand("10"));
+      expect(tooling["drupal-scaffold"]?.cmd).toBe("lando-drupal-scaffold 10");
       expect(services.appserver?.type).toBe("php:8.4");
     });
   });
@@ -111,7 +114,7 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
         const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
         const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
         const services = landofile.document.services as Record<string, Record<string, unknown>>;
-        expect(tooling["drupal-cms-scaffold"]?.cmd).toBe(DRUPAL_CMS_SCAFFOLD_COMMAND);
+        expect(tooling["drupal-cms-scaffold"]?.cmd).toBe("lando-drupal-cms-scaffold");
         expect(tooling.drush?.wrapper).toBe(true);
         expect(tooling.composer?.wrapper).toBe(true);
         expect(services.appserver?.type).toBe(`php:${drupalCmsDefaults.php}`);
@@ -123,5 +126,53 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
       },
       true,
     );
+  });
+});
+
+describe("the decomposed Drupal contrib Landofile on the native load path", () => {
+  test("loads the nested mount, site volume, chrome service, and site sync", async () => {
+    const options = {
+      ...drupalContribDefaults,
+      type: "theme",
+      project: "hello_theme",
+      drupal: ">=10 <11 || ^11",
+    };
+    const decomposer = drupalContribDecomposer({ redactor: createStandaloneRedactor("secrets") });
+    const decomposed = Effect.runSync(
+      decomposer.decompose({
+        producer: drupalContribProducer,
+        options,
+        secrets: {},
+      }),
+    );
+    const context = { name: "drupalcontribload", ...(decomposed.fragment as Record<string, unknown>) };
+    const encode = (await Effect.runPromise(loadTranslator())).encode;
+    if (encode === undefined) throw new Error("The lando4 translator must publish an encoder.");
+    const encoded = await Effect.runPromise(encode({ context, fragment: context }));
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-drupal-contrib-load-"));
+    try {
+      await writeFile(join(appRoot, ".lando.yml"), encoded.text);
+      const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
+      const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
+      const services = landofile.document.services as Record<string, Record<string, unknown>>;
+      expect(tooling["drupal-contrib-sync"]?.cmd).toEqual([
+        "lando-drupal-contrib-sync",
+        "theme",
+        "hello_theme",
+        ">=10 <11 || ^11",
+      ]);
+      expect(landofile.document.events).toEqual({ "post-start": [{ task: "drupal-contrib-sync" }] });
+      expect(tooling.composer?.dir).toBe("/app");
+      expect(tooling.phpunit?.user).toBe("www-data");
+      expect(services.appserver?.webroot).toBe("/app/web");
+      expect(services.appserver?.appMount).toEqual({
+        target: "/app/web/themes/custom/hello_theme",
+        includes: ["vendor", "node_modules", "tmp"],
+      });
+      expect(services.chrome?.type).toBe("compose");
+      expect(services.chrome?.image).toBe("selenium/standalone-chromium:155.0-20261010");
+    } finally {
+      await rm(appRoot, { recursive: true, force: true });
+    }
   });
 });

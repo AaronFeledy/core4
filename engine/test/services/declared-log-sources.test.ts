@@ -6,8 +6,9 @@ import { loadLandofileFile, loadLandofileLayers } from "@lando/landofile/service
 import { AbsolutePath, LogSourceId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 for (const type of ["node:22", "compose"]) {
@@ -30,7 +31,10 @@ for (const type of ["node:22", "compose"]) {
                 : loadLandofileLayers(root, file);
               const planner = yield* AppPlanner;
               return yield* planner.plan(landofile, TestRuntimeProvider.capabilities);
-            }).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
+            }).pipe(
+              Effect.provide(AppPlannerLayer.layer),
+              Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
+            ),
           );
 
           // Then the service plan retains the declared source and its timestamp policy.

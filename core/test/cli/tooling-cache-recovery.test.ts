@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -17,6 +17,137 @@ import { renderPreCommandFailure } from "../../src/cli/spec/command-boundary.ts"
 import { toolingMetadataStatus } from "../../src/cli/tooling-cache-status.ts";
 import { readCliAppCommandCache } from "../../src/cli/tooling-command-cache.ts";
 import { type ToolingRoute, resolveToolingRoute, toolingRouteFailure } from "../../src/cli/tooling-router.ts";
+import { CliInvocation } from "../../src/runtime/invocation-context.ts";
+
+test.each([
+  {
+    description: "single catalog owner",
+    services: "  web:\n    type: node:22",
+    expected: [
+      ["npm", "web"],
+      ["npx", "web"],
+    ],
+  },
+  {
+    description: "two npm owners",
+    services: "  web:\n    type: node:22\n  api:\n    type: node:24",
+    expected: [],
+  },
+  { description: "bun pin", services: "  web:\n    type: node:22", pin: "bun@1.3.1", expected: [] },
+  {
+    description: "replacement image",
+    services: "  web:\n    type: node:22\n    image: custom:1",
+    expected: [],
+  },
+  {
+    description: "replacement build",
+    services: "  web:\n    type: node:22\n    build:\n      context: .",
+    expected: [],
+  },
+  {
+    description: "Landofile override and disable",
+    services: "  web:\n    type: node:22\n  api:\n    type: node:24\n    image: custom:1",
+    tooling: "\ntooling:\n  npm:\n    service: api\n    cmd: alternate\n  npx: false",
+    expected: [
+      ["npm", "api"],
+      ["npx", "disabled"],
+    ],
+  },
+])("publishes manager tasks for $description", async ({ services, tooling, pin, expected }) => {
+  const cwd = await mkdtemp(join(tmpdir(), "lando-node-manager-owners-"));
+  const cacheRoot = join(cwd, "cache");
+  const env = {
+    ...process.env,
+    LANDO_USER_CACHE_ROOT: cacheRoot,
+    LANDO_USER_DATA_ROOT: join(cwd, "data"),
+    LANDO_USER_CONF_ROOT: join(cwd, "conf"),
+  };
+  try {
+    await writeFile(
+      join(cwd, ".lando.yml"),
+      `name: manager-owners\nservices:\n${services}${tooling ?? ""}\n`,
+    );
+    if (pin !== undefined)
+      await writeFile(join(cwd, "package.json"), JSON.stringify({ packageManager: pin }));
+    const result = await Effect.runPromise(
+      readCliAppCommandCache({ cwd, cacheRoot, rebuildNotice: false }).pipe(
+        Effect.provideService(CliInvocation, {
+          cwd,
+          env,
+          io: createBufferedRendererIO(),
+          setExitCode: () => undefined,
+        }),
+      ),
+    );
+    if (result.status !== "fresh")
+      throw new Error(`Expected fresh command metadata: ${JSON.stringify(result)}`);
+    expect(
+      result.payload.entries.map((entry) => [
+        entry.id.replace(/^app:/, ""),
+        entry._tag === "Ready" ? entry.service : entry._tag === "Disabled" ? "disabled" : "unavailable",
+      ]),
+    ).toEqual(expected.map((entry) => [...entry]));
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test.each(["manifest edit", "new nested candidate", "oversize", "symlink"])(
+  "refreshes Node command discovery after %s",
+  async (change) => {
+    const cwd = await mkdtemp(join(tmpdir(), "lando-node-command-index-"));
+    const manifest = join(cwd, "package.json");
+    const env = {
+      ...process.env,
+      LANDO_USER_CACHE_ROOT: join(cwd, "cache"),
+      LANDO_USER_DATA_ROOT: join(cwd, "data"),
+      LANDO_USER_CONF_ROOT: join(cwd, "conf"),
+    };
+    const help = async (name: string) => {
+      const child = Bun.spawn(
+        [process.execPath, join(import.meta.dirname, "../../bin/lando.ts"), "help", name, "--format=json"],
+        { cwd, env, stdout: "pipe", stderr: "pipe" },
+      );
+      const [stdout, stderr, exit] = await Promise.all([
+        child.stdout.text(),
+        child.stderr.text(),
+        child.exited,
+      ]);
+      return { stdout, stderr, exit };
+    };
+    try {
+      await mkdir(join(cwd, "web"));
+      await writeFile(
+        join(cwd, ".lando.yml"),
+        "name: node-index\nservices:\n  web:\n    type: node:22\n    packageRoot: web\n",
+      );
+      const old = '{"packageManager":"npm@10.10.0"} ';
+      const next = '{"packageManager":"pnpm@10.10.0"}';
+      await writeFile(manifest, old);
+      expect((await help("npm")).exit).toBe(0);
+      if (change === "manifest edit") await writeFile(manifest, next);
+      if (change === "new nested candidate") await writeFile(join(cwd, "web", "package.json"), next);
+      if (change === "oversize") await truncate(manifest, 2 ** 21);
+      if (change === "symlink") {
+        const target = join(cwd, "other.json");
+        await writeFile(target, old);
+        await rm(manifest);
+        await symlink(target, manifest, "file");
+      }
+      if (change === "manifest edit" || change === "new nested candidate") {
+        expect((await help("pnpm")).exit).toBe(0);
+        expect((await help("npm")).stdout).toContain("UnknownCommandError");
+      } else {
+        const result = await help("npm");
+        expect(result.exit).not.toBe(0);
+        expect(result.stdout + result.stderr).toContain("LandofileValidationError");
+      }
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  },
+  15_000,
+);
 
 const helpRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolean => {
   switch (route._tag) {

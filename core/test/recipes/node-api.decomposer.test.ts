@@ -71,7 +71,6 @@ describe("node-api decomposition", () => {
         database: { type: "{{ recipe.database }}" },
       },
       tooling: {
-        npm: { service: "api", description: "Run npm inside the api service.", cmds: ["npm"], wrapper: true },
         node: {
           service: "api",
           description: "Run Node inside the api service.",

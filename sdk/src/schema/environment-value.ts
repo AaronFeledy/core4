@@ -6,6 +6,16 @@ import { layerMerge } from "./layer-merge.ts";
 // =============================================================================
 // Persistable environment descriptors. These schemas grant no authoring authority.
 // =============================================================================
+
+/**
+ * Namespaced annotation marking a schema position that holds no credential
+ * bytes: a published reference descriptor, a declared name/path/id, or a
+ * Lando-authored diagnostic field. Structural redaction walks an annotated
+ * position with the ordinary rules under a secret-named key, so registered
+ * values and patterns still mask; any other position masks free text.
+ */
+export const SchemaNotCredentialAnnotationId = "lando/schema/NotCredential" as const;
+
 export const SecretReference = Schema.String.check(
   Schema.makeFilter((value) => Result.isSuccess(parseSecretReference(value)), {
     message: "Expected a valid bare secret id or store URI.",
@@ -25,6 +35,7 @@ export const SecretRef = Schema.Struct({
 }).annotate({
   identifier: "SecretRef",
   description: "Deferred secret lookup descriptor; contains no decrypted value.",
+  [SchemaNotCredentialAnnotationId]: true,
 });
 export type SecretRef = typeof SecretRef.Type;
 
@@ -33,7 +44,11 @@ export const BoundTextReference = Schema.Struct({
   encoding: Schema.Literals(["raw", "uri-component"]).annotate({
     description: "Explicit transformation applied after lookup.",
   }),
-}).annotate({ identifier: "BoundTextReference", description: "One deferred reference in flat bound text." });
+}).annotate({
+  identifier: "BoundTextReference",
+  description: "One deferred reference in flat bound text.",
+  [SchemaNotCredentialAnnotationId]: true,
+});
 export type BoundTextReference = typeof BoundTextReference.Type;
 
 export const BoundText = Schema.Struct({

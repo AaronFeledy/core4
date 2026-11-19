@@ -1,118 +1,62 @@
-import { type GlobalStopServices, globalStop } from "@lando/engine/operations/global-stop";
-import { taggedErrorRemediation } from "@lando/engine/providers/managed";
-import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
-import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
-import { mapFailures } from "@lando/sdk/command-result";
-import type { CacheError, LandoCommandError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
 import {
-  ConfigService,
-  type EventService,
-  RuntimeProviderRegistry,
-  ScratchAppService,
-} from "@lando/sdk/services";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { makeStateStore } from "@lando/state-store/service";
-import { type Context, Effect, Option, Schema } from "effect";
-import { type AppsListEntry, listServices } from "./list";
+  type PoweroffAppResult,
+  type PoweroffError,
+  type PoweroffOptions,
+  type PoweroffResult,
+  PoweroffResultSchema,
+  type PoweroffServices,
+  PoweroffStopError,
+  poweroff,
+} from "@lando/engine/operations/poweroff";
 
-export interface RuntimeServiceStopResult {
-  readonly terminated: boolean;
-  readonly pid?: number;
-}
+export {
+  type PoweroffError,
+  type PoweroffOptions,
+  type PoweroffResult,
+  PoweroffResultSchema,
+  type PoweroffServices,
+  PoweroffStopError,
+  poweroff,
+};
 
-export interface PoweroffOptions {
-  readonly keepGlobal?: boolean;
-  readonly keepScratch?: boolean;
-  readonly yes?: boolean;
-  readonly userDataRoot?: string;
-  readonly userCacheRoot?: string;
-  readonly stopApp?: (entry: AppsListEntry) => Promise<void>;
-  readonly stopRuntimeService?: (userDataRoot: string) => Promise<RuntimeServiceStopResult>;
-  readonly discoverContainers?: (userDataRoot: string) => Promise<ReadonlyArray<AppsListEntry>>;
-}
+const outcomeText: Record<PoweroffAppResult["outcome"], string> = {
+  stopped: "stopped",
+  unchanged: "nothing to stop",
+  destroyed: "destroyed",
+  skipped: "skipped",
+};
 
-export interface PoweroffResult {
-  readonly appsPoweredOff: ReadonlyArray<string>;
-  readonly keptGlobalApp: boolean;
-  readonly keptScratchApps: number;
-  readonly runtimeServiceStopped: boolean;
-  readonly runtimeServicePid?: number;
-}
-
-export const PoweroffResultSchema = Schema.Struct({
-  appsPoweredOff: Schema.Array(Schema.String),
-  keptGlobalApp: Schema.Boolean,
-  keptScratchApps: Schema.Number,
-  runtimeServiceStopped: Schema.Boolean,
-  runtimeServicePid: Schema.optionalKey(Schema.Number),
-});
-
-const GLOBAL_APP_ID = "global";
-
-export class PoweroffStopError extends Schema.TaggedError<PoweroffStopError>()("PoweroffStopError", {
-  message: Schema.String,
-  appId: Schema.String,
-  providerId: Schema.String,
-  cause: Schema.Unknown,
-  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-}) {}
-
-export type PoweroffServices =
-  | ConfigService
-  | EventService
-  | RuntimeProviderRegistry
-  | ScratchAppService
-  | GlobalStopServices;
-export type PoweroffError = CacheError | LandoCommandError | PoweroffStopError;
-
-const isScratch = (entry: AppsListEntry): boolean => entry.scratch === true;
-
-const stopDiscoveredApp = Effect.fnUntraced(function* (entry: AppsListEntry) {
-  if (isScratch(entry)) {
-    const scratches = yield* ScratchAppService;
-    yield* scratches.destroy(entry.appId, { keepVolumes: false, reason: "poweroff" });
-    return;
-  }
-  if (entry.appId === GLOBAL_APP_ID) {
-    yield* globalStop({
-      target: { root: AbsolutePath.make(entry.appRoot), providerId: ProviderId.make(entry.providerId) },
-      triggeredBy: "apps:poweroff",
-    });
-    return;
-  }
-  const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(ProviderId.make(entry.providerId));
-  const outcome = yield* provider.destroy(
-    { app: AppId.make(entry.appId) },
-    { volumes: false, removeState: false },
-  );
-  switch (outcome.kind) {
-    case "destroyed":
-      return;
-    case "no-op":
-      return yield* Effect.fail(
-        new PoweroffStopError({
-          message: `Cannot stop ${entry.appId}: its provider has no applied plan.`,
-          appId: entry.appId,
-          providerId: String(provider.id),
-          cause: outcome,
-          remediation:
-            "Restore the app's applied state or stop its orphaned resources with `lando stop` from its app root, then retry poweroff.",
-        }),
-      );
-    default:
-      return outcome satisfies never;
-  }
-});
+const labelApp = (app: PoweroffAppResult, duplicates: ReadonlySet<string>): string =>
+  duplicates.has(app.appId) && app.appRoot !== "" ? `${app.appId} (${app.appRoot})` : app.appId;
 
 export const renderPoweroffResult = (result: PoweroffResult): string => {
   const lines: string[] = [];
-  if (result.appsPoweredOff.length === 0) {
-    lines.push("No Lando apps to power off.");
-  } else {
-    lines.push(`Powered off: ${result.appsPoweredOff.join(", ")}`);
+  const ids = result.apps.map((app) => app.appId);
+  const duplicates = new Set(ids.filter((id, index) => ids.indexOf(id) !== index));
+  // An app whose post-step failed is reported only on its failure line, never as a plain success.
+  const clean = result.apps.filter((app) => app.landofileEvents?.status !== "failed");
+  const poweredOff = clean.filter((app) => app.outcome === "stopped");
+  const unchanged = clean.filter((app) => app.outcome === "unchanged");
+  const destroyed = clean.filter((app) => app.outcome === "destroyed");
+  if (poweredOff.length > 0)
+    lines.push(`Powered off: ${poweredOff.map((app) => labelApp(app, duplicates)).join(", ")}`);
+  if (unchanged.length > 0)
+    lines.push(`Nothing to stop: ${unchanged.map((app) => labelApp(app, duplicates)).join(", ")}`);
+  if (destroyed.length > 0)
+    lines.push(`Destroyed scratch apps: ${destroyed.map((app) => labelApp(app, duplicates)).join(", ")}`);
+  for (const app of result.apps) {
+    const hook = app.landofileEvents;
+    if (hook?.status !== "failed") continue;
+    const { message, remediation } = hook.stepFailure;
+    const label = app.appRoot === "" ? app.appId : `${app.appId} (${app.appRoot})`;
+    lines.push(
+      `${label}: ${outcomeText[app.outcome]}, but ${hook.event} failed. ${message} ${remediation}`.replace(
+        /\s*\r?\n\s*/gu,
+        " ",
+      ),
+    );
   }
+  if (lines.length === 0) lines.push("No Lando apps to power off.");
   if (result.keptGlobalApp) lines.push("kept global app running");
   if (result.keptScratchApps > 0) {
     const plural = result.keptScratchApps === 1 ? "" : "s";
@@ -121,104 +65,3 @@ export const renderPoweroffResult = (result: PoweroffResult): string => {
   if (result.runtimeServiceStopped) lines.push("Stopped Lando runtime service");
   return lines.join("\n");
 };
-
-const stopManagedRuntimeService = (
-  registry: Option.Option<Context.Service.Shape<typeof HostMaintenanceRegistry>>,
-  userDataRoot: string,
-): Promise<RuntimeServiceStopResult> => {
-  const platform = normalizeHostPlatform();
-  const paths = makeLandoPaths({ userDataRoot, platform });
-  return Option.match(registry, {
-    onNone: () => Promise.resolve({ terminated: false }),
-    onSome: (service) =>
-      Effect.runPromise(
-        Effect.gen(function* () {
-          const privateFileAccess = yield* PrivateFileAccessService;
-          return yield* teardownHostMaintainers(service, {
-            paths,
-            platform,
-            privateFileAccess,
-            stateStore: makeStateStore({ privateFileAccess, roots: paths.roots }),
-          });
-        }).pipe(Effect.provide(PrivateFileAccessService.layer)),
-      ),
-  });
-};
-
-export function poweroff(
-  options: PoweroffOptions & { readonly stopApp: NonNullable<PoweroffOptions["stopApp"]> },
-): Effect.Effect<PoweroffResult, PoweroffError, ConfigService>;
-export function poweroff(
-  options?: PoweroffOptions,
-): Effect.Effect<PoweroffResult, PoweroffError, PoweroffServices>;
-export function poweroff(
-  options: PoweroffOptions = {},
-): Effect.Effect<PoweroffResult, PoweroffError, PoweroffServices> {
-  return poweroffOperation(options);
-}
-
-const poweroffOperation = Effect.fn("AppsPoweroff.poweroff")(function* (
-  options: PoweroffOptions,
-): Effect.fn.Return<PoweroffResult, PoweroffError, PoweroffServices> {
-  const hostMaintenanceRegistry = yield* Effect.serviceOption(HostMaintenanceRegistry);
-  const configService = yield* ConfigService;
-  const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
-  const list = yield* listServices({
-    includeScratch: true,
-    ...(userDataRoot === undefined ? {} : { userDataRoot }),
-    ...(options.userCacheRoot === undefined ? {} : { userCacheRoot: options.userCacheRoot }),
-    ...(options.discoverContainers === undefined ? {} : { discoverContainers: options.discoverContainers }),
-  });
-
-  const stopRuntimeService =
-    options.stopRuntimeService ??
-    ((root: string) => stopManagedRuntimeService(hostMaintenanceRegistry, root));
-
-  const targets: string[] = [];
-  let keptScratch = 0;
-  const stopOrder = (app: AppsListEntry): number =>
-    app.appId === GLOBAL_APP_ID ? 2 : isScratch(app) ? 1 : 0;
-  for (const app of [...list.apps].sort((left, right) => stopOrder(left) - stopOrder(right))) {
-    if (app.providerId === "cache" && !isScratch(app)) continue;
-    if (options.keepGlobal === true && app.appId === GLOBAL_APP_ID) continue;
-    if (options.keepScratch === true && isScratch(app)) {
-      keptScratch += 1;
-      continue;
-    }
-    const injectedStop = options.stopApp;
-    const stop: Effect.Effect<void, unknown, Exclude<PoweroffServices, ConfigService>> = injectedStop ===
-    undefined
-      ? stopDiscoveredApp(app)
-      : Effect.tryPromise({ try: () => injectedStop(app), catch: (cause) => cause });
-    yield* stop.pipe(
-      mapFailures((cause) =>
-        cause instanceof PoweroffStopError
-          ? cause
-          : new PoweroffStopError({
-              message: `Failed to power off ${app.appId}.`,
-              appId: app.appId,
-              providerId: app.providerId,
-              cause,
-              remediation: isScratch(app)
-                ? `${taggedErrorRemediation(cause) ?? "Resolve the scratch cleanup failure."} Run \`lando scratch gc --prune\`, then retry poweroff; the managed runtime has been left available.`
-                : (taggedErrorRemediation(cause) ??
-                  "Resolve the app stop failure and retry poweroff; the managed runtime has been left available."),
-            }),
-      ),
-    );
-    targets.push(app.appId);
-  }
-
-  const runtimeServiceResult =
-    userDataRoot === undefined
-      ? { terminated: false }
-      : yield* Effect.promise(() => stopRuntimeService(userDataRoot));
-
-  return {
-    appsPoweredOff: targets,
-    keptGlobalApp: options.keepGlobal === true,
-    keptScratchApps: keptScratch,
-    runtimeServiceStopped: runtimeServiceResult.terminated,
-    ...(runtimeServiceResult.pid === undefined ? {} : { runtimeServicePid: runtimeServiceResult.pid }),
-  };
-});

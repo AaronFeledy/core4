@@ -1,7 +1,7 @@
 # Start a Node app with environment expressions
 
-Create a `.lando.yml` with one Node service whose image and `NODE_ENV` are
-resolved from your environment when Lando loads the app. The recipe has no
+Create a `.lando.yml` with one Node service whose Node version and `NODE_ENV`
+are resolved from your environment when Lando loads the app. The recipe has no
 options beyond the app name.
 
 Before you begin, install Lando and complete provider setup. For a new app,
@@ -20,10 +20,10 @@ The generated Landofile reads two environment variables at load time:
 
 | Variable | Used for | Fallback |
 | --- | --- | --- |
-| `LANDO_NODE_VERSION` | the Node image tag for the `web` service | `24` |
+| `LANDO_NODE_VERSION` | the `web` service type, `node:<value>`: `lts`, `22`, `24`, or `26` | `lts`, Lando's current Node LTS major |
 | `NODE_ENV` | `NODE_ENV` inside the `web` service | `development` |
 
-Set either one in your shell before `lando start` and the app picks it up on the next load. You do not need to regenerate the Landofile or add another config file.
+Set either one in your shell before `lando start` and the app picks it up on the next load. You do not need to regenerate the Landofile or add another config file. A version Lando doesn't ship fails before any container starts and lists the supported values.
 
 ```sh
 LANDO_NODE_VERSION=22 lando start
@@ -38,6 +38,25 @@ To see what Lando resolved from it without starting anything, print the loaded c
 ```sh
 lando app:config --format=json
 ```
+
+## Use Yarn or pnpm
+
+The recipe writes no `package.json`, so you get npm from the Node image by default, through `lando npm` and `lando npx`. When you add a project that uses Yarn or pnpm, keep that choice in the project. Declare the exact release once in `package.json`, for example
+`"packageManager": "pnpm@9.15.0"`. The `web` service installs that release
+when Lando builds its image on `lando start`, and swaps `lando npm` and
+`lando npx` for `lando pnpm` and `lando pnpx`. A Yarn project gets
+`lando yarn`. You don't declare any of it in the Landofile, and you don't run
+Corepack.
+
+```sh
+lando start
+lando pnpm --version
+lando pnpm install
+```
+
+`lando pnpm --version` prints the pinned version and needs no network. The
+install downloads your dependencies, so it does. See
+[Use your project's package manager](https://aaronfeledy.github.io/core4/guides/services/node/#use-your-projects-package-manager).
 
 `lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 

@@ -27,8 +27,8 @@ import type { ResolveLandofileLoadExpressionError } from "./load-expression.ts";
 import type { LandofileLoadPolicy } from "./load-expression-file.ts";
 import type { LoadFailureRecorder } from "./load-failures.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
-import type { AuthoredOrigin } from "./pipeline/prepare.ts";
 import type { LandofileRuntimePorts } from "./ports.ts";
+import type { AuthoredDocument, AuthoredOrigin, LandofileProvenance } from "./provenance.ts";
 import type { VersionConstraintEntry } from "./version-constraint.ts";
 
 /** Test-seam transport overrides merged over `ports.sources`. */
@@ -50,6 +50,7 @@ export interface ResolveLandofileIncludesOptions {
   readonly pendingSites?: ParsedPendingSite[] | undefined;
   readonly loadScope?: LandofileLoadScope;
   readonly landofile: Record<string, unknown>;
+  readonly provenance?: LandofileProvenance | undefined;
   readonly appRoot: string;
   readonly sourcePath?: string;
   readonly cacheRoot?: string;
@@ -92,7 +93,7 @@ export interface RemoteIncludeOrigin {
 export interface ResolveContext {
   readonly observeInclude?: (
     request: { readonly entry: IncludeEntry; readonly origin: AuthoredOrigin; readonly source: string },
-    acquired: { readonly fragment: FragmentResult; readonly parsed: Record<string, unknown> } | undefined,
+    acquired: { readonly fragment: FragmentResult; readonly parsed: AuthoredDocument } | undefined,
     context: Pick<ResolveContext, "remoteOrigin" | "sourceRoot">,
   ) => Effect.Effect<void>;
   readonly recorder?: LoadFailureRecorder | undefined;

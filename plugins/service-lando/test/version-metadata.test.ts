@@ -20,7 +20,7 @@ const EXPECTED_OWNED_MATRICES = {
     "2022": "mcr.microsoft.com/mssql/server:2022-latest",
   },
   mysql: { "8.0": "mysql:8.0", "8.4": "mysql:8.4", "9.7": "mysql:9.7" },
-  node: { lts: "node:24", "22": "node:22", "24": "node:24", "26": "node:26" },
+  node: { lts: "node:26", "22": "node:22", "24": "node:24", "26": "node:26" },
   opensearch: { "2": "opensearchproject/opensearch:2" },
   php: {
     "8.1": "php:8.1-apache-bookworm",
@@ -30,6 +30,7 @@ const EXPECTED_OWNED_MATRICES = {
     "8.5": "php:8.5-apache-bookworm",
     "8.6": "php:8.6-rc-apache-bookworm",
   },
+  adminer: { "6": "adminer:6" },
   phpmyadmin: { "5": "phpmyadmin:5", latest: "phpmyadmin:latest" },
   postgres: { "15": "postgres:15", "16": "postgres:16", "17": "postgres:17", "18": "postgres:18" },
   python: { "3.12": "python:3.12-slim" },

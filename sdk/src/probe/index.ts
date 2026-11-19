@@ -9,8 +9,8 @@
  *
  * This subpath is the same contracts-only tier as `@lando/sdk/secrets` and
  * `@lando/sdk/expressions`: it constructs no `LandoRuntime`, pulls no service
- * `Layer`, and imports only effect's `Schema`/`Schedule`/`Effect`/`Clock`/
- * `Duration` plus type-only schema imports. It is **not** a `Context.Service`
+ * `Layer`, and depends only on Effect and the SDK's pure failure helpers.
+ * It is **not** a `Context.Service`
  * service and **not** a pluggable abstraction.
  *
  * Its errors ({@link ProbeError}, {@link ProbeTimeoutError}) deliberately live
@@ -24,6 +24,7 @@
  * before it reaches a lifecycle event, transcript, or `lando info`.
  */
 import { Cause, Clock, Duration, Effect, Schedule, Schema } from "effect";
+import { failureDefectCause, unscopedFailureReason, withDeadline } from "../command-result/failure.ts";
 
 /**
  * Declarative retry/backoff/timeout policy. All fields are optional with the
@@ -210,7 +211,72 @@ export const runProbe = Effect.fn("Probe.run")(function* <A, E, R>(
   spec: ProbeSpec,
   attempt: Effect.Effect<A, E, R>,
 ): Effect.fn.Return<ProbeResult, ProbeError, R> {
-  const classify = spec.classify;
+  const classified = attempt.pipe(
+    Effect.map(
+      (value): ClassifiedAttempt<A> => ({
+        _tag: "Value",
+        value,
+        outcome: spec.classify?.success(value) ?? "green",
+      }),
+    ),
+    Effect.catchCause((cause) => {
+      const reason = unscopedFailureReason(cause);
+      if (reason !== undefined) {
+        if (Cause.isFailReason(reason))
+          return Effect.succeed<ClassifiedAttempt<A>>({
+            _tag: "Error",
+            error: reason.error,
+            outcome: spec.classify?.failure(reason.error) ?? "red",
+          });
+        if (Cause.isDieReason(reason))
+          return Effect.fail(
+            new ProbeError({
+              probeId: spec.id,
+              message: `Probe "${spec.id}" attempt failed with a non-error cause`,
+              cause,
+            }),
+          );
+      }
+      return Effect.failCause(failureDefectCause(cause));
+    }),
+  );
+  return (yield* driveProbe(spec, classified)).result;
+});
+
+type ClassifiedAttempt<A> =
+  | { readonly _tag: "Value"; readonly value: A; readonly outcome: ProbeOutcome }
+  | { readonly _tag: "Error"; readonly error: unknown; readonly outcome: ProbeOutcome };
+
+/** Classify completed values, keep the final value as evidence, and propagate exceptional causes. */
+export const runProbeDetailed = Effect.fn("Probe.runDetailed")(function* <A, E, R>(
+  spec: Omit<ProbeSpec, "classify"> & { readonly classify?: (value: A) => ProbeOutcome },
+  attempt: Effect.Effect<A, E, R>,
+) {
+  return yield* driveProbe(
+    spec,
+    attempt.pipe(
+      Effect.map(
+        (value): ClassifiedAttempt<A> => ({
+          _tag: "Value",
+          value,
+          outcome: spec.classify?.(value) ?? "green",
+        }),
+      ),
+    ),
+  );
+});
+
+const driveProbe = Effect.fnUntraced(function* <A, E, R>(
+  spec: Omit<ProbeSpec, "classify">,
+  attempt: Effect.Effect<ClassifiedAttempt<A>, E, R>,
+): Effect.fn.Return<
+  {
+    readonly result: ProbeResult;
+    readonly last?: { readonly value: A; readonly outcome: ProbeOutcome };
+  },
+  E,
+  R
+> {
   const maxAttempts = policyMaxAttempts(spec.policy);
   const timeoutMs = spec.policy.timeout === undefined ? undefined : Duration.toMillis(spec.policy.timeout);
 
@@ -218,9 +284,7 @@ export const runProbe = Effect.fn("Probe.run")(function* <A, E, R>(
   const deadline = timeoutMs === undefined ? undefined : start + timeoutMs;
 
   let attempts = 0;
-  let lastOutcome: ProbeOutcome = "red";
-  let lastError: unknown;
-  let lastAttemptHadError = false;
+  let last: ClassifiedAttempt<A> | undefined;
 
   while (attempts < maxAttempts) {
     if (deadline !== undefined && attempts > 0) {
@@ -229,45 +293,21 @@ export const runProbe = Effect.fn("Probe.run")(function* <A, E, R>(
     }
 
     attempts += 1;
-    lastAttemptHadError = false;
-    const run = Effect.exit(attempt);
     const completed =
       deadline === undefined
-        ? yield* Effect.map(run, (exit) => ({ _tag: "Completed" as const, exit }))
-        : yield* Effect.timeoutOrElse(
-            Effect.map(run, (exit) => ({ _tag: "Completed" as const, exit })),
-            {
-              duration: Duration.millis(deadline - (yield* Clock.currentTimeMillis)),
-              orElse: () => Effect.succeed({ _tag: "TimedOut" as const }),
-            },
-          );
+        ? { _tag: "Completed" as const, value: yield* attempt }
+        : yield* withDeadline(attempt, Duration.millis(deadline - (yield* Clock.currentTimeMillis)));
 
     if (completed._tag === "TimedOut") {
-      lastOutcome = "red";
-      lastError = new ProbeTimeoutError({ probeId: spec.id, timeoutMs: timeoutMs ?? 0, attempts });
-      lastAttemptHadError = true;
+      last = {
+        _tag: "Error",
+        outcome: "red",
+        error: new ProbeTimeoutError({ probeId: spec.id, timeoutMs: timeoutMs ?? 0, attempts }),
+      };
       break;
     }
-
-    const { exit } = completed;
-
-    if (exit._tag === "Success") {
-      lastOutcome = classify === undefined ? "green" : classify.success(exit.value);
-      if (lastOutcome === "green") {
-        break;
-      }
-    } else {
-      if (Cause.hasInterruptsOnly(exit.cause)) {
-        return yield* Effect.interrupt;
-      }
-      const error = yield* extractFailure(spec, exit.cause);
-      lastError = error;
-      lastAttemptHadError = true;
-      lastOutcome = classify === undefined ? "red" : classify.failure(error);
-      if (lastOutcome === "green") {
-        break;
-      }
-    }
+    last = completed.value;
+    if (last.outcome === "green") break;
 
     // No more attempts available: stop without an extra delay.
     if (attempts >= maxAttempts) break;
@@ -286,39 +326,13 @@ export const runProbe = Effect.fn("Probe.run")(function* <A, E, R>(
 
   const end = yield* Clock.currentTimeMillis;
 
-  const includeLastError = lastOutcome !== "green" && lastAttemptHadError;
-
   return {
-    outcome: lastOutcome,
-    attempts,
-    elapsedMs: end - start,
-    ...(includeLastError ? { lastError } : {}),
-  } satisfies ProbeResult;
+    result: {
+      outcome: last?.outcome ?? "red",
+      attempts,
+      elapsedMs: end - start,
+      ...(last?._tag === "Error" && last.outcome !== "green" ? { lastError: last.error } : {}),
+    },
+    ...(last?._tag === "Value" ? { last: { value: last.value, outcome: last.outcome } } : {}),
+  };
 });
-
-/**
- * Extract the attempt's failure value verbatim from its cause. A typed failure
- * (`E`) is returned as-is; a defect is surfaced as a {@link ProbeError} so the
- * runner fails the Effect rather than silently masking a bug.
- */
-const extractFailure = Effect.fnUntraced(function* (
-  spec: ProbeSpec,
-  cause: Cause.Cause<unknown>,
-): Effect.fn.Return<unknown, ProbeError> {
-  const failures = causeFailures(cause);
-  if (failures.length > 0) return failures[0];
-
-  // No typed failure means an interruption or defect — fail loudly.
-  yield* Effect.fail(
-    new ProbeError({
-      probeId: spec.id,
-      message: `Probe "${spec.id}" attempt failed with a non-error cause`,
-      cause,
-    }),
-  );
-  return undefined;
-});
-
-const causeFailures = (cause: Cause.Cause<unknown>): ReadonlyArray<unknown> => {
-  return cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error);
-};

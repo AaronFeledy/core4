@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { GitTransport } from "@lando/source-acquisition";
 import { Effect, Fiber } from "effect";
-import { resolveAuthoredIncludes, updateAuthoredIncludes } from "./include-pipeline.ts";
+import { resolveAuthoredDocument, updateAuthoredIncludes } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const abortable = (signal: AbortSignal | undefined): Promise<never> =>
@@ -37,7 +37,7 @@ test.each(["resolve", "update"] as const)(
       };
       const walk =
         mode === "resolve"
-          ? resolveAuthoredIncludes(options).pipe(Effect.asVoid)
+          ? resolveAuthoredDocument(options).pipe(Effect.asVoid)
           : updateAuthoredIncludes(options).pipe(Effect.asVoid);
       const fiber = Effect.runFork(walk);
       const signal = await Effect.runPromise(

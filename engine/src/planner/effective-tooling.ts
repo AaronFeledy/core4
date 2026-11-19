@@ -1,11 +1,8 @@
-import {
-  getInternalToolingTasks,
-  rememberInternalToolingTasks,
-} from "@lando/landofile/tooling-include-provenance";
 import type { ToolingNormalizationSource } from "@lando/landofile/tooling-normalize";
 import { type AppPlan, ServiceName, ToolingTaskShape, type ValidationIssuePath } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import type { EffectiveTooling } from "./tooling-composition.ts";
+import type { EffectiveToolingResolution } from "./tooling-provenance.ts";
 import { ToolingProvenance, UNKNOWN_TOOLING_ORIGIN, toolingIssueSource } from "./tooling-provenance.ts";
 
 export {
@@ -89,6 +86,7 @@ export const connectionClientsForPlan = (plan: AppPlan): Readonly<Record<string,
 export interface ToolingPlanOptions {
   readonly connectionClients?: Readonly<Record<string, ServiceName>>;
   readonly provenance?: ToolingProvenance;
+  readonly internalNames?: readonly string[];
 }
 
 export const attachEffectiveTooling = <Plan extends AppPlan>(
@@ -102,7 +100,7 @@ export const attachEffectiveTooling = <Plan extends AppPlan>(
     [TOOLING_PLAN_KEY]: {
       version: 2,
       tasks: tooling,
-      internalNames: [...getInternalToolingTasks(tooling)],
+      internalNames: [...(options.internalNames ?? [])],
       connectionClients: options.connectionClients ?? {},
       provenance: Object.fromEntries(
         Object.keys(tooling).map((name) => [
@@ -114,12 +112,17 @@ export const attachEffectiveTooling = <Plan extends AppPlan>(
   },
 });
 
-export const effectiveToolingForPlan = (plan: AppPlan): EffectiveTooling | undefined => {
-  const decoded = toolingPlanFor(plan);
-  return decoded === undefined
-    ? undefined
-    : rememberInternalToolingTasks(decoded.tasks, decoded.internalNames);
-};
+export const effectiveToolingForPlan = (plan: AppPlan): EffectiveTooling | undefined =>
+  toolingPlanFor(plan)?.tasks;
+
+export const attachResolutionTooling = <Plan extends AppPlan>(
+  plan: Plan,
+  resolution: EffectiveToolingResolution,
+): Plan => attachEffectiveTooling(plan, resolution.tasks, resolution);
+
+/** Tooling task ids Lando generated rather than the author declaring them. */
+export const internalToolingNamesForPlan = (plan: AppPlan): readonly string[] =>
+  toolingPlanFor(plan)?.internalNames ?? [];
 
 export const toolingIssueSourceForPlan = (plan: AppPlan, name: string, relativePath: ValidationIssuePath) =>
   toolingIssueSource(provenanceForPlan(plan), name, relativePath);

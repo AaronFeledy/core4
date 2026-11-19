@@ -16,7 +16,7 @@ import {
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { type InvocationProgram, evaluateInvocationSite, siteExpression } from "./invocation-sites.ts";
-import type { AuthoredOrigin } from "./pipeline/prepare.ts";
+import type { AuthoredOrigin } from "./provenance.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
 
 export * from "./invocation-sites.ts";

@@ -75,7 +75,8 @@ test.each(["scoped", "observe", "select", "available", "status", "volumes", "lis
       expect(result).toMatchObject({
         outcome: "destroyed",
         servicesDestroyed: ["web"],
-        volumesRemoved: true,
+        dataVolumesRemoved: false,
+        cacheVolumesRemoved: false,
       });
       expect(destroyed).toBe(true);
       expect(

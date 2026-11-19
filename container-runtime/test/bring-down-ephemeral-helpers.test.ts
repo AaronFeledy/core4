@@ -17,6 +17,7 @@ const global = { name: "global", scope: "global", kind: "data" } as const;
 const basePlan = { ...networkPlan, services: {}, stores: [data, cache, global] } satisfies AppPlan;
 const redactor = {
   redactString: (value: string) => value.replaceAll("SENSITIVE", "[REDACTED]"),
+  redactPrefix: (value: string) => value.replaceAll("SENSITIVE", "[REDACTED]"),
   redactValue: (value: unknown): unknown =>
     JSON.parse(JSON.stringify(value).replaceAll("SENSITIVE", "[REDACTED]")),
 } satisfies Redactor;

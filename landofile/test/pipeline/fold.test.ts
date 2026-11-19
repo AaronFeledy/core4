@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { reset } from "@lando/sdk/landofile";
 import { Effect } from "effect";
 import { foldAuthoredOverlays } from "../../src/pipeline/fold.ts";
-import { getOrigins, rememberOrigins } from "../../src/pipeline/origins.ts";
 import { prepareOverlay } from "../../src/pipeline/prepare.ts";
+import { emptyProvenance } from "../../src/provenance.ts";
 import { validateLandofile } from "../../src/validation.ts";
 
 test("authored composition replaces object shorthand before runtime defaults", async () => {
@@ -21,12 +21,9 @@ test("authored composition replaces object shorthand before runtime defaults", a
     ),
   );
   // When
-  const merged = foldAuthoredOverlays(
-    [rememberOrigins(lower.value, lower.origins), rememberOrigins(higher.value, higher.origins)],
-    lower.origins.source,
-  );
+  const merged = foldAuthoredOverlays([lower, higher], lower.origins.source);
   // Then
-  expect(merged).toEqual({ services: { web: { appMount: "/new" } } });
+  expect(merged.value).toEqual({ services: { web: { appMount: "/new" } } });
 });
 
 test("composition retains native deletion origins for strict missing-member failures", async () => {
@@ -43,16 +40,15 @@ test("composition retains native deletion origins for strict missing-member fail
       { file: "/app/.lando.local.yml", layer: "local" },
     ),
   );
-  const merged = foldAuthoredOverlays(
-    [rememberOrigins(lower.value, lower.origins), rememberOrigins(higher.value, higher.origins)],
-    lower.origins.source,
-  );
+  const merged = foldAuthoredOverlays([lower, higher], lower.origins.source);
   // When
-  const error = await Effect.runPromise(validateLandofile("/app/.lando.yml", merged).pipe(Effect.flip));
+  const error = await Effect.runPromise(
+    validateLandofile("/app/.lando.yml", merged.value, emptyProvenance(merged.origins)).pipe(Effect.flip),
+  );
   // Then
   expect(
-    getOrigins(merged)
-      ?.children.get("services")
+    merged.origins.children
+      .get("services")
       ?.children.get("web")
       ?.children.get("appMount")
       ?.children.get("target")?.deleted,

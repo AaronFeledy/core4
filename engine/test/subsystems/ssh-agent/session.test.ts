@@ -1,17 +1,26 @@
 import { expect, test } from "bun:test";
 import { RedactionService } from "@lando/redaction/service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type AppPlan,
+  type HealthcheckPlan,
+  PortablePath,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
 import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Fiber } from "effect";
+import { Clock, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 import {
   agentSocketMountPlan,
   awaitRuntimeSshAgent,
+  runtimeSshAgentCheck,
   runtimeSshAgentState,
   sidecarSocketCheck,
 } from "../../../src/subsystems/ssh-agent/session.ts";
+import { globalPlanAt } from "../../../src/testing/global-teardown.ts";
 
 const globalRoot = AbsolutePath.make("/lando/global");
 const globalApp = GlobalAppService.of({
@@ -22,7 +31,7 @@ const globalApp = GlobalAppService.of({
     distLandofile: AbsolutePath.make("/lando/global/.lando.dist.yml"),
     userLandofile: AbsolutePath.make("/lando/global/.lando.yml"),
   }),
-  providerId: Effect.succeed(ProviderId.make("lando")),
+  providerId: Effect.succeed(ProviderId.make("docker")),
   ensureRoot: Effect.void,
   ensureRunning: () => Effect.succeed([]),
   ensureUserLandofile: Effect.succeed({
@@ -31,6 +40,46 @@ const globalApp = GlobalAppService.of({
   }),
   regenerateDist: () => Effect.die("unused"),
 });
+const readiness = {
+  kind: "command",
+  command: ["agent-status", "--ready"],
+  user: "probe-user",
+  timeoutSeconds: 5,
+  intervalSeconds: 1,
+  retries: 3,
+  startPeriodSeconds: 10,
+} satisfies HealthcheckPlan;
+const applied = globalPlanAt(globalRoot, readiness);
+const runningProvider = {
+  ...TestRuntimeProvider,
+  id: applied.provider,
+  exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+  inspect: () =>
+    Effect.succeed({
+      app: applied.id,
+      service: ServiceName.make("ssh-agent"),
+      providerId: applied.provider,
+      status: "running" as const,
+      publications: { status: "unknown" as const },
+    }),
+};
+const withProvider = (provider: typeof TestRuntimeProvider, plan: AppPlan | null = applied) =>
+  Effect.provideService(RuntimeProviderRegistry, {
+    appliedPlansFor: () => Effect.succeed([]),
+    resolveAppliedPlan: (root, app, lookup) =>
+      Effect.succeed(
+        root === globalRoot && app?.id === applied.id && app.kind === "global" && lookup === "exact"
+          ? (plan ?? undefined)
+          : undefined,
+      ),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    list: Effect.succeed([ProviderId.make(provider.id)]),
+    capabilities: Effect.succeed(provider.capabilities),
+    select: (target) =>
+      Effect.succeed(
+        typeof target !== "string" && target?.provider === provider.id ? provider : TestRuntimeProvider,
+      ),
+  });
 
 test("builds a read-only passthrough bind when the socket uses a host directory", () => {
   // Given
@@ -53,33 +102,48 @@ test("builds a read-only passthrough bind when the socket uses a host directory"
 test.each([0, 2])("running agent exec exit %s distinguishes ready from starting", async (exitCode) => {
   // Given
   const provider = {
-    ...TestRuntimeProvider,
-    inspect: () =>
+    ...runningProvider,
+    exec: (target, opts) =>
       Effect.succeed({
-        app: AppId.make("global"),
-        service: ServiceName.make("ssh-agent"),
-        providerId: ProviderId.make("lando"),
-        status: "running" as const,
-        publications: { status: "unknown" as const },
+        exitCode:
+          target.plan === applied &&
+          target.user === "probe-user" &&
+          opts.command.join(" ") === "agent-status --ready"
+            ? exitCode
+            : 9,
+        stdout: "",
+        stderr: "",
       }),
-    exec: () => Effect.succeed({ exitCode, stdout: "", stderr: "" }),
-  };
+  } satisfies typeof TestRuntimeProvider;
   // When
   const state = await Effect.runPromise(
-    runtimeSshAgentState.pipe(
-      Effect.provideService(GlobalAppService, globalApp),
-      Effect.provideService(RuntimeProviderRegistry, {
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        list: Effect.succeed([ProviderId.make(provider.id)]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select: () => Effect.succeed(provider),
-      }),
-    ),
+    runtimeSshAgentState.pipe(Effect.provideService(GlobalAppService, globalApp), withProvider(provider)),
   );
   // Then
   expect(state).toBe(exitCode === 0 ? "ready" : "starting");
+});
+
+test.each([
+  null,
+  undefined,
+  { ...readiness, kind: "none" },
+  { ...readiness, kind: "tcp" },
+  {
+    ...readiness,
+    executionTarget: "host",
+  },
+] as const)("unusable applied evidence (%j) never runs a readiness command", async (probe) => {
+  const result = await Effect.runPromise(
+    runtimeSshAgentCheck.pipe(
+      withProvider(
+        { ...runningProvider, exec: () => Effect.die("unexpected readiness exec") },
+        probe === null ? null : globalPlanAt(globalRoot, probe),
+      ),
+      Effect.provideService(GlobalAppService, globalApp),
+    ),
+  );
+  expect(result.state).toBe(probe === null ? "stopped" : "starting");
+  expect(result.detail).toBeDefined();
 });
 
 test.each([
@@ -89,15 +153,8 @@ test.each([
   // Given
   let execs = 0;
   const provider = {
-    ...TestRuntimeProvider,
-    inspect: () =>
-      Effect.succeed({
-        app: AppId.make("global"),
-        service: ServiceName.make("ssh-agent"),
-        providerId: ProviderId.make("lando"),
-        status,
-        publications: { status: "unknown" as const },
-      }),
+    ...runningProvider,
+    inspect: () => runningProvider.inspect().pipe(Effect.map((service) => ({ ...service, status }))),
     exec: () =>
       Effect.sync(() => {
         execs++;
@@ -106,62 +163,46 @@ test.each([
   };
   // When
   const state = await Effect.runPromise(
-    runtimeSshAgentState.pipe(
-      Effect.provideService(GlobalAppService, globalApp),
-      Effect.provideService(RuntimeProviderRegistry, {
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        list: Effect.succeed([ProviderId.make(provider.id)]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select: () => Effect.succeed(provider),
-      }),
-    ),
+    runtimeSshAgentState.pipe(Effect.provideService(GlobalAppService, globalApp), withProvider(provider)),
   );
   // Then
   expect(state).toBe(expected);
   expect(execs).toBe(0);
 });
 
-test.each([false, true])(
-  "a probe timeout after running=%s reads as starting, not stopped",
-  async (running) => {
+test.each([
+  { running: true, declared: 2, deadline: 2 },
+  { running: true, declared: 10, deadline: 5 },
+  { running: false, declared: 2, deadline: 5 },
+])(
+  "a sidecar with running=$running and declared timeout $declared settles at $deadline seconds",
+  async ({ running, declared, deadline }) => {
     // Given
     const provider = {
-      ...TestRuntimeProvider,
-      inspect: () =>
-        running
-          ? Effect.succeed({
-              app: AppId.make("global"),
-              service: ServiceName.make("ssh-agent"),
-              providerId: ProviderId.make("lando"),
-              status: "running" as const,
-              publications: { status: "unknown" as const },
-            })
-          : Effect.never,
+      ...runningProvider,
+      inspect: () => (running ? runningProvider.inspect() : Effect.never),
       exec: () => Effect.never,
     };
     // When
     const state = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(runtimeSshAgentState);
-        yield* TestClock.adjust("5 seconds");
+        const start = yield* Clock.currentTimeMillis;
+        const fiber = yield* Effect.forkChild(
+          Effect.gen(function* () {
+            const state = yield* runtimeSshAgentState;
+            return { state, elapsed: (yield* Clock.currentTimeMillis) - start };
+          }),
+        );
+        yield* TestClock.adjust("6 seconds");
         return yield* Fiber.join(fiber);
       }).pipe(
         Effect.provideService(GlobalAppService, globalApp),
-        Effect.provideService(RuntimeProviderRegistry, {
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          list: Effect.succeed([ProviderId.make(provider.id)]),
-          capabilities: Effect.succeed(provider.capabilities),
-          select: () => Effect.succeed(provider),
-        }),
+        withProvider(provider, globalPlanAt(globalRoot, { ...readiness, timeoutSeconds: declared })),
         Effect.provide(TestClock.layer()),
       ),
     );
     // Then
-    expect(state).toBe("starting");
+    expect(state).toEqual({ state: "starting", elapsed: deadline * 1000 });
   },
 );
 
@@ -169,15 +210,7 @@ test("wait exhausts its budget when a running agent never answers", async () => 
   // Given
   let probes = 0;
   const provider = {
-    ...TestRuntimeProvider,
-    inspect: () =>
-      Effect.succeed({
-        app: AppId.make("global"),
-        service: ServiceName.make("ssh-agent"),
-        providerId: ProviderId.make("lando"),
-        status: "running" as const,
-        publications: { status: "unknown" as const },
-      }),
+    ...runningProvider,
     exec: () =>
       Effect.sync(() => {
         probes++;
@@ -192,20 +225,13 @@ test("wait exhausts its budget when a running agent never answers", async () => 
       return yield* Fiber.join(fiber);
     }).pipe(
       Effect.provideService(GlobalAppService, globalApp),
-      Effect.provideService(RuntimeProviderRegistry, {
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        list: Effect.succeed([ProviderId.make(provider.id)]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select: () => Effect.succeed(provider),
-      }),
+      withProvider(provider),
       Effect.provide(TestClock.layer()),
     ),
   );
   // Then
   expect(state.state).toBe("starting");
-  expect(state.detail).toContain("SSH readiness shell probe exited with code 2");
+  expect(state.detail).toContain("SSH readiness command exited with code 2");
   expect(probes).toBe(60);
 });
 
@@ -224,31 +250,9 @@ test("omits bind-only fields when the socket uses a volume", () => {
   });
 });
 
-const runningProvider = {
-  ...TestRuntimeProvider,
-  exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-  inspect: () =>
-    Effect.succeed({
-      app: AppId.make("global"),
-      service: ServiceName.make("ssh-agent"),
-      providerId: ProviderId.make("lando"),
-      status: "running" as const,
-      publications: { status: "unknown" as const },
-    }),
-};
-const withProvider = (provider: typeof TestRuntimeProvider) =>
-  Effect.provideService(RuntimeProviderRegistry, {
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    list: Effect.succeed([ProviderId.make(provider.id)]),
-    capabilities: Effect.succeed(provider.capabilities),
-    select: () => Effect.succeed(provider),
-  });
-
 test.each([
   { status: "exited", state: "stopped", probes: 0 },
-  { status: "restarting", state: "ready", probes: 1 },
+  { status: "restarting", state: "starting", probes: 0 },
   { status: "running", state: "ready", probes: 1 },
 ])("socket readiness for a $status sidecar returns $state", async ({ status, state, probes }) => {
   // Given a sidecar and a socket that answers identity requests.
@@ -265,9 +269,9 @@ test.each([
       return { identities: 0 };
     }).pipe(withProvider(provider), Effect.provideService(GlobalAppService, globalApp)),
   );
-  // Then stopped sidecars skip the socket; a successful socket probe proves readiness otherwise.
+  // Then the socket is checked only after runtime readiness has been established.
   expect(result).toEqual(
-    state === "stopped" ? { state, detail: "SSH agent sidecar container status: exited." } : { state },
+    state === "ready" ? { state } : { state, detail: `SSH agent sidecar container status: ${status}.` },
   );
   expect(socketProbes).toBe(probes);
 });
@@ -381,5 +385,5 @@ test("per-attempt timeout is retained when exec never completes", async () => {
   );
   // Then the completed five-second probe timeout is retained.
   expect(result.state).toBe("starting");
-  expect(result.detail).toContain("5s");
+  expect(result.detail).toBe("SSH readiness command timed out.");
 });

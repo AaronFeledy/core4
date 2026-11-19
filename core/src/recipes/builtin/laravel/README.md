@@ -10,11 +10,13 @@ The recipe configures the stack; create the Laravel application afterward.
 
 ## Bootstrapping the codebase
 
-The recipe writes a Landofile only. After `lando start`, create Laravel in
-`tmp-app` with `lando composer create-project laravel/laravel tmp-app`, then copy
-the application into the root while keeping `.lando.yml`. Run `lando composer
-install` to check and install the application's dependencies, then build the
-frontend with `lando npm install` and `lando npm run build`. `node_modules`
+The recipe writes a Landofile only. After `lando start`, run
+`lando create-project laravel/laravel`. It stages the skeleton outside the app
+root, promotes it without overwriting `.lando.yml`, installs `vendor` in place,
+and runs Laravel's own `post-root-package-install` and
+`post-create-project-cmd` hooks in Composer's order. Pass `--no-scripts` to
+skip those hooks and install scripts. Then build the frontend with
+`lando npm install` and `lando npm run build`. `node_modules`
 stays in the `node` service's volume; `public/build` lands in the shared `/app`.
 
 When `worker` is true, both PHP services author
@@ -49,4 +51,7 @@ over `.env`. SQLite sets only `DB_CONNECTION` and has no database dependency.
 
 - `lando artisan`: Laravel Artisan.
 - `lando composer`: Composer.
+- `lando create-project <package> [<version>]`: Stage a Composer project (for example `laravel/laravel`) outside the app root, promote it into `/app` without overwriting `.lando.yml`, install `vendor` in place, then run the root package's `post-root-package-install` and `post-create-project-cmd` hooks. `--no-scripts` skips both hooks and install scripts.
 - `lando npm`: npm inside the `node` service.
+
+The container helper mounts `lando-create-project` on the service PATH, so this recipe declares the task rather than the program; disabling Composer removes the tool entry.

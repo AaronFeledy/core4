@@ -25,20 +25,33 @@ lists the shipped runtime matrix and pinned artifacts directly from ServiceType 
 | Type       | Supported `framework:` values        | Notes                                                                                                                       |
 | ---------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | `php`      | `wordpress`                          | Stock images include mysqli; `wordpress` installs checksum-verified WP-CLI, sets `WP_CLI_ALLOW_ROOT=1`, and writes `conf.d/50-lando-wordpress.ini` (`memory_limit = 512M`, CLI and web). Uses `webroot:` (relative to the app mount, default `.`) and `allowOverride:` (default `false`). Other framework names add no PHP preset. |
-| `node`     | `none`                               | Bare `node` uses an inferred version from `.nvmrc` and compatible `package.json` engines under optional `packageRoot`; explicit types stay unchanged. No framework presets; users select their own dev-server `command:`. The ServiceType ignores `framework:`. |
+| `node`     | `none`                               | Bare `node` uses a version inferred from `.nvmrc` and compatible `package.json` engines under optional `packageRoot`. Catalog Node types provision the exact Yarn or pnpm pin from the nearest declaring `package.json`. A custom image or replacement Compose build owns its toolchain. Set `command:` to start a dev server; Node has no framework presets. |
 | `python`   | `django`, `fastapi`, `flask`, `none` | Stock images include pinned `uv` across rebuilds; custom images own their toolchain. Framework presets set port (django/fastapi 8000, flask 5000) and environment defaults. |
 | `ruby`     | `rails`, `none`                      | `rails` defaults to `webroot: public`; `none` defaults to `.`. Set `webroot:` directly to override either context default. Rails also supplies development environment defaults. |
 | `go`       | `none`                               | Only `framework: none` is accepted. There are no presets for Echo, Fiber, Gin, Chi, or other Go web frameworks; author `port:`, `environment:`, and `command:` for them directly.    |
 | `dotnet`   | n/a                                  | Uses the .NET SDK image, mounts the app at `/app`, and persists the NuGet package cache. |
 | `mssql`    | n/a                                  | Runs SQL Server Developer Edition with persistent database storage and `sqlcmd` tooling. |
 | `phpmyadmin` | n/a                                | Serves phpMyAdmin and wires it to app-local MySQL or MariaDB services unless `hosts:` is set. |
+| `adminer` | n/a | Serves Adminer and wires it to app-local PostgreSQL, MySQL, MariaDB, and declared SQLite files. |
 
 The data-store, search-engine, and webserver `ServiceType`s (`mariadb`,
 `mysql`, `mssql`, `postgres`, `mongodb`, `redis`, `valkey`, `memcached`, `rabbitmq`,
 `minio`, `localstack`, `mailpit`, `mailhog`, `solr`, `elasticsearch`, `opensearch`, `meilisearch`,
-`phpmyadmin`, `nginx`, `apache`, `tomcat`, `varnish`, `static`, `compose`) do not accept a `framework:` field.
+`phpmyadmin`, `adminer`, `nginx`, `apache`, `tomcat`, `varnish`, `static`, `compose`) do not accept a `framework:` field.
 
 ## Authored web settings
+
+When a catalog Node image needs building, Lando downloads the selected Yarn or
+pnpm release on the host, using the configured registry, proxy, and certificate
+trust. It verifies the release and copies the extracted package into the image.
+A cached exact release needs no registry access. The installed launcher works
+offline for any service user; installing project dependencies can still need
+network access. Lando does not install or invoke Corepack for this feature.
+
+For Yarn 2.0.0 through 2.4.0, upgrade to 2.4.1 or later or use a custom image.
+Yarn Classic before 1.22.21 can still reject a conflicting project manifest.
+Global installs such as `pnpm add -g` and `yarn global` are outside the guarantee.
+An edited pin takes effect on the next converging `lando start`.
 
 Ruby resolves `webroot:` relative to `appMount.target` (default `/app`) or accepts an absolute container path. For example, `framework: rails` with `webroot: frontend/public` sets `LANDO_WEBROOT` and the Ruby extension webroot to `/app/frontend/public`. This does not change the working directory or start Rails; author `workingDirectory:` and `command:` as needed. With `appMount: false`, Ruby omits implicit context defaults. An explicit relative or absolute `webroot:` then fails planning unless another composed feature declares and handles it. Remove the authored root or enable the mount to use built-in Ruby context.
 

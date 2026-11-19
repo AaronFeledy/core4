@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import type { ToolingTaskShape } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
@@ -10,6 +9,7 @@ import { compileInspectedAppCommands } from "../../src/cache/command-compiler.ts
 import { decodeAppCommandIndex, encodeAppCommandIndex } from "../../src/cache/command-index.ts";
 import { loadLandofileLayers } from "../../src/services/landofile-live.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { provenanceIn } from "../provenance-support.ts";
 import { app } from "./fixtures/command-index-codec.ts";
 
 const redact = createRedactor("secrets").redactString;
@@ -29,6 +29,7 @@ test("uses real TypeScript and include sources for disabled commands without inv
     );
     const entries = compileInspectedAppCommands({
       landofile: loaded.document,
+      provenance: provenanceIn(loaded),
       sourcePath: file,
       inspection: { scripts: [], problems: [], files: [] },
       redact,
@@ -58,9 +59,8 @@ test("uses real TypeScript and include sources for disabled commands without inv
 });
 const compile = (task: ToolingTaskShape) =>
   compileInspectedAppCommands({
-    landofile: rememberInternalToolingTasks({ tooling: { broken: task, healthy: { cmd: "echo healthy" } } }, [
-      "broken",
-    ]),
+    landofile: { tooling: { broken: task, healthy: { cmd: "echo healthy" } } },
+    internalToolingTasks: ["broken"],
     inspection: { scripts: [], problems: [], files: [] },
     sourcePath: "command-tooling-isolation test",
     redact,

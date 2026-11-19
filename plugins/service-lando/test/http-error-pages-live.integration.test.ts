@@ -10,6 +10,7 @@ import {
   UPLOAD_EXECUTED,
   apacheCases,
   apacheUploadDirFixtureFiles,
+  caddyStaticCases,
   nginxFpmCases,
   phpFixtureFiles,
   staticCases,
@@ -27,6 +28,9 @@ import {
 import { apacheRewriteFixture, registerWebDefaultsCases } from "./support/http-web-defaults-live.ts";
 
 const socketPath = resolveLiveProviderSocket()?.socketPath;
+// An explicit e2e request must fail rather than silently skip when the live
+// prerequisite is missing, so the release gate cannot read a skip as a pass.
+const e2e = process.env.LANDO_GUIDE_E2E === "1";
 
 const suites: ReadonlyArray<{
   readonly server: ErrorPageServer;
@@ -36,6 +40,7 @@ const suites: ReadonlyArray<{
   { server: "static", files: staticFixtureFiles, cases: staticCases },
   { server: "nginx", files: staticFixtureFiles, cases: staticCases },
   { server: "apache-static", files: staticFixtureFiles, cases: [] },
+  { server: "caddy", files: staticFixtureFiles, cases: caddyStaticCases },
   { server: "apache-port", files: { ...phpFixtureFiles, ".htaccess": apacheRewriteFixture }, cases: [] },
   { server: "nginx-fpm", files: phpFixtureFiles, cases: nginxFpmCases },
   { server: "nginx-fpm-upload-dirs", files: uploadDirFixtureFiles, cases: uploadDirCases },
@@ -70,11 +75,12 @@ const suites: ReadonlyArray<{
 // command against an app root that exercises missing files, index-less
 // directories, normal assets, and app-owned 403/404 responses.
 for (const suite of suites) {
-  describe.skipIf(socketPath === undefined)(`${suite.server} error pages — live integration`, () => {
+  describe.skipIf(socketPath === undefined && !e2e)(`${suite.server} error pages — live integration`, () => {
     let stack: ErrorPageStack | undefined;
 
     beforeAll(async () => {
-      expect(socketPath).toBeTruthy();
+      if (socketPath === undefined)
+        throw new TypeError("LANDO_GUIDE_E2E=1 requires an answering Podman socket");
       stack = await startErrorPageStack({
         socketPath: socketPath ?? "",
         server: suite.server,
@@ -99,7 +105,13 @@ for (const suite of suites) {
       return stack;
     });
 
-    if (suite.server === "static" || suite.server === "nginx" || suite.server === "apache-static") return;
+    if (
+      suite.server === "static" ||
+      suite.server === "nginx" ||
+      suite.server === "caddy" ||
+      suite.server === "apache-static"
+    )
+      return;
 
     test("PATH_INFO for /pathinfo.php/one/two is /one/two", async () => {
       if (stack === undefined) throw new Error(`${suite.server} stack did not start`);

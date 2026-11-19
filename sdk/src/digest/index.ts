@@ -1,5 +1,17 @@
 import { createHash } from "node:crypto";
 
+export const createSourceTreeDigest = () => {
+  const hash = createHash("sha256");
+  return {
+    entry(name: string, kind: "dir" | "file" | "link", executable: boolean, bytes: Uint8Array) {
+      hash.update(JSON.stringify([name, kind, executable, bytes.length]));
+      hash.update("\0");
+      hash.update(bytes);
+    },
+    hex: () => hash.digest("hex"),
+  };
+};
+
 /** Lowercase hex SHA-256 of a string (hashed as UTF-8) or raw bytes. */
 export const sha256Hex = (payload: Uint8Array | string): string =>
   createHash("sha256").update(payload).digest("hex");

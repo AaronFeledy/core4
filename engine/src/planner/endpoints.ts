@@ -1,5 +1,6 @@
+import { PROJECT_USER_MAPPING_EXTENSION_KEY } from "@lando/container-runtime/project-user-realization";
 import {
-  type CapabilityError,
+  CapabilityError,
   DataTreeOwnershipCapabilityError,
   type FileSyncSelectionError,
   LandofileValidationError,
@@ -20,12 +21,14 @@ import {
   type RoutePlan,
   type ServicePlan,
   type StorageScope,
+  clonedServiceParent,
   parseContainerDestination,
+  routeListenerPreference,
   selectHttpEndpoint,
   serviceAppMount,
   validationIssue,
 } from "@lando/sdk/schema";
-import type { FileSystem } from "@lando/sdk/services";
+import type { FileSystem, ServiceTypeHostFacts } from "@lando/sdk/services";
 import { type Context, Effect, Predicate } from "effect";
 
 import {
@@ -39,7 +42,7 @@ import { endpointValidationError, normalizeEndpoints } from "../services/endpoin
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
 import { missingCapability } from "./compose-capabilities.ts";
-import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
+import { dataTreeOwnershipStep, projectUserVolumeTrees, resolveDataTreeOwnership } from "./data-tree.ts";
 import { resolveRoute } from "./endpoint-routes.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
@@ -48,13 +51,20 @@ import { applyServiceHome } from "./home.ts";
 import { deriveMountOverlays, prepareServiceMounts, realizeServiceMounts } from "./mounts.ts";
 import { encodeServicePlan } from "./plan-decode.ts";
 import {
+  type ResolvedProjectUser,
+  projectUserRenumberStep,
+  projectUserTmpfsMounts,
+  resolveProjectUser,
+} from "./project-user.ts";
+import {
   publicationCapabilityError,
   requiredLogSourceCapabilityError,
   serviceResourceCapabilityErrors,
 } from "./resource-capabilities.ts";
+import { stampGeneratedBackendTls } from "./route-certificate-defaults.ts";
 import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import { resolveServiceArtifact } from "./service-artifact.ts";
-import { type PlannedServiceDraft, servicePlanError } from "./service-types.ts";
+import { type AuthoredStorageInfo, type PlannedServiceDraft, servicePlanError } from "./service-types.ts";
 import type { ShadowHostCheck } from "./shadow-host-checks.ts";
 
 export { resolveRoute } from "./endpoint-routes.ts";
@@ -83,8 +93,10 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly appSlug: string;
   readonly dataSlug?: string;
   readonly appName: string;
+  readonly appKind?: "user" | "global" | "scratch";
   readonly configs?: LandofileShape["configs"];
   readonly defaultDomain: string;
+  readonly host?: ServiceTypeHostFacts | undefined;
   readonly provider: ProviderId;
   readonly providerCapabilities: ProviderCapabilities;
   readonly metadata: ServicePlan["metadata"];
@@ -109,6 +121,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   const servicePolicies: Record<string, FileSyncPolicy["services"][string]> = {};
   let selectedEngine: SelectedFileSyncPolicy | undefined;
   const routeAccumulator = makeRouteAccumulator();
+  const projectUsers = new Map<string, ResolvedProjectUser>();
   const storeOwners = new Map<
     string,
     { readonly store: FinalizedServices["stores"][number]; readonly service: string }
@@ -196,7 +209,9 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       storage: authoredStorage,
     });
     if (preparedMounts instanceof LandofileValidationError || preparedMounts instanceof ServiceFeatureError)
-      return yield* Effect.fail(servicePlanError(input.appRoot, name, preparedMounts));
+      return yield* Effect.fail(
+        servicePlanError({ appRoot: input.appRoot, serviceName: name, cause: preparedMounts }),
+      );
     const volumeTargets = new Set<string>(
       preparedMounts.servicePlan.mounts
         .filter((mount) => mount.type === "volume")
@@ -212,6 +227,52 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     shadowHostChecks.push(...shadowResult.shadowHostChecks);
     const planWithShadows = shadowResult.servicePlan;
     const appMount = serviceAppMount(planWithShadows);
+    // A clone is a companion of its parent and shares its namespace mapping:
+    // the mapping is independent of the clone's own process user and home
+    // decision, so reuse the parent's resolution instead of re-deriving one
+    // from the clone's overridden `user:`.
+    const clonedFrom = clonedServiceParent(draft);
+    const projectUserResolution =
+      (clonedFrom === undefined ? undefined : projectUsers.get(clonedFrom)) ??
+      resolveProjectUser({
+        appKind: input.appKind ?? "user",
+        serviceName: name,
+        serviceTypeLabel: homeIntent.serviceType,
+        appRoot: input.appRoot,
+        provider: input.provider,
+        capabilities: input.providerCapabilities,
+        authored: draft.normalizedConfig.projectUser,
+        authoredUser: draft.normalizedConfig.user,
+        appSourceMounted: appMount !== undefined,
+        identity: homeIntent.identity,
+        host: input.host,
+      });
+    if (
+      projectUserResolution instanceof LandofileValidationError ||
+      projectUserResolution instanceof CapabilityError
+    )
+      return yield* Effect.fail(projectUserResolution);
+    projectUsers.set(name, projectUserResolution);
+    const projectUserFields = {
+      ...(projectUserResolution.projectUser === undefined
+        ? {}
+        : { projectUser: projectUserResolution.projectUser }),
+      ...(projectUserResolution.explanation === undefined
+        ? {}
+        : { projectUserExplanation: projectUserResolution.explanation }),
+    };
+    const planWithProjectUser = {
+      ...planWithShadows,
+      ...projectUserFields,
+      mounts: projectUserTmpfsMounts(planWithShadows.mounts, projectUserResolution.projectUser),
+    };
+    const renumberedProjectUser =
+      projectUserResolution.projectUser !== undefined &&
+      input.providerCapabilities.projectUserMapping === "image-renumber";
+    const extensionsForService: ServicePlan["extensions"] = {
+      ...extensionsForPlan,
+      ...(renumberedProjectUser ? { [PROJECT_USER_MAPPING_EXTENSION_KEY]: "image-renumber" } : {}),
+    };
     const engine =
       appMount !== undefined &&
       input.providerCapabilities.bindMountPerformance === "slow" &&
@@ -238,16 +299,34 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     }
     const homePlan = applyServiceHome({
       servicePlan: {
-        ...planWithShadows,
-        mounts: [...planWithShadows.mounts, ...worktreeGitMounts(planWithShadows, gitDirectories)],
+        ...planWithProjectUser,
+        mounts: [...planWithProjectUser.mounts, ...worktreeGitMounts(planWithShadows, gitDirectories)],
       },
       serviceName: name,
       storeOwner,
       appSlug: input.dataSlug ?? input.appSlug,
       appRoot: input.appRoot,
       intent: homeIntent,
+      ...(projectUserResolution.projectUser === undefined
+        ? {}
+        : { projectUser: projectUserResolution.projectUser }),
     });
     if (homePlan instanceof LandofileValidationError) return yield* Effect.fail(homePlan);
+    const cacheStores = new Set<string>();
+    const storageByTarget = new Map<string, AuthoredStorageInfo>();
+    for (const mount of homePlan.mounts) {
+      if (mount.type !== "volume") continue;
+      const resolvedStorageTarget = (draft.normalizedConfig.storage ?? []).some((entry) => {
+        if (typeof entry === "string") return false;
+        const destination = parseContainerDestination(entry.target);
+        return destination.ok && destination.value === mount.target;
+      });
+      const storageInfo =
+        preparedMounts.storageByTarget.get(mount.target) ??
+        (mount.origin !== "derived" && resolvedStorageTarget ? authored.byStore.get(mount.store) : undefined);
+      if (storageInfo !== undefined) storageByTarget.set(mount.target, storageInfo);
+      if (storageInfo?.kind === "cache") cacheStores.add(mount.store);
+    }
     // Data-tree ownership resolves here, where the composed `draft.user` and
     // the service type's image identity are both final. The step it produces
     // prepares the tree during the image build, so the planned user owns the
@@ -265,12 +344,12 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     }
     const ownershipTrees = [...ownedTrees];
     const home = homePlan.home;
-    if (
+    const catalogPreparesHome =
       home?.state === "persisted" &&
       home.user !== undefined &&
       !homeIntent.customImage &&
-      homeIntent.identity?.preparedHomes?.includes(home.user)
-    ) {
+      homeIntent.identity?.preparedHomes?.includes(home.user) === true;
+    if (catalogPreparesHome) {
       const preparedHome = resolveDataTreeOwnership({
         serviceName: name,
         serviceType: homeIntent.serviceType,
@@ -282,11 +361,36 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       if (preparedHome instanceof DataTreeOwnershipCapabilityError) return yield* Effect.fail(preparedHome);
       ownershipTrees.push(...preparedHome);
     }
+    // A clone seeds no data of its own: it shares the parent's stores, and the
+    // parent's derived image already prepares their ownership. Only an ordinary
+    // service prepares the fresh volume trees its project user writes, including
+    // a persisted home the catalog does not prepare (a numeric project user's).
+    if (clonedFrom === undefined) {
+      ownershipTrees.push(
+        ...projectUserVolumeTrees({
+          mounts: homePlan.mounts,
+          cacheStores,
+          ...(projectUserResolution.projectUser === undefined
+            ? {}
+            : { projectUser: projectUserResolution.projectUser }),
+          ...(catalogPreparesHome ? { homeStore: home.store } : {}),
+        }),
+      );
+    }
     const ownershipStep = dataTreeOwnershipStep(ownershipTrees);
+    // Renumber before anything gives a tree to the account by name, so a
+    // prepared home and every owned data tree resolve to the host ids.
+    const renumberStep = projectUserRenumberStep({
+      identity: homeIntent.identity,
+      mapping: input.providerCapabilities.projectUserMapping,
+      projectUser: projectUserResolution.projectUser,
+      host: input.host,
+    });
     const draftForPlan = {
       ...draft,
       storageOwnership,
       buildSteps: [
+        ...(renumberStep === undefined ? [] : [renumberStep]),
         ...(ownershipStep === undefined ? [] : [ownershipStep]),
         ...draft.buildSteps,
         ...redirectSteps,
@@ -297,9 +401,10 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     if (endpointError !== undefined) return yield* Effect.fail(endpointError);
     const planned = applyHostReachability(
       {
-        ...servicePlanFromDraft({ ...draftForPlan, endpoints }, [], input.metadata, extensionsForPlan),
+        ...servicePlanFromDraft({ ...draftForPlan, endpoints }, [], input.metadata, extensionsForService),
         mounts: homePlan.mounts,
         home: homePlan.home,
+        ...projectUserFields,
       },
       input.providerCapabilities.hostReachability,
     );
@@ -311,7 +416,9 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
 
     const withArtifact = resolveServiceArtifact(servicePlan, entry, input.manifests);
     if (withArtifact instanceof ServiceTypeError)
-      return yield* Effect.fail(servicePlanError(input.appRoot, name, withArtifact));
+      return yield* Effect.fail(
+        servicePlanError({ appRoot: input.appRoot, serviceName: name, cause: withArtifact }),
+      );
     for (const error of serviceResourceCapabilityErrors(input.provider, input.providerCapabilities, {
       name,
       artifactBuild: withArtifact.artifact?.kind === "build" || ownershipStep !== undefined,
@@ -327,32 +434,62 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       yield* Effect.fail(error);
     const servicePlanWithHome = realizeServiceMounts(withArtifact, input.providerCapabilities, accelerate);
 
+    const generatedCertificate = draft.normalizedConfig.certs === true;
+    const tls = { certificate: draft.certs, generated: generatedCertificate };
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
     if (authoredRoutes !== undefined) {
       for (const [routeIndex, route] of authoredRoutes.entries()) {
-        routeRefs.push(
-          ...(yield* routeAccumulator.add(
-            yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, route),
-            route.source ?? { key: `services.${name}.routes[${routeIndex}]` },
-          )),
-        );
+        for (const plan of stampGeneratedBackendTls(
+          yield* resolveRoute(
+            input.appRoot,
+            name,
+            servicePlanWithHome.endpoints,
+            route,
+            generatedCertificate,
+          ),
+          tls,
+        )) {
+          routeRefs.push(
+            ...(yield* routeAccumulator.add(
+              plan,
+              route.source ?? { key: `services.${name}.routes[${routeIndex}]` },
+            )),
+          );
+        }
       }
     } else {
-      const selection = selectHttpEndpoint(servicePlanWithHome.endpoints);
+      // Discovery uses the same preference the binder will, then records the
+      // resolved endpoint on the plan for reporting; it never turns that result
+      // into an authored selector before the binder chooses.
+      const selection = selectHttpEndpoint(
+        servicePlanWithHome.endpoints,
+        undefined,
+        routeListenerPreference("https", generatedCertificate),
+      );
       if (selection.status !== "none") {
-        routeRefs.push(
-          ...(yield* routeAccumulator.add(
-            yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, {
+        for (const plan of stampGeneratedBackendTls(
+          yield* resolveRoute(
+            input.appRoot,
+            name,
+            servicePlanWithHome.endpoints,
+            {
               hostname: `${name}.${input.appSlug}.${input.defaultDomain}`,
               scheme: "https",
               filters: [],
-              ...(selection.status === "selected"
-                ? { endpoint: selection.endpoint.names[0] ?? selection.endpoint.port }
-                : {}),
-            }),
-            { key: `services.${name}.endpoints` },
-          )),
-        );
+            },
+            generatedCertificate,
+          ),
+          tls,
+        )) {
+          routeRefs.push(
+            ...(yield* routeAccumulator.add(
+              selection.status === "selected"
+                ? { ...plan, endpoint: selection.endpoint.names[0] ?? selection.endpoint.port }
+                : plan,
+              { key: `services.${name}.endpoints` },
+            )),
+          );
+        }
       }
     }
     const servicePlanWithRoutes: ServicePlan = {
@@ -385,20 +522,13 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     services[name] = yield* encodeServicePlan(input.appRoot, name, servicePlanWithRoutes);
     for (const mount of servicePlanWithRoutes.mounts) {
       if (mount.type !== "volume") continue;
-      const resolvedStorageTarget = (draft.normalizedConfig.storage ?? []).some((entry) => {
-        if (typeof entry === "string") return false;
-        const destination = parseContainerDestination(entry.target);
-        return destination.ok && destination.value === mount.target;
-      });
-      const authoredInfo =
-        preparedMounts.storageByTarget.get(mount.target) ??
-        (mount.origin !== "derived" && resolvedStorageTarget ? authored.byStore.get(mount.store) : undefined);
+      const storageInfo = storageByTarget.get(mount.target);
       const error = pushStore(
         {
           name: mount.store,
-          scope: authoredInfo?.scope ?? "service",
-          kind: authoredInfo?.kind ?? "data",
-          ...(authoredInfo?.key === undefined ? {} : { key: authoredInfo.key }),
+          scope: storageInfo?.scope ?? "service",
+          kind: storageInfo?.kind ?? "data",
+          ...(storageInfo?.key === undefined ? {} : { key: storageInfo.key }),
         },
         name,
       );

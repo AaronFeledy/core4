@@ -113,17 +113,14 @@ describe("LandofileService layer — Compose service spellings", () => {
           "    healthcheck:",
           "      test:",
           "        - NONE",
-          "  mixed:",
+          "  checked:",
           "    image: node:lts",
           "    healthcheck:",
-          "      command:",
+          "      test:",
+          "        - CMD",
           "        - echo",
           "        - lando",
-          "      disable: true",
-          "      test:",
-          "        - NONE",
           "      interval: 30s",
-          "      intervalSeconds: 12",
           '      retries: "3"',
           "      start_interval: 5s",
           "",
@@ -139,12 +136,35 @@ describe("LandofileService layer — Compose service spellings", () => {
       if (!Exit.isSuccess(exit)) return;
       expect(exit.value.services?.[ServiceName.make("disabled")]?.healthcheck).toBe(false);
       expect(exit.value.services?.[ServiceName.make("none")]?.healthcheck).toBe(false);
-      expect(exit.value.services?.[ServiceName.make("mixed")]?.healthcheck).toEqual({
+      expect(exit.value.services?.[ServiceName.make("checked")]?.healthcheck).toEqual({
         kind: "command",
         command: ["echo", "lando"],
-        intervalSeconds: 12,
+        intervalSeconds: 30,
         retries: 3,
         startInterval: "5s",
+      });
+    });
+  });
+
+  test("rejects mixed probe timings before normalization", async () => {
+    await withTempCwd(async (dir) => {
+      await write(
+        dir,
+        "name: mixed\nruntime: 4\nservices:\n  web:\n    image: node:lts\n    healthcheck:\n      interval: 30s\n      intervalSeconds: 12\n",
+      );
+      process.chdir(dir);
+
+      const exit = await discoverExit();
+
+      if (!Exit.isFailure(exit)) throw new Error("Expected conflicting timings to fail loading");
+      expect(Cause.squash(exit.cause)).toMatchObject({
+        _tag: "LandofileValidationError",
+        issues: [
+          expect.objectContaining({
+            rule: "healthcheck.mixed-dialects",
+            path: ["services", "web", "healthcheck", "interval"],
+          }),
+        ],
       });
     });
   });

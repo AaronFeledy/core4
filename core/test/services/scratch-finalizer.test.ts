@@ -91,6 +91,8 @@ const capabilities: ProviderCapabilities = {
   routeProvider: false,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
@@ -204,7 +206,7 @@ const makeRecordingLayer = (
           volumes: options.volumes,
           removeState: options.removeState,
         });
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     exec: () => die("exec"),
     execStream: () => Stream.die("scratch finalizer test provider should not call execStream"),

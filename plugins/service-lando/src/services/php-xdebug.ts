@@ -179,6 +179,9 @@ export const phpXdebugTooling = (
     xdebug: {
       description: "Turn Xdebug on or off, or show its current status.",
       service: serviceName,
+      // Admin task: it rewrites the PHP configuration and reloads the server,
+      // so it keeps root even when user commands default to the project user.
+      user: "root",
       cmd: ["sh", "-c", script, "xdebug"],
     },
   };

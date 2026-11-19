@@ -46,8 +46,12 @@ const operations: readonly {
 
 for (const operation of operations) {
   for (const [tag, fault] of Object.entries(providerFaults)) {
-    // Selected rebuild treats a missing container as already stopped; rebuild-selected-absent.test.ts covers it.
-    if (operation.name === "rebuild selected" && tag === "ServiceNotFoundError") continue;
+    // A selected relaunch treats a missing container as already stopped; rebuild-selected-absent.test.ts covers it.
+    if (
+      (operation.name === "rebuild selected" || operation.name === "restart selected") &&
+      tag === "ServiceNotFoundError"
+    )
+      continue;
     test(`${operation.name} preserves ${tag} from provider.${operation.member} as primary`, async () => {
       // Given an ownership-matched applied record and the real registry's output policy.
       const harness = makeHarness({ plannedApp: applied });

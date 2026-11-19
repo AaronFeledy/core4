@@ -1,4 +1,4 @@
-import type { ServiceConfig } from "@lando/sdk/schema";
+import { type ServiceConfig, sameImageReference } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import {
@@ -10,6 +10,7 @@ import {
 } from "./_feature-helpers.ts";
 import {
   type ListenerContract,
+  imageAuthority,
   launcherAuthority,
   plannedPort,
   servicePortEndpoints,
@@ -17,6 +18,7 @@ import {
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
+import { CADDY_CONFIG_PATH, caddyLauncherCommand, renderCaddyfile } from "./caddy-config.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxHiddenPathConfigLines } from "./http-hidden-paths.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
@@ -43,7 +45,13 @@ export const STATIC_LISTENERS = {
     port: 80,
     daemon: "caddy",
     when: "type: static:caddy",
-    launcher: { setting: (port: number) => `--listen :${port}` },
+    launcher: {
+      setting: () => `--config ${CADDY_CONFIG_PATH} --adapter caddyfile`,
+    },
+    image: {
+      setting: (port: number) => `Caddyfile site address http://:${port}`,
+      file: "/etc/caddy/Caddyfile",
+    },
   },
 } as const satisfies Readonly<Record<SupportedStaticServer, ListenerContract>>;
 export const STATIC_LISTENER = STATIC_LISTENERS.nginx;
@@ -52,17 +60,12 @@ export const APP_MOUNT_TARGET = "/app";
 
 export const nginxRootLiteral = (path: string): string => JSON.stringify(path);
 
-export const defaultStaticCommand = (
-  server: SupportedStaticServer,
+export const defaultNginxStaticCommand = (
   docRoot: string,
   port: number,
   user: string | undefined,
-): ReadonlyArray<string> => {
-  if (server === "caddy") {
-    return ["caddy", "file-server", "--listen", `:${port}`, "--root", docRoot];
-  }
-
-  return nginxLauncherCommand({
+): ReadonlyArray<string> =>
+  nginxLauncherCommand({
     user,
     httpBlock: [
       "server {",
@@ -76,7 +79,6 @@ export const defaultStaticCommand = (
       "}",
     ],
   });
-};
 
 const StaticFeatureConfigSchema = Schema.Struct({
   server: Schema.Literals([...SUPPORTED_STATIC_SERVERS]),
@@ -113,20 +115,46 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   const port = plannedPort(service, STATIC_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? STATIC_SERVER_IMAGES[server] });
-  const ownsCommand = service.command === undefined && service.entrypoint === undefined;
-  if (server !== "caddy") {
+  if (server === "caddy") {
+    // The generated Caddyfile needs the bundled Caddy image and the generated
+    // launcher. An authored image, replacement `build.context`, command, or
+    // entrypoint owns its own server configuration and keeps it; additive build
+    // steps do not.
+    const ownsImage =
+      service.image === undefined || sameImageReference(service.image, STATIC_SERVER_IMAGES.caddy);
+    const ownsServerConfig =
+      service.command === undefined &&
+      service.entrypoint === undefined &&
+      !(service.build !== undefined && "context" in service.build) &&
+      ownsImage;
+    if (ownsServerConfig) {
+      ctx.addBuildStep(
+        landoErrorPagesBuildStep({
+          files: [{ path: CADDY_CONFIG_PATH, content: renderCaddyfile({ port, docRoot }) }],
+        }),
+      );
+      ctx.setCommand(caddyLauncherCommand());
+    } else if (service.command !== undefined) {
+      ctx.setCommand(service.command);
+      ctx.setListenerAuthority(launcherAuthority(STATIC_LISTENERS.caddy, port));
+    } else {
+      ctx.setListenerAuthority(imageAuthority(STATIC_LISTENERS.caddy, port));
+    }
+  } else {
     ctx.addBuildStep(landoErrorPagesBuildStep());
     // The removal only makes sense while the generated launcher, which declares
     // its own server block, is still the planned command.
-    if (ownsCommand) ctx.addBuildStep(nginxDefaultSiteRemovalBuildStep());
-  }
-  // Only an authored command replaces the generated launcher; entrypoint still
-  // receives Lando's listen-port argv.
-  if (service.command !== undefined) {
-    ctx.setCommand(service.command);
-    ctx.setListenerAuthority(launcherAuthority(STATIC_LISTENERS[server], port));
-  } else {
-    ctx.setCommand(defaultStaticCommand(server, docRoot, port, service.user));
+    if (service.command === undefined && service.entrypoint === undefined) {
+      ctx.addBuildStep(nginxDefaultSiteRemovalBuildStep());
+    }
+    // Only an authored command replaces the generated launcher; entrypoint still
+    // receives Lando's listen-port argv.
+    if (service.command !== undefined) {
+      ctx.setCommand(service.command);
+      ctx.setListenerAuthority(launcherAuthority(STATIC_LISTENERS.nginx, port));
+    } else {
+      ctx.setCommand(defaultNginxStaticCommand(docRoot, port, service.user));
+    }
   }
   applyAuthoredProcessFields(ctx, ["user"]);
   ctx.setHealthcheck(tcpProbe(port, 10));

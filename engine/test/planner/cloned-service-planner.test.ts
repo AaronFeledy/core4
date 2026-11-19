@@ -7,6 +7,7 @@ import {
   AbsolutePath,
   LogSourceId,
   PluginManifest,
+  PortablePath,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
@@ -43,6 +44,27 @@ const entrypointFeature: ServiceFeatureDefinition = {
   apply: (ctx) =>
     Effect.sync(() => {
       if (ctx.normalizedConfig.entrypoint !== undefined) ctx.setEntrypoint(ctx.normalizedConfig.entrypoint);
+      // Authored `user:` becomes the planned process user, as the stock process feature does.
+      if (ctx.normalizedConfig.user !== undefined) ctx.setUser(ctx.normalizedConfig.user);
+    }),
+};
+
+/** Minimal app-source feature so a project user has host content to own. */
+const appMountFeature: ServiceFeatureDefinition = {
+  id: "lando.app-mount",
+  priority: 800,
+  apply: (ctx) =>
+    Effect.sync(() => {
+      const authored = ctx.normalizedConfig.appMount;
+      if (authored === undefined || authored === false) return;
+      const target = typeof authored === "string" ? authored : (authored.target ?? "/app");
+      ctx.setAppMount({
+        source: AbsolutePath.make(ctx.appRoot),
+        target: PortablePath.make(target),
+        readOnly: false,
+        excludes: [],
+        includes: [],
+      });
     }),
 };
 
@@ -79,8 +101,15 @@ const homeServiceType: ServiceType = {
       root: AbsoluteContainerPath.make("/root"),
       "www-data": AbsoluteContainerPath.make("/var/www"),
     },
+    projectUser: { name: "www-data", uid: 33, gid: 33 },
     preparedHomes: ["node", "www-data"],
   },
+  resolve: ({ service }) =>
+    Effect.succeed({
+      base: "l337",
+      normalizedConfig: service,
+      features: [{ id: entrypointFeature.id }, { id: appMountFeature.id }],
+    }),
 };
 
 const redirectLogServiceType: ServiceType = {
@@ -113,6 +142,7 @@ const landoBaseFeatureStubs: ReadonlyArray<ServiceFeatureDefinition> = LANDO_BAS
 
 const testServiceFeatures = new Map<string, ServiceFeatureDefinition>([
   ...landoBaseFeatureStubs.map((feature) => [feature.id, feature] as const),
+  [appMountFeature.id, appMountFeature],
   [entrypointFeature.id, entrypointFeature],
 ]);
 
@@ -271,7 +301,11 @@ describe("cloned services in a planned app", () => {
   });
 
   test("a user override keeps the parent image steps and drops home persistence", async () => {
-    const preparedWeb = { type: "cloned-home:3.22", build: { artifact: ["echo artifact"] } };
+    const preparedWeb = {
+      type: "cloned-home:3.22",
+      appMount: "/app",
+      build: { artifact: ["echo artifact"] },
+    };
     const inherit = { ...cloneRequest, name: "web-inherit" };
     const extraStep: ServiceBuildStepIntent = {
       id: "clone.extra",
@@ -326,6 +360,56 @@ describe("cloned services in a planned app", () => {
       volumeStores(own).some((store) => store === parentHomeStore),
       "a user override must not mount the parent home store",
     ).toBe(false);
+  });
+
+  test.each([
+    ["an implicit catalog default", undefined],
+    ["an authored project user", "www-data"],
+  ] as const)("keeps %s on a sidecar that overrides the job user", async (_label, authored) => {
+    const feature: AppFeatureDefinition = {
+      id: "test.clone",
+      priority: 500,
+      selectors: { names: ["web"] },
+      apply: (ctx) =>
+        Effect.sync(() => {
+          ctx.addClonedService({ ...cloneRequest, name: "web-schedule", user: "www-data" });
+        }),
+    };
+    const app = await Effect.runPromise(
+      planWithClone(
+        {
+          name: "clones",
+          services: {
+            web: {
+              type: "cloned-home:3.22",
+              appMount: "/app",
+              ...(authored === undefined ? {} : { projectUser: authored }),
+            },
+          },
+        },
+        feature,
+        { ...TestRuntimeProvider.capabilities, projectUserMapping: "userns-keep-id", artifactBuild: true },
+      ),
+    );
+    const parent = app.services[ServiceName.make("web")];
+    const sidecar = app.services[ServiceName.make("web-schedule")];
+    if (parent === undefined || sidecar === undefined) throw new Error("expected both services");
+    expect(parent.projectUser).toEqual({ name: "www-data", uid: 33, gid: 33 });
+    expect(sidecar.projectUser).toEqual(parent.projectUser);
+  });
+
+  test("a sidecar without a user override also keeps the parent mapping", async () => {
+    const app = await Effect.runPromise(
+      planWithClone(
+        { name: "clones", services: { web: { type: "cloned-home:3.22", appMount: "/app" } } },
+        cloneFeature(cloneRequest),
+        { ...TestRuntimeProvider.capabilities, projectUserMapping: "userns-keep-id", artifactBuild: true },
+      ),
+    );
+    const parent = app.services[ServiceName.make("web")];
+    const sidecar = app.services[ServiceName.make("web-schedule")];
+    if (parent === undefined || sidecar === undefined) throw new Error("expected both services");
+    expect(sidecar.projectUser).toEqual({ name: "www-data", uid: 33, gid: 33 });
   });
 
   test("a clone never re-claims a Compose host publication", async () => {
@@ -435,5 +519,80 @@ describe("cloned services in a planned app", () => {
     expect(failure.value.cause.from).toBe("web");
     expect(failure.value.cause.message).toContain(derived);
     expect(failure.value.cause.remediation).toContain(derived);
+  });
+});
+
+describe("project-user home preparation", () => {
+  test("prepares a numeric project user's persisted home that the image does not prepare", async () => {
+    // No clone here: the harness only needs a feature to load the test service types.
+    const inert: AppFeatureDefinition = {
+      id: "test.inert",
+      priority: 500,
+      selectors: { names: ["web"] },
+      apply: () => Effect.void,
+    };
+    const app = await Effect.runPromise(
+      planWithClone(
+        {
+          name: "homes",
+          services: {
+            web: {
+              type: "cloned-home:3.22",
+              appMount: "/app",
+              projectUser: "1000:1001",
+              home: { path: "/home/project" },
+            },
+          },
+        },
+        inert,
+        { ...TestRuntimeProvider.capabilities, projectUserMapping: "userns-keep-id", artifactBuild: true },
+      ),
+    );
+    const service = app.services[ServiceName.make("web")];
+    if (service === undefined) throw new Error("expected the web service");
+    expect(service.projectUser).toEqual({ name: "1000", uid: 1000, gid: 1001 });
+    expect(service.home).toMatchObject({ state: "persisted", target: "/home/project", user: "1000" });
+    const ownership = buildSteps(service).find((step) => step.id === DATA_TREE_OWNERSHIP_STEP_ID);
+    const command = ownership?.command;
+    if (!Array.isArray(command)) throw new TypeError("expected an argv ownership step");
+    expect(command.join(" ")).toContain("chown -R '1000:1001' '/home/project'");
+  });
+});
+
+describe("build step users", () => {
+  test("a userless app step keeps no user so the project user applies, while an artifact step inherits the process user", async () => {
+    const inert: AppFeatureDefinition = {
+      id: "test.inert",
+      priority: 500,
+      selectors: { names: ["web"] },
+      apply: () => Effect.void,
+    };
+    const app = await Effect.runPromise(
+      planWithClone(
+        {
+          name: "steps",
+          services: {
+            web: {
+              type: "cloned-home:3.22",
+              appMount: "/app",
+              user: "root",
+              projectUser: "www-data",
+              build: { artifact: ["echo artifact"], app: ["composer install"] },
+            },
+          },
+        },
+        inert,
+        { ...TestRuntimeProvider.capabilities, projectUserMapping: "userns-keep-id", artifactBuild: true },
+      ),
+    );
+    const service = app.services[ServiceName.make("web")];
+    if (service === undefined) throw new Error("expected the web service");
+    expect(service.projectUser).toEqual({ name: "www-data", uid: 33, gid: 33 });
+    const steps = buildSteps(service);
+    const artifact = steps.find((step) => step.phase === "build" && step.id !== DATA_TREE_OWNERSHIP_STEP_ID);
+    const appStep = steps.find((step) => step.phase === "app");
+    expect(artifact?.user).toBe("root");
+    expect(appStep).toBeDefined();
+    expect(appStep?.user).toBeUndefined();
   });
 });

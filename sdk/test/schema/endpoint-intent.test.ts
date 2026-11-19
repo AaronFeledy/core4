@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { BindAddress, EndpointInput, EndpointPlan, PortNumber, RoutePlan } from "@lando/sdk/schema";
+import {
+  BindAddress,
+  EndpointInput,
+  EndpointPlan,
+  GeneratedCertificateEndpoint,
+  PortNumber,
+  RoutePlan,
+} from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 
 const decodeInput = Schema.decodeUnknownResult(EndpointInput, { onExcessProperty: "error" });
@@ -118,4 +125,52 @@ test("route plans accept an optional cross-engine backend host", () => {
     expect(result.success.backend.host).toBe("host.lando.internal");
     expect(result.success.backend.port).toBe(32768);
   }
+});
+
+test("route plans carry plan-only verified backend TLS intent", () => {
+  const result = Schema.decodeUnknownResult(RoutePlan, { onExcessProperty: "error" })({
+    hostname: "app.lndo.site",
+    scheme: "https",
+    service: "web",
+    backend: {
+      service: "web",
+      protocol: "https",
+      port: 443,
+      host: "web.app.internal",
+      tls: { caId: "mkcert", serverName: "web.app.internal" },
+    },
+  });
+
+  expect(Result.isSuccess(result)).toBe(true);
+  if (Result.isSuccess(result))
+    expect(result.success.backend.tls).toEqual({ caId: "mkcert", serverName: "web.app.internal" });
+});
+
+test("route backend TLS intent accepts no skip-verification or key material", () => {
+  const result = Schema.decodeUnknownResult(RoutePlan, { onExcessProperty: "error" })({
+    hostname: "app.lndo.site",
+    scheme: "https",
+    service: "web",
+    backend: {
+      service: "web",
+      protocol: "https",
+      port: 443,
+      tls: { caId: "mkcert", serverName: "web.app.internal", insecureSkipVerify: true },
+    },
+  });
+
+  expect(Result.isFailure(result)).toBe(true);
+});
+
+test("generated certificate endpoint declares only the owned HTTPS listener port", () => {
+  const decoded = Schema.decodeUnknownSync(GeneratedCertificateEndpoint)({ port: 443 });
+  expect(decoded.port).toBe(443);
+  expect(
+    Result.isFailure(
+      Schema.decodeUnknownResult(GeneratedCertificateEndpoint, { onExcessProperty: "error" })({
+        port: 443,
+        caId: "mkcert",
+      }),
+    ),
+  ).toBe(true);
 });

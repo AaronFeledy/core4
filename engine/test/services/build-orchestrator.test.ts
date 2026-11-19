@@ -34,6 +34,8 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { SourceAcquisitionError } from "@lando/source-acquisition";
+import { disposeTestSourceStore, makeTestSourceStore } from "@lando/source-acquisition/testing";
 import {
   Cause,
   type Context,
@@ -54,13 +56,13 @@ const stateStoreLayer = Layer.suspend(() => Layer.succeed(StateStore, makeTestSt
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import {
-  artifactOwnerKey,
   openArtifactBuildResults,
   recordArtifactBuildResult,
 } from "../../src/services/build-artifact-results.ts";
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
 import { BuildOwner } from "../../src/services/build-owner.ts";
+import { BuildSourceStore } from "../../src/services/build-source-store.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -148,13 +150,18 @@ const registryLayer = (provider = TestRuntimeProvider) =>
     }),
   );
 
-const layer = (provider = TestRuntimeProvider, injectedStateStoreLayer = stateStoreLayer) => {
+const layer = (
+  provider = TestRuntimeProvider,
+  injectedStateStoreLayer = stateStoreLayer,
+  sources?: Layer.Layer<BuildSourceStore>,
+) => {
   const pathsLayer = Layer.succeed(PathsService, makeLandoPaths());
   const dependencies = Layer.mergeAll(
     LandoEventService.layer,
     pathsLayer,
     registryLayer(provider),
     injectedStateStoreLayer,
+    ...(sources === undefined ? [] : [sources]),
   );
   return Layer.mergeAll(dependencies, BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)));
 };
@@ -215,6 +222,101 @@ const serviceFeatureExtension = (service: ServicePlan) =>
     | undefined;
 
 describe("BuildOrchestratorLayer.layer", () => {
+  test("opens a source lease only on an image miss and records no dispatch on acquisition failure", async () => {
+    await withTempUserRoots(async () => {
+      let opens = 0;
+      let dispatches = 0;
+      let imagePresent = false;
+      const source = await makeTestSourceStore();
+      try {
+        const store = Layer.succeed(BuildSourceStore, {
+          session: Effect.gen(function* () {
+            opens++;
+            const session = yield* source.store.session;
+            return {
+              ...session,
+              acquireExactNpm: () =>
+                opens === 1
+                  ? Effect.succeed({
+                      root: source.root,
+                      key: { kind: "archive" as const, sha256: "a".repeat(64) },
+                      treeDigest: "b".repeat(64),
+                      pin: {
+                        kind: "npm" as const,
+                        name: "pnpm",
+                        version: "9.15.0",
+                        registry: "https://registry.test",
+                        dist: { tarball: "" },
+                      },
+                    })
+                  : Effect.fail(
+                      new SourceAcquisitionError({
+                        kind: "offline-miss",
+                        source: "pnpm@9.15.0",
+                        message: "cold cache",
+                        remediation: "Acquire this package once online.",
+                      }),
+                    ),
+            };
+          }),
+        });
+        const provider = {
+          ...TestRuntimeProvider,
+          inspectLocalArtifact: (input: { readonly ref: string }) =>
+            Effect.succeed(imagePresent ? { providerId, ref: input.ref } : undefined),
+          buildArtifact: (request: ArtifactBuildRequest) =>
+            Effect.sync(() => {
+              expect(request.contextTrees).toMatchObject([
+                { contextName: "pm", root: source.root, digest: "b".repeat(64) },
+              ]);
+              dispatches++;
+              imagePresent = true;
+              return { providerId, ref: request.ref };
+            }),
+        };
+        const service: ServicePlan = {
+          ...web,
+          artifact: { kind: "build", context: AbsolutePath.make(source.root) },
+          extensions: {
+            "@lando/core/service-features": {
+              buildSteps: [
+                {
+                  phase: "build",
+                  command: "true",
+                  acquisitions: [
+                    {
+                      kind: "npm",
+                      name: "pnpm",
+                      version: "9.15.0",
+                      contextName: "pm",
+                      destination: "/opt/pm",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        };
+        const desired = { ...plan, services: { [web.name]: service } };
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            const orchestrator = yield* BuildOrchestrator;
+            yield* orchestrator.build(desired);
+            yield* orchestrator.build(desired);
+            expect({ opens, dispatches }).toEqual({ opens: 1, dispatches: 1 });
+            const failed = yield* Effect.result(orchestrator.build(desired, { refresh: true }));
+            expect(failed).toMatchObject({
+              _tag: "Failure",
+              failure: { _tag: "ArtifactBuildError", service: "web" },
+            });
+            expect({ opens, dispatches }).toEqual({ opens: 2, dispatches: 1 });
+          }).pipe(Effect.provide(layer(provider, undefined, store))),
+        );
+      } finally {
+        await disposeTestSourceStore(source);
+      }
+    });
+  });
   test("drops only the temporary CA bundle mount after successful and cached trust-store builds", async () => {
     await withTempUserRoots(async () => {
       // Given
@@ -2821,7 +2923,7 @@ describe("BuildOrchestratorLayer.layer", () => {
           const stateStore = yield* StateStore;
           const bucket = yield* openArtifactBuildResults(stateStore);
           yield* recordArtifactBuildResult(bucket, {
-            owner: artifactOwnerKey(BuildOwner.fromPlan(plan)),
+            owner: BuildOwner.fromPlan(plan).key,
             providerId: String(providerId),
             buildKey,
             service: web.name,
@@ -2832,7 +2934,7 @@ describe("BuildOrchestratorLayer.layer", () => {
             transcriptPath: AbsolutePath.make(olderPath),
           });
           yield* recordArtifactBuildResult(bucket, {
-            owner: artifactOwnerKey(BuildOwner.fromPlan(plan)),
+            owner: BuildOwner.fromPlan(plan).key,
             providerId: String(providerId),
             buildKey: "newer-key",
             service: web.name,

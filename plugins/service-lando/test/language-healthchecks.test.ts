@@ -165,8 +165,9 @@ test.each(["node:lts", "python:3.12", "ruby:3.3", "go:1.22", "dotnet"])(
       services: { web: { type, port: 9123, certs: false } },
     });
     const config = Schema.decodeUnknownSync(GlobalConfig)({ appEnv: { [variable]: "9000" } });
-    const dependencies = Layer.merge(
+    const dependencies = Layer.mergeAll(
       PluginRegistryLayer.layer,
+      BunFileSystem.layer,
       Layer.succeed(
         ConfigService,
         ConfigService.of({

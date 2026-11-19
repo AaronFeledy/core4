@@ -32,6 +32,8 @@ const discoverEffect = Effect.flatMap(LandofileService, (service) => service.dis
   Effect.provide(TestLandofileServiceLayer.layer),
 );
 
+export const discoverCarrier = () => Effect.runPromise(discoverEffect);
+
 export const discover = () =>
   Effect.runPromise(discoverEffect.pipe(Effect.map((compiled) => compiled.document)));
 

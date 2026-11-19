@@ -2,7 +2,6 @@ import { join } from "node:path";
 import type { LandofileShape } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { Effect, type Scope } from "effect";
-import { copyLandofileProvenance } from "./copy-provenance.ts";
 import {
   type LandofileIncludeDeps,
   type ResolveContext,
@@ -25,8 +24,8 @@ import type { PresentLandofileLayer } from "./layers.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
 import { createLoadFailureRecorder, finishLoadStage } from "./load-failures.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
-import { getOrigins, rememberOrigins } from "./pipeline/origins.ts";
 import type { LandofileRuntimePorts } from "./ports.ts";
+import { type AuthoredDocument, authoredDocumentFrom } from "./provenance.ts";
 
 export type IncludeUpdateStatus = "added" | "updated" | "unchanged";
 export interface IncludeUpdateEntry {
@@ -50,7 +49,7 @@ export interface UpdateLandofileIncludesOptions {
   readonly validate?: Effect.Effect<void, ResolveIncludesError>;
   readonly layers?: readonly {
     readonly layer: PresentLandofileLayer;
-    readonly landofile: Record<string, unknown>;
+    readonly landofile: AuthoredDocument;
   }[];
   readonly loadScope: LandofileLoadScope;
   readonly landofile: LandofileShape;
@@ -105,6 +104,11 @@ export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(fun
   const landofile: LandofileShape = scoped
     ? { ...landofileWithoutComposeIncludes, includes }
     : options.landofile;
+  const landofileOrigin = {
+    file: join(options.appRoot, ".lando.yml"),
+    layer: "canonical" as const,
+    path: [],
+  };
   const cacheRoot = yield* resolveCacheRoot(options.cacheRoot, options.ports);
   const ctx = yield* withIncludeSourceSession(
     {
@@ -139,7 +143,7 @@ export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(fun
         const resolved = [];
         for (const item of options.layers ?? [
           {
-            landofile,
+            landofile: authoredDocumentFrom(landofile, landofileOrigin),
             layer: {
               filePath: join(options.appRoot, ".lando.yml"),
               layer: "canonical" as const,
@@ -149,18 +153,15 @@ export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(fun
         ]) {
           let selected = item.landofile;
           if (scoped && options.layers !== undefined) {
-            const entries = authoredIncludeEntriesWithPaths(includeAcquisitionView(item.landofile)).filter(
-              ({ entry }) => requested.has(normalizeInclude(entry).source),
-            );
-            const { include: _include, includes: _includes, ...rest } = item.landofile;
-            selected = copyLandofileProvenance(item.landofile, {
-              ...rest,
-              includes: entries.map(({ entry }) => entry),
-            });
-            const origins = getOrigins(item.landofile);
-            const includesOrigin = origins?.children.get("includes") ?? origins?.children.get("include");
-            if (origins !== undefined && includesOrigin !== undefined) {
-              const children = new Map(origins.children);
+            const entries = authoredIncludeEntriesWithPaths(
+              includeAcquisitionView(item.landofile.value),
+              selected.provenance,
+            ).filter(({ entry }) => requested.has(normalizeInclude(entry).source));
+            const { include: _include, includes: _includes, ...rest } = item.landofile.value;
+            const origins = selected.provenance.origins;
+            const includesOrigin = origins.children.get("includes") ?? origins.children.get("include");
+            const children = new Map(origins.children);
+            if (includesOrigin !== undefined) {
               children.set("includes", {
                 ...includesOrigin,
                 children: new Map(
@@ -170,8 +171,11 @@ export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(fun
                   }),
                 ),
               });
-              rememberOrigins(selected, { ...origins, children });
             }
+            selected = {
+              value: { ...rest, includes: entries.map(({ entry }) => entry) },
+              provenance: { ...selected.provenance, origins: { ...origins, children } },
+            };
           }
           resolved.push(
             yield* resolveTree(selected, ctx, {

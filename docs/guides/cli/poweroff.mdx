@@ -21,7 +21,13 @@ Run this from any directory on your host:
 lando poweroff -y
 ```
 
-The command reports when apps have powered off or when there are none to stop. If an app fails to stop, follow the reported remediation and retry; Lando keeps the runtime available for recovery.
+Each app stops through the same lifecycle as `lando stop` from its own app root, so its Landofile stop steps, file-sync drain, and route withdrawal still run. An app whose applied record is gone is stopped anyway: Lando removes the containers it can prove belong to that root and keeps their named volumes. Apps whose containers have already exited are skipped, so their stop steps do not run again.
+
+The summary lists apps that stopped under `Powered off`. If Lando checked an app and found nothing to stop, it lists that app under `Nothing to stop`.
+
+If one app fails, poweroff still attempts the remaining user and scratch apps and reports each failure with its remediation. It also reports a provider it cannot observe if that provider has recorded resources or reports a runtime that isn't idle. An unreadable accelerated-start journal is also a failure. A failure before the global stop skips it, and Lando leaves the managed runtime available so you can fix the problem and retry.
+
+A failed `post-stop` step does not prevent poweroff from continuing or change its exit code. The summary names the affected app, event, failure, and remediation. With `--format=json`, look for `landofileEvents.status: "failed"` on the affected app in `result.apps`, or in `error.apps` if another app could not stop. `landofileEvents.stepFailure` carries the error tag, redacted message, and remediation.
 
 <Guide>
   <Scenario id="stop-every-app" render>
@@ -33,8 +39,8 @@ The command reports when apps have powered off or when there are none to stop. I
       <Verify event="post-start" />
     </Step>
     <Step name="poweroff">
-      <Run command="lando poweroff -y" />
-      <Verify command="lando poweroff -y" expect={{ stdout: { regex: "Powered off|No Lando apps to power off" } }} />
+      <Run command="lando poweroff -y --format=json" />
+      <Verify command="lando poweroff -y --format=json" expect={{ stdout: { regex: "\"outcome\":\\s*\"stopped\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -48,6 +54,9 @@ The command reports when apps have powered off or when there are none to stop. I
 Skip the shared global app with `--keep-global`, so host-wide services such
 as the proxy keep running. Skip scratch apps with `--keep-scratch`, so
 disposable throwaway apps stay up while every other app stops.
+Use both flags to keep both kinds of app. The command reports what it kept
+even if another app fails to stop. With `--format=json`, look for
+`keptGlobalApp` and `keptScratchApps` in `result` on success or `error` on failure.
 
 Poweroff does not prompt for confirmation. `-y`/`--yes` is accepted, but is
 not required for scripts.
@@ -60,7 +69,7 @@ After poweroff, `lando list` reports apps as `stopped` when the API confirms no 
 If runtime state is `unknown` after a crash, `wsl --terminate`, or the first poweroff after an upgrade, `lando destroy` launches or repairs the managed runtime holding the app's resources before checking and removing them. You don't need to start the app first. `lando destroy --root` and `lando apps:gc --prune` do the same for deleted app folders. If runtime preparation fails, cleanup reports that failure and leaves the resources for retry.
 
 On Linux and WSL, Lando records a shutdown receipt after confirming that containers are quiescent, the runtime service has exited, and its private pause process has been torn down. With an absent API, that receipt establishes idle after shutdown or a reboot; each runtime launch invalidates it first. Without valid receipt evidence, status remains `unknown`, because process observations alone cannot prove workloads stopped. On macOS and Windows, read-only inspection of a stopped managed machine establishes idle. Neither status observation nor stop launches the runtime.
-Lando stops the managed runtime service only after all targeted apps stop.
+Lando stops the managed runtime service only after all targeted apps stop and when no keep flag left an app running and no stop failed.
 Before it does, Lando removes containers that image builds left behind, so
 their storage helpers don't keep running.
 If an app cannot stop, the command fails with that app's id and remediation

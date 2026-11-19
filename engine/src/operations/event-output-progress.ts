@@ -5,8 +5,8 @@ export const publishEventOutputProgress = Effect.fnUntraced(function* (input: {
   readonly events: ProgressEmitter;
   readonly task: string;
   readonly service: string;
-  readonly stdout: string;
-  readonly stderr: string;
+  readonly stdout: readonly string[];
+  readonly stderr: readonly string[];
   readonly exitCode: number;
   readonly durationMs: number;
 }) {
@@ -19,9 +19,7 @@ export const publishEventOutputProgress = Effect.fnUntraced(function* (input: {
   yield* tree.start;
   yield* tree.startTask(input.service);
   for (const stream of ["stdout", "stderr"] as const) {
-    const lines = input[stream].split(/\r?\n/u);
-    if (lines.at(-1) === "") lines.pop();
-    for (const line of lines) yield* tree.detail(input.service, stream, line);
+    for (const line of input[stream]) yield* tree.detail(input.service, stream, line);
   }
   if (input.exitCode === 0) yield* tree.completeTask(input.service, undefined, input.durationMs);
   else

@@ -43,6 +43,26 @@ const uncoverableHttpsRouteIssues = (routes: ReadonlyArray<RoutePlan>): Readonly
         ];
   });
 
+const invalidBackendTlsIssues = (routes: ReadonlyArray<RoutePlan>): ReadonlyArray<ValidationIssue> =>
+  routes.flatMap((route, index) =>
+    route.backend.tls === undefined || route.backend.protocol === "https"
+      ? []
+      : [
+          {
+            rule: "landofile.route" as const,
+            path: ["routes", index, "backend", "tls"],
+            message: `Route for service ${route.service} with hostname ${route.hostname} carries verified backend TLS intent on a plain ${route.backend.protocol} backend.`,
+            suggestion:
+              "Bind the route to an HTTPS listener, or remove the TLS intent. Verified backend TLS needs a backend that speaks HTTPS.",
+          },
+        ],
+  );
+
+const planPolicyIssues = (routes: ReadonlyArray<RoutePlan>): ReadonlyArray<ValidationIssue> => [
+  ...uncoverableHttpsRouteIssues(routes),
+  ...invalidBackendTlsIssues(routes),
+];
+
 const invalidPlan = (appRoot: string, issues: ReadonlyArray<ValidationIssue>) =>
   new LandofileValidationError({
     message: `Planned AppPlan is invalid: ${issues.map(formatValidationIssueLine).join(", ")}`.replace(
@@ -60,7 +80,7 @@ export const decodeAppPlan = (
 ): Effect.Effect<CurrentExecutableAppPlan, LandofileValidationError> => {
   const decoded = Schema.decodeUnknownResult(CurrentExecutableAppPlan)(plan);
   const issues = Result.isSuccess(decoded)
-    ? uncoverableHttpsRouteIssues(decoded.success.routes)
+    ? planPolicyIssues(decoded.success.routes)
     : validationIssuesFromCause(decoded.failure, { fallback: "Invalid AppPlan." }).map((issue) => {
         if (
           issue.path[0] !== "routes" ||
@@ -89,6 +109,6 @@ export const decodeAppPlan = (
 
 /** Cached plans skip decodeAppPlan, so the cache-hit path re-applies the coverage policy. */
 export const assertRoutesCertificateCoverable = (appRoot: string, routes: ReadonlyArray<RoutePlan>) => {
-  const issues = uncoverableHttpsRouteIssues(routes);
+  const issues = planPolicyIssues(routes);
   return issues.length === 0 ? Effect.void : Effect.fail(invalidPlan(appRoot, issues));
 };

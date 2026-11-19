@@ -1,6 +1,22 @@
 {
   "fixtures": [
     {
+      "fixture": "docs/guides/adminer/fixtures/adminer-demo",
+      "digest": "47a4bcb8517004a3bd42153163275dfcc1e590b31f7497272be7e5a2f22b7d4b"
+    },
+    {
+      "fixture": "docs/guides/adminer/fixtures/adminer-mariadb",
+      "digest": "05a94cffe5d9daf9f30eb217e26bda1244c6e930fda83229a7f61233067d0012"
+    },
+    {
+      "fixture": "docs/guides/adminer/fixtures/adminer-multiple",
+      "digest": "8dec1b97bbcb410e839441c8bc35a93544fae4d912aa903e0817c256853a8342"
+    },
+    {
+      "fixture": "docs/guides/adminer/fixtures/adminer-sqlite",
+      "digest": "f1529c301a11b57f0de2c6e8ff3de2f64f7db6f363f5fcc8a4c7574d151e6e9d"
+    },
+    {
       "fixture": "docs/guides/apache/fixtures/apache-demo",
       "digest": "0570a254096a54de8402f0ed2aaa7458a8fb978e8f2d29607763bcf91626c3ae"
     },
@@ -18,7 +34,7 @@
     },
     {
       "fixture": "docs/guides/backdrop-workflow/fixtures/backdrop-dev",
-      "digest": "985ff8aabfc071da6696b4c136d1f05759ce14eb624b0ac45e915e5e16a834be"
+      "digest": "b192c1875795ea732e3326b8d774c489e75285139564caf35077591136ada1d7"
     },
     {
       "fixture": "docs/guides/build-steps/fixtures/build-steps-demo",
@@ -324,7 +340,7 @@
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/bind-mounted-config",
-      "digest": "f35723ca43b18df7411e660027cba8e24eca56104144f2165cd3667f3ac890b6"
+      "digest": "0cf62175b447f048ae28b730760361413f9674d7428b38146a10fc1d31fc87b2"
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/database-image-pin",
@@ -332,11 +348,11 @@
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/drush-uri-webroot",
-      "digest": "07bd827b51d427ce207a5730b1fd39845941bb6a36f49b020764d444cdd9e724"
+      "digest": "358355af75be53486c876b2adad6c0b0b65430d5e6c4e52a3ff48c92f4162f12"
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/php-version-override",
-      "digest": "e9c8353c63312c3e7afd24121dab15a33cccd3611a756434149c2d3c54e60d65"
+      "digest": "d3a7678c5bf3629c37013866d85dc61136fb99ca1c55d0d56bc935586b8e70f3"
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/two-database-services",
@@ -429,7 +445,7 @@
     },
     {
       "fixture": "docs/guides/fastapi-workflow/fixtures/venv-and-env",
-      "digest": "00cb3fda23ed9ecab254b1ba53b02f27e9c769d2187006ccd7ebf53b9a9c424f"
+      "digest": "49eeae686be1ca4d5825888c69f2b0d07cb831b83a822fef884d7a82c4a0da63"
     },
     {
       "fixture": "docs/guides/file-sync-excludes/fixtures/excludes-demo",
@@ -540,31 +556,31 @@
     },
     {
       "fixture": "docs/guides/jekyll-workflow/fixtures/park-builder",
-      "digest": "80564cb2f11f3d55eb6fe2be88469bc154300ac8a9b352dc56aa5422124f3aa8"
+      "digest": "e3865d9d94bd35596147c95e1634edc7ff0cc7dd0933c7592df9381e4701a3d6"
     },
     {
       "fixture": "docs/guides/jekyll-workflow/fixtures/serve-built-site",
-      "digest": "ec10e40877e993f393bac84a5bbf5b39a97f07f492b70e69c5af2df2f32fec41"
+      "digest": "d3019035a74d2d67e2bd5a41888bfebcb2568f3acbcbf3d827a833001393debc"
     },
     {
       "fixture": "docs/guides/lamp-stack-variants/fixtures/bind-mounted-config",
-      "digest": "c4c30bbd524ef5cc5929d364b45532652d5258e3e800c8681e2341b834d47d4c"
+      "digest": "dceb65a8d94e5674423067fbcd4a3e5dee47b1846dfa05cba7cdfc21850967df"
     },
     {
       "fixture": "docs/guides/lamp-stack-variants/fixtures/multiple-database-services",
-      "digest": "d09bd5f2ca6b4cd8be7ae2bebfa4f332827981a250923a1a865296e811adedaa"
+      "digest": "01f5165682ec14e8f7817e842d3ee9713d6999c6448f6d816b21cf969b5ca336"
     },
     {
       "fixture": "docs/guides/lamp-stack-variants/fixtures/mysql-replacement",
-      "digest": "c194ab9cb3c106c7883a335e68660d9328d309c3aa001e75afe16c72000707db"
+      "digest": "2f6a7eb20f284ee3117844e19c686dfe6d0e5cd4e69994895e625007fcaf92fc"
     },
     {
       "fixture": "docs/guides/lamp-stack-variants/fixtures/postgres-replacement",
-      "digest": "f26cb5cf3878cc470a1bd908fca19b26e7ff2ac898540c8a5903c60373d588ac"
+      "digest": "86f68b723c1a8293e7bf009d3935a2b44f2b0e9d16ab6420c086701cf5fb6ee3"
     },
     {
       "fixture": "docs/guides/lamp-stack-variants/fixtures/tooling-aliases",
-      "digest": "04549afb0187dbbf6a48e3cde4bb6c3c7cf61b1fe91c0a17a04ee24ec2a24144"
+      "digest": "823f98a0e2fa82e145b6fd2328f69069cf35614f5a2a222de6aa4c2b97582daf"
     },
     {
       "fixture": "docs/guides/lando3-transition-options/fixtures/scoped-services",
@@ -572,7 +588,7 @@
     },
     {
       "fixture": "docs/guides/laravel-horizon/fixtures/laravel-horizon",
-      "digest": "3335bddbb3845e1d908937f8aa1b54438f7968a655319cc34ac580f83724ced5"
+      "digest": "201b5e88bbd42e217f7ccfe81bc44e75b4d0408229347636248e3564b5224acf"
     },
     {
       "fixture": "docs/guides/laravel-reverb/fixtures/laravel-reverb",
@@ -580,7 +596,7 @@
     },
     {
       "fixture": "docs/guides/laravel-vite/fixtures/laravel-vite",
-      "digest": "47c334d453ee06e682ccd196d4d4b27dc04408fe0c7cdc679c62b84821bd9356"
+      "digest": "ee3b7b4ff6975ba5b940b502dc3d29a9b8932f24b9f0d37f1b5984fb67456a2f"
     },
     {
       "fixture": "docs/guides/locale/fixtures/locale-demo",
@@ -695,7 +711,7 @@
     },
     {
       "fixture": "docs/guides/migrating-recipes/fixtures/includes-app",
-      "digest": "37537289e2b2b6e51b4bacbdf1d9a7683a23a4020c1d2e073589213280013a30"
+      "digest": "8b1d72147986314f015f682af820435f1ca03e36bc28191c1321cd8dd6d88be2"
     },
     {
       "fixture": "docs/guides/migrating-recipes/fixtures/programmatic-app",
@@ -807,11 +823,11 @@
     },
     {
       "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-demo",
-      "digest": "1f4813468c80736bda3387e6792eca52e54c70db64b943ffcbfb8bc2e02d9a1e"
+      "digest": "9b0b92839e7af967212c367cac9dcca5f34cbfa8ce9948a0790898bb08cfb759"
     },
     {
       "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-serve",
-      "digest": "887220566337da45e239ee73f19c6b4b153f625a98b40840f969dea892403786"
+      "digest": "bbfa1c381801fdf696ae8291f17648f2a201728d3d3a1af715ea0899c09daaba"
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-child",
@@ -819,7 +835,7 @@
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-drupal",
-      "digest": "d9418601f67326cea8fbc252fd70d2ea28a72c52d67d6d26eef662c70dd5e3ba"
+      "digest": "97308372b114cdf2bc1558b8f6ea544d28a43be739f923b23c21c35eed57b242"
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-infer",
@@ -842,12 +858,16 @@
       "digest": "7e1d4e88e109f8fd0aa8cd8cd07882668fa0c517465190ec803983911bcd8fbf"
     },
     {
+      "fixture": "docs/guides/node/fixtures/node-dev-package-manager",
+      "digest": "325804d288243d069ddc953df3512cb7648365d611765789acd4789446d30345"
+    },
+    {
       "fixture": "docs/guides/node/fixtures/node-globals-invalid",
       "digest": "39d385ee49b32daf59bd73d3484e7a9a2920018ee991c4185a46851835282a34"
     },
     {
       "fixture": "docs/guides/node/fixtures/node-globals",
-      "digest": "5e954f1839a6a33e3498d7f6f7d2c86213cd0af35db5cd1f9de25fdadd3fe8e8"
+      "digest": "12a08f60c471a3cd56be49728007482a73816f7f95db8be85c5e214e1dc51d09"
     },
     {
       "fixture": "docs/guides/node/fixtures/node-inference",
@@ -863,6 +883,18 @@
     {
       "fixture": "docs/guides/node/fixtures/node-init-off",
       "digest": "795cfc700131d5e05f3132b1b440405a6bd8f5bfbc7e6ad3158743a1588fe224"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-lts",
+      "digest": "702a4a3b26097c32ba1d3f21edc2889102afd3abd50daf5c18676031f8bcbdcd"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-package-manager-range",
+      "digest": "97d15843c406363e80ff9d8061c9e38cad4dee1086d145b5d65d28a07ba2c204"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-package-manager",
+      "digest": "33eeded3de030827297bb9a70348a72b032959ff39b82240724fa84f0f3254df"
     },
     {
       "fixture": "docs/guides/node/fixtures/node-port",
@@ -1015,6 +1047,10 @@
     {
       "fixture": "docs/guides/php-version-matrix/fixtures/php-unsupported-8-0",
       "digest": "7f6fd21d0c1d3e9249c5c9a4348e0f76050eac7a71d33d13ec2ab4e7ac3b4213"
+    },
+    {
+      "fixture": "docs/guides/php/fixtures/native-tls-off",
+      "digest": "c19a4052e391c72eaf704d9e2d7c37ceb32d78cd85ca09f896ed83d0a0c38411"
     },
     {
       "fixture": "docs/guides/php/fixtures/php-demo",
@@ -1256,6 +1292,10 @@
       "digest": "7ebd87c42308f62bb70cf51309e319747b5482a21fdb59b347015b09c969c117"
     },
     {
+      "fixture": "docs/guides/static/fixtures/static-caddy-demo",
+      "digest": "33bdac62ad8f3a464250c1b949fc330937d5e6c0cf190d5add168378a1c6225c"
+    },
+    {
       "fixture": "docs/guides/static/fixtures/static-demo",
       "invalid": {
         "status": "invalid",
@@ -1272,7 +1312,7 @@
     },
     {
       "fixture": "docs/guides/symfony-messenger/fixtures/symfony-messenger",
-      "digest": "28400ad2c41892cb206a495eb3b9289ffbb8139f910d4a4acbf81ca3a6daf7ce"
+      "digest": "980fbebe5f78994d89cd6ae2fe2d8258a919c48edea1b8b0ac131e0aa587d4d1"
     },
     {
       "fixture": "docs/guides/task-events/fixtures/bracketed-build",
@@ -1326,10 +1366,6 @@
       "digest": "95e962df56ce0ced5e73ee2e2c3a9f389464f5aff60fc483ebe4639c785229f0"
     },
     {
-      "fixture": "docs/guides/typo3-workflow/fixtures/typo3-demo",
-      "digest": "27a7c30d834caf9d74c9339806cefc1527838fdefe599f88ca16e1c07971b44b"
-    },
-    {
       "fixture": "docs/guides/valkey/fixtures/valkey-demo",
       "digest": "a8d914d0169c21885170d31067f200410b9dec6fb3c973badd5246df77ca8a95"
     },
@@ -1366,12 +1402,20 @@
       "digest": "5844d2978bfa3f1a505f2e7126097ef4b0c34458826e3332b0abfd74e9a7de3c"
     },
     {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/failed-oneshot",
+      "digest": "ea328ad15e201fb3ae68bbbc9eb0c7dff6f47c7eaf34c58c04ebadff2cbbc1cb"
+    },
+    {
       "fixture": "docs/guides/wait-for-your-app/fixtures/host-command-missing",
       "digest": "a1efbc74f7ffddb808211b2e504bee96908cdd3537bf68d79154d77f2690a4f4"
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/host-user-invalid",
       "digest": "09a9279b30167833b6df809abb52b96fe7c839873d35aa76563dbc3883bc3adc"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/mixed-timing-corrected",
+      "digest": "3dc4ef3e61a3dcd96edb28a5880c84c5be9757616556b65a42d963b1a40c5807"
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/native-host-invalid",
@@ -1386,12 +1430,16 @@
       "digest": "9856d6c4108ce53b022b2b7b3fa7ab1c81c9113c757ce3755f9037ed8b5d70d9"
     },
     {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/terminal-dependency",
+      "digest": "09a1d3e97f706e101cc5fcd41977a04b433dfe2992ddf4350e3c84a8d9b66d53"
+    },
+    {
       "fixture": "docs/guides/wordpress-multisite/fixtures/wp-network",
-      "digest": "16f8fe7d9fda8f3c9d5078c4f3f07a44221a67c4d44670912f89f8fe940c73c1"
+      "digest": "e4bbfc4f74462706b4fc5d16758b17e5c8b02d71d1004d679e25e983d56fd1e6"
     },
     {
       "fixture": "docs/guides/wordpress-vite/fixtures/wordpress-vite",
-      "digest": "e255b8a8f88085098cc3f1ab03162cee3441074b5c2cfd55e384e6bdfed690e3"
+      "digest": "58281f08fb007b5f35f9c4f47f6c2a611a3bbd9a87658805af3ee8df45f750ab"
     },
     {
       "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-demo",
@@ -1523,18 +1571,18 @@
         "digest": "3f256ed2c224bc94bc91ee335eb6a8fa1111d4f4bd8d7aa0d391d1ff2e44a585"
       },
       "after": {
-        "digest": "5cb591dec3c70c9445fec30445c88b61000ba885de22c6729e1b422723f60ae0"
+        "digest": "2cf8da7e59d1e819de008152f0c6f7467875134465ed17da8b426d2810dbae85"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer. Recipe tooling copies now include wrapper: true and the recipe's Drush URL resolution command (#2401)."
     },
     "docs/guides/drupal-stack-overrides/fixtures/two-database-services": {
       "before": {
         "digest": "c5d890ccf5168bac68eb47a4a55d47145d21cd7fee243fe96175b0b2bdf3514e"
       },
       "after": {
-        "digest": "29848fc57ac608c0c720fc12d83844fa71149d2917c822bb1108f492bdf98859"
+        "digest": "277bf96eb4a81c4eeef831131ea7b7e495b7963ad5fe9774ea345e156274e3c3"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer. Recipe tooling copies now include wrapper: true and the recipe's Drush URL resolution command (#2401)."
     },
     "docs/guides/elasticsearch/fixtures/elasticsearch-demo": {
       "before": {
@@ -1616,9 +1664,9 @@
         "digest": "60703b62deb60584757dd423b60c7ca8d39da5f0350e6a3fc1621c1ae19f0705"
       },
       "after": {
-        "digest": "a9fd21050cd91e4daf20c917056809fbdf4a6f33493f830cc477d9840b6746dd"
+        "digest": "67eb620f6dbb2c94dbab8b1ae5559b31bfd77abcfdec9d08e22a780048ac771f"
       },
-      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The fixture also gained a schedule: job on appserver that runs Magento cron every minute as www-data, replacing the guide's host-terminal cron loop. The encoded document drops bcmath from that one install command and adds that one schedule entry; nothing else changed."
+      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The fixture also gained a schedule: job on appserver that runs Magento cron every minute as www-data, replacing the guide's host-terminal cron loop. The encoded document drops bcmath from that one install command and adds that one schedule entry. Composer now declares wrapper: true and describes its customized superuser environment and working directory (#2401)."
     },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {

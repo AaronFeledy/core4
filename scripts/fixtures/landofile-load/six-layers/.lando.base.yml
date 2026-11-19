@@ -10,7 +10,7 @@ services:
       - http://base.lndo.site
     healthcheck:
       command: node --version
-      interval: 10s
+      intervalSeconds: 10
       retries: 3
     appMount:
       target: /srv/app

@@ -19,6 +19,8 @@ export {
   mapStreamFailures,
   mergeFailure,
   primaryFailureReason,
+  raceJoined,
+  withDeadline,
 } from "./failure.ts";
 
 import type { CommandTrace, CommandWarning, DeprecationUse } from "@lando/sdk/schema";
@@ -37,8 +39,10 @@ import { JsonProjectionError } from "../errors/command.ts";
 import { ToolingCompileError } from "../errors/tooling.ts";
 import { emitYamlDocument } from "../yaml/document.ts";
 import { encodeStreamFrame } from "./frames.ts";
+import { commandResultEnvelopePolicy, resultFramePolicy } from "./output-policies.ts";
 import { applyProjectResultKeys } from "./project-result.ts";
 import { encodeRedactedJson } from "./redacted-json.ts";
+import type { StructuralRedactionNode } from "./structural-redaction.ts";
 import { projectToolingDiagnostic } from "./tooling-diagnostic.ts";
 
 export {
@@ -49,8 +53,15 @@ export {
   encodeStreamStdoutFrame,
   identityRedactor,
 } from "./frames.ts";
-
+export { commandResultEnvelopePolicy } from "./output-policies.ts";
 export { listSelectableResultKeys, projectEncodedResult } from "./project-result.ts";
+export {
+  type StructuralRedactionInput,
+  type StructuralRedactionNode,
+  type StructuralRedactionSide,
+  redactValueWithPolicy,
+  structuralRedaction,
+} from "./structural-redaction.ts";
 
 export type CommandResultOutcome<A = unknown> =
   | { readonly _tag: "success"; readonly value: A }
@@ -181,8 +192,9 @@ const encodeEnvelopeLine = (
   value: unknown,
   redactor: Redactor,
   format: CommandResultEnvelopeFormat | undefined,
+  policy: StructuralRedactionNode,
 ): string => {
-  const json = encodeRedactedJson(value, redactor);
+  const json = encodeRedactedJson(value, redactor, policy);
   if (format !== "yaml") return json;
   const yaml = emitYamlDocument(JSON.parse(json) as unknown);
   return yaml.endsWith("\n") ? yaml.slice(0, -1) : yaml;
@@ -194,7 +206,13 @@ export const encodeCommandResult = (
   encodeCommandEnvelope(options).pipe(
     Effect.flatMap((envelope) =>
       Effect.try({
-        try: () => encodeEnvelopeLine(envelope, options.redactor, options.format),
+        try: () =>
+          encodeEnvelopeLine(
+            envelope,
+            options.redactor,
+            options.format,
+            commandResultEnvelopePolicy(options.resultSchema),
+          ),
         catch: (error) => error,
       }),
     ),
@@ -206,6 +224,7 @@ export const encodeCommandResult = (
               fallbackEnvelope(options.command, options.trace),
               options.redactor,
               options.format,
+              commandResultEnvelopePolicy(options.resultSchema),
             ),
           ),
     ),
@@ -238,13 +257,20 @@ export const encodeStreamResultFrame = (
   options: EncodeCommandResultOptions,
 ): Effect.Effect<string, JsonProjectionError> =>
   encodeCommandEnvelope(options).pipe(
-    Effect.flatMap((envelope) => encodeStreamFrame({ _tag: "result", envelope }, options.redactor)),
+    Effect.flatMap((envelope) =>
+      encodeStreamFrame(
+        { _tag: "result", envelope },
+        options.redactor,
+        resultFramePolicy(options.resultSchema),
+      ),
+    ),
     Effect.catch((error) =>
       isJsonProjectionError(error)
         ? Effect.fail(error)
         : encodeStreamFrame(
             { _tag: "result", envelope: fallbackEnvelope(options.command, options.trace) },
             options.redactor,
+            resultFramePolicy(options.resultSchema),
           ),
     ),
   );

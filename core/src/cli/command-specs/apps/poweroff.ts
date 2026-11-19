@@ -27,7 +27,6 @@ export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
     return poweroff({
       keepGlobal: flags["keep-global"] === true,
       keepScratch: flags["keep-scratch"] === true,
-      yes: flags.yes === true,
     });
   },
   render: (result) => renderPoweroffResult(result),

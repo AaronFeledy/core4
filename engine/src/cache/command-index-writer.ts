@@ -1,15 +1,7 @@
 import { readFile, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { getLocalIncludePaths } from "@lando/landofile/include-provenance";
-import {
-  getLandofileEnvironmentDependencies,
-  getLandofileReferencedFiles,
-  hasLandofileEnvironmentDependencies,
-} from "@lando/landofile/load-expression-provenance";
-import {
-  getVersionConstraintEntries,
-  hasSkippedUnsatisfiedVersionConstraint,
-} from "@lando/landofile/version-constraint";
+import { type LandofileProvenance, versionConstraintsFor } from "@lando/landofile/provenance";
+import { hasSkippedUnsatisfiedVersionConstraint } from "@lando/landofile/version-constraint";
 import { CacheError, type LandofileFormConflictError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
@@ -36,6 +28,7 @@ import {
 } from "./command-index-source.ts";
 import { type CommandScriptFingerprint, commandScriptFingerprints } from "./command-script-freshness.ts";
 import { appCommandCachePath, appToolingCompilationCachePath, resolveUserCacheRoot } from "./paths.ts";
+import type { ProjectFileFingerprint } from "./project-file-fingerprint.ts";
 
 export {
   type AppCommandCacheReadResult,
@@ -73,11 +66,13 @@ export interface WriteAppCommandCacheOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly dataIdentityFingerprint?: string;
   readonly landofile: LandofileShape;
+  readonly provenance?: LandofileProvenance | undefined;
   readonly entries: ReadonlyArray<CommandIndexEntry>;
   readonly cwd?: string;
   readonly cacheRoot?: string;
   readonly now?: () => number;
   readonly sourceScripts?: readonly CommandScriptFingerprint[];
+  readonly sourceProjectFiles?: readonly ProjectFileFingerprint[];
 }
 
 interface ReadAppCommandCacheTaskOptions extends WriteAppCommandCacheOptions {
@@ -103,32 +98,35 @@ const readAppCommandCacheTask = async (
     if (payload.sourceEnvironment.hash !== commandEnvironmentHash(payload.sourceEnvironment, options.env))
       return null;
     if (payload.sourceFile !== filePath) return null;
-    const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
+    const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile, options.provenance);
     if (JSON.stringify(payload.sourceLocalIncludePaths) !== JSON.stringify(sourceLocalIncludePaths))
       return null;
     if (
       JSON.stringify(payload.sourceReferencedFiles) !==
-      JSON.stringify(getLandofileReferencedFiles(options.landofile))
+      JSON.stringify(options.provenance?.referencedFiles ?? [])
     )
+      return null;
+    if (JSON.stringify(payload.sourceProjectFiles) !== JSON.stringify(options.sourceProjectFiles ?? []))
       return null;
     if (
       payload.sourceContentHash !==
       (await sourceContentHash(
         source,
         sourceLocalIncludePaths,
-        getLocalIncludePaths(options.landofile).length > 0,
+        (options.provenance?.localIncludePaths ?? []).length > 0,
       ))
     )
       return null;
     if (payload.sourceMtimeMs !== stats.mtimeMs || payload.sourceSize !== stats.size) return null;
     if (
       payload.toolingFingerprint !==
-      (options.toolingFingerprint ?? deriveAppCommandToolingFingerprint(options.landofile))
+      (options.toolingFingerprint ??
+        deriveAppCommandToolingFingerprint(options.landofile, options.provenance))
     )
       return null;
     if (
       JSON.stringify(payload.versionConstraints) !==
-      JSON.stringify(getVersionConstraintEntries(options.landofile, filePath))
+      JSON.stringify(versionConstraintsFor(options.provenance, options.landofile, filePath))
     )
       return null;
     if (
@@ -153,22 +151,24 @@ const writeAppCommandCacheTask = async (
   const appRoot = dirname(filePath);
   const cachePath = appCommandCachePath(cacheRoot, appName, appRoot);
   const toolingCompilationCachePath = appToolingCompilationCachePath(cacheRoot, appRoot);
-  const toolingFingerprint = deriveAppCommandToolingFingerprint(options.landofile);
-  const dependencies = hasLandofileEnvironmentDependencies(options.landofile)
-    ? getLandofileEnvironmentDependencies(options.landofile)
-    : { _tag: "Complete" as const };
+  const toolingFingerprint = deriveAppCommandToolingFingerprint(options.landofile, options.provenance);
+  const dependencies =
+    options.provenance === undefined
+      ? { _tag: "Complete" as const }
+      : options.provenance.environmentDependencies;
   const sourceEnvironment = { ...dependencies, hash: commandEnvironmentHash(dependencies, options.env) };
   const entriesFingerprint = deriveAppCommandEntriesFingerprint(options.entries);
   const aliasPolicy = normalizeAppCommandAliasPolicy(options.landofile);
-  const versionConstraints = getVersionConstraintEntries(options.landofile, filePath);
+  const versionConstraints = versionConstraintsFor(options.provenance, options.landofile, filePath);
   if (hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION, options.env)) return undefined;
-  const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
-  const sourceReferencedFiles = getLandofileReferencedFiles(options.landofile);
+  const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile, options.provenance);
+  const sourceReferencedFiles = options.provenance?.referencedFiles ?? [];
+  const sourceProjectFiles = options.sourceProjectFiles ?? [];
   const sourceScripts = options.sourceScripts ?? (await commandScriptFingerprints(appRoot));
   const contentHash = await sourceContentHash(
     source,
     sourceLocalIncludePaths,
-    getLocalIncludePaths(options.landofile).length > 0,
+    (options.provenance?.localIncludePaths ?? []).length > 0,
   );
   const cached = await readAppCommandCacheTask({
     ...options,
@@ -185,6 +185,7 @@ const writeAppCommandCacheTask = async (
       sourceContentHash: contentHash,
       sourceLocalIncludePaths,
       sourceReferencedFiles,
+      sourceProjectFiles,
       sourceScripts,
       sourceMtimeMs: stats.mtimeMs,
       sourceSize: stats.size,
@@ -205,6 +206,7 @@ const writeAppCommandCacheTask = async (
     sourceContentHash: contentHash,
     sourceLocalIncludePaths,
     sourceReferencedFiles,
+    sourceProjectFiles,
     sourceScripts,
     sourceMtimeMs: stats.mtimeMs,
     sourceSize: stats.size,

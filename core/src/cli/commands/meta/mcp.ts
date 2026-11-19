@@ -235,6 +235,7 @@ export const dispatchMcpCommand = async (params: {
       resultSchema: McpListResultSchema,
       render: renderMcpListResult,
       formatError: params.formatError,
+      formatErrorAlreadyRedacted: true,
     });
   }
 
@@ -277,6 +278,7 @@ export const dispatchMcpCommand = async (params: {
     suppressInterruptionDiagnostics: true,
     render: () => undefined,
     formatError: params.formatError,
+    formatErrorAlreadyRedacted: true,
   });
   if (signal?.aborted && (exitCode === undefined || exitCode === 0)) {
     setExitCode(signal.reason === "SIGTERM" ? 143 : 130);

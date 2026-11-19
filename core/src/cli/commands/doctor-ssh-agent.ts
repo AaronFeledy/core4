@@ -71,6 +71,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
   let runtimeVolume: string | undefined;
   let waitAfterSetup = false;
   let readinessDetail: string | undefined;
+  let sidecarReadyAfterRepair = true;
   const probeAgent = (upstream: Parameters<typeof probeSshAgent>[0]) =>
     Effect.tryPromise({
       try: () => (input.probe ?? probeSshAgent)(upstream, { timeoutMs: 1_000 }),
@@ -102,10 +103,12 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
           };
         }
         const upstream = { _tag: "unix" as const, path: socket.socketPath };
-        if (waitAfterSetup)
-          readinessDetail = (yield* awaitRuntimeSshAgent(sidecarSocketCheck(upstream, input.probe))).detail;
+        if (waitAfterSetup && input.sshService.id === "sidecar") {
+          const readiness = yield* awaitRuntimeSshAgent(sidecarSocketCheck(upstream, input.probe));
+          sidecarReadyAfterRepair = readiness.state === "ready";
+          readinessDetail = readiness.detail;
+        }
         const probed = yield* Effect.result(probeAgent(upstream));
-        // After repair, the final socket probe decides reachability, so its failure is the reason to report.
         if (waitAfterSetup && probed._tag === "Failure") readinessDetail = causeMessage(probed.failure);
         return {
           source: "sidecar" as const,
@@ -165,7 +168,8 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
           waitAfterSetup = true;
           upstream = yield* inspect;
         }
-        const recovered = Result.isSuccess(setup) && upstream.reachable && delivery !== "none";
+        const recovered =
+          Result.isSuccess(setup) && sidecarReadyAfterRepair && upstream.reachable && delivery !== "none";
         fixContext.fixOutcome = recovered ? "recovered" : "failed";
         fixContext.fixCommand = "ssh.setup";
         fixContext.fixExitCode = recovered ? "0" : "1";
@@ -185,7 +189,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         intent.mode satisfies never;
     }
   }
-  const ready = upstream.reachable && delivery !== "none";
+  const ready = sidecarReadyAfterRepair && upstream.reachable && delivery !== "none";
   const recovery = intent.mode === "sidecar" ? "automatic" : "manual";
   const danglingEnvNote =
     upstream.danglingEnvSocket === undefined || upstream.source === "sidecar" || upstream.source === "none"

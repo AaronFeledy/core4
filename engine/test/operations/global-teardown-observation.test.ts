@@ -41,7 +41,7 @@ test.each(["stop", "destroy"] as const)("global %s handles an idle applied owner
     const result =
       command === "stop"
         ? await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)))
-        : await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
+        : await Effect.runPromise(globalDestroy({}).pipe(Effect.provide(harness.layer)));
     expect(result.outcome).toBe(command === "stop" ? "stopped" : "destroyed");
     expect(calls.filter((call) => call === "ensureReady")).toHaveLength(command === "stop" ? 0 : 1);
     expect(calls.filter((call) => call === "destroy")).toHaveLength(command === "stop" ? 0 : 1);
@@ -58,7 +58,7 @@ for (const command of ["stop", "destroy"] as const) {
       const result =
         command === "stop"
           ? await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)))
-          : await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
+          : await Effect.runPromise(globalDestroy({}).pipe(Effect.provide(harness.layer)));
       // Then only coordination storage is created; the global root and runtime remain untouched.
       expect(result.materialized).toBe(false);
       expect(harness.calls).toEqual(["removeRoutes"]);
@@ -91,7 +91,7 @@ for (const command of ["stop", "destroy"] as const) {
         const result =
           command === "stop"
             ? await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)))
-            : await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
+            : await Effect.runPromise(globalDestroy({}).pipe(Effect.provide(harness.layer)));
         // Then evidence removal, event refs, and orphan selection all use canonical ownership.
         expect(result.materialized).toBe(true);
         expect("servicesStopped" in result ? result.servicesStopped : result.servicesDestroyed).toEqual([

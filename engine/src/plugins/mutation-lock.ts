@@ -19,7 +19,7 @@ export const withPluginMutationLock = Effect.fnUntraced(
       await mkdir(pluginsRoot, { recursive: true });
       return realpath(pluginsRoot);
     });
-    return yield* withAdvisoryLockUsing(privateFileAccess, { expireLiveOwner: false })(
+    return yield* withAdvisoryLockUsing(privateFileAccess)(
       join(root, ".lando-plugin-mutation"),
       operation,
       Effect.provide(body, context),

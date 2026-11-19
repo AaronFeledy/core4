@@ -1,6 +1,7 @@
+import { canonicalJson } from "@lando/sdk/digest";
 import { ServiceTypeCollisionError } from "@lando/sdk/errors";
 import { mergeValues } from "@lando/sdk/landofile";
-import { LandofileShape, ServiceConfig } from "@lando/sdk/schema";
+import { LandofileShape, ServiceConfig, sameImageReference } from "@lando/sdk/schema";
 import type {
   FeatureRef,
   ServiceImageIdentity,
@@ -92,6 +93,39 @@ const mergeLogSources = (
   return merged;
 };
 
+const replacementBuild = (config: ServiceConfig) =>
+  config.build !== undefined && "context" in config.build ? config.build : undefined;
+
+const changed = (next: unknown, previous: unknown): boolean =>
+  next !== undefined && (previous === undefined || canonicalJson(next) !== canonicalJson(previous));
+
+/**
+ * Whether the child replaces the launcher its parent owned: a new image, a
+ * replacement `build.context`, a command, or an entrypoint. Additive
+ * `build.artifact` and `build.app` steps keep the parent's launcher.
+ */
+const ownershipChanged = (parent: ServiceConfig, child: ServiceConfig): boolean =>
+  changed(replacementBuild(child), replacementBuild(parent)) ||
+  changed(child.command, parent.command) ||
+  changed(child.entrypoint, parent.entrypoint) ||
+  (child.image !== undefined &&
+    (parent.image === undefined || !sameImageReference(parent.image, child.image)));
+
+/**
+ * The service-owned generated-listener association survives inheritance unless
+ * the child replaces the launcher whose owned configuration could serve the
+ * generated certificate.
+ */
+const mergeGeneratedCertificateEndpoint = (
+  parent: ServiceTypeResolution,
+  child: ServiceTypeResolution,
+): ServiceTypeResolution["generatedCertificateEndpoint"] => {
+  if (child.generatedCertificateEndpoint !== undefined) return child.generatedCertificateEndpoint;
+  return ownershipChanged(parent.normalizedConfig, child.normalizedConfig)
+    ? undefined
+    : parent.generatedCertificateEndpoint;
+};
+
 /**
  * Overlay a child resolution onto its parent: deep-merge normalized config,
  * merge features by id, merge logSources by id (child wins), child-wins for
@@ -106,6 +140,7 @@ export const mergeResolutionOverParent = (
     | Record<string, unknown>
     | undefined;
   const logSources = mergeLogSources(parent.logSources, child.logSources);
+  const generatedCertificateEndpoint = mergeGeneratedCertificateEndpoint(parent, child);
   const source = child.connection !== undefined || child.nonSqlCreds !== undefined ? child : parent;
   return {
     base: child.base,
@@ -116,6 +151,7 @@ export const mergeResolutionOverParent = (
     ...(logSources === undefined ? {} : { logSources }),
     ...(tooling === undefined ? {} : { tooling }),
     ...(metadata === undefined ? {} : { metadata }),
+    ...(generatedCertificateEndpoint === undefined ? {} : { generatedCertificateEndpoint }),
   };
 };
 

@@ -8,10 +8,8 @@ import { Effect } from "effect";
 import { recordEnvironment } from "../src/environment-dependencies.ts";
 import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
-import {
-  getLandofileEnvironmentDependencies,
-  rememberLandofileEnvironmentDependencies,
-} from "../src/load-expression-provenance.ts";
+import { authoredDocumentFrom } from "../src/provenance.ts";
+
 import { renderLandofileTemplate } from "../src/template-render.ts";
 
 const envContext = (env: Record<string, string>): TemplateRenderContext => ({
@@ -252,16 +250,18 @@ describe("raw env vs view separation", () => {
   });
 });
 
-describe("remembered deps stay provenance-only", () => {
-  test("getLandofileEnvironmentDependencies returns Names without values", () => {
-    const landofile = { name: "app" };
+describe("recorded deps stay provenance-only", () => {
+  test("the provenance record carries Names without values", () => {
     const recorder = recordEnvironment({ SECRET: "value" });
     expect(recorder.view.SECRET).toBe("value");
-    rememberLandofileEnvironmentDependencies(landofile, recorder.dependencies());
-    expect(getLandofileEnvironmentDependencies(landofile)).toEqual({
-      _tag: "Names",
-      names: ["SECRET"],
-    });
-    expect(JSON.stringify(getLandofileEnvironmentDependencies(landofile))).not.toContain("value");
+    const document = authoredDocumentFrom(
+      { name: "app" },
+      { file: "/app/.lando.yml", layer: "canonical", path: [] },
+    );
+    const dependencies = recorder.dependencies();
+    expect(dependencies).toEqual({ _tag: "Names", names: ["SECRET"] });
+    expect(JSON.stringify({ ...document.provenance, environmentDependencies: dependencies })).not.toContain(
+      "value",
+    );
   });
 });

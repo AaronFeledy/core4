@@ -115,7 +115,7 @@ const harnessAt = (
     destroy: (target: { readonly plan?: AppPlan }) =>
       Effect.sync(() => {
         if (target.plan !== undefined) destroyed.push(target.plan);
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
   };
   const layer = Layer.mergeAll(
@@ -238,7 +238,11 @@ for (const volumes of [false, true]) {
         }).pipe(Effect.provide(harness.layer)),
       );
       // Then only owned containers and requested app-scoped data are removed.
-      expect(receipt).toEqual({ changed: true, services: ["orphan"], volumesRemoved: volumes });
+      expect(receipt).toEqual({
+        changed: true,
+        services: ["orphan"],
+        volumesRemoved: { data: volumes ? 1 : 0, cache: 0 },
+      });
       expect(harness.removedServices).toEqual([owned]);
       expect(harness.removedVolumes).toEqual(volumes ? ["app"] : []);
       expect(harness.destroyed).toEqual([]);

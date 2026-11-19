@@ -216,6 +216,7 @@ const makeRegisteredRedactor = (
     toJSON: () => REDACTED,
     toString: () => REDACTED,
     redactString: (value) => current().redactString(value),
+    redactPrefix: (value) => current().redactPrefix(value),
     redactStringBounded: (value, maxBytes) => current().redactStringBounded?.(value, maxBytes),
     redactValue: (value) => current().redactValue(value),
   };

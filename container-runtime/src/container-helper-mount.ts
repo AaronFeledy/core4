@@ -2,7 +2,11 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { type AppPlan, PortablePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { containerHelperDelivery } from "./container-helper.ts";
+import {
+  CONTAINER_HELPER_COMMAND_TARGETS,
+  containerHelperCommandMounts,
+  containerHelperDelivery,
+} from "./container-helper.ts";
 import type { ExecSupervisionOptions } from "./exec-supervision.ts";
 
 export const prepareContainerHelperMounts = Effect.fn("RuntimeProvider.prepareContainerHelperMounts")(
@@ -31,6 +35,14 @@ export const prepareContainerHelperMounts = Effect.fn("RuntimeProvider.prepareCo
       mapFailures((cause) => failure(cause.message, cause.remediation, cause)),
     );
     const delivery = containerHelperDelivery(helper);
+    const commandMounts = containerHelperCommandMounts(helper).map((mount) => ({
+      type: "bind" as const,
+      origin: "integration" as const,
+      source: mount.source,
+      target: PortablePath.make(mount.target),
+      readOnly: true,
+      realization: "passthrough" as const,
+    }));
     const services: AppPlan["services"] = Object.fromEntries(
       Object.entries(plan.services).map(([name, service]) => [
         name,
@@ -46,18 +58,21 @@ export const prepareContainerHelperMounts = Effect.fn("RuntimeProvider.prepareCo
               readOnly: true,
               realization: "passthrough" as const,
             },
+            ...commandMounts,
           ],
         },
       ]),
     );
     for (const service of Object.values(plan.services)) {
-      if (service.mounts.some((mount) => mount.target === delivery.target))
-        return yield* Effect.fail(
-          failure(
-            `Service ${service.name} mounts the reserved helper target ${delivery.target}.`,
-            `Remove the authored mount at ${delivery.target} and retry lando start.`,
-          ),
-        );
+      for (const target of [delivery.target, ...CONTAINER_HELPER_COMMAND_TARGETS]) {
+        if (service.mounts.some((mount) => mount.target === target))
+          return yield* Effect.fail(
+            failure(
+              `Service ${service.name} mounts the reserved helper target ${target}.`,
+              `Remove the authored mount at ${target} and retry lando start.`,
+            ),
+          );
+      }
     }
     return { ...plan, services };
   },

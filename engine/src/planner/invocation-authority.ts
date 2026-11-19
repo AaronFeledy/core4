@@ -5,6 +5,7 @@ import {
   compileInvocationSites,
   compiledValueError,
 } from "@lando/landofile/compiled-sites";
+import { provenanceOf } from "@lando/landofile/provenance";
 import type {
   AppPlan,
   EventsPlan,
@@ -101,7 +102,14 @@ export const invocationToolingForPlan = Effect.fnUntraced(function* (
   defaultDomain: string,
 ) {
   const landofile = compiled.document;
-  const resolution = resolveEffectiveTooling({ landofile, services: [] });
+  const resolution = resolveEffectiveTooling({
+    landofile,
+    provenance: provenanceOf(compiled),
+    services: Object.values(plan.services).map((service) => ({
+      name: service.name,
+      metadata: service.provenance,
+    })),
+  });
   const authored = resolution.tasks;
   const authoredSource = toolingSourceResolverForResolution(resolution, plan.metadata.source);
   const planSource = toolingSourceResolverForPlan(plan);

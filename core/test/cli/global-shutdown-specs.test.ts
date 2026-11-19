@@ -43,7 +43,11 @@ for (const spec of [metaGlobalStopSpec, metaGlobalDestroySpec]) {
       ];
       const harness = await globalTeardownHarness(root, {
         plan: globalPlanAt(AbsolutePath.make(join(root, "global"))),
-        destroyOutcome: { kind: "destroyed", shutdownObservations: observations },
+        destroyOutcome: {
+          kind: "destroyed",
+          volumesRemoved: { data: 0, cache: 0 },
+          shutdownObservations: observations,
+        },
       });
       const io = createBufferedRendererIO();
       const codes: number[] = [];

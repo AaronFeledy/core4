@@ -1,4 +1,10 @@
-import type { ServiceShutdownObservation } from "@lando/sdk/schema";
+import {
+  type ServiceShutdownObservation,
+  type VolumeRemovalCounts,
+  addVolumeRemovalCounts,
+  noVolumesRemoved,
+  volumesRemovedAny,
+} from "@lando/sdk/schema";
 import { Effect } from "effect";
 import type { GlobalTeardown } from "./global-teardown.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
@@ -8,7 +14,7 @@ import { withShutdownObservations } from "./shutdown-observations.ts";
 type GlobalResourceReceipt = {
   readonly changed: boolean;
   readonly services: ReadonlyArray<string>;
-  readonly volumesRemoved: boolean;
+  readonly volumesRemoved: VolumeRemovalCounts;
   readonly shutdownObservations?: readonly ServiceShutdownObservation[];
 };
 
@@ -29,7 +35,7 @@ export const removeGlobalResources = Effect.fn("GlobalApp.removeResources")(func
         switch (destroyed.kind) {
           case "no-op":
             return withShutdownObservations(
-              { changed: false, services: [] as string[], volumesRemoved: false },
+              { changed: false, services: [] as string[], volumesRemoved: { ...noVolumesRemoved } },
               destroyed.shutdownObservations,
             );
           case "destroyed":
@@ -39,7 +45,7 @@ export const removeGlobalResources = Effect.fn("GlobalApp.removeResources")(func
                 services: Object.values(plan.services)
                   .reverse()
                   .map((service) => String(service.name)),
-                volumesRemoved: options.volumes,
+                volumesRemoved: destroyed.volumesRemoved,
               },
               destroyed.shutdownObservations,
             );
@@ -56,7 +62,10 @@ export const removeGlobalResources = Effect.fn("GlobalApp.removeResources")(func
         });
         return withShutdownObservations(
           {
-            changed: removed.services.length > 0 || removed.volumesRemoved || removed.ownedChanged,
+            changed:
+              removed.services.length > 0 ||
+              volumesRemovedAny(removed.volumesRemoved) ||
+              removed.ownedChanged,
             services: removed.services,
             volumesRemoved: removed.volumesRemoved,
           },
@@ -65,7 +74,7 @@ export const removeGlobalResources = Effect.fn("GlobalApp.removeResources")(func
       }
       case "owned":
       case "absent":
-        return { changed: false, services: [], volumesRemoved: false };
+        return { changed: false, services: [], volumesRemoved: { ...noVolumesRemoved } };
       default:
         return resolved.evidence satisfies never;
     }
@@ -76,7 +85,7 @@ export const removeGlobalResources = Effect.fn("GlobalApp.removeResources")(func
     {
       changed: result.changed || ownedCleanupChanged(removed),
       services: [...new Set([...result.services, ...removed.servicesRemoved])],
-      volumesRemoved: result.volumesRemoved || removed.volumesRemoved > 0,
+      volumesRemoved: addVolumeRemovalCounts(result.volumesRemoved, removed.volumesRemoved),
     },
     result.shutdownObservations,
   );

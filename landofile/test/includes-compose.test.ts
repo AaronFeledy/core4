@@ -6,7 +6,7 @@ import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors"
 import { composeServiceDispositions } from "@lando/sdk/landofile";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { resolveAuthoredIncludes as resolveLandofileIncludesPackage } from "./include-pipeline.ts";
+import { resolveAuthoredDocument as resolveLandofileIncludesPackage } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const resolveLandofileIncludes = (options: Parameters<typeof resolveLandofileIncludesPackage>[0]) =>

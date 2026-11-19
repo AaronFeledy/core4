@@ -5,7 +5,11 @@ import { shutdownServiceRows } from "./shutdown-summary";
 
 const destroyLine = (result: DestroyAppResult): string => {
   if (result.outcome === "unchanged") return unchangedLine(result.app);
-  const trailer = volumesTrailer(result.volumesRemoved, result.snapshotsRemoved);
+  const trailer = volumesTrailer(
+    result.dataVolumesRemoved,
+    result.cacheVolumesRemoved,
+    result.snapshotsRemoved,
+  );
   if (result.servicesDestroyed.length === 0 && result.snapshotsRemoved > 0)
     return `destroyed: ${result.app} (${trailer})`;
   return teardownLine(

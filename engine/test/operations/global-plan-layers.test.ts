@@ -2,9 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
-import { getSourceDocuments } from "@lando/landofile/pipeline/source-table";
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId, PluginManifest, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
@@ -24,6 +22,7 @@ import {
 } from "../../src/operations/global-plan.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { appRootOf, documentsOf } from "../provenance-support.ts";
 
 const withGlobalFiles = async <A>(
   use: (fixture: {
@@ -377,7 +376,7 @@ for (const form of [".lando.local.ts", ".lando.ts"]) {
         "typescript",
       );
       expect(result.landofile.context.appRoot).toBe(AbsolutePath.make(root));
-      expect(getLandofileAppRoot(result.landofile)).toBe(root);
+      expect(appRootOf(result.landofile)).toBe(root);
       expect(result.plan.root).toBe(AbsolutePath.make(root));
     });
   });
@@ -725,7 +724,7 @@ test("the composed reader preserves exact deferred dependency sites for the plan
       dependencyEvidence: "unavailable",
       reasons: ["dependency-pending"],
     });
-    const sources = getSourceDocuments(loaded.landofile.document);
+    const sources = documentsOf(loaded.landofile);
     expect(sources.map((source) => source.file)).toContain(join(root, ".lando.yml"));
     expect(sources.find((source) => source.file === join(root, ".lando.yml"))?.content).toContain("app.name");
   });

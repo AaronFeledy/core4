@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -8,13 +8,13 @@ import { sha256Hex } from "@lando/sdk/digest";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { ContainerHelperAssets, PathsService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
-
 import {
   type EmbeddedHelperFile,
   extractEmbeddedContainerHelper,
   layerWith,
   resolveContainerHelper,
 } from "../../src/container-helper/assets.ts";
+import { CONTAINER_HELPER_COMMANDS, containerHelperCommandShim } from "../../src/container-helper.ts";
 
 const target = { os: "linux", arch: "x64" } as const;
 const tempDirs: string[] = [];
@@ -131,6 +131,68 @@ describe("resolveContainerHelper", () => {
     );
     expect(new TextDecoder().decode(await readFile(resolved.path))).toBe("static-helper");
     expect((await stat(resolved.path)).mode & 0o777).toBe(0o755);
+  });
+
+  test("publishes an immutable shim and the current engine link beside the digest directories", async () => {
+    const cacheRoot = await tempRoot();
+    const firstBytes = new TextEncoder().encode("first-helper");
+    const secondBytes = new TextEncoder().encode("second-helper");
+    const resolve = (bytes: Uint8Array) =>
+      Effect.runPromise(
+        resolveContainerHelper(target, {
+          env: {},
+          standalone: true,
+          cacheRoot,
+          embeddedFiles: [embedded(`lando-container-helper-linux-x64-${sha256Hex(bytes)}.gz`, bytes)],
+        }),
+      );
+    await resolve(firstBytes);
+    const arch = join(cacheRoot, "linux-x64");
+    for (const name of CONTAINER_HELPER_COMMANDS) {
+      const shim = join(arch, "shims", name);
+      expect(await readFile(shim, "utf8")).toBe(containerHelperCommandShim(name));
+      expect((await stat(shim)).mode & 0o777).toBe(0o755);
+      expect(sha256Hex(await readFile(join(arch, "engines", name)))).toBe(sha256Hex(firstBytes));
+    }
+    const shimBefore = (await stat(join(arch, "shims", CONTAINER_HELPER_COMMANDS[0]))).mtimeMs;
+    await resolve(secondBytes);
+    for (const name of CONTAINER_HELPER_COMMANDS) {
+      expect(sha256Hex(await readFile(join(arch, "engines", name)))).toBe(sha256Hex(secondBytes));
+    }
+    // The shim is immutable content at a stable path, so a new digest never rewrites it.
+    expect((await stat(join(arch, "shims", CONTAINER_HELPER_COMMANDS[0]))).mtimeMs).toBe(shimBefore);
+    expect((await readdir(join(arch, "shims"))).filter((name) => name.includes(".lando-stage"))).toEqual([]);
+    expect((await readdir(join(arch, "engines"))).filter((name) => name.includes(".lando-stage"))).toEqual(
+      [],
+    );
+  });
+
+  test("concurrent installs of different digests leave one complete engine and one shim", async () => {
+    const cacheRoot = await tempRoot();
+    const first = new TextEncoder().encode("concurrent-helper-a");
+    const second = new TextEncoder().encode("concurrent-helper-b");
+    const resolve = (bytes: Uint8Array) =>
+      Effect.runPromise(
+        resolveContainerHelper(target, {
+          env: {},
+          standalone: true,
+          cacheRoot,
+          embeddedFiles: [embedded(`lando-container-helper-linux-x64-${sha256Hex(bytes)}.gz`, bytes)],
+        }),
+      );
+    await Promise.all(Array.from({ length: 12 }, (_, index) => resolve(index % 2 === 0 ? first : second)));
+    const arch = join(cacheRoot, "linux-x64");
+    for (const name of CONTAINER_HELPER_COMMANDS) {
+      expect([sha256Hex(first), sha256Hex(second)]).toContain(
+        sha256Hex(await readFile(join(arch, "engines", name))),
+      );
+      expect(new TextDecoder().decode(await readFile(join(arch, "shims", name)))).toBe(
+        containerHelperCommandShim(name),
+      );
+    }
+    expect((await readdir(join(arch, "engines"))).filter((name) => name.includes(".lando-stage"))).toEqual(
+      [],
+    );
   });
 });
 

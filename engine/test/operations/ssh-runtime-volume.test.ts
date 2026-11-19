@@ -18,6 +18,7 @@ import { TestClock } from "effect/testing";
 import { resolveSshAgentUpstream, withStartedSshAgent } from "../../src/operations/start-ssh-agent.ts";
 import { startSshSidecar } from "../../src/operations/start-ssh-sidecar.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
+import { globalPlanAt } from "../../src/testing/global-teardown.ts";
 
 const metadata = { resolvedAt: "2026-01-01T00:00:00Z", source: "test", runtime: 4 };
 const plan = Schema.decodeUnknownSync(AppPlan)({
@@ -75,22 +76,29 @@ const ssh = {
   getAgentSocket: (appId: AppId) =>
     Effect.succeed({ appId, socketPath: "/missing-host-agent.sock", runtimeVolume: "plugin-owned-agent" }),
 };
-const registry = (state: "running" | "exited", selected: string[]) => ({
+const appliedGlobal = globalPlanAt(AbsolutePath.make("/global"), {
+  kind: "command",
+  command: ["check-agent"],
+  timeoutSeconds: 5,
+  intervalSeconds: 1,
+  retries: 1,
+});
+const registry = (state: "running" | "exited", selected: string[], providerId = appliedGlobal.provider) => ({
   appliedPlansFor: () => Effect.succeed([]),
-  resolveAppliedPlan: () => Effect.succeed(undefined),
+  resolveAppliedPlan: () => Effect.succeed({ ...appliedGlobal, provider: providerId }),
   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-  list: Effect.succeed([ProviderId.make("lando")]),
+  list: Effect.succeed([providerId]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
   select: (selectedPlan?: AppPlan | ProviderId) => {
     selected.push(String(typeof selectedPlan === "string" ? selectedPlan : selectedPlan?.provider));
     return Effect.succeed({
       ...TestRuntimeProvider,
-      id: ProviderId.make("lando"),
+      id: providerId,
       inspect: () =>
         Effect.succeed({
           app: AppId.make("global"),
           service: ServiceName.make("ssh-agent"),
-          providerId: ProviderId.make("lando"),
+          providerId,
           status: state,
           publications: { status: "unknown" as const },
         }),
@@ -112,7 +120,10 @@ test("Docker app uses the runtime volume when the global app is realized on Dock
         ...globalApp,
         providerId: Effect.succeed(ProviderId.make("docker")),
       }),
-      Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        registry("running", selected, ProviderId.make("docker")),
+      ),
       Effect.provide(LandoEventService.layer),
     ),
   );
@@ -475,7 +486,7 @@ test.each([false, true])(
       expect(result.failure.message).toContain("denied [redacted]");
       if (!setupFails) {
         expect(result.failure).toMatchObject({
-          detail: "SSH readiness shell probe exited with code 2. exec denied [redacted]",
+          detail: "SSH readiness command exited with code 2. exec denied [redacted]",
         });
         expect(result.failure.message).toContain("30 seconds. Last probe failure:");
       }

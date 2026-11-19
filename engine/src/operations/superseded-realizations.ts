@@ -1,6 +1,13 @@
 import { AppResolveError, FileSyncStartError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import { type AppPlan, type ServiceShutdownObservation, planDataId } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type ServiceShutdownObservation,
+  type VolumeRemovalCounts,
+  addVolumeRemovalCounts,
+  noVolumesRemoved,
+  planDataId,
+} from "@lando/sdk/schema";
 import {
   EventService,
   FileSyncEngine,
@@ -26,7 +33,7 @@ import { withShutdownObservations } from "./shutdown-observations.ts";
 export type RetirementReceipt = {
   readonly appIds: readonly string[];
   readonly servicesRemoved: readonly string[];
-  readonly volumesRemoved: boolean;
+  readonly volumesRemoved: VolumeRemovalCounts;
   readonly shutdownObservations?: readonly ServiceShutdownObservation[];
 };
 
@@ -109,7 +116,7 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
     return Effect.gen(function* () {
       yield* guard.ensureConsistent(String(target.root));
       const servicesRemoved = new Set<string>();
-      let volumesRemoved = false;
+      let volumesRemoved: VolumeRemovalCounts = { ...noVolumesRemoved };
       const observations: Array<readonly ServiceShutdownObservation[] | undefined> = [];
       for (const { old, app, disposal } of prepared) {
         yield* withPlanVolumeCoordination({
@@ -134,7 +141,7 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
               case "destroyed":
                 for (const service of Object.values(old.services).reverse())
                   servicesRemoved.add(service.name);
-                volumesRemoved ||= execution.volumes === true || execution.purgeCaches === true;
+                volumesRemoved = addVolumeRemovalCounts(volumesRemoved, outcome.volumesRemoved);
                 break;
               case "no-op":
                 break;
@@ -154,7 +161,7 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
               MessageWarnEvent.make({
                 body:
                   execution.narration === "teardown"
-                    ? `Retired ${old.name}: ${outcome.kind === "destroyed" ? "removed its containers and networks" : "no runtime resources remained"}; ${outcome.kind === "destroyed" && execution.volumes === true ? "removed its named data volumes" : "kept its named data volumes"}${outcome.kind === "destroyed" && execution.purgeCaches === true ? " and removed its cache volumes" : ""}.`
+                    ? `Retired ${old.name}: ${outcome.kind === "destroyed" ? "removed its containers and networks" : "no runtime resources remained"}; ${outcome.kind === "destroyed" && outcome.volumesRemoved.data > 0 ? "removed its named data volumes" : "kept its named data volumes"}${outcome.kind === "destroyed" && outcome.volumesRemoved.cache > 0 ? " and removed its cache volumes" : ""}.`
                     : carriesData
                       ? `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name}. Its data carries over to ${target.plan.name}.`
                       : `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name} and kept its named volumes: ${retained.length === 0 ? "none" : retained.join(", ")}.`,

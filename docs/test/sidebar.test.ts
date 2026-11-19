@@ -14,6 +14,7 @@ const RECIPE_IDS = [
   "django",
   "drupal",
   "drupal-cms",
+  "drupal-contrib",
   "eleventy",
   "fastapi",
   "hugo",
@@ -124,6 +125,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/tutorial/from-lando-3");
     expect(slugs).toContain("guides/node-postgres");
     expect(slugs).toContain("guides/cli/everyday-commands");
+    expect(slugs).toContain("guides/services/file-ownership");
     expect(slugs).toContain("guides/cli/cache-refresh");
     expect(slugs).toContain("guides/cli/verbosity-and-debug");
     expect(slugs).toContain("guides/scratch/scratch-from-recipe");
@@ -156,7 +158,9 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/recipes/wordpress-workflow");
     expect(slugs).toContain("guides/recipes/drupal-workflow");
     expect(slugs).toContain("guides/recipes/drupal-cms-workflow");
+    expect(slugs).toContain("guides/recipes/drupal-contrib-workflow");
     expect(slugs).toContain("guides/recipes/joomla-workflow");
+    expect(slugs).toContain("guides/recipes/craft-workflow");
     expect(slugs).toContain("guides/recipes/typo3-workflow");
     expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");
     expect(slugs).toContain("guides/recipes/authoring-fetch-allowlist");

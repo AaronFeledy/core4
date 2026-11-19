@@ -18,6 +18,12 @@ import {
 } from "./ephemeral-data-helpers.ts";
 import { ensureEphemeral2xx, runtimeRemediation } from "./ephemeral-http-failure.ts";
 import { type PinnedHelperImage, dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
+import {
+  type HelperReclaimOptions,
+  helperOwnerIdentityFor,
+  registerActiveHelper,
+  releaseActiveHelper,
+} from "./helper-owner.ts";
 import type { PulledImage } from "./image-pull.ts";
 import {
   APP_LABEL,
@@ -154,6 +160,8 @@ export interface ProviderDataPlaneOptions {
     plan: AppPlan,
     store: AppPlan["stores"][number],
   ) => Readonly<Record<string, string>>;
+  /** Test seam for the creator identity and owner-liveness probe. */
+  readonly helperReclaim?: HelperReclaimOptions;
 }
 
 const textDecoder = new TextDecoder();
@@ -624,6 +632,7 @@ const ensureStaleHelperSweep = (options: ProviderDataPlaneOptions): Effect.Effec
     return sweepStaleDataHelpers(options.api.request, {
       providerId: options.providerId,
       redactor: options.redactor,
+      ...(options.helperReclaim === undefined ? {} : { helperReclaim: options.helperReclaim }),
     });
   });
 
@@ -646,6 +655,10 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
     yield* requireBorrowableMounts(options.providerId, inspected.body);
   }
   const name = ephemeralContainerName(options.providerId);
+  // A failed create leaves nothing live under this name, whatever its cleanup does.
+  const forget = Effect.sync(() => releaseActiveHelper(name));
+  const compensate = (cause: Cause.Cause<ProviderError>) =>
+    forget.pipe(Effect.andThen(compensateFailedCreate(options, spec, name, cause)));
   const mount = spec.mounts?.[0];
   const binds = (spec.mounts ?? []).flatMap((mount) =>
     mount.subpath !== undefined || requiresLongMountSyntax(mount.target)
@@ -675,6 +688,10 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
   ];
   const attachStdin = spec.stdinStream !== undefined;
   yield* ensureStaleHelperSweep(options);
+  // Stamp the creating process before the POST so cleanup can prove when it exits, and mark
+  // the name live first so a concurrent sweep in this process never takes a helper mid-create.
+  const owner = yield* helperOwnerIdentityFor(options.helperReclaim);
+  registerActiveHelper(name);
   const response = yield* request(options, "run.create", {
     method: "POST",
     path: `/containers/create?name=${encodeURIComponent(name)}`,
@@ -683,6 +700,8 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
       Cmd: spec.command,
       Labels: ephemeralDataHelperLabels({
         providerId: options.providerId,
+        remove: spec.remove !== false,
+        ...(owner === undefined ? {} : { owner }),
         ...(spec.owner === undefined ? {} : { app: String(spec.owner.app) }),
         ...(spec.owner?.plan?.identity === undefined ? {} : { appRoot: spec.owner.plan.identity.appRoot }),
         ...(mount === undefined ? {} : { store: mount.store }),
@@ -693,6 +712,7 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
             ...(spec.user === undefined ? {} : { User: spec.user }),
             ...(spec.entrypoint === undefined ? {} : { Entrypoint: spec.entrypoint }),
             HostConfig: {
+              ...(spec.usernsMode === undefined ? {} : { UsernsMode: spec.usernsMode }),
               Binds: binds,
               ...(mounts.length === 0 ? {} : { Mounts: mounts }),
               ...(source === undefined
@@ -715,8 +735,12 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
       AttachStdout: spec.captureStdout === true,
       AttachStderr: true,
     },
-  });
-  yield* ensureEphemeral2xx(options, spec, { operation: "run.create", response });
+  }).pipe(Effect.catchCause(compensate));
+  const accepted = ensureEphemeral2xx(options, spec, { operation: "run.create", response });
+  // 409: another container already holds this name, so it is not ours to remove.
+  yield* response.status === 409
+    ? accepted.pipe(Effect.onError(() => forget))
+    : accepted.pipe(Effect.catchCause(compensate));
   return name;
 });
 
@@ -746,7 +770,7 @@ const ephemeralCompletionFailure = (
       providerId: options.providerId,
       operation,
       message: `Lando's helper command exited with status ${outcome.exitCode}, and Lando couldn't remove its helper container.`,
-      remediation: `Check the helper's error output in \`stderrTail\` for why it failed. ${leftoverHelperRemediation(options.redactor)}`,
+      remediation: `Check the helper's error output in \`stderrTail\` for why it failed. ${leftoverHelperRemediation(options.redactor, true)}`,
       details:
         stderrTail === undefined
           ? { exitCode: outcome.exitCode }
@@ -780,14 +804,18 @@ interface EphemeralRelease {
 /** Fixed bound so a hung engine DELETE cannot hold scope close open. */
 const EPHEMERAL_CLEANUP_DEADLINE = Duration.seconds(10);
 
-const releaseEphemeralContainer = (release: EphemeralRelease) => {
-  const { options, name, remove, exit, operation, observed } = release;
-  if (!remove) return Effect.void;
-  const cleanupRemediation = leftoverHelperRemediation(options.redactor);
-  // Finalizers are uninterruptible. The removal stays interruptible so this
-  // deadline can stop it; the finalizer stays masked so parent cancellation
-  // still waits for that bounded attempt instead of abandoning cleanup.
-  const removal = Effect.interruptible(
+const boundedEphemeralRemoval = (
+  options: ProviderDataPlaneOptions,
+  name: string,
+  operation: string,
+  cleanupRemediation: string,
+) =>
+  // Finalizers and masked acquire are uninterruptible. The removal stays
+  // interruptible so this deadline can stop it; the caller stays masked so
+  // parent cancellation waits for that bounded attempt instead of abandoning it.
+  // The timeout runs the removal in its own fiber, so an interrupt already
+  // pending on the caller does not cancel it before the DELETE is sent.
+  Effect.interruptible(
     removeRuntimeContainer(
       {
         request: (input) =>
@@ -821,7 +849,37 @@ const releaseEphemeralContainer = (release: EphemeralRelease) => {
     }),
     redactFailures(options.redactor),
   );
-  return removal.pipe(
+
+const compensateFailedCreate = (
+  options: ProviderDataPlaneOptions,
+  spec: EphemeralRunSpec,
+  name: string,
+  cause: Cause.Cause<ProviderError>,
+): Effect.Effect<never, ProviderError> => {
+  if (spec.remove === false) return Effect.failCause(cause);
+  return boundedEphemeralRemoval(
+    options,
+    name,
+    "run.create",
+    leftoverHelperRemediation(options.redactor, false),
+  ).pipe(
+    Effect.matchCauseEffect({
+      onSuccess: () => Effect.failCause(cause),
+      onFailure: (cleanup) => Effect.failCause(mergeFailure(cause, cleanup, "cleanup")),
+    }),
+  );
+};
+
+const releaseEphemeralContainer = (release: EphemeralRelease) => {
+  const { options, name, remove, exit, operation, observed } = release;
+  releaseActiveHelper(name);
+  if (!remove) return Effect.void;
+  return boundedEphemeralRemoval(
+    options,
+    name,
+    operation,
+    leftoverHelperRemediation(options.redactor, Exit.isSuccess(exit)),
+  ).pipe(
     Effect.asVoid,
     Effect.catchCause((cause) => {
       const failedCommand = completedCommandFailure(exit, observed);
@@ -1910,6 +1968,7 @@ export const makeProviderDataPlane = (input: ProviderDataPlaneOptions) => {
               providerId: options.providerId,
               holders,
               redactor: options.redactor,
+              ...(options.helperReclaim === undefined ? {} : { helperReclaim: options.helperReclaim }),
             });
             if (recovered) {
               return yield* deleteVolume.pipe(

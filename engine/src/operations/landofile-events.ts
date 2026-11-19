@@ -36,7 +36,7 @@ const errorText = (error: unknown): string =>
   (error instanceof Error ? error.message : String(error)).replace(/\.$/u, "");
 
 /** Whether the applied root itself holds a Landofile; a Landofile in a parent folder is another app's. */
-const landofilePresentAt = (root: string): Effect.Effect<Result.Result<boolean, string>> =>
+export const landofilePresentAt = (root: string): Effect.Effect<Result.Result<boolean, string>> =>
   presentLandofileLayers(root).pipe(
     mapFailures(errorText),
     Effect.map((layers) => representativeLandofileLayer(layers) !== undefined),

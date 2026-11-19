@@ -94,6 +94,6 @@ test("destroy inventory cleanup removes an old-named owned container after label
   expect(result).toEqual({
     servicesRemoved: [service],
     networksRemoved: 0,
-    volumesRemoved: 0,
+    volumesRemoved: { data: 0, cache: 0 },
   });
 });

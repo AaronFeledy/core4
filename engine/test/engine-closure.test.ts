@@ -44,7 +44,7 @@ const coreRuntimeAllowlist = new Set([
   "landofile/index.ts",
   "lifecycle/index.ts",
   "plugins/generated",
-  "runtime/generated",
+  "runtime/layers",
   "runtime/bundled-plugins.ts",
   "runtime/engine-composition.ts",
   // The host's cwd, env, IO, and runtime substitutions for one invocation, shared by the CLI and App API.

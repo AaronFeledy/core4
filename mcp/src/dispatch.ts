@@ -17,6 +17,7 @@ import { RedactionService } from "@lando/redaction/service";
 import {
   type CommandResultOutcome,
   buildCommandResultEnvelope,
+  commandResultEnvelopePolicy,
   failureOutcomeFromCause,
   normalizeDefect,
 } from "@lando/sdk/command-result";
@@ -46,6 +47,12 @@ export interface McpDispatchResult {
   readonly envelope: import("effect").Schema.Json;
   /** `true` when the dispatched command succeeded (`envelope.ok === true`). */
   readonly ok: boolean;
+  /**
+   * The bounded canonical JSON of `envelope`, serialized with the result
+   * schema's policy. Surfaces reuse it instead of re-serializing without the
+   * policy, which would re-classify exempt schema literals as secrets.
+   */
+  readonly text: string;
 }
 
 export interface McpProgressFrame {
@@ -198,7 +205,8 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
       capture: deps.capture ?? new OutputCapture(),
     });
     yield* emitPost("failure", envelopeTag(envelope));
-    return { envelope, ok: false };
+    const text = yield* stringifyBoundedJson(envelope, "MCP tool result");
+    return { envelope, ok: false, text };
   });
 
   const runSelected = Effect.fnUntraced(function* (
@@ -246,7 +254,13 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
       outcome,
       redactor,
     });
-    const safeEnvelope = yield* redactBoundedJsonValue(encodedEnvelope, redactor, "MCP tool result");
+    const resultPolicy = commandResultEnvelopePolicy(entry.spec.resultSchema);
+    const safeEnvelope = yield* redactBoundedJsonValue(
+      encodedEnvelope,
+      redactor,
+      "MCP tool result",
+      resultPolicy,
+    );
     if (!Predicate.isObject(safeEnvelope))
       return yield* Effect.fail(
         new McpTransportError({
@@ -264,7 +278,10 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
               remediation: "Return schema-valid bounded command data.",
             }),
     });
-    const text = yield* stringifyBoundedJson(withOutput, "MCP tool result");
+    // The final serialization must see the same schema policy as the redaction
+    // pass: without it the secret-named-field rule masks a `SecretRef`, a typed
+    // number, or a schema literal that the envelope deliberately kept.
+    const text = yield* stringifyBoundedJson(withOutput, "MCP tool result", redactor, resultPolicy);
     const envelope: Schema.Json = JSON.parse(text);
     const ok = Predicate.isObject(envelope) && envelope.ok === true;
     yield* stringifyBoundedJson(
@@ -274,7 +291,7 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
 
     yield* emitPost(ok ? "success" : "failure", ok ? undefined : envelopeTag(envelope));
 
-    return { envelope, ok };
+    return { envelope, ok, text };
   });
 
   const run: Effect.Effect<McpDispatchResult, McpDispatchError> = Effect.gen(function* () {

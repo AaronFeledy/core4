@@ -1,7 +1,14 @@
 import type { Dirent } from "node:fs";
 import { access, readFile, readdir, realpath } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { APP_LABEL, PROVIDER_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
+import {
+  APP_LABEL,
+  APP_ROOT_LABEL,
+  PROVIDER_LABEL,
+  SCRATCH_LABEL,
+  SERVICE_LABEL,
+  VOLUME_OWNER_LABEL,
+} from "@lando/container-runtime/labels";
 
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { makeLandoPaths } from "@lando/paths";
@@ -29,11 +36,17 @@ export interface AppsListEntry {
   readonly scratch?: boolean;
 }
 
+/** One labeled runtime resource whose app the provider still owns. A missing root blocks by id. */
+export interface OwnedAppResource {
+  readonly appId: string;
+  readonly appRoot?: string;
+}
+
 export interface AppsDiscoveryEvidence {
   readonly apps: ReadonlyArray<AppsListEntry>;
   readonly providerConfirmed: boolean;
   readonly confirmedProviderIds: ReadonlyArray<string>;
-  readonly ownedAppIds: ReadonlyArray<string>;
+  readonly ownedResources: ReadonlyArray<OwnedAppResource>;
   readonly idleProviderIds?: ReadonlyArray<string>;
 }
 
@@ -76,31 +89,45 @@ const preferRoot = (left: string, right: string): string => {
   return left;
 };
 
+const entryKind = (entry: Pick<AppsListEntry, "appId" | "scratch">): "global" | "scratch" | "user" =>
+  entry.appId === GLOBAL_APP_ID ? "global" : entry.scratch === true ? "scratch" : "user";
+
+export const appsListIdentity = (
+  entry: Pick<AppsListEntry, "providerId" | "appRoot" | "appId" | "scratch">,
+): string => `${entry.providerId}\0${entry.appRoot}\0${entryKind(entry)}\0${entry.appId}`;
+
+const mergeEntries = (existing: AppsListEntry, entry: AppsListEntry): AppsListEntry => ({
+  appId: existing.appId,
+  appName: preferName(existing.appName, entry.appName, entry.appId),
+  providerId: preferProviderId(existing.providerId, entry.providerId),
+  appRoot: preferRoot(existing.appRoot, entry.appRoot),
+  services: uniqueSorted([...existing.services, ...entry.services]),
+  ...(existing.scratch === true || entry.scratch === true ? { scratch: true } : {}),
+});
+
 export const mergeAppsListEntries = (entries: ReadonlyArray<AppsListEntry>): AppsListEntry[] => {
-  const byId = new Map<string, AppsListEntry>();
+  const byIdentity = new Map<string, AppsListEntry>();
   for (const entry of entries) {
-    const existing = byId.get(entry.appId);
-    if (existing === undefined) {
-      byId.set(entry.appId, entry);
-      continue;
-    }
-    byId.set(entry.appId, {
-      appId: entry.appId,
-      appName: preferName(existing.appName, entry.appName, entry.appId),
-      providerId: preferProviderId(existing.providerId, entry.providerId),
-      appRoot: preferRoot(existing.appRoot, entry.appRoot),
-      services: uniqueSorted([...existing.services, ...entry.services]),
-      ...(existing.scratch === true || entry.scratch === true ? { scratch: true } : {}),
-    });
+    const key = appsListIdentity(entry);
+    const existing = byIdentity.get(key);
+    byIdentity.set(key, existing === undefined ? entry : mergeEntries(existing, entry));
   }
-  const merged = [...byId.values()];
-  return merged.filter((entry) => {
-    if (entry.providerId !== "cache" || entry.appRoot === "") return true;
-    return !merged.some(
-      (other) =>
-        other.appId !== entry.appId && other.providerId !== "cache" && other.appRoot === entry.appRoot,
+  // A cache-provider row never names the runtime that owns a root: when a non-cache row has the
+  // same app identity, keep that row and fold the cache services into it.
+  const cacheRows = [...byIdentity.entries()].filter(([, entry]) => entry.providerId === "cache");
+  for (const [key, entry] of cacheRows) {
+    const owner = [...byIdentity.entries()].find(
+      ([, other]) =>
+        other.providerId !== "cache" &&
+        other.appId === entry.appId &&
+        other.appRoot === entry.appRoot &&
+        entryKind(other) === entryKind(entry),
     );
-  });
+    if (owner === undefined) continue;
+    byIdentity.set(owner[0], mergeEntries(owner[1], entry));
+    byIdentity.delete(key);
+  }
+  return [...byIdentity.values()];
 };
 
 const planLikeToEntry = (value: unknown, fallbackProvider: string): AppsListEntry | undefined => {
@@ -245,10 +272,14 @@ const stringLabels = (value: unknown): Record<string, string> => {
 
 const labeledResourceEvidence = (
   resources: unknown,
+  rootLabel: typeof APP_ROOT_LABEL | typeof VOLUME_OWNER_LABEL,
   includeScratch = false,
-): { readonly appIds: ReadonlyArray<string>; readonly providerIds: ReadonlyArray<string> } => {
-  if (!Array.isArray(resources)) return { appIds: [], providerIds: [] };
-  const appIds: string[] = [];
+): {
+  readonly ownedResources: ReadonlyArray<OwnedAppResource>;
+  readonly providerIds: ReadonlyArray<string>;
+} => {
+  if (!Array.isArray(resources)) return { ownedResources: [], providerIds: [] };
+  const owned = new Map<string, OwnedAppResource>();
   const providerIds: string[] = [];
   for (const resource of resources) {
     if (!Predicate.isObject(resource)) continue;
@@ -256,11 +287,13 @@ const labeledResourceEvidence = (
     const appId = labels[APP_LABEL];
     if (appId === undefined || appId === "" || (!includeScratch && labels[SCRATCH_LABEL] === "TRUE"))
       continue;
-    appIds.push(appId);
+    const appRoot = labels[rootLabel];
+    const identity = `${appId}\0${appRoot ?? ""}`;
+    owned.set(identity, appRoot === undefined || appRoot === "" ? { appId } : { appId, appRoot });
     const providerId = labels[PROVIDER_LABEL];
     if (providerId !== undefined && providerId !== "") providerIds.push(providerId);
   }
-  return { appIds: uniqueSorted(appIds), providerIds: uniqueSorted(providerIds) };
+  return { ownedResources: [...owned.values()], providerIds: uniqueSorted(providerIds) };
 };
 
 export const appsFromContainerList = (
@@ -268,30 +301,43 @@ export const appsFromContainerList = (
   options: { readonly globalAppRoot?: string; readonly includeScratch?: boolean } = {},
 ): AppsListEntry[] => {
   if (!Array.isArray(body)) return [];
-  const grouped = new Map<string, { services: Set<string>; providerId: string; scratch: boolean }>();
+  const grouped = new Map<
+    string,
+    {
+      appId: string;
+      appRoot: string;
+      providerId: string;
+      scratch: boolean;
+      services: Set<string>;
+    }
+  >();
   for (const container of body) {
     if (!Predicate.isObject(container)) continue;
     if (typeof container.State === "string" && container.State !== "running") continue;
     const labels = stringLabels(container.Labels);
     const appId = labels[APP_LABEL];
     if (appId === undefined || appId === "") continue;
-    if (options.includeScratch !== true && labels[SCRATCH_LABEL] === "TRUE") continue;
-    const existing = grouped.get(appId) ?? {
+    const scratch = labels[SCRATCH_LABEL] === "TRUE";
+    if (options.includeScratch !== true && scratch) continue;
+    const providerId = labels[PROVIDER_LABEL] ?? "lando";
+    const appRoot = labels[APP_ROOT_LABEL] ?? (appId === GLOBAL_APP_ID ? (options.globalAppRoot ?? "") : "");
+    const key = appsListIdentity({ providerId, appRoot, appId, scratch });
+    const existing = grouped.get(key) ?? {
+      appId,
+      appRoot,
+      providerId,
+      scratch,
       services: new Set<string>(),
-      providerId: labels[PROVIDER_LABEL] ?? "lando",
-      scratch: false,
     };
     const service = labels[SERVICE_LABEL];
     if (service !== undefined && service !== "") existing.services.add(service);
-    if (labels[PROVIDER_LABEL] !== undefined) existing.providerId = labels[PROVIDER_LABEL];
-    existing.scratch ||= labels[SCRATCH_LABEL] === "TRUE";
-    grouped.set(appId, existing);
+    grouped.set(key, existing);
   }
-  return [...grouped.entries()].map(([appId, info]) => ({
-    appId,
-    appName: appId,
+  return [...grouped.values()].map((info) => ({
+    appId: info.appId,
+    appName: info.appId,
     providerId: info.providerId,
-    appRoot: appId === GLOBAL_APP_ID ? (options.globalAppRoot ?? "") : "",
+    appRoot: info.appRoot,
     services: [...info.services].sort((left, right) => left.localeCompare(right)),
     ...(info.scratch ? { scratch: true } : {}),
   }));
@@ -363,7 +409,7 @@ export const discoverRunningAppsEvidenceFromSockets = async (
   const paths = makeLandoPaths({ userDataRoot });
   const discoveredApps: AppsListEntry[] = [];
   const listedProviders = new Set<string>();
-  const owned = new Set<string>();
+  const owned = new Map<string, OwnedAppResource>();
   const platform = options.platform ?? process.platform;
   const managedSocket = platform === "win32" ? WINDOWS_MANAGED_MACHINE_PIPE : paths.providerSocketPath;
   let managedEndpointFailed = false;
@@ -390,8 +436,16 @@ export const discoverRunningAppsEvidenceFromSockets = async (
         globalAppRoot: await realpath(paths.globalAppRoot).catch(() => paths.globalAppRoot),
         ...(options.includeScratch === true ? { includeScratch: true } : {}),
       });
-      const containerEvidence = labeledResourceEvidence(containers, options.includeScratch === true);
-      const volumeEvidence = labeledResourceEvidence(volumes, options.includeScratch === true);
+      const containerEvidence = labeledResourceEvidence(
+        containers,
+        APP_ROOT_LABEL,
+        options.includeScratch === true,
+      );
+      const volumeEvidence = labeledResourceEvidence(
+        volumes,
+        VOLUME_OWNER_LABEL,
+        options.includeScratch === true,
+      );
       const labeledProviderIds = uniqueSorted([
         ...containerEvidence.providerIds,
         ...volumeEvidence.providerIds,
@@ -400,7 +454,8 @@ export const discoverRunningAppsEvidenceFromSockets = async (
         labeledProviderIds.length > 0 ? labeledProviderIds : [await providerIdOnSocket(socket, userDataRoot)];
       discoveredApps.push(...apps);
       for (const provider of confirmedProviderIds) listedProviders.add(provider);
-      for (const id of [...containerEvidence.appIds, ...volumeEvidence.appIds]) owned.add(id);
+      for (const resource of [...containerEvidence.ownedResources, ...volumeEvidence.ownedResources])
+        owned.set(`${resource.appId}\0${resource.appRoot ?? ""}`, resource);
     } catch (error) {
       if (httpSocketPath(socket) === httpSocketPath(managedSocket) && !isAbsentEndpoint(error))
         managedEndpointFailed = true;
@@ -415,7 +470,7 @@ export const discoverRunningAppsEvidenceFromSockets = async (
     apps: discoveredApps,
     providerConfirmed: listedProviders.size > 0,
     confirmedProviderIds: [...listedProviders],
-    ownedAppIds: [...owned],
+    ownedResources: [...owned.values()],
     idleProviderIds,
   };
 };

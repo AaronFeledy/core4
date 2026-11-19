@@ -107,27 +107,74 @@ for (const marker of ["CMD", "CMD-SHELL", "NONE"]) {
   });
 }
 
-test("warns only for surviving dialect fields contributed by different sources", async () => {
-  // Given
-  await write(
-    ".lando.base.yml",
-    "services:\n  web:\n    healthcheck:\n      test: [CMD, echo]\n      interval: 5s\n",
-  );
+test.each(["healthcheck", "readiness"] as const)(
+  "warns when %s dialects come from different sources",
+  async (role) => {
+    // Given
+    await write(
+      ".lando.base.yml",
+      `services:\n  web:\n    ${role}:\n      test: [CMD, echo]\n      interval: 5s\n`,
+    );
+    await write(".lando.yml", `name: warning\nservices:\n  web:\n    ${role}:\n      command: echo ready\n`);
+    // When
+    const { result, resolved } = await lint();
+    // Then
+    expect(result.valid).toBe(true);
+    expect(result.violations).toEqual([
+      expect.objectContaining({ rule: `${role}.mixed-dialects`, severity: "warning" }),
+    ]);
+    expect(Object.values(resolved?.document.services ?? {})[0]?.[role]).toEqual({
+      kind: "command",
+      command: "echo ready",
+    });
+  },
+);
+
+test.each(["healthcheck", "readiness"] as const)(
+  "warns when both %s start-interval aliases survive across sources",
+  async (role) => {
+    await write(
+      ".lando.base.yml",
+      `services:\n  web:\n    ${role}:\n      test: [CMD, echo]\n      start_interval: 1s\n`,
+    );
+    await write(".lando.yml", `name: aliases\nservices:\n  web:\n    ${role}:\n      startInterval: 2s\n`);
+
+    const { result, resolved } = await lint();
+
+    expect(result.valid).toBe(true);
+    expect(result.violations).toEqual([
+      expect.objectContaining({ rule: `${role}.mixed-dialects`, severity: "warning" }),
+    ]);
+    expect(Object.values(resolved?.document.services ?? {})[0]?.[role]).toMatchObject({
+      startInterval: "2s",
+    });
+  },
+);
+
+test.each(["healthcheck", "readiness"] as const)("refuses mixed %s timing from one source", async (role) => {
   await write(
     ".lando.yml",
-    "name: warning\nservices:\n  web:\n    healthcheck:\n      command: echo ready\n",
+    `name: mixed\nservices:\n  web:\n    ${role}:\n      command: echo ready\n      interval: 1s\n      timeout: 2s\n`,
   );
-  // When
-  const { result, resolved } = await lint();
-  // Then
-  expect(result.valid).toBe(true);
-  expect(result.violations).toEqual([
-    expect.objectContaining({ rule: "healthcheck.mixed-dialects", severity: "warning" }),
-  ]);
-  expect(Object.values(resolved?.document.services ?? {})[0]?.healthcheck).toEqual({
-    kind: "command",
-    command: "echo ready",
-  });
+
+  const { result } = await lint();
+
+  expect(result.valid).toBe(false);
+  expect(result.violations).toEqual(
+    [
+      ["interval", "intervalSeconds", 6],
+      ["timeout", "timeoutSeconds", 7],
+    ].map(([key, replacement, line]) =>
+      expect.objectContaining({
+        rule: `${role}.mixed-dialects`,
+        severity: "error",
+        path: ["services", "web", role, key],
+        source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["services", "web", role, key] },
+        line,
+        suggestion: expect.stringContaining(`\`${replacement}:\``),
+      }),
+    ),
+  );
 });
 
 for (const upper of [
@@ -150,7 +197,7 @@ for (const upper of [
 
 for (const healthcheck of [
   "test: [CMD, echo]",
-  "command: echo ready\n      test: [CMD, echo]",
+  "command: echo ready\n      intervalSeconds: 0.5",
   "retries: 3\n      disable: false",
 ]) {
   test(`does not infer cross-source mixing from ${healthcheck}`, async () => {

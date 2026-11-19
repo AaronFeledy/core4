@@ -53,7 +53,7 @@ export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
 }) {
   const { document, appRoot, job } = yield* resolveScheduleJob(input.name, input.service);
   const registry = yield* RuntimeProviderRegistry;
-  const planned = yield* registry.resolveAppliedPlan(appRoot);
+  const planned = yield* registry.resolveAppliedPlan(appRoot, undefined, "exact");
   if (planned === undefined) {
     return yield* Effect.fail(
       new PlanReplanRequiredError({

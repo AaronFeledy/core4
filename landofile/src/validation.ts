@@ -1,48 +1,118 @@
+import { dirname, isAbsolute, relative } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { isPlainRecord, valueOriginAt } from "@lando/sdk/landofile";
 import {
+  LandofileLayer,
   LandofileShape,
   type ValidationIssue,
   type ValidationIssuePath,
   formatValidationIssueLine,
+  formatValidationIssuePath,
   schemaIssueLeaves,
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
-import { getOrigins } from "./pipeline/origins.ts";
+import type { LandofileProvenance } from "./provenance.ts";
 import { landofileIssuesFromSchema, valueAtPath } from "./validation-suggestions.ts";
 import { isValidSemverRange } from "./version-constraint.ts";
 
-export const getLandofileValueSource = (value: object, path: ValidationIssuePath) => {
-  const origins = getOrigins(value);
-  return origins === undefined ? undefined : valueOriginAt(origins, path).source;
-};
+export const getLandofileValueSource = (
+  provenance: LandofileProvenance | undefined,
+  path: ValidationIssuePath,
+) => (provenance === undefined ? undefined : valueOriginAt(provenance.origins, path).source);
 const COMPOSE_REMEDIATION =
   "Compose compatibility is limited to the supported subset; move provider-native keys under providers.<provider-id> or use config translation.";
+
+const AUTHORED_LAYERS: ReadonlySet<string> = new Set(LandofileLayer.literals);
+
+const isAuthoredSource = (issue: ValidationIssue): boolean =>
+  issue.source === undefined || AUTHORED_LAYERS.has(issue.source.layer);
+
+// Human-facing path only: structured source.file / error.file stay raw.
+const isTerminalControl = (codePoint: number): boolean =>
+  (codePoint >= 0x00 && codePoint <= 0x1f) || (codePoint >= 0x7f && codePoint <= 0x9f);
+
+const escapeHumanPath = (path: string): string =>
+  Array.from(path, (character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && isTerminalControl(codePoint)
+      ? `\\u${codePoint.toString(16).padStart(4, "0")}`
+      : character;
+  }).join("");
+
+const displayPath = (file: string, appRoot: string): string => {
+  const candidate = relative(appRoot, file);
+  const shown = candidate.length === 0 || isAbsolute(candidate) ? file : candidate;
+  return escapeHumanPath(shown);
+};
+
+const oneLine = (issue: ValidationIssue, appRoot: string): string => {
+  const source = issue.source;
+  if (source === undefined || !("file" in source) || isAuthoredSource(issue)) {
+    return formatValidationIssueLine(issue);
+  }
+  const file = displayPath(source.file, appRoot);
+  const location = formatValidationIssuePath(source.path);
+  const detail = formatValidationIssueLine({ ...issue, message: issue.message.replace(/\.$/u, "") });
+  return `${detail} (${file}${location.length === 0 ? "" : `: ${location}`})`;
+};
+
+const defaultHeadline = (issues: ReadonlyArray<ValidationIssue>, appRoot: string): string => {
+  if (issues.every(isAuthoredSource)) return "Landofile has invalid values";
+
+  const first = issues[0]?.source;
+  if (first?.layer !== "project-file") return "Configuration has invalid values";
+  let multipleFiles = false;
+  for (const { source } of issues) {
+    if (source?.layer !== "project-file") return "Configuration has invalid values";
+    if (source.file !== first.file) multipleFiles = true;
+  }
+  return multipleFiles
+    ? "Project files have invalid values"
+    : `${displayPath(first.file, appRoot)} has invalid values`;
+};
 
 export const landofileValidationError = (
   file: string,
   issues: readonly ValidationIssue[],
-  framing: { readonly headline: string; readonly remediation: string } = {
-    headline: "Landofile has invalid values",
-    remediation: "Fix each listed value.",
+  framing?: {
+    readonly headline?: string;
+    readonly remediation?: string;
+    /** Canonical app root for human project-file paths. Defaults to dirname(file). */
+    readonly appRoot?: string;
+    /** Optional `file:line` prefix for an issue whose source carries a line. */
+    readonly location?: (issue: ValidationIssue) => string | undefined;
   },
 ): LandofileValidationError => {
-  const lines = issues.map((issue) => formatValidationIssueLine(issue).replace(/\.$/, "")).join("; ");
+  const appRoot = framing?.appRoot ?? dirname(file);
+  const headline = framing?.headline ?? defaultHeadline(issues, appRoot);
+  const remediation = framing?.remediation ?? "Fix each listed value.";
+  const lines = issues
+    .map((issue) => {
+      const location = framing?.location?.(issue);
+      const detail = oneLine(issue, appRoot).replace(/\.$/, "");
+      return location === undefined ? detail : `${location}: ${detail}`;
+    })
+    .join("; ");
   const source = issues[0]?.source;
   return new LandofileValidationError({
     file: source !== undefined && "file" in source ? source.file : file,
     issues,
-    remediation: framing.remediation,
-    message: `${framing.headline}: ${lines}${/[.?!]$/.test(lines) ? "" : "."}`,
+    remediation,
+    message: `${headline}: ${lines}${/[.?!]$/.test(lines) ? "" : "."}`,
   });
 };
 
-export const validationErrorFromCause = (file: string, parsed: unknown, cause: unknown) => {
+export const validationErrorFromCause = (
+  file: string,
+  parsed: unknown,
+  cause: unknown,
+  provenance?: LandofileProvenance,
+) => {
   const leaves = Schema.isSchemaError(cause) ? schemaIssueLeaves(cause.issue, [], { input: parsed }) : [];
   const unknown = leaves.filter((issue) => issue._tag === "Unexpected");
-  const origins = isPlainRecord(parsed) ? getOrigins(parsed) : undefined;
+  const origins = provenance === undefined ? undefined : provenance.origins;
   const issues = (
     Schema.isSchemaError(cause)
       ? landofileIssuesFromSchema(cause.issue, parsed)
@@ -78,6 +148,7 @@ export const validationErrorFromCause = (file: string, parsed: unknown, cause: u
 export const validateLandofile = (
   file: string,
   parsed: unknown,
+  provenance?: LandofileProvenance,
 ): Effect.Effect<typeof LandofileShape.Type, LandofileParseError | LandofileValidationError> => {
   const range = isPlainRecord(parsed) ? parsed.lando : undefined;
   if (typeof range === "string" && !isValidSemverRange(range)) {
@@ -94,5 +165,5 @@ export const validateLandofile = (
   return Schema.decodeUnknownEffect(LandofileShape)(parsed, {
     onExcessProperty: "error",
     errors: "all",
-  }).pipe(mapFailures((cause) => validationErrorFromCause(file, parsed, cause)));
+  }).pipe(mapFailures((cause) => validationErrorFromCause(file, parsed, cause, provenance)));
 };

@@ -31,6 +31,27 @@ export const composerTool = {
   wrapper: true,
 } as const;
 
+/**
+ * Creates a Composer project in the mounted app root. The PHP image installs
+ * `lando-create-project` whenever Composer is enabled, so the recipe only names
+ * the task; tooling appends the declared arguments to the program.
+ */
+export const createProjectTool = {
+  service: "appserver",
+  description: "Create a Composer project in the mounted app root.",
+  flags: {
+    "no-scripts": {
+      boolean: true,
+      description: "Skip the project's Composer hooks and install scripts.",
+    },
+  },
+  args: {
+    package: { required: true, description: "Composer package to create, for example laravel/laravel." },
+    version: { description: "Optional Composer version or constraint." },
+  },
+  cmd: "lando-create-project",
+} as const;
+
 export const phpTool = {
   service: "appserver",
   description: "Run the PHP CLI inside the appserver service.",
@@ -64,28 +85,31 @@ export const drupalOptions = {
 } as const satisfies Readonly<Record<string, RecipeSourceOption>>;
 
 /** Separate additions avoid deleting Apache fields in the FPM branch. */
-export const drupalWebVariants = [
-  {
-    when: '{{ eq(options.webserver, "apache") }}',
-    config: {
-      services: {
-        appserver: { allowOverride: true, port: 80, routes: defaultRoutes, uploadDirs: ["sites/*/files"] },
-      },
-    },
-  },
-  {
-    when: '{{ eq(options.webserver, "nginx") }}',
-    config: {
-      services: {
-        appserver: { via: "fpm" },
-        edge: {
-          type: "nginx",
-          backend: "appserver",
-          webroot: "{{ recipe.webroot }}",
-          uploadDirs: ["sites/*/files"],
-          routes: defaultRoutes,
+export const drupalWebVariantsFor = (webroot: string) =>
+  [
+    {
+      when: '{{ eq(options.webserver, "apache") }}',
+      config: {
+        services: {
+          appserver: { allowOverride: true, port: 80, routes: defaultRoutes, uploadDirs: ["sites/*/files"] },
         },
       },
     },
-  },
-] as const satisfies readonly RecipeConfigLayer[];
+    {
+      when: '{{ eq(options.webserver, "nginx") }}',
+      config: {
+        services: {
+          appserver: { via: "fpm" },
+          edge: {
+            type: "nginx",
+            backend: "appserver",
+            webroot,
+            uploadDirs: ["sites/*/files"],
+            routes: defaultRoutes,
+          },
+        },
+      },
+    },
+  ] as const satisfies readonly RecipeConfigLayer[];
+
+export const drupalWebVariants = drupalWebVariantsFor("{{ recipe.webroot }}");

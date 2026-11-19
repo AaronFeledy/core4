@@ -4,12 +4,14 @@ import type { ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
+import { apacheGeneratedCertificateEndpoint } from "./apache-native-tls.ts";
 import { resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
-import { PHP_FEATURE_ID } from "./php-feature.ts";
+import { PHP_COMPOSER_CACHE, PHP_FEATURE_ID } from "./php-feature.ts";
 import { assertPhpComposerCompatible, resolvePhpComposer } from "./php-prerequisites.ts";
 import { PHP_RUNTIME_POLICY_KEY, resolvePhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
+  PHP_LISTENERS,
   SUPPORTED_PHP_VERSIONS,
   type SupportedPhpVersion,
   assertPhpViaKeys,
@@ -76,12 +78,16 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   // and sha256:7d56462eb335f178afb9536578454ea1bc7d30136ac2153df2632b86e420dd12.
   // www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin; image User and HOME are unset.
   // /var/www is 0755 root:root, so Lando prepares the passwd home for www-data in its derived image.
-  identity: { ...rootIdentity({ "www-data": "/var/www" }), preparedHomes: ["www-data"] },
+  identity: {
+    ...rootIdentity({ "www-data": "/var/www" }),
+    projectUser: { name: "www-data", uid: 33, gid: 33 },
+    preparedHomes: ["www-data"],
+  },
   schema: PhpServiceConfig,
   resolve: (input) =>
     serviceTypeResolve(`php:${version}`, `Failed to resolve php:${version}`, () => {
       const resolvedVersion = validateVersion(input.service.type, version);
-      resolvePhpComposer(input.service.composer);
+      const composer = resolvePhpComposer(input.service.composer);
       resolvePhpComposerPackages(input.service.composer);
       assertPhpComposerCompatible(resolvedVersion, input.service.composer);
       const via = resolvePhpVia(input.service.via);
@@ -92,11 +98,23 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       const webroot = resolveWebroot("PHP", input.service.webroot, input.service.appMount);
       const allowOverride = input.service.allowOverride ?? false;
       const policy = resolvePhpRuntimePolicy(input.service, resolvedVersion, via);
+      const owned = via === "apache" && policy.processAuthority === "lando";
+      const generatedCertificateEndpoint = apacheGeneratedCertificateEndpoint({
+        plainPort: input.service.port ?? PHP_LISTENERS.apache.port,
+        owned,
+      });
       return {
         base: "lando" as const,
-        normalizedConfig: { ...input.service, type: `php:${resolvedVersion}` } satisfies ServiceConfig,
+        normalizedConfig: {
+          ...input.service,
+          type: `php:${resolvedVersion}`,
+          ...(policy.artifactSource === "stock" && composer !== false
+            ? { storage: [PHP_COMPOSER_CACHE, ...(input.service.storage ?? [])] }
+            : {}),
+        } satisfies ServiceConfig,
         metadata: { [PHP_RUNTIME_POLICY_KEY]: policy },
         logSources: phpLogSources(policy.logMode),
+        ...(generatedCertificateEndpoint === undefined ? {} : { generatedCertificateEndpoint }),
         features: [
           {
             id: PHP_FEATURE_ID,

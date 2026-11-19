@@ -1,9 +1,16 @@
 import { expect, test } from "bun:test";
 import type { McpAppGeneration, McpGenerationCommand } from "@lando/mcp/apps";
 import { makeMcpAllowPolicy } from "@lando/mcp/catalog";
-import { type McpDiagnostic, McpService, boundDiagnostics, pluginDiagnostics } from "@lando/mcp/service";
+import {
+  type McpDiagnostic,
+  McpDiagnostics,
+  McpService,
+  boundDiagnostics,
+  pluginDiagnostics,
+} from "@lando/mcp/service";
 import { startStdioClient } from "@lando/mcp/testing";
 import { createStandaloneRedactor } from "@lando/redaction/service";
+import { REDACTED } from "@lando/sdk/secrets";
 import { Context, Effect, Fiber, Schema } from "effect";
 import { serverLayer } from "./server";
 
@@ -220,4 +227,30 @@ test("removing a tooling task does not grant its implicit allowance to a selecte
       ),
     ),
   );
+});
+
+test("a token matching a diagnostics literal survives resource serialization and still decodes", async () => {
+  const records: readonly McpDiagnostic[] = [
+    {
+      commandId: "app:deploy",
+      kind: "tooling",
+      _tag: "ToolingCompileError",
+      message: "Invalid tooling flag",
+    },
+  ];
+  const response = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const service = yield* McpService;
+        const client = yield* startStdioClient(service.serve({ transport: "stdio", tooling: true }));
+        return yield* client.request("resources/read", { uri: "lando://diagnostics" });
+      }).pipe(Effect.provide(serverLayer({ toolingUnavailable: records }, ["tooling"]))),
+    ),
+  );
+  const resource = Schema.decodeUnknownSync(
+    Schema.Struct({ contents: Schema.Array(Schema.Struct({ text: Schema.String })) }),
+  )(response.result);
+  const payload = Schema.decodeUnknownSync(McpDiagnostics)(JSON.parse(resource.contents[0]?.text ?? "null"));
+  expect(payload.diagnostics[0]).toMatchObject({ kind: "tooling", commandId: "app:deploy" });
+  expect(payload.diagnostics[0]?.message).toBe(`Invalid ${REDACTED} flag`);
 });

@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rememberLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
 import { Effect } from "effect";
 import { deriveAppCommandToolingFingerprint } from "../../src/cache/command-index.ts";
 import {
@@ -37,9 +36,9 @@ describe("writeAppCommandCacheStrict command alias policy", () => {
       const initialTarget = "app:known";
       await writeFile(targetPath, initialTarget);
       const targetStats = await stat(targetPath);
-      const landofile = rememberLandofileReferencedFiles(
-        { name: "referenced-alias-app", commandAliases: { custom: { hi: initialTarget } } },
-        [
+      const landofile = { name: "referenced-alias-app", commandAliases: { custom: { hi: initialTarget } } };
+      const provenance = fixtureProvenance({
+        referencedFiles: [
           {
             absolutePath: targetPath,
             mtimeMs: targetStats.mtimeMs,
@@ -47,10 +46,11 @@ describe("writeAppCommandCacheStrict command alias policy", () => {
             sha256: createHash("sha256").update(initialTarget).digest("hex"),
           },
         ],
-      );
+      });
       await Effect.runPromise(
         writeAppCommandCacheStrict({
           landofile,
+          provenance,
           entries: [
             {
               id: "app:known",
@@ -162,11 +162,14 @@ describe("writeAppCommandCacheStrict command alias policy", () => {
     const base = { name: "alias-fingerprint" };
 
     // When
-    const withoutAliases = deriveAppCommandToolingFingerprint(base);
-    const withAliases = deriveAppCommandToolingFingerprint({
-      ...base,
-      commandAliases: { custom: { hi: "app:known" } },
-    });
+    const withoutAliases = deriveAppCommandToolingFingerprint(base, undefined);
+    const withAliases = deriveAppCommandToolingFingerprint(
+      {
+        ...base,
+        commandAliases: { custom: { hi: "app:known" } },
+      },
+      undefined,
+    );
 
     // Then
     expect(withAliases).not.toBe(withoutAliases);
@@ -196,5 +199,6 @@ describe("writeAppCommandCacheStrict command alias policy", () => {
 
 import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { Result as FixtureResult } from "effect";
+import { fixtureProvenance } from "../provenance-support.ts";
 
 const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

@@ -56,6 +56,22 @@ export const ROUTE_PRIORITY_EXACT_BASE = ROUTE_PRIORITY_WILDCARD_BASE + ROUTE_PA
 /** Highest priority any app route can receive; routers own the space above it. */
 export const ROUTE_PRIORITY_MAX = ROUTE_PRIORITY_EXACT_BASE + ROUTE_PATH_WEIGHT_CAP;
 
+/** Verified TLS a router must use when dialing a managed backend. */
+export const RouteBackendTls = Schema.Struct({
+  caId: Schema.String.annotateKey({
+    description: "Certificate authority whose root signs the backend leaf.",
+  }),
+  serverName: CertificateName.annotateKey({
+    description: "Verified SNI and dial host: the canonical internal alias the generated certificate names.",
+  }),
+}).annotate({
+  identifier: "RouteBackendTls",
+  title: "Route Backend TLS",
+  description:
+    "Planner-only verified TLS intent for a managed backend certificate; no PEM, path, or skip option.",
+});
+export type RouteBackendTls = typeof RouteBackendTls.Type;
+
 /**
  * Route plan — host-facing HTTP/TLS mapping.
  */
@@ -89,6 +105,10 @@ export const RoutePlan = Schema.Struct({
     port: PortNumber,
     host: Schema.optionalKey(Schema.String).annotate({
       description: "Host Traefik should dial when the backend is not on the managed shared network.",
+    }),
+    tls: Schema.optionalKey(RouteBackendTls).annotate({
+      description:
+        "Verified TLS under the selected Lando authority; absent means the router uses its ordinary system trust.",
     }),
   }).annotateKey({ description: "Planner-resolved service endpoint consumed by the route provider." }),
 });
@@ -407,6 +427,16 @@ export const ProviderCapabilities = Schema.Struct({
   routeProvider: Schema.Boolean,
   tlsCertificates: Schema.Literals(["native", "lando", "none"]),
   rootless: Schema.Boolean,
+  projectUserMapping: Schema.Literals(["userns-keep-id", "image-renumber", "unsupported"]).annotate({
+    title: "Project User Mapping",
+    description:
+      "Whether the provider maps one container id to the host user for a service. userns-keep-id realizes keep-id:<uid>:<gid>; image-renumber realizes the catalog project user by renumbering it to the host ids in the derived image; unsupported keeps the historical identity behavior.",
+  }),
+  bindOwnership: Schema.Literals(["root-is-host-user", "host-ids", "userns-remap", "unknown"]).annotate({
+    title: "Bind Ownership",
+    description:
+      "How files a container writes to a host bind appear on the host: host-ids for rootful engines, root-is-host-user for a rootless user namespace, userns-remap when a daemon user namespace stores subordinate host ids, unknown when the engine cannot be inspected.",
+  }),
   privilegedServices: Schema.Boolean,
   architectureEmulation: Schema.Boolean.pipe(
     Schema.withDecodingDefaultKey(Effect.sync(() => false)),

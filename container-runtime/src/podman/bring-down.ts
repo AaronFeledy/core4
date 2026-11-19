@@ -1,6 +1,13 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { type ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { type AppPlan, type ServiceShutdownObservation, landoOwnedNetworkNames } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type ServiceShutdownObservation,
+  type VolumeRemovalCounts,
+  landoOwnedNetworkNames,
+  noVolumesRemoved,
+  volumesRemovedAny,
+} from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 
@@ -19,6 +26,7 @@ import {
   volumeInUseMessage,
   volumeInUseRemediation,
 } from "../ephemeral-data-helpers.ts";
+import type { HelperReclaimOptions } from "../helper-owner.ts";
 import { inspectOwnedNativeId, isSharedNetwork, networkOwnershipLabels } from "../native-ownership.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
 import { removeAllStaleVolumeHolders } from "../stale-data-helpers.ts";
@@ -31,7 +39,7 @@ import {
   selectStaleServiceContainers,
 } from "./stale-service-containers.ts";
 import { stopService } from "./stop-service.ts";
-import { pruneVolumes, volumeMatchesFilters } from "./volume-prune.ts";
+import { type VolumeSelectorClass, pruneVolumes, volumeMatchesFilters } from "./volume-prune.ts";
 
 type EventPublisher = Pick<Context.Service.Shape<typeof EventService>, "publish">;
 type BringDownError = ProviderUnavailableError | ProviderInternalError;
@@ -45,6 +53,7 @@ const GLOBAL_DESTROY_REMEDIATION =
 interface StopResult {
   readonly changed: boolean;
   readonly shutdownObservations: readonly ServiceShutdownObservation[];
+  readonly volumesRemoved: VolumeRemovalCounts;
 }
 
 export interface BringDownOptions {
@@ -53,6 +62,8 @@ export interface BringDownOptions {
   readonly dialect?: LifecycleDialect;
   readonly eventService?: EventPublisher;
   readonly volumes?: boolean;
+  /** Test seam for owner-aware helper reclamation. */
+  readonly helperReclaim?: HelperReclaimOptions;
   readonly purgeCaches?: boolean;
 }
 
@@ -169,6 +180,7 @@ const removeVolume = Effect.fnUntraced(function* (
       providerId: deps.options.ctx.providerId,
       holders,
       redactor,
+      ...(deps.options.helperReclaim === undefined ? {} : { helperReclaim: deps.options.helperReclaim }),
     });
     if (recovered) {
       const retry = yield* request(deps, {
@@ -232,26 +244,35 @@ const removeVolume = Effect.fnUntraced(function* (
 const removeAppScopedVolumes = Effect.fnUntraced(function* (
   deps: BringDownDeps,
   plan: AppPlan,
-): Effect.fn.Return<boolean, BringDownError> {
-  let changed = false;
+): Effect.fn.Return<VolumeRemovalCounts, BringDownError> {
+  const removed: { data: number; cache: number } = { ...noVolumesRemoved };
   for (const store of plan.stores) {
-    if (store.kind === "cache") {
+    const volumeClass = volumeClassForStore(store);
+    if (volumeClass === "cache") {
       if (deps.options.purgeCaches !== true) continue;
     } else if (store.scope === "global" || deps.options.volumes !== true) {
       continue;
     }
-    const removed = yield* removeVolume(deps, plan, store);
-    changed = changed || removed;
+    if (yield* removeVolume(deps, plan, store)) removed[volumeClass] += 1;
   }
-  return changed;
+  return removed;
 });
 
-const pruneAppScopedVolumes = (deps: BringDownDeps, plan: AppPlan): Effect.Effect<boolean, BringDownError> =>
+const pruneAppScopedVolumes = (
+  deps: BringDownDeps,
+  plan: AppPlan,
+  volumeClass: VolumeSelectorClass,
+): Effect.Effect<{ readonly removed: number; readonly changed: boolean }, BringDownError> =>
   pruneVolumes(deps.api, {
-    filters: planVolumeFilters(plan, teardownVolumeClasses(deps.options)),
+    filters: planVolumeFilters(plan, [volumeClass]),
     ctx: deps.options.ctx,
     all: deps.options.volumes === true,
-  }).pipe(Effect.map((report) => report.pruned.length > 0 || report.errors.length > 0));
+  }).pipe(
+    Effect.map((report) => ({
+      removed: report.pruned.length,
+      changed: report.pruned.length > 0 || report.errors.length > 0,
+    })),
+  );
 
 export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
   plan: AppPlan,
@@ -310,18 +331,28 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
     );
     networkRemoved = networkRemoved || removed;
   }
-  let volumesRemoved = false;
+  let volumesRemoved = { ...noVolumesRemoved };
+  let prunedChanged = false;
   if (options.volumes === true || options.purgeCaches === true) {
-    volumesRemoved = yield* removeAppScopedVolumes(deps, plan).pipe(
-      mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
-    );
-    if ((options.dialect ?? libpodLifecycleDialect).volumePrune !== undefined) {
-      const pruned = yield* pruneAppScopedVolumes(deps, plan).pipe(
+    volumesRemoved = {
+      ...(yield* removeAppScopedVolumes(deps, plan).pipe(
         mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
-      );
-      volumesRemoved = volumesRemoved || pruned;
+      )),
+    };
+    if ((options.dialect ?? libpodLifecycleDialect).volumePrune !== undefined) {
+      for (const volumeClass of teardownVolumeClasses(options)) {
+        const pruned = yield* pruneAppScopedVolumes(deps, plan, volumeClass).pipe(
+          mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
+        );
+        volumesRemoved[volumeClass] += pruned.removed;
+        prunedChanged = prunedChanged || pruned.changed;
+      }
     }
   }
 
-  return { changed: changed || networkRemoved || volumesRemoved, shutdownObservations };
+  return {
+    changed: changed || networkRemoved || prunedChanged || volumesRemovedAny(volumesRemoved),
+    shutdownObservations,
+    volumesRemoved,
+  };
 });

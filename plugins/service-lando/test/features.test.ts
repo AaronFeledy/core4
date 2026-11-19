@@ -39,6 +39,7 @@ const EXPECTED_CATALOG_FEATURE_PRIORITIES: Readonly<Record<string, number>> = {
   "service-lando.node": 600,
   "service-lando.opensearch": 600,
   "service-lando.php": 600,
+  "service-lando.adminer": 600,
   "service-lando.phpmyadmin": 600,
   "service-lando.postgres": 600,
   "service-lando.python": 600,

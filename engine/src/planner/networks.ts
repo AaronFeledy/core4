@@ -1,3 +1,4 @@
+import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
@@ -11,6 +12,7 @@ import { Effect } from "effect";
 /** Normalize canonical service attachments without changing their preserved Compose record. */
 export const normalizeNetworks = Effect.fn("AppPlanner.normalizeNetworks")(function* (input: {
   readonly landofile: LandofileShape;
+  readonly provenance?: LandofileProvenance | undefined;
   readonly services: Readonly<Record<string, Pick<ServiceConfig, "networks">>>;
   readonly appRoot: string;
   readonly perAppBridge: boolean;
@@ -24,7 +26,7 @@ export const normalizeNetworks = Effect.fn("AppPlanner.normalizeNetworks")(funct
           const message = "The global app has no per-app default network.";
           const remediation = "Remove default and join a separately declared network instead.";
           const path = ["services", service, "networks", key];
-          const source = getLandofileValueSource(input.landofile, path);
+          const source = getLandofileValueSource(input.provenance, path);
           return yield* Effect.fail(
             new LandofileValidationError({
               file: source !== undefined && "file" in source ? source.file : `${input.appRoot}/.lando.yml`,

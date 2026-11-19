@@ -34,7 +34,7 @@ test("inventory cleanup removes original data volumes after an app rename", asyn
 
     const result = await Effect.runPromise(cleanup(root, { volumes: true, appIds: inventory.appIds }));
 
-    expect(result.volumesRemoved).toBe(1);
+    expect(result.volumesRemoved).toEqual({ data: 1, cache: 0 });
     expect(calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
       "/volumes/original-data",
     ]);

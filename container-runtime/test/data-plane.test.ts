@@ -18,6 +18,7 @@ import { FakeEngine } from "./support/fake-engine.ts";
 
 const passthroughRedactor = {
   redactString: (value: string) => value,
+  redactPrefix: (value: string) => value,
   redactValue: (value: unknown) => value,
 } satisfies Redactor;
 
@@ -1263,7 +1264,9 @@ describe("provider data plane", () => {
     } else {
       expect(result.failure.message).toContain(reason);
       expect(result.failure.remediation).toContain("Wait for any running data operation to finish");
-      expect(result.failure.remediation).toContain("10 minutes");
+      expect(result.failure.remediation).toContain(
+        "confirms the Lando process that started the helper has exited",
+      );
       expect(result.failure.remediation).not.toContain("cannot verify");
     }
   });
@@ -1503,7 +1506,7 @@ test.each(["http", "typed", "defect", "interrupt"] as const)(
 );
 
 describe("borrowed ephemeral mounts", () => {
-  const runBorrowed = async (subpath?: string | null, readOnly = false) => {
+  const runBorrowed = async (subpath?: string | null, readOnly = false, usernsMode?: string) => {
     const requests: Parameters<NonNullable<DataPlaneApiClient["request"]>>[0][] = [];
     const provider = makeProviderDataPlane({
       providerId: "docker",
@@ -1548,6 +1551,7 @@ describe("borrowed ephemeral mounts", () => {
           mountsFrom: { containerId: "source-container", readOnly },
           binds: [{ source: "/private/scratch", target: "/sql-scratch" }],
           user: "100:200",
+          ...(usernsMode === undefined ? {} : { usernsMode }),
           entrypoint: [],
         }),
       ),
@@ -1576,6 +1580,19 @@ describe("borrowed ephemeral mounts", () => {
       ).toBe(true);
     },
   );
+
+  test("carries the borrowed container's user-namespace mapping onto the helper", async () => {
+    const { result, requests } = await runBorrowed(undefined, true, "keep-id:uid=33,gid=33");
+    expect(Exit.isSuccess(result)).toBe(true);
+    const create = requests.find((request) => request.path.startsWith("/containers/create?"));
+    expect(create?.body).toMatchObject({
+      User: "100:200",
+      HostConfig: {
+        UsernsMode: "keep-id:uid=33,gid=33",
+        VolumesFrom: ["source-container:ro"],
+      },
+    });
+  });
 
   test("accepts a source whose inspect represents absent long-syntax mounts as null", async () => {
     const { result } = await runBorrowed(null);

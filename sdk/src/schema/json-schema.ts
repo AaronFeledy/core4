@@ -439,9 +439,11 @@ import {
   PluginName,
   PortNumber,
   PortablePath,
+  ProjectUserExplanation,
   ProviderExtensionConfig,
   ProviderId,
   ServiceName,
+  ServiceProjectUser,
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
 import { ProviderSetupPlan } from "./provider-setup.ts";
@@ -526,8 +528,9 @@ import { CronExpression, ScheduleConfig, ScheduleJob, ScheduleJobName } from "./
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceFeatureValidationResult } from "./service-feature-validation.ts";
-import { ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
+import { ServiceContainerChange, ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
 import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
+import { GeneratedCertificateEndpoint } from "./service-resolution.ts";
 import {
   DestroyOutcome,
   FileSyncQuiesceResult,
@@ -535,6 +538,7 @@ import {
   ServiceShutdownObservation,
 } from "./service-shutdown.ts";
 import {
+  AdminerServiceConfig,
   DotnetServiceConfig,
   LocalStackServiceConfig,
   MailhogServiceConfig,
@@ -583,12 +587,14 @@ import {
 } from "./update-manifest.ts";
 import { VolumeIdentity } from "./volume-identity.ts";
 import { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";
+import { VolumeRemovalCounts } from "./volume-removal.ts";
 
 const schemaRegistry = <const Name extends string>(
   schemas: Readonly<Record<Name, PublicSchema>>,
 ): Readonly<Record<Name, PublicSchema>> => schemas;
 
 const catalogServiceSchemaRegistry = schemaRegistry({
+  AdminerServiceConfig,
   DotnetServiceConfig,
   LocalStackServiceConfig,
   MailhogServiceConfig,
@@ -633,6 +639,8 @@ export type PublicSchemaReferencePage = {
 
 const basePublicSchemaRegistry = schemaRegistry({
   ConfigKeyDescription,
+  ServiceProjectUser,
+  ProjectUserExplanation,
   ExecutionSite,
   ExecutionSiteMatch,
   SecretReference,
@@ -861,6 +869,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   VolumeInfo,
   VolumeLocator,
   VolumeIdentity,
+  VolumeRemovalCounts,
   ResourceOwnership,
   OwnedResourcesCleanupResult,
   VolumeCreationFact,
@@ -926,6 +935,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ProviderExtensionConfig,
   HostPlatform,
   ServiceInfo,
+  ServiceContainerChange,
   ServiceInfoLogSource,
   ServiceShutdownObservation,
   FileSyncQuiesceResult,
@@ -955,6 +965,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   EndpointInvariantIssue,
   HttpEndpointSelection,
   LogicalEndpoint,
+  GeneratedCertificateEndpoint,
   ServiceConnection,
   ServiceState,
   RouteEvidence,
@@ -1253,6 +1264,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ResourceOwnership: "Provider cleanup inventory hints, not readiness evidence.",
   OwnedResourcesCleanupResult: "Verified physical resource cleanup counts.",
   VolumeIdentity: "Owner-bound observed physical volume generation.",
+  VolumeRemovalCounts: "Named volumes a teardown actually removed, by storage class.",
   VolumeCreationFact: "Daemon-confirmed volume creation during one apply.",
   VolumeInitializationRecord: "Generation-bound durable initialization claim and outcome.",
   VolumeSnapshotArtifact: "Provider-observed native snapshot image metadata.",
@@ -1269,6 +1281,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   EndpointInvariantIssue: "Logical listener alias, primary, protocol, or scan-default conflict.",
   HttpEndpointSelection: "Unambiguous HTTP listener selection without order-based fallback.",
   LogicalEndpoint: "Grouped facets of one logical network listener.",
+  GeneratedCertificateEndpoint:
+    "Owned launcher HTTPS listener that can serve the service's generated certificate.",
   ServiceConnection: "Scoped service connection with explicit binding and activity evidence.",
   ServiceState: "Shared observed and supervised service lifecycle vocabulary.",
   RouteEvidence: "Read-only configured ingress and live route publication evidence.",
@@ -1279,6 +1293,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
     "Durable app file-sync disposal progress, including restartable drain and resumed cleanup.",
   DestroyOutcome: "Provider destroy receipt with optional shutdown observations.",
   ObservedServiceRemoval: "Exact observed-container removal receipt with optional shutdown observations.",
+  ServiceContainerChange:
+    "What apply did to one service container, with the replacement reason and any anonymous volumes lost.",
   StartedService: "Service startup result with scoped connection evidence.",
   PluginDoctorReport: "Public Lando schema contract for plugin-contributed doctor results.",
   PreparedFileSyncTarget: "Public Lando schema contract for a prepared file-sync target.",
@@ -1302,6 +1318,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ScheduleConfig: "Scheduled jobs for a service.",
 } satisfies Partial<Record<keyof typeof rawPublicSchemaRegistry, string>>;
 const CATALOG_SERVICE_SCHEMA_DESCRIPTIONS = {
+  AdminerServiceConfig: "Landofile configuration accepted by the Adminer catalog service.",
   DotnetServiceConfig: "Landofile configuration accepted by the .NET catalog service.",
   LocalStackServiceConfig: "Landofile configuration accepted by the LocalStack catalog service.",
   MailhogServiceConfig: "Landofile configuration accepted by the deprecated MailHog catalog service.",

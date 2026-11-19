@@ -8,11 +8,11 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { DateTime, Effect } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber } from "effect";
 import type { WaitDialect } from "../src/dialect.ts";
 import { dockerWaitDialect, libpodWaitDialect } from "../src/dialect.ts";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
-import { waitForExit } from "../src/wait-for-exit.ts";
+import { waitForExit, waitNativeContainer } from "../src/wait-for-exit.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("wait-for-exit-app");
@@ -106,18 +106,39 @@ describe.each(dialects)("%s waitForExit", (_name, dialect, body) => {
     ]);
   });
 
-  test("forwards cancellation to the wait request", async () => {
-    // Given
-    const fake = makeFakeApi([{ status: 200, body: body(0) }]);
-    const controller = new AbortController();
-
-    // When
-    await Effect.runPromise(
-      waitForExit(plan, target, { api: fake.api, ctx, dialect, signal: controller.signal }),
+  test("aborting a pending native wait cancels transport and interrupts the caller", async () => {
+    const { exit, transportAborted } = await Effect.runPromise(
+      Effect.gen(function* () {
+        const armed = yield* Deferred.make<AbortSignal>();
+        const controller = new AbortController();
+        const api: EngineHttpApi = {
+          request: () =>
+            Effect.tryPromise({
+              try: (signal) =>
+                new Promise<EngineHttpResponse>((_resolve, reject) => {
+                  signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+                  Effect.runSync(Deferred.succeed(armed, signal));
+                }),
+              catch: () =>
+                new ProviderUnavailableError({
+                  providerId,
+                  operation: "wait",
+                  message: "Transport aborted",
+                  remediation: ctx.remediation,
+                }),
+            }),
+        };
+        const fiber = yield* Effect.forkChild(
+          waitForExit(plan, target, { api, ctx, dialect, signal: controller.signal }),
+        );
+        const transport = yield* Deferred.await(armed);
+        controller.abort();
+        return { exit: yield* Fiber.await(fiber), transportAborted: transport.aborted };
+      }),
     );
 
-    // Then
-    expect(fake.calls[0]?.signal).toBe(controller.signal);
+    expect(transportAborted).toBe(true);
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   });
 
   test("fails with ProviderUnavailableError for non-2xx", async () => {
@@ -221,5 +242,115 @@ describe("waitForExit failures", () => {
     // Then
     expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
     expect(failure.remediation).toBe(podmanCtx.remediation);
+  });
+});
+
+describe("waitNativeContainer", () => {
+  test("returns Returned with the exit code for a verified id", async () => {
+    // Given
+    const fake = makeFakeApi([{ status: 200, body: JSON.stringify({ StatusCode: 7 }) }]);
+
+    // When
+    const result = await Effect.runPromise(
+      waitNativeContainer("abc123", { api: fake.api, ctx, dialect: dockerWaitDialect }),
+    );
+
+    // Then
+    expect(result).toEqual({ _tag: "Returned", exitCode: 7 });
+    expect(fake.calls.map(({ method, path }) => ({ method, path }))).toEqual([
+      { method: "POST", path: "/containers/abc123/wait" },
+    ]);
+  });
+
+  test("returns to an uninterruptible caller that passes a live abort signal", async () => {
+    // Given
+    const fake = makeFakeApi([{ status: 200, body: JSON.stringify({ StatusCode: 0 }) }]);
+    const controller = new AbortController();
+
+    // When
+    const result = await Effect.runPromise(
+      Effect.uninterruptible(
+        waitNativeContainer("abc123", {
+          api: fake.api,
+          ctx,
+          dialect: dockerWaitDialect,
+          signal: controller.signal,
+        }),
+      ),
+    );
+
+    // Then
+    expect(result).toEqual({ _tag: "Returned", exitCode: 0 });
+  });
+
+  test("returns Missing for 404 at the wait endpoint", async () => {
+    // Given
+    const fake = makeFakeApi([{ status: 404, body: '{"message":"No such container: abc123"}' }]);
+
+    // When
+    const result = await Effect.runPromise(
+      waitNativeContainer("abc123", { api: fake.api, ctx, dialect: dockerWaitDialect }),
+    );
+
+    // Then
+    expect(result).toEqual({ _tag: "Missing" });
+  });
+
+  test("propagates non-404 engine failures", async () => {
+    // Given
+    const fake = makeFakeApi([{ status: 500, body: '{"message":"wait failed"}' }]);
+
+    // When
+    const failure = await Effect.runPromise(
+      waitNativeContainer("abc123", { api: fake.api, ctx, dialect: dockerWaitDialect }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+  });
+
+  test("rejects Docker wait Error payloads as protocol errors", async () => {
+    // Given
+    const fake = makeFakeApi([
+      { status: 200, body: JSON.stringify({ StatusCode: 0, Error: { Message: "removal failed" } }) },
+    ]);
+
+    // When
+    const failure = await Effect.runPromise(
+      waitNativeContainer("abc123", { api: fake.api, ctx, dialect: dockerWaitDialect }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(failure).toBeInstanceOf(ProviderInternalError);
+    expect(failure.message).toBe("Container wait did not return a numeric container exit code.");
+  });
+
+  test("rejects sentinel negative exit codes", async () => {
+    // Given
+    const fake = makeFakeApi([{ status: 200, body: JSON.stringify({ StatusCode: -1 }) }]);
+
+    // When
+    const failure = await Effect.runPromise(
+      waitNativeContainer("abc123", { api: fake.api, ctx, dialect: dockerWaitDialect }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(failure).toBeInstanceOf(ProviderInternalError);
+  });
+});
+
+describe("waitForExit Missing translation", () => {
+  test("maps native Missing to ServiceNotFoundError without changing the public success shape", async () => {
+    // Given
+    const fake = makeFakeApi([{ status: 404, body: '{"message":"No such container"}' }]);
+
+    // When
+    const failure = await Effect.runPromise(
+      waitForExit(plan, target, { api: fake.api, ctx, dialect: dockerWaitDialect }).pipe(Effect.flip),
+    );
+
+    // Then
+    expect(failure).toBeInstanceOf(ServiceNotFoundError);
+    expect(failure).toMatchObject({ service: serviceName, operation: "waitForExit" });
   });
 });

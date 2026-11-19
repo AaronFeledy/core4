@@ -4,7 +4,12 @@ import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import type { ListenerContract } from "./_port-helpers.ts";
-import { apacheDirectivePath, apacheForwardedDirectoryRedirectDirectives } from "./apache.ts";
+import { apacheDirectivePath } from "./apache.ts";
+import {
+  type ApacheNativeTls,
+  nativeTlsVirtualHosts,
+  plainListenerCanonicalDirectives,
+} from "./apache-native-tls.ts";
 import { apacheErrorPageDirectives } from "./http-errors.ts";
 import { apacheHiddenPathDirectives } from "./http-hidden-paths.ts";
 import { uploadDirRegex } from "./upload-dirs.ts";
@@ -223,22 +228,24 @@ export const apacheStartCommand = (
   listenPort: number | undefined,
   mapWindowsWorker = true,
   uploadDirs: ReadonlyArray<string> = [],
+  tls?: ApacheNativeTls,
 ): ReadonlyArray<string> => {
   const path = apacheDirectivePath(webroot);
-  const site = [
+  const site = (forwardedScheme: boolean) => [
     `DocumentRoot "${path}"`,
     `<Directory "${path}">`,
     "Options -Indexes +FollowSymLinks",
     `AllowOverride ${allowOverride ? "All" : "None"}`,
     "Require all granted",
     "</Directory>",
-    // SetEnvIf survives .htaccess internal redirects, unlike a rewrite environment flag.
-    'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on',
+    // The plain listener keeps header-based HTTPS for TLS-terminating clients and
+    // explicitly selected HTTP backends. It is not evidence of native TLS, and
+    // the TLS listener never needs it: native TLS sets the scheme itself.
+    ...(forwardedScheme ? ['SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on'] : []),
     // The PHP handler only claims lowercase extensions; variants must never serve source.
     '<FilesMatch "\\.(?!php$)(?i:php)$">',
     "Require all denied",
     "</FilesMatch>",
-    ...apacheForwardedDirectoryRedirectDirectives("rewrite"),
     // engine off cannot be overridden by an uploaded .htaccess AddHandler.
     // FilesMatch also gives PHP requests the same 403 page as nginx.
     ...(uploadDirs.length === 0
@@ -260,10 +267,34 @@ export const apacheStartCommand = (
     "ServerName localhost",
     `ErrorLog "|/bin/sh -c 'exec /bin/cat >&3'"`,
     'CustomLog "|/bin/cat" vhost_combined',
-    ...(listenPort === undefined
-      ? site
-      : [`Listen ${String(listenPort)}`, `<VirtualHost *:${String(listenPort)}>`, ...site, "</VirtualHost>"]),
   ];
+  if (tls === undefined) {
+    directives.push(
+      ...(listenPort === undefined
+        ? site(true)
+        : [
+            `Listen ${String(listenPort)}`,
+            `<VirtualHost *:${String(listenPort)}>`,
+            ...plainListenerCanonicalDirectives,
+            ...site(true),
+            "</VirtualHost>",
+          ]),
+    );
+  } else {
+    // An authored port already retired the image's own listener at build time.
+    if (listenPort !== undefined) directives.push(`Listen ${String(listenPort)}`);
+    directives.push(
+      `Listen ${String(tls.tlsPort)}`,
+      ...nativeTlsVirtualHosts({
+        family: "php-apache",
+        plainPort: tls.plainPort,
+        tlsPort: tls.tlsPort,
+        serverName: tls.serverName,
+        plainSite: site(true),
+        tlsSite: site(false),
+      }),
+    );
+  }
   const flags = directives.flatMap((directive) => ["-c", directive]);
   return [
     "sh",

@@ -78,6 +78,7 @@ func main() { log.Fatal(http.ListenAndServe("0.0.0.0:" + os.Getenv("PORT"), http
     },
   },
   { contract: "opensearch", service: { type: "opensearch:2" } },
+  { contract: "adminer", service: { type: "adminer:6" } },
   { contract: "php", service: { type: "php:8.4", appMount: "/app" } }, // php:8.4-apache-bookworm
   { contract: "php/fpm", service: { type: "php:8.4", via: "fpm", appMount: "/app" } },
   {
@@ -85,7 +86,7 @@ func main() { log.Fatal(http.ListenAndServe("0.0.0.0:" + os.Getenv("PORT"), http
     service: {
       type: "phpmyadmin:5",
       hosts: "database.invalid",
-      creds: { user: "matrix", password: "matrix", database: "matrix" },
+      creds: { user: "matrix", password: "matrix" },
     },
   },
   { contract: "postgres", service: { type: "postgres:16" } },

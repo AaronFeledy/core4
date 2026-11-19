@@ -42,7 +42,7 @@ export const waitForService = Effect.fn("ServiceReadiness.waitForService")(funct
         const observed = yield* Effect.result(inspect);
         yield* Ref.set(last, observed);
         if (Result.isFailure(observed)) return true;
-        return observed.success.status !== "running";
+        return observed.success.status === "exited" && observed.success.exitCode === 0;
       }),
     );
     const observed = yield* Ref.get(last);

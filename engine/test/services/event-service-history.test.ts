@@ -228,4 +228,35 @@ describe("EventService.subscribeWithHistory", () => {
     expect(decodes).toBe(0);
     expect(bus).toBe(0);
   });
+
+  test("keeps event discriminants and finite literals while redacting free text", async () => {
+    const redaction = makeRedactionService();
+    await Effect.runPromise(redaction.registerValues(["task.detail", "stdout", "line-text"]));
+    const event = {
+      _tag: "task.detail" as const,
+      taskId: "line-text",
+      stream: "stdout" as const,
+      line: "line-text",
+      timestamp: "2026-10-30T00:00:00Z",
+    };
+    const outcome = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          const subscription = yield* events.subscribeWithHistory();
+          yield* events.publish(event);
+          const after = yield* events.subscribeWithHistory();
+          return {
+            history: after.history,
+            queued: yield* Queue.clear(subscription.queue),
+          };
+        }),
+      ).pipe(
+        Effect.provide(Events.layerWith(4).pipe(Layer.provide(Layer.succeed(RedactionService, redaction)))),
+      ),
+    );
+    const expected = { ...event, taskId: "[redacted]", line: "[redacted]" };
+    expect(outcome.history).toEqual([expected]);
+    expect(outcome.queued).toEqual([expected]);
+  });
 });

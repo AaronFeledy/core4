@@ -15,7 +15,7 @@ import {
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
   test("uses version thirteen for dependency-keyed environment freshness", () => {
     // Given / When / Then
-    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(13n);
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(14n);
   });
 
   test.each([2n, 3n, 4n, 5n, 6n])(
@@ -27,6 +27,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
         landoVersion: "0.0.0",
         appName: "old",
         sourceFile: "/app/.lando.yml",
+        sourceProjectFiles: [],
         sourceEnvironment: {
           _tag: "Names" as const,
           names: [],
@@ -51,6 +52,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "myapp",
       sourceFile: "/tmp/test/.lando.yml",
+      sourceProjectFiles: [],
       sourceEnvironment: {
         _tag: "Names" as const,
         names: [],
@@ -106,6 +108,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "n",
       sourceFile: "/x/.lando.yml",
+      sourceProjectFiles: [],
       sourceEnvironment: {
         _tag: "Names" as const,
         names: [],
@@ -133,6 +136,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "n",
       sourceFile: "/x/.lando.yml",
+      sourceProjectFiles: [],
       sourceEnvironment: {
         _tag: "Names" as const,
         names: [],
@@ -162,6 +166,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "n",
       sourceFile: "/x/.lando.yml",
+      sourceProjectFiles: [],
       sourceEnvironment: {
         _tag: "Names" as const,
         names: [],
@@ -194,9 +199,9 @@ describe("deriveAppCommandToolingFingerprint", () => {
     } satisfies LandofileShape;
 
     // When
-    const noDefaultsFingerprint = deriveAppCommandToolingFingerprint(withoutDefaults);
-    const defaultsFingerprint = deriveAppCommandToolingFingerprint(withDefaults);
-    const restoredFingerprint = deriveAppCommandToolingFingerprint(withoutDefaults);
+    const noDefaultsFingerprint = deriveAppCommandToolingFingerprint(withoutDefaults, undefined);
+    const defaultsFingerprint = deriveAppCommandToolingFingerprint(withDefaults, undefined);
+    const restoredFingerprint = deriveAppCommandToolingFingerprint(withoutDefaults, undefined);
 
     // Then
     expect(defaultsFingerprint).not.toBe(noDefaultsFingerprint);
@@ -223,7 +228,9 @@ describe("deriveAppCommandToolingFingerprint", () => {
     };
 
     // When / Then
-    expect(deriveAppCommandToolingFingerprint(first)).toBe(deriveAppCommandToolingFingerprint(second));
+    expect(deriveAppCommandToolingFingerprint(first, undefined)).toBe(
+      deriveAppCommandToolingFingerprint(second, undefined),
+    );
   });
 });
 

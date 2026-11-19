@@ -32,7 +32,7 @@ test.each(["destroyed", "no-op"] as const)(
       destroy: () =>
         Effect.succeed(
           kind === "destroyed"
-            ? { kind, shutdownObservations: [observation] }
+            ? { kind, volumesRemoved: { data: 0, cache: 0 }, shutdownObservations: [observation] }
             : { kind, reason: "no-applied-plan" as const, shutdownObservations: [observation] },
         ),
     };
@@ -99,7 +99,10 @@ test("whole global legacy provider honestly omits unsupported observations", asy
   // Given
   const { resolved } = globalHarness();
   const harness = makeHarness();
-  const provider = { ...resolved.provider, destroy: () => Effect.succeed({ kind: "destroyed" as const }) };
+  const provider = {
+    ...resolved.provider,
+    destroy: () => Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
+  };
   // When
   const receipt = await Effect.runPromise(
     removeGlobalResources({ ...resolved, provider }, { volumes: false, removeState: true }).pipe(
@@ -139,6 +142,7 @@ for (const command of ["stop", "destroy"] as const) {
               ? { kind, reason: "no-applied-plan", shutdownObservations: observations }
               : {
                   kind: "destroyed",
+                  volumesRemoved: { data: 0, cache: 0 },
                   ...(kind === "unobserved" ? {} : { shutdownObservations: observations }),
                 },
         });
@@ -149,7 +153,7 @@ for (const command of ["stop", "destroy"] as const) {
                 await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer))),
               )
             : Schema.encodeSync(GlobalDestroyResultSchema)(
-                await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer))),
+                await Effect.runPromise(globalDestroy({}).pipe(Effect.provide(harness.layer))),
               );
         // Then all contributed facts survive, while unsupported or absent observations stay omitted.
         if (kind === "unobserved" || kind === "absent") {

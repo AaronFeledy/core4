@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 import { PromptValidationError, RecipePromptValidationError } from "@lando/sdk/errors";
+import { PortablePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -149,12 +150,12 @@ describe("recipe option parity", () => {
       expect(yaml).not.toContain("allowOverride:");
       expect(yaml).toContain('type: "{{ recipe.database }}"');
       expect(yaml).toContain('composer: "2"');
-      expect(yaml).toContain("recommended-project:^{{ recipe.drupal }}");
+      expect(yaml).toContain("lando-drupal-scaffold {{ recipe.drupal }}");
 
       const landofile = await discoverFrom(result.directory);
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.5");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
-      expect(landofile.tooling?.["drupal-scaffold"]?.cmd).toContain("recommended-project:^10");
+      expect(landofile.tooling?.["drupal-scaffold"]?.cmd).toBe("lando-drupal-scaffold 10");
       expect(landofile.services?.[ServiceName.make("appserver")]?.via).toBe("fpm");
       expect(landofile.services?.[ServiceName.make("edge")]?.type).toBe("nginx");
       expect(landofile.services?.[ServiceName.make("edge")]?.uploadDirs).toEqual(["sites/*/files"]);
@@ -272,8 +273,46 @@ describe("recipe option parity", () => {
       expect(yaml).toContain('php: "8.4"');
       expect(yaml).toContain("webroot: web");
       expect(yaml).toContain("vendor/bin/drush");
-      expect(yaml).toContain("drupal/cms");
+      expect(yaml).toContain("lando-drupal-cms-scaffold");
       expect(yaml).not.toContain("recommended-project");
+    });
+  });
+
+  test("drupal-contrib init writes a nested app mount, /app site volume, and helper tooling", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "drupal-contrib",
+        nonInteractive: true,
+        yes: true,
+        answers: { name: "contrib-defaults", project: "example" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      // Allows room for Chrome, test environment, and contrib tooling, but not an embedded scaffold script.
+      expect(Buffer.byteLength(yaml)).toBeLessThan(6_000);
+      const landofile = await discoverFrom(result.directory);
+      const appserver = landofile.services?.[ServiceName.make("appserver")];
+      expect(appserver?.webroot).toBe(PortablePath.make("/app/web"));
+      expect(appserver?.mounts).toEqual(["site:/app"]);
+      expect(appserver?.appMount).toMatchObject({
+        target: "/app/web/modules/custom/example",
+        includes: ["vendor", "node_modules", "tmp"],
+      });
+      expect(Object.keys(appserver?.environment ?? {})).toContain("SIMPLETEST_DB");
+      expect(landofile.services?.[ServiceName.make("chrome")]?.image).toBe(
+        "selenium/standalone-chromium:155.0-20261010",
+      );
+      expect(landofile.events).toEqual({ "post-start": [{ task: "drupal-contrib-sync" }] });
+      expect(landofile.tooling?.["drupal-contrib-sync"]).toMatchObject({
+        arguments: false,
+        cmd: ["lando-drupal-contrib-sync", "module", "example", "^11"],
+      });
+      expect(landofile.tooling?.phpunit).toMatchObject({
+        wrapper: true,
+        cmd: ["/app/vendor/bin/phpunit", "-c", "/app/web/core"],
+      });
     });
   });
 

@@ -4,16 +4,23 @@ import { resolve } from "node:path";
 import { landoManagedPodmanRuntimeDirCommands } from "../../../scripts/build-ci-workflow.ts";
 import { renderNightlyWorkflow } from "../../../scripts/build-nightly-workflow.ts";
 import { isShardedUnitTest } from "../../../scripts/test-shards.ts";
+import { createMaintenanceFixture } from "./support/maintenance-workflow-harness.ts";
 
 const workflowPath = resolve(import.meta.dirname, "../../../.github/workflows/nightly.yml");
 
 type Step = Record<string, unknown>;
 type Job = {
+  readonly if?: string;
+  readonly permissions?: Readonly<Record<string, string>>;
+  readonly "timeout-minutes"?: number;
   readonly needs?: ReadonlyArray<string>;
   readonly "runs-on"?: string;
   readonly steps: ReadonlyArray<Step>;
 };
-type Workflow = { readonly jobs: Record<string, Job> };
+type Workflow = {
+  readonly permissions: Readonly<Record<string, string>>;
+  readonly jobs: Record<string, Job>;
+};
 
 const firstDerivedConsumer: Readonly<Record<string, readonly [name: string, command: string]>> = {
   "container-helper": ["Set up Lando with Docker", "bun core/bin/lando.ts setup"],
@@ -51,70 +58,152 @@ test("nightly jobs regenerate derived sources after frozen install and before th
   const committed = await Bun.file(workflowPath).text();
   expect(committed).toBe(rendered);
 
-  for (const source of [rendered, committed]) {
-    const { jobs } = Bun.YAML.parse(source) as Workflow;
-    expect(Object.keys(jobs).sort()).toEqual(
-      [
-        ...Object.keys(firstDerivedConsumer),
-        "runtime-bundle-manifest-live",
-        "runtime-bundle-linux-x64",
-        "runtime-bundle-linux-arm64",
-        "runtime-bundle-reproducibility-linux-x64",
-        "runtime-bundle-reproducibility-linux-arm64",
-      ].sort(),
-    );
+  const { jobs } = Bun.YAML.parse(committed) as Workflow;
+  expect(Object.keys(jobs).sort()).toEqual(
+    [
+      ...Object.keys(firstDerivedConsumer),
+      "runtime-bundle-manifest-live",
+      "runtime-bundle-linux-x64",
+      "runtime-bundle-linux-arm64",
+      "runtime-bundle-reproducibility-linux-x64",
+      "runtime-bundle-reproducibility-linux-arm64",
+      "report-failure",
+    ].sort(),
+  );
 
-    for (const [id, [consumerName, consumerCommand]] of Object.entries(firstDerivedConsumer)) {
-      const steps = jobs[id]?.steps;
-      expect(steps).toBeDefined();
-      if (steps === undefined) throw new Error(`Missing nightly job: ${id}`);
+  for (const [id, [consumerName, consumerCommand]] of Object.entries(firstDerivedConsumer)) {
+    const steps = jobs[id]?.steps;
+    expect(steps).toBeDefined();
+    if (steps === undefined) throw new Error(`Missing nightly job: ${id}`);
 
-      const install = steps.findIndex((step) => step.run === "bun install --frozen-lockfile");
-      const codegenSteps = steps.filter((step) => step.run === "bun run codegen");
-      const codegen = steps.findIndex((step) => step.run === "bun run codegen");
-      const consumer = steps.findIndex(
-        (step) =>
-          step.name === consumerName && typeof step.run === "string" && step.run.includes(consumerCommand),
-      );
-      expect(codegenSteps).toHaveLength(1);
-      expect(codegenSteps[0]?.name).toBe("Regenerate derived sources");
-      expect(codegenSteps[0]).not.toHaveProperty("if");
-      expect(codegenSteps[0]).not.toHaveProperty("working-directory");
-      expect(codegenSteps[0]).not.toHaveProperty("continue-on-error");
-      expect(install).toBeGreaterThanOrEqual(0);
-      expect(codegen).toBeGreaterThan(install);
-      expect(consumer).toBeGreaterThan(codegen);
-    }
-
-    const armSteps = jobs["mysql-arm-client-linux-arm64"]?.steps ?? [];
-    expect(jobs["mysql-arm-client-linux-arm64"]?.needs).toContain("runtime-bundle-linux-arm64");
-    const bundleDownload = armSteps.findIndex(
-      (step) => step.name === "Download current-commit Linux arm64 runtime bundle",
-    );
-    expect(bundleDownload).toBeGreaterThanOrEqual(0);
-    expect(armSteps[bundleDownload]).toMatchObject({
-      uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
-      with: { name: "runtime-bundle-linux-arm64-current", path: "dist/cache/runtime-bundle" },
-    });
-    expect(
-      armSteps.some(
-        (step) => typeof step.run === "string" && step.run.includes("assemble-runtime-bundle.ts"),
-      ),
-    ).toBe(false);
-    const localManifest = armSteps.findIndex(
+    const install = steps.findIndex((step) => step.run === "bun install --frozen-lockfile");
+    const codegenSteps = steps.filter((step) => step.run === "bun run codegen");
+    const codegen = steps.findIndex((step) => step.run === "bun run codegen");
+    const consumer = steps.findIndex(
       (step) =>
-        step.name === "Build local runtime bundle manifest" &&
-        typeof step.run === "string" &&
-        step.run.includes("bun run scripts/build-runtime-bundle.ts --local"),
+        step.name === consumerName && typeof step.run === "string" && step.run.includes(consumerCommand),
     );
-    expect(localManifest).toBeGreaterThanOrEqual(0);
-    expect(localManifest).toBeGreaterThan(bundleDownload);
-    expect(localManifest).toBeLessThan(armSteps.findIndex((step) => step.run === "bun run codegen"));
-
-    const pinSteps = jobs["runtime-bundle-manifest-live"]?.steps ?? [];
-    expect(pinSteps.filter((step) => step.run === "bun run codegen")).toHaveLength(0);
+    expect(codegenSteps).toHaveLength(1);
+    expect(codegenSteps[0]?.name).toBe("Regenerate derived sources");
+    expect(codegenSteps[0]).not.toHaveProperty("if");
+    expect(codegenSteps[0]).not.toHaveProperty("working-directory");
+    expect(codegenSteps[0]).not.toHaveProperty("continue-on-error");
+    expect(install).toBeGreaterThanOrEqual(0);
+    expect(codegen).toBeGreaterThan(install);
+    expect(consumer).toBeGreaterThan(codegen);
   }
+
+  const armSteps = jobs["mysql-arm-client-linux-arm64"]?.steps ?? [];
+  expect(jobs["mysql-arm-client-linux-arm64"]?.needs).toContain("runtime-bundle-linux-arm64");
+  const bundleDownload = armSteps.findIndex(
+    (step) => step.name === "Download current-commit Linux arm64 runtime bundle",
+  );
+  expect(bundleDownload).toBeGreaterThanOrEqual(0);
+  expect(armSteps[bundleDownload]).toMatchObject({
+    uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+    with: { name: "runtime-bundle-linux-arm64-current", path: "dist/cache/runtime-bundle" },
+  });
+  expect(
+    armSteps.some((step) => typeof step.run === "string" && step.run.includes("assemble-runtime-bundle.ts")),
+  ).toBe(false);
+  const localManifest = armSteps.findIndex(
+    (step) =>
+      step.name === "Build local runtime bundle manifest" &&
+      typeof step.run === "string" &&
+      step.run.includes("bun run scripts/build-runtime-bundle.ts --local"),
+  );
+  expect(localManifest).toBeGreaterThanOrEqual(0);
+  expect(localManifest).toBeGreaterThan(bundleDownload);
+  expect(localManifest).toBeLessThan(armSteps.findIndex((step) => step.run === "bun run codegen"));
+
+  const pinSteps = jobs["runtime-bundle-manifest-live"]?.steps ?? [];
+  expect(pinSteps.filter((step) => step.run === "bun run codegen")).toHaveLength(0);
 });
+
+test("#2302 nightly reporter waits for every job with issue permission only on the reporter", () => {
+  const { jobs, permissions } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
+  const reporter = jobs["report-failure"];
+  expect(reporter).toBeDefined();
+  expect(reporter?.needs?.toSorted()).toEqual(
+    Object.keys(jobs)
+      .filter((id) => id !== "report-failure")
+      .sort(),
+  );
+  expect(permissions).toEqual({ contents: "read" });
+  expect(reporter?.permissions).toEqual({ issues: "write" });
+  expect(
+    Object.entries(jobs)
+      .filter(([, job]) => job.permissions?.issues === "write")
+      .map(([id]) => id),
+  ).toEqual(["report-failure"]);
+  expect(reporter?.["runs-on"]).toBe("ubuntu-24.04");
+  expect(reporter?.steps).toHaveLength(1);
+  expect(reporter?.steps[0]).toMatchObject({ name: "Report automation failure" });
+  expect(jobs["provider-lando-e2e-linux-x64"]?.["timeout-minutes"]).toBe(90);
+});
+
+test.each([
+  ["schedule", "refs/heads/main", false, true],
+  ["schedule", "refs/heads/main", true, false],
+  ["workflow_dispatch", "refs/heads/main", false, false],
+  ["schedule", "refs/heads/fix", false, false],
+] as const)("#2302 reporter gate for %s on %s (run cancelled: %p)", (event, ref, runCancelled, expected) => {
+  const { jobs } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
+  const condition = jobs["report-failure"]?.if;
+  if (condition === undefined) throw new TypeError("Missing reporter condition");
+  // The gate uses the common JavaScript/GitHub boolean subset.
+  const evaluate = new Function("cancelled", "github", `return (${condition.slice(3, -2)});`);
+  expect(evaluate(() => runCancelled, { event_name: event, ref })).toBe(expected);
+});
+
+test.skipIf(process.platform === "win32")(
+  "#2302 nightly makes no gh calls when jobs succeed or skip",
+  async () => {
+    await using fixture = await createMaintenanceFixture({ domain: "tomcat" });
+    const result = await fixture.failure(renderNightlyWorkflow(), [], {
+      "container-helper": { result: "success" },
+      "provider-lando-e2e-linux-x64": { result: "skipped" },
+    });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(await fixture.commands()).toBe("");
+  },
+);
+
+test.skipIf(process.platform === "win32").each([true, false])(
+  "#2302 nightly reports failed job names and run URL (existing issue: %s)",
+  async (existing) => {
+    await using fixture = await createMaintenanceFixture({ domain: "tomcat", repository: "fork/core4" });
+    const title = "nightly automation failure";
+    const result = await fixture.failure(renderNightlyWorkflow(), existing ? [{ number: 42, title }] : [], {
+      "container-helper": { result: "failure" },
+      "file-sync-contract-linux-x64": { result: "neutral_new" },
+      "file-sync-contract-darwin-arm64": { result: "abandoned" },
+      "provider-lando-e2e-linux-x64": { result: "skipped" },
+      "refresh-test-timings-linux-x64": { result: "cancelled" },
+      "runtime-bundle-manifest-live": { result: "success" },
+    });
+    expect(result.exitCode, result.stderr).toBe(0);
+    const commands = await fixture.commands();
+    expect(commands.match(/^gh issue (create|comment) /gm)).toHaveLength(1);
+    expect(commands).toContain(
+      existing ? "gh issue comment 42 --body" : `gh issue create --title ${title} --body`,
+    );
+    expect(
+      commands
+        .match(/^Failed jobs: (.+?)(?: --assignee \S+)? repo=\S+$/m)?.[1]
+        ?.split(", ")
+        .sort(),
+    ).toEqual([
+      "container-helper",
+      "file-sync-contract-darwin-arm64 (abandoned)",
+      "file-sync-contract-linux-x64 (neutral_new)",
+      "refresh-test-timings-linux-x64 (timed out or cancelled)",
+    ]);
+    expect(commands).toContain("https://example.invalid/fork/core4/actions/runs/42");
+    expect(commands).toContain("repo=fork/core4");
+    expect(commands.includes("--assignee AaronFeledy")).toBe(!existing);
+  },
+);
 
 test.each([
   ["linux-x64", "ubuntu-24.04"],

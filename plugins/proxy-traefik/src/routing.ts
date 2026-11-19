@@ -1,5 +1,6 @@
 import type { AppRouteOwner, ProxyAuthority, RoutePlan } from "@lando/sdk/schema";
 
+import type { BackendTransportPlan } from "./backend-transport.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
 import { renderRouteFileMetadata } from "./route-file-metadata.ts";
 import { routeBackendUrl, routeMiddlewareConfig } from "./route-provider-config.ts";
@@ -133,6 +134,7 @@ export const renderTraefikDynamicConfig = (
   routes: ReadonlyArray<RoutePlan>,
   owner: AppRouteOwner,
   tlsFiles?: TraefikTlsFiles,
+  backendTransports?: BackendTransportPlan,
 ): string => {
   const namespace = routeNamespace(owner);
   const routers = routes.flatMap((route, index) =>
@@ -154,12 +156,36 @@ export const renderTraefikDynamicConfig = (
           ]),
     ]),
   );
-  const services = routes.flatMap((route, index) => [
-    `    ${namespace}${index}:`,
-    "      loadBalancer:",
-    "        servers:",
-    `          - url: ${routeBackendUrl(route, owner.id)}`,
-  ]);
+  const services = routes.flatMap((route, index) => {
+    const reference = backendTransports?.references[index];
+    return [
+      `    ${namespace}${index}:`,
+      "      loadBalancer:",
+      // The browser's Host, including its port, must reach the backend so PHP and
+      // the application see the public authority.
+      "        passHostHeader: true",
+      ...(reference === undefined
+        ? []
+        : [`        serversTransport: ${JSON.stringify(`${reference}@file`)}`]),
+      "        servers:",
+      `          - url: ${routeBackendUrl(route, owner.id)}`,
+    ];
+  });
+  const serversTransports =
+    backendTransports === undefined || backendTransports.transports.length === 0
+      ? []
+      : [
+          "  serversTransports:",
+          ...backendTransports.transports.flatMap((transport) => [
+            `    ${transport.name}:`,
+            `      serverName: ${JSON.stringify(transport.config.serverName)}`,
+            "      rootCAs:",
+            // Inline public root PEM; the watched dynamic directory already reaches
+            // Traefik, so no key mount or separate CA mount is needed.
+            ...transport.config.rootCAs.map((root) => `        - ${JSON.stringify(root)}`),
+            "      insecureSkipVerify: false",
+          ]),
+        ];
   const middlewares = routes.flatMap((route, index) =>
     (route.filters ?? []).flatMap((filter, filterIndex) => {
       return [
@@ -184,6 +210,7 @@ export const renderTraefikDynamicConfig = (
     "  services:",
     ...services,
     ...(middlewares.length === 0 ? [] : ["  middlewares:", ...middlewares]),
+    ...serversTransports,
     ...tls,
     "",
   ].join("\n");

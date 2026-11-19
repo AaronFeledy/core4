@@ -1,0 +1,105 @@
+{
+  "provenance": {
+    "commit": "c762c55baece4fedc5d2bf80590909f7426691ca",
+    "sources": {
+      "sdk/src/schema/landofile.ts": "3bbd68d93c19d867d5259505e63058ed6df2b3dc"
+    }
+  },
+  "pointer": "/properties/services/additionalProperties/properties/projectUser",
+  "modes": {
+    "plain": {
+      "witness": {
+        "type": "string"
+      },
+      "field": {
+        "anyOf": [
+          {
+            "enum": [false],
+            "type": "boolean"
+          },
+          {
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "directive": {
+      "witness": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": ["LandofileOverride"],
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": ["_tag"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": ["LandofileReset"],
+                "type": "string"
+              }
+            },
+            "required": ["_tag"],
+            "type": "object"
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "field": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": ["LandofileOverride"],
+                "type": "string"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "enum": [false],
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": ["_tag"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": ["LandofileReset"],
+                "type": "string"
+              }
+            },
+            "required": ["_tag"],
+            "type": "object"
+          },
+          {
+            "enum": [false],
+            "type": "boolean"
+          },
+          {
+            "type": "string"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -104,7 +104,7 @@ If you are looking for a public surface or policy:
 | Current/recorded app names, retained data name, and planned/applied project-file policy in info | 06 | §6.10 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
 | Logical endpoint identity, mandatory endpoint normalization, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
-| Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
+| Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, terminal dependency evidence, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
 | Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
 | Native-health observations and readiness configuration metadata, without last-proof inference | 06 | §6.10 |
 | Certificates and trust injection | 06 | §6.8 |
@@ -146,6 +146,7 @@ If you are looking for a public surface or policy:
 | Schema and generated-reference publication | 07 | §7.8 |
 | Shared resolved-Landofile validation, typed lint rule registry, generated rule reference, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
 | Authored HTTP route binding, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
+| Node runtime inference versus package-manager selection, offline launchers, BYO toolchains, and project-file validation headlines | 06 + 07 + 12 + 13 | §6.11.0 + §6.12.1 + §6.13.3 + §7.8 + §12.1 + §13.1 |
 | Canonical Landofile parser and serializer | 07 | §7.8.1 |
 | Command kinds and namespaces | 08 | §8.1 |
 | Top-level aliases and collision errors | 08 | §8.1.2 |
@@ -189,7 +190,7 @@ If you are looking for a public surface or policy:
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
 | Shared certificate-pair preparation, router leaf renewal, current-root checks, issuer repair, and watched certificate reload | 11 | §10.3 + §10.2.1 |
 | External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
-| SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent, relay reuse | 11 | §10.4 |
+| SSH identity, identities, managed key, sidecar and host agent forwarding, applied sidecar readiness, gpg agent, relay reuse | 11 | §10.4 + §10.5.1 |
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | Endpoint-scoped URL scan defaults, explicit override precedence and global disable policy | 06 + 11 | §6.6 + §10.5.3 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
@@ -198,7 +199,7 @@ If you are looking for a public surface or policy:
 | Doctor diagnostics and resilience | 11 | §10.9 |
 | Host-proxy protocol and errors | 11 | §10.10 |
 | In-container helper: static Go client, Lando-built toolchain, embedding | 02 + 11 + 15 | §2.1 + §10.10.2 + §17.3 |
-| Host-proxy worker reuse, session recreation, and scoped rebuild | 11 | §10.10.1 + §12.4 |
+| Host-proxy worker reuse, session recreation, and selected restart and rebuild | 11 | §10.10.1 + §12.4 |
 | `DataMover`, endpoints, typed provider volume archives, role-aware host-file diagnostics, owner-keyed snapshot sidecars, handle-only mutations, and orphan GC | 11 | §10.11 |
 | Remote source and dataset contracts | 11 | §10.12 |
 | Code sync, post-processing, remote setup, and vendor tools | 11 | §10.12.1 + §10.12.4 |
@@ -218,13 +219,13 @@ If you are looking for a public surface or policy:
 | `StateStore`, buckets, app/worker locks, consumers, and plugin access | 12 | §12.7 |
 | Source store: layout, integrity, publication and leases, offline reuse, and `meta:sources:gc` | 12 | §12.8 |
 | Test and contract-suite layers | 13 | §13.1 |
-| Schema, documentation, type, and PR gates | 13 | §13.2 + §13.4 |
+| Schema, documentation, type, and PR gates, including merge-gate job results and automatic reruns after runner loss | 13 | §13.2 + §13.4 |
 | Distribution forms, CI matrix, and release channels | 13 | §13.5 + §13.7 |
 | Startup and TTY renderer process-exit overhead gates | 13 | §13.6 |
 | Boundary gate policy | 13 | §13.8 |
 | Provider-neutral vocabulary, forbidden dependencies, acceptance, glossary | 14 | §15 |
 | Release pipeline, codegen ownership, and embedded assets | 15 | §17.1 + §17.3 |
-| Paired Tomcat image/config maintenance and offline catalog generation | 15 | §17.2 |
+| Paired Tomcat image/config maintenance, offline catalog generation, and automation failure reporting | 15 | §17.2 |
 | Signing, supply chain, update, and installation | 15 | §17.4 + §17.7 |
 | Release workflow and shipping criteria | 15 | §17.8 + §17.9 |
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |

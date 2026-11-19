@@ -71,7 +71,9 @@ type DraftExternalOptionalServicePlanKey =
   | "logSources"
   | "connection"
   | "nonSqlCreds"
-  | "sqlite";
+  | "sqlite"
+  | "projectUser"
+  | "projectUserExplanation";
 
 type OptionalServicePlanKey = {
   [K in keyof ServicePlan]-?: undefined extends ServicePlan[K] ? K : never;

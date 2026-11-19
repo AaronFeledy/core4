@@ -73,6 +73,7 @@ export interface EnsureGlobalServicesResult {
 
 export type EnsureGlobalServicesError =
   | import("@lando/sdk/errors").CaError
+  | import("@lando/sdk/services").FileSystemError
   | DebuggerHostUnavailableError
   | Effect.Error<ReturnType<typeof globalInstall>>
   | Effect.Error<ReturnType<typeof canonicalAppRoot>>
@@ -291,7 +292,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     );
     // Historical siblings remain observation evidence, never warm admission inputs.
     const desiredFinalPlan = { ...plan, services: { ...plan.services, ...builtPlan.services } };
-    yield* withGlobalConsumerReservation(
+    const applied = yield* withGlobalConsumerReservation(
       builtPlan,
       Object.keys(builtPlan.services),
       applyActivation({
@@ -316,7 +317,10 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
       services: selected.map((service) => service.name),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
-    const servicesStarted = startedServices(yield* collectPlanConnections(finalPlan, ready));
+    const servicesStarted = startedServices(
+      yield* collectPlanConnections(finalPlan, ready),
+      applied.services,
+    );
     yield* verifyAdmission;
 
     yield* events.publish(

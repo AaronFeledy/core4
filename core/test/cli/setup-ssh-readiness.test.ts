@@ -23,6 +23,7 @@ import { runShellServiceSetupStep } from "../../src/cli/command-specs/meta/setup
 import { makeSetupReadinessRecorder } from "../../src/cli/command-specs/meta/setup-steps.ts";
 import { type SetupReadinessStep, readSetupReadiness } from "../../src/cli/commands/setup-readiness.ts";
 import { globalAppForProvider } from "../_support/global-provider.ts";
+import { globalPlanAt } from "../_support/global-teardown-harness.ts";
 
 test.each([
   { state: "running", exitCode: 0, status: "satisfied", probes: 1 },
@@ -33,6 +34,14 @@ test.each([
   async (scenario) => {
     // Given: the real setup command with an isolated record and a provider boundary double.
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-ssh-readiness-"));
+    const root = AbsolutePath.make(join(userDataRoot, "global"));
+    const plan = globalPlanAt(root, {
+      kind: "command",
+      command: ["check-agent"],
+      timeoutSeconds: 5,
+      intervalSeconds: 1,
+      retries: 1,
+    });
     const warnings: string[] = [];
     const selections: string[] = [];
     const inspecting = Effect.runSync(Deferred.make<void>());
@@ -98,7 +107,7 @@ test.each([
                 get: (key) => Effect.succeed(config[key]),
               }),
               Layer.succeed(RuntimeProviderRegistry, {
-                resolveAppliedPlan: () => Effect.succeed(undefined),
+                resolveAppliedPlan: () => Effect.succeed(plan),
                 resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                 appliedPlansFor: () => Effect.succeed([]),
                 list: Effect.succeed([ProviderId.make("lando")]),
@@ -112,9 +121,9 @@ test.each([
               Layer.succeed(SshService, { ...ssh, id: "sidecar" }),
               Layer.succeed(GlobalAppService, {
                 ...globalAppForProvider(ProviderId.make("lando")),
-                root: Effect.succeed(AbsolutePath.make(join(userDataRoot, "global"))),
+                root: Effect.succeed(root),
                 paths: Effect.succeed({
-                  root: AbsolutePath.make(join(userDataRoot, "global")),
+                  root,
                   distLandofile: AbsolutePath.make(join(userDataRoot, "global", ".lando.dist.yml")),
                   userLandofile: AbsolutePath.make(join(userDataRoot, "global", ".lando.yml")),
                 }),
@@ -146,7 +155,7 @@ test.each([
         expect(shell?.evidence).toContain(
           scenario.state === "exited"
             ? "container status: exited"
-            : "SSH readiness shell probe exited with code 2",
+            : "SSH readiness command exited with code 2",
         );
         expect(shell?.remediation).toContain("lando setup");
       } else {

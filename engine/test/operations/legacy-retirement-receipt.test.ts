@@ -92,22 +92,30 @@ test.each(["stop", "destroy", "renamed-destroy"] as const)(
                 quiesceForFileSync: () => Effect.succeed({ shutdownObservations: [observed] }),
                 destroy: (ref, options) =>
                   base.destroy(ref, options).pipe(
-                    Effect.map((outcome) => ({
-                      ...outcome,
-                      ...(ref.app === stale.id
+                    Effect.map((outcome) =>
+                      outcome.kind === "destroyed"
                         ? {
-                            shutdownObservations: [
-                              {
-                                appId: stale.id,
-                                providerId: stale.provider,
-                                service: worker.name,
-                                status: "unknown" as const,
-                                reason: "container-absent" as const,
-                              },
-                            ],
+                            ...outcome,
+                            volumesRemoved: {
+                              data: options.volumes ? 1 : 0,
+                              cache: options.purgeCaches ? 1 : 0,
+                            },
+                            ...(ref.app === stale.id
+                              ? {
+                                  shutdownObservations: [
+                                    {
+                                      appId: stale.id,
+                                      providerId: stale.provider,
+                                      service: worker.name,
+                                      status: "unknown" as const,
+                                      reason: "container-absent" as const,
+                                    },
+                                  ],
+                                }
+                              : {}),
                           }
-                        : {}),
-                    })),
+                        : outcome,
+                    ),
                   ),
               }),
           }),
@@ -129,7 +137,7 @@ test.each(["stop", "destroy", "renamed-destroy"] as const)(
         "web",
       ]);
       expect(result.shutdownObservations).toEqual([observed]);
-      if ("volumesRemoved" in result) expect(result.volumesRemoved).toBe(true);
+      if ("dataVolumesRemoved" in result) expect(result.dataVolumesRemoved).toBe(true);
     } finally {
       if (command === "renamed-destroy") rmSync(join(target.root, ".lando.yml"));
       rmSync(harness.userDataRoot, { recursive: true, force: true });

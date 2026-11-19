@@ -6,12 +6,14 @@ import type { Root } from "mdast";
 import { decodeGuideFrontmatterEither } from "../sdk/src/docs/components/index.ts";
 import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
 import { discoverGuideMdxFiles, resolveHostGuidePlatform } from "./build-guide-scenarios.ts";
+import { lintE2eDestroyVolumes } from "./guides/e2e-destroy-lint.ts";
 import { lintComponentSyntax, lintEditorial } from "./guides/editorial-lint.ts";
 import {
   type GuideFixtureInventoryEntry,
   buildFixtureInventory,
   lintFixtures,
 } from "./guides/fixture-lint.ts";
+import { type InstallLintDocument, lintInstallCoverage } from "./guides/install-lint.ts";
 import {
   type GuideLintDiagnostic,
   diagnostic,
@@ -81,7 +83,11 @@ const lintParsed = (
     );
     lintYamlFences(sourcePath, root, diagnostics);
     diagnostics.push(...lintFixtures(sourcePath, root, { frontmatter, fixtures: options.fixtures ?? [] }));
-    if (diagnostics.length === 0) return { diagnostics, guide: parseGuideRoot(sourcePath, root) };
+    if (diagnostics.length === 0) {
+      const guide = parseGuideRoot(sourcePath, root);
+      diagnostics.push(...lintE2eDestroyVolumes(guide));
+      return { diagnostics, guide };
+    }
     return { diagnostics };
   } catch (error) {
     return { diagnostics: [errorDiagnostic(sourcePath, error)] };
@@ -153,6 +159,7 @@ export const lintGuides = async (
   options: GuideLintOptions = {},
 ): Promise<GuideLintResult> => {
   const diagnostics: GuideLintDiagnostic[] = [];
+  const documents: InstallLintDocument[] = [];
   for (const sourcePath of await discoverLintFiles(root, options.guideRoot)) {
     const content = await Bun.file(resolve(root, sourcePath)).text();
     let mdx: Root;
@@ -169,11 +176,13 @@ export const lintGuides = async (
         ? await buildFixtureInventory(root, frontmatter.id, options.guideRoot)
         : [];
     const result = lintParsed(sourcePath, mdx, { fixtures });
+    documents.push({ sourcePath, root: mdx, ...(result.guide === undefined ? {} : { guide: result.guide }) });
     diagnostics.push(...result.diagnostics);
     await lintFixtureLandofiles(root, fixtures, diagnostics);
     if (result.guide !== undefined)
       diagnostics.push(...lintResolvedTranscripts(result.guide, resolveHostGuidePlatform()).diagnostics);
   }
+  diagnostics.push(...lintInstallCoverage(documents));
   return { diagnostics };
 };
 export const formatGuideLintDiagnostic = (entry: GuideLintDiagnostic): string =>

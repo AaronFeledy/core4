@@ -11,6 +11,10 @@ This part defines the release quality bar, test architecture, distribution forms
 
 ### 13.1 Test layers
 
+Healthy-dependency acceptance covers terminal settlement during the start period and regular retries, retained real exit evidence, restart disarming, replacement under the same name, optional and required consumers, and preservation of cancellation and mixed causes. Transport tests MUST prove that a held wait doesn't block other requests and that cancellation closes the connection before headers or while waiting for the body. The live readiness fixture MUST prove fast exit detection and cancellation of a held native wait on green, destroy its owned resources, including partial apply, using the production registry, and verify absence on the same runtime. Deadline acceptance MUST prove cleanup is joined and a dying finalizer cannot be mistaken for timeout.
+
+SSH readiness acceptance runs the plugin's declared argv against empty and nonempty identities answers, malformed replies, disconnects, and cancellation. Observer tests cover the exact applied plan and provider, overridden argv and user, unavailable declarations, and virtual-clock attempt and retry budgets. Setup and doctor tests distinguish non-fatal setup failure from live recovery, which must leave the setup record unchanged.
+
 All tests run under `bun test` unless a gate names another tool.
 
 | Layer | Contract |
@@ -22,6 +26,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Programmable execution | Public library and SDK-only plugin fixtures prove the §22 contracts and the regression cases below. |
 | Provider contract | Every `RuntimeProvider` plugin passes the shared `@lando/sdk/test` suite. |
 | Service composition contract | Every `ServiceType` declares a base and resolves through deterministic, provider-neutral core composition. Verify per-kind `sync` inheritance, child Dataset-id replacement, whole-list postApply replacement/empty-list clearing, explicit binding precedence, and no ancestor task duplication (§6.11.1). |
+| Node package-manager provisioning | Every catalog Node type resolves a manager from the nearest declaring manifest. A build miss acquires verified exact npm sources on the host; a matching cache entry makes zero registry requests, and image reuse needs no source lookup. Tests reject wrong bytes in both hash domains and prove acquisition failures do not dispatch. A live suite runs pnpm 9/10/11 and Yarn Classic/Berry, including nested invocations as a non-root user without container networking. |
 | Service feature contract | Every `ServiceFeature` is deterministic, idempotent, priority-ordered, capability-declared, and conflict-safe. Optional effective validation and endpoint declarations consume immutable original decoded facts and expose no apply mutators. Validation reports explicit handled fields or typed structured findings, runs once per final occurrence before cache lookup, and cannot be bypassed by endpoint replacement (§6.11). |
 | App feature contract | Every `AppFeature` shares immutable resolved selection facts between declaration and application, remains idempotent, and rejects application cycles. App declarations follow service declarations; app application follows service application (§6.11.4). |
 | Template engine contract | Every engine declares truthful capabilities, preserves context, is deterministic, and performs no undeclared side effects. |
@@ -133,7 +138,7 @@ Every public schema MUST have canonical annotations, stable JSON Schema output, 
 
 ### 13.4 Quality gates
 
-Every PR runs the static gates (typecheck, lint, codegen drift, test ownership and boundaries) and the docs checks, tests and build. CI selects every other job from the profile its changed paths require (§13.6). Every selected required job MUST pass, and a required job MAY skip only when the profile excludes it. An explicitly advisory experiment reports its result without blocking the merge. For the jobs its profile requires, a PR cannot merge unless:
+Every PR runs the static gates (typecheck, lint, codegen drift, test ownership and boundaries) and the docs checks, tests and build. CI selects every other job from the profile its changed paths require (§13.6). Every selected required job MUST pass, and a required job MAY skip only when the profile excludes it. The merge gate MUST fail on every job result other than `success` or a profile-excluded skip, including GitHub's undocumented `abandoned` and any result it does not recognize, and MUST name each such job and its result. CI MUST automatically rerun the failed jobs once when at least one job was abandoned before running a step and every unsuccessful job either was abandoned before running a step or is a summary or gate job that failed as a result. CI MUST NOT rerun after a job runs and fails independently, and MUST NOT automatically rerun any attempt after the first. An explicitly advisory experiment reports its result without blocking the merge. For the jobs its profile requires, a PR cannot merge unless:
 
 - `bun test`, `bun run typecheck`, `bun run docs:check`, and Biome checks pass.
 - Codegen pure drift, schema compatibility, schema/docs generation, and the Starlight build pass.
@@ -172,6 +177,8 @@ Releases include public schema and command-schema artifacts, declaration bundles
 ### 13.6 CI matrix
 
 Pull requests select a cumulative CI profile from their changed paths. `docs` runs the static gates and the docs job on Linux x64. `guides` adds the schema, library, recipe and container-helper jobs, the Linux x64 build and runtime bundle, and Linux x64 and Windows x64 guide scenarios with the Linux `@smoke` e2e subset. `runtime` adds the unit shards, isolation regressions, macOS process-signal tests, the Linux arm64 runtime bundle and the performance gates. `providers` adds live Linux x64 provider integration. Pushes to `main`, manual dispatches, and changes to `.bun-version` or a platform build path select broad CI, which also runs every platform job in the table below.
+
+CI MUST derive platform build test paths from the selections assigned to `build-*` jobs and MUST include their transitive relative-import dependencies, the platform build and smoke scripts, and the native libc binding module in the broad path rule. A unit test MUST NOT select broad CI merely because it lives under `core/test/build/`.
 
 | Cadence | Platforms/providers | Required scope |
 |---|---|---|

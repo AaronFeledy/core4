@@ -294,6 +294,85 @@ describe("nginx PHP FastCGI preset", () => {
     ]);
   });
 
+  test("projects the router's public scheme and port to PHP after the stock FastCGI include", async () => {
+    const plan = await composeNginxPlan({ type: "nginx", backend: "appserver", webroot: "/app/web" });
+    const command = planCommandText(plan.command);
+
+    // The direct-request fallbacks stay nginx's own scheme and listener port.
+    expect(command).toContain(
+      ["map $http_x_forwarded_proto $lando_fastcgi_https {", "  default $https;", "  https on;", "}"].join(
+        "\n",
+      ),
+    );
+    expect(command).toContain(
+      [
+        "map $http_x_forwarded_proto $lando_fastcgi_scheme {",
+        "  default $scheme;",
+        "  http http;",
+        "  https https;",
+        "}",
+      ].join("\n"),
+    );
+    expect(command).toContain(
+      [
+        "map $http_x_forwarded_proto $lando_fastcgi_fallback_port {",
+        "  default $server_port;",
+        "  http 80;",
+        "  https 443;",
+        "}",
+      ].join("\n"),
+    );
+
+    // Only a valid decimal 1..65535 without a leading zero overrides the fallback.
+    const portMap =
+      /map \$http_x_forwarded_port \$lando_fastcgi_port \{\n {2}default \$lando_fastcgi_fallback_port;\n {2}"~([^"]+)" \$http_x_forwarded_port;\n\}/u.exec(
+        command,
+      );
+    expect(portMap).not.toBeNull();
+    const validPort = new RegExp(portMap?.[1] ?? "(?!) ", "u");
+    for (const port of ["1", "80", "443", "8080", "8443", "65535"]) {
+      expect(validPort.test(port), port).toBe(true);
+    }
+    for (const port of [
+      "",
+      "0",
+      "00",
+      "080",
+      "65536",
+      "99999",
+      "443,8443",
+      "443 8443",
+      " 443",
+      "443 ",
+      "https",
+      "-1",
+      "+443",
+    ]) {
+      expect(validPort.test(port), port).toBe(false);
+    }
+
+    // After the stock include so each assignment wins, with PATH_INFO last.
+    const include = command.indexOf("include /etc/nginx/fastcgi_params;");
+    for (const param of [
+      "fastcgi_param HTTPS $lando_fastcgi_https if_not_empty;",
+      "fastcgi_param REQUEST_SCHEME $lando_fastcgi_scheme;",
+      "fastcgi_param SERVER_PORT $lando_fastcgi_port;",
+      "fastcgi_param SERVER_NAME $host;",
+      "fastcgi_param PATH_INFO $fastcgi_path_info;",
+    ]) {
+      expect(command.indexOf(param), param).toBeGreaterThan(include);
+    }
+    expect(command.indexOf("fastcgi_param HTTPS")).toBeLessThan(
+      command.indexOf("fastcgi_param REQUEST_SCHEME"),
+    );
+    expect(command.indexOf("fastcgi_param REQUEST_SCHEME")).toBeLessThan(
+      command.indexOf("fastcgi_param SERVER_PORT"),
+    );
+    expect(command.indexOf("fastcgi_param SERVER_PORT")).toBeLessThan(
+      command.indexOf("fastcgi_param PATH_INFO"),
+    );
+  });
+
   test("starts a non-root FastCGI front without writing into the image config tree", async () => {
     // Given / When: an identity the nginx image ships, with home persistence
     // declined so the planned user is the only thing under test.

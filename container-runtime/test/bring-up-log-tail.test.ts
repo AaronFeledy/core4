@@ -14,6 +14,7 @@ import { Cause, DateTime, Deferred, Duration, Effect, Exit, Fiber, Stream } from
 import { TestClock } from "effect/testing";
 
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
+import { containerOwnershipLabels } from "../src/native-ownership.ts";
 import { serviceContainerName } from "../src/plan.ts";
 import { StartFailureLogRedactor } from "../src/redact.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
@@ -142,14 +143,23 @@ const makeApi = (options: {
   const api: PodmanApiClient = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.succeed(undefined),
-    request: (request) =>
-      Effect.sync(() => {
+    request: (request) => {
+      if (request.method === "POST" && request.path.endsWith("/wait")) {
+        record(request);
+        return options.completionExitCode === undefined
+          ? Effect.never
+          : Effect.succeed({ status: 200, body: String(options.completionExitCode) });
+      }
+      return Effect.sync(() => {
         record(request);
         if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
           return { status: 200, body: "[]" };
         }
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/json|\/start|\/stop)?/u);
-        const name = containerMatch?.[1];
+        const name = containerMatch?.[1]?.replace(/^id-/u, "");
+        const labels = name?.endsWith("-db")
+          ? containerOwnershipLabels(dependentPlan(), dbName)
+          : containerOwnershipLabels(standalonePlan(), webName);
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           const name = decodeURIComponent(request.path.slice("/networks/".length));
           return { status: 200, body: JSON.stringify(ownedNetworkInspection(standalonePlan(), name)) };
@@ -161,6 +171,7 @@ const makeApi = (options: {
                 status: 200,
                 body: JSON.stringify({
                   Id: `id-${name}`,
+                  Config: { Labels: labels },
                   State: {
                     Running: false,
                     Status: "exited",
@@ -174,7 +185,11 @@ const makeApi = (options: {
           return containers.has(name)
             ? {
                 status: 200,
-                body: JSON.stringify({ Id: `id-${name}`, State: { Running: running.has(name) } }),
+                body: JSON.stringify({
+                  Id: `id-${name}`,
+                  Config: { Labels: labels },
+                  State: { Running: running.has(name) },
+                }),
               }
             : { status: 404, body: "{}" };
         }
@@ -182,7 +197,7 @@ const makeApi = (options: {
           if (options.createStatus !== undefined) return { status: options.createStatus, body: "{}" };
           const created = request.path.slice("/containers/create?name=".length);
           containers.add(created);
-          return { status: 201, body: "{}" };
+          return { status: 201, body: JSON.stringify({ Id: `id-${created}` }) };
         }
         if (request.method === "POST" && request.path.endsWith("/start") && name !== undefined) {
           if (failedStartNames.has(name)) {
@@ -203,7 +218,8 @@ const makeApi = (options: {
           running.delete(name);
         }
         return { status: 204, body: "" };
-      }),
+      });
+    },
     stream: (request) => {
       record(request);
       const isLogs = /\/logs(?:\?|$)/u.test(request.path);
@@ -227,7 +243,7 @@ const makeApi = (options: {
         return Stream.never;
       }
       const containerMatch = request.path.match(/^\/containers\/([^/?]+)\/logs/u);
-      const name = containerMatch?.[1] ?? "";
+      const name = containerMatch?.[1]?.replace(/^id-/u, "") ?? "";
       return Stream.fromIterable(options.logsFor?.[name] ?? []);
     },
   };

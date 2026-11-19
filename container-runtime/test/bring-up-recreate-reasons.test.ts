@@ -9,13 +9,14 @@ import {
   ServiceName,
   type ServicePlan,
   landoNetworkingPlan,
+  landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
 import { DateTime } from "effect";
 
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import { HOST_PROXY_SESSION_LABEL, HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "../src/labels.ts";
 import { commonContainerLabels } from "../src/plan.ts";
-import { bringUpRecreateReasons, presentLogicalCreateConfig } from "../src/podman/bring-up-recreate.ts";
+import { bringUpRecreateReasons } from "../src/podman/bring-up-recreate.ts";
 
 const providerId = ProviderId.make("lando");
 const serviceName = ServiceName.make("web");
@@ -72,14 +73,9 @@ test.each([
   const previous = { ...service, ...(before === undefined ? {} : { init: before }) };
   const desired = { ...service, init: after };
   // When
-  const reasons = bringUpRecreateReasons(
-    plan,
-    desired,
-    {
-      labels: commonContainerLabels(plan, previous),
-    },
-    { skipAbsentFields: true },
-  );
+  const reasons = bringUpRecreateReasons(plan, desired, {
+    labels: commonContainerLabels(plan, previous),
+  });
   // Then
   expect(reasons).toEqual([...expected]);
 });
@@ -169,17 +165,12 @@ describe("host-proxy session reconciliation", () => {
     // Then the marker is stripped and a mismatched observed session cannot arm bind-source without the extension.
     expect(labels[HOST_PROXY_SESSION_LABEL]).toBeUndefined();
     expect(
-      bringUpRecreateReasons(
-        plan,
-        spoofed,
-        {
-          labels: {
-            ...labels,
-            [HOST_PROXY_SESSION_LABEL]: sessionDigest("other"),
-          },
+      bringUpRecreateReasons(plan, spoofed, {
+        labels: {
+          ...labels,
+          [HOST_PROXY_SESSION_LABEL]: sessionDigest("other"),
         },
-        { skipAbsentFields: true },
-      ),
+      }),
     ).toEqual([]);
   });
 
@@ -192,7 +183,13 @@ describe("host-proxy session reconciliation", () => {
         [HOST_PROXY_SESSION_LABEL]: session === undefined ? "" : sessionDigest(session),
       };
       // When bring-up checks the current overlay.
-      const reasons = bringUpRecreateReasons(plan, overlay, { labels }, { skipAbsentFields: true });
+      const reasons = bringUpRecreateReasons(plan, overlay, {
+        labels,
+        bindSources: {
+          "/run/lando/host-proxy.sock": "/home/user/session/host-proxy.sock",
+          "/run/lando/host-proxy/credentials": "/home/user/session/credentials",
+        },
+      });
       // Then the socket's backing session requires recreation, not config drift.
       expect(reasons).toEqual(["bind-source"]);
     },
@@ -210,12 +207,7 @@ describe("host-proxy session reconciliation", () => {
           drift === "credentials" ? "/home/user/old/credentials" : "/home/user/session/credentials",
       };
       // When bring-up compares the observed binds with the trusted overlay.
-      const reasons = bringUpRecreateReasons(
-        plan,
-        overlay,
-        { labels, bindSources },
-        { skipAbsentFields: true },
-      );
+      const reasons = bringUpRecreateReasons(plan, overlay, { labels, bindSources });
       // Then either source drift requires recreation, while matching sources do not.
       expect(reasons).toEqual(drift === "neither" ? [] : ["bind-source"]);
     },
@@ -234,145 +226,48 @@ describe("host-proxy session reconciliation", () => {
       // credentials bind absent on the running container
     };
     // When the new trusted overlay is desired.
-    const reasons = bringUpRecreateReasons(
-      plan,
-      overlay,
-      { labels: legacyLabels, bindSources: legacyBindSources },
-      { skipAbsentFields: true },
-    );
-    // Then missing credentials bind and/or create-config drift force recreation (upgrade path).
-    expect(reasons.length).toBeGreaterThan(0);
-    expect(reasons.some((reason) => reason === "bind-source" || reason === "config")).toBe(true);
+    const reasons = bringUpRecreateReasons(plan, overlay, {
+      labels: legacyLabels,
+      bindSources: legacyBindSources,
+    });
+    // Then both the missing credentials bind and stale configuration require recreation.
+    expect(reasons).toEqual(["bind-source", "config"]);
     // And the legacy plan itself never arms extension-gated bind checks.
     expect(
-      bringUpRecreateReasons(
-        plan,
-        legacyEnvOverlay,
-        {
-          labels: commonContainerLabels(plan, legacyEnvOverlay),
-          bindSources: {
-            "/run/lando/host-proxy.sock": "/home/user/other/host-proxy.sock",
-          },
+      bringUpRecreateReasons(plan, legacyEnvOverlay, {
+        labels: commonContainerLabels(plan, legacyEnvOverlay),
+        bindSources: {
+          "/run/lando/host-proxy.sock": "/home/user/other/host-proxy.sock",
         },
-        { skipAbsentFields: true },
-      ),
+      }),
     ).toEqual([]);
   });
 
-  test("keeps matching sessions and skips absent inspect labels", () => {
+  test("keeps matching sessions and reports config drift for an empty snapshot", () => {
     expect(
-      bringUpRecreateReasons(
-        plan,
-        overlay,
-        { labels: commonContainerLabels(plan, overlay) },
-        { skipAbsentFields: true },
-      ),
+      bringUpRecreateReasons(plan, overlay, {
+        labels: commonContainerLabels(plan, overlay),
+        bindSources: {
+          "/run/lando/host-proxy.sock": "/home/user/session/host-proxy.sock",
+          "/run/lando/host-proxy/credentials": "/home/user/session/credentials",
+        },
+      }),
     ).toEqual([]);
-    expect(bringUpRecreateReasons(plan, overlay, {}, { skipAbsentFields: true })).toEqual([]);
+    expect(bringUpRecreateReasons(plan, overlay, {})).toEqual(["bind-source", "config"]);
   });
 
   test("does not impose a session check without a trusted host-proxy extension", () => {
-    expect(
-      bringUpRecreateReasons(
-        plan,
-        service,
-        { labels: commonContainerLabels(plan, service) },
-        { skipAbsentFields: true },
-      ),
-    ).toEqual([]);
-    expect(
-      bringUpRecreateReasons(
-        plan,
-        legacyEnvOverlay,
-        {
-          labels: {
-            ...commonContainerLabels(plan, legacyEnvOverlay),
-            [HOST_PROXY_SESSION_LABEL]: sessionDigest("other"),
-          },
-        },
-        { skipAbsentFields: true },
-      ),
-    ).toEqual([]);
-  });
-
-  test("preserves the session marker through physical-to-logical fingerprint presentation", () => {
-    const physical = {
-      ...plan,
-      services: { [overlay.name]: overlay },
-      networking: { perAppBridge: { name: "physical", driver: "bridge" } },
-    };
-    const logical = { ...plan, services: { [overlay.name]: overlay } };
-    const previous: ServicePlan = {
-      ...overlay,
-      extensions: trustedExtension("previous-session"),
-    };
-    const presented = presentLogicalCreateConfig(commonContainerLabels(physical, previous), {
-      physical,
-      logical,
-      service: overlay.name,
-    });
-    expect(presented[CREATE_CONFIG_LABEL]).toBe(commonContainerLabels(logical, overlay)[CREATE_CONFIG_LABEL]);
-    expect(presented[HOST_PROXY_SESSION_LABEL]).toBe(sessionDigest("previous-session"));
-    expect(
-      bringUpRecreateReasons(logical, overlay, { labels: presented }, { skipAbsentFields: true }),
-    ).toEqual(["bind-source"]);
-  });
-});
-
-describe("presentLogicalCreateConfig", () => {
-  const physical: AppPlan = {
-    ...plan,
-    networking: { perAppBridge: { name: "machine-physical-network", driver: "bridge" } },
-  };
-
-  test("translates an exact physical match while preserving all other labels", () => {
-    // Given physical create evidence with an unrelated label.
-    const labels: Readonly<Record<string, string>> = {
-      ...commonContainerLabels(physical, service),
-      unrelated: "preserved",
-    };
-    const logical = commonContainerLabels(plan, service)[CREATE_CONFIG_LABEL];
-    if (logical === undefined) throw new TypeError("logical fingerprint is missing");
-    expect(labels[CREATE_CONFIG_LABEL]).not.toBe(logical);
-    // When inspect presents the evidence in the logical representation.
-    const presented = presentLogicalCreateConfig(labels, { physical, logical: plan, service: serviceName });
-    // Then only the fingerprint changes, without mutating the daemon labels.
-    expect(presented).toEqual({ ...labels, [CREATE_CONFIG_LABEL]: logical });
-    expect(labels[CREATE_CONFIG_LABEL]).toBe(commonContainerLabels(physical, service)[CREATE_CONFIG_LABEL]);
-  });
-
-  const staleLabels: Array<Readonly<Record<string, string>>> = [
-    {},
-    { [CREATE_CONFIG_LABEL]: "v1:old-config" },
-  ];
-  test.each(staleLabels)("reports config drift for missing or mismatched physical evidence: %j", (labels) => {
-    // Given absent or stale physical create evidence.
-    // When inspect tries to present a logical fingerprint.
-    const presented = presentLogicalCreateConfig(labels, { physical, logical: plan, service: serviceName });
-    // Then unverified physical evidence cannot be presented as a config match.
-    expect(presented[CREATE_CONFIG_LABEL]).toBeUndefined();
-    expect(bringUpRecreateReasons(plan, service, { labels: presented }, { skipAbsentFields: true })).toEqual([
-      "config",
-    ]);
-  });
-
-  test("reports config drift when observed logical evidence does not match physical creation", () => {
-    // Given logical labels that cannot prove the physical network configuration.
-    const labels: Readonly<Record<string, string>> = {
-      ...commonContainerLabels(plan, service),
-      unrelated: "preserved",
-    };
-    expect(labels[CREATE_CONFIG_LABEL]).not.toBe(
-      commonContainerLabels(physical, service)[CREATE_CONFIG_LABEL],
+    expect(bringUpRecreateReasons(plan, service, { labels: commonContainerLabels(plan, service) })).toEqual(
+      [],
     );
-    // When inspect presents physical evidence for logical preflight.
-    const presented = presentLogicalCreateConfig(labels, { physical, logical: plan, service: serviceName });
-    // Then the unverified fingerprint cannot hide config drift.
-    expect(presented[CREATE_CONFIG_LABEL]).toBeUndefined();
-    expect(presented.unrelated).toBe("preserved");
-    expect(bringUpRecreateReasons(plan, service, { labels: presented }, { skipAbsentFields: true })).toEqual([
-      "config",
-    ]);
+    expect(
+      bringUpRecreateReasons(plan, legacyEnvOverlay, {
+        labels: {
+          ...commonContainerLabels(plan, legacyEnvOverlay),
+          [HOST_PROXY_SESSION_LABEL]: sessionDigest("other"),
+        },
+      }),
+    ).toEqual([]);
   });
 });
 
@@ -391,14 +286,24 @@ describe("bringUpRecreateReasons", () => {
     };
     const snapshot = { networkNames: ["lando-recreate-reasons", "lando_bridge_network"] };
     // When / Then only the service joining the missing network must recreate.
-    expect(bringUpRecreateReasons(app, service, snapshot, { skipAbsentFields: true })).toEqual(["network"]);
-    expect(bringUpRecreateReasons(app, worker, snapshot, { skipAbsentFields: true })).toEqual([]);
+    expect(
+      bringUpRecreateReasons(app, service, {
+        ...snapshot,
+        labels: commonContainerLabels(app, service),
+      }),
+    ).toEqual(["network"]);
+    expect(
+      bringUpRecreateReasons(app, worker, {
+        ...snapshot,
+        labels: commonContainerLabels(app, worker),
+      }),
+    ).toEqual([]);
   });
-  test("reports known missing config labels even when absent custom metadata is skipped", () => {
+  test("reports known missing config labels", () => {
     // Given known-empty labels from a real container inspect.
     const snapshot = { labels: {} };
     // When preflight compares the desired config.
-    const reasons = bringUpRecreateReasons(plan, service, snapshot, { skipAbsentFields: true });
+    const reasons = bringUpRecreateReasons(plan, service, snapshot);
     // Then missing labels request the migration recreation.
     expect(reasons).toEqual(["config"]);
   });
@@ -447,26 +352,29 @@ describe("bringUpRecreateReasons", () => {
     // Given the labels actually emitted for the desired service.
     const snapshot = { labels: commonContainerLabels(plan, service) };
     // When only config metadata is available at custom-provider preflight.
-    const reasons = bringUpRecreateReasons(plan, service, snapshot, { skipAbsentFields: true });
+    const reasons = bringUpRecreateReasons(plan, service, snapshot);
     // Then no recreation is needed.
     expect(reasons).toEqual([]);
   });
-  test("skipAbsentFields ignores drift when inspect snapshot fields are omitted", () => {
-    expect(bringUpRecreateReasons(plan, service, {}, { skipAbsentFields: true })).toEqual([]);
+  test("keeps a container when inspect reports matching evidence for every field", () => {
+    expect(
+      bringUpRecreateReasons(plan, service, {
+        publishFingerprint: "8080/tcp@127.0.0.1:18080",
+        bindSources: {},
+        networkNames: landoServiceNetworkAttachments(plan, service).map(({ name }) => name),
+        labels: commonContainerLabels(plan, service),
+      }),
+    ).toEqual([]);
   });
 
   test("reports publish-port, bind-source, and network drift when snapshot fields are present", () => {
     expect(
-      bringUpRecreateReasons(
-        plan,
-        service,
-        {
-          publishFingerprint: "8080/tcp@127.0.0.1:18081",
-          bindSources: { "/run/lando/ssh-agent": "bind:/tmp/old" },
-          networkNames: ["unrelated"],
-        },
-        { skipAbsentFields: true },
-      ),
+      bringUpRecreateReasons(plan, service, {
+        publishFingerprint: "8080/tcp@127.0.0.1:18081",
+        bindSources: { "/run/lando/ssh-agent": "bind:/tmp/old" },
+        networkNames: ["unrelated"],
+        labels: commonContainerLabels(plan, service),
+      }),
     ).toEqual(["publish-port", "bind-source", "network"]);
   });
 
@@ -484,16 +392,12 @@ describe("bringUpRecreateReasons", () => {
       ],
     };
     expect(
-      bringUpRecreateReasons(
-        plan,
-        withAppMount,
-        {
-          bindSources: {
-            "/app": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\embedded-app",
-          },
+      bringUpRecreateReasons(plan, withAppMount, {
+        bindSources: {
+          "/app": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\embedded-app",
         },
-        { skipAbsentFields: true },
-      ),
+        labels: commonContainerLabels(plan, withAppMount),
+      }),
     ).toEqual([]);
   });
 });
@@ -506,24 +410,19 @@ describe("agent socket storage reconciliation", () => {
       endpoints: [],
       mounts: [{ type: "volume", store: "agent-volume", target, readOnly: false }],
     };
-    expect(bringUpRecreateReasons(plan, sidecar, { bindSources: {} }, { skipAbsentFields: true })).toEqual([
-      "bind-source",
-    ]);
+    const labels = commonContainerLabels(plan, sidecar);
+    expect(bringUpRecreateReasons(plan, sidecar, { bindSources: {}, labels })).toEqual(["bind-source"]);
     expect(
-      bringUpRecreateReasons(
-        plan,
-        sidecar,
-        { bindSources: { [target]: "volume:agent-volume" } },
-        { skipAbsentFields: true },
-      ),
+      bringUpRecreateReasons(plan, sidecar, {
+        bindSources: { [target]: "volume:agent-volume" },
+        labels,
+      }),
     ).toEqual([]);
     expect(
-      bringUpRecreateReasons(
-        plan,
-        sidecar,
-        { bindSources: { [target]: "volume:previous-volume" } },
-        { skipAbsentFields: true },
-      ),
+      bringUpRecreateReasons(plan, sidecar, {
+        bindSources: { [target]: "volume:previous-volume" },
+        labels,
+      }),
     ).toEqual(["bind-source"]);
   });
 
@@ -541,7 +440,10 @@ describe("agent socket storage reconciliation", () => {
       ],
     };
     expect(
-      bringUpRecreateReasons(plan, dataService, { bindSources: {} }, { skipAbsentFields: true }),
+      bringUpRecreateReasons(plan, dataService, {
+        bindSources: {},
+        labels: commonContainerLabels(plan, dataService),
+      }),
     ).toEqual([]);
   });
 });
@@ -561,11 +463,9 @@ test("an ordinary app bind at the sidecar host endpoint does not grant sidecar d
     ],
   };
   expect(
-    bringUpRecreateReasons(
-      plan,
-      ordinary,
-      { bindSources: { "/ssh-auth": "/previous/auth" } },
-      { skipAbsentFields: true },
-    ),
+    bringUpRecreateReasons(plan, ordinary, {
+      bindSources: { "/ssh-auth": "/previous/auth" },
+      labels: commonContainerLabels(plan, ordinary),
+    }),
   ).toEqual([]);
 });

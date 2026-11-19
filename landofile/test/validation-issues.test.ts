@@ -181,3 +181,119 @@ describe("service-level database and password point at the key their service typ
     expect(JSON.stringify(issue)).not.toContain("hunter2");
   });
 });
+
+const projectIssue = (file: string, path: ReadonlyArray<string | number>, message: string) => ({
+  path: ["services", "web"],
+  message,
+  source: { layer: "project-file" as const, file, path },
+});
+
+describe("validation error summaries name the source that failed", () => {
+  test("names a single project file by its app-relative path", () => {
+    const error = landofileValidationError("/app/.lando.yml", [
+      projectIssue(
+        "/app/package.json",
+        ["packageManager"],
+        "packageManager names bun, which Lando cannot provision.",
+      ),
+    ]);
+    expect(error.message).toBe(
+      "package.json has invalid values: services.web: packageManager names bun, which Lando cannot provision (package.json: packageManager).",
+    );
+    expect(error.file).toBe("/app/package.json");
+    expect(error.issues[0]?.source).toEqual({
+      layer: "project-file",
+      file: "/app/package.json",
+      path: ["packageManager"],
+    });
+  });
+
+  test("keeps a nested project file path relative to the app root", () => {
+    const error = landofileValidationError("/app/.lando.yml", [
+      projectIssue("/app/apps/web/package.json", ["packageManager"], "Invalid manager."),
+    ]);
+    expect(error.message.startsWith("apps/web/package.json has invalid values")).toBe(true);
+  });
+
+  test("names several project files without claiming a single one", () => {
+    const error = landofileValidationError("/app/.lando.yml", [
+      projectIssue("/app/apps/web/package.json", [], "Invalid manager."),
+      projectIssue("/app/package.json", [], "Invalid Node constraint."),
+    ]);
+    expect(error.message).toContain("Project files have invalid values");
+    expect(error.file).toBe("/app/apps/web/package.json");
+  });
+
+  test("uses a neutral summary when sources are mixed", () => {
+    const error = landofileValidationError("/app/.lando.yml", [
+      { path: ["services", "web", "type"], message: "Unsupported service type." },
+      projectIssue("/app/package.json", [], "Invalid manager."),
+    ]);
+    expect(error.message).toContain("Configuration has invalid values");
+  });
+
+  test("keeps the Landofile summary when every issue is authored", () => {
+    const error = landofileValidationError("/app/.lando.yml", [
+      { path: ["services", "web", "type"], message: "Unsupported service type." },
+      {
+        path: ["services", "db", "port"],
+        message: "Invalid port.",
+        source: { layer: "local" as const, file: "/app/.lando.yml", path: ["services", "db", "port"] },
+      },
+    ]);
+    expect(error.message).toContain("Landofile has invalid values");
+  });
+
+  test("preserves explicit framing for a non-value failure", () => {
+    const error = landofileValidationError(
+      "/app/config.yml",
+      [projectIssue("/app/package.json", [], "Invalid manager.")],
+      {
+        headline: "Global config hostEvents has steps that cannot run as written",
+        remediation: "Fix each step.",
+      },
+    );
+    expect(error.message).toContain("Global config hostEvents has steps that cannot run as written");
+    expect(error.remediation).toBe("Fix each step.");
+  });
+});
+
+describe("project-file human paths use app root and escape controls", () => {
+  test("bases the headline on framing.appRoot when the Landofile lives outside the app", () => {
+    // Given: embedding callers may pass a config file outside the app root
+    const landofileOutside = "/config/embedding/landofile.yml";
+    const appRoot = "/app";
+    // When
+    const error = landofileValidationError(
+      landofileOutside,
+      [projectIssue("/app/package.json", ["packageManager"], "Invalid manager.")],
+      { appRoot },
+    );
+    // Then: app-relative, not ../app/package.json from dirname(landofile)
+    expect(error.message.startsWith("package.json has invalid values")).toBe(true);
+    expect(error.message).not.toContain("../");
+    expect(error.file).toBe("/app/package.json");
+    expect(error.issues[0]?.source).toEqual({
+      layer: "project-file",
+      file: "/app/package.json",
+      path: ["packageManager"],
+    });
+  });
+
+  test("escapes control characters only in the human path, leaving structured paths raw", () => {
+    // Given
+    const rawFile = `/app/pack${String.fromCharCode(10)}age.json`;
+    // When
+    const error = landofileValidationError(
+      "/app/.lando.yml",
+      [projectIssue(rawFile, ["packageManager"], "Invalid manager.")],
+      { appRoot: "/app" },
+    );
+    // Then
+    expect(error.message).toContain("pack\\u000aage.json has invalid values");
+    expect(error.message).toContain("(pack\\u000aage.json: packageManager)");
+    expect(error.message).not.toContain(`pack${String.fromCharCode(10)}age`);
+    expect(error.file).toBe(rawFile);
+    expect(error.issues[0]?.source).toMatchObject({ layer: "project-file", file: rawFile });
+  });
+});

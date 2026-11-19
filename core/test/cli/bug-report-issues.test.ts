@@ -91,3 +91,50 @@ test("formats standalone structured path fields with bracket indexes", () => {
   });
   expect(renderPlainBugReport(report)).toContain("path: includes[2].when");
 });
+
+test("renders a project-file issue source ahead of its Landofile path", () => {
+  const report = buildBugReport({
+    error: {
+      _tag: "LandofileValidationError",
+      message: "Landofile has invalid values.",
+      file: "/app/apps/web/.nvmrc",
+      remediation: "Make both project files describe compatible Node versions.",
+      issues: [
+        {
+          path: ["services", "web"],
+          message: '.nvmrc constraint "lts/*" conflicts with package.json engines.node "^24".',
+          suggestion: "Make both project files describe compatible Node versions.",
+          source: { layer: "project-file", file: "/app/apps/web/.nvmrc", path: [] },
+        },
+      ],
+    },
+    context: { commandId: "app:start", cacheRoot: "/tmp/lando-cache" },
+  });
+  const output = renderPlainBugReport(report);
+  expect(output).toContain(
+    '/app/apps/web/.nvmrc: services.web: .nvmrc constraint "lts/*" conflicts with package.json engines.node "^24".',
+  );
+  expect(output).not.toContain("(authored )");
+});
+
+test("renders a project-file field path next to the Landofile issue path", () => {
+  const report = buildBugReport({
+    error: {
+      _tag: "LandofileValidationError",
+      message: "Invalid configuration.",
+      file: "/app/package.json",
+      remediation: "Fix each listed value.",
+      issues: [
+        {
+          path: ["services", "app"],
+          message: "Invalid manager.",
+          source: { layer: "project-file", file: "/app/package.json", path: ["packageManager"] },
+        },
+      ],
+    },
+    context: { commandId: "app:start", cacheRoot: "/tmp/lando-cache" },
+  });
+  const output = renderPlainBugReport(report);
+
+  expect(output).toMatch(/\/app\/package\.json: services\.app:[^\n]*\(authored packageManager\)/u);
+});

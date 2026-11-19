@@ -43,7 +43,6 @@ export const ArtifactBuildIndex = Schema.Struct({
 });
 export type ArtifactBuildIndex = typeof ArtifactBuildIndex.Type;
 export type ArtifactResultsBucket = StateBucket<ArtifactBuildIndex>;
-export const artifactOwnerKey = (owner: BuildOwner): string => owner.key;
 export const openArtifactBuildResults = (store: StateStoreShape) =>
   store.open({
     root: "userCache",

@@ -44,7 +44,7 @@ Init writes `.lando.yml` and a small starter site: a Hugo config, a content arch
 | --- | --- |
 | `builder` | `node:lts` with Hugo extended baked in, port `1313`, command `hugo server --bind 0.0.0.0 --port 1313` |
 | `web` | `static:nginx` serving `public/` from the app mounted at `/app`, one route on both schemes |
-| Tooling | `lando hugo` (the bundled binary) and `lando npm` on `builder` |
+| Tooling | `lando hugo` (the bundled binary) on `builder`. The `builder` service adds `lando npm` and `lando npx` |
 
 `builder` is the day-to-day browse target while Hugo serves. `web` is the nginx sidecar on the app hostname. Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS.
 
@@ -62,7 +62,7 @@ Init writes `.lando.yml` and a small starter site: a Hugo config, a content arch
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"static:nginx\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hugo\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
+      <Verify command="lando help npm --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"builder\"[\\s\\S]*\"program\":\\s*\"npm\"" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />

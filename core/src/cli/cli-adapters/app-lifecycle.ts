@@ -63,8 +63,11 @@ export const runSetup = async (
       render: (value, ctx) => setupSpec.render?.(value, undefined, ctx),
       formatError: (failure, redactor) => {
         const message = commandErrorMessage(failure, activeCommandId, redactor, context.env);
-        return activeRendererMode === "json" ? message : `${message}\nLANDO_INSTALL_DIR="${installDir}"`;
+        return activeRendererMode === "json"
+          ? message
+          : `${message}\nLANDO_INSTALL_DIR="${redactor.redactString(installDir)}"`;
       },
+      formatErrorAlreadyRedacted: true,
     },
   );
 };

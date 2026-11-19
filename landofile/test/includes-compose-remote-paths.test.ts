@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import type { LandofileIncludeDeps } from "../src/include-context.ts";
-import { resolveAuthoredIncludes } from "./include-pipeline.ts";
+import { resolveAuthoredDocument } from "./include-pipeline.ts";
 import {
   makeNpmPackageTarball,
   makeTestLandofilePorts,
@@ -54,7 +54,7 @@ test.each(["git", "npm"] as const)(
         : { npmRegistry: makeTestNpmRegistry({ name: "@acme/shared", version: "1.2.3", tarball }) };
     // When
     const document = await Effect.runPromise(
-      resolveAuthoredIncludes({
+      resolveAuthoredDocument({
         appRoot: root,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot, cacheRoot, deps),

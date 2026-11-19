@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
-import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 import { compileToolingCommands } from "../../src/cache/command-compiler.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { internalToolingTasksOf } from "../provenance-support.ts";
 
 const resolve = (landofile: LandofileShape, appRoot: string) =>
   Effect.runPromise(
@@ -61,7 +61,7 @@ describe("tooling include precedence", () => {
 
     // Then the local task wins and does not retain the nested task's internal provenance
     expect(resolved.document.tooling?.["docs:build"]?.cmd).toBe("local");
-    expect(getInternalToolingTasks(resolved)).not.toContain("docs:build");
+    expect(internalToolingTasksOf(resolved)).not.toContain("docs:build");
   });
 
   test("an outer internal include keeps a fragment-local winner internal", async () => {
@@ -90,7 +90,7 @@ describe("tooling include precedence", () => {
 
     // Then outer provenance applies to the local winner
     expect(resolved.document.tooling?.["docs:build"]?.cmd).toBe("local");
-    expect(getInternalToolingTasks(resolved)).toContain("docs:build");
+    expect(internalToolingTasksOf(resolved)).toContain("docs:build");
   });
 
   test("a root-authored winner is visible to the command compiler", async () => {

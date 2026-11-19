@@ -1,3 +1,4 @@
+import { structuralRedaction } from "@lando/sdk/command-result";
 import { JSON_SCHEMA_NAMES, getJsonSchema } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Context, Effect, Predicate, Schema } from "effect";
@@ -35,8 +36,18 @@ const resourceError = Effect.fnUntraced(function* (error: unknown, redactor: Red
   return new McpSchema.InternalError({ message: redactor.redactString(data.message), data: bounded });
 });
 
-const contents = Effect.fnUntraced(function* (uri: string, value: unknown, redactor: Redactor) {
-  const text = yield* stringifyBoundedJson(value, "MCP resource payload", redactor);
+const contents = Effect.fnUntraced(function* (
+  uri: string,
+  value: unknown,
+  redactor: Redactor,
+  resultSchema: Schema.Top,
+) {
+  const text = yield* stringifyBoundedJson(
+    value,
+    "MCP resource payload",
+    redactor,
+    structuralRedaction(resultSchema),
+  );
   return McpSchema.ReadResourceResult.make({ contents: [{ uri, mimeType: "application/json", text }] });
 });
 
@@ -61,7 +72,7 @@ const registerResourceEntries = Effect.fn("McpService.registerResourceEntries")(
           published = boundDiagnostics(diagnostics.revision, diagnostics.diagnostics, readRedactor);
         }
         const encoded = yield* Schema.encodeUnknownEffect(entry.resultSchema)(published);
-        return yield* contents(entry.uri, encoded, readRedactor);
+        return yield* contents(entry.uri, encoded, readRedactor, entry.resultSchema);
       },
       Effect.scoped,
       Effect.catch((error) => resourceError(error, redactor).pipe(Effect.flatMap(Effect.fail))),
@@ -133,7 +144,7 @@ export const registerResources = Effect.fn("McpService.registerResources")(funct
         const name = JSON_SCHEMA_NAMES.find((candidate) => candidate === params[0]);
         if (name === undefined)
           return yield* new McpSchema.InvalidParams({ message: "Unknown Lando JSON schema name." });
-        return yield* contents(uri, getJsonSchema(name), redactor);
+        return yield* contents(uri, getJsonSchema(name), redactor, Schema.Unknown);
       },
       Effect.catchTag("McpTransportError", (error) =>
         resourceError(error, redactor).pipe(Effect.flatMap(Effect.fail)),

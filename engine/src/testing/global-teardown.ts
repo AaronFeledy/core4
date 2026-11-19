@@ -10,6 +10,7 @@ import {
   type AppPlan,
   AppRef,
   type AppRouteOwner,
+  type HealthcheckPlan,
   ProviderId,
   ServiceName,
   type VolumeInfo,
@@ -36,7 +37,7 @@ import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 import { RouterServiceRegistry } from "../subsystems/proxy/registry.ts";
 
-export const globalPlanAt = (root: AbsolutePath): AppPlan => ({
+export const globalPlanAt = (root: AbsolutePath, readiness?: HealthcheckPlan): AppPlan => ({
   id: AppId.make("global"),
   name: "global",
   slug: "global",
@@ -50,6 +51,7 @@ export const globalPlanAt = (root: AbsolutePath): AppPlan => ({
       provider: ProviderId.make("lando"),
       primary: true,
       artifact: { kind: "ref", ref: "ssh-agent:test" },
+      ...(readiness === undefined ? {} : { readiness }),
       environment: {},
       mounts: [],
       endpoints: [],
@@ -169,7 +171,7 @@ export const globalTeardownHarness = async (
         calls.push("destroy");
         destroyOptions.push(options);
         if (target.plan !== undefined) destroyed.push(target.plan);
-        return input.destroyOutcome ?? { kind: "destroyed" as const };
+        return input.destroyOutcome ?? { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     removeObservedService: Effect.fnUntraced(function* (service: ServiceRuntimeInfo) {
       calls.push("removeObservedService");

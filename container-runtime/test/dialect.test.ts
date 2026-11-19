@@ -75,7 +75,15 @@ describe("container engine dialects", () => {
     // Then
     expect(request).toEqual({ method: "POST", path: "/containers/app%2Fweb/wait", signal });
     expect(exitCode).toBe(17);
+    expect(dockerWaitDialect.decodeExitCode({ StatusCode: 0, Error: null })).toBe(0);
     expect(dockerWaitDialect.decodeExitCode({ StatusCode: "17" })).toBeUndefined();
+    expect(dockerWaitDialect.decodeExitCode({ StatusCode: -1 })).toBeUndefined();
+    expect(dockerWaitDialect.decodeExitCode({ StatusCode: 1.5 })).toBeUndefined();
+    // Moby can send Error alongside StatusCode under HTTP 200 — reject before StatusCode.
+    expect(
+      dockerWaitDialect.decodeExitCode({ StatusCode: 0, Error: { Message: "no such container" } }),
+    ).toBeUndefined();
+    expect(dockerWaitDialect.decodeExitCode({ StatusCode: 0, Error: "boom" })).toBeUndefined();
   });
 
   test("builds and decodes the libpod wait wire format", () => {
@@ -86,6 +94,9 @@ describe("container engine dialects", () => {
     // Then
     expect(request).toEqual({ method: "POST", path: "/libpod/containers/app%2Fweb/wait" });
     expect(exitCode).toBe(23);
+    expect(libpodWaitDialect.decodeExitCode(0)).toBe(0);
+    expect(libpodWaitDialect.decodeExitCode(-1)).toBeUndefined();
+    expect(libpodWaitDialect.decodeExitCode(1.5)).toBeUndefined();
     expect(libpodWaitDialect.decodeExitCode({ StatusCode: 23 })).toBeUndefined();
   });
 

@@ -4,7 +4,7 @@ import type {
   DiscoveredBunShellScript,
 } from "@lando/landofile/bun-sh-discovery";
 import { normalizeBunShellScript } from "@lando/landofile/bun-sh-metadata";
-import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
+import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { type ToolingNormalizationSource, normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { boundedDiagnosticSummary, projectToolingDiagnostic } from "@lando/sdk/command-result";
@@ -18,6 +18,8 @@ const compareOrdinal = (left: string, right: string): number => (left < right ? 
 
 interface ToolingCommandSources {
   readonly sourcePath: string;
+  readonly provenance?: LandofileProvenance | undefined;
+  readonly internalToolingTasks?: readonly string[] | undefined;
   readonly effectiveTooling?: EffectiveTooling | undefined;
   readonly toolingSource?: (name: string) => ToolingNormalizationSource;
 }
@@ -29,7 +31,7 @@ export const compileToolingCommands = (
 ): ReadonlyArray<CommandIndexEntry> => {
   const effectiveTooling = options.effectiveTooling ?? landofile.tooling;
   if (effectiveTooling === undefined) return [];
-  const internal = new Set(getInternalToolingTasks(landofile));
+  const internal = new Set(options.internalToolingTasks ?? options.provenance?.internalToolingTasks ?? []);
   return Object.entries(effectiveTooling)
     .sort(([a], [b]) => compareOrdinal(a, b))
     .map(([name, authored]): CommandIndexEntry => {
@@ -40,9 +42,9 @@ export const compileToolingCommands = (
         visibility: internal.has(name) ? ("internal" as const) : ("public" as const),
       };
       const source = options.toolingSource?.(name) ?? {
-        path: getLandofileValueSource(landofile, ["tooling", name])?.file ?? options.sourcePath,
+        path: getLandofileValueSource(options.provenance, ["tooling", name])?.file ?? options.sourcePath,
         locate: (path: Parameters<typeof getLandofileValueSource>[1]) =>
-          getLandofileValueSource(landofile, path),
+          getLandofileValueSource(options.provenance, path),
       };
       if (authored.disabled === true)
         return { ...identity, _tag: "Disabled", source: { path: source.path, task: name } };

@@ -118,7 +118,7 @@ describe("shutdown receipts", () => {
 
   test.each([
     ["file sync quiescence", FileSyncQuiesceResult, {}],
-    ["destroyed", DestroyOutcome, { kind: "destroyed" }],
+    ["destroyed", DestroyOutcome, { kind: "destroyed", volumesRemoved: { data: 1, cache: 0 } }],
     ["no-op", DestroyOutcome, { kind: "no-op", reason: "no-applied-plan" }],
     ["removed", ObservedServiceRemoval, { kind: "removed" }],
     ["absent", ObservedServiceRemoval, { kind: "absent" }],
@@ -126,7 +126,13 @@ describe("shutdown receipts", () => {
     [
       "app destroy",
       DestroyAppResult,
-      { app: "demo", servicesDestroyed: ["web"], volumesRemoved: false, snapshotsRemoved: 0 },
+      {
+        app: "demo",
+        servicesDestroyed: ["web"],
+        dataVolumesRemoved: false,
+        cacheVolumesRemoved: false,
+        snapshotsRemoved: 0,
+      },
     ],
   ] as const)("%s preserves observations or honest omission", (_name, schema, base) => {
     const legacy = roundTrip<unknown, unknown>(schema, base);
@@ -142,4 +148,23 @@ describe("shutdown receipts", () => {
       expect(Result.isFailure(result)).toBe(true);
     },
   );
+
+  test("destroyed requires actual per-class removal counts", () => {
+    expect(Result.isFailure(Schema.decodeUnknownResult(DestroyOutcome)({ kind: "destroyed" }))).toBe(true);
+    for (const counts of [
+      { data: 0, cache: 0 },
+      { data: 2, cache: 1 },
+    ]) {
+      const value = { kind: "destroyed" as const, volumesRemoved: counts };
+      expect(roundTrip(DestroyOutcome, value)).toEqual(value);
+    }
+    expect(
+      Result.isFailure(
+        Schema.decodeUnknownResult(DestroyOutcome)({
+          kind: "destroyed",
+          volumesRemoved: { data: -1, cache: 0 },
+        }),
+      ),
+    ).toBe(true);
+  });
 });

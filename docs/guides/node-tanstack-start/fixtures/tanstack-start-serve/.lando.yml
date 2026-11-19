@@ -15,7 +15,8 @@ services:
 tooling:
   npm:
     cmd: [npm]
-    description: Run npm inside the web service.
+    description: Run npm in /app inside the web service.
+    wrapper: true
     service: web
     dir: /app
   npx:

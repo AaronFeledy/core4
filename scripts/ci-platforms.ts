@@ -13,7 +13,6 @@ export interface CiPlatform {
  */
 export const LINUX_X64_TEST_RUNNER = "ubuntu-26.04";
 export const LINUX_X64_CI_RUNNERS = [LINUX_X64_TEST_RUNNER] as const;
-export type LinuxX64CiRunner = (typeof LINUX_X64_CI_RUNNERS)[number];
 
 /** Reference Linux x64 runner — older glibc for portable compiled binaries. */
 export const LINUX_X64_PRIMARY_RUNNER = "ubuntu-24.04";

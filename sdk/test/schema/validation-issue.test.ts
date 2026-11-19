@@ -86,6 +86,19 @@ describe("validation issues", () => {
     expect(Schema.encodeSync(ValidationIssue)(decoded)).toEqual(issue);
   });
 
+  test("round-trips a project-file source independently of its Landofile path", () => {
+    // Given
+    const issue = {
+      path: ["services", "web"],
+      message: '.nvmrc constraint "lts/*" conflicts with package.json engines.node "^24".',
+      source: { file: "/app/apps/web/.nvmrc", layer: "project-file", path: [] },
+    } satisfies typeof ValidationIssue.Encoded;
+    // When
+    const decoded = Schema.decodeUnknownSync(ValidationIssue)(issue, authoredDecode);
+    // Then
+    expect(Schema.encodeSync(ValidationIssue)(decoded)).toEqual(issue);
+  });
+
   test.each([
     { layer: "local", path: [] },
     { file: ".lando.yml", path: [] },

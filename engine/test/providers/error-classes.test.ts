@@ -20,7 +20,6 @@ import {
   ServiceCopyError,
   ServiceExecError,
   ServiceNotFoundError,
-  ServiceRestartWouldRecreateError,
   ServiceStartError,
   VolumeOperationError,
 } from "@lando/sdk/errors";
@@ -114,10 +113,6 @@ const cases = {
   ServiceNotFoundError: errorCase(
     ServiceNotFoundError,
     new ServiceNotFoundError({ ...errorFields, service: canary }),
-  ),
-  ServiceRestartWouldRecreateError: errorCase(
-    ServiceRestartWouldRecreateError,
-    new ServiceRestartWouldRecreateError({ ...errorFields, service: canary, reason: "config" }),
   ),
   VolumeOperationError: errorCase(
     VolumeOperationError,

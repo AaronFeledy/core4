@@ -77,7 +77,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "node", type: "node:22" },
       { name: "worker", type: "php:8.3" },
     ],
-    expectedTooling: ["artisan", "composer", "npm"],
+    expectedTooling: ["artisan", "composer", "create-project"],
   },
   {
     recipe: "symfony",
@@ -87,7 +87,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "database", type: "postgres:16" },
       { name: "cache", type: "redis" },
     ],
-    expectedTooling: ["console", "composer"],
+    expectedTooling: ["console", "composer", "create-project"],
   },
   {
     recipe: "lamp",
@@ -96,7 +96,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "appserver", type: "php:8.3" },
       { name: "database", type: "mariadb:11.4" },
     ],
-    expectedTooling: ["composer", "php"],
+    expectedTooling: ["composer", "create-project", "php"],
   },
   {
     recipe: "lemp",
@@ -106,7 +106,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "appserver", type: "php:8.3" },
       { name: "database", type: "mariadb" },
     ],
-    expectedTooling: ["composer", "php"],
+    expectedTooling: ["composer", "create-project", "php"],
   },
   {
     recipe: "drupal",
@@ -127,13 +127,23 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
     expectedTooling: ["drush", "composer", "drupal-cms-scaffold", "drupal-cms-install"],
   },
   {
+    recipe: "drupal-contrib",
+    answers: { name: "drupal-contrib-app", php: "8.3", database: "mariadb:11.4", project: "example" },
+    expectedServices: [
+      { name: "appserver", type: "php:8.3" },
+      { name: "database", type: "mariadb:11.4" },
+      { name: "chrome", type: "compose" },
+    ],
+    expectedTooling: ["drush", "composer", "drupal-contrib-sync", "phpunit", "phpcs", "phpcbf", "phpstan"],
+  },
+  {
     recipe: "node-api",
     answers: { name: "node-api-app", node: "lts", framework: "fastify", database: "postgres" },
     expectedServices: [
       { name: "api", type: "node:lts" },
       { name: "database", type: "postgres" },
     ],
-    expectedTooling: ["npm", "node"],
+    expectedTooling: ["node"],
   },
   {
     recipe: "backdrop",
@@ -142,7 +152,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "appserver", type: "php:8.3" },
       { name: "database", type: "mariadb:11.4" },
     ],
-    expectedTooling: ["bee", "composer", "php"],
+    expectedTooling: ["bee", "composer", "create-project", "php"],
   },
   {
     recipe: "joomla",
@@ -151,7 +161,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "appserver", type: "php:8.3" },
       { name: "database", type: "mariadb:11.4" },
     ],
-    expectedTooling: ["joomla", "composer", "php"],
+    expectedTooling: ["joomla", "composer", "create-project", "php"],
   },
   {
     recipe: "mean",
@@ -160,19 +170,19 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "api", type: "node:lts" },
       { name: "database", type: "mongodb" },
     ],
-    expectedTooling: ["npm", "node"],
+    expectedTooling: ["node"],
   },
   {
     recipe: "astro",
     answers: { name: "astro-app", node: "lts", database: "none" },
     expectedServices: [{ name: "web", type: "node:lts" }],
-    expectedTooling: ["astro", "npm"],
+    expectedTooling: ["astro"],
   },
   {
     recipe: "sveltekit",
     answers: { name: "svelte-app", node: "lts", adapter: "node", database: "none" },
     expectedServices: [{ name: "web", type: "node:lts" }],
-    expectedTooling: ["svelte", "npm"],
+    expectedTooling: ["svelte"],
   },
   {
     recipe: "nextjs",
@@ -181,7 +191,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "web", type: "node:lts" },
       { name: "database", type: "postgres" },
     ],
-    expectedTooling: ["next", "npm", "nextjs-scaffold"],
+    expectedTooling: ["next", "nextjs-scaffold"],
   },
   {
     recipe: "django",
@@ -230,7 +240,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "builder", type: "node:lts" },
       { name: "web", type: "static:nginx" },
     ],
-    expectedTooling: ["hugo", "npm"],
+    expectedTooling: ["hugo"],
   },
   {
     recipe: "eleventy",
@@ -239,7 +249,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "builder", type: "node:lts" },
       { name: "web", type: "static:nginx" },
     ],
-    expectedTooling: ["eleventy", "npm"],
+    expectedTooling: ["eleventy"],
   },
   {
     recipe: "empty",
@@ -265,6 +275,7 @@ describe("BUILTIN_RECIPE_DECOMPOSERS — bundled set", () => {
       "django",
       "drupal",
       "drupal-cms",
+      "drupal-contrib",
       "fastapi",
       "rails",
       "jekyll",

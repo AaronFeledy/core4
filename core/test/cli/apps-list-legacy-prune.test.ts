@@ -43,7 +43,7 @@ const fixture = async (provider: string) => {
           apps: [],
           confirmedProviderIds: idle ? [] : [provider],
           idleProviderIds: idle === true ? [provider] : [],
-          ownedAppIds: [],
+          ownedResources: [],
         }),
       }).pipe(
         Effect.provide(
@@ -157,7 +157,7 @@ test.each(["lando", "docker"])(
   },
 );
 
-test.each(["root", "providerId", "provider"])(
+test.each(["providerId", "provider"])(
   "preserves legacy state when %s conflicts with the selected app",
   async (field) => {
     // Given: a modern authoritative entry and a conflicting legacy record.
@@ -168,7 +168,7 @@ test.each(["root", "providerId", "provider"])(
     const conflicting = JSON.stringify(
       field === "providerId"
         ? { ...f.legacy, providerId: "docker" }
-        : { ...f.legacy, plan: { ...f.plan, [field]: field === "root" ? f.root : "docker" } },
+        : { ...f.legacy, plan: { ...f.plan, provider: "docker" } },
     );
     await writeFile(f.legacyPath, conflicting);
     // When
@@ -181,6 +181,24 @@ test.each(["root", "providerId", "provider"])(
     expect(await readFile(f.legacyPath, "utf8")).toBe(conflicting);
   },
 );
+
+test("prunes the selected root and keeps a legacy record at another root", async () => {
+  // Given: a modern authoritative entry and a same-id legacy record at another root.
+  const f = await fixture("lando");
+  const modern = join(f.paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
+  await mkdir(join(modern, ".."), { recursive: true });
+  await writeFile(modern, JSON.stringify({ version: 1, data: f.plan }));
+  const otherRoot = JSON.stringify({ ...f.legacy, plan: { ...f.plan, root: f.root } });
+  await writeFile(f.legacyPath, otherRoot);
+
+  // When: prune runs for the selected app root.
+  const result = await f.run();
+
+  // Then: only the selected root leaves the inventory; the other checkout stays.
+  expect(result.pruned?.map((entry) => entry.appId)).toEqual(["alpha"]);
+  expect(await Bun.file(modern).exists()).toBe(false);
+  expect(await readFile(f.legacyPath, "utf8")).toBe(otherRoot);
+});
 
 test("keeps adjacent podman record pruning scoped to one app", async () => {
   // Given: Podman's shared record contains two valid app plans.

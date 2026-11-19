@@ -116,8 +116,10 @@ export const pruneAppliedPlanState = Effect.fnUntraced(function* (
     });
     const record = yield* bucket.get;
     if (record === null || record.plan.id !== id) continue;
+    // Another checkout may hold the same app id at a different root; that record is not this
+    // candidate and must not turn the prune into a conflict.
+    if (record.plan.root !== entry.appRoot) continue;
     if (
-      record.plan.root !== entry.appRoot ||
       (record.providerId !== undefined && record.providerId.replace(/^provider-/u, "") !== providerId) ||
       (record.plan.provider !== undefined && record.plan.provider.replace(/^provider-/u, "") !== providerId)
     ) {

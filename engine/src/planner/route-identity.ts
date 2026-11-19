@@ -35,6 +35,7 @@ const semantics = (route: RoutePlan): string =>
     route.backend.protocol,
     route.backend.port,
     route.backend.host,
+    route.backend.tls === undefined ? undefined : [route.backend.tls.caId, route.backend.tls.serverName],
     (route.filters ?? []).map(filterSemantics),
   ]);
 

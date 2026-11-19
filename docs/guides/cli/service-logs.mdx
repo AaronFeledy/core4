@@ -112,12 +112,32 @@ it does not substitute their console output.
 
 Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Followers survive common log rotation (rename+create and copytruncate) and keep per-source order. Interrupting `lando logs` releases every follower. Lines are redacted once before they reach the CLI.
 
+Lando masks a credential that wraps onto the next line as one value, such as a quoted `password=` or `password: "..."` value that continues below or a token on the line after `Bearer`. Text, `--format=json`, and `--format=yaml` show the same masked lines. The masked value takes the place of the lines it covered. With `--follow`, Lando holds an unfinished value for at most half a second while it waits for the rest. If the value still hasn't closed, Lando prints the masked line and hides the rest of the value as it arrives, up to its closing quote. A value that never closes stops hiding after 64 lines or 16 KiB, so a stray quote can't swallow a service's output. Known secrets are masked in both modes, including a multi-line secret such as a private key, whichever line endings the service writes.
+
 For scripts, `lando logs --format=json` emits a buffered frame stream. Its
 terminal `result` frame carries the app name at `envelope.result.app` and the
 collected lines at `envelope.result.lines`. Each line carries `service`, `stream`,
 and `line`, plus `source` and a timestamp in epoch milliseconds when available.
 With `--follow --format=json`, lines arrive as stream frames instead; the final
 result contains `app` but omits `lines` rather than returning an empty array.
+
+## Read scratch and global logs
+
+Scratch and global apps take the same filters. Read the global app with `lando global:logs`, using `-s` to pick one service. Add `-f`, `--tail`, or `--since` exactly as for an app:
+
+```sh
+lando global:logs -s traefik --tail 50
+lando global:logs -s traefik --follow
+```
+
+Read a scratch app by its id, which `lando scratch:list` prints:
+
+```sh
+lando scratch:logs <id> --tail 50
+lando scratch:logs <id> -s <service> --since 15m
+```
+
+`lando scratch:logs` looks up the registry entry and that root's recorded plan. An id no registry entry names fails with `ScratchAppNotFoundError`. A scratch whose plan is no longer recorded prints no lines; Lando validates `--since` first, so a malformed duration fails the same way it does for an app.
 
 ## Print build output
 
@@ -151,7 +171,7 @@ lando logs -s appserver --tail 50
 lando info
 ```
 
-When a readiness check or healthy dependency gate fails on a TCP port, the error also reports which ports the service is actually listening on, and a dependency failure names the dependency's logs command. See [Inspect a failed start](../services/wait-for-your-app.mdx#inspect-a-failed-start) for what each finding means.
+When a healthy dependency exits without a restart, or a completion job exits nonzero, Lando stops waiting on that gate. The error includes the dependency's exit code and log tail when available and names its logs command. For a failed probe on a running service, the error may include which TCP ports the service is listening on. See [Inspect a failed start](../services/wait-for-your-app.mdx#inspect-a-failed-start) for what each finding means.
 
 Fix the service and run `lando start` again. For a readiness failure, correct its command or timing; set `readiness: false` only when you want process supervision without a lifecycle command gate. Native `healthcheck: false` does not disable authored or contributed readiness. A `service_healthy` dependency still requires enabled command readiness. Post-start steps run only after readiness succeeds. URL-scan warnings do not fail start.
 
@@ -159,7 +179,7 @@ With authored `restart: always` or `unless-stopped`, an exit or observed restart
 
 An inspection failure uses reason `inspect-failed`, not a stopped-container verdict. Run `lando doctor` to diagnose the provider. For global services, use `lando global:logs -s <service>` and retry `lando global:start`. Scratch acquisition also waits for readiness, but failure or interruption cleans up unless `--keep-on-failure` was passed. Inspect a retained scratch by its id, not with user-app `lando start`.
 
-A blocked dependency gate captures the dependency that failed the gate, not the service that was waiting on it, and its remediation names that dependency's logs command. `--format=json` puts the same snapshot on `error.logTail` (`service`, `lines`, `truncated`, and optional `exitCode` / `timedOut`). Gate metadata reports the last healthcheck or completion exit code and whether the healthcheck timed out.
+A blocked dependency gate shows available logs from the dependency, and its remediation names that dependency's logs command. `--format=json` puts the snapshot on `error.logTail` (`service`, `lines`, `truncated`, and optional `exitCode` or `timedOut`). For a verified dependency exit, `error.details.dependencyExit` carries the process exit evidence even when there are no logs. For a missing or replaced container, Lando does not attach logs from a replacement.
 
 Known secrets and credential patterns are redacted before truncation. Unregistered secrets, such as passwords generated inside a container, can still appear. Empty logs, capture failures, and the four-second capture timeout omit the tail without replacing the original start error. Starts interrupted before capture skip it.
 

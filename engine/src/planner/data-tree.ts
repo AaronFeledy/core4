@@ -15,8 +15,16 @@
  * planning fails before any provider action rather than shipping an image
  * whose build would fail, or a container that would exit on its own launcher.
  */
+import { posix } from "node:path";
 import { DataTreeOwnershipCapabilityError } from "@lando/sdk/errors";
+import {
+  type MountPlan,
+  type ServiceProjectUser,
+  parseContainerDestination,
+  serviceAppMount,
+} from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent, ServiceImageIdentity } from "@lando/sdk/services";
+import { quoteShellPath } from "../services/shell-quote.ts";
 
 /** One mounted tree a service writes to, and the owners its image already seeds. */
 interface DataTreeIntent {
@@ -33,6 +41,9 @@ interface DataTreeIntent {
 interface DataTreeOwnership {
   readonly target: string;
   readonly owner: string;
+  readonly mountParents?: ReadonlyArray<string>;
+  /** An app tree another service may serve, such as an nginx edge, stays readable to it. */
+  readonly shared?: boolean;
 }
 
 const ROOT_PRINCIPALS = new Set(["root", "0"]);
@@ -90,7 +101,9 @@ export const resolveDataTreeOwnership = (input: {
     // so the owners that type says its image seeds no longer describe it.
     if (!input.hasCustomImage && tree.seededOwners.includes(principal)) continue;
     if (NUMERIC_PRINCIPAL.test(principal)) {
-      prepared.push({ target: tree.target, owner: principal });
+      // Keep both ids when the author supplied them: `chown 1000` would pick a
+      // fresh group while `chown 1000:1001` preserves the authored pair.
+      prepared.push({ target: tree.target, owner: input.plannedUser });
       continue;
     }
     if (input.hasCustomImage) {
@@ -128,6 +141,53 @@ export const resolveDataTreeOwnership = (input: {
   return prepared;
 };
 
+const nestedTarget = (tree: string, target: string): string | undefined => {
+  const parent = parseContainerDestination(tree);
+  const child = parseContainerDestination(target);
+  return parent.ok && child.ok && child.value.startsWith(`${parent.value}/`) ? child.value : undefined;
+};
+
+/**
+ * A fresh volume copies up the image tree with ownership intact. Prepare
+ * nested mount parents there so the runtime does not create them as root.
+ * Exclude shadows, writable service caches, and authored storage enclosing the
+ * app bind are project-user write targets; a home the catalog already prepares is skipped.
+ */
+export const projectUserVolumeTrees = (input: {
+  readonly mounts: ReadonlyArray<MountPlan>;
+  readonly projectUser?: ServiceProjectUser;
+  readonly homeStore?: string | undefined;
+  readonly cacheStores?: ReadonlySet<string>;
+}): ReadonlyArray<DataTreeOwnership> => {
+  const { mounts, projectUser, homeStore } = input;
+  if (projectUser === undefined) return [];
+  const owner = `${projectUser.uid}:${projectUser.gid}`;
+  const appMount = serviceAppMount(input);
+  return mounts.flatMap((mount) => {
+    if (mount.type !== "volume" || mount.store === homeStore) return [];
+    const enclosesApp =
+      mount.origin === "authored" &&
+      appMount !== undefined &&
+      nestedTarget(mount.target, appMount.target) !== undefined;
+    const serviceCache =
+      mount.origin === "service" && !mount.readOnly && input.cacheStores?.has(mount.store) === true;
+    if (mount.origin !== "derived" && !enclosesApp && !serviceCache) return [];
+    const parents = new Set<string>();
+    for (const other of mounts) {
+      const child = nestedTarget(mount.target, other.target);
+      if (child !== undefined) parents.add(posix.dirname(child));
+    }
+    return [
+      {
+        target: mount.target,
+        owner,
+        ...(parents.size === 0 ? {} : { mountParents: [...parents] }),
+        ...(enclosesApp ? { shared: true } : {}),
+      },
+    ];
+  });
+};
+
 export const DATA_TREE_OWNERSHIP_STEP_ID = "lando.storage:own-data-trees" as const;
 
 /**
@@ -145,11 +205,26 @@ export const dataTreeOwnershipStep = (
   trees: ReadonlyArray<DataTreeOwnership>,
 ): ServiceBuildStepIntent | undefined => {
   if (trees.length === 0) return undefined;
-  const commands = trees.flatMap((tree) => [
-    `mkdir -p '${tree.target}'`,
-    `chown -R '${tree.owner}' '${tree.target}'`,
-    `chmod 0770 '${tree.target}'`,
-  ]);
+  // A feature and project-user intent can claim the same target. The first
+  // owner wins, but its mkdir still needs the project-user mount parents.
+  const parentsByTarget = new Map(
+    trees.flatMap((tree) =>
+      tree.mountParents === undefined ? [] : [[tree.target, tree.mountParents] as const],
+    ),
+  );
+  const seen = new Set<string>();
+  const commands = trees.flatMap((tree) => {
+    if (seen.has(tree.target)) return [];
+    seen.add(tree.target);
+    const target = quoteShellPath(tree.target);
+    const parents = (parentsByTarget.get(tree.target) ?? []).filter((parent) => parent !== tree.target);
+    const directories = [target, ...parents.map(quoteShellPath)];
+    return [
+      `mkdir -p ${directories.join(" ")}`,
+      `chown -R '${tree.owner}' ${target}`,
+      `chmod ${tree.shared === true ? "0775" : "0770"} ${target}`,
+    ];
+  });
   return {
     id: DATA_TREE_OWNERSHIP_STEP_ID,
     phase: "build",

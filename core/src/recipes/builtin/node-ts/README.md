@@ -1,7 +1,7 @@
 # node-ts
 
 Use this recipe to create a `.lando.yml` for a Node app. The generated
-Landofile reads environment expressions for the Node image and `NODE_ENV`,
+Landofile reads environment expressions for the Node version and `NODE_ENV`,
 so you can change either value without regenerating the file. Add tooling
 and storage to the Landofile as your app needs them.
 
@@ -11,10 +11,11 @@ and storage to the Landofile as your app needs them.
 
 ## Generated services
 
-- `web`: `image: node:<LANDO_NODE_VERSION ?? "24">`
+- `web`: `type: node:<LANDO_NODE_VERSION ?? "lts">`
 
-The Node major version is resolved from `LANDO_NODE_VERSION` at
-`LandofileService` load time, with `24` as the default. `NODE_ENV`
+The Node version is resolved from `LANDO_NODE_VERSION` at
+`LandofileService` load time. It defaults to `lts`, Lando's current Node
+LTS major, and accepts `lts`, `22`, `24`, or `26`. `NODE_ENV`
 defaults to `development` and can be overridden the same way.
 
 ## Limitations

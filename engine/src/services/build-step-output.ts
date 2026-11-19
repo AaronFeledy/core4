@@ -1,8 +1,8 @@
+import { type OutputLineRedactor, createOutputLineRedactor } from "@lando/redaction/line-stream";
 import type { EventError, ProviderInternalError } from "@lando/sdk/errors";
 import { TaskDetailEvent } from "@lando/sdk/events";
-import { LOG_LINE_TRUNCATED_MARKER, makeLineFramer } from "@lando/sdk/log-follow";
+import { LOG_LINE_TRUNCATED_MARKER } from "@lando/sdk/log-follow";
 import type { AbsolutePath } from "@lando/sdk/schema";
-import { type PayloadRedactor, createPayloadRedactor } from "@lando/sdk/secrets";
 import type { EventService } from "@lando/sdk/services";
 import { type Context, DateTime, Effect } from "effect";
 
@@ -50,35 +50,24 @@ export interface BuildStepOutputInput {
   readonly redaction: BuildRedaction;
 }
 
-interface StreamState {
-  readonly payload: PayloadRedactor;
-  readonly framer: ReturnType<typeof makeLineFramer>;
-}
-
 interface PendingLine {
   readonly stream: BuildStepOutputStream;
   readonly line: string;
 }
-
-const makeStreamState = (redaction: BuildRedaction): StreamState => ({
-  payload: createPayloadRedactor(redaction.payloadValues),
-  framer: makeLineFramer(),
-});
 
 export const openBuildStepOutput = Effect.fnUntraced(function* (
   input: BuildStepOutputInput,
 ): Effect.fn.Return<BuildStepOutput, ProviderInternalError, import("effect").Scope.Scope> {
   const transcript = yield* openBuildTranscript(input.providerId, input.transcriptPath, input.userDataRoot);
   const streams = {
-    stdout: makeStreamState(input.redaction),
-    stderr: makeStreamState(input.redaction),
-  } satisfies Record<BuildStepOutputStream, StreamState>;
+    stdout: createOutputLineRedactor(input.redaction),
+    stderr: createOutputLineRedactor(input.redaction),
+  } satisfies Record<BuildStepOutputStream, OutputLineRedactor>;
   const tail: string[] = [];
   const pending: PendingLine[] = [];
   let ended = false;
 
-  const emit = Effect.fnUntraced(function* (stream: BuildStepOutputStream, line: string) {
-    const safe = input.redaction.redactor.redactString(line);
+  const emit = Effect.fnUntraced(function* (stream: BuildStepOutputStream, safe: string) {
     const displayed = truncateForDisplay(safe);
     tail.push(displayed);
     if (tail.length > TAIL_LINES) tail.shift();
@@ -118,9 +107,7 @@ export const openBuildStepOutput = Effect.fnUntraced(function* (
   const write: BuildStepOutput["write"] = (stream, chunk) =>
     Effect.suspend(() => {
       if (ended) return Effect.void;
-      const state = streams[stream];
-      const lines = state.framer.feed(state.payload.write(chunk)).map((line) => line.text);
-      enqueue(stream, lines);
+      enqueue(stream, streams[stream].write(chunk));
       return drain;
     });
 
@@ -129,14 +116,7 @@ export const openBuildStepOutput = Effect.fnUntraced(function* (
       if (ended) return yield* drain;
       ended = true;
       yield* drain;
-      for (const stream of ["stdout", "stderr"] as const) {
-        const state = streams[stream];
-        const flushedPayload = state.framer.feed(state.payload.flush());
-        enqueue(
-          stream,
-          [...flushedPayload, ...state.framer.flush()].map((line) => line.text),
-        );
-      }
+      for (const stream of ["stdout", "stderr"] as const) enqueue(stream, streams[stream].end());
       yield* drain;
     }),
   );
@@ -150,9 +130,8 @@ export const openBuildStepOutput = Effect.fnUntraced(function* (
 
   const tailValue = (): string | undefined => {
     if (tail.length === 0) return undefined;
-    // Redact the joined tail first so a cross-line pattern matches, then bound the redacted text.
-    const redacted = input.redaction.redactor.redactString(tail.join("\n"));
-    let bounded = redacted;
+    // Every retained line is already safe; bound the joined text without re-redacting it.
+    let bounded = tail.join("\n");
     if (bounded.length > TAIL_CHARS) {
       bounded = bounded.slice(bounded.length - TAIL_CHARS);
       const boundary = bounded.indexOf("\n");

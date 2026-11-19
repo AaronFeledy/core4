@@ -1,4 +1,3 @@
-import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { AppLifecycleEventName } from "@lando/sdk/schema";
 import { reservedTopLevelAliasOwner } from "../operations/reserved-aliases.ts";
 import type { EffectiveTooling } from "./effective-tooling.ts";
@@ -17,8 +16,11 @@ export const RESERVED_EVENT_NAMES: ReadonlySet<string> = new Set([
 export const reservedEventCollisions = (taskName: string): ReadonlyArray<string> =>
   [`pre-${taskName}`, `post-${taskName}`].filter((event) => RESERVED_EVENT_NAMES.has(event));
 
-export const validEventNames = (effectiveTooling: EffectiveTooling): ReadonlyArray<string> => {
-  const internal = new Set(getInternalToolingTasks(effectiveTooling));
+export const validEventNames = (
+  effectiveTooling: EffectiveTooling,
+  internalToolingNames: readonly string[],
+): ReadonlyArray<string> => {
+  const internal = new Set(internalToolingNames);
   const brackets = Object.keys(effectiveTooling)
     .filter((name) => !internal.has(name) && reservedTopLevelAliasOwner(name) === undefined)
     .flatMap((name) => [`pre-${name}`, `post-${name}`])

@@ -33,7 +33,7 @@ test("rename retains old-name data ownership until a later volume teardown selec
     expect(retained?.appIds).toEqual([old.id, renamed.id]);
     expect(calls.filter((call) => call.method === "DELETE")).toEqual([]);
     const result = await Effect.runPromise(cleanup(root, { volumes: true, appIds: retained?.appIds ?? [] }));
-    expect(result.volumesRemoved).toBe(2);
+    expect(result.volumesRemoved).toEqual({ data: 2, cache: 0 });
     expect(calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
       "/volumes/old-data",
       "/volumes/new-data",

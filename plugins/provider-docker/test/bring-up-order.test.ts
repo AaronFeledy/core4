@@ -119,7 +119,10 @@ const makeFakeApi = (
             body: JSON.stringify({
               Id: ids.get(name),
               Config: { Labels: labels.get(name) },
-              State: { Running: runningNames.has(name) },
+              State: {
+                Running: runningNames.has(name),
+                Status: runningNames.has(name) ? "running" : "created",
+              },
             }),
           }
         : { status: 404, body: "" };
@@ -131,7 +134,7 @@ const makeFakeApi = (
         createdSeq += 1;
         ids.set(name, `id-${name}-created-${createdSeq}`);
       }
-      return { status: 201, body: "" };
+      return { status: 201, body: JSON.stringify({ Id: name === null ? undefined : ids.get(name) }) };
     }
     if (path.endsWith("/start")) {
       const name = resolveContainer(path.slice("/containers/".length, -"/start".length));
@@ -174,6 +177,10 @@ const makeFakeApi = (
   const api: DockerApiClient = {
     info: Effect.succeed({}),
     request: ({ method, path, body }) => {
+      if (method === "POST" && path.endsWith("/wait")) {
+        requests.push(`${method} ${path}`);
+        return Effect.never;
+      }
       requests.push(`${method} ${path}`);
       if (method === "POST" && path.endsWith("/exec")) execBodies.push(body);
       if (method === "POST" && path.startsWith("/containers/create?")) {
@@ -390,7 +397,7 @@ describe("provider-docker bringUp dependency order", () => {
     await apply(plan, fake.api);
 
     // Then
-    const dbStart = fake.requests.indexOf("POST /containers/lando-bring-up-order-app--db/start");
+    const dbStart = fake.requests.indexOf("POST /containers/id-lando-bring-up-order-app--db-created-1/start");
     const dbExec = fake.requests.indexOf("POST /containers/lando-bring-up-order-app--db/exec");
     const webStart = fake.requests.indexOf("POST /containers/lando-bring-up-order-app--web/start");
     expect(dbStart).toBeGreaterThan(-1);
@@ -413,7 +420,7 @@ describe("provider-docker bringUp dependency order", () => {
     expect(failure).toMatchObject({ _tag: "ServiceStartError", service: "web" });
     expect(failure.message).toContain("db:healthy");
     expect(fake.requests).not.toContain("POST /containers/lando-bring-up-order-app--web/start");
-    expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app--db/start");
+    expect(fake.requests).toContain("POST /containers/id-lando-bring-up-order-app--db-created-1/start");
     expect(fake.requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
     expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   });
@@ -452,7 +459,7 @@ describe("provider-docker bringUp dependency order", () => {
     // Then
     expect(fake.requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
     expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
-    expect(fake.requests).toContain(`POST /containers/${db}/start`);
+    expect(fake.requests).toContain(`POST /containers/id-${db}-original/start`);
   });
 
   test("optional start failure retains the failed dependency and preserves unrelated started services", async () => {
@@ -549,6 +556,16 @@ describe("provider-docker bringUp dependency order", () => {
     expect(retryRequests.filter((request) => request === `POST /containers/create?name=${apiName}`)).toEqual(
       [],
     );
+  });
+
+  test("returns what apply did to each service container", async () => {
+    // Given a plan whose containers do not exist yet.
+    const plan = planWith([service("web", { dependsOn: [] })]);
+    const fake = makeFakeApi(0);
+    // When the provider applies it.
+    const result = await apply(plan, fake.api);
+    // Then the provider's container outcome passes through unchanged.
+    expect(result.services).toEqual({ web: { action: "created" } });
   });
 
   test("interrupts an aborted optional dependency instead of starting its dependent", async () => {

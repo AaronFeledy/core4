@@ -1,3 +1,4 @@
+import type { LandofileProvenance } from "@lando/landofile/provenance";
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError } from "@lando/sdk/errors";
@@ -23,6 +24,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
   readonly services: readonly ResolvedServiceSeed[];
   readonly unavailable: ReadonlyMap<string, readonly PlannerIssue[]>;
   readonly landofile: LandofileShape;
+  readonly provenance?: LandofileProvenance | undefined;
   readonly manifests: readonly PluginManifest[];
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
   readonly appName: string;
@@ -39,7 +41,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
   const issues: PlannerIssue[] = [];
   const record = (error: LandofileValidationError) => {
     const reasons = error.issues.map((issue) =>
-      attributePlannerIssue(input.landofile, { ...issue, rule: "landofile.service" }),
+      attributePlannerIssue(input.provenance, { ...issue, rule: "landofile.service" }),
     );
     issues.push(...reasons);
     return reasons;
@@ -54,7 +56,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
       input.pluginRegistry,
       declaredServiceFeatures(resolution, input.gpgForward),
     ).pipe(
-      mapFailures((error) => servicePlanError(input.appRoot, name, error)),
+      mapFailures((error) => servicePlanError({ appRoot: input.appRoot, serviceName: name, cause: error })),
       Effect.result,
     );
     if (Result.isFailure(loaded)) {
@@ -89,7 +91,9 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
     const declared = yield* declarePreparedServiceEndpoints(prepared);
     if (declared.errors.length > 0) {
       const failure = unavailable(
-        declared.errors.flatMap((error) => record(servicePlanError(input.appRoot, name, error))),
+        declared.errors.flatMap((error) =>
+          record(servicePlanError({ appRoot: input.appRoot, serviceName: name, cause: error })),
+        ),
       );
       rows.set(name, {
         preparation: { _tag: "Available", value: declared.prepared },
@@ -169,11 +173,16 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
       endpoints: error === undefined ? { _tag: "Available", value: normalized } : unavailable(record(error)),
     });
   }
+  // Bind exactly as planning will: only a service holding a generated certificate
+  // can prefer its HTTPS listener, because only then can the router verify it.
+  const generatedCertificates = new Set(
+    input.services.filter((seed) => seed.resolution.normalizedConfig.certs === true).map((seed) => seed.name),
+  );
   for (const [name, routes] of input.routes) {
     const row = rows.get(name);
     if (row === undefined || row.endpoints._tag === "Unavailable") continue;
     for (const route of routes ?? []) {
-      const binding = bindRoute(name, row.endpoints.value, route);
+      const binding = bindRoute(name, row.endpoints.value, route, generatedCertificates.has(name));
       if (Result.isFailure(binding)) issues.push({ ...binding.failure, rule: "landofile.route" });
     }
   }

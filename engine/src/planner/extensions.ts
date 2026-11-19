@@ -234,8 +234,11 @@ const servicePlanExtensionsFromDraft = (
       ...serviceFeatureExtension(extensions),
       ...(featureIds.length === 0 ? {} : { featureIds: [...featureIds] }),
       dataTrees: dataTrees.map((tree) => ({ ...tree })),
+      // An image step inherits the planned process user. A userless app step
+      // keeps no user so it runs as the command identity: the applied project
+      // user, else the container default, which is that same process user.
       buildSteps: draft.buildSteps.map(({ user: authoredUser, ...step }) => {
-        const user = authoredUser ?? draft.user;
+        const user = authoredUser ?? (step.phase === "app" ? undefined : draft.user);
         return { ...step, ...(user === undefined ? {} : { user }) };
       }),
     },

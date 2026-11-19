@@ -117,6 +117,8 @@ const capabilities: ProviderCapabilities = {
   routeProvider: false,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
@@ -211,7 +213,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
         const call = { app: String(target.app), volumes: destroyOptions.volumes };
         if (destroyOptions.removeState === false) options.stopCalls?.push(call);
         else recorded.destroyCalls.push(call);
-        return { kind: "destroyed" as const };
+        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
     readAppEnvironment: () => Effect.succeed([]),

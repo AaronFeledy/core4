@@ -50,6 +50,7 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - On how-to and tutorial pages only: numbered list that is not a sequence you can run
 - On how-to and tutorial pages only: heading that does not name the action or the command
 - Install, start, or config with no verify command (how-to / tutorial)
+- A guide teaches an app install that no `layer="e2e"` scenario runs anywhere in the docs tree (`guide.install.e2e-coverage`)
 - Copied Lando 3 product facts (recipes-as-the-product, Drupal 9 first-app, Docker-as-default, start Traefik)
 
 ## Before you write
@@ -159,6 +160,9 @@ Guide MDX frontmatter is `GuideFrontmatter`: `id`, `provider` / layer, `timeout`
 - Supported Linux fallback after default setup fails: `lando setup --provider=docker` (working system Docker) or `LANDO_PROVIDER=docker`. Not "advanced users who prefer Docker."
 - Lando starts the proxy. Do not tell users to launch Traefik.
 - Installers, `get.lando.dev`, and signed multi-platform releases that are not up stay not up. Do not un-stub them.
+- Before telling readers to install a PHP extension that a CMS requires, check whether the stock PHP image already ships or builds it (`PHP_COMMON_EXTENSIONS`, `PHP_EXTENSIONS_TO_BUILD`). Teach a `build.artifact` install, or link `docs/guides/services/php-customization.mdx`, only for extensions the image lacks.
+- Single-command CLI tooling tasks in guides (`drush`, `wp`, `typo3`) set `wrapper: true` so `--help` and `--version` reach the tool instead of Lando. Mirror the key in the fixture.
+- Never hand file ownership back with host-expanded `chown $(id -u):$(id -g)` or run tools with `lando exec --user <host uid>`. On rootless Podman, container root already maps to the host user, so both break. Where Lando realizes a project user, the service's writes already belong to the host user; elsewhere, link `docs/guides/services/file-ownership.mdx` instead of teaching your own chown.
 - Recipe READMEs (`recipes/<id>/README.mdx`) are executable-guide-valid and feed scaffold README generation. Drupal's e2e smoke is richer than drupal-cms. Do not flatten it.
 
 ## Transcripts
@@ -198,6 +202,8 @@ Prose carries meaning. Components only execute: `<Run>`, `<Verify>`, `<Cleanup>`
 - `render={false}` is for real hidden tests, `reason` at least 8 chars.
 - Litmus: strip every JSX tag. What remains is still a guide.
 
+A guide has to document and demonstrate. Every step and claim on the page must run in an executable scenario. Planned config (`lando app:config`) does not prove a login, a request, or a seeded row; those need `layer="e2e"`, and `@smoke` when they should gate a pull request (pull-request CI runs every non-e2e scenario on Linux x64 and Windows x64, but only `@smoke` e2e scenarios, on Linux x64; nightly runs every e2e scenario). To prove a routed URL answers through the proxy, run `lando start --format=json` in a hidden step and match the service's entry in `checks` (`"verdict":"ready"`); never scrape the progress lines `lando start` prints on stderr. When the page documents a limitation or workaround that an open issue tracks, add a hidden tripwire step that asserts the limitation still holds and names the issue in its `reason`, so the fix turns the guide red instead of leaving it stale. Steps that should still run but not appear to the reader go in `<Hidden reason="...">` (`reason` at least 8 characters). Hidden steps execute; they are excluded from public transcripts and the rendered page. `render={false}` hides an entire scenario the same way. If a claim cannot run in CI, do not put it on the page.
+
 Fixtures: `docs/guides/<guide-id>/fixtures/<name>/`. Every dir must be referenced by `<UseFixture>`.
 New fixture dir: record it in the golden corpus with `UPDATE_GOLDEN=1 bun test landofile/test/pipeline/golden-corpus.test.ts` and commit the digest change; guide gates do not run that test. A deliberately invalid fixture also carries `# lando-lint: expect-invalid <reason>` on line 1; no test keeps a hand-edited list. Steps: `docs/contributing/guide-authoring.md#register-a-new-fixture`.
 
@@ -214,6 +220,10 @@ See the illustrative [executable guide shape](examples.md#executable-guide-shape
 3. `bun run check:guide-coverage`.
 
 ## Verification
+
+Before calling a guide's app install verified, run the covering `layer="e2e"`
+scenario on the default `lando` provider (managed Podman), including cleanup.
+Passing structural lint or a test-provider scenario does not verify the install.
 
 ```bash
 bun run lint:guides

@@ -253,7 +253,7 @@ describe("native argv parser seam", () => {
     expect(globalConfigFormatFromInput(compiledInput("meta:global:config", ["--format=json"]))).toBe("json");
     expect(globalDestroyOptionsFromInput(compiledInput("meta:global:destroy", ["--yes", "--purge"]))).toEqual(
       {
-        yes: true,
+        volumes: false,
         purge: true,
       },
     );

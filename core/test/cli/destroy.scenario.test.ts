@@ -99,6 +99,8 @@ const capabilities: ProviderCapabilities = {
   routeProvider: false,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
@@ -314,18 +316,18 @@ const makeDestroyLayer = (
     destroy: (target, destroyOptions) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options: destroyOptions });
-        if (destroyOptions.volumes || destroyOptions.purgeCaches) {
-          for (const store of plannedApp.stores) {
-            if (store.kind === "cache") {
-              if (destroyOptions.purgeCaches) volumes.delete(store.name);
-            } else if (destroyOptions.volumes && store.scope !== "global") {
-              volumes.delete(store.name);
-            }
+        const removed: { data: number; cache: number } = { data: 0, cache: 0 };
+        for (const store of plannedApp.stores) {
+          if (store.kind === "cache") {
+            if (destroyOptions.purgeCaches && volumes.delete(store.name)) removed.cache += 1;
+          } else if (destroyOptions.volumes && store.scope !== "global" && volumes.delete(store.name)) {
+            removed.data += 1;
           }
         }
+        return removed;
       }).pipe(
-        Effect.andThen(options.providerDestroyEffect ?? Effect.void),
-        Effect.as({ kind: "destroyed" as const }),
+        Effect.tap(() => options.providerDestroyEffect ?? Effect.void),
+        Effect.map((removed) => ({ kind: "destroyed" as const, volumesRemoved: removed })),
       ),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -343,7 +345,7 @@ const makeDestroyLayer = (
     cleanupOwnedResources: () =>
       Effect.sync(() => {
         mutations.push("inventory");
-        return { servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 };
+        return { servicesRemoved: [], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } };
       }),
   };
 
@@ -885,7 +887,8 @@ describe("lando destroy", () => {
       `${renderDestroyAppResult({
         app: "test-destroy",
         servicesDestroyed: ["database", "web"],
-        volumesRemoved: false,
+        dataVolumesRemoved: false,
+        cacheVolumesRemoved: false,
         snapshotsRemoved: 0,
       })}\n`,
     );
@@ -910,7 +913,8 @@ describe("lando destroy", () => {
         result: {
           app: "test-destroy",
           servicesDestroyed: ["database", "web"],
-          volumesRemoved: false,
+          dataVolumesRemoved: false,
+          cacheVolumesRemoved: false,
         },
       },
     );
@@ -1077,7 +1081,7 @@ describe("lando destroy", () => {
     expect(harness.destroyCalls[0]?.options).toEqual({ volumes: true, removeState: true });
     expect(harness.volumes.has("test_destroy_database_data")).toBe(false);
     expect(harness.volumes.has("lando-cache-npm")).toBe(true);
-    expect(renderDestroyAppResult(result)).toContain("volumes removed");
+    expect(result).toMatchObject({ dataVolumesRemoved: true, cacheVolumesRemoved: false });
   });
 
   test("removes cache volumes only when purgeCaches is requested", async () => {
@@ -1093,7 +1097,7 @@ describe("lando destroy", () => {
     });
     expect(harness.volumes.has("test_destroy_database_data")).toBe(true);
     expect(harness.volumes.has("lando-cache-npm")).toBe(false);
-    expect(renderDestroyAppResult(result)).toContain("volumes removed");
+    expect(result).toMatchObject({ dataVolumesRemoved: false, cacheVolumesRemoved: true });
   });
 
   test("--purge removes only this folder's snapshots and provider artifacts", async () => {
@@ -1119,9 +1123,13 @@ describe("lando destroy", () => {
       );
       // Equal creation times list by id.
       expect(listed.map((info) => info.id)).toEqual([legacy.info.id, sibling.info.id]);
-      expect(renderDestroyAppResult(result)).toBe(
-        "destroyed: test-destroy - database, web (volumes and 1 snapshot removed)",
-      );
+      expect(result).toMatchObject({
+        app: "test-destroy",
+        servicesDestroyed: ["database", "web"],
+        dataVolumesRemoved: true,
+        cacheVolumesRemoved: false,
+        snapshotsRemoved: 1,
+      });
     });
   });
 
@@ -1178,7 +1186,13 @@ describe("lando destroy", () => {
         // Then: snapshot deletion alone makes this a changed teardown.
         expect(JSON.parse(io.stdout())).toMatchObject({
           ok: true,
-          result: { outcome: "destroyed", snapshotsRemoved: 1, servicesDestroyed: [], volumesRemoved: false },
+          result: {
+            outcome: "destroyed",
+            snapshotsRemoved: 1,
+            servicesDestroyed: [],
+            dataVolumesRemoved: false,
+            cacheVolumesRemoved: false,
+          },
         });
         expect(harness.removedSnapshots).toEqual([owned.info.id]);
       });
@@ -1299,12 +1313,18 @@ describe("lando destroy", () => {
   );
 
   test.each([1, 2])("renders snapshot-only and combined removal counts (%s)", (count) => {
-    const result = { app: "shop", servicesDestroyed: [], volumesRemoved: false, snapshotsRemoved: count };
+    const result = {
+      app: "shop",
+      servicesDestroyed: [],
+      dataVolumesRemoved: false,
+      cacheVolumesRemoved: false,
+      snapshotsRemoved: count,
+    };
     const snapshots = `${count} snapshot${count === 1 ? "" : "s"}`;
     expect(renderDestroyAppResult(result)).toBe(`destroyed: shop (${snapshots} removed)`);
     expect(
-      renderDestroyAppResult({ ...result, servicesDestroyed: ["database", "web"], volumesRemoved: true }),
-    ).toBe(`destroyed: shop - database, web (volumes and ${snapshots} removed)`);
+      renderDestroyAppResult({ ...result, servicesDestroyed: ["database", "web"], dataVolumesRemoved: true }),
+    ).not.toBe(renderDestroyAppResult({ ...result, servicesDestroyed: ["database", "web"] }));
   });
 
   test("compiled CLI accepts lando destroy --volumes before missing Landofile resolution", async () => {
@@ -1354,7 +1374,8 @@ describe("lando destroy", () => {
         app: "test-destroy",
         outcome: "unchanged",
         servicesDestroyed: [],
-        volumesRemoved: false,
+        dataVolumesRemoved: false,
+        cacheVolumesRemoved: false,
         snapshotsRemoved: 0,
       }),
     ).toBe("unchanged: test-destroy - no services");

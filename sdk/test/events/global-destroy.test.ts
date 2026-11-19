@@ -14,6 +14,7 @@ test.each(["applied", "orphans", "owned"] as const)(
       scope: "global",
       app,
       evidence,
+      volumes: true,
       purge: true,
       timestamp,
     } as const;
@@ -36,6 +37,7 @@ test.each(["pre-global-destroy", "post-global-destroy"] as const)("%s rejects ab
     scope: "global",
     app,
     evidence: "absent",
+    volumes: false,
     purge: false,
     outcome: "unchanged",
     timestamp,

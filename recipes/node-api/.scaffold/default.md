@@ -38,7 +38,7 @@ The scaffold writes only `.lando.yml`. It declares an `api` service on `node:<no
 
 Lando derives `PORT` from `port:` (default `3000`). Read `process.env.PORT` in your API and bind `0.0.0.0` so the proxy can reach it. An unequal or malformed authored `environment.PORT` fails planning; change `port:` instead. The default Node process stays idle: install dependencies and supply `command:` or run tooling to start your API.
 
-Two tooling commands ship with the Landofile, both running inside the `api` service:
+The Landofile declares `lando node`, and the `api` service adds `lando npm` and `lando npx`. All of them run inside `api`:
 
 ```sh
 lando npm install

@@ -1,11 +1,11 @@
 import { relative } from "node:path";
 import { findDiscoveredLandofilePath, loadLandofileLayers } from "@lando/engine/services/landofile-live";
 import { CORE_VERSION } from "@lando/engine/version";
+import { provenanceOf, versionConstraintsFor } from "@lando/landofile/provenance";
 import {
   VERSION_CONSTRAINT_SKIP_ENV_VAR,
   type VersionConstraintEntry,
   evaluateVersionConstraints,
-  getVersionConstraintEntries,
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
@@ -150,7 +150,7 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
     };
   }
   const landofile = resolved.success.document;
-  const entries = getVersionConstraintEntries(landofile, filePath);
+  const entries = versionConstraintsFor(provenanceOf(resolved.success), landofile, filePath);
   const skipped = isVersionConstraintSkipped(env);
   if (entries.length === 0 && !skipped) return undefined;
 

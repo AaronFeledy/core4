@@ -1099,6 +1099,20 @@ describe("provider-podman RuntimeProvider contract", () => {
     );
   });
 
+  test("returns what apply did to each service container", async () => {
+    // Given a plan whose containers do not exist yet.
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ podmanApi: fake.api, platform: "linux", env: {} })),
+      ),
+    );
+    // When the provider applies it.
+    const result = await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: false })));
+    // Then the provider's container outcome passes through unchanged.
+    expect(result.services).toEqual({ web: { action: "created" } });
+  });
+
   test("persists applied plans for follow-up CLI invocations", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-podman-state-"));
     try {

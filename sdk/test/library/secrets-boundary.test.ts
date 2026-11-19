@@ -14,12 +14,12 @@ describe("@lando/sdk/secrets import boundary", () => {
 
     expect(specifiers).toEqual([
       "./bounded-redaction.ts",
-      "./env-placeholder.ts",
       "./inspection.ts",
-      "./public-default-credentials.ts",
       "./redactor.ts",
       "./secret-names.ts",
+      "./secret-scanner.ts",
       "./transcript-redaction.ts",
+      "./url-userinfo.ts",
       "./value-redaction.ts",
     ]);
   });
@@ -34,8 +34,17 @@ describe("@lando/sdk/secrets import boundary", () => {
       "../../src/secrets/payload-redactor.ts",
       "../../src/secrets/redactor-profiles.ts",
       "../../src/secrets/redactor.ts",
+      "../../src/secrets/secret-bearer.ts",
+      "../../src/secrets/secret-grammar.ts",
+      "../../src/secrets/secret-constructs.ts",
+      "../../src/secrets/secret-lexeme.ts",
       "../../src/secrets/secret-names.ts",
+      "../../src/secrets/secret-scanner.ts",
+      "../../src/secrets/secret-value-mask.ts",
+      "../../src/secrets/secret-value-view.ts",
+      "../../src/secrets/secret-yaml-key.ts",
       "../../src/secrets/transcript-redaction.ts",
+      "../../src/secrets/url-userinfo.ts",
       "../../src/secrets/value-redaction.ts",
     ]) {
       const source = await readFile(new URL(file, import.meta.url), "utf8");

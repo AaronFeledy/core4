@@ -27,11 +27,15 @@ export const authoredRecipe = (options: LandofileRecipeProvenance["options"]) =>
 const compileScope = (options: Pick<ResolveLandofileIncludesOptions, "landofile" | "appRoot">) =>
   buildLandofileLoadScope([{ file: join(options.appRoot, ".lando.yml"), value: options.landofile }]);
 
+/** The compiled carrier: the document together with its carried provenance. */
 export const resolveAuthoredIncludes = (options: Omit<ResolveLandofileIncludesOptions, "loadScope">) =>
   compileScope(options).pipe(
     Effect.flatMap((loadScope) => resolveLandofileIncludes({ ...options, loadScope })),
-    Effect.map((compiled) => compiled.document),
   );
+
+/** The resolved document alone, for tests that assert on values. */
+export const resolveAuthoredDocument = (options: Omit<ResolveLandofileIncludesOptions, "loadScope">) =>
+  resolveAuthoredIncludes(options).pipe(Effect.map((compiled) => compiled.document));
 export const updateAuthoredIncludes = (options: Omit<UpdateLandofileIncludesOptions, "loadScope">) =>
   compileScope(options).pipe(
     Effect.flatMap((loadScope) => updateLandofileIncludes({ ...options, loadScope })),
