@@ -9,9 +9,10 @@ import {
   ProbeTimeoutError,
   RetryPolicy,
   runProbe,
+  runProbeDetailed,
   toSchedule,
 } from "@lando/sdk/probe";
-import { Cause, Duration, Effect, Fiber, Schema } from "effect";
+import { Cause, Deferred, Duration, Effect, Exit, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
 
 const drive = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
@@ -35,6 +36,44 @@ const runUnderClock = <A, E>(effect: Effect.Effect<A, E, never>, advance: Durati
       return yield* Fiber.join(fiber);
     }).pipe(Effect.provide(TestClock.layer())),
   );
+
+test("a deadline joins the interrupted attempt and surfaces its finalizer defect", async () => {
+  const defect = new Error("attempt cleanup failed");
+  const exit = await drive(
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const attempt = Deferred.succeed(entered, undefined).pipe(
+        Effect.andThen(Effect.never),
+        Effect.ensuring(Effect.die(defect)),
+      );
+      const probe = yield* Effect.forkChild(
+        runProbeDetailed({ id: "test:probe", policy: { timeout: Duration.millis(100) } }, attempt),
+      );
+      yield* Deferred.await(entered);
+      yield* TestClock.adjust("100 millis");
+      return yield* Fiber.await(probe);
+    }),
+  );
+  expect(Exit.isFailure(exit) && Cause.hasDies(exit.cause)).toBe(true);
+  if (Exit.isFailure(exit)) expect(Cause.squash(exit.cause)).toBe(defect);
+});
+
+test("detailed probes discard stale evidence when the final attempt is interrupted by the deadline", async () => {
+  let attempts = 0;
+  const result = await runUnderClock(
+    runProbeDetailed(
+      {
+        ...spec({ maxAttempts: 3, delay: Duration.millis(10), timeout: Duration.millis(100) }),
+        classify: () => "red",
+      },
+      Effect.suspend(() => (++attempts === 1 ? Effect.succeed({ exit: 17 }) : Effect.never)),
+    ),
+    "100 millis",
+  );
+  expect(result.result.attempts).toBe(2);
+  expect(result.result.lastError).toBeInstanceOf(ProbeTimeoutError);
+  expect(result.last).toBeUndefined();
+});
 
 describe("@lando/sdk/probe schemas", () => {
   test("decodes a full RetryPolicy through Schema with durations", () => {
@@ -328,7 +367,7 @@ describe("runProbe", () => {
     expect(calls).toBe(1);
   });
 
-  test("S7 deadline already elapsed: first attempt still runs when timeout is zero", async () => {
+  test("S7 a synchronously completed first attempt wins against a zero deadline", async () => {
     let calls = 0;
     const attempt = Effect.sync(() => {
       calls += 1;

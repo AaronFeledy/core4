@@ -31,8 +31,8 @@ const dualListenerDocument = (certs?: boolean) => ({
       type: "node:22",
       ...(certs === undefined ? {} : { certs }),
       endpoints: [
-        { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
-        { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+        { kind: "internal", protocol: "http", port: 80, name: "web", primary: true },
+        { kind: "internal", protocol: "https", port: 443, name: "web-https" },
       ],
       routes: ["plain.lndo.site"],
     },

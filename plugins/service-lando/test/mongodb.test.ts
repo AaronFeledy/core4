@@ -129,7 +129,7 @@ describe("mongodb ServiceType", () => {
     expect(String(volumes[0]?.target)).toBe("/data/db");
     expect(volumes[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 27017, protocol: "tcp", name: "db", primary: true },
+      { kind: "internal", port: 27017, protocol: "tcp", name: "db", primary: true },
     ]);
     expect(plan.mounts.find((m) => String(m.target) === MONGODB_CONFIG_TARGET)).toBeUndefined();
     expect(plan.command).toBeUndefined();

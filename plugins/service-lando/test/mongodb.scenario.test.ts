@@ -207,7 +207,7 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
     expect(db.type).toBe("mongodb");
     expect(db.artifact).toEqual({ kind: "ref", ref: "mongo:7" });
     expect(db.endpoints).toEqual([
-      { _tag: "internal", port: 27017, protocol: "tcp", name: "db", primary: true },
+      { kind: "internal", port: 27017, protocol: "tcp", name: "db", primary: true },
     ]);
     const volumes = db.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);

@@ -3,10 +3,7 @@ services:
   web:
     type: nginx
     endpoints:
-      - _tag: internal
-        name: browser
-        protocol: http
-        port: 80
+      - browser=http:80
     routes:
       - hostname: catalog-endpoints.lndo.site
         endpoint: browser

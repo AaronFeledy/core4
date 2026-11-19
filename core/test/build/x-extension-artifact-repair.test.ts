@@ -35,6 +35,7 @@ import { evolveHistoricalComposeKnobValues } from "./x-extension-compose-knob-va
 import { configOutputLandofile } from "./x-extension-config-output.ts";
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
+import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
@@ -72,7 +73,7 @@ const repairedLandofile = (): JsonSchema =>
     normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile")),
   );
 
-const expectedLandofile = (): JsonSchema =>
+const historicalLandofile = (): JsonSchema =>
   evolveHistoricalSchedule(
     evolveHistoricalServiceCreds(
       evolveHistoricalComposeKnobValues(
@@ -118,6 +119,8 @@ const expectedLandofile = (): JsonSchema =>
       ),
     ),
   );
+
+const expectedLandofile = (): JsonSchema => evolveHistoricalEndpointKind(historicalLandofile(), "bare");
 
 describe("closed x-* extension artifact repair", () => {
   test("pins the independently reviewed tooling sensitivity delta and source provenance", async () => {
@@ -306,6 +309,7 @@ describe("closed x-* extension artifact repair", () => {
       "unsupported-keyword $.landofile.events.additionalProperties",
       "unsupported-keyword $.landofile.patternProperties",
       "unsupported-keyword $.landofile.propertyNames",
+      "unsupported-keyword $.landofile.proxy.additionalProperties",
       "unsupported-keyword $.landofile.services.additionalProperties",
       "unsupported-keyword $.landofile.tooling.additionalProperties",
       "unsupported-keyword $.landofile.toolingDefaults.vars.additionalProperties",

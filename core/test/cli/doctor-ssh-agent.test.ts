@@ -26,6 +26,7 @@ import { makeDoctorReport, renderDoctorReportAsNdjson } from "../../src/cli/comm
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
 import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { globalAppForProvider } from "../_support/global-provider.ts";
+import { globalPlanAt } from "../_support/global-teardown-harness.ts";
 import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 const inputs = () => ({
@@ -55,9 +56,21 @@ const runningSidecar = {
       publications: { status: "unknown" as const },
     }),
 };
+const root = AbsolutePath.make("/test/global");
+const globalApp = {
+  ...globalAppForProvider(ProviderId.make("lando")),
+  paths: Effect.succeed({ root, distLandofile: root, userLandofile: root }),
+};
+const applied = globalPlanAt(root, {
+  kind: "command",
+  command: ["check-agent"],
+  timeoutSeconds: 5,
+  intervalSeconds: 1,
+  retries: 1,
+});
 const sidecarRegistry = RuntimeProviderRegistry.of({
   appliedPlansFor: () => Effect.succeed([]),
-  resolveAppliedPlan: () => Effect.succeed(undefined),
+  resolveAppliedPlan: () => Effect.succeed(applied),
   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   list: Effect.succeed([ProviderId.make("lando")]),
   capabilities: Effect.succeed(runningSidecar.capabilities),
@@ -366,7 +379,7 @@ describe("SSH agent doctor posture", () => {
         },
       }).pipe(
         Effect.provideService(RuntimeProviderRegistry, sidecarRegistry),
-        Effect.provideService(GlobalAppService, globalAppForProvider(ProviderId.make("lando"))),
+        Effect.provideService(GlobalAppService, globalApp),
       ),
     );
     // Then
@@ -395,7 +408,7 @@ describe("SSH agent doctor posture", () => {
       }).pipe(
         Effect.provide(TestClock.layer()),
         Effect.provideService(RuntimeProviderRegistry, sidecarRegistry),
-        Effect.provideService(GlobalAppService, globalAppForProvider(ProviderId.make("lando"))),
+        Effect.provideService(GlobalAppService, globalApp),
       ),
     );
     // Then
@@ -449,14 +462,14 @@ describe("SSH agent doctor posture", () => {
           return yield* Fiber.join(fiber);
         }).pipe(
           Effect.provideService(RuntimeProviderRegistry, {
-            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveAppliedPlan: () => Effect.succeed(applied),
             resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
             appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([provider.id]),
             capabilities: Effect.succeed(provider.capabilities),
             select: () => Effect.succeed(provider),
           }),
-          Effect.provideService(GlobalAppService, globalAppForProvider(ProviderId.make("lando"))),
+          Effect.provideService(GlobalAppService, globalApp),
           Effect.provide(TestClock.layer()),
         ),
       );
@@ -468,7 +481,7 @@ describe("SSH agent doctor posture", () => {
       });
       if (!answers)
         expect(check.context.fixError).toContain(
-          "Last probe failure: SSH readiness shell probe exited with code 2",
+          "Last probe failure: SSH readiness command exited with code 2",
         );
     },
   );

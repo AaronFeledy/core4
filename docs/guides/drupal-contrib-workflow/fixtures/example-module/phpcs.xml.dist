@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<ruleset name="example">
+  <description>Drupal coding standards for the example module.</description>
+  <file>.</file>
+  <arg name="extensions" value="php,module,inc,install,test,profile,theme"/>
+  <rule ref="Drupal"/>
+  <rule ref="DrupalPractice"/>
+</ruleset>

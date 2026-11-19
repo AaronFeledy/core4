@@ -17,9 +17,9 @@ const service: ServicePlan = {
   extensions: {},
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-23T00:00:00Z"), source: "test", runtime: 4 },
   endpoints: [
-    { _tag: "internal", protocol: "http", port: 3000, name: "web", primary: true },
-    { _tag: "published", protocol: "http", port: 3000, publication: { hostPort: 8080 } },
-    { _tag: "published", protocol: "http", port: 3000, publication: {} },
+    { kind: "internal", protocol: "http", port: 3000, name: "web", primary: true },
+    { kind: "published", protocol: "http", port: 3000, publication: { hostPort: 8080 } },
+    { kind: "published", protocol: "http", port: 3000, publication: {} },
   ],
 };
 
@@ -46,9 +46,9 @@ test("preserves aliases while matching multiple actual bindings by IP and pinned
   const planned: ServicePlan = {
     ...service,
     endpoints: [
-      { _tag: "internal", protocol: "http", port: 3000, name: "z", primary: true },
-      { _tag: "published", protocol: "http", port: 3000, name: "a", publication: { hostPort: 8080 } },
-      { _tag: "published", protocol: "http", port: 3000, name: "z", publication: { bindAddress: "::1" } },
+      { kind: "internal", protocol: "http", port: 3000, name: "z", primary: true },
+      { kind: "published", protocol: "http", port: 3000, name: "a", publication: { hostPort: 8080 } },
+      { kind: "published", protocol: "http", port: 3000, name: "z", publication: { bindAddress: "::1" } },
     ],
   };
   const publications = publicationObservationFromInspect({
@@ -118,14 +118,14 @@ test("does not promote opaque app_protocol or conflicting protocol groups into H
     ...service,
     endpoints: [
       {
-        _tag: "published",
+        kind: "published",
         protocol: "tcp",
         port: 9000,
         appProtocol: "vendor.http+json",
         publication: { hostPort: 19000 },
       },
-      { _tag: "internal", protocol: "http", port: 3000 },
-      { _tag: "internal", protocol: "https", port: 3000 },
+      { kind: "internal", protocol: "http", port: 3000 },
+      { kind: "internal", protocol: "https", port: 3000 },
     ],
   };
   const rows = projectServiceConnections({

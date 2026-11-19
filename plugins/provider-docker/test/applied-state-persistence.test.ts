@@ -84,14 +84,14 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
     name === "web"
       ? [
           {
-            _tag: "published",
+            kind: "published",
             port: 3000,
             protocol: "http",
             name: "http",
             publication: { bindAddress: "127.0.0.1", hostPort: 3000 },
           },
         ]
-      : [{ _tag: "internal", port: 5432, protocol: "tcp", name: "database" }],
+      : [{ kind: "internal", port: 5432, protocol: "tcp", name: "database" }],
   routes: [],
   dependsOn:
     name === "web"
@@ -130,6 +130,36 @@ const proxyPlan: AppPlan = {
   },
 };
 
+/** Historical applied envelopes used `_tag` / filter `type`; rewrite current encode for pre-v8 fixtures. */
+const withLegacyNetworkKeys = (encoded: unknown): unknown => {
+  const data = structuredClone(encoded) as {
+    services: Record<string, { endpoints?: ReadonlyArray<Record<string, unknown>> }>;
+    routes: Array<{ filters?: ReadonlyArray<Record<string, unknown>> }>;
+  };
+  for (const [name, service] of Object.entries(data.services)) {
+    data.services[name] = {
+      ...service,
+      endpoints: (service.endpoints ?? []).map((endpoint) => {
+        if (!Object.hasOwn(endpoint, "kind") || Object.hasOwn(endpoint, "_tag")) return endpoint;
+        const { kind, ...rest } = endpoint;
+        return { ...rest, _tag: kind };
+      }),
+    };
+  }
+  data.routes = data.routes.map((route) => {
+    if (route.filters === undefined) return route;
+    return {
+      ...route,
+      filters: route.filters.map((filter) => {
+        if (!Object.hasOwn(filter, "kind") || Object.hasOwn(filter, "type")) return filter;
+        const { kind, ...rest } = filter;
+        return { ...rest, type: kind };
+      }),
+    };
+  });
+  return data;
+};
+
 const withStateDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "docker-applied-state-"));
   try {
@@ -147,7 +177,10 @@ describe("provider-docker applied state persistence", () => {
       await withStateDir(async (root) => {
         const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(root));
         const path = await Effect.runPromise(persistAppliedPlan(state, plan));
-        const encoded = Schema.encodeSync(AppPlan)(plan);
+        const encoded = withLegacyNetworkKeys(Schema.encodeSync(AppPlan)(plan)) as {
+          services: Record<string, Record<string, unknown> & { extensions?: Record<string, unknown> }>;
+          [key: string]: unknown;
+        };
         const bytes = JSON.stringify({
           version: 2,
           data: {

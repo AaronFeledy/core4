@@ -49,7 +49,7 @@ test("projects a failed healthy gate listener onto the app build failure", async
       {
         db: {
           healthcheck,
-          endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+          endpoints: [{ kind: "internal", protocol: "tcp", port: 6380, primary: true }],
           listenerAuthority: { owner: "launcher", daemon: "Redis", port: 6380, setting: "--port 6380" },
         },
         web: dependsOn(dependency("db", "service_healthy")),
@@ -102,7 +102,7 @@ test("retains the primary required gate observation when an earlier independent 
     const plan = planWith(
       { assets: [install()], db: [], web: [install()] },
       {
-        db: { healthcheck, endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }] },
+        db: { healthcheck, endpoints: [{ kind: "internal", protocol: "tcp", port: 6380, primary: true }] },
         web: dependsOn(dependency("db", "service_healthy")),
       },
     );

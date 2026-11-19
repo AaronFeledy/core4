@@ -52,8 +52,8 @@ for (const [type, serviceType, prefix] of [
       });
       // Then
       expect(plan.endpoints).toEqual([
-        { _tag: "internal", port: 8025, protocol: "tcp", name: "smtp", primary: true },
-        { _tag: "internal", port: 18025, protocol: "http", name: "ui", scan: { path: "/" } },
+        { kind: "internal", port: 8025, protocol: "tcp", name: "smtp", primary: true },
+        { kind: "internal", port: 18025, protocol: "http", name: "ui", scan: { path: "/" } },
       ]);
       expect(plan.environment?.[`${prefix}_UI_BIND_ADDR`]).toBe(bind);
     },
@@ -184,8 +184,8 @@ test("MailHog exposes distinct UI and API HTTP listeners", async () => {
   });
   // Then
   expect(plan.endpoints.filter((endpoint) => endpoint.protocol === "http")).toEqual([
-    { _tag: "internal", port: 18025, protocol: "http", name: "ui", scan: { path: "/" } },
-    { _tag: "internal", port: 18026, protocol: "http", name: "api", scan: { path: "/api/v2/messages" } },
+    { kind: "internal", port: 18025, protocol: "http", name: "ui", scan: { path: "/" } },
+    { kind: "internal", port: 18026, protocol: "http", name: "api", scan: { path: "/api/v2/messages" } },
   ]);
 });
 

@@ -110,7 +110,18 @@ The tree finishes with the number of URLs that answered, or counts of errors and
 Full `lando restart` and `lando rebuild` show the same scan progress. Services with
 `scanner: false` get no scan row, and an app with no scan targets gets no empty tree.
 
-The scanner skips `tcp://`, `udp://`, and database connections; `lando info` still lists them. A Compose port mapping such as `9080:9080` describes the transport, not the application protocol, so Lando reports it as `tcp` rather than guessing HTTP. If you know that port serves HTTP, declare it with `protocol: http` in an explicit `endpoints:` entry so the scanner and `lando open` pick it up, or check it directly:
+The scanner skips `tcp://`, `udp://`, and database connections; `lando info` still lists them. A Compose port mapping such as `9080:9080` describes the transport, not the application protocol, so Lando reports it as `tcp` rather than guessing HTTP. If you know that port serves HTTP and you want it routed and scanned, declare an authoritative listener list:
+
+```yaml
+services:
+  web:
+    type: compose
+    image: example/app
+    endpoints:
+      - http:9080
+```
+
+`endpoints: [http:9080]` is the HTTP listener the scanner and `lando open` use. An explicit list replaces anything inferred from `ports:` or `expose:`. To check a direct published TCP mapping on the host instead, keep the mapping and probe it yourself:
 
 ```sh
 curl --fail http://localhost:9080/

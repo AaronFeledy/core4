@@ -46,7 +46,7 @@ const withResourceSession = async <A, E>(
   if (withApp)
     await Bun.write(
       join(root, ".lando.yml"),
-      `name: resource-app\nruntime: 4\nprovider: ${provider.id}\nservices:\n  web:\n    image: node:lts\n    primary: true\n    home: false\n    environment:\n      API_TOKEN: ${secret}\n`,
+      `name: resource-app\nruntime: 4\nprovider: ${provider.id}\nservices:\n  web:\n    image: node:lts\n    primary: true\n    home: false\n    endpoints: [ui=http:80]\n    environment:\n      API_TOKEN: ${secret}\n`,
     );
   try {
     const runtimeLayer = makeLandoRuntime({
@@ -165,7 +165,14 @@ test.each(resources.map((entry) => [entry.uri, entry] as const))(
     if (uri === "lando://app/config") {
       expect(payload).toMatchObject({
         app: "resource-app",
-        landofile: { services: { web: { environment: { API_TOKEN: "[redacted]" } } } },
+        landofile: {
+          services: {
+            web: {
+              endpoints: [{ kind: "internal", name: "ui", protocol: "http", port: 80 }],
+              environment: { API_TOKEN: "[redacted]" },
+            },
+          },
+        },
       });
       expect(JSON.stringify(response)).not.toContain(secret);
     }

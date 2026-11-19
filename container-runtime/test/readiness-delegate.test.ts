@@ -53,9 +53,13 @@ const planWith = (readiness: HealthcheckPlan) =>
 const fixture = (plan: AppPlan) => {
   const requests: EngineHttpRequest[] = [];
   const api: EngineHttpApi = {
-    request: (request) =>
-      Effect.sync(() => {
-        requests.push(request);
+    request: (request) => {
+      requests.push(request);
+      if (request.method === "POST" && request.path.includes("/wait")) {
+        // Hold while the healthy dependency runs; green readiness cancels the watcher.
+        return Effect.never;
+      }
+      return Effect.sync(() => {
         if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
           return { status: 200, body: "[]" };
         }
@@ -76,12 +80,13 @@ const fixture = (plan: AppPlan) => {
             status: 200,
             body: JSON.stringify({
               Id: `native-${service.name}`,
-              State: { Running: true },
+              State: { Status: "running", Running: true },
               Config: { Labels: commonContainerLabels(plan, service) },
             }),
           };
         return { status: 204, body: "" };
-      }),
+      });
+    },
     stream: () => Stream.empty,
   };
   return { api, requests };

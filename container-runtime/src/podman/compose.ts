@@ -112,7 +112,7 @@ const servicePorts = (service: ServicePlan): ReadonlyArray<string> =>
   });
 
 const serviceExpose = (service: ServicePlan): ReadonlyArray<string> =>
-  physicalListenerPorts(service.endpoints.filter((endpoint) => endpoint._tag === "internal")).map((port) =>
+  physicalListenerPorts(service.endpoints.filter((endpoint) => endpoint.kind === "internal")).map((port) =>
     port.endsWith("/tcp") ? port.slice(0, -4) : port,
   );
 

@@ -44,7 +44,7 @@ export const supportsWindowsPublishedRecovery = (input: {
   readonly endpoints: ReadonlyArray<EndpointPlan>;
 }): boolean => {
   // Internal facets of a published listener describe the same physical port, not an unpublished one.
-  const published = input.endpoints.flatMap((endpoint) => (endpoint._tag === "published" ? [endpoint] : []));
+  const published = input.endpoints.flatMap((endpoint) => (endpoint.kind === "published" ? [endpoint] : []));
   return (
     input.networking?.perAppBridge === null &&
     input.networking.sharedNetworkMembership !== undefined &&

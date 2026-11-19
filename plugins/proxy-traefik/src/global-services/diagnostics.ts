@@ -49,7 +49,7 @@ const diagnosticsServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   home: false,
   command: TRAEFIK_DIAGNOSTICS_COMMAND,
   mounts: [],
-  endpoints: [{ _tag: "internal", protocol: "http", port: TRAEFIK_DIAGNOSTICS_PORT }],
+  endpoints: [`http:${TRAEFIK_DIAGNOSTICS_PORT}`],
   hostnames: [TRAEFIK_DIAGNOSTICS_HOSTNAME],
   healthcheck: TRAEFIK_DIAGNOSTICS_HEALTHCHECK,
   environment: {},

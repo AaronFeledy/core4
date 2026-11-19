@@ -204,7 +204,7 @@ lando logs --service ollama --tail 100
 ```
 
 - If start reports that port `11434` is in use, stop the conflicting host server or change the mapping to `"127.0.0.1:11435:11434"`. Rebuild the app and use `11435` in host URLs. Keep `http://ollama:11434` inside `app`.
-- If the healthcheck cannot connect, inspect the logs before increasing its retries. The check cannot fix a server that exits during startup.
+- If Ollama exits during startup, Lando stops waiting on its `service_healthy` gate once it confirms the exit and no restart is expected. Use `lando logs -s ollama` to find the cause. Adjust probe timing only if the server is still running and needs longer to answer.
 - If the API reports a missing model, run `lando ollama list` and pull the exact name your request uses. A host installation's models aren't automatically available in this volume.
 - If a pull fails, check disk space and the container's network access. Corporate proxies may need Ollama's [HTTPS proxy and certificate configuration](https://docs.ollama.com/faq#how-do-i-use-ollama-behind-a-proxy); don't disable TLS verification to get past the error.
 - If generation fails for lack of memory, choose a smaller model or increase the provider VM's allocation. Increasing a request timeout doesn't create more memory.

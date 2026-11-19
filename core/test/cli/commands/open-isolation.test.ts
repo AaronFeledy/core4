@@ -274,13 +274,13 @@ test("does not skip a service whose only route targets its generated HTTPS liste
         ...web,
         endpoints: [
           {
-            _tag: "internal" as const,
+            kind: "internal" as const,
             protocol: "http" as const,
             port: 80,
             name: "web",
             primary: true as const,
           },
-          { _tag: "internal" as const, protocol: "https" as const, port: 443, name: "web-https" },
+          { kind: "internal" as const, protocol: "https" as const, port: 443, name: "web-https" },
         ],
         certs: { cn: "web.nobody.internal", sans: ["web.nobody.internal"], caId: "mkcert" },
       },

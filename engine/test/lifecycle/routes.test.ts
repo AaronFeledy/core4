@@ -19,7 +19,7 @@ const cachedPlan: AppPlan = {
   root: AbsolutePath.make("/srv/apps/demo"),
   provider: ProviderId.make("lando"),
   services: {
-    [service]: { ...web, name: service, endpoints: [{ _tag: "internal", protocol: "http", port: 8080 }] },
+    [service]: { ...web, name: service, endpoints: [{ kind: "internal", protocol: "http", port: 8080 }] },
   },
   routes: [
     {

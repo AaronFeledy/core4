@@ -197,8 +197,12 @@
       "version": "0.0.0",
       "dependencies": {
         "@lando/paths": "workspace:*",
+        "@lando/redaction": "workspace:*",
         "@lando/sdk": "workspace:*",
         "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@lando/engine": "workspace:*",
       },
     },
     "plugins/github-actions": {

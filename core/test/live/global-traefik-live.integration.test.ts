@@ -78,7 +78,7 @@ const nginxService = (): ServicePlan => ({
   mounts: [],
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: SHOP_BACKEND_PORT,
       protocol: "http",
       name: "web",
@@ -139,7 +139,7 @@ const traefikService = (readiness: HealthcheckPlan): ServicePlan => ({
   mounts: [],
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: TRAEFIK_WEB_PORT,
       protocol: "http",
       name: "web",

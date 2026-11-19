@@ -54,7 +54,7 @@ func runCreateProject(args []string, streams helperIO, crash func(string)) int {
 			}
 			return nil
 		},
-		generate: func(stage string) error {
+		generate: func(stage string, _ *scaffoldManifest) error {
 			return stageCreateProject(s, stage, options)
 		},
 		afterPromote: func(manifest *scaffoldManifest) error {

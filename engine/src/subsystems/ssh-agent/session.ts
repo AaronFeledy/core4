@@ -2,6 +2,7 @@ import { chmod, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type RootOverrides, makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { withDeadline } from "@lando/sdk/command-result";
 import { SshError, causeMessage } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import {
@@ -17,6 +18,7 @@ import {
 } from "@lando/sdk/schema";
 import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Duration, Effect, Option, Ref } from "effect";
+import { prepareHealthcheckAttempt } from "../healthcheck/attempt.ts";
 import { probeSshAgent } from "./agent-probe.ts";
 import type { AgentRelayUpstream } from "./relay.ts";
 
@@ -51,35 +53,52 @@ export interface SshSidecarReadiness {
   readonly detail?: string;
 }
 
-export const runtimeSshAgentCheck = Effect.gen(function* () {
+const inspectSshAgent = Effect.gen(function* () {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
   if (Option.isNone(registry))
     return { state: "stopped" as const, detail: "Runtime provider registry is unavailable." };
   const globalApp = yield* Effect.serviceOption(GlobalAppService);
   if (Option.isNone(globalApp))
     return { state: "starting" as const, detail: "Global app service is unavailable." };
-  const provider = yield* registry.value.select(yield* globalApp.value.providerId);
-  const target = { app: AppId.make("global"), service: ServiceName.make("ssh-agent") };
+  const { root } = yield* globalApp.value.paths;
+  const id = AppId.make(globalApp.value.id);
+  const plan = yield* registry.value.resolveAppliedPlan(root, { kind: "global", id }, "exact");
+  if (plan === undefined)
+    return { state: "stopped" as const, detail: "No applied global app plan for the SSH agent sidecar." };
+  const provider = yield* registry.value.select(plan);
+  const target = { app: plan.id, service: ServiceName.make("ssh-agent"), plan };
   const service = yield* provider.inspect(target);
   if (service.status !== "running")
     return {
       state: service.status === "restarting" ? ("starting" as const) : ("stopped" as const),
       detail: `SSH agent sidecar container status: ${service.status}${service.exitCode === undefined ? "" : `; container exit code: ${service.exitCode}`}.`,
     };
-  const result = yield* provider.exec(target, {
-    command: ["sh", "-c", "ssh-add -l >/dev/null 2>&1; result=$?; test $result -eq 0 -o $result -eq 1"],
-    stdin: "ignore",
-    raw: true,
-  });
+  const probe = plan.services[target.service]?.readiness;
+  if (probe?.kind !== "command" || probe.executionTarget === "host" || probe.command === undefined)
+    return {
+      state: "starting" as const,
+      detail: "The applied SSH agent sidecar plan has no service readiness command.",
+    };
+  const attempt = yield* prepareHealthcheckAttempt({ ...target, probe, exec: provider.exec });
+  const checked = yield* withDeadline(attempt.run, Duration.seconds(probe.timeoutSeconds));
+  if (checked._tag === "TimedOut")
+    return { state: "starting" as const, detail: "SSH readiness command timed out." };
+  const result = checked.value;
   return result.exitCode === 0
     ? { state: "ready" as const }
     : {
         state: "starting" as const,
-        detail: `SSH readiness shell probe exited with code ${result.exitCode}.${result.stderr ? ` ${result.stderr}` : ""}`,
+        detail: `SSH readiness command exited with code ${result.exitCode}.${result.stderr ? ` ${result.stderr}` : ""}`,
       };
-}).pipe(
-  // Covers provider select, inspect, and an exec round-trip; a Podman machine exec can exceed 2s.
-  Effect.timeout("5 seconds"),
+});
+
+export const runtimeSshAgentCheck = withDeadline(inspectSshAgent, "5 seconds").pipe(
+  Effect.map(
+    (checked): SshSidecarReadiness =>
+      checked._tag === "Completed"
+        ? checked.value
+        : { state: "starting", detail: "SSH sidecar observation timed out." },
+  ),
 );
 
 export const runtimeSshAgentState = runtimeSshAgentCheck.pipe(
@@ -90,7 +109,7 @@ export const runtimeSshAgentState = runtimeSshAgentCheck.pipe(
 export const sidecarSocketCheck = (upstream: AgentRelayUpstream, probe = probeSshAgent) =>
   runtimeSshAgentCheck.pipe(
     Effect.flatMap((sidecar): Effect.Effect<SshSidecarReadiness, SshError> => {
-      if (sidecar.state === "stopped") return Effect.succeed(sidecar);
+      if (sidecar.state !== "ready") return Effect.succeed(sidecar);
       return Effect.tryPromise({
         try: () => probe(upstream, { timeoutMs: 2_000 }),
         catch: (cause: unknown) =>

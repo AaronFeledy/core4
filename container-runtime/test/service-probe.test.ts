@@ -40,7 +40,7 @@ const service: ServicePlan = {
   dependsOn: [],
   hostAliases: [],
   extensions: {},
-  endpoints: [{ _tag: "internal", protocol: "tcp", port: 27017, primary: true, name: "mongo" }],
+  endpoints: [{ kind: "internal", protocol: "tcp", port: 27017, primary: true, name: "mongo" }],
   metadata,
   healthcheck: { ...cheap, target },
   readiness: { ...cheap, command: ["strong"], target },
@@ -146,7 +146,7 @@ test.each([0, 1])("gates dependents on strong readiness with exit=%s, not cheap 
             observed.push([...(compileServiceProbe(probe, plan, value) ?? [])]);
             return { exitCode };
           }),
-        waitForExit: () => Effect.succeed({ exitCode: 0 }),
+        waitForExit: () => Effect.die("no completion dependency"),
       },
     ),
   );
@@ -184,7 +184,7 @@ test("fingerprints startup command and canonical shared target changes without e
 test("fingerprints logical listener identity but not descriptive target aliases", () => {
   const value = {
     ...service,
-    endpoints: [...service.endpoints, { _tag: "internal" as const, protocol: "tcp" as const, port: 27018 }],
+    endpoints: [...service.endpoints, { kind: "internal" as const, protocol: "tcp" as const, port: 27018 }],
   };
   const fingerprint = (targetPort: number, names: readonly string[], primary: boolean) =>
     commonContainerLabels(plan, {

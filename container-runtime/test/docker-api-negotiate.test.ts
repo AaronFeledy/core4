@@ -3,7 +3,7 @@ import { type Server, type Socket, createServer } from "node:net";
 import { Effect } from "effect";
 
 import { makeDockerApiClient, resetDockerApiPrefixCache } from "../src/docker/api-client.ts";
-import { dockerApiEndpointKey, peekDockerApiPrefix } from "../src/docker/api-prefix.ts";
+import { dockerApiEndpointKey, isDockerWaitRequest, peekDockerApiPrefix } from "../src/docker/api-prefix.ts";
 import { isDockerApiVersionError } from "../src/docker/api-version.ts";
 
 const ctx = { providerId: "docker", remediation: "Start Docker.", env: {} } as const;
@@ -342,6 +342,98 @@ describe("Docker API fake-daemon negotiation", () => {
     } finally {
       if (previous === undefined) Reflect.deleteProperty(process.env, "DOCKER_API_VERSION");
       else process.env.DOCKER_API_VERSION = previous;
+    }
+  });
+
+  test("classifies container wait as a long-lived prefix-flight holder", () => {
+    expect(isDockerWaitRequest({ method: "POST", path: "/containers/abc/wait" })).toBe(true);
+    expect(isDockerWaitRequest({ method: "GET", path: "/containers/abc/wait" })).toBe(false);
+    expect(isDockerWaitRequest({ method: "POST", path: "/containers/abc/json" })).toBe(false);
+    expect(isDockerWaitRequest({ method: "GET", path: "/info" })).toBe(false);
+  });
+
+  test("settles preferred prefix with a short probe before arming wait", async () => {
+    await withFakeDaemon(
+      { minApiVersion: "1.44", apiVersion: "1.52", rejectBelowMin: true },
+      async ({ host, requests }) => {
+        const client = makeDockerApiClient(host, ctx);
+        const request = client.request;
+        if (request === undefined) throw new Error("expected request client");
+        const wait = await Effect.runPromise(request({ method: "POST", path: "/containers/abc/wait" }));
+        // Wait itself 404s on the fake daemon; prefix must already be negotiated.
+        expect(wait.status).toBe(404);
+        expect(peekDockerApiPrefix(dockerApiEndpointKey(host))).toMatchObject({
+          prefix: "/v1.44",
+          source: "negotiated",
+        });
+        // Short settle: preferred 1.43 info (reject) + 1.44 info (ok), then wait on settled prefix.
+        expect(requests.map((entry) => entry.path)).toEqual([
+          "/v1.43/info",
+          "/v1.44/info",
+          "/v1.44/containers/abc/wait",
+        ]);
+      },
+    );
+  });
+
+  test("does not hold the prefix flight for the wait body", async () => {
+    const requests: { method: string; path: string; at: number }[] = [];
+    let releaseWait: (() => void) | undefined;
+    const waitHeld = new Promise<void>((resolve) => {
+      releaseWait = resolve;
+    });
+    let waitStarted: (() => void) | undefined;
+    const waitSawRequest = new Promise<void>((resolve) => {
+      waitStarted = resolve;
+    });
+
+    const server = createServer((socket: Socket) => {
+      socket.once("data", (chunk) => {
+        const requestLine = chunk.toString("utf8").split("\r\n")[0] ?? "";
+        const [method, path] = requestLine.split(" ");
+        const recordedPath = path ?? "";
+        requests.push({ method: method ?? "", path: recordedPath, at: Date.now() });
+        const policy: DaemonPolicy = { minApiVersion: "1.44", apiVersion: "1.52", rejectBelowMin: true };
+        if (recordedPath.endsWith("/wait")) {
+          waitStarted?.();
+          void waitHeld.then(() => {
+            socket.end(responseFor(policy, recordedPath));
+          });
+          return;
+        }
+        try {
+          socket.end(responseFor(policy, recordedPath));
+        } catch {
+          socket.destroy();
+        }
+      });
+    });
+    const port = await listen(server);
+    try {
+      const host = `http://127.0.0.1:${port}`;
+      const client = makeDockerApiClient(host, ctx);
+      const request = client.request;
+      if (request === undefined) throw new Error("expected request client");
+
+      const waitPromise = Effect.runPromise(request({ method: "POST", path: "/containers/held/wait" }));
+      await waitSawRequest;
+      // While wait is held open, a concurrent info must still complete (flight not owned by wait).
+      const info = await Effect.runPromise(client.info);
+      expect(info).toEqual({ Architecture: "x86_64" });
+      releaseWait?.();
+      const wait = await waitPromise;
+      expect(wait.status).toBe(404);
+
+      const paths = requests.map((entry) => entry.path);
+      expect(paths.filter((path) => path.endsWith("/wait"))).toHaveLength(1);
+      // info after settle can proceed while wait is outstanding
+      expect(paths.some((path) => path.endsWith("/info") && path.startsWith("/v1.44"))).toBe(true);
+      expect(paths[paths.length - 1] === "/v1.44/containers/held/wait" || paths.includes("/v1.44/info")).toBe(
+        true,
+      );
+    } finally {
+      releaseWait?.();
+      await close(server);
     }
   });
 });

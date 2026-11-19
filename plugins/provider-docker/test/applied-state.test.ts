@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { APPLIED_STATE_VERSION, migrateAppliedPlan } from "@lando/container-runtime/applied-state";
+import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId } from "@lando/sdk/schema";
 import { Effect } from "effect";
@@ -27,12 +27,16 @@ test("docker wires v4 per-app state to the shared migration", async () => {
 
   await Effect.runPromiseExit(loadAppliedPlanStrict(state, AppId.make("historical")));
 
-  expect(opens).toEqual([
-    {
-      version: APPLIED_STATE_VERSION,
-      namespace: "applied-plans",
-      key: "historical.json",
-      migrate: migrateAppliedPlan,
-    },
-  ]);
+  expect(opens).toHaveLength(1);
+  expect(opens[0]).toMatchObject({
+    version: APPLIED_STATE_VERSION,
+    namespace: "applied-plans",
+    key: "historical.json",
+  });
+  // Unconvertible historical payloads throw.
+  expect(typeof opens[0]?.migrate).toBe("function");
+  const migrate = opens[0]?.migrate as (raw: unknown, version: number) => unknown;
+  expect(() => migrate({ not: "a plan" }, 1)).toThrow(
+    `Cannot read applied state v1 as v${APPLIED_STATE_VERSION}`,
+  );
 });

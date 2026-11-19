@@ -233,7 +233,7 @@ export const lowerApi4Service = (
       const [, bindAddress, hostPort, target, protocol] = published;
       // Lando 3 published every ports entry, using TCP for HTTP(S) and zero for random host ports.
       endpoints.push({
-        _tag: "published",
+        kind: "published",
         protocol: protocol ?? "tcp",
         port: Number(target),
         publication: {

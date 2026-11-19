@@ -13,7 +13,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
-import { DateTime, Effect } from "effect";
+import { Cause, DateTime, Effect, Exit } from "effect";
 import { persistAppliedPlan } from "../src/applied-state.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
@@ -56,16 +56,18 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-test("waitForExit forwards cancellation to the Podman wait request", async () => {
+test("waitForExit does not send a Podman wait request after the caller aborts", async () => {
+  // Given
   const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-podman-wait-"));
   const controller = new AbortController();
-  let observedSignal: AbortSignal | undefined;
+  controller.abort();
+  const requestedPaths: string[] = [];
   const podmanApi: PodmanApiClient = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.void,
     request: (request) =>
       Effect.sync(() => {
-        observedSignal = request.signal;
+        requestedPaths.push(request.path);
         return { status: 200, body: "0" };
       }),
   };
@@ -86,14 +88,16 @@ test("waitForExit forwards cancellation to the Podman wait request", async () =>
       }),
     );
 
-    const result = await Effect.runPromise(
+    // When
+    const exit = await Effect.runPromiseExit(
       Effect.scoped(
         provider.waitForExit({ app: appId, service: serviceName }, { signal: controller.signal }),
       ),
     );
 
-    expect(result).toEqual({ exitCode: 0 });
-    expect(observedSignal).toBe(controller.signal);
+    // Then
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+    expect(requestedPaths).toEqual([]);
   } finally {
     await rm(stateDir, { recursive: true });
   }

@@ -63,7 +63,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-02 | US-089 | opensearch service type | `docs/guides/services/opensearch.mdx` | Shipped |
 | PRD-02 | US-090 | meilisearch service type | `docs/guides/services/meilisearch.mdx` | Shipped |
 | PRD-02 | US-093 | static service type | `docs/guides/services/static.mdx` | Shipped |
-| PRD-02 | US-094 | raw Compose passthrough service | `docs/guides/services/compose-passthrough.mdx` | Shipped |
+| PRD-02 | US-094 | raw Compose passthrough service with route-declared or endpoint HTTP listeners | `docs/guides/services/compose-passthrough.mdx` | Shipped |
 | PRD-03 | US-097 | Mutagen host CLI + agent download via `lando setup` | `docs/guides/setup/file-sync-mutagen.mdx` | Shipped |
 | PRD-03 | US-099 | exclude patterns (volume-shadow + Mutagen ignores) | `docs/guides/setup/file-sync-excludes.mdx` | Shipped |
 | PRD-04 | US-101 | ProxyService + Traefik via global app | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
@@ -91,7 +91,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-08 | US-144 | bundled template engines: Handlebars + Mustache | `docs/guides/landofile/template-engines.mdx` | Shipped |
 | PRD-08 | US-145 | env overrides | `docs/guides/landofile/env-overrides.mdx` | Shipped |
 | PRD-08 | US-148 | `app:config:translate` command | `docs/guides/landofile/config-translate.mdx` | Shipped |
-| PRD-08 | US-195 | `app:config:lint` command (IDE / standalone) | `docs/guides/landofile/config-lint.mdx` | Shipped |
+| PRD-08 | US-195 | `app:config:lint` command, including numeric route HTTP binding | `docs/guides/landofile/config-lint.mdx` | Shipped |
 | - | - | Raw, merged, and resolved config inspection | `docs/guides/landofile/config-views.mdx` | Shipped |
 | - | - | `app:config:explain` recipe provenance report | `docs/guides/landofile/config-explain.mdx` | Shipped |
 | PRD-10 | US-159 | tooling bootstrap level + cache-only app-plan read | `docs/guides/tooling/composer-php.mdx` | Shipped |
@@ -183,6 +183,7 @@ outside `docs/guides/` so they are not gate-validated here.
 | `wordpress` | WordPress (PHP + MariaDB, WP-CLI) | `recipes/wordpress/README.mdx` | Shipped |
 | `drupal` | Drupal 11 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal/README.mdx` | Shipped |
 | `drupal-cms` | Drupal CMS 2 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal-cms/README.mdx` | Shipped |
+| `drupal-contrib` | Drupal contrib extension (nested mount, volume Drupal site, PHPUnit) | `recipes/drupal-contrib/README.mdx` | Shipped |
 | `backdrop` | Backdrop CMS (Apache PHP + MariaDB, Bee) | `recipes/backdrop/README.mdx` | Shipped |
 | `joomla` | Joomla (Apache PHP + MariaDB) | `recipes/joomla/README.mdx` | Shipped |
 | `django` | Django (Python + PostgreSQL + Redis; optional Celery worker) | `recipes/django/README.mdx` | Shipped |
@@ -290,6 +291,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | WordPress multisite network on subdomains | `docs/guides/recipes/wordpress-multisite.mdx` | Shipped |
 | - | - | Drupal recipe day-to-day workflow | `docs/guides/recipes/drupal-workflow.mdx` | Shipped |
 | - | - | Drupal CMS recipe day-to-day workflow | `docs/guides/recipes/drupal-cms-workflow.mdx` | Shipped |
+| - | - | Drupal contrib recipe for module, theme, and profile repos | `docs/guides/recipes/drupal-contrib-workflow.mdx` | Shipped |
 | - | - | Joomla recipe day-to-day workflow | `docs/guides/recipes/joomla-workflow.mdx` | Shipped |
 | - | - | Craft CMS site on the LAMP recipe | `docs/guides/recipes/craft-workflow.mdx` | Shipped |
 | - | - | TYPO3 site on the LAMP recipe | `docs/guides/recipes/typo3-workflow.mdx` | Shipped |
@@ -313,7 +315,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | IR-GAPS-01 | US-618D1 | service-scoped rebuild and info | `docs/guides/landofile/lando3-transition-options.mdx` | Shipped |
 | IR-GAPS-01 | US-618D3 | bounded global environment and label defaults for user apps | `docs/guides/landofile/lando3-transition-options.mdx` | Shipped |
 | IR-GAPS-01 | US-642 | router file-watcher diagnostics | `docs/guides/global/doctor-walkthrough.mdx` | Shipped |
-| - | - | route shorthand strings and route filters | `docs/guides/proxy/route-shorthand.mdx` | Shipped |
+| - | - | route shorthand, numeric route-declared listeners, and route filters | `docs/guides/proxy/route-shorthand.mdx` | Shipped |
 | - | - | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |
 | - | - | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |
 | - | - | project user, app-file ownership, execution identity, and platform limits | `docs/guides/services/file-ownership.mdx` | Shipped |

@@ -61,7 +61,7 @@ describe("meilisearch ServiceType", () => {
         expect(String(volumes[0]?.target)).toBe("/meili_data");
         expect(volumes[0]?.readOnly).toBe(false);
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 7700, protocol: "http", name: "search", primary: true },
+          { kind: "internal", port: 7700, protocol: "http", name: "search", primary: true },
         ]);
       });
 
@@ -88,7 +88,7 @@ describe("meilisearch ServiceType", () => {
           ref: "getmeili/meilisearch:v1.10",
         });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 17700, protocol: "http", name: "search", primary: true },
+          { kind: "internal", port: 17700, protocol: "http", name: "search", primary: true },
         ]);
         expect(plan.environment).toMatchObject({ MEILI_HTTP_ADDR: "0.0.0.0:17700" });
       });

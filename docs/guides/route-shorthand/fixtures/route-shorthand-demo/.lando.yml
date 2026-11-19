@@ -20,17 +20,17 @@ services:
         pathPrefix: /v1
         filters:
           - name: strip-v1
-            type: stripPrefix
+            kind: stripPrefix
             prefix: /v1
-          - type: addPrefix
+          - kind: addPrefix
             prefix: /internal
           - name: trace-id
-            type: requestHeader
+            kind: requestHeader
             header: X-Request-Source
             value: lando
-          - type: responseHeader
+          - kind: responseHeader
             header: X-Served-By
             value: lando-proxy
-          - type: redirect
+          - kind: redirect
             to: https://api.lndo.site/v1/docs
             permanent: false

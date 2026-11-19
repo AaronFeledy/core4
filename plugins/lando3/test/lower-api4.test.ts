@@ -209,9 +209,9 @@ describe("API-4 service lowering", () => {
   test("derives endpoints when ports use API-4 shorthand", () => {
     const result = lowerApi4Service({ ports: ["8080/http", "8443/https", "0:80"] }, ctx);
     expect(result.patch.endpoints).toEqual([
-      { _tag: "published", protocol: "http", port: 8080, publication: {} },
-      { _tag: "published", protocol: "https", port: 8443, publication: {} },
-      { _tag: "published", protocol: "tcp", port: 80, publication: {} },
+      { kind: "published", protocol: "http", port: 8080, publication: {} },
+      { kind: "published", protocol: "https", port: 8443, publication: {} },
+      { kind: "published", protocol: "tcp", port: 80, publication: {} },
     ]);
     expect(result.patch.ports ?? []).toEqual([]);
     expect(result.patch.certs).toBe(true);

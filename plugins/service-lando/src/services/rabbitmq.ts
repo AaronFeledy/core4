@@ -126,14 +126,14 @@ export const rabbitmqServiceFeature: ServiceFeatureDefinition = {
       const port = plannedPort(ctx.normalizedConfig, RABBITMQ_LISTENER);
       return [
         {
-          _tag: "internal" as const,
+          kind: "internal" as const,
           port: Schema.decodeUnknownSync(PortNumber)(port),
           protocol: "tcp" as const,
           name: ctx.serviceName,
           primary: true as const,
         },
         {
-          _tag: "internal" as const,
+          kind: "internal" as const,
           port: MANAGEMENT_PORT,
           protocol: "http" as const,
           name: "management",

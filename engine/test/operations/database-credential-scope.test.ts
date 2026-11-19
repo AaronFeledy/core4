@@ -39,7 +39,7 @@ const dbService = (overrides: Partial<DatabaseConnection["creds"]> = {}, port = 
   mounts: [],
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: 3306,
       protocol: "tcp",
       name: "db",

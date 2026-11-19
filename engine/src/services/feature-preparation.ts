@@ -7,6 +7,7 @@ import {
 import type { AppFeatureServiceView, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Result, Schema } from "effect";
 import { sortRecord } from "./draft.ts";
+import { decodeServiceEndpointDeclarations } from "./endpoint-declaration.ts";
 import type { ComposeServiceInput } from "./feature.ts";
 
 const decodeFeatureValidation = Schema.decodeUnknownResult(Schema.toType(ServiceFeatureValidationResult), {
@@ -140,7 +141,14 @@ export const declarePreparedServiceEndpoints = Effect.fnUntraced(function* (
         }
         validation = result.success;
       }
-      const contribution = declare === undefined ? [] : yield* declare(context);
+      const contribution =
+        declare === undefined
+          ? []
+          : yield* decodeServiceEndpointDeclarations(yield* declare(context), {
+              feature: feature.id,
+              pluginId: prepared.facts.featureOwners?.get(feature.id) ?? "unregistered",
+              service: context.serviceName,
+            });
       return {
         feature: {
           ...feature,

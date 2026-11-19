@@ -1134,7 +1134,7 @@ console.log(JSON.stringify({
             source: localApp.root,
           })),
           endpoints: [
-            { _tag: "internal", protocol: "http", port: PortNumber.make(80), name: "http", primary: true },
+            { kind: "internal", protocol: "http", port: PortNumber.make(80), name: "http", primary: true },
           ],
         };
         const updated: AppPlan = {
@@ -1231,7 +1231,7 @@ console.log(JSON.stringify({
       ...servicePlan("appserver", "/app"),
       endpoints: [
         {
-          _tag: "internal" as const,
+          kind: "internal" as const,
           protocol: "http" as const,
           port: PortNumber.make(80),
           name: "http",

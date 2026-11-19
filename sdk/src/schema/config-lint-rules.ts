@@ -184,9 +184,9 @@ export const CONFIG_LINT_RULES = {
   },
   "healthcheck.mixed-dialects": {
     stages: ["effective"],
-    severities: ["warning"],
+    severities: ["error", "warning"],
     summary:
-      "Surviving Lando-only and Compose-only healthcheck fields come from different retained sources; Lando fields win.",
+      "Conflicting Lando and Compose healthcheck fields are an error within one source and a warning across sources; overlaid Lando fields win.",
     examplePaths: ["services.web.healthcheck"],
   },
   "healthcheck.execution-target": {
@@ -203,9 +203,9 @@ export const CONFIG_LINT_RULES = {
   },
   "readiness.mixed-dialects": {
     stages: ["effective"],
-    severities: ["warning"],
+    severities: ["error", "warning"],
     summary:
-      "Surviving Lando-only and Compose-only readiness fields come from different retained sources; Lando fields win.",
+      "Conflicting Lando and Compose readiness fields are an error within one source and a warning across sources; overlaid Lando fields win.",
     examplePaths: ["services.web.readiness"],
   },
   "readiness.execution-target": {

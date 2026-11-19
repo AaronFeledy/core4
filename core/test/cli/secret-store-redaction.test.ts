@@ -135,7 +135,7 @@ test.each([
           environment: { DISPLAY_VALUE: { _tag: "SecretRef", reference } },
           mounts: [],
           // Keep a secret in the projected result even though a provider cannot carry free-form state text.
-          endpoints: [{ _tag: "internal", protocol: "tcp", port: 8080, name: value }],
+          endpoints: [{ kind: "internal", protocol: "tcp", port: 8080, name: value }],
           routes: [],
           dependsOn: [],
           hostAliases: [],

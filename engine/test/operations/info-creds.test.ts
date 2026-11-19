@@ -136,9 +136,9 @@ describe("infoForPlan creds from connection facts", () => {
       const service: ServicePlan = {
         ...makeService(environment, hasFacts ? facts : undefined),
         endpoints: [
-          { _tag: "published", protocol: "tcp", port: 5544, publication: { hostPort: 6543 } },
-          { _tag: "published", protocol: "tcp", port: 7777, publication: { hostPort: 5544 } },
-          { _tag: "published", protocol: "udp", port: 5544, publication: { hostPort: 6544 } },
+          { kind: "published", protocol: "tcp", port: 5544, publication: { hostPort: 6543 } },
+          { kind: "published", protocol: "tcp", port: 7777, publication: { hostPort: 5544 } },
+          { kind: "published", protocol: "udp", port: 5544, publication: { hostPort: 6544 } },
         ],
       };
       const plan = { ...base, services: { postgres: service } };

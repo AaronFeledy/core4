@@ -73,7 +73,7 @@ services:
 `;
   const route = options.routed
     ? `    endpoints:
-      - _tag: internal
+      - kind: internal
         protocol: http
         port: 8080
     storage:

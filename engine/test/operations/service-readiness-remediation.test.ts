@@ -12,7 +12,7 @@ import { plan, web } from "./start-progress-topology-support.ts";
 test.each(["user", "global", "scratch"])("%s readiness includes observed listener evidence", async (kind) => {
   const service = {
     ...web,
-    endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+    endpoints: [{ kind: "internal", protocol: "tcp", port: 6380, primary: true }],
     listenerAuthority: { owner: "launcher", daemon: "Redis", port: 6380, setting: "--port 6380" },
   } as const;
   const plannedApp = {
@@ -95,7 +95,7 @@ test.each([
 ])("timeout readiness reports $state conservatively", async ({ address, state, finding, action }) => {
   const service = {
     ...web,
-    endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+    endpoints: [{ kind: "internal", protocol: "tcp", port: 6380, primary: true }],
   } as const;
   const plannedApp = { ...plan, services: { [web.name]: service } };
   const provider = {
@@ -124,7 +124,7 @@ test.each([
 test("collects listener evidence and logs concurrently without delaying the original failure", async () => {
   const service = {
     ...web,
-    endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+    endpoints: [{ kind: "internal", protocol: "tcp", port: 6380, primary: true }],
   } as const;
   const plannedApp = { ...plan, services: { [web.name]: service } };
   const provider = {

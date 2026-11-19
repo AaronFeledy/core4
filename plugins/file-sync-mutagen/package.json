@@ -24,8 +24,12 @@
   },
   "dependencies": {
     "@lando/paths": "workspace:*",
+    "@lando/redaction": "workspace:*",
     "@lando/sdk": "workspace:*",
     "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@lando/engine": "workspace:*"
   },
   "scripts": {
     "build": "tsc -b",

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { runHealthcheckProbe } from "@lando/container-runtime/healthcheck-probe";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, exec, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -6,12 +7,13 @@ import {
   AppId,
   type AppPlan,
   CurrentExecutableAppPlan,
+  HealthcheckPlan,
   ProviderId,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { Clock, DateTime, Effect } from "effect";
-
+import { Clock, DateTime, Effect, Schema } from "effect";
+import globalMailpit from "../src/global-services/mailpit.ts";
 import { MAILPIT_IMAGE, MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../src/mailpit-constants.ts";
 
 const providerId = ProviderId.make("lando");
@@ -60,9 +62,9 @@ const mailpitService = (): ServicePlan => ({
   environment: {},
   mounts: [],
   endpoints: [
-    { _tag: "internal", port: MAILPIT_SMTP_PORT, protocol: "tcp", name: "smtp" },
+    { kind: "internal", port: MAILPIT_SMTP_PORT, protocol: "tcp", name: "smtp" },
     {
-      _tag: "published",
+      kind: "published",
       port: MAILPIT_WEB_PORT,
       protocol: "http",
       name: "web",
@@ -179,12 +181,33 @@ describe("Mailpit cross-app capture — live integration", () => {
         const mailpitApplied = await Effect.runPromise(bringUp(globalPlan, { api }));
         expect(mailpitApplied.changed).toBe(true);
 
+        const config = await Effect.runPromise(globalMailpit);
+        const readiness = config.readiness;
+        if (
+          readiness === undefined ||
+          readiness === false ||
+          readiness.kind !== "command" ||
+          !Array.isArray(readiness.command)
+        ) {
+          throw new Error("Expected global Mailpit to declare a command readiness probe");
+        }
+        const ready = await Effect.runPromise(
+          runHealthcheckProbe(
+            { id: "global-mailpit-live", plan: Schema.decodeUnknownSync(HealthcheckPlan)(readiness) },
+            exec(
+              globalPlan,
+              { app: globalPlan.id, service: ServiceName.make("mailpit") },
+              { command: [...readiness.command] },
+              { api },
+            ).pipe(Effect.map(({ exitCode }) => (exitCode === 0 ? ("green" as const) : ("red" as const)))),
+            Effect.succeed("red" as const),
+          ),
+        );
+        expect(ready.outcome).toBe("green");
+
         const shopApplied = await Effect.runPromise(bringUp(shopPlan, { api }));
         expect(shopApplied.changed).toBe(true);
 
-        // Wait for Mailpit's API to come up before driving SMTP from the per-app
-        // service, then assert the message lands in Mailpit's API.
-        await fetchMailpitMessages(120_000);
         await sendMailFromService(shopPlan, api);
         await waitForCapturedMessage(120_000);
       } finally {

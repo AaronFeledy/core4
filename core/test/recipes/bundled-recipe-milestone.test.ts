@@ -42,9 +42,9 @@ const snapshotFor = (recipeId: string): RecipeSnapshot => {
 };
 
 describe("bundled recipe conversion milestone", () => {
-  it("ships exactly twenty-four bundled recipe ids", () => {
-    expect(BUNDLED_IDS.length).toBe(24);
-    expect(new Set(BUNDLED_IDS).size).toBe(24);
+  it("ships exactly twenty-five bundled recipe ids", () => {
+    expect(BUNDLED_IDS.length).toBe(25);
+    expect(new Set(BUNDLED_IDS).size).toBe(25);
   });
 
   it("registers one decomposer per bundled id and none beyond the set", () => {

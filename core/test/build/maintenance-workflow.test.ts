@@ -361,9 +361,30 @@ test("both failure jobs declare repository scope without requiring checkout", ()
   const jobs = [renderTomcatBumpWorkflow(), renderComposeVendorBumpWorkflow()].map(workflowScripts);
   // Then
   for (const job of jobs) {
-    const { GH_REPO } = job.failureEnv;
+    const { GH_REPO, NEEDS_JSON } = job.failureEnv;
     expect(GH_REPO).toBe("${{ github.repository }}");
     expect(job.failure).not.toContain("--assignee");
-    expect(job.failure).not.toContain("NEEDS_JSON");
+    expect(NEEDS_JSON).toBe("${{ toJSON(needs) }}");
+  }
+});
+
+test.skipIf(process.platform === "win32").each([
+  ["success", null],
+  ["skipped", null],
+  ["failure", "bump"],
+  ["cancelled", "bump (timed out or cancelled)"],
+  ["abandoned", "bump (abandoned)"],
+  ["neutral_new", "bump (neutral_new)"],
+] as const)("maintenance reporter handles a bump result of %s", async (jobResult, label) => {
+  await using fixture = await createMaintenanceFixture({ domain: "tomcat" });
+  const result = await fixture.failure(renderTomcatBumpWorkflow(), [], { bump: { result: jobResult } });
+  expect(result.exitCode, result.stderr).toBe(0);
+  const commands = await fixture.commands();
+  if (label === null) {
+    expect(commands).toBe("");
+  } else {
+    expect(commands.match(/^gh issue (create|comment) /gm)).toEqual(["gh issue create "]);
+    expect(commands.match(/^Failed jobs: (.+) repo=\S+$/m)?.[1]).toBe(label);
+    expect(commands).toContain("https://example.invalid/fixture/repository/actions/runs/42");
   }
 });

@@ -64,7 +64,7 @@ case "$method $endpoint" in
   'PATCH repos/{owner}/{repo}/releases/123')
     [ "$*" = '-F draft=false' ] || fail 'Unexpected publication fields' 90
     [ "$(cat release/draft)" = true ] || fail 'Already public' 90
-    find release/assets -type f -exec basename {} \; | sort > actual-assets
+    find release/assets -type f -exec basename {} \; | LC_ALL=C sort > actual-assets
     cmp expected-assets actual-assets || fail 'Publication before all assets uploaded' 90
     (cd release/assets && sha256sum -c SHA256SUMS) >&2 || fail 'Incomplete checksums' 90
     [ "$scenario" != publish-failure ] || fail 'Publication rejected' 43

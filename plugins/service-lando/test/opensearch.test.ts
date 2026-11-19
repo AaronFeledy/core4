@@ -75,7 +75,7 @@ describe("opensearch ServiceType", () => {
       expect(String(volumes[0]?.target)).toBe("/usr/share/opensearch/data");
       expect(volumes[0]?.readOnly).toBe(false);
       expect(plan.endpoints).toEqual([
-        { _tag: "internal", port: 9200, protocol: "http", name: "search", primary: true },
+        { kind: "internal", port: 9200, protocol: "http", name: "search", primary: true },
       ]);
     });
 
@@ -156,7 +156,7 @@ describe("opensearch ServiceType", () => {
     const plan = await planOpenSearchService(opensearchServiceType, { type: "opensearch" }, "indexer");
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 9200, protocol: "http", name: "indexer", primary: true },
+      { kind: "internal", port: 9200, protocol: "http", name: "indexer", primary: true },
     ]);
   });
 

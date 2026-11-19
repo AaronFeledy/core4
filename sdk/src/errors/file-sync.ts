@@ -20,10 +20,14 @@ export class FileSyncSelectionError extends Schema.TaggedError<FileSyncSelection
   },
 ) {}
 
+/** The last redacted lines the engine's sync tool wrote to stderr before it failed. */
+const OutputTail = Schema.optional(Schema.String);
+
 export class FileSyncStartError extends Schema.TaggedError<FileSyncStartError>()("FileSyncStartError", {
   engineId: Schema.String,
   message: Schema.String,
   sessionSpec: Schema.optional(Schema.Unknown),
+  outputTail: OutputTail,
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
@@ -42,6 +46,7 @@ export class FileSyncStopError extends Schema.TaggedError<FileSyncStopError>()("
   engineId: Schema.String,
   sessionRef: Schema.String,
   message: Schema.String,
+  outputTail: OutputTail,
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}

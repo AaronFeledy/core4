@@ -86,8 +86,8 @@ describe("defaultTunnelTarget", () => {
           ...web,
           name: service,
           endpoints: [
-            { _tag: "internal", protocol: "http", port: 8080 },
-            { _tag: "internal", protocol: "http", port: 3000, primary: true },
+            { kind: "internal", protocol: "http", port: 8080 },
+            { kind: "internal", protocol: "http", port: 3000, primary: true },
           ],
         },
       },
@@ -115,8 +115,8 @@ test("shares the generated HTTPS default route of a service whose primary listen
         ...web,
         name: service,
         endpoints: [
-          { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
-          { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+          { kind: "internal", protocol: "http", port: 80, name: "web", primary: true },
+          { kind: "internal", protocol: "https", port: 443, name: "web-https" },
         ],
         certs: { cn: "web.share-demo.internal", sans: ["web.share-demo.internal"], caId: "mkcert" },
       },
@@ -146,8 +146,8 @@ test("selects the primary listener of a service that holds no generated certific
         ...web,
         name: service,
         endpoints: [
-          { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
-          { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+          { kind: "internal", protocol: "http", port: 80, name: "web", primary: true },
+          { kind: "internal", protocol: "https", port: 443, name: "web-https" },
         ],
       },
     },

@@ -101,10 +101,10 @@ export const declareAppEndpoints = Effect.fnUntraced(function* (input: {
     for (const name of activation.selectedServices) {
       const row = input.rows.get(name);
       const added = declared.success.contributions[name];
-      if (row === undefined || row.contributions._tag === "Unavailable" || added === undefined) continue;
+      if (row === undefined || added === undefined) continue;
       input.rows.set(name, {
         ...row,
-        contributions: { _tag: "Available", value: [...row.contributions.value, ...added] },
+        contributions: { ...row.contributions, value: [...row.contributions.value, ...added] },
       });
     }
   }

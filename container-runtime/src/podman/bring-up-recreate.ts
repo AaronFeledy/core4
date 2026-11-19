@@ -135,7 +135,7 @@ export const plannedNetworkMissing = (
 };
 
 export const publishPortMismatch = (plan: ServicePlan, inspected: BringUpInspectSnapshot): boolean => {
-  const published = plan.endpoints.flatMap((endpoint) => (endpoint._tag === "published" ? [endpoint] : []));
+  const published = plan.endpoints.flatMap((endpoint) => (endpoint.kind === "published" ? [endpoint] : []));
   const plannedFingerprint = fingerprintPlannedPublishPorts(published);
   const inspectFingerprint = inspected.publishFingerprint ?? "";
   return (

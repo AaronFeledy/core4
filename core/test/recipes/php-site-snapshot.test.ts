@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ServiceName } from "@lando/sdk/schema";
 import { loadBuiltinRecipe } from "../_support/recipe-output.ts";
 
-test.each(["drupal", "drupal-cms"])(
+test.each(["drupal", "drupal-cms", "drupal-contrib"])(
   "%s preserves Apache/FPM variants through shared compilation",
   async (id) => {
     const apache = await loadBuiltinRecipe(id, { webserver: "apache" });

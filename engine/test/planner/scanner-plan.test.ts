@@ -70,9 +70,9 @@ describe("resolveScanPlan", () => {
 test("does not add HTTP scan metadata to TCP, UDP or Unix listeners", () => {
   // Given listeners without an HTTP surface.
   const endpoints: readonly EndpointPlan[] = [
-    { _tag: "internal", protocol: "tcp", port: 5432 },
-    { _tag: "internal", protocol: "udp", port: 5353 },
-    { _tag: "internal", protocol: "unix", socketPath: PortablePath.make("/run/listener.sock") },
+    { kind: "internal", protocol: "tcp", port: 5432 },
+    { kind: "internal", protocol: "udp", port: 5353 },
+    { kind: "internal", protocol: "unix", socketPath: PortablePath.make("/run/listener.sock") },
   ];
   const input = { ...plan, services: { [web.name]: { ...web, endpoints } } };
   // When global HTTP scan tuning is attached.
@@ -101,9 +101,9 @@ test.each([
   ({ global, service, path, okCodes }) => {
     // Given: two listener facets sharing sparse defaults and a separate console.
     const endpoints: readonly EndpointPlan[] = [
-      { _tag: "internal", protocol: "http", port: 9000, scan: { path: "/minio/health/live" } },
-      { _tag: "published", protocol: "http", port: 9000, publication: {}, scan: { okCodes: [204] } },
-      { _tag: "internal", protocol: "http", port: 9001, scan: { path: "/" } },
+      { kind: "internal", protocol: "http", port: 9000, scan: { path: "/minio/health/live" } },
+      { kind: "published", protocol: "http", port: 9000, publication: {}, scan: { okCodes: [204] } },
+      { kind: "internal", protocol: "http", port: 9001, scan: { path: "/" } },
     ];
     const input = { ...plan, services: { [web.name]: { ...web, endpoints } } };
     // When
@@ -153,7 +153,7 @@ test.each([
           ...web,
           endpoints: [
             {
-              _tag: "internal",
+              kind: "internal",
               protocol: "http",
               port: 9000,
               scan: { path: "/health" },

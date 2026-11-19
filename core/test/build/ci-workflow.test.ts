@@ -120,6 +120,7 @@ describe("ci workflow", () => {
       .sort();
 
     expect(activeWorkflowFiles).toEqual([
+      "ci-rerun.yml",
       "ci.yml",
       "compose-vendor-bump.yml",
       "dependency-audit.yml",
@@ -1402,6 +1403,7 @@ describe("ci workflow", () => {
           "run test:selection providers-host-reachability",
           "run test:selection providers-listener-observation",
           "run test:selection proxy-traefik-certificate-live",
+          "run test:selection file-sync-mutagen-live",
           "run test:selection providers-sqlite-integrity",
           "run test:selection providers-sqlite-borrowed-mounts",
           "run test:selection providers-schedule",

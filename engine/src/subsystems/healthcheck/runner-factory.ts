@@ -1,6 +1,6 @@
-import { runHealthcheckProbe } from "@lando/container-runtime/healthcheck-probe";
+import { boundHealthcheckAttempt, runHealthcheckPhases } from "@lando/container-runtime/healthcheck-probe";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { mapFailures } from "@lando/sdk/command-result";
+import { FailureRoleAnnotation, mapDefectCause, mapFailures } from "@lando/sdk/command-result";
 import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
 import type { ProbeResult } from "@lando/sdk/probe";
 import type { HealthcheckPlan, ServiceName } from "@lando/sdk/schema";
@@ -11,7 +11,7 @@ import {
   type ProcessResult,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { Effect, Ref, Result } from "effect";
+import { Cause, Context, Effect, Exit } from "effect";
 import {
   type HostProbeRunners,
   interruptOnAbort,
@@ -24,13 +24,6 @@ type AttemptStatus =
   | { readonly _tag: "exit"; readonly code: number; readonly stderr: string }
   | { readonly _tag: "provider"; readonly message: string }
   | { readonly _tag: "timeout" };
-
-type AttemptOutcome = "green" | "red";
-
-interface AttemptContext {
-  readonly attempt: Effect.Effect<ProcessResult, { readonly message: string }>;
-  readonly status: Ref.Ref<AttemptStatus>;
-}
 
 interface TimeoutContext {
   readonly service: ServiceName;
@@ -61,24 +54,28 @@ const resolveRedactor = Effect.gen(function* () {
   return yield* redaction.value.forProfile("secrets", { sourceEnv: { ...process.env } });
 });
 
-const makeAttempt = Effect.fnUntraced(function* (context: AttemptContext): Effect.fn.Return<AttemptOutcome> {
-  const completed = yield* Effect.result(context.attempt);
-  if (Result.isFailure(completed)) {
-    yield* Ref.set(context.status, { _tag: "provider", message: completed.failure.message });
-    return "red";
+const makeAttempt = Effect.fnUntraced(function* <E extends { readonly message: string }>(
+  attempt: Effect.Effect<ProcessResult, E>,
+): Effect.fn.Return<AttemptStatus, E> {
+  const completed = yield* Effect.exit(attempt);
+  if (Exit.isFailure(completed)) {
+    const [reason] = completed.cause.reasons;
+    if (
+      completed.cause.reasons.length !== 1 ||
+      reason === undefined ||
+      !Cause.isFailReason(reason) ||
+      Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) !== undefined
+    )
+      return yield* Effect.failCause(completed.cause);
+    return { _tag: "provider", message: reason.error.message };
   }
-
-  if (completed.success.exitCode === 0) {
-    yield* Ref.set(context.status, { _tag: "ok" });
-    return "green";
-  }
-
-  yield* Ref.set(context.status, {
-    _tag: "exit",
-    code: completed.success.exitCode,
-    stderr: completed.success.stderr,
-  });
-  return "red";
+  return completed.value.exitCode === 0
+    ? { _tag: "ok" }
+    : {
+        _tag: "exit",
+        code: completed.value.exitCode,
+        stderr: completed.value.stderr,
+      };
 });
 
 const toProbeError = (service: ServiceName, cause: unknown): HealthcheckError =>
@@ -147,10 +144,6 @@ export const makeHealthcheckRunner: (deps: {
         ...(deps.signal === undefined ? {} : { signal: deps.signal }),
       });
       const rendered = prepared.rendered;
-      const status = yield* Ref.make<AttemptStatus>({
-        _tag: "provider",
-        message: "Healthcheck command did not run",
-      });
       const redactor = yield* resolveRedactor;
       const safeRendered = redactor.redactString(rendered).slice(0, 512);
       const renderedTarget =
@@ -162,15 +155,27 @@ export const makeHealthcheckRunner: (deps: {
               .map((value) => redactor.redactString(value).slice(0, 192))
               .join(" ");
 
-      const result = yield* interruptOnAbort(
-        runHealthcheckProbe(
+      const { result, last } = yield* interruptOnAbort(
+        runHealthcheckPhases(
           { id: `healthcheck:${service}`, plan },
-          makeAttempt({ attempt: prepared.run, status }),
-          Ref.set(status, { _tag: "timeout" }).pipe(Effect.as("red" as const)),
-        ).pipe(mapFailures((cause) => toProbeError(service, cause))),
+          boundHealthcheckAttempt(plan, makeAttempt(prepared.run)).pipe(
+            Effect.map(
+              (exit): AttemptStatus => (exit._tag === "TimedOut" ? { _tag: "timeout" } : exit.value),
+            ),
+          ),
+          (attempt) => attempt._tag === "ok",
+        ).pipe(
+          Effect.catchCause((cause) =>
+            Effect.failCause(mapDefectCause(cause, () => "Healthcheck command defect.")),
+          ),
+          mapFailures(() => toProbeError(service, "Healthcheck attempt failed while settling.")),
+        ),
         deps.signal,
       );
-      const finalStatus = yield* Ref.get(status);
+      const finalStatus: AttemptStatus = last?.value ?? {
+        _tag: "provider",
+        message: "Healthcheck command did not run",
+      };
 
       if (result.outcome === "green")
         return { healthy: true, service, attempts: result.attempts, lastStatus: "ok" };

@@ -156,7 +156,7 @@ describe("composeService", () => {
       id: "feature.deterministic",
       priority: 100,
       declareEndpoints: () =>
-        Effect.succeed([{ _tag: "internal", name: "http", protocol: "http", port: 80 }]),
+        Effect.succeed([{ kind: "internal", name: "http", protocol: "http", port: 80 }]),
       apply: (ctx) =>
         Effect.sync(() => {
           ctx.addEnv("B", "2");

@@ -118,7 +118,7 @@ const servicePlan = (name: "web"): ServicePlan => ({
   environment: {},
   mounts: [],
   endpoints: [
-    { _tag: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } },
+    { kind: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } },
   ],
   routes: [],
   dependsOn: [],
@@ -260,7 +260,7 @@ const makeRestartLayer = (
         publications: {
           status: "present",
           bindings: (plannedApp.services[target.service]?.endpoints ?? []).flatMap((endpoint) =>
-            endpoint._tag === "published"
+            endpoint.kind === "published"
               ? [
                   {
                     port: endpoint.port,
@@ -461,7 +461,7 @@ describe("lando restart", () => {
       name: ServiceName.make("redis"),
       type: "redis",
       primary: false,
-      endpoints: [{ _tag: "published", port: 6379, protocol: "tcp", name: "redis", publication: {} }],
+      endpoints: [{ kind: "published", port: 6379, protocol: "tcp", name: "redis", publication: {} }],
     };
     const plannedApp: AppPlan = { ...plan, services: { [web.name]: web, [redis.name]: redis } };
     const harness = makeRestartLayer({ plannedApp });

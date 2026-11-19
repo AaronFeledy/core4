@@ -2,12 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import type { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
+import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type FileSyncSessionSpec, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeStateStore } from "@lando/state-store/service";
 import { makeTestStateStore } from "@lando/state-store/testing";
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Cause, Context, Effect, Exit, Schema } from "effect";
 
 import {
   WINDOWS_LANDO_DOCKER_HOST,
@@ -25,6 +27,17 @@ import {
   source,
   spec,
 } from "./support/mutagen-process.ts";
+
+const PROMPTER_RACE = "unable to message prompter: prompter not found";
+
+const sessionLedger = (stateStore: PluginStateStore) =>
+  stateStore.open({
+    namespace: "sessions",
+    key: "mutagen.json",
+    schema: Schema.Unknown,
+    version: 1,
+    codec: "json",
+  });
 
 describe("Mutagen process client", () => {
   test("creates by argv, inspects the unique ID and full config, and blocks on a healthy flush", async () => {
@@ -538,6 +551,183 @@ describe("Mutagen process client", () => {
     // Then: one retry creates the sole owned session.
     expect((await Effect.runPromise(reopen().list)).map((entry) => entry.name)).toEqual([name]);
     expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(2);
+  });
+
+  test("retries sync create once after a daemon prompter race and commits the preparing receipt", async () => {
+    const stateStore = makePluginStateStore(
+      makeTestStateStore().service,
+      AbsolutePath.make("/tmp/mutagen-prompter-retry-success"),
+      privateFileAccess,
+    );
+    const attemptReceipts: unknown[] = [];
+    const { client, calls } = fake({
+      stateStore,
+      createFailures: [{ exitCode: 1, stdout: "", stderr: PROMPTER_RACE }],
+      onCreateAttempt: () =>
+        Effect.gen(function* () {
+          const ledger = yield* sessionLedger(stateStore);
+          attemptReceipts.push(yield* ledger.get);
+        }).pipe(Effect.orDie),
+    });
+    await Effect.runPromise(client.create({ name, spec }));
+    expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(2);
+    const preparing = { sessions: [{ phase: "preparing", name }] };
+    expect(attemptReceipts).toMatchObject([preparing, preparing]);
+    const ledger = await Effect.runPromise(sessionLedger(stateStore));
+    expect(await Effect.runPromise(ledger.get)).toMatchObject({
+      sessions: [{ phase: "committed", identifier: id, name }],
+    });
+  });
+
+  test("fails closed when the retry also races, keeping the first race as a peer", async () => {
+    const { client, calls, stateStore } = fake({
+      createFailures: [
+        { exitCode: 1, stdout: "", stderr: PROMPTER_RACE },
+        { exitCode: 1, stdout: "", stderr: PROMPTER_RACE },
+      ],
+    });
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
+    expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(2);
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError" });
+    expect(outcome.additionalErrors).toMatchObject([{ role: "peer", error: { _tag: "FileSyncStartError" } }]);
+    expect(
+      exit.cause.reasons.map((reason) =>
+        Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+      ),
+    ).toEqual([undefined, "peer"]);
+    const ledger = await Effect.runPromise(sessionLedger(stateStore));
+    expect(await Effect.runPromise(ledger.get)).toMatchObject({
+      sessions: [{ phase: "preparing", name }],
+    });
+  });
+
+  test("adopts an exactly matching session that a raced create saved, without retrying", async () => {
+    const { client, calls, stateStore } = fake({
+      createFailures: [{ exitCode: 1, stdout: "", stderr: PROMPTER_RACE, persistSession: true }],
+    });
+    await Effect.runPromise(client.create({ name, spec }));
+    expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
+    const ledger = await Effect.runPromise(sessionLedger(stateStore));
+    expect(await Effect.runPromise(ledger.get)).toMatchObject({
+      sessions: [{ phase: "committed", identifier: id, name }],
+    });
+  });
+
+  test("fails closed when a raced create saved a session with a different configuration", async () => {
+    const { client, calls, stateStore } = fake({
+      mismatch: true,
+      createFailures: [{ exitCode: 1, stdout: "", stderr: PROMPTER_RACE, persistSession: true }],
+    });
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
+    expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError" });
+    expect(outcome.additionalErrors).toMatchObject([{ role: "peer", error: { _tag: "FileSyncStartError" } }]);
+    const ledger = await Effect.runPromise(sessionLedger(stateStore));
+    expect(await Effect.runPromise(ledger.get)).toMatchObject({
+      sessions: [{ phase: "preparing", name }],
+    });
+  });
+
+  test("does not retry when a raced create leaves an unowned session on the prepared source", async () => {
+    let setCurrent: ((value: Array<Record<string, unknown>>) => void) | undefined;
+    const fixture = fake({
+      createFailures: [{ exitCode: 1, stdout: "", stderr: PROMPTER_RACE }],
+      onCreateAttempt: () =>
+        Effect.sync(() => setCurrent?.([session({ identifier: "sync_Other789", name: "someone-else" })])),
+    });
+    setCurrent = fixture.setCurrent;
+    const exit = await Effect.runPromiseExit(fixture.client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
+    expect(fixture.calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError", sessionSpec: spec });
+    expect(outcome.additionalErrors).toMatchObject([{ role: "peer", error: { _tag: "FileSyncStartError" } }]);
+    const ledger = await Effect.runPromise(sessionLedger(fixture.stateStore));
+    expect(await Effect.runPromise(ledger.get)).toMatchObject({
+      sessions: [{ phase: "preparing", name }],
+    });
+  });
+
+  test("keeps an interrupted retry an interruption", async () => {
+    const { client, stateStore } = fake({
+      createFailures: [{ exitCode: 1, stdout: "", stderr: PROMPTER_RACE }],
+      onCreateAttempt: (attempt) => (attempt === 2 ? Effect.interrupt : Effect.void),
+    });
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to be interrupted.");
+    expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+    const ledger = await Effect.runPromise(sessionLedger(stateStore));
+    expect(await Effect.runPromise(ledger.get)).toMatchObject({
+      sessions: [{ phase: "preparing", name }],
+    });
+  });
+
+  test("does not retry create for other stderr", async () => {
+    const { client, calls, stateStore } = fake({
+      createFailures: [{ exitCode: 1, stdout: "", stderr: "create failed before session creation" }],
+    });
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
+    expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError" });
+    expect(outcome.additionalErrors).toEqual([]);
+    const ledger = await Effect.runPromise(sessionLedger(stateStore));
+    expect(await Effect.runPromise(ledger.get)).toMatchObject({
+      sessions: [{ phase: "preparing", name }],
+    });
+  });
+
+  test("fails closed without retry when inspectAll fails after a prompter race", async () => {
+    const { client, calls, stateStore } = fake({
+      createFailures: [{ exitCode: 1, stdout: "", stderr: PROMPTER_RACE }],
+      failListAfterCreate: true,
+    });
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
+    expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError" });
+    expect(outcome.additionalErrors).toMatchObject([{ role: "peer", error: { _tag: "FileSyncStartError" } }]);
+    expect(
+      exit.cause.reasons.map((reason) =>
+        Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+      ),
+    ).toEqual([undefined, "peer"]);
+    const ledger = await Effect.runPromise(sessionLedger(stateStore));
+    expect(await Effect.runPromise(ledger.get)).toMatchObject({
+      sessions: [{ phase: "preparing", name }],
+    });
+  });
+
+  test("does not retry or label a pause failure as a prompter race", async () => {
+    const { client, calls } = fake({ failPauseOnce: true, pauseFailureStderr: PROMPTER_RACE });
+    await Effect.runPromise(client.create({ name, spec }));
+
+    const exit = await Effect.runPromiseExit(client.pause(name));
+
+    if (!Exit.isFailure(exit)) throw new Error("Expected pause to fail.");
+    expect(calls.filter((call) => call.args[1] === "pause")).toHaveLength(1);
+    const error = Cause.findErrorOption(exit.cause);
+    if (error._tag !== "Some") throw new Error("Expected a typed pause failure.");
+    expect(error.value).toMatchObject({ _tag: "FileSyncStopError", outputTail: PROMPTER_RACE });
+    expect(error.value.message).not.toMatch(/prompter/i);
+  });
+
+  test("reports Mutagen's stderr only as a redacted output tail", async () => {
+    const secret = "super-secret-token";
+    const stderr = `Error: unable to connect to beta: token=${secret} was rejected`;
+    const { client } = fake({ createFailures: [{ exitCode: 1, stdout: "", stderr }] });
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
+    const error = failureOutcomeFromCause(exit.cause).error as FileSyncStartError;
+    expect(error.outputTail).toContain("unable to connect to beta");
+    expect(Bun.inspect(error)).not.toContain(secret);
+    expect(`${error.message} ${error.remediation}`).not.toContain("unable to connect to beta");
   });
 
   test("clears an interrupted sibling create that shares a committed session's source", async () => {

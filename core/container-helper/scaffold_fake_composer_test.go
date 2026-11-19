@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,18 @@ import (
 
 func runFakeComposer(args []string) int {
 	env := envMap(os.Environ())
+	if env["LANDO_TEST_COMPOSER_RECIPE"] == "contrib" {
+		log, err := os.OpenFile(env["LANDO_TEST_COMPOSER_LOG"], os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+		if err != nil {
+			return 2
+		}
+		encodeErr := json.NewEncoder(log).Encode(args)
+		if closeErr := log.Close(); encodeErr != nil || closeErr != nil {
+			fmt.Fprintln(os.Stderr, encodeErr, closeErr)
+			return 2
+		}
+		return fakeContribComposer(args, env)
+	}
 	if len(args) == 0 {
 		return 2
 	}

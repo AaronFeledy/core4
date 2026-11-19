@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -36,6 +37,8 @@ func TestScaffoldKillProcess(t *testing.T) {
 		code = runDrupalScaffold(args, streams, crash)
 	case "drupal-cms-scaffold":
 		code = runDrupalCmsScaffold(args, streams, crash)
+	case contribSyncCommand:
+		code = runDrupalContribSync(args, streams, crash)
 	default:
 		code = runCreateProject(args, streams, crash)
 	}
@@ -113,6 +116,7 @@ esac
 	env["LANDO_CREATE_PROJECT_APP_ROOT"] = appRoot
 	env["LANDO_DRUPAL_APP_ROOT"] = appRoot
 	env["LANDO_DRUPAL_CMS_APP_ROOT"] = appRoot
+	env["LANDO_DRUPAL_CONTRIB_APP_ROOT"] = appRoot
 	for name, value := range overrides {
 		env[name] = value
 	}
@@ -152,6 +156,8 @@ func (f *scaffoldFixture) run(t *testing.T, command string, args ...string) int 
 		return runDrupalScaffold(args, f.streams, nil)
 	case "drupal-cms-scaffold":
 		return runDrupalCmsScaffold(args, f.streams, nil)
+	case contribSyncCommand:
+		return dispatch("lando-"+command, args, f.streams)
 	default:
 		return runCreateProject(args, f.streams, nil)
 	}
@@ -172,6 +178,9 @@ func (f *scaffoldFixture) kill(t *testing.T, command string, point string, args 
 	child.Env = environSlice(childEnv)
 	output, err := child.CombinedOutput()
 	var exit *exec.ExitError
+	if point == "during-contrib-install" && errors.As(err, &exit) && exit.Sys() == syscall.WaitStatus(syscall.SIGKILL) {
+		return
+	}
 	if !errors.As(err, &exit) || exit.ExitCode() != 137 {
 		t.Fatalf("kill at %s exited with %v, want 137\n%s", point, err, output)
 	}

@@ -39,7 +39,7 @@ Setup downloads the runtime bundle and, on Linux, a few pinned helper packages s
 
 If you interrupt setup, rerun `lando setup` before relying on its result. Setup saves progress in `<userDataRoot>/setup/readiness.json` with status `in-progress` until the run ends. A completed run records `ready`, `deferred` when an installation was postponed, or `failed` when a step failed or was unavailable. Doctor warns about `in-progress` and tells you to rerun setup, even if the provider step succeeded. A missing or corrupt readiness file provides no setup evidence; rerun setup to recreate it.
 
-Setup waits up to about 30 seconds for the SSH sidecar's agent to answer before recording the `shell` step as ready. An empty but reachable agent is ready too. A sidecar that cannot start, stops before answering, or never answers within that wait does not fail setup by itself. Setup prints a warning with the redacted cause and remediation, finishes everything else, and records `shell` as unavailable. Apps start without SSH agent forwarding until the agent answers. Fix the cause, then rerun `lando setup` to refresh the record. Later app starts also bring the sidecar up and wait for its agent, but `lando doctor` keeps showing setup's record until you rerun setup.
+After starting the SSH sidecar, setup waits up to about 30 seconds for the readiness command declared on the applied global service to pass before recording the `shell` step as ready. An empty identity list is a valid answer. If the sidecar cannot start or setup cannot prove readiness, setup warns, finishes its other steps, and records `shell` as unavailable. Apps can still start without SSH forwarding. `lando doctor --fix` can repair the live sidecar, but only a new setup run updates the saved result. See [how Lando checks the SSH sidecar](../subsystems/ssh-sidecar.mdx).
 
 On Linux, if the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker` as the supported fallback.
 
@@ -67,3 +67,23 @@ lando --version
 ```
 
 Doctor should name the provider you are on.
+
+<Guide>
+  <Scenario id="saved-shell-readiness" render={false} reason="Check how doctor reports a saved setup warning without running setup.">
+    <Step name="read-saved-shell-result">
+      <Run runtime="library" displayCode="lando doctor --section provider --format=json" code={`yield* Effect.promise(() => Bun.write(context.testDir + "/host/data/setup/readiness.json", JSON.stringify({
+  status: "failed",
+  providerId: "lando",
+  updatedAt: "2026-01-01T00:00:00Z",
+  steps: [{ id: "shell", status: "unavailable", evidence: "The SSH agent did not answer." }],
+})));
+const run = yield* context.runCli(["doctor", "--section", "provider", "--format=json"]);
+const report = JSON.parse(run.stdout);
+expect(report.result.checks).toContainEqual(expect.objectContaining({
+  name: "setup-readiness",
+  status: "warn",
+  context: expect.objectContaining({ lastFailedStep: "shell", stepShell: "unavailable" }),
+}));`} />
+    </Step>
+  </Scenario>
+</Guide>
