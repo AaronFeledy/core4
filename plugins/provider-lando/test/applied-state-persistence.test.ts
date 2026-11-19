@@ -296,15 +296,18 @@ describe("provider-lando applied state persistence", () => {
       expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({
         status: "unreadable",
         path: appliedPlanPath(stateDir, plan.id),
+        detail: { coordinate: "envelope", expectedVersion: APPLIED_STATE_VERSION, foundVersion: null },
       });
       await writeFile(path, JSON.stringify({ version: 99, data: {} }));
       expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({
         status: "unreadable",
         path: appliedPlanPath(stateDir, plan.id),
+        detail: { coordinate: "version", expectedVersion: APPLIED_STATE_VERSION, foundVersion: 99 },
       });
       expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({
         status: "unreadable",
         path: appliedPlanPath(stateDir, plan.id),
+        detail: { coordinate: "version", expectedVersion: APPLIED_STATE_VERSION, foundVersion: 99 },
       });
     });
   });
