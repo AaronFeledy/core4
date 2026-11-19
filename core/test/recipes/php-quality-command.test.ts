@@ -25,6 +25,7 @@ const runQuality = async (input: {
   readonly missing?: string;
   readonly defaultArgs?: ReadonlyArray<string>;
   readonly install?: boolean;
+  readonly binaryExit?: number;
   readonly modules?: boolean;
   readonly themes?: boolean;
 }) => {
@@ -33,9 +34,10 @@ const runQuality = async (input: {
   if (input.install === true) {
     await mkdir(join(root, "vendor", "bin"), { recursive: true });
     const stub = join(root, "vendor", "bin", input.binary);
+    const exitLine = input.binaryExit === undefined ? "" : `exit ${input.binaryExit}\n`;
     await writeFile(
       stub,
-      '#!/bin/sh\nprintf "BIN=%s\\n" "$(basename "$0")"\nfor arg do printf "ARG=%s\\n" "$arg"; done\n',
+      `#!/bin/sh\nprintf "BIN=%s\\n" "$(basename "$0")"\nfor arg do printf "ARG=%s\\n" "$arg"; done\n${exitLine}`,
     );
     await chmod(stub, 0o755);
   }
@@ -139,6 +141,33 @@ const runQuality = async (input: {
     });
     expect(result).toEqual({
       stdout: "BIN=phpcs\nARG=--standard=Drupal\nARG=web/modules/custom/example\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  test("preserves a non-zero exit from the binary", async () => {
+    const result = await runQuality({
+      binary: "phpcs",
+      install: true,
+      binaryExit: 2,
+      args: ["--standard=Drupal"],
+    });
+    expect(result).toEqual({
+      stdout: "BIN=phpcs\nARG=--standard=Drupal\n",
+      stderr: "",
+      exitCode: 2,
+    });
+  });
+
+  test("keeps a user argument containing spaces as a single argument", async () => {
+    const result = await runQuality({
+      binary: "phpcs",
+      install: true,
+      args: ["--standard=Drupal", "web/modules/custom/my module"],
+    });
+    expect(result).toEqual({
+      stdout: "BIN=phpcs\nARG=--standard=Drupal\nARG=web/modules/custom/my module\n",
       stderr: "",
       exitCode: 0,
     });

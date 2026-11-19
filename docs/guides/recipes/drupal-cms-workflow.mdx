@@ -107,20 +107,50 @@ Drush gets `status --format=json` and prints its own JSON. Lando's flags go befo
 
 ## Lint PHP
 
-`lando phpcs`, `lando phpcbf`, and `lando phpstan` run in `appserver`. With no
-arguments, phpcs and phpcbf lint `web/modules/custom` and `web/themes/custom`
-when those directories exist (the same paths under a custom webroot).
-`lando phpstan` with no arguments runs `analyse` on those paths. Pass your own
-arguments when you want a different target.
-
-The recipe does not install the binaries. Require `drupal/coder` for phpcs and
+`lando phpcs`, `lando phpcbf`, and `lando phpstan` run in `appserver`. The
+recipe does not install the binaries. Require `drupal/coder` for phpcs and
 phpcbf, or `phpstan/phpstan` or `drupal/core-dev` for phpstan, then
 `lando composer install`. A missing binary prints that package name and exits.
 
+A no-arg `lando phpcs` or `lando phpcbf` never selects the Drupal standard.
+After you require `drupal/coder`, PHP_CodeSniffer still uses its default
+standard unless the project has a `phpcs.xml` or `phpcs.xml.dist`, or you pass
+`--standard=Drupal`. Commit a ruleset that names Drupal and DrupalPractice and
+the custom module and theme paths:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="drupal-cms-demo">
+  <rule ref="Drupal"/>
+  <rule ref="DrupalPractice"/>
+  <file>web/modules/custom</file>
+  <file>web/themes/custom</file>
+</ruleset>
+```
+
+Until that file is in the app root, pass the standard yourself:
+
 ```sh
 lando composer require --dev drupal/coder
-lando phpcs
-lando phpcbf
+lando phpcs --standard=Drupal,DrupalPractice
+lando phpcbf --standard=Drupal,DrupalPractice
+```
+
+A committed `phpcs.xml` or `phpcs.xml.dist` makes bare `lando phpcs` and
+`lando phpcbf` use that ruleset.
+
+With no arguments, phpcs and phpcbf add `web/modules/custom` and
+`web/themes/custom` when those directories exist (the same paths under a custom
+webroot). When neither directory exists, the no-arg run passes no paths, so a
+project ruleset's files apply, and otherwise the tool's own no-arg behavior or
+error runs.
+
+`lando phpstan` with no arguments runs `analyse` on those same existing custom
+paths. When neither directory exists, it runs `phpstan analyse` with no paths,
+which relies on `phpstan.neon` or `phpstan.neon.dist`. Pass your own arguments
+when you want a different target.
+
+```sh
 lando composer require --dev drupal/core-dev
 lando phpstan
 ```
