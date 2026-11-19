@@ -20,6 +20,7 @@ import {
 import { evolveHistoricalComposeKnobValues } from "./x-extension-compose-knob-values-proof.ts";
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
+import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
@@ -158,7 +159,7 @@ test.each([
   const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
   const repaired = repairClosedExtension(withIntentionalChangesSinceCapture(captured.landofile));
   if (!isJsonObject(repaired)) throw new TypeError("Missing repaired Landofile");
-  const expected = evolveHistoricalConsolePort(
+  const repairedUser = evolveHistoricalConsolePort(
     evolveHistoricalToolingSensitivity(
       evolveHistoricalAppMountAcceleration(
         evolveHistoricalToolingShorthand(
@@ -192,23 +193,20 @@ test.each([
       "bare",
     ),
   );
-  const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
-  expect(
-    jsonEquals(
-      evolveHistoricalSchedule(
-        evolveHistoricalServiceCreds(
-          evolveHistoricalComposeKnobValues(
-            evolveHistoricalSwarmReservations(
-              evolveHistoricalToolingVars(
-                evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected)),
-              ),
-            ),
+  const historical = evolveHistoricalSchedule(
+    evolveHistoricalServiceCreds(
+      evolveHistoricalComposeKnobValues(
+        evolveHistoricalSwarmReservations(
+          evolveHistoricalToolingVars(
+            evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(repairedUser)),
           ),
         ),
       ),
-      current,
     ),
-  ).toBe(true);
+  );
+  const expected = evolveHistoricalEndpointKind(historical, "bare");
+  const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
+  expect(jsonEquals(expected, current)).toBe(true);
   const properties = current.properties;
   if (!isJsonObject(properties)) throw new TypeError("Missing properties");
   const services = properties.services;

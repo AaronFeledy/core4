@@ -13,6 +13,7 @@ import { evolveHistoricalAuthoringProjection } from "./x-extension-authoring-pro
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalDeprecationNotice } from "./x-extension-deprecation-notice-proof.ts";
+import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
@@ -132,11 +133,12 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
     ),
     source,
   );
-  const evolved = evolveHistoricalSchedule(
+  const beforeEndpointKind = evolveHistoricalSchedule(
     evolveHistoricalServiceCreds(
       evolveHistoricalSwarmReservations(evolveHistoricalToolingVars(evolveHistoricalSqliteTarget(projected))),
     ),
   );
+  const evolved = evolveHistoricalEndpointKind(beforeEndpointKind, "wire");
   evolvedTypedCache.set(source, evolved);
   return evolved;
 };
@@ -199,7 +201,7 @@ describe("embedded wire closed x-* artifact repair", () => {
         ),
       ),
     );
-    const repaired = evolveHistoricalSchedule(
+    const beforeEndpointKind = evolveHistoricalSchedule(
       evolveHistoricalServiceCreds(
         evolveHistoricalSwarmReservations(
           evolveHistoricalSqliteTarget(
@@ -213,6 +215,7 @@ describe("embedded wire closed x-* artifact repair", () => {
         ),
       ),
     );
+    const repaired = evolveHistoricalEndpointKind(beforeEndpointKind, "wire");
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
       "$.context.services",
