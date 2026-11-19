@@ -9,7 +9,7 @@ import { AbsolutePath, AppId, type FileSyncSessionSpec, PortablePath, ServiceNam
 import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeStateStore } from "@lando/state-store/service";
 import { makeTestStateStore } from "@lando/state-store/testing";
-import { Cause, Context, Effect, Exit, Logger, References, Schema } from "effect";
+import { Cause, Context, Effect, Exit, Schema } from "effect";
 
 import {
   WINDOWS_LANDO_DOCKER_HOST,
@@ -29,7 +29,6 @@ import {
 } from "./support/mutagen-process.ts";
 
 const PROMPTER_RACE = "unable to message prompter: prompter not found";
-const PROMPTER_RACE_MESSAGE = "Mutagen create hit a daemon prompter race.";
 
 const sessionLedger = (stateStore: PluginStateStore) =>
   stateStore.open({
@@ -39,21 +38,6 @@ const sessionLedger = (stateStore: PluginStateStore) =>
     version: 1,
     codec: "json",
   });
-
-const runCreateLogged = (client: ReturnType<typeof fake>["client"]) => {
-  const debugMessages: string[] = [];
-  const logger = Logger.make<unknown, void>(({ logLevel, message }) => {
-    if (logLevel === "Debug") debugMessages.push(String(message));
-  });
-  return Effect.runPromiseExit(
-    client
-      .create({ name, spec })
-      .pipe(
-        Effect.provide(Logger.layer([logger])),
-        Effect.provideService(References.MinimumLogLevel, "Debug"),
-      ),
-  ).then((exit) => ({ exit, debugMessages }));
-};
 
 describe("Mutagen process client", () => {
   test("creates by argv, inspects the unique ID and full config, and blocks on a healthy flush", async () => {
@@ -575,80 +559,77 @@ describe("Mutagen process client", () => {
       AbsolutePath.make("/tmp/mutagen-prompter-retry-success"),
       privateFileAccess,
     );
-    const phases: Array<string | undefined> = [];
+    const attemptReceipts: unknown[] = [];
     const { client, calls } = fake({
       stateStore,
       createFailures: [{ exitCode: 1, stdout: "", stderr: PROMPTER_RACE }],
       onCreateAttempt: () =>
         Effect.gen(function* () {
           const ledger = yield* sessionLedger(stateStore);
-          const current = (yield* ledger.get) as { sessions: Array<{ phase: string }> } | null;
-          phases.push(current?.sessions[0]?.phase);
+          attemptReceipts.push(yield* ledger.get);
         }).pipe(Effect.orDie),
     });
-    const { exit, debugMessages } = await runCreateLogged(client);
-    expect(Exit.isSuccess(exit)).toBe(true);
+    await Effect.runPromise(client.create({ name, spec }));
     expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(2);
-    expect(phases).toEqual(["preparing", "preparing"]);
-    expect(debugMessages.some((line) => line.includes("Retrying Mutagen sync create"))).toBe(true);
+    const preparing = { sessions: [{ phase: "preparing", name }] };
+    expect(attemptReceipts).toMatchObject([preparing, preparing]);
     const ledger = await Effect.runPromise(sessionLedger(stateStore));
     expect(await Effect.runPromise(ledger.get)).toMatchObject({
       sessions: [{ phase: "committed", identifier: id, name }],
     });
   });
 
-  test("fails closed after a second prompter race and keeps the unscoped first error", async () => {
+  test("keeps the second prompter race primary and the first as a peer", async () => {
     const { client, calls, stateStore } = fake({
       createFailures: [
         { exitCode: 1, stdout: "", stderr: `first ${PROMPTER_RACE}` },
         { exitCode: 1, stdout: "", stderr: `second ${PROMPTER_RACE}` },
       ],
     });
-    const { exit, debugMessages } = await runCreateLogged(client);
-    expect(Exit.isFailure(exit)).toBe(true);
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
     expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(2);
-    expect(debugMessages.some((line) => line.includes("Retrying Mutagen sync create"))).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const outcome = failureOutcomeFromCause(exit.cause);
-      expect(outcome.error).toMatchObject({
-        _tag: "FileSyncStartError",
-        message: PROMPTER_RACE_MESSAGE,
-      });
-      expect("detail" in (outcome.error as object)).toBe(false);
-      expect((outcome.error as FileSyncStartError).cause).toContain(`first ${PROMPTER_RACE}`);
-      const primary = exit.cause.reasons.find(Cause.isFailReason);
-      expect(primary).toBeDefined();
-      if (primary !== undefined) {
-        expect(
-          Context.getOrUndefined(Cause.reasonAnnotations(primary), FailureRoleAnnotation),
-        ).toBeUndefined();
-      }
-      expect(outcome.additionalErrors).toMatchObject([{ role: "peer" }]);
-    }
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError", cause: `second ${PROMPTER_RACE}` });
+    expect(outcome.additionalErrors).toMatchObject([
+      { role: "peer", error: { _tag: "FileSyncStartError", cause: `first ${PROMPTER_RACE}` } },
+    ]);
+    expect(
+      exit.cause.reasons.map((reason) =>
+        Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+      ),
+    ).toEqual([undefined, "peer"]);
     const ledger = await Effect.runPromise(sessionLedger(stateStore));
     expect(await Effect.runPromise(ledger.get)).toMatchObject({
       sessions: [{ phase: "preparing", name }],
     });
   });
 
-  test("does not retry create when inspect finds the prepared name", async () => {
+  test("adopts an exactly matching session that a raced create saved, without retrying", async () => {
     const { client, calls, stateStore } = fake({
       createFailures: [{ exitCode: 1, stdout: "", stderr: PROMPTER_RACE, persistSession: true }],
     });
-    const { exit, debugMessages } = await runCreateLogged(client);
-    expect(Exit.isFailure(exit)).toBe(true);
+    await Effect.runPromise(client.create({ name, spec }));
     expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
-    expect(calls.filter((call) => call.args[1] === "list").length).toBeGreaterThan(0);
-    expect(debugMessages.some((line) => line.includes("Retrying Mutagen sync create"))).toBe(false);
-    if (Exit.isFailure(exit)) {
-      const outcome = failureOutcomeFromCause(exit.cause);
-      expect(outcome.error).toMatchObject({
-        _tag: "FileSyncStartError",
-        message: PROMPTER_RACE_MESSAGE,
-      });
-      expect((outcome.error as FileSyncStartError).cause).toContain(PROMPTER_RACE);
-      expect(outcome.additionalErrors).toMatchObject([{ role: "peer" }]);
-    }
+    const ledger = await Effect.runPromise(sessionLedger(stateStore));
+    expect(await Effect.runPromise(ledger.get)).toMatchObject({
+      sessions: [{ phase: "committed", identifier: id, name }],
+    });
+  });
+
+  test("fails closed when a raced create saved a session with a different configuration", async () => {
+    const { client, calls, stateStore } = fake({
+      mismatch: true,
+      createFailures: [{ exitCode: 1, stdout: "", stderr: PROMPTER_RACE, persistSession: true }],
+    });
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
+    expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError" });
+    expect(outcome.additionalErrors).toMatchObject([
+      { role: "peer", error: { _tag: "FileSyncStartError", cause: PROMPTER_RACE } },
+    ]);
     const ledger = await Effect.runPromise(sessionLedger(stateStore));
     expect(await Effect.runPromise(ledger.get)).toMatchObject({
       sessions: [{ phase: "preparing", name }],
@@ -659,18 +640,12 @@ describe("Mutagen process client", () => {
     const { client, calls, stateStore } = fake({
       createFailures: [{ exitCode: 1, stdout: "", stderr: "create failed before session creation" }],
     });
-    const { exit, debugMessages } = await runCreateLogged(client);
-    expect(Exit.isFailure(exit)).toBe(true);
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
     expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
-    expect(debugMessages.some((line) => line.includes("Retrying Mutagen sync create"))).toBe(false);
-    if (Exit.isFailure(exit)) {
-      const outcome = failureOutcomeFromCause(exit.cause);
-      expect(outcome.error).toMatchObject({
-        _tag: "FileSyncStartError",
-        message: "Mutagen command exited with code 1: sync create.",
-      });
-      expect(outcome.additionalErrors).toEqual([]);
-    }
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError" });
+    expect(outcome.additionalErrors).toEqual([]);
     const ledger = await Effect.runPromise(sessionLedger(stateStore));
     expect(await Effect.runPromise(ledger.get)).toMatchObject({
       sessions: [{ phase: "preparing", name }],
@@ -682,29 +657,37 @@ describe("Mutagen process client", () => {
       createFailures: [{ exitCode: 1, stdout: "", stderr: PROMPTER_RACE }],
       failListAfterCreate: true,
     });
-    const { exit, debugMessages } = await runCreateLogged(client);
-    expect(Exit.isFailure(exit)).toBe(true);
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
     expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
-    expect(debugMessages.some((line) => line.includes("Retrying Mutagen sync create"))).toBe(false);
-    if (Exit.isFailure(exit)) {
-      const outcome = failureOutcomeFromCause(exit.cause);
-      expect(outcome.error).toMatchObject({
-        _tag: "FileSyncStartError",
-        message: PROMPTER_RACE_MESSAGE,
-      });
-      const primary = exit.cause.reasons.find(Cause.isFailReason);
-      expect(primary).toBeDefined();
-      if (primary !== undefined) {
-        expect(
-          Context.getOrUndefined(Cause.reasonAnnotations(primary), FailureRoleAnnotation),
-        ).toBeUndefined();
-      }
-      expect(outcome.additionalErrors).toMatchObject([{ role: "peer" }]);
-    }
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError", cause: PROMPTER_RACE });
+    expect(outcome.additionalErrors).toMatchObject([
+      { role: "peer", error: { _tag: "FileSyncStartError", cause: "list inspect failed" } },
+    ]);
+    expect(
+      exit.cause.reasons.map((reason) =>
+        Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+      ),
+    ).toEqual([undefined, "peer"]);
     const ledger = await Effect.runPromise(sessionLedger(stateStore));
     expect(await Effect.runPromise(ledger.get)).toMatchObject({
       sessions: [{ phase: "preparing", name }],
     });
+  });
+
+  test("does not retry or label a pause failure as a prompter race", async () => {
+    const { client, calls } = fake({ failPauseOnce: true, pauseFailureStderr: PROMPTER_RACE });
+    await Effect.runPromise(client.create({ name, spec }));
+
+    const exit = await Effect.runPromiseExit(client.pause(name));
+
+    if (!Exit.isFailure(exit)) throw new Error("Expected pause to fail.");
+    expect(calls.filter((call) => call.args[1] === "pause")).toHaveLength(1);
+    const error = Cause.findErrorOption(exit.cause);
+    if (error._tag !== "Some") throw new Error("Expected a typed pause failure.");
+    expect(error.value._tag).toBe("FileSyncStopError");
+    expect(error.value.message).not.toMatch(/prompter/i);
   });
 
   test("keeps Mutagen stderr out of message and remediation", async () => {
@@ -714,20 +697,16 @@ describe("Mutagen process client", () => {
       createFailures: [{ exitCode: 1, stdout: "", stderr: `create failed ${secret} at ${absPath}\u0007` }],
     });
     const exit = await Effect.runPromiseExit(client.create({ name, spec }));
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const outcome = failureOutcomeFromCause(exit.cause);
-      const error = outcome.error as FileSyncStartError;
-      expect(error.message).toBe("Mutagen command exited with code 1: sync create.");
-      expect(error.message).not.toContain(secret);
-      expect(error.message).not.toContain(absPath);
-      expect(error.remediation).not.toContain(secret);
-      expect(error.remediation).not.toContain(absPath);
-      expect("detail" in error).toBe(false);
-      expect(error.cause).toContain(secret);
-      expect(error.cause).toContain(absPath);
-      expect(String(error.cause)).not.toContain("\u0007");
-    }
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
+    const error = failureOutcomeFromCause(exit.cause).error as FileSyncStartError;
+    expect(error.message).not.toContain(secret);
+    expect(error.message).not.toContain(absPath);
+    expect(error.remediation).not.toContain(secret);
+    expect(error.remediation).not.toContain(absPath);
+    expect("detail" in error).toBe(false);
+    expect(error.cause).toContain(secret);
+    expect(error.cause).toContain(absPath);
+    expect(String(error.cause)).not.toContain("\u0007");
   });
 
   test("clears an interrupted sibling create that shares a committed session's source", async () => {

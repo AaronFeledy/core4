@@ -64,6 +64,7 @@ export const fake = (
     ambiguousId?: boolean;
     failCreateOnce?: boolean;
     failPauseOnce?: boolean;
+    pauseFailureStderr?: string;
     failTerminateOnce?: boolean;
     failTerminateAfterDeleteOnce?: boolean;
     failListAfterCreate?: boolean;
@@ -221,7 +222,7 @@ export const fake = (
               sessions = sessions.map((entry) => ({ ...entry, paused: true }));
               if (failPauseOnce) {
                 failPauseOnce = false;
-                return { exitCode: 1, stdout: "", stderr: "pause interrupted" };
+                return { exitCode: 1, stdout: "", stderr: options.pauseFailureStderr ?? "pause interrupted" };
               }
             }
             if (args[1] === "resume") sessions = sessions.map((entry) => ({ ...entry, paused: false }));

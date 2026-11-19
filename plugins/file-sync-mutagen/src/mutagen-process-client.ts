@@ -32,9 +32,6 @@ const IDENTIFIER = /^sync_[A-Za-z0-9]+$/u;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const FLUSH_TIMEOUT_MS = 1_800_000;
 const COMMAND_OUTPUT_TAIL_LIMIT = 4_096;
-/** Mutagen 0.18.1 can fail `sync create` while the daemon prompter is racing (mutagen-io/mutagen#579). */
-const MUTAGEN_PROMPTER_RACE_SIGNATURE = "unable to message prompter: prompter not found";
-const MUTAGEN_PROMPTER_RACE_MESSAGE = "Mutagen create hit a daemon prompter race.";
 const REMEDIATION =
   "Stop the app and retry; if the session changed outside Lando, inspect Mutagen's isolated session data before removing it.";
 
@@ -180,16 +177,29 @@ const commandOutputTail = (stdout: string, stderr: string): string =>
   );
 
 const commandFailed = (args: ReadonlyArray<string>, result: ProcessResult): FileSyncStartError => {
-  const combined = `${result.stdout}\n${result.stderr}`;
   const tail = commandOutputTail(result.stdout, result.stderr);
   return startError(
-    combined.includes(MUTAGEN_PROMPTER_RACE_SIGNATURE)
-      ? MUTAGEN_PROMPTER_RACE_MESSAGE
-      : `Mutagen command exited with code ${result.exitCode}: ${args.slice(0, 2).join(" ")}.`,
+    `Mutagen command exited with code ${result.exitCode}: ${args.slice(0, 2).join(" ")}.`,
     undefined,
     tail === "" ? undefined : tail,
   );
 };
+
+const prompterRace = (result: ProcessResult): boolean =>
+  result.exitCode !== 0 && result.stderr.includes("unable to message prompter: prompter not found");
+
+const createFailed = (
+  args: ReadonlyArray<string>,
+  result: ProcessResult,
+  spec: FileSyncSessionSpec,
+): FileSyncStartError =>
+  prompterRace(result)
+    ? startError(
+        "Mutagen's daemon lost a prompter race while creating the session.",
+        spec,
+        commandOutputTail(result.stdout, result.stderr),
+      )
+    : commandFailed(args, result);
 
 const stopError = (message: string, name: string): FileSyncStopError =>
   new FileSyncStopError({ engineId: ENGINE_ID, sessionRef: name, message, remediation: REMEDIATION });
@@ -640,7 +650,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           ),
         );
 
-  const run = Effect.fn("MutagenProcessClient.run")(
+  const exec = Effect.fn("MutagenProcessClient.exec")(
     (args: ReadonlyArray<string>, timeoutMs = DEFAULT_TIMEOUT_MS) =>
       verifiedTransport.pipe(
         Effect.andThen(installed),
@@ -650,10 +660,15 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             ? error
             : startError(`Mutagen command failed: ${args.slice(0, 2).join(" ")}.`),
         ),
-        Effect.flatMap((result: ProcessResult) =>
-          result.exitCode === 0 ? Effect.succeed(result.stdout) : Effect.fail(commandFailed(args, result)),
-        ),
       ),
+  );
+
+  const run = Effect.fn("MutagenProcessClient.run")((args: ReadonlyArray<string>, timeoutMs?: number) =>
+    exec(args, timeoutMs).pipe(
+      Effect.flatMap((result) =>
+        result.exitCode === 0 ? Effect.succeed(result.stdout) : Effect.fail(commandFailed(args, result)),
+      ),
+    ),
   );
 
   const inspectAll = run(["sync", "list", "--template", LIST_TEMPLATE]).pipe(
@@ -1407,40 +1422,54 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               spec.source,
               `docker://${target.containerId}${target.path}`,
             ];
-            const output = yield* run(args, DEFAULT_TIMEOUT_MS).pipe(
-              Effect.catchCause((cause) => {
-                const primary = Cause.findErrorOption(cause);
-                if (primary._tag !== "Some" || primary.value.message !== MUTAGEN_PROMPTER_RACE_MESSAGE) {
-                  return Effect.failCause(cause);
-                }
-                return inspectAll.pipe(
-                  Effect.matchCauseEffect({
-                    onFailure: (inspectCause) => Effect.failCause(mergeFailure(cause, inspectCause, "peer")),
-                    onSuccess: (listed) =>
-                      listed.some((session) => session.name === name)
-                        ? Effect.failCause(
-                            mergeFailure(
-                              cause,
-                              Cause.fail(
-                                startError(
-                                  `Mutagen session "${name}" already exists after a raced create.`,
-                                  spec,
-                                ),
-                              ),
-                              "peer",
-                            ),
-                          )
-                        : Effect.logDebug("Retrying Mutagen sync create after a daemon prompter race.").pipe(
-                            Effect.andThen(run(args, DEFAULT_TIMEOUT_MS)),
-                            Effect.catchCause((retryCause) =>
-                              Effect.failCause(mergeFailure(cause, retryCause, "peer")),
-                            ),
-                          ),
-                  }),
+            const commit = Effect.fnUntraced(function* (identifier: string) {
+              const owned = { identifier, name, spec, target };
+              yield* inspectOwned(owned);
+              const committed: SessionReceipt = { ...preparing, phase: "committed", identifier };
+              yield* writeLedger(bucket, { receipt: committed, name, operation: "commit-create" });
+              return owned;
+            });
+            let result = yield* exec(args);
+            // The daemon sends the prompter ID before registering it. This failure happens before
+            // the session is saved, so one retry is safe once inspection finds no session with this name.
+            // Remove the retry once the pinned Mutagen includes the fix from upstream PR mutagen-io/mutagen#579.
+            if (prompterRace(result)) {
+              const firstRace = Cause.fail(createFailed(args, result, spec));
+              const listed = yield* inspectAll.pipe(
+                Effect.catchCause((inspectCause) =>
+                  Effect.failCause(mergeFailure(firstRace, inspectCause, "peer")),
+                ),
+              );
+              const raced = listed.filter((session) => session.name === name);
+              if (raced.length !== 0) {
+                // A session saved despite the race is adopted on an exact match, like an interrupted create.
+                const [session] = raced;
+                return yield* (
+                  raced.length === 1 && session !== undefined
+                    ? commit(session.identifier)
+                    : Effect.fail(
+                        startError(
+                          `Mutagen has more than one session named "${name}" after a raced create.`,
+                          spec,
+                        ),
+                      )
+                ).pipe(
+                  Effect.catchCause((cause) => Effect.failCause(mergeFailure(cause, firstRace, "peer"))),
                 );
-              }),
-            );
-            const identifiers = output.match(/sync_[A-Za-z0-9]+/gu) ?? [];
+              }
+              yield* Effect.logDebug("Retrying Mutagen sync create after a daemon prompter race.");
+              result = yield* exec(args).pipe(
+                Effect.flatMap((retry) =>
+                  retry.exitCode === 0 ? Effect.succeed(retry) : Effect.fail(createFailed(args, retry, spec)),
+                ),
+                Effect.catchCause((retryCause) =>
+                  Effect.failCause(mergeFailure(retryCause, firstRace, "peer")),
+                ),
+              );
+            } else if (result.exitCode !== 0) {
+              return yield* Effect.fail(commandFailed(args, result));
+            }
+            const identifiers = result.stdout.match(/sync_[A-Za-z0-9]+/gu) ?? [];
             const identifier = identifiers[0];
             if (identifiers.length !== 1 || identifier === undefined) {
               return yield* Effect.fail(
@@ -1450,11 +1479,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
                 ),
               );
             }
-            const owned = { identifier, name, spec, target };
-            yield* inspectOwned(owned);
-            const committed: SessionReceipt = { ...preparing, phase: "committed", identifier };
-            yield* writeLedger(bucket, { receipt: committed, name, operation: "commit-create" });
-            return owned;
+            return yield* commit(identifier);
           }),
         );
         // A committed durable session may still hold beta writes or an expensive
