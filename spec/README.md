@@ -219,7 +219,7 @@ If you are looking for a public surface or policy:
 | `StateStore`, buckets, app/worker locks, consumers, and plugin access | 12 | §12.7 |
 | Source store: layout, integrity, publication and leases, offline reuse, and `meta:sources:gc` | 12 | §12.8 |
 | Test and contract-suite layers | 13 | §13.1 |
-| Schema, documentation, type, and PR gates, including merge-gate job results | 13 | §13.2 + §13.4 |
+| Schema, documentation, type, and PR gates, including merge-gate job results and automatic reruns after runner loss | 13 | §13.2 + §13.4 |
 | Distribution forms, CI matrix, and release channels | 13 | §13.5 + §13.7 |
 | Startup and TTY renderer process-exit overhead gates | 13 | §13.6 |
 | Boundary gate policy | 13 | §13.8 |

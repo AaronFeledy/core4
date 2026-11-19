@@ -837,6 +837,8 @@ When adopting this workflow, replace the previous per-job required status checks
 
 The final `ci` job always runs. It requires successful selection and every selected gate. Any other result fails `ci`, including a failure, a cancellation, an unexpected skip, or GitHub's undocumented `abandoned` result for a job whose runner was lost. The gate prints one `<job>: <result>` line per unsuccessful job. Only policy-excluded jobs may be skipped. The dependency-audit workflow and scheduled self-hosted evidence workflows are not PR merge gates.
 
+If GitHub loses a runner before it starts any steps and the only other failures are summaries or gates failing because of that loss, CI automatically reruns the failed jobs once. An independent failure, a timeout after a step starts, or a later attempt does not trigger another automatic rerun. This behavior only takes effect once the retry workflow is on `main`, because GitHub runs `workflow_run` workflows from the default branch.
+
 ## Bun upgrade smoke checks
 
 After updating `.bun-version`, run these before opening a release-tooling PR:
