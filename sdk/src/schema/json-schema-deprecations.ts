@@ -9,6 +9,7 @@ import {
 } from "./deprecation.ts";
 import { pruneUnusedDefinitions } from "./json-schema-definitions.ts";
 import { getLayerMergeRule } from "./layer-merge.ts";
+import { propertyNameRecordProjection } from "./property-name-check.ts";
 
 type JsonObject = Record<string, unknown>;
 type SchemaLike = Schema.Top;
@@ -263,6 +264,12 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: Traver
     return;
   }
 
+  if (AST.isDeclaration(ast)) {
+    const input = propertyNameRecordProjection(ast);
+    if (input !== undefined) applyDeprecationsFromAst(targetSchema, input, context);
+    return;
+  }
+
   if (AST.isArrays(ast)) {
     applyTupleDeprecations(targetSchema, ast, context);
     return;
@@ -389,6 +396,16 @@ const jsonInputAst = (root: AST.AST): AST.AST => {
           ast.context,
         );
         break;
+      case "Declaration": {
+        const projection = propertyNameRecordProjection(ast);
+        if (projection === undefined) {
+          result = ast;
+        } else {
+          const input = Schema.make<Schema.Codec<unknown>>(visit(AST.toEncoded(projection)));
+          result = AST.isOptional(ast) ? Schema.optionalKey(input).ast : input.ast;
+        }
+        break;
+      }
       default:
         result = ast;
     }

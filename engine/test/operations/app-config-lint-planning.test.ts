@@ -16,21 +16,27 @@ import { CertificateAuthorityResolver } from "../../src/plugins/certificate-auth
 import * as Plugins from "../../src/plugins/registry.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 
-test("lint rejects a generated route hostname that fails final planning", async () => {
+test("lint attributes a collision between normalized default routes to the service", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-lint-plan-"));
-  const service = "a".repeat(64);
+  const file = join(root, ".lando.yml");
   try {
     await writeFile(
-      join(root, ".lando.yml"),
-      `name: route-plan\nservices:\n  ${service}:\n    type: nginx\n`,
+      file,
+      "name: route-plan\nservices:\n  pma_theme:\n    type: nginx\n  pma-theme:\n    type: nginx\n",
     );
 
     const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(Plugins.layer)));
 
     expect(result.valid).toBe(false);
-    expect(result.violations).toMatchObject([{ severity: "error", path: ["routes", 0, "hostname"] }]);
-    expect(result.violations[0]?.message).toContain(service);
-    expect(result.violations[0]?.message).toContain(`${service}.route-plan.lndo.site`);
+    expect(result.violations).toMatchObject([
+      {
+        rule: "landofile.route",
+        severity: "error",
+        path: ["services", "pma-theme"],
+        line: 5,
+        source: { file, path: ["services", "pma-theme"] },
+      },
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

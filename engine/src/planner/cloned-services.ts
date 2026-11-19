@@ -1,12 +1,13 @@
 import { AppFeatureCloneError } from "@lando/sdk/errors";
 import {
   CLONED_SERVICE_PROVENANCE_KEY,
+  HostAliasName,
   type ProviderCapabilities,
   type ServiceConfig,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { Effect, Predicate } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 import type { AppFeatureServiceDraft, RecordedClonedService } from "../services/app-feature-types.ts";
 import { appFeatureError } from "./app-feature-error.ts";
@@ -285,8 +286,20 @@ export const materializeClonedServices = (input: {
   const seenCloneNames = new Set<string>();
   const drafts: PlannedServiceDraft[] = [];
   const parentNetworks = new Map<string, ServiceConfig["networks"] | undefined>();
+  const isHostAliasName = Schema.is(HostAliasName);
   for (const request of input.clones) {
     const derived = input.appSlug === undefined ? undefined : `${request.name}.${input.appSlug}.internal`;
+    if (!isHostAliasName(request.name) || (derived !== undefined && derived.length > 253)) {
+      throw new AppFeatureCloneError({
+        feature: request.feature,
+        service: request.name,
+        from: request.from,
+        reason: "invalid-name",
+        message: `Cannot clone service ${request.from} to ${request.name}: the clone key or its internal DNS name is invalid.`,
+        remediation:
+          "Choose a clone name with DNS labels of at most 63 characters and a full internal name of at most 253 characters.",
+      });
+    }
     if (seenCloneNames.has(request.name.toLowerCase()) || byName.has(request.name)) {
       throw new AppFeatureCloneError({
         feature: request.feature,
