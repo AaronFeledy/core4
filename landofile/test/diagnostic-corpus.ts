@@ -220,7 +220,7 @@ export const diagnosticCorpus = (root: SchemaAST.AST) => {
     }
     const valid = branches.filter((branch) => accepts(ast, branch.witness));
     if (valid.length === 0) {
-      const witness = [...reviewed, true, null, [], "x-example", "8080:80", "10M"].find((value) =>
+      const witness = [...reviewed, true, null, [], "x-example", "8080:80", "http:80", "10M"].find((value) =>
         accepts(ast, value),
       );
       if (witness !== undefined) valid.push({ witness, mutations: [] });

@@ -73,7 +73,7 @@ describe("varnish ServiceType", () => {
         expect(plan.type).toBe("varnish");
         expect(plan.artifact).toEqual({ kind: "ref", ref: image });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 80, protocol: "http", name: "cache", primary: true },
+          { kind: "internal", port: 80, protocol: "http", name: "cache", primary: true },
         ]);
         expect(plan.user).toBe("root");
         expect(plan.environment).toMatchObject({
@@ -216,7 +216,7 @@ describe("varnish ServiceType", () => {
       command: ["varnishd", "-F", "-a", ":6082"],
     });
     expect(plan.endpoints).toContainEqual({
-      _tag: "internal",
+      kind: "internal",
       port: 6082,
       protocol: "http",
       name: "cache",

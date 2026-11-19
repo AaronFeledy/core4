@@ -918,7 +918,7 @@ const startService = Effect.fnUntraced(function* (
       )
     : undefined;
   const published = service.endpoints.flatMap((endpoint) =>
-    endpoint._tag === "published" ? [endpoint] : [],
+    endpoint.kind === "published" ? [endpoint] : [],
   );
   const plannedFingerprint = fingerprintPlannedPublishPorts(published);
   const portMismatch =
@@ -994,7 +994,7 @@ const startService = Effect.fnUntraced(function* (
       const assigned = createAssignedHostPorts(
         createEndpoints.filter((_endpoint, index) => {
           const desired = service.endpoints[index];
-          return desired?._tag === "published" && desired.publication.hostPort === undefined;
+          return desired?.kind === "published" && desired.publication.hostPort === undefined;
         }),
       );
       let retry: EngineHttpResponse | undefined;

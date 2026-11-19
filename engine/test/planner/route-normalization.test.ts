@@ -1,19 +1,18 @@
 import { expect, test } from "bun:test";
 import { LandofileValidationError, RouteInputError } from "@lando/sdk/errors";
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Layer, Result, Schema } from "effect";
+import { Effect, Layer, Result } from "effect";
 
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { compileTestLandofile } from "../compiled-landofile.ts";
 
 const plan = (input: unknown) =>
   Effect.flatMap(AppPlanner, (planner) =>
-    planTestLandofile(
-      planner,
-      Schema.decodeUnknownSync(LandofileShape)(input),
-      TestRuntimeProvider.capabilities,
+    compileTestLandofile(input).pipe(
+      Effect.flatMap((compiled) => planner.plan(compiled, TestRuntimeProvider.capabilities)),
     ),
   ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))));
 
@@ -116,7 +115,7 @@ test("rejects conflicting proxy and service declarations with authored source ke
   const input = {
     name: "conflicts",
     services: { web: { type: "nginx", routes: ["same.test"] } },
-    proxy: { web: [{ hostname: "same.test", filters: [{ type: "addPrefix", prefix: "/new" }] }] },
+    proxy: { web: [{ hostname: "same.test", filters: [{ kind: "addPrefix", prefix: "/new" }] }] },
   };
   // When
   const result = await Effect.runPromise(Effect.result(plan(input)));
@@ -144,9 +143,13 @@ test("dedupes equivalent proxy and service declarations without duplicate servic
 
 test("carries filters onto RoutePlan unchanged and omits the key when empty", async () => {
   // Given
-  const filters = [
-    { type: "stripPrefix", prefix: "/api" },
-    { type: "addPrefix", prefix: "/v1" },
+  const wireFilters = [
+    { kind: "stripPrefix", prefix: "/api" },
+    { kind: "addPrefix", prefix: "/v1" },
+  ] as const;
+  const decodedFilters = [
+    { kind: "stripPrefix", prefix: "/api" },
+    { kind: "addPrefix", prefix: "/v1" },
   ] as const;
   const input = {
     name: "routes-app",
@@ -154,7 +157,7 @@ test("carries filters onto RoutePlan unchanged and omits the key when empty", as
       web: {
         type: "nginx",
         routes: [
-          { hostname: "filtered.example.test", filters },
+          { hostname: "filtered.example.test", filters: wireFilters },
           { hostname: "plain.example.test", filters: [] },
         ],
       },
@@ -163,7 +166,7 @@ test("carries filters onto RoutePlan unchanged and omits the key when empty", as
   // When
   const result = await Effect.runPromise(plan(input));
   // Then
-  expect(result.routes[0]?.filters).toEqual(filters);
+  expect(result.routes[0]?.filters).toEqual(decodedFilters);
   expect(result.routes[1]).not.toHaveProperty("filters");
 });
 
@@ -246,5 +249,3 @@ test("rejects expression-produced template text instead of evaluating it again",
     expect(result.failure.message).toContain("{{ app.name }}");
   }
 });
-
-import { planTestLandofile } from "../compiled-landofile.ts";

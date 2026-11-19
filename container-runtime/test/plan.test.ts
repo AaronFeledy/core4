@@ -42,12 +42,12 @@ const service = {
   },
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: 8080,
       protocol: "tcp",
       publication: { bindAddress: "127.0.0.1", hostPort: 38080 },
     },
-    { _tag: "internal", port: 9090, protocol: "tcp" },
+    { kind: "internal", port: 9090, protocol: "tcp" },
   ],
   mounts: [
     {
@@ -246,12 +246,12 @@ describe("container plan helpers", () => {
     const unpinned: ServicePlan = {
       ...service,
       endpoints: [
-        { _tag: "published", port: 8080, protocol: "tcp", publication: { bindAddress: "127.0.0.1" } },
+        { kind: "published", port: 8080, protocol: "tcp", publication: { bindAddress: "127.0.0.1" } },
       ],
     };
     const localCopy = [
       {
-        _tag: "published" as const,
+        kind: "published" as const,
         port: 8080,
         protocol: "tcp" as const,
         publication: { bindAddress: "127.0.0.1", hostPort: 30_000 },
@@ -261,7 +261,7 @@ describe("container plan helpers", () => {
       PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "30000" }] },
     });
     expect(unpinned.endpoints[0]).toEqual({
-      _tag: "published",
+      kind: "published",
       port: 8080,
       protocol: "tcp",
       publication: { bindAddress: "127.0.0.1" },
@@ -585,13 +585,13 @@ describe("container plan helpers", () => {
     expect(
       containerPortBindings([
         {
-          _tag: "published",
+          kind: "published",
           port: 8080,
           protocol: "tcp",
           publication: { bindAddress: "127.0.0.1", hostPort: 38080 },
         },
         {
-          _tag: "published",
+          kind: "published",
           port: 8080,
           protocol: "tcp",
           publication: { bindAddress: "0.0.0.0", hostPort: 48080 },
@@ -611,7 +611,7 @@ describe("publish port fingerprints", () => {
     // Given: a published endpoint on 127.0.0.1:38080.
     const planned = fingerprintPlannedPublishPorts([
       {
-        _tag: "published",
+        kind: "published",
         port: 80,
         protocol: "tcp",
         publication: { bindAddress: "127.0.0.1", hostPort: 38080 },
@@ -631,7 +631,7 @@ describe("publish port fingerprints", () => {
     // Given: plan wants 8080 but inspect has 38080.
     const planned = fingerprintPlannedPublishPorts([
       {
-        _tag: "published",
+        kind: "published",
         port: 80,
         protocol: "tcp",
         publication: { bindAddress: "127.0.0.1", hostPort: 8080 },
@@ -650,7 +650,7 @@ describe("publish port fingerprints", () => {
     // Given: a published endpoint with no hostPort pin.
     const planned = fingerprintPlannedPublishPorts([
       {
-        _tag: "published",
+        kind: "published",
         port: 80,
         protocol: "tcp",
         publication: { bindAddress: "127.0.0.1" },

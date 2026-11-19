@@ -151,7 +151,7 @@ export const renderTraefikDynamicConfig = (
             "      middlewares:",
             ...(route.filters ?? []).map(
               (filter, filterIndex) =>
-                `        - ${JSON.stringify(`${namespace}${index}-f${filterIndex}-${filter.type}`)}`,
+                `        - ${JSON.stringify(`${namespace}${index}-f${filterIndex}-${filter.kind}`)}`,
             ),
           ]),
     ]),
@@ -189,7 +189,7 @@ export const renderTraefikDynamicConfig = (
   const middlewares = routes.flatMap((route, index) =>
     (route.filters ?? []).flatMap((filter, filterIndex) => {
       return [
-        `    ${JSON.stringify(`${namespace}${index}-f${filterIndex}-${filter.type}`)}: ${JSON.stringify(routeMiddlewareConfig(filter))}`,
+        `    ${JSON.stringify(`${namespace}${index}-f${filterIndex}-${filter.kind}`)}: ${JSON.stringify(routeMiddlewareConfig(filter))}`,
       ];
     }),
   );

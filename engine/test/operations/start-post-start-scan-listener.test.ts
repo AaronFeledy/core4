@@ -16,7 +16,7 @@ test.each(["ready", "lando-error"] as const)(
           ...web,
           endpoints: [
             {
-              _tag: "published",
+              kind: "published",
               protocol: "http",
               port: 3000,
               primary: true,

@@ -150,7 +150,7 @@ describe("static ServiceType", () => {
       ),
     ]);
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 80, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.command).toEqual([
       "sh",
@@ -167,7 +167,7 @@ describe("static ServiceType", () => {
 
     expect(plan.primary).toBe(false);
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "assets", primary: true },
+      { kind: "internal", port: 80, protocol: "http", name: "assets", primary: true },
     ]);
     expect(plan.environment).toMatchObject({
       LANDO_SERVICE_NAME: "assets",
@@ -258,7 +258,7 @@ describe("static ServiceType", () => {
       ),
     ).toEqual([]);
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 80, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck).toEqual(tcpProbe(80, 10));
@@ -305,7 +305,7 @@ describe("static ServiceType", () => {
 
     expect(caddyConfigFrom(plan)).toContain("http://:8080 {");
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 8080, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toEqual(tcpProbe(8080, 10));
   });

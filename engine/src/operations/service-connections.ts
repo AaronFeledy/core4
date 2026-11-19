@@ -85,7 +85,7 @@ export const projectServiceConnections = (input: {
         ...clientConnectionUrls({ service, endpoint, protocol, host: target.success.host, port: group.port }),
       });
     for (const facet of service.endpoints) {
-      if (facet._tag !== "published" || logicalEndpointIdentity(facet) !== logicalEndpointIdentity(group))
+      if (facet.kind !== "published" || logicalEndpointIdentity(facet) !== logicalEndpointIdentity(group))
         continue;
       const address = facet.publication.bindAddress ?? "127.0.0.1";
       const actual = publicationMatches.get(physicalPublicationIdentity(facet)) ?? [];

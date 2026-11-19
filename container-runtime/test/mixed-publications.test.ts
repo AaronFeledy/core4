@@ -4,7 +4,7 @@ import { containerPortBindings } from "../src/plan.ts";
 import { copyInspectHostPorts } from "../src/service-publish-ports.ts";
 
 const fixed: PublishedEndpoint = {
-  _tag: "published",
+  kind: "published",
   port: 3000,
   protocol: "http",
   publication: { hostPort: 8080 },
@@ -28,11 +28,11 @@ test.each(["NetworkSettings", "HostConfig"])(
     // When
     const copied = copyInspectHostPorts([dynamic, { ...dynamic, name: "alias" }, fixed], inspected);
     // Then the physical create payload retains both bindings, with shared alias allocation.
-    expect(copied.map((row) => (row._tag === "published" ? row.publication.hostPort : undefined))).toEqual([
+    expect(copied.map((row) => (row.kind === "published" ? row.publication.hostPort : undefined))).toEqual([
       30000, 30000, 8080,
     ]);
     expect(
-      containerPortBindings(copied.filter((row): row is PublishedEndpoint => row._tag === "published")),
+      containerPortBindings(copied.filter((row): row is PublishedEndpoint => row.kind === "published")),
     ).toEqual({
       "3000/tcp": [
         { HostIp: "127.0.0.1", HostPort: "30000" },
@@ -75,7 +75,7 @@ test("reserves bindings by listener, address and transport rather than host port
   // When
   const copied = copyInspectHostPorts([fixed, ipv6, udp], inspected);
   // Then
-  expect(copied.map((row) => (row._tag === "published" ? row.publication.hostPort : undefined))).toEqual([
+  expect(copied.map((row) => (row.kind === "published" ? row.publication.hostPort : undefined))).toEqual([
     8080, 8080, 8080,
   ]);
 });

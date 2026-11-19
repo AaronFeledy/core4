@@ -69,13 +69,13 @@ describe("compose ServiceType (raw passthrough)", () => {
     expect(plan.environment).toMatchObject({ WORKER_ENV: "prod" });
     expect(plan.endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         port: 9000,
         protocol: "tcp",
         publication: { hostPort: 9000 },
       },
       {
-        _tag: "published",
+        kind: "published",
         port: 9001,
         protocol: "udp",
         publication: { hostPort: 9001 },

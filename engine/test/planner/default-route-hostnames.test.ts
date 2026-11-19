@@ -13,7 +13,7 @@ const APP_SLUG = "myapp";
 const DEFAULT_DOMAIN = "lndo.site";
 const PROVIDER = ProviderId.make("lando");
 const HTTP_ENDPOINT = {
-  _tag: "internal" as const,
+  kind: "internal" as const,
   protocol: "http" as const,
   port: 80,
   name: "http",
@@ -88,9 +88,9 @@ describe("finalizeServices auto-generated hostnames", () => {
       draft: {
         ...draft.draft,
         endpoints: [
-          { _tag: "internal", protocol: "tcp", port: 1025, name: "smtp" },
-          { _tag: "internal", protocol: "http", port: 8080, name: "secondary" },
-          { _tag: "internal", protocol: "http", port: 8025, name: "ui", primary: true },
+          { kind: "internal", protocol: "tcp", port: 1025, name: "smtp" },
+          { kind: "internal", protocol: "http", port: 8080, name: "secondary" },
+          { kind: "internal", protocol: "http", port: 8025, name: "ui", primary: true },
         ],
       },
     };

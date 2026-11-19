@@ -44,7 +44,7 @@ describe("valkey ServiceType", () => {
     expect(volumes[0]?.store).toBe("lando-myapp--cache--valkey-data");
     expect(String(volumes[0]?.target)).toBe("/data");
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 6379, protocol: "tcp", name: "cache", primary: true },
+      { kind: "internal", port: 6379, protocol: "tcp", name: "cache", primary: true },
     ]);
     expect(serviceAppMount(plan)).toBeUndefined();
   });

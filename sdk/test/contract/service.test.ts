@@ -113,7 +113,7 @@ describe("runServiceCompositionContract", () => {
             artifact: { kind: "ref", ref: "alpine:3.20" },
             environment: {},
             mounts: [],
-            endpoints: [{ _tag: "internal", port: 8080, protocol: "tcp", name: input.name }],
+            endpoints: [{ kind: "internal", port: 8080, protocol: "tcp", name: input.name }],
             routes: [],
             dependsOn: [],
             hostAliases: [],

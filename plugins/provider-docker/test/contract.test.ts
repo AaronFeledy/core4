@@ -118,7 +118,7 @@ const makeService = (overrides: Partial<Pick<ServicePlan, "command" | "entrypoin
   ],
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: 31080,
       protocol: "http",
       name: "http",
@@ -1597,8 +1597,8 @@ describe("provider-docker RuntimeProvider contract", () => {
     const plan = makePlan({
       ...makeService(),
       endpoints: [
-        { _tag: "published", port: 31080, protocol: "tcp", publication: { hostPort: 31080 } },
-        { _tag: "published", port: 31081, protocol: "udp", publication: { hostPort: 31081 } },
+        { kind: "published", port: 31080, protocol: "tcp", publication: { hostPort: 31080 } },
+        { kind: "published", port: 31081, protocol: "udp", publication: { hostPort: 31081 } },
       ],
     });
     // When

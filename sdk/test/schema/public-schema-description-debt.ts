@@ -41,7 +41,6 @@ export const GRANDFATHERED_SCHEMA_DESCRIPTION_IDS: ReadonlySet<string> = new Set
   "LogSourceInput",
   "LogSourceStream",
   "LogSourceStrategy",
-  "EndpointInput",
   "RouteInput",
   "ToolingVar",
   "ToolingFlagShape",

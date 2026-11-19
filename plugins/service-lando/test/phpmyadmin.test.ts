@@ -215,7 +215,7 @@ describe("phpmyadmin ServiceType", () => {
         expect(plan.type).toBe("phpmyadmin");
         expect(plan.artifact).toEqual({ kind: "ref", ref: image });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 80, protocol: "http", name: "pma", primary: true },
+          { kind: "internal", port: 80, protocol: "http", name: "pma", primary: true },
         ]);
         expect(plan.healthcheck).toEqual({
           kind: "command",
@@ -262,7 +262,7 @@ describe("phpmyadmin ServiceType", () => {
 
         expect(plan.artifact).toEqual({ kind: "ref", ref: "phpmyadmin:custom" });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 8080, protocol: "http", name: "pma", primary: true },
+          { kind: "internal", port: 8080, protocol: "http", name: "pma", primary: true },
         ]);
         expect(plan.command).toEqual(["apache2-foreground"]);
         expect(plan.user).toBe("1000:1000");

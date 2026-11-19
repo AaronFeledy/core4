@@ -138,3 +138,51 @@ test("bounds repeated-comment validation and still accepts a following expressio
   // Then both outcomes complete without runaway backtracking or lost acceptance.
   expect({ exitCode, stdout, stderr }).toEqual({ exitCode: 0, stdout: "16", stderr: "" });
 }, 10_000);
+
+test.each([
+  { endpoints: ["http:80"], accepted: true },
+  { endpoints: ["ui=https:443"], accepted: true },
+  { endpoints: [{ kind: "internal", protocol: "http", port: 80 }], accepted: true },
+  { endpoints: [{ kind: "published", protocol: "tcp", port: 53, publication: {} }], accepted: true },
+  { endpoints: ["{{ env.EP }}"], accepted: true },
+  { endpoints: [{ kind: "internal", protocol: "http", port: "{{ number(env.PORT) }}" }], accepted: true },
+  { endpoints: ["http:0"], accepted: false },
+  { endpoints: ["${EP}"], accepted: true },
+  { endpoints: ["http:{{ env.PORT }}"], accepted: true },
+  { endpoints: [{ _tag: "internal", protocol: "http", port: 80 }], accepted: false },
+  { endpoints: [{ kind: "internal", _tag: "internal", protocol: "http", port: 80 }], accepted: false },
+] as const)("editor endpoint acceptance matches authoring for %j", ({ endpoints, accepted }) => {
+  // Given
+  const input = { name: "demo", services: { web: { endpoints: [...endpoints] } } };
+  const options = { onExcessProperty: "error", errors: "all" } as const;
+  // When
+  const editor = Schema.decodeUnknownResult(editorAuthoring)(input, options);
+  const authoring = Schema.decodeUnknownResult(LandofileAuthoringShape)(input, options);
+  // Then
+  expect(Result.isSuccess(authoring)).toBe(accepted);
+  expect(Result.isSuccess(editor)).toBe(accepted);
+  if (!accepted && Result.isFailure(authoring)) {
+    const paths = validationIssuesFromSchemaIssue(authoring.failure.issue).map((issue) => issue.path);
+    expect(
+      paths.some(
+        (path) => path[0] === "services" && path[1] === "web" && path[2] === "endpoints" && path[3] === 0,
+      ),
+    ).toBe(true);
+  }
+});
+
+test.each([
+  { filters: [{ kind: "stripPrefix", prefix: "/api" }], accepted: true },
+  { filters: [{ type: "stripPrefix", prefix: "/api" }], accepted: false },
+  { filters: [{ kind: "stripPrefix", type: "stripPrefix", prefix: "/api" }], accepted: false },
+] as const)("editor route filter kind acceptance matches authoring for %j", ({ filters, accepted }) => {
+  const input = {
+    name: "demo",
+    services: { web: { routes: [{ hostname: "app.test", filters: [...filters] }] } },
+  };
+  const options = { onExcessProperty: "error", errors: "all" } as const;
+  const editor = Schema.decodeUnknownResult(editorAuthoring)(input, options);
+  const authoring = Schema.decodeUnknownResult(LandofileAuthoringShape)(input, options);
+  expect(Result.isSuccess(authoring)).toBe(accepted);
+  expect(Result.isSuccess(editor)).toBe(accepted);
+});

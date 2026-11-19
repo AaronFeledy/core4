@@ -19,7 +19,7 @@ test.each([true, false])("uses dependency authority only for a failed healthy ga
             intervalSeconds: 0,
             timeoutSeconds: 5,
           },
-          endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+          endpoints: [{ kind: "internal", protocol: "tcp", port: 6380, primary: true }],
           listenerAuthority: { owner: "launcher", daemon: "Redis", port: 6380, setting: "--port 6380" },
         },
         web: {

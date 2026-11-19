@@ -111,6 +111,25 @@ test.each(["*-app.lndo.site", { hostname: "wild.*.app.lndo.site", scheme: "http"
   },
 );
 
+test("a certificate-rejected route cannot supply the listener for a portless sibling", async () => {
+  await withApp(
+    {
+      type: "compose",
+      image: "nginx:alpine",
+      routes: [{ hostname: "wild.*.app.lndo.site", scheme: "both", endpoint: 8080 }, "web.lndo.site"],
+    },
+    async (root) => {
+      const lint = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+      );
+      expect(lint.violations.map(({ rule, path }) => ({ rule, path }))).toEqual([
+        { rule: "landofile.route", path: ["services", "web", "routes", 0, "hostname"] },
+        { rule: "landofile.route", path: ["services", "web", "routes", 1] },
+      ]);
+    },
+  );
+});
+
 test("host alias validation skips blocked and pending expression sites", () => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     services: { web: { extra_hosts: { "bad host": "{{ services.db.creds.user }}" } } },

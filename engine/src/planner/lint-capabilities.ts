@@ -157,7 +157,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
     const publicationError = publicationCapabilityError(provider, capabilities, {
       name,
       published:
-        endpoints?._tag === "Available" && endpoints.value.some((endpoint) => endpoint._tag === "published"),
+        endpoints?._tag === "Available" && endpoints.value.some((endpoint) => endpoint.kind === "published"),
     });
     if (publicationError !== undefined)
       record(publicationError, ["services", name, config.ports === undefined ? "endpoints" : "ports"]);

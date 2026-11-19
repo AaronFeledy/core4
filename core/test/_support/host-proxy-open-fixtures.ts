@@ -50,7 +50,7 @@ export const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan =
           environment: {},
           mounts: [],
           routes: [],
-          endpoints: [{ _tag: "internal", protocol: "http", port: 80, name: "http", primary: true }],
+          endpoints: [{ kind: "internal", protocol: "http", port: 80, name: "http", primary: true }],
           dependsOn: [],
           hostAliases: [],
           metadata,

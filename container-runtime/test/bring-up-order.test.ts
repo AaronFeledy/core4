@@ -110,7 +110,7 @@ test("failed dependency observes its own TCP namespace alongside its logs", asyn
       ...original.services,
       [dbName]: {
         ...db,
-        endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+        endpoints: [{ kind: "internal", protocol: "tcp", port: 6380, primary: true }],
         listenerAuthority: { owner: "launcher", daemon: "Redis", port: 6380, setting: "--port 6380" },
       },
     },
@@ -1154,7 +1154,7 @@ test("bind recovery swaps the start identity to the replacement create id", asyn
         ...db,
         endpoints: [
           {
-            _tag: "published" as const,
+            kind: "published" as const,
             protocol: "tcp" as const,
             port: 5432,
             primary: true,

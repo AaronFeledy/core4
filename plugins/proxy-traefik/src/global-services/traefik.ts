@@ -109,14 +109,14 @@ export const buildTraefikServiceConfig = (ports: TraefikPublishPorts): ServiceCo
     ],
     endpoints: [
       {
-        _tag: "published",
+        kind: "published",
         name: "web",
         protocol: "http",
         port: 80,
         publication: { bindAddress, hostPort: ports.http },
       },
       {
-        _tag: "published",
+        kind: "published",
         name: "websecure",
         protocol: "https",
         port: 443,

@@ -1,7 +1,7 @@
 /**
- * Attach a route filter, replacing an entry with the same identity.
+ * Attach an authored route filter, replacing an entry with the same identity.
  *
- * Named entries match only by `name`. Unnamed entries fall back to `type`.
+ * Named entries match only by `name`. Unnamed entries fall back to `kind`.
  * A named entry never matches an unnamed entry.
  */
 

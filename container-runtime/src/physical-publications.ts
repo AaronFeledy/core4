@@ -12,7 +12,7 @@ export const matchPublicationBindings = (
   endpoints: readonly EndpointPlan[],
   bindings: readonly ObservedPublication[],
 ): ReadonlyMap<string, readonly ObservedPublication[]> => {
-  const publications = endpoints.filter((endpoint) => endpoint._tag === "published");
+  const publications = endpoints.filter((endpoint) => endpoint.kind === "published");
   const candidates = (endpoint: PublishedEndpoint) =>
     bindings.filter(
       (binding) =>
@@ -46,7 +46,7 @@ export const physicalPublications = (endpoints: readonly EndpointPlan[]) => {
     }
   >();
   for (const endpoint of endpoints) {
-    if (endpoint._tag !== "published") continue;
+    if (endpoint.kind !== "published") continue;
     publications.set(physicalPublicationIdentity(endpoint), {
       port: endpoint.port,
       transport: endpoint.protocol === "udp" ? "udp" : "tcp",

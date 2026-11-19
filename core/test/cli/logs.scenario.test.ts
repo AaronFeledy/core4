@@ -87,10 +87,10 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   mounts: [],
   endpoints:
     name === "web"
-      ? [{ _tag: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } }]
+      ? [{ kind: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } }]
       : [
           {
-            _tag: "published",
+            kind: "published",
             port: 5432,
             protocol: "tcp",
             name: "database",

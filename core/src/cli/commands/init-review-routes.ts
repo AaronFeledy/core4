@@ -2,7 +2,13 @@ import { mergeRouterConfig } from "@lando/engine/config/router-config";
 import { connectionUrl } from "@lando/engine/operations/connection-url";
 import { normalizeRoute } from "@lando/landofile/route-normalize";
 import { isPlainRecord } from "@lando/sdk/landofile";
-import { EndpointPlan, RouteInput, RouterConfig, selectHttpEndpoint } from "@lando/sdk/schema";
+import {
+  EndpointInput,
+  type EndpointPlan,
+  RouteInput,
+  RouterConfig,
+  selectHttpEndpoint,
+} from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 import type { RecipeInitReview } from "../../recipes/prepared-init";
 import { INIT_REVIEW_LIMIT, type InitReviewConfig, reviewSites } from "./init-review-sites";
@@ -72,13 +78,13 @@ export const projectInitReviewRoutes = (
         endpointsResolved = false;
       }
       for (const endpoint of endpointInput.slice(0, INIT_REVIEW_LIMIT)) {
-        const fields = site.fields(endpoint, ["protocol", "port", "name", "primary"]);
+        const fields = site.fields(endpoint, ["kind", "protocol", "port", "name", "primary", "socketPath"]);
         // Publication is unrelated to the route's logical backend listener.
-        const decoded = Schema.decodeUnknownResult(EndpointPlan)(
-          isPlainRecord(fields) ? { ...fields, _tag: "internal" } : fields,
+        const decoded = Schema.decodeUnknownResult(EndpointInput, { onExcessProperty: "error" })(
+          isPlainRecord(fields) && fields.kind === "published" ? { ...fields, publication: {} } : fields,
         );
-        if (Result.isSuccess(decoded)) endpoints.push(decoded.success);
-        else endpointsResolved = false;
+        if (Result.isFailure(decoded)) endpointsResolved = false;
+        else if (decoded.success.protocol !== "unix") endpoints.push(decoded.success);
       }
     }
     const routeGroups = [service.routes, isPlainRecord(proxyMap) ? proxyMap[name] : undefined];

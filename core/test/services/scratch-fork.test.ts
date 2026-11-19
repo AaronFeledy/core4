@@ -576,7 +576,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
         expect(
           Object.values(appliedPlans[0]?.services ?? {})
             .flatMap((service) => service.endpoints)
-            .every((endpoint) => endpoint._tag === "internal"),
+            .every((endpoint) => endpoint.kind === "internal"),
         ).toBe(true);
       });
     },
@@ -750,7 +750,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(
         Object.values(applied[0]?.services ?? {})
           .flatMap((service) => service.endpoints)
-          .every((endpoint) => endpoint._tag === "internal"),
+          .every((endpoint) => endpoint.kind === "internal"),
       ).toBe(true);
     });
   });

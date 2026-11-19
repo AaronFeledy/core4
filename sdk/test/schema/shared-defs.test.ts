@@ -8,7 +8,7 @@ test.each([
   [
     "EndpointInput",
     () => Schema.decodeUnknownSync(EndpointInput)(true),
-    'Expected an internal or published endpoint object with "_tag"',
+    "name=protocol:port (for example, ui=http:8080)",
   ],
   [
     "RouteInput",

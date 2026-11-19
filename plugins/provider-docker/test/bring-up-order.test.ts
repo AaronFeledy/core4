@@ -217,7 +217,7 @@ describe("provider-docker bringUp dependency order", () => {
   test("failed healthy dependency uses the shared listener collector", async () => {
     const db = {
       ...healthyDb,
-      endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+      endpoints: [{ kind: "internal", protocol: "tcp", port: 6380, primary: true }],
     } satisfies ServicePlan;
     const plan = planWith([
       db,

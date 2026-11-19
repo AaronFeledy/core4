@@ -8,8 +8,8 @@ import { drive, endpointsOf, httpStatus, publishedEndpoint, requestSequence } fr
 
 const service = ServiceName.make("storage");
 const endpoints: readonly EndpointPlan[] = [
-  { _tag: "internal", protocol: "http", port: 9000, scan: { path: "/minio/health/live", okCodes: [418] } },
-  { _tag: "internal", protocol: "http", port: 9001, scan: { path: "/", okCodes: [] } },
+  { kind: "internal", protocol: "http", port: 9000, scan: { path: "/minio/health/live", okCodes: [418] } },
+  { kind: "internal", protocol: "http", port: 9001, scan: { path: "/", okCodes: [] } },
 ];
 const planned: AppPlan = {
   ...plan,

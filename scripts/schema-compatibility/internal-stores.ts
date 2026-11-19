@@ -288,18 +288,13 @@ export type InternalPersistedStoreId = (typeof INTERNAL_PERSISTED_STORES)[number
 export const UNREGISTERED_DURABLE_BUCKETS: ReadonlyArray<BucketSite & { readonly reason: string }> = [
   {
     file: "container-runtime/src/applied-state.ts",
-    schema: "AppPlan",
+    schema: "AppliedPlan",
     reason: "Guarded as the published applied-state store through the AppPlan schema surface.",
   },
   {
     file: "container-runtime/src/applied-state.ts",
     schema: "AppliedPlans",
     reason: "Record of AppPlan values; guarded as the published applied-state store.",
-  },
-  {
-    file: "core/src/cli/commands/list-prune-state.ts",
-    schema: "AppliedPlans",
-    reason: "Prune-only reader of the applied-state store; discards what it cannot decode.",
   },
   {
     file: "core/src/cli/commands/list-prune-state.ts",

@@ -171,7 +171,7 @@ export const copyInspectHostPorts = (
 ): ReadonlyArray<EndpointPlan> => {
   const matches = matchPublicationBindings(endpoints, inspectPublicationBindings(inspect));
   return endpoints.map((endpoint) => {
-    if (endpoint._tag !== "published" || endpoint.publication.hostPort !== undefined) return endpoint;
+    if (endpoint.kind !== "published" || endpoint.publication.hostPort !== undefined) return endpoint;
     const hostPort = matches.get(physicalPublicationIdentity(endpoint))?.[0]?.hostPort;
     return hostPort === undefined ? endpoint : withHostPort(endpoint, hostPort);
   });
@@ -180,7 +180,7 @@ export const copyInspectHostPorts = (
 const assignedHostPorts = (endpoints: ReadonlyArray<EndpointPlan>): ReadonlySet<number> => {
   const ports = new Set<number>();
   for (const endpoint of endpoints) {
-    if (endpoint._tag !== "published") continue;
+    if (endpoint.kind !== "published") continue;
     const hostPort = endpoint.publication.hostPort;
     if (hostPort !== undefined) ports.add(hostPort);
   }
@@ -214,7 +214,7 @@ export const probeUnpinnedServicePublishPorts = Effect.fnUntraced(function* (
   const assigned: EndpointPlan[] = [];
   const allocations = new Map<string, number>();
   for (const endpoint of endpoints) {
-    if (endpoint._tag !== "published" || endpoint.publication.hostPort !== undefined) {
+    if (endpoint.kind !== "published" || endpoint.publication.hostPort !== undefined) {
       assigned.push(endpoint);
       continue;
     }

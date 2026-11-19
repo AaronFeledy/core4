@@ -33,7 +33,7 @@ export const documentSet = (
     writableLayerIds: ["base", "dist", "upstream", "canonical", "local", "user"],
   });
 
-export const fakeDecomposers = (nested = false, withEndpoint = false) => {
+export const fakeDecomposers = (nested = false, withEndpoint: boolean | "scalar" = false) => {
   const calls: RecipeDecomposeInput[] = [];
   const receivedPorts: RecipeDecomposerPorts[] = [];
   const results: RecipeDecomposeResult[] = [];
@@ -75,7 +75,12 @@ export const fakeDecomposers = (nested = false, withEndpoint = false) => {
                         appserver: {
                           image: "php:8.3",
                           ...(withEndpoint
-                            ? { endpoints: [{ _tag: "internal", protocol: "http", port: 80 }] }
+                            ? {
+                                endpoints:
+                                  withEndpoint === "scalar"
+                                    ? ["http:80"]
+                                    : [{ kind: "internal", protocol: "http", port: 80 }],
+                              }
                             : {}),
                         },
                         ...(input.options.redis === true ? { redis: { image: "redis:7" } } : {}),

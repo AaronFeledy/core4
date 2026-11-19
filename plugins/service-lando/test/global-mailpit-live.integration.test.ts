@@ -62,9 +62,9 @@ const mailpitService = (): ServicePlan => ({
   environment: {},
   mounts: [],
   endpoints: [
-    { _tag: "internal", port: MAILPIT_SMTP_PORT, protocol: "tcp", name: "smtp" },
+    { kind: "internal", port: MAILPIT_SMTP_PORT, protocol: "tcp", name: "smtp" },
     {
-      _tag: "published",
+      kind: "published",
       port: MAILPIT_WEB_PORT,
       protocol: "http",
       name: "web",

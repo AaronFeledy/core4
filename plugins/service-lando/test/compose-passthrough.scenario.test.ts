@@ -219,7 +219,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
     expect(whoami.artifact).toEqual({ kind: "ref", ref: "traefik/whoami:v1.10" });
     expect(whoami.endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         port: 80,
         protocol: "tcp",
         publication: { hostPort: 8080 },
@@ -306,7 +306,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
     expect(sidekick.environment.LANDO_HOST_IP).toBe("host.lando.internal");
     expect(sidekick.endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         port: 80,
         protocol: "tcp",
         publication: { hostPort: 9090 },

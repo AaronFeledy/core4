@@ -1,14 +1,15 @@
-import { isLegacyTagged, parseRouteHostname } from "@lando/sdk/landofile";
-import type { RouteFilter, RouteObjectInput } from "@lando/sdk/schema";
-import { Result } from "effect";
+import { isLegacyTagged, mergeLandofiles, parseRouteHostname } from "@lando/sdk/landofile";
+import { EndpointInput, type RouteFilter, type RouteObjectInput } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 import { resolveCatalogType } from "./catalog.ts";
 import type { Lando3Path, Lando3TranslatorPorts } from "./contract.ts";
 import { type V4Wire, hasPlainObjectPrototype } from "./lowering-contract.ts";
 import { type Report, lowerText } from "./lowering-report.ts";
 
 const expression = (text: string) => text.includes("{{") || text.includes("${");
+type RouteWire = typeof RouteObjectInput.Encoded;
 
-const parseRoute = (value: unknown): RouteObjectInput | undefined => {
+const parseRoute = (value: unknown): RouteWire | undefined => {
   if (isLegacyTagged(value)) return undefined;
   const object = hasPlainObjectPrototype(value) ? value : undefined;
   const text = typeof value === "string" ? value : object?.hostname;
@@ -36,7 +37,7 @@ const parseRoute = (value: unknown): RouteObjectInput | undefined => {
     hostname,
     scheme: "both",
     ...(port === undefined ? {} : { endpoint: Number(port) }),
-    ...(prefix === "/" ? {} : { pathPrefix: prefix, filters: [{ type: "stripPrefix", prefix }] }),
+    ...(prefix === "/" ? {} : { pathPrefix: prefix, filters: [{ kind: "stripPrefix", prefix }] }),
   };
 };
 
@@ -45,7 +46,7 @@ interface Middleware {
   readonly path: Lando3Path;
 }
 interface RouteGroup {
-  readonly route: RouteObjectInput;
+  readonly route: RouteWire;
   readonly middlewares: Map<string | symbol, Middleware>;
 }
 
@@ -73,14 +74,14 @@ const lowerMiddleware = ({ value, path }: Middleware, report: Report): RouteFilt
   const text = lowerText(String(raw), [...path, "value"], report);
   if (typeof text !== "string") return undefined;
   return {
-    type: match?.[1]?.toLowerCase() === "request" ? "requestHeader" : "responseHeader",
+    kind: match?.[1]?.toLowerCase() === "request" ? "requestHeader" : "responseHeader",
     name,
     header,
     value: text,
   };
 };
 
-const emitRoutes = (group: RouteGroup, report: Report): readonly RouteObjectInput[] => {
+const emitRoutes = (group: RouteGroup, report: Report): readonly RouteWire[] => {
   const plain: RouteFilter[] = [...(group.route.filters ?? [])];
   const secured: RouteFilter[] = [];
   for (const middleware of group.middlewares.values()) {
@@ -125,7 +126,7 @@ export const lowerProxy = (value: unknown, report: Report): { readonly fragment:
     );
     return { fragment: {} };
   }
-  const proxy = new Map<string, readonly RouteObjectInput[]>();
+  const proxy = new Map<string, readonly RouteWire[]>();
   for (const [service, entries] of Object.entries(value)) {
     if (!Array.isArray(entries)) {
       report(
@@ -191,20 +192,22 @@ export const lowerProxy = (value: unknown, report: Report): { readonly fragment:
 };
 
 const LANDO3_DEFAULT_ROUTE_PORT = 80;
+const decodeEndpoint = Schema.decodeUnknownResult(EndpointInput, { onExcessProperty: "error" });
 
-const servedPorts = (
+const servedHttpPorts = (
   service: V4Wire,
   serviceFacts: Lando3TranslatorPorts["serviceFacts"],
 ): ReadonlySet<number> => {
   const ports = new Set<number>();
   for (const endpoint of Array.isArray(service.endpoints) ? service.endpoints : []) {
+    const result = decodeEndpoint(endpoint);
     if (
-      hasPlainObjectPrototype(endpoint) &&
-      typeof endpoint.port === "number" &&
-      /^https?$/.test(String(endpoint.protocol))
+      Result.isSuccess(result) &&
+      (result.success.protocol === "http" || result.success.protocol === "https")
     )
-      ports.add(endpoint.port);
+      ports.add(result.success.port);
   }
+  if (Array.isArray(service.endpoints)) return ports;
   const resolution =
     typeof service.type === "string" ? resolveCatalogType(service.type, serviceFacts) : undefined;
   if (resolution?._tag === "resolved" && resolution.id !== "compose" && resolution.id !== "lando") {
@@ -222,11 +225,11 @@ const servedPorts = (
 
 /**
  * Lando 3 sent a route to any container port and spoke HTTP to it, defaulting
- * to port 80. A Lando 4 route must land on a declared HTTP endpoint, so each
- * converted service gains an internal HTTP endpoint for every routed port it
- * does not already serve.
+ * to port 80. Lando 4 binds routes with numeric selectors; when a known service
+ * has no served HTTP(S) listener, portless routes get `endpoint: 80`. Authored
+ * selectors stay on the route.
  */
-export const declareRouteEndpoints = (
+export const bindPortlessRouteDefaults = (
   fragment: V4Wire,
   services: Map<string, V4Wire>,
   report: Report,
@@ -240,38 +243,31 @@ export const declareRouteEndpoints = (
     if (!Array.isArray(routes)) continue;
     const authored = services.get(name);
     const recipe = options.external.get(name);
-    // Endpoint objects have no merge identity, so a new array on an authored
-    // override replaces the recipe service's endpoints. Append to an array
-    // that already wins, otherwise to the recipe service itself.
-    const service =
-      authored !== undefined && Array.isArray(authored.endpoints)
-        ? authored
-        : recipe !== undefined && (Array.isArray(recipe.endpoints) || authored === undefined)
-          ? recipe
-          : authored;
-    if (service === undefined) continue;
-    const served = servedPorts(service, options.serviceFacts);
-    const catalogServed = served.size > 0;
-    const added: number[] = [];
-    for (const route of routes) {
-      const port =
-        hasPlainObjectPrototype(route) && typeof route.endpoint === "number" ? route.endpoint : undefined;
-      if (port === undefined && catalogServed) continue;
-      const wanted = port ?? LANDO3_DEFAULT_ROUTE_PORT;
-      if (served.has(wanted) || added.includes(wanted)) continue;
-      added.push(wanted);
-    }
-    if (added.length === 0) continue;
-    const existing = Array.isArray(service.endpoints) ? service.endpoints : [];
-    const endpoints = [...existing, ...added.map((port) => ({ _tag: "internal", protocol: "http", port }))];
-    // Copy onto this layer. Mutating a recipe or already-converted service would
-    // either change a shared fragment or a caller's established layer.
-    services.set(name, { ...(authored ?? {}), endpoints });
-    report(
-      "generated",
-      ["proxy", name],
-      `Declared internal HTTP endpoints on port ${added.join(", ")} of ${name} for its routes; Lando 3 routed to container ports directly.`,
-      `Review services.${name}.endpoints; change the protocol if the port does not speak HTTP.`,
-    );
+    // Unknown or blocked services keep existing diagnostics; do not guess a port.
+    if (authored === undefined && recipe === undefined) continue;
+    const { services: effective } = mergeLandofiles([
+      { services: { [name]: recipe ?? {} } },
+      { services: { [name]: authored ?? {} } },
+    ]);
+    const service = hasPlainObjectPrototype(effective) ? effective[name] : undefined;
+    if (!hasPlainObjectPrototype(service)) continue;
+    const served = servedHttpPorts(service, options.serviceFacts);
+    // Known HTTP(S) keeps portless selection on the catalog/authored default.
+    if (served.size > 0) continue;
+    let defaulted = false;
+    routes.forEach((entry, index) => {
+      if (!hasPlainObjectPrototype(entry) || entry.endpoint !== undefined) return;
+      routes[index] = { ...entry, endpoint: LANDO3_DEFAULT_ROUTE_PORT };
+      defaulted = true;
+    });
+    // One diagnostic at the service proxy entry: split scheme halves share that owner,
+    // and synthetic indices after a secure-filter split have no authored span.
+    if (defaulted)
+      report(
+        "generated",
+        ["proxy", name],
+        `Set portless route endpoints to port ${LANDO3_DEFAULT_ROUTE_PORT} on ${name}; Lando 3 defaulted portless routes to container port 80.`,
+        `Review proxy.${name} route endpoint values if the service listens on a different port.`,
+      );
   }
 };

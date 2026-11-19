@@ -110,7 +110,7 @@ describe("python:3.12 ServiceType", () => {
     ).toEqual([]);
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 8000, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 8000, protocol: "http", name: "web", primary: true },
     ]);
 
     expect(plan.healthcheck).toBeUndefined();
@@ -140,7 +140,7 @@ describe("python:3.12 ServiceType", () => {
     const plan = await composePythonPlan(python312ServiceType, { type: "python:3.12", framework: "django" });
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 8000, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 8000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
@@ -156,7 +156,7 @@ describe("python:3.12 ServiceType", () => {
     expect(plan.environment.UVICORN_HOST).toBe("0.0.0.0");
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 8000, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 8000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
@@ -170,7 +170,7 @@ describe("python:3.12 ServiceType", () => {
     const plan = await composePythonPlan(python312ServiceType, { type: "python:3.12", framework: "flask" });
 
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 5000, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 5000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
@@ -217,7 +217,7 @@ describe("python:3.12 ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/python:3.12-custom" });
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 9000, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 9000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.extensions["lando-service-python"]).toMatchObject({ port: 9000 });

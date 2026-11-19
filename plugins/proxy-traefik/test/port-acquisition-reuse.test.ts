@@ -414,7 +414,7 @@ describe("persistPortAcquisition reuse", () => {
     expect(fingerprint.bindAddress).toBe("127.0.0.1");
     expect(
       (published.endpoints ?? [])
-        .filter((endpoint) => endpoint._tag === "published")
+        .filter((endpoint) => endpoint.kind === "published")
         .map((endpoint) => endpoint.publication.bindAddress),
     ).toEqual(["127.0.0.1", "127.0.0.1"]);
   });
@@ -820,7 +820,7 @@ describe("bind narrowing on start and setup", () => {
     expect(fingerprint.bindAddress).toBe("127.0.0.1");
     expect(
       (published.endpoints ?? [])
-        .filter((endpoint) => endpoint._tag === "published")
+        .filter((endpoint) => endpoint.kind === "published")
         .map((endpoint) => endpoint.publication.bindAddress),
     ).toEqual(["127.0.0.1", "127.0.0.1"]);
   });

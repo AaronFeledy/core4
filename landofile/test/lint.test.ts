@@ -69,7 +69,7 @@ describe("lintLandofile", () => {
   test("accepts filters on object routes", async () => {
     // Given
     await write(
-      "name: routes\nservices:\n  web:\n    routes:\n      - hostname: app.lndo.site\n        filters:\n          - type: requestHeader\n            name: identity\n            header: X-Test\n            value: yes\nproxy:\n  api:\n    - hostname: api.lndo.site\n      filters:\n        - type: stripPrefix\n          prefix: /api\n",
+      "name: routes\nservices:\n  web:\n    routes:\n      - hostname: app.lndo.site\n        filters:\n          - kind: requestHeader\n            name: identity\n            header: X-Test\n            value: yes\nproxy:\n  api:\n    - hostname: api.lndo.site\n      filters:\n        - kind: stripPrefix\n          prefix: /api\n",
     );
     // When
     const result = await Effect.runPromise(lintLandofile({ cwd: dir }));

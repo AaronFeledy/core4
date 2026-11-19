@@ -44,10 +44,7 @@ const mailpitServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   // Internal endpoints: SMTP is reached over the shared cross-app network,
   // and the web UI is reached through Traefik's hostname route below —
   // neither needs a host-published port.
-  endpoints: [
-    { _tag: "internal", port: MAILPIT_SMTP_PORT, protocol: "tcp" },
-    { _tag: "internal", port: MAILPIT_WEB_PORT, protocol: "http" },
-  ],
+  endpoints: [`tcp:${MAILPIT_SMTP_PORT}`, `http:${MAILPIT_WEB_PORT}`],
   hostnames: [MAILPIT_SHARED_NETWORK_HOST],
   routes: [{ hostname: MAILPIT_DASHBOARD_HOSTNAME_EXPRESSION, endpoint: MAILPIT_WEB_PORT }],
   environment: {},

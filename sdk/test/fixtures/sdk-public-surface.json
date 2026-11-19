@@ -124,8 +124,8 @@
   ],
   "featureEffectiveValidation": "readonly validateEffective?: (ctx: ServiceEndpointContext) => Effect.Effect<ServiceFeatureValidationResult, ServiceFeatureError>",
   "featureEndpointDeclarations": {
-    "ServiceFeatureDefinition": "readonly declareEndpoints?: (ctx: ServiceEndpointContext) => Effect.Effect<readonly EndpointPlan[], ServiceFeatureError>",
-    "AppFeatureDefinition": "readonly declareEndpoints?: (ctx: AppEndpointDeclarationContext) => Effect.Effect<Readonly<Record<string, readonly EndpointPlan[]>>, AppFeatureError>"
+    "ServiceFeatureDefinition": "readonly declareEndpoints?: (ctx: ServiceEndpointContext) => Effect.Effect<readonly (typeof EndpointDeclaration.Encoded)[], ServiceFeatureError>",
+    "AppFeatureDefinition": "readonly declareEndpoints?: (ctx: AppEndpointDeclarationContext) => Effect.Effect<Readonly<Record<string, readonly (typeof EndpointDeclaration.Encoded)[]>>, AppFeatureError>"
   },
   "serviceTags": {
     "AppPlanner": [
@@ -1461,6 +1461,7 @@
       "EmbeddingPluginDiscoveryPolicy",
       "EmbeddingPluginPolicy",
       "EmbeddingPluginPolicyMode",
+      "EndpointDeclaration",
       "EndpointInput",
       "EndpointInvariantIssue",
       "EndpointPlan",
@@ -1777,7 +1778,7 @@
       "RouteBackendTls",
       "RouteEvidence",
       "RouteFilter",
-      "RouteFilterType",
+      "RouteFilterKind",
       "RouteHostname",
       "RouteInput",
       "RouteObjectInput",

@@ -38,9 +38,9 @@ test("creates only internal endpoints when expose is authored", async () => {
 
   // Then
   expect(plan.endpoints).toEqual([
-    { _tag: "internal", port: 3000, protocol: "tcp" },
-    { _tag: "internal", port: 4000, protocol: "tcp" },
-    { _tag: "internal", port: 4001, protocol: "tcp" },
+    { kind: "internal", port: 3000, protocol: "tcp" },
+    { kind: "internal", port: 4000, protocol: "tcp" },
+    { kind: "internal", port: 4001, protocol: "tcp" },
   ]);
 });
 
@@ -53,8 +53,8 @@ test("keeps range-expanded published port endpoints unnamed", async () => {
 
   // Then
   expect(plan.endpoints).toEqual([
-    { _tag: "published", port: 8080, protocol: "tcp", publication: {} },
-    { _tag: "published", port: 8081, protocol: "tcp", publication: {} },
+    { kind: "published", port: 8080, protocol: "tcp", publication: {} },
+    { kind: "published", port: 8081, protocol: "tcp", publication: {} },
   ]);
 });
 
@@ -65,12 +65,12 @@ test("prefers explicit endpoints over both ports and expose", async () => {
     image: "alpine:3",
     ports: ["8080:80"],
     expose: [3000],
-    endpoints: [{ _tag: "internal", name: "web", protocol: "http", port: 80 }],
+    endpoints: [{ kind: "internal", name: "web", protocol: "http", port: 80 }],
   };
 
   // When
   const plan = await planService(service);
 
   // Then
-  expect(plan.endpoints).toEqual([{ _tag: "internal", name: "web", protocol: "http", port: 80 }]);
+  expect(plan.endpoints).toEqual([{ kind: "internal", name: "web", protocol: "http", port: 80 }]);
 });

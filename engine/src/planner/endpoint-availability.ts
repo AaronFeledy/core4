@@ -11,7 +11,7 @@ export type Availability<T> =
 
 export interface ServiceEndpointProjection {
   readonly preparation: Availability<PreparedServiceComposition>;
-  readonly contributions: Availability<readonly EndpointPlan[]>;
+  readonly contributions: Availability<readonly EndpointPlan[]> & { readonly value: readonly EndpointPlan[] };
   readonly endpoints: Availability<readonly EndpointPlan[]>;
 }
 
@@ -54,10 +54,13 @@ export const blockContributions = (
     if (row === undefined) continue;
     rows.set(name, {
       ...row,
-      contributions: unavailable([
-        ...(row.contributions._tag === "Unavailable" ? row.contributions.reasons : []),
-        ...reasons,
-      ]),
+      contributions: {
+        ...unavailable([
+          ...(row.contributions._tag === "Unavailable" ? row.contributions.reasons : []),
+          ...reasons,
+        ]),
+        value: row.contributions.value,
+      },
     });
   }
 };

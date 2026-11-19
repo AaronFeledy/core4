@@ -235,7 +235,7 @@ const fakeServiceType = makeLegacyServiceTypeFake({
         },
       ],
       endpoints: [
-        { _tag: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
+        { kind: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
       ],
       routes: [],
       dependsOn:

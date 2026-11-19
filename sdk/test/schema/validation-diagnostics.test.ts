@@ -95,12 +95,12 @@ test.each([
 });
 
 test.each([
-  { type: "stripPrefix", prefix: 5 },
-  { type: "addPrefix", prefix: 5 },
-  { type: "requestHeader", header: "X-Test", value: 5 },
-  { type: "responseHeader", header: "X-Test", value: 5 },
-  { type: "redirect", to: 5 },
-  { type: "noSuchFilter" },
+  { kind: "stripPrefix", prefix: 5 },
+  { kind: "addPrefix", prefix: 5 },
+  { kind: "requestHeader", header: "X-Test", value: 5 },
+  { kind: "responseHeader", header: "X-Test", value: 5 },
+  { kind: "redirect", to: 5 },
+  { kind: "noSuchFilter" },
 ])("reports only the selected route-filter member for %j", (filter) => {
   // Given
   const input = { services: { web: { routes: [{ hostname: "web.test", filters: [filter] }] } } };

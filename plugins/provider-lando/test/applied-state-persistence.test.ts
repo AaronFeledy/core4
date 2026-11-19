@@ -68,14 +68,14 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
     name === "web"
       ? [
           {
-            _tag: "published",
+            kind: "published",
             port: 3000,
             protocol: "http",
             name: "http",
             publication: { bindAddress: "127.0.0.1", hostPort: 3000 },
           },
         ]
-      : [{ _tag: "internal", port: 5432, protocol: "tcp", name: "database" }],
+      : [{ kind: "internal", port: 5432, protocol: "tcp", name: "database" }],
   routes: [],
   dependsOn:
     name === "web"
@@ -296,15 +296,18 @@ describe("provider-lando applied state persistence", () => {
       expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({
         status: "unreadable",
         path: appliedPlanPath(stateDir, plan.id),
+        detail: { coordinate: "envelope", expectedVersion: APPLIED_STATE_VERSION, foundVersion: null },
       });
       await writeFile(path, JSON.stringify({ version: 99, data: {} }));
       expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({
         status: "unreadable",
         path: appliedPlanPath(stateDir, plan.id),
+        detail: { coordinate: "version", expectedVersion: APPLIED_STATE_VERSION, foundVersion: 99 },
       });
       expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({
         status: "unreadable",
         path: appliedPlanPath(stateDir, plan.id),
+        detail: { coordinate: "version", expectedVersion: APPLIED_STATE_VERSION, foundVersion: 99 },
       });
     });
   });

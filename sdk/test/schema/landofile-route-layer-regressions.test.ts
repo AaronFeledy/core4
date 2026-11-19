@@ -107,7 +107,7 @@ test("merges identical templated object identities without dropping inherited fi
   const local = {
     hostname,
     pathPrefix: "{{ app.path }}",
-    filters: [{ type: "stripPrefix", prefix: "/api" }],
+    filters: [{ kind: "stripPrefix", prefix: "/api" }],
   };
   // When the local layer adds filters.
   const merged = mergeValues(ServiceConfig, [inherited], [local], ["routes"]);
@@ -132,7 +132,7 @@ test.each([
 ])("matches templated shorthand against its object spelling %j", ({ host, path }) => {
   // Given whitespace and grammar punctuation contained only inside template spans.
   const shorthand = `${host}:8080${path}`;
-  const local = { hostname: host, pathPrefix: path, filters: [{ type: "addPrefix", prefix: "/local" }] };
+  const local = { hostname: host, pathPrefix: path, filters: [{ kind: "addPrefix", prefix: "/local" }] };
   // When the matching overlay promotes the shorthand.
   const merged = mergeValues(ServiceConfig, [shorthand], [local], ["routes"]);
   // Then the original slices and inherited backend survive promotion.
@@ -177,7 +177,7 @@ test.each([
   expect(merged).toEqual([{ [key]: "${IDENTITY}", inherited: true, local: true }, { [key]: "stable" }]);
 });
 
-test.each(["name", "type"])("matches a literal template filter %s", (key) => {
+test.each(["name", "kind"])("matches a literal template filter %s", (key) => {
   // Given a named or unnamed template filter identity.
   const inherited = [{ [key]: "{{ filter.identity }}", inherited: true }, { [key]: "stable" }];
   const local = [{ [key]: "{{ filter.identity }}", local: true }];

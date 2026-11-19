@@ -29,6 +29,7 @@ export interface ComposeServiceInput {
   readonly appName?: string | undefined;
   readonly dataName?: string | undefined;
   readonly appSlug: string;
+  readonly featureOwners?: ReadonlyMap<string, string>;
   readonly appRoot: ServiceFeatureContext["appRoot"];
   readonly host?: ServiceFeatureContext["host"];
   readonly normalizedConfig: ServiceConfig;

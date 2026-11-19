@@ -64,8 +64,8 @@ const routes: ReadonlyArray<RoutePlan> = [
     service: backend.service,
     pathPrefix: "/api",
     filters: [
-      { type: "stripPrefix", prefix: "/api" },
-      { type: "responseHeader", header: "X-Lando-Route", value: "filtered" },
+      { kind: "stripPrefix", prefix: "/api" },
+      { kind: "responseHeader", header: "X-Lando-Route", value: "filtered" },
     ],
     backend,
   },
@@ -106,7 +106,7 @@ const nginxService: ServicePlan = {
   mounts: [],
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: BACKEND_PORT,
       protocol: "http",
       name: "web",
@@ -151,7 +151,7 @@ const traefikService: ServicePlan = {
   mounts: [],
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: TRAEFIK_WEB_PORT,
       protocol: "http",
       name: "web",

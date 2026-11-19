@@ -81,8 +81,8 @@ describe("generated Apache native TLS", () => {
     const plan = await composePhp({ type: "php:8.3", via: "apache", certs: true });
     // Then
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
-      { _tag: "internal", port: 443, protocol: "https", name: "web-https" },
+      { kind: "internal", port: 80, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 443, protocol: "https", name: "web-https" },
     ]);
   });
 
@@ -164,7 +164,7 @@ describe("generated Apache native TLS", () => {
     const plan = await composePhp({ type: "php:8.3", via: "apache", certs: true, port: 443 });
     // Then
     expect(plan.endpoints).toContainEqual({
-      _tag: "internal",
+      kind: "internal",
       port: 8443,
       protocol: "https",
       name: "web-https",
@@ -182,8 +182,8 @@ describe("generated Apache native TLS", () => {
     const plan = await composeApache({ type: "apache", certs: true });
     // Then
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
-      { _tag: "internal", port: 443, protocol: "https", name: "web-https" },
+      { kind: "internal", port: 80, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 443, protocol: "https", name: "web-https" },
     ]);
     const directives = apacheDirectives(plan);
     expect(directives).toContain("Listen 443");
@@ -205,7 +205,7 @@ describe("generated Apache native TLS", () => {
     });
     // Then
     expect(plan.endpoints).toContainEqual({
-      _tag: "internal",
+      kind: "internal",
       port: 443,
       protocol: "https",
       name: "web-https",
@@ -218,7 +218,7 @@ describe("generated Apache native TLS", () => {
     const plan = await composeApache({ type: "apache" });
     // Then
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 80, protocol: "http", name: "web", primary: true },
     ]);
     expect(apacheDirectives(plan)).not.toContain("SSLEngine on");
     expect(buildStepIds(plan)).not.toContain(APACHE_SSL_MODULE_BUILD_STEP_ID);
