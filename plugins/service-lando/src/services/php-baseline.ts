@@ -15,9 +15,11 @@ export const PHP_SECURITY_BASELINE: ReadonlyArray<PhpSecurityBaselineEntry> = [
   {
     setting: "session.upload_progress.enabled",
     value: "0",
-    reason: "php.net 2026-10-23 advisory for CVE-2026-115560; no patched release yet",
+    reason:
+      "php.net 2026-10-23 advisory for CVE-2026-115560 (GHSA-658j-r8rw-q6mx); fixed in 8.6.0, 8.5.13, 8.4.28, 8.3.37, and 8.2.36; 8.1 has no fix",
     advisoryUrl: "https://www.php.net/archive/2026.php#2026-10-23-1",
-    removeWhen: "next php.net bugfix release that fixes CVE-2026-115560 on every supported line",
+    removeWhen:
+      "8.1 is patched or leaves SUPPORTED_PHP_VERSIONS, and every remaining catalog Hub tag is guaranteed to resolve to a patched base",
   },
 ];
 

@@ -151,7 +151,9 @@ build key, so the next `lando start` rebuilds that image. Bare `restart` also st
 
 Stock PHP services write `/usr/local/etc/php/conf.d/10-lando-baseline.ini` during the image build. Custom images and replacement context builds skip that file. An authored startup command alone keeps the stock image's baseline.
 
-The current baseline sets `session.upload_progress.enabled = 0` on stock Apache, FPM, and CLI images, following the [php.net 23 Oct 2026 informational advisory](https://www.php.net/archive/2026.php#2026-10-23-1) for CVE-2026-115560. The risk requires upload progress to be enabled, `session.serialize_handler` configured as `php_binary` or `php_serialize`, and application code that switches it to `php` with `ini_set()` before `session_start()`. This mitigation does not replace installing PHP security updates. See [Pick up a PHP security release](./php-security-updates.mdx).
+The current baseline sets `session.upload_progress.enabled = 0` on every catalog PHP version (stock Apache, FPM, and CLI images), following the [php.net 23 Oct 2026 informational advisory](https://www.php.net/archive/2026.php#2026-10-23-1) for CVE-2026-115560 (GHSA-658j-r8rw-q6mx). The risk requires upload progress to be enabled, `session.serialize_handler` configured as `php_binary` or `php_serialize`, and application code that switches it to `php` with `ini_set()` before `session_start()`.
+
+PHP 8.6.0, 8.5.13, 8.4.28, 8.3.37, and 8.2.36 include the fix. 8.1 has no patch, so the baseline stays on every catalog line until 8.1 is patched or leaves the catalog, and until patched Hub bases are guaranteed. Existing 8.2+ apps pick up those patched images on `lando rebuild` or when the weekly start-time registry check is due. A custom `image:` is not on that check. This mitigation does not replace installing PHP security updates. See [Pick up a PHP security release](./php-security-updates.mdx).
 
 What you lose: PHP session upload progress. Some apps use that feature for session-based upload progress bars. Those bars stop updating until you override the setting.
 
