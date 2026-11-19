@@ -28,6 +28,9 @@
     "@lando/sdk": "workspace:*",
     "effect": "catalog:"
   },
+  "devDependencies": {
+    "@lando/engine": "workspace:*"
+  },
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",

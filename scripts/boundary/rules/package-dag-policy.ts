@@ -148,7 +148,9 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   "@lando/file-sync-mutagen": {
     // Mutagen failures carry a bounded stderr tail built by the canonical diagnostic redactor.
     dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction"],
-    devDependencies: [],
+    devDependencies: PLUGIN_TEST_TARGETS,
+    // The live client suite provisions the pinned Mutagen through the real downloader.
+    testTargets: [...PLUGIN_RUNTIME_TARGETS, ...PLUGIN_TEST_TARGETS, "@lando/http-client"],
   },
   "@lando/notify-lando": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/github-actions": {

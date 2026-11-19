@@ -225,8 +225,6 @@ jobs:
 
       - name: Run file-sync contract matrix (linux-x64)
         run: bun run test:selection nightly-file-sync
-        env:
-          LANDO_TEST_FILE_SYNC_LIVE: "1"
 
   file-sync-contract-darwin-arm64:
     runs-on: macos-15
@@ -253,8 +251,6 @@ jobs:
 
       - name: Run file-sync contract matrix (darwin-arm64)
         run: bun run test:selection nightly-file-sync
-        env:
-          LANDO_TEST_FILE_SYNC_LIVE: "1"
 
   file-sync-contract-darwin-x64:
     runs-on: macos-15-intel
@@ -281,8 +277,6 @@ jobs:
 
       - name: Run file-sync contract matrix (darwin-x64)
         run: bun run test:selection nightly-file-sync
-        env:
-          LANDO_TEST_FILE_SYNC_LIVE: "1"
 
   file-sync-contract-windows-x64:
     runs-on: windows-2022
@@ -309,8 +303,6 @@ jobs:
 
       - name: Run file-sync contract matrix (windows-x64)
         run: bun run test:selection nightly-file-sync
-        env:
-          LANDO_TEST_FILE_SYNC_LIVE: "1"
 
   provider-lando-e2e-linux-x64:
     needs: [container-helper, runtime-bundle-linux-x64]
