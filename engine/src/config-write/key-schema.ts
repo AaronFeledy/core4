@@ -1,12 +1,12 @@
 import { ConfigKeyNotFoundError } from "@lando/sdk/errors";
 import {
   ConfigKeyDescription,
+  type ValidationIssuePath,
   describeJsonSchemaPath,
   formatValidationIssuePath,
   getJsonSchema,
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
-import { parsePathSegments } from "./dot-path.ts";
 import { parseConfigPath } from "./write-core.ts";
 
 export type ConfigSchemaName = "GlobalConfig" | "LandofileShape";
@@ -32,25 +32,18 @@ const documentFor = (name: ConfigSchemaName) => {
   return document;
 };
 
-const descriptionFor = (name: ConfigSchemaName, key: string | undefined, documentLabel: string) => {
-  // An empty selector names the document root, the same as an omitted one.
-  const parsed = key === undefined || key === "" ? Result.succeed([]) : parseConfigPath(key, documentLabel);
-  return Result.flatMap(parsed, (segments) =>
-    describeJsonSchemaPath(
-      documentFor(name),
-      segments.map((segment) => (segment.kind === "key" ? segment.key : segment.index)),
-    ),
-  );
-};
+const descriptionFor = (name: ConfigSchemaName, path: ValidationIssuePath) =>
+  describeJsonSchemaPath(documentFor(name), path);
 
 export const describeConfigKey = Effect.fn("Config.describeKey")(function* (
   kind: ConfigDocumentKind,
   key: string | undefined,
 ) {
   const document = CONFIG_DOCUMENTS[kind];
-  const description = descriptionFor(document.schema, key, document.label);
+  const path =
+    key === undefined || key === "" ? [] : yield* Effect.fromResult(parseConfigPath(key, document.label));
+  const description = descriptionFor(document.schema, path);
   if (Result.isSuccess(description)) return description.success;
-  if ("_tag" in description.failure) return yield* Effect.fail(description.failure);
   const { parent, ...failure } = description.failure;
   const parentKey = formatValidationIssuePath(parent);
   return yield* Effect.fail(
@@ -64,20 +57,18 @@ export const describeConfigKey = Effect.fn("Config.describeKey")(function* (
   );
 });
 
-export const configKeySummary = (name: ConfigSchemaName, key: string): string | undefined => {
-  const parsed = descriptionFor(name, key, name);
+export const configKeySummary = (name: ConfigSchemaName, path: ValidationIssuePath): string | undefined => {
+  const parsed = descriptionFor(name, path);
   return Result.isSuccess(parsed) ? parsed.success.summary : undefined;
 };
 
 export const isAppOnlyConfigKey = (key: string): boolean => {
-  const first = parsePathSegments(key)?.[0];
-  if (first?.kind !== "key") return false;
-  const app = descriptionFor("LandofileShape", undefined, "Landofile");
-  const host = descriptionFor("GlobalConfig", undefined, "config.yml");
+  const app = descriptionFor("LandofileShape", []);
+  const host = descriptionFor("GlobalConfig", []);
   return (
     Result.isSuccess(app) &&
     Result.isSuccess(host) &&
-    (app.success.keys ?? []).some((entry) => entry.key === first.key) &&
-    !(host.success.keys ?? []).some((entry) => entry.key === first.key)
+    (app.success.keys ?? []).some((entry) => entry.key === key) &&
+    !(host.success.keys ?? []).some((entry) => entry.key === key)
   );
 };

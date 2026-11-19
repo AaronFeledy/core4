@@ -2,10 +2,12 @@ import { configRedactionTokens } from "../../../commands/config-redaction";
 import {
   GLOBAL_CONFIG_SUBCOMMANDS,
   type GlobalConfigOptions,
-  type GlobalConfigResult,
-  GlobalConfigResultSchema,
   renderGlobalConfigResult,
 } from "../../../commands/meta/global-config";
+import {
+  type GlobalConfigResult,
+  GlobalConfigResultSchema,
+} from "../../../commands/meta/global-config-result";
 import { runGlobalConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { formatFlag, specFlagsOf } from "../../../spec/input-coercion";
@@ -45,7 +47,7 @@ export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
       description: "Subcommand to run (default: view).",
       required: false,
     }),
-    key: Args.string({ description: "Dot-path key for get/set/unset/describe.", required: false }),
+    key: Args.string({ description: "Key selector for get/set/unset/describe.", required: false }),
     value: Args.string({ description: "Value for set.", required: false }),
   },
   flags: {

@@ -34,4 +34,10 @@ describe("shellArg", () => {
     expect(shellArg("C:\\apps\\$(calc)", "windows")).toBe("'C:\\apps\\$(calc)'");
     expect(shellArg("C:\\apps\\it's $x", "windows")).toBe("'C:\\apps\\it''s $x'");
   });
+
+  test("quotes a config selector key that holds a double quote on either shell", () => {
+    const key = 'services.web.environment["x.dotted"]';
+    expect(shellArg(key, "posix")).toBe(`'${key}'`);
+    expect(shellArg(key, "windows")).toBe(`'${key}'`);
+  });
 });

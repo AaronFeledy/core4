@@ -1,11 +1,13 @@
 import { Schema } from "effect";
 
+import { ValidationIssuePath } from "./validation-issue-schema.ts";
+
 // ==== Pure compilation diagnostics contain coordinates, never input values
 export class RecipeSourceCompileError extends Schema.TaggedError<RecipeSourceCompileError>()(
   "RecipeSourceCompileError",
   {
     recipeId: Schema.String,
-    path: Schema.String,
+    path: ValidationIssuePath,
     reason: Schema.Literals([
       "source-invalid",
       "config-invalid",
@@ -25,12 +27,12 @@ export class RecipeSourceCompileError extends Schema.TaggedError<RecipeSourceCom
 export const recipeSourceFailure = (
   recipeId: string,
   reason: RecipeSourceCompileError["reason"],
-  path: string,
+  path: readonly (string | number)[],
 ) =>
   new RecipeSourceCompileError({
     recipeId,
     reason,
-    path,
+    path: [...path],
     message: `Recipe source compilation failed (${reason}).`,
     remediation:
       "Correct the indicated source declaration using supported typed options, authored config and pure conditions.",

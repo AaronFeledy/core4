@@ -203,6 +203,16 @@ const attemptStart = () =>
     );
   });
 
+test("global config get selects a literal dotted key from the effective Landofile", async () => {
+  await writeFile(file(), `${original}    environment:\n      "x.dotted": global-value\n`);
+  const key = 'services.custom.environment["x.dotted"]';
+  expect(await run(globalConfig({ subcommand: "get", key }))).toEqual({
+    subcommand: "get",
+    key,
+    value: "global-value",
+  });
+});
+
 test("candidate validation retains exact deferred dependency sites through save, view and planning", async () => {
   const deferred = `${original}    dependsOn: ["{{ app.name }}"]\n  global:\n    type: compose\n    image: alpine:3.21\n`;
   const compiled = await run(compileGlobalConfigDocument(file(), deferred));
@@ -216,7 +226,9 @@ test("candidate validation retains exact deferred dependency sites through save,
   await run(globalConfigEdit({ editorRunner: async () => ({ kind: "edited", content: deferred }) }, file()));
   expect(await readFile(file(), "utf8")).toBe(deferred);
   expect(await run(globalConfigValidate(file()))).toMatchObject({ valid: true });
-  expect((await run(globalConfig())).landofile?.services).toHaveProperty("custom");
+  const result = await run(globalConfig());
+  if (!("landofile" in result)) throw new Error("expected full global config view");
+  expect(result.landofile.services).toHaveProperty("custom");
   expect(await run(loadGlobalPlan())).toMatchObject({ materialized: true });
   expect(planned).toBe(1);
 });

@@ -46,6 +46,16 @@ Resolved is the default. It shows the canonical configuration after expression m
       <Verify command="lando app:config --source merged --path runtime --format=json" expect={{ stdout: { regex: "\"value\":\\s*\"wrong\"" } }} />
     </Step>
   </Scenario>
+  <Scenario id="quoted-key-and-index-selectors" render>
+    <Step name="read-dotted-and-index-paths">
+      <UseFixture name="selector-paths" />
+      <Run command={`lando app:config get 'services.web.environment["x.dotted"]' --format=json`} />
+      <Verify command={`lando app:config get 'services.web.environment["x.dotted"]' --format=json`} expect={{ stdout: { regex: "\"value\":\\s*\"dotted-value\"" } }} />
+      <Verify command={`lando app:config get 'tooling.test.cmds[0]' --format=json`} expect={{ stdout: { regex: "echo first" } }} />
+      <Verify command={`lando app:config get 'services.web.environment["0"]' --format=json`} expect={{ stdout: { regex: "\"value\":\\s*\"zero-key\"" } }} />
+      <Verify command={`lando app:config describe 'services.web.environment["x.dotted"]' --format=json`} expect={{ stdout: { regex: "x\\.dotted" } }} />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## Select inside a document
@@ -53,7 +63,12 @@ Resolved is the default. It shows the canonical configuration after expression m
 ```sh
 lando app:config get services.web.environment --source merged --format=json
 lando app:config get --source raw --path 'services.web.ports[0]' --format=json
+lando app:config get 'services.web.environment["x.dotted"]' --format=json
 ```
+
+Selectors use one grammar for get, set, unset, describe, and `--path`. Bare keys still work, including `tooling.2fa.cmd` and `tooling.ns:task`. Use JSON-quoted brackets for a literal key containing a dot or opening bracket, such as `environment["x.dotted"]`. You can paste a path that lint or `describe` prints into these commands. Wrap the whole selector in shell single quotes when it contains brackets or spaces.
+
+`[0]` is an array index. `["0"]` is the string key `"0"`. They name different locations.
 
 Raw applies the selector independently to every layer. A layer that doesn't contain the path stays in the array without `document`. Raw get returns that array if any layer matches; if none match, `value` is absent. Merged and resolved return the selected `value`. Null is a value, not a missing path. An unindexed array stays an array. Missing human output is empty.
 

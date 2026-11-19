@@ -44,9 +44,12 @@ const fixture = (field = "services.app.environment.TOKEN") => {
   return { manifest, appRoot, factory };
 };
 
-test("approved secret-store reference populates its declared site without promoting option or helper data", async () => {
+test.each([
+  ["services.app.environment.TOKEN", "TOKEN"],
+  ['services.app.environment["x.dotted"]', "x.dotted"],
+])("approved secret-store reference populates %s without promoting other data", async (field, key) => {
   // Given
-  const { manifest, appRoot, factory } = fixture();
+  const { manifest, appRoot, factory } = fixture(field);
   const loader = plugin.configTranslators?.get("lando4");
   if (loader === undefined) throw new Error("missing encoder");
   // When
@@ -73,7 +76,7 @@ test("approved secret-store reference populates its declared site without promot
   );
   // Then
   expect(loaded.document.services?.[ServiceName.make("app")]?.environment).toEqual({
-    TOKEN: { _tag: "SecretRef", reference: "APP_TOKEN" },
+    [key]: { _tag: "SecretRef", reference: "APP_TOKEN" },
     COPIED: "${secret:FORGED_OPTION}",
     HELPER: "${secret:forged_helper}",
     STATIC: "{{ app.name }}",
@@ -81,26 +84,29 @@ test("approved secret-store reference populates its declared site without promot
   expect(loaded.pendingSites.map((site) => site.path.join("."))).toEqual(["services.app.environment.STATIC"]);
 });
 
-test.each(["name", "services.app.image", "services.app.environment.__proto__"])(
-  "rejects a secret-store disposition outside a safe binding site: %s",
-  async (field) => {
-    // Given
-    const { factory } = fixture(field);
-    const decomposer = factory({ redactor: createStandaloneRedactor("secrets") });
-    // When
-    const result = await Effect.runPromise(
-      Effect.result(
-        decomposer.decompose({
-          producer: decomposer.producer,
-          options: {},
-          secrets: { token: { disposition: "secret-store", reference: "${secret:APP_TOKEN}" } },
-        }),
-      ),
-    );
-    // Then
-    expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "invalid-secret-reference" } });
-  },
-);
+test.each([
+  "name",
+  "services.app.image",
+  "services.app.environment.__proto__",
+  'services.app.environment["x.dotted"].nested',
+  'services.app.environment["__proto__"]',
+])("rejects a secret-store disposition outside a safe binding site: %s", async (field) => {
+  // Given
+  const { factory } = fixture(field);
+  const decomposer = factory({ redactor: createStandaloneRedactor("secrets") });
+  // When
+  const result = await Effect.runPromise(
+    Effect.result(
+      decomposer.decompose({
+        producer: decomposer.producer,
+        options: {},
+        secrets: { token: { disposition: "secret-store", reference: "${secret:APP_TOKEN}" } },
+      }),
+    ),
+  );
+  // Then
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "invalid-secret-reference" } });
+});
 
 test.each(["reference", "extra-field"])(
   "rejects raw secret %s payloads without retaining them",
