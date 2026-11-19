@@ -579,21 +579,19 @@ describe("Mutagen process client", () => {
     });
   });
 
-  test("keeps the second prompter race primary and the first as a peer", async () => {
+  test("fails closed when the retry also races, keeping the first race as a peer", async () => {
     const { client, calls, stateStore } = fake({
       createFailures: [
-        { exitCode: 1, stdout: "", stderr: `first ${PROMPTER_RACE}` },
-        { exitCode: 1, stdout: "", stderr: `second ${PROMPTER_RACE}` },
+        { exitCode: 1, stdout: "", stderr: PROMPTER_RACE },
+        { exitCode: 1, stdout: "", stderr: PROMPTER_RACE },
       ],
     });
     const exit = await Effect.runPromiseExit(client.create({ name, spec }));
     if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
     expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(2);
     const outcome = failureOutcomeFromCause(exit.cause);
-    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError", cause: `second ${PROMPTER_RACE}` });
-    expect(outcome.additionalErrors).toMatchObject([
-      { role: "peer", error: { _tag: "FileSyncStartError", cause: `first ${PROMPTER_RACE}` } },
-    ]);
+    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError" });
+    expect(outcome.additionalErrors).toMatchObject([{ role: "peer", error: { _tag: "FileSyncStartError" } }]);
     expect(
       exit.cause.reasons.map((reason) =>
         Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
@@ -627,9 +625,41 @@ describe("Mutagen process client", () => {
     expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
     const outcome = failureOutcomeFromCause(exit.cause);
     expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError" });
-    expect(outcome.additionalErrors).toMatchObject([
-      { role: "peer", error: { _tag: "FileSyncStartError", cause: PROMPTER_RACE } },
-    ]);
+    expect(outcome.additionalErrors).toMatchObject([{ role: "peer", error: { _tag: "FileSyncStartError" } }]);
+    const ledger = await Effect.runPromise(sessionLedger(stateStore));
+    expect(await Effect.runPromise(ledger.get)).toMatchObject({
+      sessions: [{ phase: "preparing", name }],
+    });
+  });
+
+  test("does not retry when a raced create leaves an unowned session on the prepared source", async () => {
+    let setCurrent: ((value: Array<Record<string, unknown>>) => void) | undefined;
+    const fixture = fake({
+      createFailures: [{ exitCode: 1, stdout: "", stderr: PROMPTER_RACE }],
+      onCreateAttempt: () =>
+        Effect.sync(() => setCurrent?.([session({ identifier: "sync_Other789", name: "someone-else" })])),
+    });
+    setCurrent = fixture.setCurrent;
+    const exit = await Effect.runPromiseExit(fixture.client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
+    expect(fixture.calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError", sessionSpec: spec });
+    expect(outcome.additionalErrors).toMatchObject([{ role: "peer", error: { _tag: "FileSyncStartError" } }]);
+    const ledger = await Effect.runPromise(sessionLedger(fixture.stateStore));
+    expect(await Effect.runPromise(ledger.get)).toMatchObject({
+      sessions: [{ phase: "preparing", name }],
+    });
+  });
+
+  test("keeps an interrupted retry an interruption", async () => {
+    const { client, stateStore } = fake({
+      createFailures: [{ exitCode: 1, stdout: "", stderr: PROMPTER_RACE }],
+      onCreateAttempt: (attempt) => (attempt === 2 ? Effect.interrupt : Effect.void),
+    });
+    const exit = await Effect.runPromiseExit(client.create({ name, spec }));
+    if (!Exit.isFailure(exit)) throw new Error("Expected create to be interrupted.");
+    expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     const ledger = await Effect.runPromise(sessionLedger(stateStore));
     expect(await Effect.runPromise(ledger.get)).toMatchObject({
       sessions: [{ phase: "preparing", name }],
@@ -661,10 +691,8 @@ describe("Mutagen process client", () => {
     if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
     expect(calls.filter((call) => call.args[1] === "create")).toHaveLength(1);
     const outcome = failureOutcomeFromCause(exit.cause);
-    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError", cause: PROMPTER_RACE });
-    expect(outcome.additionalErrors).toMatchObject([
-      { role: "peer", error: { _tag: "FileSyncStartError", cause: "list inspect failed" } },
-    ]);
+    expect(outcome.error).toMatchObject({ _tag: "FileSyncStartError" });
+    expect(outcome.additionalErrors).toMatchObject([{ role: "peer", error: { _tag: "FileSyncStartError" } }]);
     expect(
       exit.cause.reasons.map((reason) =>
         Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
@@ -690,7 +718,7 @@ describe("Mutagen process client", () => {
     expect(error.value.message).not.toMatch(/prompter/i);
   });
 
-  test("keeps Mutagen stderr out of message and remediation", async () => {
+  test("keeps Mutagen stderr out of the error", async () => {
     const secret = "super-secret-token";
     const absPath = "/home/alice/.mutagen/private.key";
     const { client } = fake({
@@ -698,15 +726,9 @@ describe("Mutagen process client", () => {
     });
     const exit = await Effect.runPromiseExit(client.create({ name, spec }));
     if (!Exit.isFailure(exit)) throw new Error("Expected create to fail.");
-    const error = failureOutcomeFromCause(exit.cause).error as FileSyncStartError;
-    expect(error.message).not.toContain(secret);
-    expect(error.message).not.toContain(absPath);
-    expect(error.remediation).not.toContain(secret);
-    expect(error.remediation).not.toContain(absPath);
-    expect("detail" in error).toBe(false);
-    expect(error.cause).toContain(secret);
-    expect(error.cause).toContain(absPath);
-    expect(String(error.cause)).not.toContain("\u0007");
+    const shown = Bun.inspect(failureOutcomeFromCause(exit.cause).error);
+    expect(shown).not.toContain(secret);
+    expect(shown).not.toContain(absPath);
   });
 
   test("clears an interrupted sibling create that shares a committed session's source", async () => {

@@ -31,7 +31,6 @@ const LIST_TEMPLATE = "{{ json . }}";
 const IDENTIFIER = /^sync_[A-Za-z0-9]+$/u;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const FLUSH_TIMEOUT_MS = 1_800_000;
-const COMMAND_OUTPUT_TAIL_LIMIT = 4_096;
 const REMEDIATION =
   "Stop the app and retry; if the session changed outside Lando, inspect Mutagen's isolated session data before removing it.";
 
@@ -154,51 +153,23 @@ export interface MutagenProcessClientOptions {
   readonly verifyInstalled?: () => Promise<boolean>;
 }
 
-const startError = (message: string, spec?: FileSyncSessionSpec, cause?: unknown): FileSyncStartError =>
+const startError = (message: string, spec?: FileSyncSessionSpec): FileSyncStartError =>
   new FileSyncStartError({
     engineId: ENGINE_ID,
     message,
     ...(spec === undefined ? {} : { sessionSpec: spec }),
     remediation: REMEDIATION,
-    ...(cause === undefined ? {} : { cause }),
   });
 
-const stripControls = (value: string): string =>
-  Array.from(value)
-    .filter((character) => {
-      const code = character.charCodeAt(0);
-      return code === 9 || code === 10 || code === 13 || (code >= 32 && code !== 127);
-    })
-    .join("");
-
-const commandOutputTail = (stdout: string, stderr: string): string =>
-  stripControls(`${stdout}${stdout.length > 0 && stderr.length > 0 ? "\n" : ""}${stderr}`).slice(
-    -COMMAND_OUTPUT_TAIL_LIMIT,
-  );
-
-const commandFailed = (args: ReadonlyArray<string>, result: ProcessResult): FileSyncStartError => {
-  const tail = commandOutputTail(result.stdout, result.stderr);
-  return startError(
-    `Mutagen command exited with code ${result.exitCode}: ${args.slice(0, 2).join(" ")}.`,
-    undefined,
-    tail === "" ? undefined : tail,
-  );
-};
+const commandFailed = (args: ReadonlyArray<string>, result: ProcessResult): FileSyncStartError =>
+  startError(`Mutagen command exited with code ${result.exitCode}: ${args.slice(0, 2).join(" ")}.`);
 
 const prompterRace = (result: ProcessResult): boolean =>
   result.exitCode !== 0 && result.stderr.includes("unable to message prompter: prompter not found");
 
-const createFailed = (
-  args: ReadonlyArray<string>,
-  result: ProcessResult,
-  spec: FileSyncSessionSpec,
-): FileSyncStartError =>
+const createFailed = (args: ReadonlyArray<string>, result: ProcessResult): FileSyncStartError =>
   prompterRace(result)
-    ? startError(
-        "Mutagen's daemon lost a prompter race while creating the session.",
-        spec,
-        commandOutputTail(result.stdout, result.stderr),
-      )
+    ? startError("Mutagen's daemon lost a prompter race while creating the session.")
     : commandFailed(args, result);
 
 const stopError = (message: string, name: string): FileSyncStopError =>
@@ -1356,31 +1327,24 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               return owned;
             }
             yield* validateAppSet(current, spec.app);
-            const before = yield* inspectAll;
             const sameAppIdentifiers = new Set(
               appReceipts(current, spec.app)
                 .filter((entry) => entry.phase === "committed")
                 .map((entry) => entry.identifier),
             );
-            if (
-              before.some(
-                (session) =>
-                  session.name === name ||
-                  (session.beta.protocol === "docker" &&
-                    session.beta.host === target.containerId &&
-                    session.beta.path === target.path) ||
-                  (session.alpha.protocol === "local" &&
-                    sameRealpath(spec.source, session.alpha.path) &&
-                    !sameAppIdentifiers.has(session.identifier)),
-              )
-            ) {
-              return yield* Effect.fail(
-                startError(
-                  "A Mutagen session already uses the requested name, source, or helper target; its ownership cannot be proven.",
-                  spec,
-                ),
-              );
-            }
+            const claims = (session: InspectedSession) =>
+              session.name === name ||
+              (session.beta.protocol === "docker" &&
+                session.beta.host === target.containerId &&
+                session.beta.path === target.path) ||
+              (session.alpha.protocol === "local" &&
+                sameRealpath(spec.source, session.alpha.path) &&
+                !sameAppIdentifiers.has(session.identifier));
+            const unproven = startError(
+              "A Mutagen session already uses the requested name, source, or helper target; its ownership cannot be proven.",
+              spec,
+            );
+            if ((yield* inspectAll).some(claims)) return yield* Effect.fail(unproven);
             if (completed) {
               yield* writeAppDrain(bucket, { app: spec.app, operation: "clear-completion" });
             }
@@ -1431,39 +1395,35 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             });
             let result = yield* exec(args);
             // The daemon sends the prompter ID before registering it. This failure happens before
-            // the session is saved, so one retry is safe once inspection finds no session with this name.
+            // the session is saved, so one retry is safe once inspection finds no session claiming its name,
+            // source, or helper target.
             // Remove the retry once the pinned Mutagen includes the fix from upstream PR mutagen-io/mutagen#579.
             if (prompterRace(result)) {
-              const firstRace = Cause.fail(createFailed(args, result, spec));
-              const listed = yield* inspectAll.pipe(
-                Effect.catchCause((inspectCause) =>
-                  Effect.failCause(mergeFailure(firstRace, inspectCause, "peer")),
-                ),
-              );
-              const raced = listed.filter((session) => session.name === name);
-              if (raced.length !== 0) {
+              const race = Cause.fail(createFailed(args, result));
+              const afterRace = <A, E>(effect: Effect.Effect<A, E>) =>
+                effect.pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.failCause(
+                      Cause.hasInterruptsOnly(cause) ? cause : mergeFailure(cause, race, "peer"),
+                    ),
+                  ),
+                );
+              const claimed = (yield* afterRace(inspectAll)).filter(claims);
+              const [session] = claimed;
+              if (session !== undefined) {
                 // A session saved despite the race is adopted on an exact match, like an interrupted create.
-                const [session] = raced;
-                return yield* (
-                  raced.length === 1 && session !== undefined
+                return yield* afterRace(
+                  claimed.length === 1 && session.name === name
                     ? commit(session.identifier)
-                    : Effect.fail(
-                        startError(
-                          `Mutagen has more than one session named "${name}" after a raced create.`,
-                          spec,
-                        ),
-                      )
-                ).pipe(
-                  Effect.catchCause((cause) => Effect.failCause(mergeFailure(cause, firstRace, "peer"))),
+                    : Effect.fail(unproven),
                 );
               }
               yield* Effect.logDebug("Retrying Mutagen sync create after a daemon prompter race.");
-              result = yield* exec(args).pipe(
-                Effect.flatMap((retry) =>
-                  retry.exitCode === 0 ? Effect.succeed(retry) : Effect.fail(createFailed(args, retry, spec)),
-                ),
-                Effect.catchCause((retryCause) =>
-                  Effect.failCause(mergeFailure(retryCause, firstRace, "peer")),
+              result = yield* afterRace(
+                exec(args).pipe(
+                  Effect.flatMap((retry) =>
+                    retry.exitCode === 0 ? Effect.succeed(retry) : Effect.fail(createFailed(args, retry)),
+                  ),
                 ),
               );
             } else if (result.exitCode !== 0) {
