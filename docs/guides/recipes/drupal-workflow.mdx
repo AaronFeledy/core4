@@ -64,7 +64,7 @@ lando open --print
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando drush`, `lando composer`, and `lando drupal-scaffold` on `appserver`, plus `lando mariadb` from the database service |
 
-Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, `--answer=database=postgres:16`, or `--answer=drupal=10` when you want those instead. `--answer=php=8.6` uses the PHP 8.6 release-candidate image; Xdebug isn't available there yet.
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, `--answer=database=postgres:16`, or `--answer=drupal=10` when you want those instead. `--answer=php=8.6` is accepted; Xdebug isn't available there yet.
 
 Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). Both webserver choices set `uploadDirs: [sites/*/files]` on the service serving PHP to keep code out of Drupal's uploads. For `mysql:8.0`, use `lando mysql` instead of `lando mariadb`. For `postgres:16`, use `lando psql` instead of `lando mariadb`.
 
