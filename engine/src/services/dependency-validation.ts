@@ -35,7 +35,7 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
             new LandofileValidationError({
               message: `Service ${dependentName} depends on missing service ${targetName} with condition ${dependency.condition}. Add service ${targetName} to services or set required: false on this dependency.`,
               remediation: `Add service ${targetName} to services or set required: false on this dependency.`,
-              file: `${appRoot}/.lando.yml`,
+              file: appRoot,
               issues: [
                 validationIssue(
                   ["services", dependentName, "dependsOn"],
@@ -58,7 +58,7 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
           new LandofileValidationError({
             message,
             remediation,
-            file: `${appRoot}/.lando.yml`,
+            file: appRoot,
             issues: [validationIssue(["services", dependentName, "dependsOn"], message)],
           }),
         );
@@ -96,7 +96,7 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
         message: `Dependency cycle detected: ${description}. Remove or redirect one dependency edge; required: false does not break a dependency cycle.`,
         remediation:
           "Remove or redirect one dependency edge; required: false does not break a dependency cycle.",
-        file: `${appRoot}/.lando.yml`,
+        file: appRoot,
         issues: [
           validationIssue(
             ["services", dependentName, "dependsOn"],

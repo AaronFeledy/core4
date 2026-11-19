@@ -24,7 +24,7 @@ export const appFeatureError = (appRoot: string, cause: unknown): LandofileValid
     return new LandofileValidationError({
       message: cause.message,
       remediation: cause.remediation,
-      file: `${appRoot}/.lando.yml`,
+      file: appRoot,
       cause,
       context,
       issues: [validationIssue(["appFeatures"], cause.message, cause.remediation)],
@@ -34,7 +34,7 @@ export const appFeatureError = (appRoot: string, cause: unknown): LandofileValid
   return new LandofileValidationError({
     message,
     remediation: "Correct the app-feature configuration or remove the failing feature.",
-    file: `${appRoot}/.lando.yml`,
+    file: appRoot,
     issues: [validationIssue(["appFeatures"], message)],
   });
 };
