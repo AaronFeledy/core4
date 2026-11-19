@@ -138,7 +138,7 @@ Every public schema MUST have canonical annotations, stable JSON Schema output, 
 
 ### 13.4 Quality gates
 
-Every PR runs the static gates (typecheck, lint, codegen drift, test ownership and boundaries) and the docs checks, tests and build. CI selects every other job from the profile its changed paths require (§13.6). Every selected required job MUST pass, and a required job MAY skip only when the profile excludes it. An explicitly advisory experiment reports its result without blocking the merge. For the jobs its profile requires, a PR cannot merge unless:
+Every PR runs the static gates (typecheck, lint, codegen drift, test ownership and boundaries) and the docs checks, tests and build. CI selects every other job from the profile its changed paths require (§13.6). Every selected required job MUST pass, and a required job MAY skip only when the profile excludes it. The merge gate MUST fail on every job result other than `success` or a profile-excluded skip, including GitHub's undocumented `abandoned` and any result it does not recognize, and MUST name each such job and its result. CI MUST automatically rerun the failed jobs once when at least one job was abandoned before running a step and every unsuccessful job either was abandoned before running a step or is a summary or gate job that failed as a result. CI MUST NOT rerun after a job runs and fails independently, and MUST NOT automatically rerun any attempt after the first. An explicitly advisory experiment reports its result without blocking the merge. For the jobs its profile requires, a PR cannot merge unless:
 
 - `bun test`, `bun run typecheck`, `bun run docs:check`, and Biome checks pass.
 - Codegen pure drift, schema compatibility, schema/docs generation, and the Starlight build pass.
@@ -177,6 +177,8 @@ Releases include public schema and command-schema artifacts, declaration bundles
 ### 13.6 CI matrix
 
 Pull requests select a cumulative CI profile from their changed paths. `docs` runs the static gates and the docs job on Linux x64. `guides` adds the schema, library, recipe and container-helper jobs, the Linux x64 build and runtime bundle, and Linux x64 and Windows x64 guide scenarios with the Linux `@smoke` e2e subset. `runtime` adds the unit shards, isolation regressions, macOS process-signal tests, the Linux arm64 runtime bundle and the performance gates. `providers` adds live Linux x64 provider integration. Pushes to `main`, manual dispatches, and changes to `.bun-version` or a platform build path select broad CI, which also runs every platform job in the table below.
+
+CI MUST derive platform build test paths from the selections assigned to `build-*` jobs and MUST include their transitive relative-import dependencies, the platform build and smoke scripts, and the native libc binding module in the broad path rule. A unit test MUST NOT select broad CI merely because it lives under `core/test/build/`.
 
 | Cadence | Platforms/providers | Required scope |
 |---|---|---|

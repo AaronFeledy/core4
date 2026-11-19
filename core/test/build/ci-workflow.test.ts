@@ -120,6 +120,7 @@ describe("ci workflow", () => {
       .sort();
 
     expect(activeWorkflowFiles).toEqual([
+      "ci-rerun.yml",
       "ci.yml",
       "compose-vendor-bump.yml",
       "dependency-audit.yml",

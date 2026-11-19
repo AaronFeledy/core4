@@ -77,9 +77,29 @@ const affectsProviders = (path: string): boolean =>
     path,
   );
 
+const platformBuildSelections = TEST_SELECTIONS.filter(({ jobs }) =>
+  jobs.some(({ job }) => job.startsWith("build-")),
+);
+
+// The selector tests check the relative import graph and the preload passed by path.
+const platformBuildTestSupport: ReadonlySet<string> = new Set([
+  "core/src/cli/commands/agent-skills.ts",
+  "core/src/cli/commands/recipe-init-schemas.ts",
+  "core/test/_support/temp-cwd.ts",
+  "core/test/build/fixtures/host-execution-process.ts",
+  "core/test/build/fixtures/opentui-acceptance-cleanup.ts",
+  "core/test/build/fixtures/opentui-acceptance.ts",
+  "core/test/build/fixtures/opentui-loader-probe-preload.ts",
+  "core/test/build/fixtures/opentui-prompt.ts",
+  "core/test/cli/stdio-file-status-support.ts",
+  "core/test/cli/subprocess-support.ts",
+  "scripts/generated/opentui-native/catalog.generated.ts",
+]);
+
 const affectsPlatformBuild = (path: string): boolean =>
   path === "engine/src/runtime/libc.ts" ||
-  path.startsWith("core/test/build/") ||
+  platformBuildSelections.some((selection) => selectionMatches(selection, path)) ||
+  platformBuildTestSupport.has(path) ||
   /^scripts\/(?:codegen|build-command-registry-manifest|build-compiled-binary|sanitize-compiled-binary|smoke-windows-binary|check-compiled-binary-notices)\.ts$/.test(
     path,
   );
