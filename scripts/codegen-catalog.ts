@@ -353,6 +353,12 @@ export const CODEGEN_CATALOG = [
     script: "build-retarget-action-bump-workflow.ts",
     workspace: "repo",
   },
+  {
+    id: "stock-artifact-age-canary-workflow",
+    ownership: "committed-workflow",
+    script: "build-stock-artifact-age-canary-workflow.ts",
+    workspace: "repo",
+  },
 ] as const satisfies readonly CodegenCatalogEntry[];
 
 const SCRIPT_DIRECTORY = import.meta.dirname;

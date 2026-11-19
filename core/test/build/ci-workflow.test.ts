@@ -134,6 +134,7 @@ describe("ci workflow", () => {
       "release.yml",
       "retarget-action-bump.yml",
       "runtime-bundle.yml",
+      "stock-artifact-age-canary.yml",
       "tomcat-bump.yml",
       "workflow-performance.yml",
     ]);
