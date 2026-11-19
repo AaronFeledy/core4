@@ -47,9 +47,7 @@ const regenerateDerivedSourcesStep = `      - name: Regenerate derived sources
 
 const contractTestStep = (platform: string): string => `
       - name: Run file-sync contract matrix (${platform})
-        run: ${testSelectionCommand("nightly-file-sync")}
-        env:
-          LANDO_TEST_FILE_SYNC_LIVE: "1"`;
+        run: ${testSelectionCommand("nightly-file-sync")}`;
 
 const providerLandoE2eJob = `
   provider-lando-e2e-linux-x64:

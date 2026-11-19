@@ -65,6 +65,7 @@ const affectsProviders = (path: string): boolean =>
   /^plugins\/proxy-traefik\/test\/(?:live-traefik-fixture\.ts|router-certificate-fixtures\.json)$/u.test(
     path,
   ) ||
+  /^plugins\/file-sync-mutagen\/src\/(?:mutagen-process-client|provision|session-ledger)\.ts$/u.test(path) ||
   path.startsWith("sdk/src/services/provider") ||
   path.startsWith("sdk/test/contract/provider") ||
   path === ".github/workflows/ci.yml" ||
