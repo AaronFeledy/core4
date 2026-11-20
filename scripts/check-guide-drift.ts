@@ -9,7 +9,6 @@ import {
   resolvePrdSources,
 } from "./check-guide-coverage.ts";
 import { checkContainerCommandBaselineOnDisk } from "./guides/container-command-baseline.ts";
-import { type DriftContext, resolveDriftContext } from "./guides/drift-context.ts";
 
 export { parsePrdSourceArgs } from "./check-guide-coverage.ts";
 
@@ -209,6 +208,50 @@ export const formatGuideDriftSummary = (result: DriftResult, context: DriftConte
   return `${header}\n\nStatus: failed.\n\n### Diagnostics\n${diagnostics}\n\n${changedFiles}\n`;
 };
 
+interface DriftContext {
+  readonly changedFiles: readonly string[];
+  readonly prBody: string;
+  readonly baseRef?: string;
+}
+
+const splitFileList = (value: string): readonly string[] =>
+  value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+const gitChangedFiles = (args: readonly string[]): readonly string[] | undefined => {
+  const result = Bun.spawnSync({
+    cmd: ["git", "diff", "--name-only", ...args],
+    cwd: REPO_ROOT,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  return result.success ? splitFileList(result.stdout.toString()) : undefined;
+};
+
+const resolveDriftContext = (env: NodeJS.ProcessEnv = process.env): DriftContext | undefined => {
+  const prBody = env.GUIDE_DRIFT_PR_BODY ?? "";
+  const baseSha = env.GUIDE_DRIFT_BASE_SHA;
+  const headSha = env.GUIDE_DRIFT_HEAD_SHA;
+  const baseRef = env.GUIDE_DRIFT_BASE_REF;
+  const explicit = env.GUIDE_DRIFT_CHANGED_FILES;
+  if (explicit !== undefined) {
+    const base = baseSha || baseRef;
+    return { changedFiles: splitFileList(explicit), prBody, ...(base ? { baseRef: base } : {}) };
+  }
+  if (baseSha && headSha) {
+    const files = gitChangedFiles([baseSha, headSha]);
+    if (files !== undefined) return { changedFiles: files, prBody, baseRef: baseSha };
+  }
+  if (baseRef) {
+    const files = gitChangedFiles(["--merge-base", baseRef, "HEAD"]);
+    if (files !== undefined) return { changedFiles: files, prBody, baseRef };
+  }
+  const base = baseRef || baseSha;
+  return base ? { changedFiles: [], prBody, baseRef: base } : undefined;
+};
+
 const appendStepSummary = async (summary: string, env: NodeJS.ProcessEnv = process.env): Promise<void> => {
   const summaryPath = env.GITHUB_STEP_SUMMARY;
   if (summaryPath === undefined || summaryPath.trim() === "") return;
@@ -225,14 +268,9 @@ const main = async (): Promise<void> => {
   }
 
   const cliSources = parsePrdSourceArgs(process.argv.slice(2));
-  const baseOptions = {
-    changedFiles: context.changedFiles,
-    prBody: context.prBody,
-    ...(context.baseRef === undefined ? {} : { baseRef: context.baseRef }),
-  };
   const result = await checkGuideDriftOnDisk(
     REPO_ROOT,
-    cliSources.length === 0 ? baseOptions : { ...baseOptions, prdSources: cliSources },
+    cliSources.length === 0 ? context : { ...context, prdSources: cliSources },
   );
 
   await appendStepSummary(formatGuideDriftSummary(result, context));

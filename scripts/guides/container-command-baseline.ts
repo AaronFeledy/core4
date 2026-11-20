@@ -70,7 +70,7 @@ export const checkContainerCommandBaselineOnDisk = async (root: string, baseRef:
       )
     : {};
   const file = Bun.file(resolve(root, CONTAINER_COMMAND_BASELINE_PATH));
-  const current = decodeContainerCommandBaseline((await file.exists()) ? await file.json() : {});
+  const current = (await file.exists()) ? decodeContainerCommandBaseline(await file.json()) : {};
   const removedPaths = new Set<string>();
   for (const path of Object.keys(base)) {
     if (!(await Bun.file(resolve(root, path)).exists())) removedPaths.add(path);

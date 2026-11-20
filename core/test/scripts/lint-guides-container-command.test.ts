@@ -134,18 +134,45 @@ test.each([
 
 test.each([
   ["waives all commands in the next fence", `${waiver}\n\n${fence(`${command}\nlando ssh`)}`, []],
-  ["rejects a short reason", `{/* lando-lint: not-e2e TTY */}\n${fence(command)}`, [6, 7]],
-  ["rejects a malformed directive", `{/* lando-lint not-e2e Needs a TTY */}\n${fence(command)}`, [6, 7]],
-  ["rejects a waiver separated by another comment", `${waiver}\n{/* note */}\n${fence(command)}`, [6, 8]],
-  ["rejects a dangling waiver", waiver, [6]],
-  ["rejects a waiver without a container command", `${waiver}\n${fence("lando start")}`, [6]],
-] as const)("%s", async (_name, body, lines) => {
+  [
+    "rejects a short reason",
+    `{/* lando-lint: not-e2e TTY */}\n${fence(command)}`,
+    [
+      [6, "at least 8 characters"],
+      [7, command],
+    ],
+  ],
+  [
+    "rejects a malformed directive",
+    `{/* lando-lint not-e2e Needs a TTY */}\n${fence(command)}`,
+    [
+      [6, "at least 8 characters"],
+      [7, command],
+    ],
+  ],
+  [
+    "rejects a waiver separated by another comment",
+    `${waiver}\n{/* note */}\n${fence(command)}`,
+    [
+      [6, "directly above the shell fence"],
+      [8, command],
+    ],
+  ],
+  ["rejects a dangling waiver", waiver, [[6, "directly above the shell fence"]]],
+  [
+    "rejects a waiver without a container command",
+    `${waiver}\n${fence("lando start")}`,
+    [[6, "Remove this stale not-e2e waiver"]],
+  ],
+] as const)("%s", async (_name, body, expected) => {
   const diagnostics = await withRepo(
     { [page]: doc(body) },
     async (root) => (await lintGuides(root)).diagnostics,
   );
-  expect(diagnostics.map(({ code, line }) => ({ code, line }))).toEqual(
-    lines.map((line) => ({ code, line })),
+  expect(diagnostics).toEqual(
+    expected.map(([line, fragment]) =>
+      expect.objectContaining({ code, line, message: expect.stringContaining(fragment) }),
+    ),
   );
 });
 

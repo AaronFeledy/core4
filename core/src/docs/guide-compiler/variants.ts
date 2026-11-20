@@ -19,7 +19,8 @@ export const variantsOf = (guide: ParsedGuide): ReadonlyArray<GuideVariant | und
     combinations = combinations.flatMap((prefix) => values.map((value) => [...prefix, { axis, value }]));
   return combinations.map((pairs) => {
     const override = fm.variants?.[pairs.map((pair) => pair.value).join(".")];
-    const { skip, platforms } = override ?? {};
+    const skip = override?.skip;
+    const platforms = override?.platforms;
     const tags = [...new Set([...(fm.tags ?? []), ...(override?.tags ?? [])])];
     return {
       pairs,

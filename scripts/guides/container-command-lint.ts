@@ -18,10 +18,11 @@ for (const [id, command] of Object.entries(COMMAND_REGISTRY_MANIFEST.commands)) 
 const containerIds = new Set(["app:exec", "app:ssh", "app:logs"]);
 const languages = new Set(["sh", "bash", "shell", "console", "zsh"]);
 const illustrative = /(?:^|[=/])<[A-Za-z][A-Za-z0-9_-]*>(?=$|\/)|^\.\.\.$/;
-const isContainerCommand = ([program, name, ...args]: readonly string[]) => {
+const isContainerCommand = (argv: readonly string[]) => {
+  const [program, name] = argv;
   if (program !== "lando" || name === undefined || name === "help" || name.startsWith("-")) return false;
   const id = builtinIds.get(name);
-  return (id === undefined || containerIds.has(id)) && ![name, ...args].some((arg) => illustrative.test(arg));
+  return (id === undefined || containerIds.has(id)) && !argv.some((arg) => illustrative.test(arg));
 };
 
 const normalize = (argv: readonly string[]): string =>
@@ -63,7 +64,10 @@ const checkWaiver = (doc: CoverageLintDocument, node: MdxNode, next?: MdxNode) =
 };
 
 const inspectPage = (doc: CoverageLintDocument) => {
-  const covered = new Set(doc.guide === undefined ? [] : Array.from(e2eCommandArgvs(doc.guide), normalize));
+  const covered = new Set<string>();
+  if (doc.guide !== undefined) {
+    for (const argv of e2eCommandArgvs(doc.guide)) covered.add(normalize(argv));
+  }
   const uncovered = new Map<string, MdxNode>();
   const diagnostics: GuideLintDiagnostic[] = [];
   const visit = (parent: MdxNode) => {
@@ -111,15 +115,15 @@ export const lintContainerCommandCoverage = (
     const entries = retained.get(doc.sourcePath) ?? [];
     const allowed = new Set(entries);
     for (const [command, node] of page.uncovered) {
-      if (!allowed.has(command))
-        diagnostics.push(
-          diagnostic(
-            doc.sourcePath,
-            node,
-            CODE,
-            `\`${/[\r\n]/.test(command) ? JSON.stringify(command) : command}\` runs inside a container, but no layer="e2e" scenario on this page runs it. Run this exact argv in an e2e scenario on this page (a <Hidden> step works), or put ${WAIVER} directly above the fence if it cannot run in CI.`,
-          ),
-        );
+      if (allowed.has(command)) continue;
+      diagnostics.push(
+        diagnostic(
+          doc.sourcePath,
+          node,
+          CODE,
+          `\`${/[\r\n]/.test(command) ? JSON.stringify(command) : command}\` runs inside a container, but no layer="e2e" scenario on this page runs it. Run this exact argv in an e2e scenario on this page (a <Hidden> step works), or put ${WAIVER} directly above the fence if it cannot run in CI.`,
+        ),
+      );
     }
     if (options.unchecked.has(doc.sourcePath)) continue;
     const live = entries.filter((command) => {

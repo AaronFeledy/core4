@@ -597,7 +597,8 @@ describe("build-guide-scenarios MDX walker", () => {
   test("skip headers use variant skip before scenario skip before guide skip and omit public transcripts", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-guide-skip-precedence-"));
     try {
-      const source = (await fixture("multi-scenario/multi.mdx"))
+      const baseSource = await fixture("multi-scenario/multi.mdx");
+      const source = baseSource
         .replace(
           "id: multi-guide",
           [
@@ -625,7 +626,13 @@ describe("build-guide-scenarios MDX walker", () => {
         expect(text).toContain(`// @variant-skip: ${reason}\n`);
         expect(text).toContain(`test.skip("multi-guide:${scenario} (default=${cell})"`);
       }
-      expect(await emitPublicTranscripts([ast], root)).toEqual([]);
+      const unskipped = parseGuideScenarioAst(
+        "docs/guides/unskipped.mdx",
+        baseSource.replace("id: multi-guide", "id: unskipped-guide"),
+      );
+      expect(await emitPublicTranscripts([ast, unskipped], root)).toEqual([
+        "dist/transcripts/public/guides/unskipped-guide/reader-path.json",
+      ]);
     } finally {
       await rm(root, { force: true, recursive: true });
     }

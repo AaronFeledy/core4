@@ -103,7 +103,7 @@ export interface GuideScenarioAst extends ParsedGuide {
   readonly cells: ReadonlyArray<{ readonly scenarioId: string; readonly resolved: ResolvedScenario }>;
 }
 export interface ResolvedScenario {
-  /** The resolved cell carries the effective skip, including for guides without axes. */
+  /** A skipped cell without axes still has a variant so emitters see the skip. */
   readonly variant: GuideVariant | undefined;
   readonly platforms: GuideFrontmatter["platforms"];
   readonly steps: ReadonlyArray<GuideStepNode>;

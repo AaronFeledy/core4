@@ -213,11 +213,19 @@ export const guideProseCommandArgvs = (source: string): readonly (readonly strin
     if (Result.isSuccess(parsed)) commands.push(parsed.success);
   };
   scanCommand(source, (operator, start, end) => {
-    if (operator === "&&" || operator === "||" || operator === ";" || operator === "\n" || operator === "&") {
-      collect(start);
-      from = end;
-      stop = undefined;
-    } else stop ??= start;
+    switch (operator) {
+      case "&&":
+      case "||":
+      case ";":
+      case "\n":
+      case "&":
+        collect(start);
+        from = end;
+        stop = undefined;
+        break;
+      default:
+        stop ??= start;
+    }
   });
   collect(source.length);
   return commands;

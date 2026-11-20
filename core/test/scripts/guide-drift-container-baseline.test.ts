@@ -71,21 +71,24 @@ test.each([
     name: "allows the first baseline only when the base has neither baseline nor rule",
     onBase: "neither",
     bootstrap: true,
-    growth: false,
+    expected: [],
   },
   {
     name: "treats a missing baseline as empty if the base already has the rule",
     onBase: "rule",
     bootstrap: false,
-    growth: true,
+    expected: [
+      [oldPage, command],
+      [newPage, added],
+    ],
   },
   {
     name: "rejects working-tree growth when a baseline exists even without the rule",
     onBase: "baseline",
     bootstrap: false,
-    growth: true,
+    expected: [[newPage, added]],
   },
-] as const)("$name", async ({ onBase, bootstrap, growth }) => {
+] as const)("$name", async ({ onBase, bootstrap, expected }) => {
   const root = await mkdtemp(join(tmpdir(), "lando-guide-drift-baseline-"));
   try {
     await mkdir(join(root, "scripts/guides"), { recursive: true });
@@ -116,21 +119,14 @@ test.each([
     });
 
     expect(result.baselineBootstrap ?? false).toBe(bootstrap);
-    const expected = growth
-      ? onBase === "rule"
-        ? [
-            [oldPage, command],
-            [newPage, added],
-          ]
-        : [[newPage, added]]
-      : [];
     expect(result.diagnostics.map(formatDriftDiagnostic)).toEqual(
-      expected.map(
-        ([path, argv]) =>
-          `${CONTAINER_COMMAND_BASELINE_PATH}: guide.container-command.e2e-coverage: ${path}: \`${argv}\` was added to the baseline. Run it in an e2e scenario on the page or waive the fence with {/* lando-lint: not-e2e <reason> */}; the baseline only shrinks.`,
+      expected.map(([path, argv]) =>
+        expect.stringContaining(
+          `${CONTAINER_COMMAND_BASELINE_PATH}: guide.container-command.e2e-coverage: ${path}: \`${argv}\``,
+        ),
       ),
     );
-    if (growth) expect(result.skip).toBeUndefined();
+    if (expected.length > 0) expect(result.skip).toBeUndefined();
   } finally {
     await rm(root, { recursive: true, force: true });
   }

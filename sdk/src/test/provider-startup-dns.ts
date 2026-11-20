@@ -10,7 +10,7 @@ import {
   landoNetworkingPlan,
 } from "../schema/index.ts";
 import type { RuntimeProviderShape } from "../services/index.ts";
-import { type ContractFailure, makeTestServicePlan, mapProviderFailure, requireContract } from "./_shared.ts";
+import { type ContractFailure, contractFailure, makeTestServicePlan, mapProviderFailure } from "./_shared.ts";
 
 export const checkProviderStartupDns = Effect.fnUntraced(function* (
   provider: RuntimeProviderShape,
@@ -23,7 +23,7 @@ export const checkProviderStartupDns = Effect.fnUntraced(function* (
     { name: service, exitCode: 41 },
     { name: `${service}.${slug}.internal`, exitCode: 42 },
   ];
-  // Use the application's musl resolver, not a direct query to a chosen nameserver.
+  // Use the application's musl resolver. Retrying would hide aliases attached too late.
   const script = `
     const { lookup } = require('node:dns').promises;
     Promise.all(${JSON.stringify(lookups)}.map(({ name, exitCode }) =>
@@ -46,8 +46,8 @@ export const checkProviderStartupDns = Effect.fnUntraced(function* (
   };
   const target = { app: plan.id, service, plan };
   const consumer = ServiceName.make("consumer");
-  // Declare completion intent without starting an extra container or keeping the probe alive.
-  const completionPlan = {
+  // The dependency lets apply accept an immediate exit 0 without starting the consumer.
+  const completionPlan: CurrentExecutableAppPlan = {
     ...plan,
     services: {
       ...plan.services,
@@ -55,18 +55,20 @@ export const checkProviderStartupDns = Effect.fnUntraced(function* (
         ...base,
         name: consumer,
         primary: false,
-        dependsOn: [{ service, condition: "service_completed_successfully" as const, required: true }],
+        dependsOn: [{ service, condition: "service_completed_successfully", required: true }],
       },
     },
   };
   const checkExit = (exitCode: number) => {
+    if (exitCode === 0) return Effect.void;
     const failed = lookups.find((lookup) => lookup.exitCode === exitCode);
-    return requireContract(
-      exitCode === 0,
-      failed === undefined
-        ? `startup DNS probe for ${service} exited with code ${exitCode}`
-        : `could not resolve ${failed.name} at startup; providers must attach networks with aliases before starting the container`,
-      { exitCode },
+    return Effect.fail(
+      contractFailure(
+        failed === undefined
+          ? `startup DNS probe for ${service} exited with code ${exitCode}`
+          : `could not resolve ${failed.name} at startup; providers must attach networks with aliases before starting the container`,
+        { exitCode },
+      ),
     );
   };
 
@@ -74,25 +76,23 @@ export const checkProviderStartupDns = Effect.fnUntraced(function* (
     const applied = yield* Effect.result(
       Effect.scoped(provider.apply(plan, { reconcile: true, completionPlan })),
     );
-    if (Result.isFailure(applied)) {
-      // A provider can observe a failed probe before apply returns. Recover its exit code
-      // without waiting on a container that may never have started.
-      const observed = yield* Effect.result(provider.inspect(target));
-      if (
-        Result.isSuccess(observed) &&
-        observed.success.status === "exited" &&
-        observed.success.exitCode !== undefined
-      ) {
-        yield* checkExit(observed.success.exitCode);
-      }
-      return yield* Effect.fail(
-        mapProviderFailure("apply succeeds for the startup DNS fixture")(applied.failure),
+    if (Result.isSuccess(applied)) {
+      const { exitCode } = yield* Effect.scoped(provider.waitForExit(target)).pipe(
+        mapFailures(mapProviderFailure("waitForExit resolves for the startup DNS probe")),
       );
+      return yield* checkExit(exitCode);
     }
-    const { exitCode } = yield* Effect.scoped(provider.waitForExit(target)).pipe(
-      mapFailures(mapProviderFailure("waitForExit resolves for the startup DNS probe")),
-    );
-    yield* checkExit(exitCode);
+
+    // Apply can fail because the probe exited early or because it never started.
+    const observed = yield* Effect.result(provider.inspect(target));
+    if (
+      Result.isSuccess(observed) &&
+      observed.success.status === "exited" &&
+      observed.success.exitCode !== undefined
+    ) {
+      yield* checkExit(observed.success.exitCode);
+    }
+    return yield* Effect.fail(contractFailure("apply succeeds for the startup DNS fixture", applied.failure));
   }).pipe(
     Effect.onExit(() =>
       provider
