@@ -1,0 +1,10 @@
+name: python-project-environment
+services:
+  app:
+    type: python:3.12
+    routes: []
+  custom-path:
+    type: python:3.12
+    routes: []
+    environment:
+      PATH: /usr/local/bin:/usr/bin:/bin

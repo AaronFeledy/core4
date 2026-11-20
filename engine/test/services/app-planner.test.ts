@@ -3897,7 +3897,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("python venv overlays are service-owned and isolated between services", async () => {
+  test("compatible Python services use one app-scoped dependency environment and one prepare job", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(
         {
@@ -3926,14 +3926,34 @@ describe("AppPlannerLayer.layer", () => {
         const mount = appPlan.services[ServiceName.make(name)]?.mounts.find(
           (entry) => entry.type === "volume" && entry.target === "/app/.venv",
         );
-        expect(mount).toMatchObject({ type: "volume", origin: "derived", readOnly: false });
+        expect(mount).toMatchObject({ type: "volume", origin: "service", readOnly: false });
         if (mount?.type !== "volume") throw new Error("Expected a venv overlay");
         expect(appPlan.stores.find((store) => store.name === mount.store)).toMatchObject({
-          scope: "service",
+          scope: "app",
+          kind: "data",
         });
         return mount.store;
       });
-      expect(new Set(venvStores).size).toBe(2);
+      expect(new Set(venvStores).size).toBe(1);
+      const job = appPlan.services[ServiceName.make("python-env")];
+      expect(job).toMatchObject({
+        dependsOn: [],
+        endpoints: [],
+        routes: [],
+        user: "root",
+        mounts: [
+          { role: "app", realization: "passthrough" },
+          { target: "/app/.venv", store: venvStores[0] },
+          { target: "/var/lib/lando/uv-cache", store: "lando-cache-uv" },
+        ],
+      });
+      for (const name of ["web", "worker"]) {
+        expect(appPlan.services[ServiceName.make(name)]?.dependsOn).toContainEqual({
+          service: ServiceName.make("python-env"),
+          condition: "service_completed_successfully",
+          required: true,
+        });
+      }
     });
   });
 
@@ -3958,6 +3978,31 @@ describe("AppPlannerLayer.layer", () => {
       expect(worker?.mounts).toContainEqual(
         expect.objectContaining({ type: "volume", target: "/app/.venv" }),
       );
+    });
+  });
+
+  test("refuses a consumer mount nested under its managed Python environment", async () => {
+    await withTempCwd(async () => {
+      await expect(
+        plan({
+          name: "pyapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("web")]: {
+              type: "python:3.12",
+              storage: [{ store: "nested", target: "/app/.venv/lib" }],
+            },
+          },
+        }),
+      ).rejects.toMatchObject({
+        _tag: "LandofileValidationError",
+        issues: [
+          expect.objectContaining({
+            path: ["services", "web", "storage"],
+            message: expect.stringContaining("/app/.venv/lib"),
+          }),
+        ],
+      });
     });
   });
 
