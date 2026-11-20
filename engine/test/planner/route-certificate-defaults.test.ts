@@ -231,13 +231,13 @@ test("an HTTP route to an HTTPS listener still verifies the backend", () => {
 test("routes differing only in backend TLS intent conflict instead of deduping", async () => {
   // Given
   const accumulator = makeRouteAccumulator();
-  await Effect.runPromise(accumulator.add(plan(), { key: "routes[0]" }));
+  await Effect.runPromise(accumulator.add(plan(), { path: ["routes", 0] }));
   // When
   const result = await Effect.runPromise(
     Effect.result(
       accumulator.add(
         plan({ backend: { ...plan().backend, tls: { caId: "other", serverName: "web.app.internal" } } }),
-        { key: "routes[1]" },
+        { path: ["routes", 1] },
       ),
     ),
   );

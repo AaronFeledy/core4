@@ -24,13 +24,13 @@ export const compileSourceCondition = (
     filePath: `recipe:${source.id}`,
   });
   if (Result.isFailure(parsed) || !parsed.success.whole || parsed.success.segments.length !== 1)
-    return Result.fail(recipeSourceFailure(source.id, "condition-invalid", "when"));
+    return Result.fail(recipeSourceFailure(source.id, "condition-invalid", ["when"]));
   const segment = parsed.success.segments[0];
   if (
     segment?.kind !== "InterpolationSegment" ||
     !expressionTouchesOnlyScopes(segment.expression, ["options"])
   )
-    return Result.fail(recipeSourceFailure(source.id, "condition-invalid", "when"));
+    return Result.fail(recipeSourceFailure(source.id, "condition-invalid", ["when"]));
   const members = expressionScopeMembers(segment.expression, "options");
   if (
     !members.analyzable ||
@@ -43,10 +43,10 @@ export const compileSourceCondition = (
       );
     })
   )
-    return Result.fail(recipeSourceFailure(source.id, "condition-invalid", "when"));
+    return Result.fail(recipeSourceFailure(source.id, "condition-invalid", ["when"]));
   const valid = validateSnapshotTemplate(source.id, { expression: segment.expression });
   return Result.isFailure(valid)
-    ? Result.fail(recipeSourceFailure(source.id, "condition-invalid", "when"))
+    ? Result.fail(recipeSourceFailure(source.id, "condition-invalid", ["when"]))
     : Result.succeed(segment.expression);
 };
 
@@ -57,19 +57,19 @@ export const compileSourceLayers = (
 ): Result.Result<ExpressionNode, RecipeSourceCompileError> => {
   const conditionalCount = layers.filter((layer) => layer.when !== undefined).length;
   if (conditionalCount > Math.log2(RECIPE_SOURCE_VARIANT_BUDGET))
-    return Result.fail(recipeSourceFailure(source.id, "variant-budget", "variants"));
+    return Result.fail(recipeSourceFailure(source.id, "variant-budget", ["variants"]));
   const prepared: { value: ValueWithOrigins<number>; condition?: ExpressionNode }[] = [];
   for (const [index, layer] of layers.entries()) {
     const checked = Schema.decodeUnknownResult(LandofileAuthoringFragmentWire)(layer.config, {
       onExcessProperty: "error",
     });
     if (Result.isFailure(checked) || containsReservedBinding(layer.config))
-      return Result.fail(recipeSourceFailure(source.id, "config-invalid", `configLayers.${index}.config`));
+      return Result.fail(recipeSourceFailure(source.id, "config-invalid", ["configLayers", index, "config"]));
     const native = Schema.decodeUnknownResult(
       Schema.make<Schema.Codec<unknown>>(directiveMember(Schema.Unknown, false).ast),
     )(layer.config);
     if (Result.isFailure(native))
-      return Result.fail(recipeSourceFailure(source.id, "config-invalid", `configLayers.${index}`));
+      return Result.fail(recipeSourceFailure(source.id, "config-invalid", ["configLayers", index]));
     const value = withValueOrigins(native.success, () => index);
     const materialized = mergeValuesWithOrigins(
       LandofileShape,
@@ -78,7 +78,7 @@ export const compileSourceLayers = (
     );
     const json = Schema.decodeUnknownResult(LandofileSourceValue)(materialized.value);
     if (Result.isFailure(json))
-      return Result.fail(recipeSourceFailure(source.id, "config-invalid", `configLayers.${index}`));
+      return Result.fail(recipeSourceFailure(source.id, "config-invalid", ["configLayers", index]));
     const validated = validateSourceConfig(source, json.success);
     if (Result.isFailure(validated)) return Result.fail(validated.failure);
     if (layer.when === undefined) prepared.push({ value });
@@ -96,7 +96,7 @@ export const compileSourceLayers = (
     if (layer === undefined) {
       const json = Schema.decodeUnknownResult(LandofileSourceValue)(merged.value);
       return Result.isFailure(json)
-        ? Result.fail(recipeSourceFailure(source.id, "config-invalid", "config"))
+        ? Result.fail(recipeSourceFailure(source.id, "config-invalid", ["config"]))
         : lowerSourceConfig(source.id, json.success);
     }
     const higher = mergeValuesWithOrigins(LandofileShape, merged, layer.value);

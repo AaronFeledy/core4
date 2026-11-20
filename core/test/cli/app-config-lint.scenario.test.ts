@@ -50,6 +50,77 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
+const missingDependency = "    dependsOn:\n      - missing\n";
+const webService = "services:\n  web:\n    image: nginx\n";
+
+test("refresh reports both authored files when default routes collide across layers", async () => {
+  await withTempCwd(async (dir) => {
+    const canonical = join(dir, ".lando.yml");
+    const local = join(dir, ".lando.local.yml");
+    await writeFile(canonical, "name: route-plan\nservices:\n  pma_theme:\n    type: nginx\n");
+    await writeFile(local, "services:\n  pma-theme:\n    type: nginx\n");
+
+    const refresh = await runCli(["app:cache:refresh", "--format=json"], dir);
+    expect(refresh.exitCode).toBe(1);
+    expect(JSON.parse(refresh.stdout)).toMatchObject({
+      ok: false,
+      error: {
+        _tag: "RouteInputError",
+        path: ["services", "pma-theme"],
+        file: local,
+        otherPath: ["services", "pma_theme"],
+        otherFile: canonical,
+      },
+    });
+  });
+});
+
+test.each([
+  {
+    sourceFile: "fragment.yml",
+    layers: {
+      ".lando.yml": "name: attributed\nincludes:\n  - ./fragment.yml\n",
+      "fragment.yml": webService + missingDependency,
+    },
+  },
+  {
+    sourceFile: ".lando.local.yml",
+    layers: {
+      ".lando.yml": `name: attributed\n${webService}`,
+      ".lando.local.yml": `services:\n  web:\n${missingDependency}`,
+    },
+  },
+  {
+    sourceFile: ".lando.ts",
+    layers: {
+      ".lando.ts":
+        'export default { name: "attributed", services: { web: { image: "nginx", dependsOn: ["missing"] } } };\n',
+    },
+  },
+])("refresh and lint locate a planner failure in $sourceFile", async ({ layers, sourceFile }) => {
+  await withTempCwd(async (dir) => {
+    for (const [file, content] of Object.entries(layers)) await writeFile(join(dir, file), content);
+
+    const file = join(dir, sourceFile);
+    const path = ["services", "web", "dependsOn"];
+    const issue = { path, source: { file, path } };
+    const refresh = await runCli(["app:cache:refresh", "--format=json"], dir);
+    expect(refresh.exitCode).toBe(1);
+    expect(JSON.parse(refresh.stdout)).toMatchObject({
+      ok: false,
+      error: { _tag: "LandofileValidationError", file, issues: [issue] },
+    });
+
+    const lint = await runCli(["app:config:lint", "--format=json"], dir);
+    expect(lint.exitCode).toBe(1);
+    expect(parseEnvelopeResult<ConfigLintResult>(lint.stdout)).toMatchObject({
+      file,
+      valid: false,
+      violations: [{ ...issue, rule: "landofile.validation" }],
+    });
+  });
+});
+
 describe("renderConfigLintResult", () => {
   const restoreExitCode = <T>(run: () => T): T => {
     const previous = process.exitCode;
@@ -155,6 +226,23 @@ describe("lando app:config:lint (source dispatch)", () => {
           message: "Expected boolean",
           scopes: ["fragment", "effective"],
         }),
+      ]);
+    });
+  });
+
+  test.each([
+    ["overlong label", "a".repeat(64), "\n    type: compose\n    image: alpine", ["fragment", "effective"]],
+    ["invalid reset target", "bad/name", " !reset", ["fragment"]],
+  ] as const)("reports one schema finding for a service key with %s", async (_case, key, body, scopes) => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), `name: key-check\nservices:\n  ${key}:${body}\n`);
+      const result = await runCli(["app:config:lint", "--format=json"], dir);
+      const envelope = Schema.decodeUnknownSync(
+        Schema.Struct({ ok: Schema.Literal(true), result: ConfigLintResult }),
+      )(JSON.parse(result.stdout));
+      expect(result.exitCode).toBe(1);
+      expect(envelope.result.violations).toEqual([
+        expect.objectContaining({ rule: "landofile.validation", path: ["services", key], scopes }),
       ]);
     });
   });

@@ -57,7 +57,7 @@ describe("resolveDataTreeOwnership", () => {
     expect(error.service).toBe("search");
     expect(error.serviceType).toBe("solr");
     expect(error.target).toBe("/var/solr");
-    expect(error.option).toBe("services.search.user");
+    expect(error.path).toEqual(["services", "search", "user"]);
     expect(error.user).toBe("www-data");
     expect(error.message).toContain("/var/solr");
     expect(error.remediation).toContain("numeric");
@@ -69,7 +69,7 @@ describe("resolveDataTreeOwnership", () => {
       plannedUser: "solr",
     });
     expect(resolved).toBeInstanceOf(DataTreeOwnershipCapabilityError);
-    expect((resolved as DataTreeOwnershipCapabilityError).option).toBe("services.search.image");
+    expect((resolved as DataTreeOwnershipCapabilityError).path).toEqual(["services", "search", "image"]);
   });
 
   test("Given a custom image and a numeric uid, When resolved, Then the tree is still preparable", () => {
@@ -86,7 +86,7 @@ describe("resolveDataTreeOwnership", () => {
       plannedUser: "www-data",
     });
     expect(resolved).toBeInstanceOf(DataTreeOwnershipCapabilityError);
-    expect((resolved as DataTreeOwnershipCapabilityError).option).toBe("services.search.type");
+    expect((resolved as DataTreeOwnershipCapabilityError).path).toEqual(["services", "search", "type"]);
   });
 });
 

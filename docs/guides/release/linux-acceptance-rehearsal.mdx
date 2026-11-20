@@ -50,7 +50,7 @@ and update spot checks that prove criteria 1-9 pass on the reference
 
 ## Criteria 18-19  performance and level-none
 
-- **Criterion 18:** the `guide-scenarios-linux-x64` job runs the compiled-binary e2e `@smoke` subset with provider diagnostics. The `perf-budget-linux-x64` job downloads the built binary and runs the release-blocking benchmark surface:
+- **Criterion 18:** the `guide-e2e-linux-x64` job runs the compiled-binary e2e `@smoke` subset in two shards with provider diagnostics. The `perf-budget-linux-x64` job downloads the built binary and runs the release-blocking benchmark surface:
 
   ```sh
   bun run bench:tooling-hot-path -- --binary dist/lando

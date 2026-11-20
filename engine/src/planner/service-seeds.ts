@@ -1,6 +1,7 @@
 import { compiledValueError } from "@lando/landofile/compiled-sites";
 import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { mapFailures } from "@lando/sdk/command-result";
+import type { LandofileLoadFailure } from "@lando/sdk/errors";
 import { LandofileValidationError, ServiceTypeCollisionError } from "@lando/sdk/errors";
 import type {
   CompilationContext,
@@ -9,6 +10,7 @@ import type {
   ParsedPendingSite,
   ProviderCapabilities,
   ServiceConfig,
+  ValidationIssuePath,
 } from "@lando/sdk/schema";
 import { ServiceConfig as ServiceConfigSchema, ServiceName, validationIssue } from "@lando/sdk/schema";
 import type { FileSystem, PluginRegistry, ServiceTypeInput } from "@lando/sdk/services";
@@ -39,6 +41,12 @@ import {
 } from "./service-types.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
 
+/** Load-time failure whose effective destination is known; seeds service unavailability. */
+export interface PlanningUnavailableSite {
+  readonly path: ValidationIssuePath;
+  readonly failure: LandofileLoadFailure;
+}
+
 export interface ServiceSeedInput {
   readonly landofile: LandofileShape;
   readonly provenance?: LandofileProvenance | undefined;
@@ -59,6 +67,11 @@ export interface ServiceSeedInput {
   readonly host: ServiceTypeInput["host"];
   readonly provider: ServiceTypeInput["provider"];
   readonly capabilities?: ProviderCapabilities;
+  /**
+   * Isolable load failures whose destinations are already known. A service with any blocked path is
+   * unavailable before ordering and type resolution; reasons stay off the issues channel.
+   */
+  readonly unavailableSites?: readonly PlanningUnavailableSite[];
 }
 
 const resolveSeed = Effect.fnUntraced(function* (
@@ -90,7 +103,7 @@ const resolveSeed = Effect.fnUntraced(function* (
       new LandofileValidationError({
         message: `Service ${name} must declare exactly one of image or a Compose build, not both. Remove image or replace build with a Lando build-script block.`,
         remediation: "Remove image or replace build with a Lando build-script block.",
-        file: `${appRoot}/.lando.yml`,
+        file: input.landofilePath,
         issues: [
           validationIssue(
             ["services", name, "build"],
@@ -102,8 +115,7 @@ const resolveSeed = Effect.fnUntraced(function* (
   }
   const authored = authoredStorageScopes(appRoot, name, serviceWithEnvironment);
   if (authored.invalidCacheEntry !== undefined) yield* Effect.fail(authored.invalidCacheEntry);
-  if (authored.globalEntry !== undefined)
-    yield* Effect.fail(rejectGlobalScope(appRoot, name, authored.globalEntry));
+  if (authored.globalEntry !== undefined) yield* Effect.fail(rejectGlobalScope(name, authored.globalEntry));
   const serviceTypeId = serviceTypeFor(name, serviceWithEnvironment);
   const { serviceType, version } = yield* loadServiceTypeWithVersion(pluginRegistry, serviceTypeId).pipe(
     mapFailures((error) => {
@@ -195,13 +207,6 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   // credentials published so far, before env files and user defaults merge in
   // (those values are never interpolated) and before its type runs, so the
   // type sees concrete values wherever it reads its configuration.
-  const order = yield* Effect.fromResult(
-    orderServicesByCredsReferences({
-      landofile,
-      deferredSites: input.deferredSites,
-      landofilePath: input.landofilePath,
-    }),
-  );
   const serviceCredsScope: Record<string, ServiceCredsScope[string]> = {};
   let pendingSites: readonly ParsedPendingSite[] = input.deferredSites;
   const documents = { ...landofile.services };
@@ -210,7 +215,31 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     ResolvedServiceSeed & { readonly logSources: ReadonlyArray<LogSource> }
   >();
   const unavailable = new Map<string, readonly PlannerIssue[]>();
+  // Seed load-failure sites before ordering consumers so credential and endpoint cascades apply.
+  for (const site of input.unavailableSites ?? []) {
+    const [section, name] = site.path;
+    if ((section !== "services" && section !== "proxy") || typeof name !== "string") continue;
+    if (landofile.services?.[ServiceName.make(name)] === undefined) continue;
+    // Loading already reported this failure; keep the reason only for dependency cascades.
+    const reason: PlannerIssue = {
+      path: site.path,
+      rule: "landofile.load",
+      message: site.failure.message,
+      suggestion: site.failure.remediation,
+    };
+    unavailable.set(name, [...(unavailable.get(name) ?? []), reason]);
+  }
+  const order = yield* Effect.fromResult(
+    orderServicesByCredsReferences({
+      landofile,
+      deferredSites: input.deferredSites.filter(
+        ({ path }) => path[0] !== "services" || typeof path[1] !== "string" || !unavailable.has(path[1]),
+      ),
+      landofilePath: input.landofilePath,
+    }),
+  );
   for (const name of order.order) {
+    if (unavailable.has(name)) continue;
     if (Iterable.some(order.references.get(name) ?? [], (ref) => unavailable.has(ref))) {
       unavailable.set(name, [
         ...new Set([...(order.references.get(name) ?? [])].flatMap((ref) => unavailable.get(ref) ?? [])),

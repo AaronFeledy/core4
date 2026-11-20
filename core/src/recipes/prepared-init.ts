@@ -1,14 +1,13 @@
 import { join, normalize, sep } from "node:path";
 import { canonicalMissingAppRoot } from "@lando/engine/operations/app-mutation-lock";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
-import { eligibleBindingPath } from "@lando/landofile/secret-reference";
 import { mapFailures } from "@lando/sdk/command-result";
 import {
   optionValueMatchesDescriptor,
   validateOptionValues,
   validateRecipeSecretPrompts,
 } from "@lando/sdk/recipes";
-import { AbsolutePath, parseValidationIssuePath } from "@lando/sdk/schema";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { recipeAssetDigest } from "./builtin/snapshot-asset.ts";
 import { makeCompiledRecipeDecomposer } from "./compiled-decomposer.ts";
@@ -29,6 +28,7 @@ import type {
   RecipeInitPreview,
 } from "./prepared-init-types.ts";
 import { snapshotRecipeInitData } from "./prepared-init-types.ts";
+import { parseSecretBindingField } from "./secret-binding-field.ts";
 
 export type {
   PreparedRecipeInit,
@@ -66,12 +66,7 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
   );
   for (const { disposition } of secrets) {
     if (disposition.kind !== "secret-store") continue;
-    const path = parseValidationIssuePath(disposition.field);
-    if (
-      path === undefined ||
-      !eligibleBindingPath(path) ||
-      path.some((segment) => segment === "__proto__" || segment === "prototype" || segment === "constructor")
-    )
+    if (parseSecretBindingField(disposition.field) === undefined)
       return yield* Effect.fail(blocked("secret-prompts"));
   }
   if (

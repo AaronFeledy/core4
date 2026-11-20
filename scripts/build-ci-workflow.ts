@@ -798,6 +798,10 @@ ${renderLinuxX64MatrixGate(
 )}`;
 };
 
+// The @smoke [e2e] scenarios run serially against one real provider, so they are split across
+// shards that each start their own provider instead of sharing the generated-scenario job's clock.
+const GUIDE_E2E_SHARD_COUNT = 2;
+
 const guideScenarioRunCommand =
   "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**";
 const guideScenarioLiveOutputEnv = `          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"`;
@@ -821,7 +825,7 @@ ${linuxGuideE2eProviderSetupSteps}
         env:
           LANDO_GUIDE_E2E: "1"
 ${guideScenarioLiveOutputEnv}
-        run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"
+        run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts --smoke-e2e --shard=\${{ matrix.shard }}/${GUIDE_E2E_SHARD_COUNT}
 
       - name: Teardown guide e2e provider
         if: always()
@@ -840,7 +844,7 @@ ${landoManagedPodmanTeardownCommands}
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: guide-scenario-transcripts-\${{ github.run_id }}-\${{ matrix.runs-on }}.zip
+          name: guide-scenario-transcripts-\${{ github.run_id }}-\${{ matrix.runs-on }}-shard\${{ matrix.shard }}.zip
           path: dist/transcripts/guides/**/*.json
           if-no-files-found: ignore
           retention-days: 7
@@ -849,7 +853,7 @@ ${landoManagedPodmanTeardownCommands}
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: guide-e2e-provider-diagnostics-\${{ github.run_id }}-\${{ matrix.runs-on }}.zip
+          name: guide-e2e-provider-diagnostics-\${{ github.run_id }}-\${{ matrix.runs-on }}-shard\${{ matrix.shard }}.zip
           path: guide-e2e-provider-diagnostics
           if-no-files-found: ignore
           retention-days: 7`;
@@ -870,7 +874,7 @@ const renderGuideScenariosJob = (platform: CiPlatform): string => {
     : `guide-scenarios-${platform.id}`;
 
   const runnerJob = `  ${runnerJobId}:
-    needs: ${isLinuxX64 ? "[static-checks, build-linux-x64, runtime-bundle-linux-x64]" : "[static-checks]"}
+    needs: [static-checks]
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: 30
     steps:
@@ -907,21 +911,42 @@ ${codegenStep}
       - name: Run generated guide scenarios
         env:
 ${guideScenarioLiveOutputEnv}
-        run: ${guideScenarioRunCommand}${
-          isLinuxX64
-            ? `
-
-${linuxGuideScenarioE2eSteps}`
-            : ""
-        }
+        run: ${guideScenarioRunCommand}
 
 ${timingNoticeStep(timingLabel, 30)}
 `;
 
   if (!isLinuxX64) return runnerJob;
   return `${runnerJob}
-${renderLinuxX64MatrixGate(`guide-scenarios-${platform.id}`, `guide-scenarios-${platform.id}-runner`)}`;
+${renderLinuxX64MatrixGate(`guide-scenarios-${platform.id}`, `guide-scenarios-${platform.id}-runner`)}
+${renderGuideE2eJobs()}`;
 };
+
+const renderGuideE2eJobs = (): string => `  guide-e2e-linux-x64-runner:
+    needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [${linuxX64RunnerList}]
+        shard: [${Array.from({ length: GUIDE_E2E_SHARD_COUNT }, (_, index) => index + 1).join(", ")}]
+    runs-on: \${{ matrix.runs-on }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+${isolateLandoRootsStep}
+
+${timingStartStep}
+
+${setupBunSteps}
+
+${codegenStep}
+
+${linuxGuideScenarioE2eSteps}
+
+${timingNoticeStep("guide-e2e-linux-x64/${{ matrix.runs-on }}/shard ${{ matrix.shard }}", 30)}
+
+${renderLinuxX64MatrixGate("guide-e2e-linux-x64", "guide-e2e-linux-x64-runner")}`;
 
 const renderIsolatedInstallExperiment = (): string => `  bun-install-isolated-experiment:
     runs-on: ${LINUX_X64_TEST_RUNNER}

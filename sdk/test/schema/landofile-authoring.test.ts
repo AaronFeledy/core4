@@ -667,6 +667,9 @@ describe("Landofile authoring schemas", () => {
         case "Arrays":
           for (const element of [...ast.elements, ...ast.rest]) visit(element);
           return;
+        case "Declaration":
+          ast.typeParameters.forEach(visit);
+          return;
         case "Suspend":
           visit(ast.thunk());
           return;

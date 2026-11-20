@@ -6,13 +6,20 @@ import {
   ROUTE_PRIORITY_WILDCARD_BASE,
   type RouteFilter,
   type RoutePlan,
+  type ValidationIssuePath,
+  formatValidationIssuePath,
 } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 export interface RouteSource {
-  readonly key: string;
+  readonly path: ValidationIssuePath;
   readonly file?: string;
 }
+
+const routeLocation = (source: RouteSource): string => {
+  const coordinate = formatValidationIssuePath(source.path);
+  return source.file === undefined ? coordinate : `${source.file}:${coordinate}`;
+};
 
 const filterSemantics = (filter: RouteFilter): readonly unknown[] => {
   switch (filter.kind) {
@@ -69,8 +76,11 @@ export const makeRouteAccumulator = () => {
         } else {
           return yield* Effect.fail(
             new RouteInputError({
-              ...source,
-              message: `Route ${source.key} conflicts with ${existing.source.file === undefined ? "" : `${existing.source.file}:`}${existing.source.key} for ${scheme}://${route.hostname}${route.pathPrefix ?? "/"}: backend or ordered filters differ.`,
+              path: source.path,
+              ...(source.file === undefined ? {} : { file: source.file }),
+              otherPath: existing.source.path,
+              ...(existing.source.file === undefined ? {} : { otherFile: existing.source.file }),
+              message: `Route ${formatValidationIssuePath(source.path)} conflicts with ${routeLocation(existing.source)} for ${scheme}://${route.hostname}${route.pathPrefix ?? "/"}: backend or ordered filters differ.`,
               remediation:
                 "Use distinct hosts, schemes or path prefixes, or make the backend and ordered filters equivalent. The shorthand port selects the backend endpoint, not a listener.",
             }),

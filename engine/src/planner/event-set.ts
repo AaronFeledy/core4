@@ -1,10 +1,12 @@
 import { compileInvocationSites, compiledValueError } from "@lando/landofile/compiled-sites";
-import { landofileValidationError } from "@lando/landofile/validation";
+import { provenanceOf } from "@lando/landofile/provenance";
+import { landofileValidationError, unavailableEntryPath } from "@lando/landofile/validation";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
   LandofileShape,
   type LoadScopedLandofile,
+  type ParsedPendingSite,
   type ProviderCapabilities,
   type ProviderId,
   ServiceName,
@@ -24,15 +26,15 @@ import { validEventNames } from "./event-names.ts";
 import { planningHostShellIssues } from "./host-shell-issues.ts";
 import { effectiveInvocationSites } from "./invocation-authority.ts";
 import {
-  deferredSiteKey,
   materializeLandofileScopes,
   materializeServiceScopeSites,
+  pathIsBlocked,
   referencedServices,
   serviceScopeContext,
 } from "./landofile-scopes.ts";
 import { validateResolvedLandofile } from "./resolved-validation.ts";
 import { applyRouteDemandedCertificates } from "./route-certificate-defaults.ts";
-import { resolveServiceSeeds } from "./service-seeds.ts";
+import { type PlanningUnavailableSite, resolveServiceSeeds } from "./service-seeds.ts";
 import { contributionId, resolveHostFacts } from "./service-types.ts";
 import { toolingAndEventIssues } from "./tooling-event-issues.ts";
 
@@ -47,15 +49,20 @@ export interface KnownEventSetInput {
   readonly resolveCapabilities?: (provider: ProviderId) => ProviderCapabilities | undefined;
   readonly file?: string;
   readonly appRoot?: string;
+  /** Isolated load failures to keep unavailable during lint resolution. */
+  readonly unavailableSites?: readonly PlanningUnavailableSite[];
 }
+
+export type { PlanningUnavailableSite };
 
 export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(function* (
   input: KnownEventSetInput,
 ) {
+  const unavailableSites = input.unavailableSites ?? [];
   const { pluginRegistry, configService, fileSystem, pathsService } = input;
   let landofile = input.landofile.document;
   const appRoot = input.appRoot ?? input.landofile.context.appRoot;
-  const landofilePath = input.file ?? `${appRoot}/.lando.yml`;
+  const landofilePath = input.file ?? provenanceOf(input.landofile)?.landofilePath ?? appRoot;
   const appName = landofile.name ?? "app";
   const dataName = input.dataName ?? appName;
   const host = resolveHostFacts();
@@ -65,8 +72,19 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     runtime: 4 as const,
   };
   const globalConfig = configService === undefined ? undefined : yield* configService.load;
+  const loadBlocked =
+    unavailableSites.length === 0
+      ? undefined
+      : unavailableSites.map(({ path }) => unavailableEntryPath(path));
+  const heldSites =
+    loadBlocked && input.landofile.pendingSites.filter((site) => pathIsBlocked(loadBlocked, site.path));
   const materialized = yield* materializeLandofileScopes({
-    landofile: input.landofile,
+    landofile: !heldSites?.length
+      ? input.landofile
+      : {
+          ...input.landofile,
+          pendingSites: input.landofile.pendingSites.filter((site) => !pathIsBlocked(loadBlocked, site.path)),
+        },
     appRoot,
     landofilePath,
     globalConfig,
@@ -110,6 +128,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
       (manifest.contributes?.serviceTypes ?? []).map(contributionId),
     ),
     ...(capabilities === undefined ? {} : { capabilities }),
+    ...(unavailableSites.length === 0 ? {} : { unavailableSites }),
   });
   // Every service type has published its credentials now, so the sites the
   // identity pass deferred (tooling, extensions, and the services themselves)
@@ -117,15 +136,17 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   // Sites that read a service whose type failed to resolve cannot be evaluated;
   // the stage skips values holding them instead of reporting a cascade. A
   // computed member cannot be analyzed, so it is held back too.
-  const blocked = new Set<string>();
+  let blocked: Set<ParsedPendingSite> | undefined;
   if (seeds.unavailable.size > 0) {
     for (const site of seeds.pendingSites) {
       const references = referencedServices([], [site], landofilePath);
       if (
         Result.isFailure(references) ||
         Iterable.some(references.success, (name) => seeds.unavailable.has(name))
-      )
-        blocked.add(deferredSiteKey(site.path));
+      ) {
+        blocked ??= new Set();
+        blocked.add(site);
+      }
     }
   }
   let pendingSites = seeds.pendingSites;
@@ -135,7 +156,8 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
       value: landofile,
       landofilePath,
       pathPrefix: [],
-      deferredSites: pendingSites.filter((site) => !blocked.has(deferredSiteKey(site.path))),
+      deferredSites:
+        blocked === undefined ? pendingSites : pendingSites.filter((site) => !blocked?.has(site)),
       context: serviceScopeContext({
         landofile,
         context: materialized.context,
@@ -148,12 +170,18 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
       serviceScoped.document,
     ).pipe(mapFailures((cause) => compiledValueError(cause, { filePath: landofilePath, pendingSites })));
     landofile = decoded;
-    pendingSites = [
-      ...pendingSites.filter((site) => blocked.has(deferredSiteKey(site.path))),
-      ...serviceScoped.pendingSites,
-    ];
+    pendingSites =
+      blocked === undefined ? serviceScoped.pendingSites : [...blocked, ...serviceScoped.pendingSites];
   }
-  const validated = validateResolvedLandofile({ landofile, provenance, landofilePath, blocked, appSlug });
+  if (heldSites?.length) pendingSites = [...pendingSites, ...heldSites];
+  const validated = validateResolvedLandofile({
+    landofile,
+    provenance,
+    landofilePath,
+    blocked: blocked === undefined ? undefined : Array.from(blocked, (site) => site.path),
+    loadBlocked,
+    appSlug,
+  });
   // A generated HTTPS route makes an owned Apache-style launcher demand its own
   // certificate. Decide once here so endpoint projection, assembly, cache
   // identity, and tooling all read the same effective `certs` value.
@@ -198,6 +226,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     pendingSites,
     context: materialized.context,
     landofile,
+    blocked: loadBlocked,
     appSlug,
     defaultDomain,
     appRoot,

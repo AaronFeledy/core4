@@ -647,16 +647,18 @@ The live region exists so a hung job leaves evidence of where it stopped; see th
 
 `bun run check:public-transcripts` is also a standalone clean-tree gate. When `dist/transcripts/public/guides` is empty after `bun run clean` or on a fresh clone, the command deterministically emits the public transcript corpus before checking its inventory. Existing or partially populated corpora are checked without regeneration, so missing-artifact diagnostics remain actionable. The generated corpus is gitignored and must not be committed.
 
-Only `guide-scenarios-linux-x64` runs the e2e `@smoke` second pass. It downloads the Linux x64 compiled binary, provisions the same Podman socket used by provider integration, sets `LANDO_GUIDE_E2E=1`, and runs only generated tests whose names contain `@smoke` and `[e2e]`. E2e guide scenarios without the `@smoke` tag are not part of the PR gate; the nightly job below runs every `[e2e]` scenario:
+The e2e `@smoke` scenarios run in their own job, `guide-e2e-linux-x64`, so the generated-scenario job above no longer waits for the binary or spends its time limit on them. The job runs as two shards. Each one downloads the Linux x64 compiled binary, provisions the same managed Podman socket that provider integration uses, sets `LANDO_GUIDE_E2E=1`, and runs half of the generated scenarios tagged `@smoke` on the `e2e` layer, one at a time. The wrapper's `--smoke-e2e` flag selects those files from the header that the scenario generator writes into each one, and Bun's `--shard=<i>/<n>` splits them by sorted path. E2e guide scenarios without the `@smoke` tag are not part of the PR gate; the nightly job below runs every `[e2e]` scenario.
+
+Run the whole subset locally, or add `--shard=1/2` to run the first CI shard:
 
 ```bash
 LANDO_GUIDE_E2E=1 \
 LANDO_SCENARIO_E2E_BINARY="$PWD/dist/lando" \
 LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock \
-bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\\[e2e\\]"
+bun run scripts/test-reporters/run-guide-scenarios.ts --smoke-e2e
 ```
 
-Failures still upload guide internal transcripts, plus `guide-e2e-provider-diagnostics-<run-id>` with the Podman service log and recent journal output.
+A failing shard uploads its guide internal transcripts and `guide-e2e-provider-diagnostics-<run-id>-<runner>-shard<n>` with the Podman service log and recent journal output.
 
 ## Nightly provider-lando e2e
 

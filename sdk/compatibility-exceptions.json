@@ -1,5 +1,29 @@
 [
   {
+    "surface": "schema:RouteInputError",
+    "changeKind": "property-added",
+    "path": "$.otherPath",
+    "justification": "The unreleased planner error now identifies the conflicting declaration by segments rather than prose alone."
+  },
+  {
+    "surface": "schema:RouteInputError",
+    "changeKind": "property-added",
+    "path": "$.path",
+    "justification": "The unreleased planner error uses an array of segments for the primary declaration instead of a display string."
+  },
+  {
+    "surface": "schema:RouteInputError",
+    "changeKind": "property-removed",
+    "path": "$.key",
+    "justification": "The unreleased planner error replaces the flattened key with a path array to preserve literal dots and list indices."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.patternProperties",
+    "justification": "The authored services map now rejects names that cannot be DNS names. The compatibility normalizer folds propertyNames into patternProperties; service values and persisted plan schemas are unchanged."
+  },
+  {
     "surface": "schema:AdminerServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.endpoints.items.anyOf",
@@ -6926,5 +6950,29 @@
     "changeKind": "surface-removed",
     "path": "$",
     "justification": "Unreleased rename: public schema surface RouteFilterType is removed in favor of RouteFilterKind (#2109, #2456). No dual export. Applied plans store filter objects under routes, not the type alias name; read-time applied-state v8 migration rewrites filter discriminator type\u2192kind at the two plan paths. Callers and generated artifacts must use RouteFilterKind."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.services.patternProperties",
+    "justification": "Carries the LandofileShape service-key narrowing: service names must be DNS names. These compiled and template-context views are in-memory, not persisted, and the compatibility normalizer folds propertyNames into patternProperties."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.services.patternProperties",
+    "justification": "Carries the LandofileShape service-key narrowing: service names must be DNS names. These compiled and template-context views are in-memory, not persisted, and the compatibility normalizer folds propertyNames into patternProperties."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.services.patternProperties",
+    "justification": "Carries the LandofileShape service-key narrowing: service names must be DNS names. These compiled and template-context views are in-memory, not persisted, and the compatibility normalizer folds propertyNames into patternProperties."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.services.patternProperties",
+    "justification": "Carries the LandofileShape service-key narrowing: service names must be DNS names. These compiled and template-context views are in-memory, not persisted, and the compatibility normalizer folds propertyNames into patternProperties."
   }
 ]

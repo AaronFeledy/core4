@@ -41,7 +41,7 @@ describe("Linux-x64 release acceptance rehearsal guide", () => {
     );
     expect(guide).toContain("core/src/runtime/layers/<level>.ts");
 
-    expect(guide).toContain("guide-scenarios-linux-x64");
+    expect(guide).toContain("guide-e2e-linux-x64");
     expect(guide).toContain("perf-budget-linux-x64");
     expect(guide).toContain("compiled-binary e2e");
     expect(guide).toContain("@smoke");

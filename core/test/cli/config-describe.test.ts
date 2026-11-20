@@ -7,7 +7,8 @@ import { appConfigDescribeSpec } from "../../src/cli/command-specs/app/config/de
 import { metaGlobalConfigDescribeSpec } from "../../src/cli/command-specs/meta/global/config-describe.ts";
 import { AppConfigResultSchema } from "../../src/cli/commands/app-config.ts";
 import { renderConfigKeyDescription } from "../../src/cli/commands/config-key-render.ts";
-import { GlobalConfigResultSchema, describeGlobalConfig } from "../../src/cli/commands/meta/global-config.ts";
+import { describeGlobalConfig } from "../../src/cli/commands/meta/global-config.ts";
+import { GlobalConfigResultSchema } from "../../src/cli/commands/meta/global-config-result.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 test.each([AppConfigResultSchema, GlobalConfigResultSchema])(
