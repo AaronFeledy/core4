@@ -1187,6 +1187,10 @@
       "digest": "851762db56b4e2562b7b4cf54f492885a85ed43fe392790552f389ef404447dc"
     },
     {
+      "fixture": "docs/guides/router-and-scanner/fixtures/redirects-and-idle-listener",
+      "digest": "2da783eeb2b1d3fa705e0fe6d208f6959afc637fb2cb5674724b08025fa6e5fc"
+    },
+    {
       "fixture": "docs/guides/router-and-scanner/fixtures/router-and-scanner-disabled",
       "digest": "41c59781220d70b0bd5059b7174676ca7ac971cd9288dfe261db13852c20e735"
     },
