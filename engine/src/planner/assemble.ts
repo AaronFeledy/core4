@@ -432,7 +432,14 @@ function* assemblePlan(
     }
   }
 
-  const plannedServiceDrafts = yield* planServiceDrafts({ resolvedServices, appRoot });
+  const plannedServiceDrafts = yield* planServiceDrafts({
+    resolvedServices,
+    mountContext: {
+      appRoot,
+      appSlug: normalizeAppSlug(input.dataName ?? appName, appRoot),
+      ...(landofile.configs === undefined ? {} : { configs: landofile.configs }),
+    },
+  });
   const appFeatureResult = yield* applyPreparedAppFeatures(
     {
       appName,

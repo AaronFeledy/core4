@@ -258,6 +258,7 @@ import {
   ServiceCredsConfig,
   ServiceCredsDisplay,
 } from "./database-connection.ts";
+import { DependencyEnvironmentIntent } from "./dependency-environment.ts";
 import {
   DeprecationNotice,
   DeprecationNoticeJsonShape,
@@ -793,6 +794,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   PreparedCertificatePair,
   HostAliasPlan,
   ServiceDependencyCondition,
+  DependencyEnvironmentIntent,
   DependencyPlan,
   PerAppBridgePlan,
   SharedNetworkMembershipPlan,
@@ -1325,6 +1327,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ScheduleJob: "One scheduled command on a service.",
   ScheduleJobName: "Job name unique within the service.",
   ScheduleConfig: "Scheduled jobs for a service.",
+  DependencyEnvironmentIntent: "A service feature's request to prepare and share a project dependency store.",
 } satisfies Partial<Record<keyof typeof rawPublicSchemaRegistry, string>>;
 const CATALOG_SERVICE_SCHEMA_DESCRIPTIONS = {
   AdminerServiceConfig: "Landofile configuration accepted by the Adminer catalog service.",

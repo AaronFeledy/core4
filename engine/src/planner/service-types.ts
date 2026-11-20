@@ -228,6 +228,7 @@ export type AuthoredStorageInfo = {
 
 export type PlannedServiceDraft = {
   readonly name: string;
+  readonly dependencyEnvironments?: readonly import("@lando/sdk/schema").DependencyEnvironmentIntent[];
   readonly authoredStorage: ServiceConfig["storage"];
   readonly hostnames: ReadonlyArray<string>;
   readonly authoredArtifact: ServicePlan["artifact"];

@@ -139,19 +139,21 @@ tooling:
 
 From your app directory, run `lando start` and then `lando pytest -q`. The launcher searches for `pyproject.toml` from the command's working directory up to the app mount root, or up to the filesystem root when the command runs outside the mount. When it finds one, it runs the command through `uv run --` in that working directory, so uv creates and syncs the project environment first. Plain `uv run` can create or update `uv.lock`, from tooling and service commands alike. To reject a missing or stale lockfile instead, run `lando exec app -- uv run --locked -- pytest -q`.
 
-The first run may need network access to your package index and any other sources the project declares. uv uses its default cache, usually `~/.cache/uv` (`/root/.cache/uv` for the default service user). Lando persists the stock service's home, so that cache survives rebuilds. If you disable home persistence or move the cache outside the home, the home volume no longer keeps it.
+### Install from `requirements.txt`
 
-For projects that use `requirements.txt` without a `pyproject.toml`, create and populate the app-root venv before running your tooling task:
+On a fresh clone, run `lando start` from the app directory. Stock Python prepares an active virtual environment at `/app/.venv` (or `.venv` under your app mount) and installs `requirements.txt` before the Python services start. Without that file, Lando still prepares the environment. For `pyproject.toml` projects, use `:python-local` as above; the prepare job does not sync those projects.
 
-```sh
-lando exec app -- uv venv /app/.venv
-lando exec app -- uv pip install --python /app/.venv/bin/python -r requirements.txt
-lando pytest -q
-```
+Run `lando restart` after changing dependencies while the app is running. A `lando start` that keeps every consumer running leaves the environment alone. Unchanged inputs need no package index access. Local `-r` and `-c` files inside the app are tracked, but changes to the contents of editable or local packages aren't. Installation is additive; removing a line doesn't uninstall the package. Use `pip freeze --local` to record only project-installed packages.
 
-Without a project manifest, the launcher activates the app-root `.venv` when it has an executable `bin/python`, and otherwise runs the command directly. An unreadable manifest, an invalid file type, or a broken interpreter link fails with a `python-local:` error instead of running the system tool, and a failed `uv run` does not fall back either. Plain `lando exec` does not activate the venv.
+Services such as `web` and `worker` share one environment when their Python toolchain and image build, app mount source and target, user, and platform match. A change to those inputs can select a fresh store. Ad-hoc installs survive restarts, rebuilds, and a plain `lando destroy` as long as the environment stays compatible. Lando repairs an invalid venv before installing requirements again; ad-hoc packages aren't restored in that case.
 
-Lando keeps `/app/.venv` in a service-owned volume by default. It hides the host `.venv` and survives rebuilds and a plain `lando destroy`. `lando destroy --volumes` or `--purge` removes it. Use `appMount.includes: [.venv]` if you want to expose the host tree. A nested venv such as `backend/.venv` needs its own exclude to get a service-owned volume. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
+`lando start` and `lando info` show `python-env` as a completed job, with a suffix on each job name if the app has multiple Python environments. If installation fails, the services that use it cannot start. Run `lando logs -s python-env` (or use the suffixed job name), fix `requirements.txt`, and retry `lando start`.
+
+A custom image, replacement `build.context`, `appMount: false`, an app mount target containing `:`, or any authored mount at the venv path skips both preparation and activation. An authored named volume is yours to populate and activate. `appMount.includes: [.venv]` also opts out and exposes the host tree, which may not run in the container. Scratch apps skip dependency environment preparation.
+
+Login shells keep the service's `PATH`, including an authored `environment.PATH` that leaves the venv off it. The prepare job uses a shared uv download cache; `uv` commands you run yourself use uv's normal cache in the service home.
+
+Without a project manifest, `:python-local` uses the app-root `.venv` if it has an executable interpreter, and otherwise runs the command directly. An unreadable manifest or a broken interpreter link fails rather than falling back. Lando has no command to reset just the dependency environment. `lando destroy --volumes` also deletes other app volumes, such as databases.
 
 ## Serve FastAPI
 
@@ -222,4 +224,54 @@ services:
     image: python:3.12
 ```
 
+  <Scenario id="project-environment-plan" render={false} reason="Check the planned project-environment volume without starting a container">
+    <Step name="plan">
+      <UseFixture name="project-environment" />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/app/\\.venv\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+  <Scenario id="project-environment-live" layer="e2e" render={false} reason="Check venv activation, package persistence, and both login PATH choices">
+    <Step name="start-and-install">
+      <UseFixture name="project-environment" />
+      <Run command="lando start --format=json" />
+      <Verify command={`lando exec app --format=json -- python -c 'import sys; print(sys.prefix)'`} expect={{ stdout: { regex: "/app/\\.venv" } }} />
+      <Verify command={`lando exec app --format=json -- python -c 'import idna; print(idna.__file__)'`} expect={{ stdout: { regex: "/app/\\.venv/[^\"]*/idna/__init__\\.py" } }} />
+      <Verify command={`lando exec custom-path --format=json -- /app/.venv/bin/python -c 'import idna; print(idna.__file__)'`} expect={{ stdout: { regex: "/app/\\.venv/[^\"]*/idna/__init__\\.py" } }} />
+    </Step>
+    <Step name="change-included-requirements-and-repair">
+      <Run command={`lando exec app -- sh -c 'printf "%s\\n" packaging==25.0 >> /app/base-requirements.txt'`} />
+      <Run command="lando restart -s app --format=json" />
+      <Verify command={`lando exec app --format=json -- python -c 'import packaging; print(packaging.__version__)'`} expect={{ stdout: { regex: "25\\.0" } }} />
+      <Run command="lando exec app -- rm /app/.venv/pyvenv.cfg" />
+      <Run command="lando restart --format=json" />
+      <Verify command={`lando exec app --format=json -- python -c 'import packaging; print(packaging.__version__)'`} expect={{ stdout: { regex: "25\\.0" } }} />
+      <Run command="lando exec app -- python -m pip install six==1.17.0" />
+    </Step>
+    <Step name="rebuild-and-check-login">
+      <Run command="lando rebuild -y --format=json" />
+      <Verify command={`lando exec app --format=json -- python -c 'import six; print(six.__file__)'`} expect={{ stdout: { regex: "/app/\\.venv/[^\"]*/six\\.py" } }} />
+      <Verify command={`lando exec app --format=json -- bash -lc 'command -v python'`} expect={{ stdout: { regex: "/app/\\.venv/bin/python" } }} />
+      <Verify command={`lando exec custom-path --format=json -- bash -lc 'command -v python; printenv PATH'`} expect={{ stdout: { regex: "/usr/local/bin/python[\\s\\S]*/usr/local/bin:/usr/bin:/bin" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+  <Scenario id="project-environment-first-failure-logs" layer="e2e" render={false} reason="Read the prepare job output after the first apply fails">
+    <Step name="diagnose-first-failure">
+      <UseFixture name="project-environment-invalid-requirements" />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "\"_tag\":\"ServiceStartError\"[^\n]*\"service\":\"python-env\"" } }} />
+      <Verify command="lando logs -s python-env --format=json" expect={{ stdout: { regex: "\"service\":\"python-env\"[^\n]*No solution found when resolving dependencies" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
 </Guide>

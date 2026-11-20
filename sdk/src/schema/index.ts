@@ -79,6 +79,7 @@ export * from "./container-helper.ts";
 export * from "./data-transfer.ts";
 export * from "./database-connection.ts";
 export * from "./default-key.ts";
+export * from "./dependency-environment.ts";
 export {
   DeprecationNotice,
   DeprecationSeverity,

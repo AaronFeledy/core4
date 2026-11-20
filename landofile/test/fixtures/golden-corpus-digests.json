@@ -463,7 +463,7 @@
     },
     {
       "fixture": "docs/guides/fastapi-workflow/fixtures/venv-and-env",
-      "digest": "49eeae686be1ca4d5825888c69f2b0d07cb831b83a822fef884d7a82c4a0da63"
+      "digest": "bc7a0874dc96356ac8a08275646995ac255a2776f2f3cb3e4fa140814d436b32"
     },
     {
       "fixture": "docs/guides/file-sync-excludes/fixtures/excludes-demo",
@@ -1125,6 +1125,14 @@
     {
       "fixture": "docs/guides/proxy-traefik/fixtures/proxy-preferred-only",
       "digest": "ad065f85992297bd6e1568a73f9acdfa7a369a6c840acf8af21b6c4c03b473a1"
+    },
+    {
+      "fixture": "docs/guides/python/fixtures/project-environment-invalid-requirements",
+      "digest": "fc7ed47df5ec246f513c71afb287242f89460b13346f3fa7f672793f51a91cf5"
+    },
+    {
+      "fixture": "docs/guides/python/fixtures/project-environment",
+      "digest": "910f8156d057446a75febd397d4190ece5fc393e0d990d608c9f24f1cf4375bf"
     },
     {
       "fixture": "docs/guides/python/fixtures/python-demo",

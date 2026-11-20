@@ -133,6 +133,7 @@ Generated tests MUST preserve source path, line range, scenario, variant, step, 
 - Variable-only or documentation-only scenarios are forbidden.
 - Feature behavior the page does not document still belongs to the feature's home guide, as hidden steps, test-only scenarios, or case scenarios.
 - Fixtures are immutable and copied before mutation; shared fixtures require explicit ownership.
+- A fixture MUST NOT override the recipe or service configuration under test, including by disabling its routes, unless that override is itself the subject of the scenario.
 - Each feature names one home guide. Other pages that teach the feature link to it instead of repeating its edge-case and regression tests.
 - A standalone live suite MUST NOT replay a flow its home guide proves. Until a compiled-CLI suite moves into its home guide, it drives the binary through `ScenarioContext` in e2e mode rather than its own spawning, environment scrubbing, and result-envelope parsing.
 - Provider-unstable coverage SHOULD move to e2e/nightly rather than weakening a reader guide.

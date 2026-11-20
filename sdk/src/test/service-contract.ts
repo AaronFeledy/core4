@@ -286,6 +286,7 @@ const recordingServiceFeatureDraft = (
   buildSteps: stableUnknown(recorded.buildSteps),
   extensions: Array.from(recorded.extensions.entries()).sort(([left], [right]) => left.localeCompare(right)),
   storage: stableUnknown(recorded.storage),
+  dependencyEnvironments: stableUnknown(recorded.dependencyEnvironments),
   endpoints: stableUnknown(recorded.endpoints),
   dependencies: stableUnknown(recorded.dependencies),
   hostAliases: stableUnknown(recorded.hostAliases),
@@ -315,6 +316,7 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     buildSteps: [] as ServiceBuildStepIntent[],
     extensions: new Map<string, unknown>(),
     storage: [] as unknown[],
+    dependencyEnvironments: [] as unknown[],
     endpoints: [] as unknown[],
     dependencies: [] as unknown[],
     hostAliases: [] as unknown[],
@@ -330,6 +332,7 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     ...(input.appName === undefined ? {} : { appName: input.appName }),
     appRoot: input.appRoot ?? "/srv/apps/myapp",
     normalizedConfig: input.normalizedConfig ?? { type: "test" },
+    authoredMounts: [],
     ...(input.connection === undefined ? {} : { connection: input.connection }),
     config: input.config ?? {},
     serviceStoreName: (role) =>
@@ -351,6 +354,9 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     },
     addStorage(storage) {
       recorded.storage.push(storage);
+    },
+    addDependencyEnvironment(intent) {
+      recorded.dependencyEnvironments.push(intent);
     },
     addDependency(dependency) {
       recorded.dependencies.push(dependency);
