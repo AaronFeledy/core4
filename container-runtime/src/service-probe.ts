@@ -24,7 +24,7 @@ export const serviceProbeInputIssue = (
         : undefined;
     case "http":
       return probe.url !== undefined &&
-        /^https?:\/\/[^/\s\\]/iu.test(probe.url) &&
+        /^https?:\/\/[^/]/iu.test(probe.url) &&
         !/[\s\\]/u.test(probe.url) &&
         URL.canParse(probe.url)
         ? undefined
