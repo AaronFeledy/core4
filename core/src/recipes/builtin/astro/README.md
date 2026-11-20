@@ -16,7 +16,9 @@ installed or configured for you.
 
 ## Generated tooling
 
-- `lando astro …`: Astro CLI through `npx`.
+- `lando astro …`: the project's installed Astro CLI, run through the
+  project's package manager. It never downloads Astro, so install
+  dependencies first.
 - `lando npm …`: npm inside the web service.
 
 ## Limitations

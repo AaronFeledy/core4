@@ -4,6 +4,8 @@ import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipe
 import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
+import { ELEVENTY_PACKAGE_JSON_TEMPLATE } from "../../src/recipes/builtin/eleventy/scaffold.ts";
+import { recipeAssetDigest } from "../../src/recipes/builtin/snapshot-asset.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
 
 const {
@@ -57,7 +59,7 @@ describe("eleventy decomposition", () => {
         builder: {
           type: "node:lts",
           primary: true,
-          command: "npx @11ty/eleventy --serve --port 8080",
+          command: [":node-install-run", "start"],
           port: 8080,
         },
         web: {
@@ -105,10 +107,14 @@ describe("eleventy decomposition", () => {
     },
   );
 
-  test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
-    expect(manifest.files).toEqual([]);
+  test("publishes the package.json auxiliary asset alongside declared files and postInit", () => {
+    expect(manifest.files).toEqual([
+      { src: "templates/package.json.tmpl", dest: "package.json", template: true },
+    ]);
     expect(manifest.postInit).toHaveLength(1);
-    expect(manifest.snapshot?.assets).toEqual([]);
+    expect(manifest.snapshot?.assets).toEqual([
+      { dest: "package.json", digest: recipeAssetDigest(ELEVENTY_PACKAGE_JSON_TEMPLATE), template: true },
+    ]);
   });
 
   test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
