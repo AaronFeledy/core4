@@ -217,6 +217,8 @@ describe("makeUrlScanner probe behavior", () => {
     [true, 504, "upstream-unreachable", 8080, [], "expected", 1],
     [true, 502, undefined, 8080, [502], "ready", 1],
     [true, 404, "no-route", 8080, [], "lando-error", 3],
+    [true, 404, "no-route", 8080, [404], "lando-error", 3],
+    [true, 504, "upstream-unreachable", 8080, [504], "expected", 1],
     [false, 502, undefined, 8080, [], "service-error", 3],
     [true, 502, undefined, 9000, [], "service-error", 3],
     [false, 504, "upstream-unreachable", 8080, [], "lando-error", 3],

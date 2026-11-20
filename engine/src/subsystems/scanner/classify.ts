@@ -74,7 +74,7 @@ export const classify = (
       return { verdict: "lando-error" };
     case "response": {
       const { status, routerMarker, location } = observation;
-      if (okCodes.includes(status)) return { verdict: "ready" };
+      if (routerMarker === undefined && okCodes.includes(status)) return { verdict: "ready" };
       const gateway = status === 502 || status === 504;
       if (
         idlePort !== undefined &&
