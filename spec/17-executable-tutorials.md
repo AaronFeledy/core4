@@ -153,6 +153,7 @@ Generated tests MUST preserve source path, line range, scenario, variant, step, 
 - Every scenario contains an action or assertion.
 - Every case file sits beside an MDX guide, and no case scenario id collides with a scenario id in that guide.
 - Every CLI command has exactly one POSIX shell-word reading, and no `e2e` scenario verifies an event (§19.3).
+- Every app install shown in a prose shell fence runs in some `e2e` scenario, and every container command shown there (`exec`, `ssh`, `logs`, and Landofile tooling) runs with the same argv in an `e2e` scenario on the same page, unless a reasoned waiver comment sits directly above the fence. A committed baseline MAY list existing container-command gaps; it only shrinks, and the guide drift gate rejects new entries.
 - Markdown remains the dominant reader surface.
 - Event assertions reference the canonical event registry.
 - Tabs do not nest and every tab or per-cell override resolves to a declared axis value.
@@ -199,6 +200,6 @@ The following augment §15.C and define executable-guide acceptance:
 
 ### 19.16 Tabbed variants
 
-`tabs` is single-axis sugar and `axes` declares named multi-axis values; they are mutually exclusive. `TabAxis` and `TabAxisValue` name ordered values, labels, optional icons/defaults, and optional tag/platform/skip refinements. The variant set is the Cartesian product, with precedence: guide-wide, then axis value, then cell override, then scenario-local override.
+`tabs` is single-axis sugar and `axes` declares named multi-axis values; they are mutually exclusive. `TabAxis` and `TabAxisValue` name ordered values, labels, optional icons/defaults, and optional tag/platform/skip refinements. The variant set is the Cartesian product. For `platforms` and `skip`, precedence is guide-wide, then axis value, then scenario-local override, then cell override: a `variants` cell names one exact tab combination, so it outranks a scenario prop that spans every cell. `timeout` resolves scenario-local, then guide-wide, and tags accumulate from every level.
 
 `<Tabs>` selects an axis and `<Tab>` selects a declared value. Multiple orthogonal tab groups are allowed; nesting is forbidden. Missing steps in a tab cell MUST be emitted as explicit skipped tests, not silently omitted, so coverage gaps remain visible.
