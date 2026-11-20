@@ -24,6 +24,7 @@ import {
   type RouterServiceShape,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { resolveOperationLockTimeoutMs } from "@lando/state-store/lock";
 import { DateTime, Effect, Layer, Option, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
@@ -85,7 +86,6 @@ const ROUTER_IDENTITY = {
   id: TRAEFIK_PROXY_ID,
   capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
 };
-const ROUTE_RELOAD_LOCK_WAIT_MS = 120_000;
 const TRAEFIK_DYNAMIC_CONFIG_SOURCE = "./proxy-traefik/dynamic";
 
 const observeWatcherStartup = Effect.fn("TraefikRouter.observeWatcherStartup")(function* (
@@ -287,7 +287,7 @@ export const makeTraefikRouterService = (
   let defaultDomain: string | undefined;
   const guardRouterMutation = <A, E>(operation: Effect.Effect<A, E>) =>
     dependencies.stateStore.withLock(routeReloadLockKey(), operation, {
-      timeoutMs: ROUTE_RELOAD_LOCK_WAIT_MS,
+      timeoutMs: resolveOperationLockTimeoutMs(),
     });
 
   const acquire = Effect.fn("TraefikRouter.acquirePorts")(function* (config: ProxyConfig) {

@@ -4,6 +4,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 import type { LandoPluginContext } from "@lando/sdk/plugins";
 import type { Downloader, StateBucket } from "@lando/sdk/services";
+import { resolveOperationLockTimeoutMs } from "@lando/state-store/lock";
 import { type Context, Effect, Schema } from "effect";
 
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
@@ -91,7 +92,8 @@ export const makePluginRuntimeState = Effect.fnUntraced(function* (ctx: LandoPlu
 
   return {
     runtimeShutdownStore: yield* makeRuntimeShutdownStore(ctx.stateStore),
-    runtimeLock: (body) => ctx.stateStore.withLock("runtime-launch", body),
+    runtimeLock: (body) =>
+      ctx.stateStore.withLock("runtime-launch", body, { timeoutMs: resolveOperationLockTimeoutMs() }),
     runtimeGenerationStore: {
       get: generationBucketValue.get,
       set: (generation) => generationBucketValue.set(generation),

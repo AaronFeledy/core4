@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
@@ -98,29 +98,32 @@ describe("LandoPluginContext stateStore scoping", () => {
     expect(secondEnteredWhileFirstHeld).toBe(false);
   });
 
-  test("a plugin advisory lock never steals an old lock held by a live process", async () => {
+  test("a plugin advisory lock cannot enter while another fiber holds it", async () => {
     const root = await ensurePluginStateRoot("plugin-a");
     const stateStore = makePluginStateStore(makeTestStateStore().service, root, ownerOnlyFileAccess);
-    const lockDir = join(root, "locks");
-    const lockPath = join(lockDir, "runtime-launch.lock");
-    await mkdir(lockDir, { recursive: true });
-    const record = JSON.stringify({ pid: process.pid, token: "live-owner", createdAt: 0 });
-    await writeFile(lockPath, record);
-    await utimes(lockPath, new Date(0), new Date(0));
     let entered = false;
 
     const error = await failure(
       stateStore.withLock(
         "runtime-launch",
-        Effect.sync(() => {
-          entered = true;
+        Effect.gen(function* () {
+          const contender = yield* Effect.forkChild(
+            stateStore.withLock(
+              "runtime-launch",
+              Effect.sync(() => {
+                entered = true;
+              }),
+              { timeoutMs: 0 },
+            ),
+          );
+          yield* Fiber.join(contender);
         }),
       ),
     );
 
     expect(error.reason).toBe("lock");
     expect(entered).toBe(false);
-    expect(await readFile(lockPath, "utf8")).toBe(record);
+    expect(error.lockFailure).toBe("timeout");
   });
   test("a plugin advisory lock rejects a traversal key", async () => {
     const plugin = await makeContext("plugin-a");

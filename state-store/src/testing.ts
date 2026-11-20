@@ -4,12 +4,14 @@ import type { AbsolutePath } from "@lando/sdk/schema";
 import {
   type StateBucket,
   type StateBucketSpec,
+  type StateLockOptions,
   StateStore,
   type StateStoreShape,
 } from "@lando/sdk/services";
-import { Effect, Layer, Semaphore } from "effect";
+import { Clock, Deferred, Effect, Layer } from "effect";
 
 import { type StateBucketBackend, buildStateBucket } from "./bucket.ts";
+import { lockTimeout, lockWaitBudget } from "./lock.ts";
 import { makeLockReentryGuard } from "./lock-reentry.ts";
 import { resolveStatePath } from "./paths.ts";
 import { validateCacheSpec } from "./spec.ts";
@@ -19,30 +21,59 @@ const textEncoder = new TextEncoder();
 const toBytes = (bytes: Uint8Array | string): Uint8Array =>
   typeof bytes === "string" ? textEncoder.encode(bytes) : new Uint8Array(bytes);
 
-const inProcessGuards = new Map<string, Semaphore.Semaphore>();
-const withLockReentryGuard = makeLockReentryGuard();
-
-const guardFor = (file: string): Semaphore.Semaphore => {
-  const existing = inProcessGuards.get(file);
-  if (existing !== undefined) return existing;
-  const created = Semaphore.makeUnsafe(1);
-  inProcessGuards.set(file, created);
-  return created;
+const makeMemoryLocks = () => {
+  const enter = makeLockReentryGuard();
+  const held = new Map<
+    string,
+    { readonly released: Deferred.Deferred<void>; readonly mode: "exclusive" | "shared"; count: number }
+  >();
+  return <A, E, R>(file: string, body: Effect.Effect<A, E, R>, options: StateLockOptions = {}) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* enter(file);
+        const timeoutMs = lockWaitBudget(options);
+        const deadline = (yield* Clock.monotonicTimeNanos) + BigInt(timeoutMs) * 1_000_000n;
+        const shared = options.mode === "shared";
+        const timeout = () =>
+          lockTimeout({ path: file, operation: "withLock", resource: options.resource ?? file, timeoutMs });
+        for (;;) {
+          const waiting = yield* Effect.acquireRelease(
+            Effect.sync(() => {
+              const current = held.get(file);
+              if (current !== undefined) {
+                if (!shared || current.mode === "exclusive") return current.released;
+                current.count++;
+              } else {
+                held.set(file, {
+                  released: Deferred.makeUnsafe<void>(),
+                  mode: shared ? "shared" : "exclusive",
+                  count: 1,
+                });
+              }
+            }),
+            (waiting) =>
+              Effect.suspend(() => {
+                if (waiting !== undefined) return Effect.void;
+                const current = held.get(file);
+                if (current === undefined || --current.count !== 0) return Effect.void;
+                held.delete(file);
+                return Deferred.succeed(current.released, undefined);
+              }),
+          );
+          if (waiting === undefined) return yield* body;
+          const remaining = Number(deadline - (yield* Clock.monotonicTimeNanos)) / 1_000_000;
+          if (remaining <= 0) return yield* timeout();
+          yield* Effect.race(Deferred.await(waiting), Effect.sleep(remaining));
+          if ((yield* Clock.monotonicTimeNanos) >= deadline) return yield* timeout();
+        }
+      }),
+    );
 };
 
-const withInMemoryAdvisoryLock = Effect.fnUntraced(function* <A, E, R>(
-  file: string,
-  body: Effect.Effect<A, E, R>,
-): Effect.fn.Return<A, E, R> {
-  return yield* withLockReentryGuard(file, body, {
-    semaphore: guardFor(file),
-    path: file,
-    acquire: Effect.void,
-    release: Effect.void,
-  });
-});
-
-const makeMemoryBucketBackend = (files: Map<string, Uint8Array>): StateBucketBackend => ({
+const makeMemoryBucketBackend = (
+  files: Map<string, Uint8Array>,
+  withInMemoryAdvisoryLock: ReturnType<typeof makeMemoryLocks>,
+): StateBucketBackend => ({
   readBytes: (file) =>
     Effect.sync(() => {
       const bytes = files.get(file);
@@ -64,19 +95,24 @@ const makeMemoryBucketBackend = (files: Map<string, Uint8Array>): StateBucketBac
   withLock: (file, _operation, body) => withInMemoryAdvisoryLock(file, body),
 });
 
-const makeInMemoryStateStore = (files: Map<string, Uint8Array>): StateStoreShape =>
-  StateStore.of({
+const makeInMemoryStateStore = (files: Map<string, Uint8Array>): StateStoreShape => {
+  const withInMemoryAdvisoryLock = makeMemoryLocks();
+  return StateStore.of({
     open: Effect.fn("StateStore.open")(
       <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
         resolveStatePath(spec.root, spec.namespace, spec.key, "open").pipe(
           Effect.tap(() => validateCacheSpec(spec)),
-          Effect.map((resolved) => buildStateBucket(spec, resolved.file, makeMemoryBucketBackend(files))),
+          Effect.map((resolved) =>
+            buildStateBucket(spec, resolved.file, makeMemoryBucketBackend(files, withInMemoryAdvisoryLock)),
+          ),
         ),
     ),
-    withLock: Effect.fn("StateStore.withLock")(<A, E, R>(key: string, body: Effect.Effect<A, E, R>) =>
-      withInMemoryAdvisoryLock(`operation-locks/${key}`, body),
+    withLock: Effect.fn("StateStore.withLock")(
+      <A, E, R>(key: string, body: Effect.Effect<A, E, R>, options?: StateLockOptions) =>
+        withInMemoryAdvisoryLock(`operation-locks/${key}`, body, { resource: key, ...options }),
     ),
   });
+};
 
 export interface TestStateStore {
   readonly service: StateStoreShape;
