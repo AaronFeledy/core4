@@ -38,9 +38,19 @@ export const recordCreatedVolume = Effect.fn("Lifecycle.recordCreatedVolume")(
         identity.ownerRoot !== fact.ownerRoot
       )
         return yield* Effect.fail(unverifiedCreation(provider.id));
+      // Shared for global caches: the creating activation already holds the key (exclusive when
+      // the cache was absent), and the receipt bucket serializes its own write.
+      const lockMode =
+        plannedStore.scope === "global" && plannedStore.kind === "cache"
+          ? ("shared" as const)
+          : ("exclusive" as const);
       yield* withPhysicalVolumeLock(
         store.value,
-        identity.coordinationKey,
+        {
+          key: identity.coordinationKey,
+          mode: lockMode,
+          resource: `volume ${identity.nativeName}`,
+        },
         Effect.gen(function* () {
           const current = (yield* provider.locateVolume(ref)).identity;
           if (
