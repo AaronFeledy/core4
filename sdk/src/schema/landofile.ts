@@ -18,6 +18,7 @@ import { EndpointInput } from "./endpoint.ts";
 import { ComposeEnvironmentInput } from "./environment-input.ts";
 import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { executionSite, executionSiteKey } from "./execution-site.ts";
+import { HOST_ALIAS_NAME_PATTERN } from "./hostname.ts";
 import { LandofileEvents } from "./landofile-events.ts";
 import { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
 
@@ -41,6 +42,7 @@ import {
   ToolingEnvironment,
   ToolingVarLiteral,
 } from "./primitives.ts";
+import { indexedPropertyNameCheck, propertyNameCheckedRecord } from "./property-name-check.ts";
 import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
@@ -1230,7 +1232,15 @@ const LandofileShapeBase = Schema.Struct({
   gpgAgent: Schema.optionalKey(GpgAgentConfig).annotate({
     description: "App GPG-agent forwarding policy, overriding global settings per field.",
   }),
-  services: Schema.optionalKey(Schema.Record(ServiceName, ServiceConfigDecode)),
+  services: Schema.optionalKey(
+    propertyNameCheckedRecord(
+      Schema.Record(ServiceName, ServiceConfigDecode),
+      indexedPropertyNameCheck(
+        HOST_ALIAS_NAME_PATTERN,
+        "Expected a service key with dot-separated labels of letters, digits, hyphens, or underscores, without leading or trailing hyphens (at most 63 characters per label and 253 total).",
+      ),
+    ),
+  ),
   proxy: Schema.optionalKey(Schema.Record(ServiceName, layerMerge(Schema.Array(RouteInput), ROUTE_MERGE))),
   router: Schema.optionalKey(RouterConfig).annotate({
     description: "App-authored shared-router bind address and port policy.",

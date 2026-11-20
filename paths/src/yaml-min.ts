@@ -76,7 +76,12 @@ interface ParsedLine {
 const yamlError = (category: string, line: ParsedLine): MinimalYamlError =>
   new MinimalYamlError(`${category} at line ${line.line}, column ${line.indent + 1}`);
 
-const VALUE_PREFIX = /^( *)(?:- )?(?:[A-Za-z0-9_.-]+:(?:[ \t]+)?)?/;
+const MAPPING_KEY = String.raw`(?:[A-Za-z0-9_./-]+|"(?:[^"\\\u0000-\u001F]|\\(?:["\\/bfnrt]|u[0-9A-Fa-f]{4}))*")`;
+const VALUE_PREFIX = new RegExp(`^ *(?:- )?(?:${MAPPING_KEY}:[ \\t]*)?`);
+const MAP_ENTRY = new RegExp(`^(${MAPPING_KEY}):(.*)$`);
+const LIST_MAP_ENTRY = new RegExp(`^(${MAPPING_KEY}):(?:\\s+(.*))?$`);
+const decodeKey = (key: string): string =>
+  key.startsWith('"') ? unescapeDoubleQuoted(key.slice(1, -1)) : key;
 
 /** Track quotes in quoted scalars and JSON flow values, not apostrophes in plain text. */
 const stripInlineComment = (line: string): string => {
@@ -144,30 +149,31 @@ const parseList = (
 
     const value = line.text.slice(2).trim();
     if (value === "") throw yamlError("Malformed YAML", line);
-    const mapMatch = value.match(/^([A-Za-z0-9_.-]+):(?:\s+(.*))?$/);
-    if (mapMatch !== null) {
-      const [, firstKey, firstRawValueRaw] = mapMatch as [string, string, string?];
-      const item: Record<string, unknown> = {};
-      item[firstKey] = parseScalar(firstRawValueRaw ?? "", {
-        line: line.line,
-        column: line.indent + line.text.indexOf(":") + 3,
-      });
+    const [, firstKey, firstRawValue] = LIST_MAP_ENTRY.exec(value) ?? [];
+    if (firstKey !== undefined) {
+      const item: Record<string, unknown> = {
+        [decodeKey(firstKey)]: parseScalar(firstRawValue ?? "", {
+          line: line.line,
+          column: line.indent + firstKey.length + 5,
+        }),
+      };
       index += 1;
       while (index < lines.length) {
         const child = lines[index];
         if (child === undefined || child.indent <= indent) break;
         if (child.text.startsWith("- ")) break;
         if (child.indent !== indent + 2) throw yamlError("Malformed YAML indentation", child);
-        const childMatch = child.text.match(/^([A-Za-z0-9_.-]+):(.*)$/);
-        if (childMatch === null) throw yamlError("Malformed YAML", child);
-        const [, childKey, childRawValue] = childMatch as [string, string, string];
-        item[childKey] = parseScalar(childRawValue, {
-          line: child.line,
-          column:
-            child.indent +
-            child.text.indexOf(":") +
-            2 +
-            (childRawValue.length - childRawValue.trimStart().length),
+        const [, childKey, childRawValue] = MAP_ENTRY.exec(child.text) ?? [];
+        if (childKey === undefined || childRawValue === undefined) throw yamlError("Malformed YAML", child);
+        Object.defineProperty(item, decodeKey(childKey), {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: parseScalar(childRawValue, {
+            line: child.line,
+            column:
+              child.indent + childKey.length + 2 + (childRawValue.length - childRawValue.trimStart().length),
+          }),
         });
         index += 1;
       }
@@ -202,33 +208,36 @@ const parseMap = (
     // child map. Record it on this map instead of hard-failing the whole
     // file; `parseMinimalYaml` favors recovering a usable root object over
     // rejecting a config.yml for a single misindented line.
-    const match = line.text.match(/^([A-Za-z0-9_.-]+):(.*)$/);
-    if (match === null) throw yamlError("Malformed YAML", line);
-
-    const [, key, rawValue] = match as [string, string, string];
+    const [, rawKey, rawValue] = MAP_ENTRY.exec(line.text) ?? [];
+    if (rawKey === undefined || rawValue === undefined) throw yamlError("Malformed YAML", line);
+    const key = decodeKey(rawKey);
+    const assign = (value: unknown) =>
+      Object.defineProperty(root, key, { configurable: true, enumerable: true, writable: true, value });
     if (rawValue.trim() === "") {
       const next = lines[index + 1];
       if (next === undefined || next.indent <= line.indent) {
-        root[key] = {};
+        assign({});
         index += 1;
         continue;
       }
       if (next.text.startsWith("- ")) {
         const [items, nextIndex] = parseList(lines, index + 1, next.indent);
-        root[key] = items;
+        assign(items);
         index = nextIndex;
         continue;
       }
       const [nested, nextIndex] = parseMap(lines, index + 1, next.indent);
-      root[key] = nested;
+      assign(nested);
       index = nextIndex;
       continue;
     }
 
-    root[key] = parseScalar(rawValue, {
-      line: line.line,
-      column: line.indent + key.length + 2 + (rawValue.length - rawValue.trimStart().length),
-    });
+    assign(
+      parseScalar(rawValue, {
+        line: line.line,
+        column: line.indent + rawKey.length + 2 + (rawValue.length - rawValue.trimStart().length),
+      }),
+    );
     index += 1;
   }
   return [root, index];

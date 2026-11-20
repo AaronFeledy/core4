@@ -390,6 +390,20 @@ describe("cloned services", () => {
     ).toThrow(AppFeatureCloneError);
   });
 
+  test.each([
+    ["bad key", "a".repeat(64)],
+    ["overlong internal name", Array.from({ length: 4 }, () => "a".repeat(61)).join(".")],
+  ])("rejects a clone with a %s", (_case, name) => {
+    expect(() =>
+      materializeClonedServices({
+        plannedServiceDrafts: [parentDraft()],
+        clones: [request({ name })],
+        parentNetworksByName: new Map(),
+        appSlug: "clones",
+      }),
+    ).toThrow(expect.objectContaining({ _tag: "CloneError", reason: "invalid-name", service: name }));
+  });
+
   test("rejects two clones whose names differ only by case", () => {
     expect(() =>
       materializeClonedServices({

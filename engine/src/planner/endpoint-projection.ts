@@ -152,7 +152,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
         }[field];
         record(
           new LandofileValidationError({
-            file: `${input.appRoot}/.lando.yml`,
+            file: input.appRoot,
             message,
             remediation,
             issues: [{ path: ["services", name, field], message, suggestion: remediation }],

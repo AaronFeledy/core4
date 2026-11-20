@@ -21,13 +21,13 @@ export const compileRecipeSource = (
   context: RecipeSourceCompileContext,
 ): Result.Result<CompiledRecipeManifest, RecipeSourceCompileError> => {
   const parsed = Schema.decodeUnknownResult(RecipeSource)(input, { onExcessProperty: "error" });
-  if (Result.isFailure(parsed)) return Result.fail(recipeSourceFailure("", "source-invalid", "source"));
+  if (Result.isFailure(parsed)) return Result.fail(recipeSourceFailure("", "source-invalid", ["source"]));
   const source = parsed.success;
   const evidence = Schema.decodeUnknownResult(RecipeSourceCompileContext)(context, {
     onExcessProperty: "error",
   });
   if (Result.isFailure(evidence))
-    return Result.fail(recipeSourceFailure(source.id, "source-invalid", "context"));
+    return Result.fail(recipeSourceFailure(source.id, "source-invalid", ["context"]));
   const options = compileSourceOptions(source);
   if (Result.isFailure(options)) return Result.fail(options.failure);
   const layers = evidence.success.configLayers ?? [{ config: source.config }, ...(source.variants ?? [])];
@@ -35,7 +35,7 @@ export const compileRecipeSource = (
   if (Result.isFailure(expression)) return Result.fail(expression.failure);
   const template = { expression: expression.success };
   if (Result.isFailure(validateSnapshotTemplate(source.id, template)))
-    return Result.fail(recipeSourceFailure(source.id, "template-invalid", "config"));
+    return Result.fail(recipeSourceFailure(source.id, "template-invalid", ["config"]));
   const {
     config: _config,
     variants: _variants,
@@ -53,23 +53,23 @@ export const compileRecipeSource = (
   const secrets = validateRecipeSecretPrompts(manifest);
   if (Result.isFailure(secrets))
     return Result.fail(
-      recipeSourceFailure(source.id, "secret-invalid", `options.${secrets.failure.promptName}`),
+      recipeSourceFailure(source.id, "secret-invalid", ["options", secrets.failure.promptName]),
     );
   for (const entry of [...(files ?? []), ...(source.postInit ?? [])]) {
     if (entry.when !== undefined && Result.isFailure(compileSourceCondition(source, entry.when)))
-      return Result.fail(recipeSourceFailure(source.id, "condition-invalid", "when"));
+      return Result.fail(recipeSourceFailure(source.id, "condition-invalid", ["when"]));
   }
   const destinations = new Set<string>();
   for (const asset of evidence.success.assets) {
     if (destinations.has(asset.dest))
-      return Result.fail(recipeSourceFailure(source.id, "asset-invalid", "assets"));
+      return Result.fail(recipeSourceFailure(source.id, "asset-invalid", ["assets"]));
     destinations.add(asset.dest);
   }
   const fileDestinations = new Set<string>();
   for (const file of files ?? []) {
     const asset = evidence.success.assets.find((entry) => entry.dest === file.dest);
     if (asset === undefined || fileDestinations.has(file.dest))
-      return Result.fail(recipeSourceFailure(source.id, "asset-invalid", `files.${file.dest}`));
+      return Result.fail(recipeSourceFailure(source.id, "asset-invalid", ["files", file.dest]));
     fileDestinations.add(file.dest);
   }
   const assets = evidence.success.assets

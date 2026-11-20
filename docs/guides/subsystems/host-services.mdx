@@ -30,7 +30,7 @@ services:
 
 `web` is an Alpine container with `wget`, standing in for your app service. The optional `extra_hosts` entry adds `api.test` for an application that expects that name.
 
-Each `extra_hosts` host name must be a DNS-shaped alias: labels of letters, digits, hyphens, and underscores, no leading or trailing hyphen on a label, at most 63 characters per label and 253 overall. No wildcard, scheme, port, path, whitespace, or trailing dot. Underscores are allowed because `/etc/hosts` and Compose names use them, as in `my_db`. Map and list forms (`HOST:IP`, `HOST=IP`) share that host grammar; the value may be an IP or `host-gateway`. `lando app:config:lint` and `lando start` report `landofile.hostname` at `services.<name>.extra_hosts.<host>` when a host fails the grammar.
+Each `extra_hosts` host name must be a DNS-shaped alias: labels of letters, digits, hyphens, and underscores, no leading or trailing hyphen on a label, at most 63 characters per label and 253 overall. No wildcard, scheme, port, path, whitespace, or trailing dot. Underscores are allowed because `/etc/hosts` and Compose names use them, as in `my_db`. Map and list forms (`HOST:IP`, `HOST=IP`) share that host grammar; the value may be an IP or `host-gateway`. `lando app:config:lint` and `lando start` report `landofile.hostname` at `["services", <name>, "extra_hosts", <host>]` when a host fails the grammar; text output prints a dotted host in brackets, such as `services.web.extra_hosts["db.local"]`.
 
 Start the app from this directory:
 

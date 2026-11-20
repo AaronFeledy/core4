@@ -18,6 +18,7 @@ import {
   collectAuthoredRedactionTokens,
   mergeLandofileRedactionValues,
   registerLandofileRedaction,
+  registerResolvedLandofileRedaction,
 } from "../services/app-plan-redaction.ts";
 import { findDiscoveredLandofilePath, scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
 
@@ -163,15 +164,7 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
       const loadedLandofile = yield* loadUserLandofile(service);
       const landofile = loadedLandofile.document;
       const provenance = provenanceOf(loadedLandofile);
-      const sourceValues = yield* Effect.forEach(provenance?.documents ?? [], (document) =>
-        authoredSourceDocument(document).pipe(
-          Effect.map((authored) => collectAuthoredRedactionTokens(authored.value, authored.provenance)),
-        ),
-      );
-      const redactionTokens = yield* attachRedaction(
-        collectAuthoredRedactionTokens(landofile, provenance),
-        ...sourceValues,
-      );
+      const { substring: redactionTokens } = yield* registerResolvedLandofileRedaction(loadedLandofile);
       const metadata = {
         app: landofile.name ?? "",
         sources: provenance?.includeSources ?? [],

@@ -1,15 +1,17 @@
-import type { ValidationIssue } from "@lando/sdk/schema";
+import type { LandofileWriteValidationError } from "@lando/sdk/errors";
+import type { ValidationIssue, ValidationIssuePath } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { collectDocumentDiagnostics } from "./diagnostics.ts";
 import { type ConfigDocument, persistMutation, resolveDocumentEffect as resolve } from "./document.ts";
-import { parsePathSegments, setAtPath } from "./dot-path";
+import { setAtPath, unsetAtPath } from "./dot-path";
 import { type ConfigSchemaName, configKeySummary } from "./key-schema.ts";
 import { prepareConfigEdit } from "./prepare-edit";
 import { parseTypedValue } from "./value-parse";
 import {
   type ValueType,
-  applySetMutation,
-  applyUnsetMutation,
+  parseConfigPath,
+  parseConfigValue,
+  resolveConfigPath,
   writeValidationErrorFromIssues,
 } from "./write-core";
 import { authoredTreesEqual } from "./yaml-verify.ts";
@@ -25,6 +27,8 @@ interface DecodeAttempt {
   readonly label: string;
   readonly issues: readonly ValidationIssue[];
 }
+
+type WritePathPolicy = (path: ValidationIssuePath) => LandofileWriteValidationError | undefined;
 
 const interpretationLabel = (value: unknown): string => {
   if (typeof value === "string") return "text";
@@ -46,15 +50,12 @@ const issueIdentity = ({ path, message, source }: ValidationIssue): string =>
 const blockingIssues = (
   issues: readonly ValidationIssue[],
   baseline: readonly ValidationIssue[],
-  key: string,
+  path: ValidationIssuePath,
 ): readonly ValidationIssue[] => {
   const existing = new Set(baseline.map(issueIdentity));
-  const path = parsePathSegments(key)?.map((segment) =>
-    segment.kind === "key" ? segment.key : segment.index,
-  );
   return issues.filter(
     (issue) =>
-      !existing.has(issueIdentity(issue)) || path?.every((segment, index) => issue.path[index] === segment),
+      !existing.has(issueIdentity(issue)) || path.every((segment, index) => issue.path[index] === segment),
   );
 };
 
@@ -81,14 +82,14 @@ const mergeAttemptIssues = (attempts: readonly DecodeAttempt[]): ValidationIssue
 
 const failureRemediation = (
   attempts: readonly DecodeAttempt[],
-  key: string,
+  selector: { readonly key: string; readonly path: ValidationIssuePath },
   schema: ConfigSchemaName | undefined,
 ): string => {
   const identities = attempts.map((attempt) =>
     JSON.stringify([...new Set(attempt.issues.map(issueIdentity))].sort()),
   );
-  const summary = schema === undefined ? undefined : configKeySummary(schema, key);
-  const takes = summary === undefined ? "" : `\`${key}\` takes ${summary}. `;
+  const summary = schema === undefined ? undefined : configKeySummary(schema, selector.path);
+  const takes = summary === undefined ? "" : `\`${selector.key}\` takes ${summary}. `;
   const typeHint = new Set(identities).size > 1 ? ", or pass `--type` to force how the value is parsed" : "";
   return `${takes}Fix the reported issue(s)${typeHint}, then retry the write. The file was left unchanged.`;
 };
@@ -103,26 +104,25 @@ export const runSetVerb = Effect.fnUntraced(function* <
 >(
   input: ConfigDocument<D, ERead, EWrite, EAfter, R, EParse> & {
     readonly key: string;
+    readonly checkPath?: WritePathPolicy;
     readonly raw: string;
     readonly type?: ValueType | undefined;
     readonly dryRun: boolean;
   },
 ) {
+  const parsedPath = parseConfigPath(input.key, input.file);
+  const refusal = Result.isSuccess(parsedPath) ? input.checkPath?.(parsedPath.success) : undefined;
+  if (refusal !== undefined) return yield* Effect.fail(refusal);
   const source = yield* input.readText;
   const tree = yield* resolve(input.parse(source));
-  const mutation = applySetMutation({
-    tree,
-    key: input.key,
-    raw: input.raw,
-    type: input.type ?? "string",
-    file: input.file,
-  });
-  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  const candidates = [mutation.success];
+  yield* Effect.fromResult(parsedPath);
+  const path = yield* Effect.fromResult(resolveConfigPath(tree, input.key, input.file));
+  const value = yield* Effect.fromResult(parseConfigValue(input.raw, input.type ?? "string", input.file));
+  const candidates = [{ next: setAtPath(tree, path, value), value }];
   if (input.type === undefined) {
     const parsed = parseTypedValue(input.raw, "yaml");
     if (Result.isSuccess(parsed) && typeof parsed.success !== "string") {
-      candidates.push({ next: setAtPath(tree, input.key, parsed.success), value: parsed.success });
+      candidates.push({ next: setAtPath(tree, path, parsed.success), value: parsed.success });
     }
   }
   const attempts: DecodeAttempt[] = [];
@@ -139,12 +139,13 @@ export const runSetVerb = Effect.fnUntraced(function* <
       );
       baseline = Result.isFailure(original) ? original.failure : [];
     }
-    const blocking = blockingIssues(remainingIssues, baseline ?? [], input.key);
+    const blocking = blockingIssues(remainingIssues, baseline ?? [], path);
     if (blocking.length === 0) {
       const changed = !authoredTreesEqual(tree, candidate.next);
       const text = changed
         ? yield* prepareConfigEdit({
             ...input,
+            path,
             source,
             tree,
             next: candidate.next,
@@ -167,15 +168,12 @@ export const runSetVerb = Effect.fnUntraced(function* <
     }
     attempts.push({ label: interpretationLabel(candidate.value), issues: blocking });
   }
-  const path = parsePathSegments(input.key)?.map((segment) =>
-    segment.kind === "key" ? segment.key : segment.index,
-  );
   const kindAccepted = attempts.filter(
     (attempt) =>
       !attempt.issues.some(
         (issue) =>
           issue.kind === "type" &&
-          issue.path.length === path?.length &&
+          issue.path.length === path.length &&
           path.every((segment, index) => segment === issue.path[index]),
       ),
   );
@@ -186,7 +184,7 @@ export const runSetVerb = Effect.fnUntraced(function* <
       file: input.file,
       path: input.key,
       issues,
-      remediation: failureRemediation(reported, input.key, input.schema),
+      remediation: failureRemediation(reported, { key: input.key, path }, input.schema),
     }),
   );
 });
@@ -201,15 +199,20 @@ export const runUnsetVerb = Effect.fnUntraced(function* <
 >(
   input: ConfigDocument<D, ERead, EWrite, EAfter, R, EParse> & {
     readonly key: string;
+    readonly checkPath?: WritePathPolicy;
     readonly dryRun: boolean;
   },
 ) {
+  const parsedPath = parseConfigPath(input.key, input.file);
+  const refusal = Result.isSuccess(parsedPath) ? input.checkPath?.(parsedPath.success) : undefined;
+  if (refusal !== undefined) return yield* Effect.fail(refusal);
   const source = yield* input.readText;
   const tree = yield* resolve(input.parse(source));
-  const mutation = applyUnsetMutation({ tree, key: input.key, file: input.file });
-  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
+  yield* Effect.fromResult(parsedPath);
+  const path = yield* Effect.fromResult(resolveConfigPath(tree, input.key, input.file));
+  const mutation = unsetAtPath(tree, path);
   const evaluated = yield* collectDocumentDiagnostics(
-    Effect.suspend(() => resolve(input.decode(mutation.success.next))),
+    Effect.suspend(() => resolve(input.decode(mutation.next))),
   );
   const decoded = evaluated.value;
   const remainingIssues = Result.isFailure(decoded) ? decoded.failure : [];
@@ -219,7 +222,7 @@ export const runUnsetVerb = Effect.fnUntraced(function* <
       )).value
     : decoded;
   const baseline = Result.isFailure(original) ? original.failure : [];
-  const issues = blockingIssues(remainingIssues, baseline, input.key);
+  const issues = blockingIssues(remainingIssues, baseline, path);
   if (issues.length > 0) {
     return yield* Effect.fail(
       writeValidationErrorFromIssues({
@@ -229,18 +232,18 @@ export const runUnsetVerb = Effect.fnUntraced(function* <
       }),
     );
   }
-  const text = mutation.success.changed
-    ? yield* prepareConfigEdit({ ...input, source, tree, next: mutation.success.next, operation: "unset" })
+  const text = mutation.changed
+    ? yield* prepareConfigEdit({ ...input, path, source, tree, next: mutation.next, operation: "unset" })
     : source;
   yield* persistMutation(input, {
     text,
-    shouldWrite: !input.dryRun && mutation.success.changed,
+    shouldWrite: !input.dryRun && mutation.changed,
     decoded,
     warnings: evaluated.warnings,
   });
   return {
     key: input.key,
-    changed: mutation.success.changed,
+    changed: mutation.changed,
     dryRun: input.dryRun,
     ...(remainingIssues.length > 0 ? { remainingIssues } : {}),
   };

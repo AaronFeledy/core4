@@ -34,6 +34,8 @@ export interface LandofileReferencedFile {
 }
 
 export interface LandofileProvenance {
+  /** Entry path selected by the loader, independently of which layer owns a value. */
+  readonly landofilePath?: string;
   readonly origins: ValueOrigins<AuthoredOrigin>;
   /** Authored overlays retained for a resolved include tree, in composition order. */
   readonly overlays: readonly ValueWithOrigins<AuthoredOrigin>[];

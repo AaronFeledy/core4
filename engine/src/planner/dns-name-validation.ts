@@ -6,6 +6,8 @@ import {
 } from "@lando/sdk/schema";
 import type { PlannerIssue } from "./resolved-validation.ts";
 
+export const invalidServiceDnsNameReason = "invalid-service-dns-name";
+
 export interface DnsNameClaim {
   readonly network: string;
   readonly name: string;
@@ -87,6 +89,8 @@ export const dnsNameClaims = (input: {
 export const dnsNameIssues = (input: {
   readonly landofile: LandofileShape;
   readonly isBlocked: (path: ValidationIssuePath) => boolean;
+  readonly isLoadBlocked?: (path: ValidationIssuePath) => boolean;
+  readonly isDeferredAncestor?: (path: ValidationIssuePath) => boolean;
   readonly appSlug: string | undefined;
 }): ReadonlyArray<PlannerIssue> => {
   const { landofile, isBlocked } = input;
@@ -94,8 +98,28 @@ export const dnsNameIssues = (input: {
   const dnsNamespaces = new Map<string, Map<string, string>>();
   const dnsCollisionSites = new Set<string>();
   const containerNames = new Map<string, string>();
+  for (const name of Object.keys(landofile.services ?? {})) {
+    const internal = input.appSlug === undefined ? undefined : `${name}.${input.appSlug}.internal`;
+    if (internal !== undefined && internal.length > 253)
+      issues.push({
+        path: ["services", name],
+        rule: "landofile.dns-name",
+        reason: invalidServiceDnsNameReason,
+        message: `Service key ${JSON.stringify(name)} makes its internal DNS name exceed 253 characters.`,
+        suggestion:
+          "Shorten the service key or app name so the full internal name fits within 253 characters.",
+      });
+  }
   for (const claim of dnsNameClaims({ services: landofile.services, appSlug: input.appSlug })) {
-    if (!claim.concrete && isBlocked(claim.path)) continue;
+    if (claim.network !== "default" && input.isLoadBlocked?.(["networks", claim.network])) continue;
+    if (claim.concrete) {
+      // A service key is known even when its body is not, unlike attachment membership.
+      if (
+        claim.path.length > 2 &&
+        (input.isLoadBlocked?.(claim.path) || input.isDeferredAncestor?.(claim.path))
+      )
+        continue;
+    } else if (isBlocked(claim.path)) continue;
     if (claim.authored && !claim.name.includes(".") && /^lando-.*--/iu.test(claim.name)) {
       issues.push({
         path: claim.path,

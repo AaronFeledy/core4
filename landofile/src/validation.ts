@@ -17,10 +17,32 @@ import type { LandofileProvenance } from "./provenance.ts";
 import { landofileIssuesFromSchema, valueAtPath } from "./validation-suggestions.ts";
 import { isValidSemverRange } from "./version-constraint.ts";
 
+export {
+  pathHasPrefix,
+  pathsOverlap,
+  probeTargetIsBlocked,
+  unavailableEntryPath,
+} from "./validation-path.ts";
+
 export const getLandofileValueSource = (
   provenance: LandofileProvenance | undefined,
   path: ValidationIssuePath,
 ) => (provenance === undefined ? undefined : valueOriginAt(provenance.origins, path).source);
+
+/** A planner path may refer to generated state, not to a child of an authored value. */
+export const getExactLandofileValueSource = (
+  provenance: LandofileProvenance | undefined,
+  path: ValidationIssuePath,
+) => {
+  let origin = provenance?.origins;
+  for (const key of path) origin = origin?.children.get(key);
+  return origin?.source;
+};
+
+export const primaryIssueFile = (issues: readonly ValidationIssue[], fallback: string): string => {
+  const source = issues[0]?.source;
+  return source !== undefined && "file" in source ? source.file : fallback;
+};
 const COMPOSE_REMEDIATION =
   "Compose compatibility is limited to the supported subset; move provider-native keys under providers.<provider-id> or use config translation.";
 
@@ -95,9 +117,8 @@ export const landofileValidationError = (
       return location === undefined ? detail : `${location}: ${detail}`;
     })
     .join("; ");
-  const source = issues[0]?.source;
   return new LandofileValidationError({
-    file: source !== undefined && "file" in source ? source.file : file,
+    file: primaryIssueFile(issues, file),
     issues,
     remediation,
     message: `${headline}: ${lines}${/[.?!]$/.test(lines) ? "" : "."}`,

@@ -109,7 +109,7 @@ services:
 
 Shorthand and object routes live in the same list. `app.lndo.site:8080/admin` and `{hostname: app.lndo.site, endpoint: 8080, pathPrefix: /admin}` mean the same thing.
 
-Routes may use expressions such as `{{ app.name }}.{{ proxy.defaultDomain }}`. Lint, `lando start`, and `lando app:cache:refresh` all check `hostname`, `pathPrefix`, shorthand, and authored HTTP endpoint selection after the expression resolves, under rule `landofile.route`. Independent findings are reported together: lint lists them as violations, and start or refresh fails with one `LandofileValidationError` carrying the same issues. Load-time expression failures are reported together; effective route checks wait until the load stage succeeds.
+Routes may use expressions such as `{{ app.name }}.{{ proxy.defaultDomain }}`. Lint, `lando start`, and `lando app:cache:refresh` all check `hostname`, `pathPrefix`, shorthand, and authored HTTP endpoint selection after the expression resolves, under rule `landofile.route`. Independent findings are reported together: lint lists them as violations, and start or refresh fails with one `LandofileValidationError` carrying the same issues. Load-time expression failures are reported together. When every load failure is a local isolable problem (for example an unset env value in another service), lint still runs effective route checks on unblocked routes; a missing include or other missing content keeps those checks behind a clean load. See [Lint a Landofile](../landofile/config-lint.mdx#what-lint-catches).
 
 Layer merging matches routes by the same scheme, case-insensitive hostname, and path-prefix identity used for conflict detection, regardless of spelling. Omitted scheme means HTTPS and omitted path prefix means `/`. Backend ports do not change that identity. `both` participates in both schemes; overlaying only HTTPS keeps the inherited HTTP entry.
 
@@ -169,6 +169,9 @@ A route that names no `endpoint` targets the HTTP or HTTPS listener marked
 HTTP(S) listener. A TCP primary does not prevent that fallback: Mailpit's route
 uses its HTTP UI even though SMTP is primary. Order in the list does not decide.
 The same rule picks the target of the generated default route and of `lando open`.
+
+For a default route, Lando joins the [DNS-compatible service part and app slug](../landofile/app-name-edge-cases.mdx) with `proxy.defaultDomain`. This can give different service keys the same hostname, such as `pma_theme` and `pma-theme`. If lint reports a conflict, give one service its own hostname in `routes:`. You don't need to rename either service.
+
 When you author two or more HTTP listeners, mark the one those should use, or
 name an endpoint in every route:
 

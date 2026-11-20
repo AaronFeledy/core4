@@ -1,5 +1,5 @@
 import { setAtPath } from "@lando/engine/config-write/dot-path";
-import { eligibleBindingPath, exactSecretReferenceId } from "@lando/landofile/secret-reference";
+import { exactSecretReferenceId } from "@lando/landofile/secret-reference";
 import { compiledLandofileSource } from "@lando/landofile/serializer";
 import { mapFailures } from "@lando/sdk/command-result";
 import { RecipeDecomposeError } from "@lando/sdk/errors";
@@ -17,12 +17,12 @@ import {
   LandofileAuthoringFragmentWire,
   type RecipeDecomposeInput,
   type RecipeDecomposeResult,
-  parseValidationIssuePath,
 } from "@lando/sdk/schema";
 import { parseSecretReference } from "@lando/sdk/secrets";
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { recipeOptionRemediation } from "./builtin/option-remediation.ts";
+import { parseSecretBindingField } from "./secret-binding-field.ts";
 
 export type CompiledRecipeDecomposerFactory = (ports: Parameters<RecipeDecomposerFactory>[0]) => {
   readonly producer: CompiledRecipeManifest["snapshot"]["identity"];
@@ -124,22 +124,15 @@ export const makeCompiledRecipeDecomposer = (
         const reference = approved.secrets[promptName];
         switch (disposition.kind) {
           case "secret-store": {
-            const path = parseValidationIssuePath(disposition.field);
-            if (
-              path === undefined ||
-              !eligibleBindingPath(path) ||
-              path.some(
-                (segment) => segment === "__proto__" || segment === "constructor" || segment === "prototype",
-              ) ||
-              reference?.disposition !== "secret-store"
-            )
+            const path = parseSecretBindingField(disposition.field);
+            if (path === undefined || reference?.disposition !== "secret-store")
               return yield* Effect.fail(invalidSecret(`prompts.${promptName}.disposition.field`));
             const id = exactSecretReferenceId(reference.reference);
             if (id === undefined) return yield* Effect.fail(invalidSecret(`secrets.${promptName}`));
             yield* Effect.fromResult(parseSecretReference(id)).pipe(
               mapFailures(() => invalidSecret(`secrets.${promptName}`)),
             );
-            boundSource = setAtPath(boundSource, disposition.field, reference.reference);
+            boundSource = setAtPath(boundSource, path, reference.reference);
             break;
           }
           case "init-only":

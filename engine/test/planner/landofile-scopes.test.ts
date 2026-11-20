@@ -5,9 +5,9 @@ import { AppPlan, ServiceName } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import {
   configExpressionIssuePath,
-  deferredSiteKey,
   materializeLandofileScopes,
   materializeServiceScopeSites,
+  pathIsBlocked,
   serviceCredsScopeForPlan,
   serviceScopeContext,
 } from "../../src/planner/landofile-scopes.ts";
@@ -22,7 +22,8 @@ test("keeps literal dots and numeric string keys in planner lint paths", () => {
   });
   const path = configExpressionIssuePath(error);
   expect(path).toEqual(["services", "web.v2", "environment", "0"]);
-  expect(deferredSiteKey(path)).not.toBe(deferredSiteKey(["services", "web", "v2", "environment", 0]));
+  expect(pathIsBlocked([path], ["services", "web", "v2", "environment", "0"])).toBe(false);
+  expect(pathIsBlocked([path], ["services", "web.v2", "environment", 0])).toBe(false);
 });
 
 test("advances recorded identity and connection sites without rescanning produced strings", async () => {

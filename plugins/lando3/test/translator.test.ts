@@ -30,6 +30,22 @@ const translate = (documents: ReadonlyArray<ReturnType<typeof document>>) => {
 };
 
 describe("lando3 document set", () => {
+  test("locates an invalid service name without emitting an invalid fragment", async () => {
+    const result = await translate([
+      document(".lando.yml", "name: demo\nservices:\n  bad/name:\n    type: nginx\n"),
+    ]);
+    if (result._tag !== "Success") throw result.failure;
+    expect(result.success.diagnostics).toContainEqual(
+      expect.objectContaining({
+        kind: "unsupported",
+        sourceId: ".lando.yml",
+        keyPath: ["services", "bad/name"],
+        span: expect.objectContaining({ start: expect.objectContaining({ line: 3 }) }),
+        message: expect.stringContaining("63 characters per label"),
+      }),
+    );
+    expect(result.success.outputs.map(({ fragment }) => fragment)).toEqual([{ name: "demo" }]);
+  });
   test("merges only the seven app-root yml layers", async () => {
     const result = await translate([
       document(".lando.yml", "name: Kitchen Sink\n"),

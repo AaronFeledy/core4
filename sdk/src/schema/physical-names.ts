@@ -1,4 +1,5 @@
 import { sha256Hex } from "../digest/index.ts";
+import { DOMAIN_NAME_PATTERN } from "./hostname.ts";
 
 const PREFIX = "lando-";
 const DNS_LABEL_MAX_LENGTH = 63;
@@ -46,6 +47,14 @@ export const landoServiceStoreName = (slug: string, service: string, role: strin
 /** Shared app slug normalization, including a root-derived name when no words remain. */
 export const normalizeAppSlug = (name: string, appRoot: string): string =>
   segment(name, 57) || sha256Hex(appRoot).slice(0, HASH_LENGTH);
+
+export const defaultRouteHostname = (service: string, appSlug: string, domain: string): string => {
+  const lower = service.toLowerCase();
+  const servicePart = lower.split(".").every((label) => DOMAIN_NAME_PATTERN.test(label))
+    ? lower
+    : segment(service, DNS_LABEL_MAX_LENGTH) || sha256Hex(service).slice(0, HASH_LENGTH);
+  return `${servicePart}.${appSlug}.${domain}`;
+};
 
 const canonicalOrHashed = (value: string): string =>
   CANONICAL.test(value) && value.length <= 64

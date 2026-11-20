@@ -1,5 +1,6 @@
 import type { SchemaAST as AST, Schema } from "effect";
 import { type LayerMergeRule, getLayerMergeRule } from "../schema/layer-merge.ts";
+import { propertyNameRecordProjection } from "../schema/property-name-check.ts";
 
 type MergeNode = {
   rule?: LayerMergeRule;
@@ -103,6 +104,11 @@ const compile = (root: AST.AST): MergeNode => {
       case "Suspend":
         atSamePath(ast.thunk());
         break;
+      case "Declaration": {
+        const projection = propertyNameRecordProjection(ast);
+        if (projection !== undefined) atSamePath(projection);
+        break;
+      }
       case "Objects":
         for (const property of ast.propertySignatures) {
           if (typeof property.name !== "string") continue;

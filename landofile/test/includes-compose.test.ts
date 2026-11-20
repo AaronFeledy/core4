@@ -67,6 +67,15 @@ describe("Compose include fragments", () => {
     expect(error.remediation).toBe(remediation);
   });
 
+  test("locates an invalid service name in a top-level Compose include", async () => {
+    const file = join(appRoot, "frag.yml");
+    await writeFile(file, "services:\n  bad/name:\n    image: nginx\n");
+    await expect(resolve({ include: ["./frag.yml"] }, appRoot)).rejects.toMatchObject({
+      _tag: "LandofileValidationError",
+      issues: [{ path: ["services", "bad/name"], source: { file, path: ["services", "bad/name"] } }],
+    });
+  });
+
   test("merges a top-level Compose include when the fragment declares a service", async () => {
     // Given
     await writeFile(join(appRoot, "frag.yml"), "services:\n  cache:\n    type: redis\n", "utf8");
