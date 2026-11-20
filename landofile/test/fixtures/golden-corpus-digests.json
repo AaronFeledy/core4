@@ -527,11 +527,11 @@
     },
     {
       "fixture": "docs/guides/healthcheck-runner/fixtures/unsupported-http",
-      "digest": "0b143156fc7568cac70514a8958228ffab1cf5da6d1530def5141ffa70890a79"
+      "digest": "a6c95d797976c315fae7f6e7c7a03f40f7111b852e87f52d922eed86324d84e7"
     },
     {
       "fixture": "docs/guides/healthcheck-runner/fixtures/unsupported-tcp",
-      "digest": "7dd699823f33172d60df5fa568918c5f6d5a0e8737b72d2efe99b26f07d9c2cf"
+      "digest": "13571ed573adf3ab277519e4a34d7a9122b8a2516b1f2d3d72f7b20177da4176"
     },
     {
       "fixture": "docs/guides/home-and-host/fixtures/home-and-host-demo",
@@ -1440,8 +1440,16 @@
       "digest": "a1efbc74f7ffddb808211b2e504bee96908cdd3537bf68d79154d77f2690a4f4"
     },
     {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/host-http-invalid",
+      "digest": "4fcdc7b4a224f141689901b7a3f8255678fbcb192b07f2c6b51a370abfcc0138"
+    },
+    {
       "fixture": "docs/guides/wait-for-your-app/fixtures/host-user-invalid",
       "digest": "09a9279b30167833b6df809abb52b96fe7c839873d35aa76563dbc3883bc3adc"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/http-tcp",
+      "digest": "3cefec1463169642fb318d2ae35d59e30f201681993505c2a5591f9b565b4e33"
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/mixed-timing-corrected",

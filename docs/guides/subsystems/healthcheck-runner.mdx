@@ -13,7 +13,7 @@ post-start subscribers run. This contributor reference describes accepted input,
 probe timing, and failure retention. For app configuration, use
 [Make start wait for your app](../services/wait-for-your-app.mdx).
 
-Service `healthcheck:` configures native ongoing container health; `readiness:` configures the engine's lifecycle gate. Both accept `false`, a non-empty shell string, literal argv, or a command/timing object. Compose `CMD`, `CMD-SHELL`, and `NONE` markers only mean something in an object's `test` list. The object accepts `kind`, `command`, `intervalSeconds`, `timeoutSeconds`, `retries`, and `startPeriodSeconds`; Compose spellings `test`, `disable`, `interval`, `timeout`, and `start_period` also decode. The schema accepts HTTP/TCP intent, but the shipped runner is command-only. `start_interval` / `startInterval` are preserved duration strings for extensions, not a separate lifecycle scheduler.
+Service `healthcheck:` configures native ongoing container health; `readiness:` configures the engine's lifecycle gate. Both accept `false`, a non-empty shell string, literal argv, or an object for a command, HTTP, or TCP probe. Compose `CMD`, `CMD-SHELL`, and `NONE` markers only mean something in an object's `test` list. The object accepts `kind`, `command`, `url`, `port`, `intervalSeconds`, `timeoutSeconds`, `retries`, and `startPeriodSeconds`; Compose spellings `test`, `disable`, `interval`, `timeout`, and `start_period` also decode. `start_interval` / `startInterval` are preserved duration strings for extensions, not a separate lifecycle scheduler.
 
 Execution metadata `target: service | host` and `user: ContainerUser` survives either dialect without selecting one. Native `healthcheck` rejects host targets and any explicit probe user with `HealthcheckTargetUnsupportedError` before action, with remediation to move the probe to `readiness`. Explicit `target: service` is a native no-op. Readiness accepts a service user without changing the main process identity; host readiness cannot select a container user.
 
@@ -31,7 +31,7 @@ services:
     readiness: false
 ```
 
-The engine owns readiness attempt execution. Service execution uses the selected `RuntimeProvider.exec`: strings use `sh -c`, argv stays exact, and an explicit `user` selects only the probe's container identity. Host execution uses `ShellRunner` with Bun Shell for strings or `ProcessRunner` for exact argv, with the CLI machine's current identity and the app root as cwd. Planning rejects a host string that uses a form Bun Shell would misread, such as `${NAME}` or `>&2`, with `LandofileValidationError`. It is not the provider VM or a sandbox. `kind: none` skips the command gate, not process-running or completion supervision. Authored HTTP/TCP kinds fail planning with `LandofileValidationError` before provider actions; use a command probe instead.
+The engine owns readiness attempt execution. Service execution uses the selected `RuntimeProvider.exec`: strings use `sh -c`, argv stays exact, and an explicit `user` selects only the probe's container identity. HTTP and TCP probes run as literal argv against the mounted helper, including in native healthchecks. See [Probe HTTP or TCP without curl](../services/wait-for-your-app.mdx#probe-http-or-tcp-without-curl) for the supported inputs and what they prove. Host execution uses `ShellRunner` with Bun Shell for strings or `ProcessRunner` for exact argv, with the CLI machine's current identity and the app root as cwd. Planning rejects a host string that uses a form Bun Shell would misread, such as `${NAME}` or `>&2`, with `LandofileValidationError`. It is not the provider VM or a sandbox. `kind: none` skips the probe gate, not process-running or completion supervision.
 
 The runner probes immediately, including during `startPeriodSeconds`. Failed probes during that period do not consume retries; probes run at one-second intervals or `intervalSeconds` when shorter. The first passing probe returns immediately. After the start period, the runner permits `retries` attempts (at least one) at `intervalSeconds`, with `timeoutSeconds` per attempt.
 
@@ -89,14 +89,14 @@ This is not a user how-to. To make start wait for your app, see [Make start wait
       <Run command="lando app:cache:refresh --format=json" />
     </Step>
   </Scenario>
-  <Scenario id="reject-http-before-provider" render={false} reason="Exercise the real planner rather than a modeled start command">
+  <Scenario id="reject-http-without-url" render={false} reason="Reject an incomplete native HTTP probe before provider actions">
     <Step name="reject-http">
       <UseFixture name="unsupported-http" />
       <Run command="lando app:cache:refresh --format=json" expectExit={1} />
       <Verify errorTag="LandofileValidationError" />
     </Step>
   </Scenario>
-  <Scenario id="reject-tcp-before-provider" render={false} reason="Exercise the real planner rather than a modeled start command">
+  <Scenario id="reject-tcp-without-port" render={false} reason="Reject an incomplete native TCP probe before provider actions">
     <Step name="reject-tcp">
       <UseFixture name="unsupported-tcp" />
       <Run command="lando app:cache:refresh --format=json" expectExit={1} />
