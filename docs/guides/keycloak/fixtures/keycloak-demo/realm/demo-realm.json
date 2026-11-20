@@ -9,8 +9,8 @@
       "secret": "local-development-only",
       "directAccessGrantsEnabled": true,
       "standardFlowEnabled": true,
-      "redirectUris": ["https://app.keycloak-demo.lndo.site/*"],
-      "webOrigins": ["https://app.keycloak-demo.lndo.site"]
+      "redirectUris": ["${APP_URL}/*"],
+      "webOrigins": ["${APP_URL}"]
     }
   ],
   "users": [

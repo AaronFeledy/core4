@@ -23,3 +23,8 @@ console.log(`token endpoint: ${discovery.token_endpoint}`);
 console.log(`signing keys: ${discovery.jwks_uri}`);
 console.log(`user: ${claims.preferred_username}`);
 console.log(`issuer: ${claims.iss}`);
+if (claims.iss !== process.env.OIDC_ISSUER) {
+  console.error(`issuer does not match OIDC_ISSUER (${process.env.OIDC_ISSUER})`);
+  process.exit(1);
+}
+console.log("issuer matches OIDC_ISSUER");

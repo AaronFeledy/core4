@@ -9,23 +9,23 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: local-development-only
       KC_HEALTH_ENABLED: "true"
-      KC_HOSTNAME: https://keycloak.keycloak-demo.lndo.site
+      KC_HOSTNAME: "{{ service.url }}"
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_PROXY_HEADERS: xforwarded
+      APP_URL: "{{ services.app.url }}"
     volumes:
       - ./realm:/opt/keycloak/data/import:ro
     endpoints:
       - http:8080
-    scanner:
-      path: /realms/demo
     readiness:
-      kind: command
-      command: bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3 && grep -q UP <&3'
+      kind: http
+      url: http://localhost:9000/health/ready
       intervalSeconds: 5
       retries: 40
   app:
     type: "node:22"
-    endpoints: []
+    environment:
+      OIDC_ISSUER: "{{ services.keycloak.url }}/realms/demo"
     dependsOn:
       keycloak:
         condition: service_healthy
