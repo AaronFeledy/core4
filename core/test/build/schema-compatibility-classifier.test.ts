@@ -221,6 +221,27 @@ test("keeps a union finding when a later construct also changes", () => {
 });
 
 test.each([
+  ["input", "compatible"],
+  ["output", "breaking"],
+] as const)("classifies a union widening beneath record values for %s polarity", (polarity, verdict) => {
+  const wrap = (anyOf: JsonSchema["anyOf"]): JsonSchema => ({
+    properties: { rows: { items: { additionalProperties: { anyOf } } } },
+  });
+  expect(classifySchemaChange(wrap(oldMembers), wrap(newMembers), polarity)).toMatchObject([
+    { verdict, changeKind: "union-widened", path: "$.rows.items.additionalProperties.anyOf" },
+  ]);
+});
+
+test("proves an outer anyOf widening through a preserved arm's nested union", () => {
+  const wrap = (members: typeof oldMembers | typeof newMembers): JsonSchema => ({
+    anyOf: [{ type: "null" }, { type: "object", additionalProperties: { anyOf: members } }],
+  });
+  expect(classifySchemaChange(wrap(oldMembers), wrap(newMembers), "input")).toMatchObject([
+    { verdict: "compatible", changeKind: "union-widened", path: "$.anyOf" },
+  ]);
+});
+
+test.each([
   ...JSON_SCHEMA_NAMES.filter((name) => name.endsWith("ServiceConfig")),
   "ServiceConfigInput",
   "HealthcheckInput",

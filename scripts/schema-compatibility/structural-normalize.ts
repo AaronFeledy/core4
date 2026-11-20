@@ -185,9 +185,9 @@ export const normalizeStructure = (schema: JsonSchema, preserveEvaluatedProperti
         Object.keys(child).length === 1 ||
         ["$ref", "$dynamicRef", "$recursiveRef"].some((key) => Object.hasOwn(child, key)),
     );
-    result.anyOf = [...new Map(retained.map((child) => [jsonValueKey(child), child])).values()].sort((a, b) =>
-      jsonValueKey(a).localeCompare(jsonValueKey(b)),
-    );
+    result.anyOf = [...new Map(retained.map((child) => [jsonValueKey(child), child]))]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, child]) => child);
   }
   if (Array.isArray(result.allOf)) {
     const branches = result.allOf.filter((child) => !emptySchema(child));
