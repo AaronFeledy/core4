@@ -67,7 +67,7 @@ export const assertToolingFragment = (
             remediation: error.remediation,
             ...origin,
           }),
-          origin,
+          { kind: "missing-content", source: origin },
         );
       }
     }

@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { ConfigLintRuleId } from "./config-lint-rules.ts";
+import { LandofileLayer } from "./landofile-reference.ts";
 import { ValidationIssue, ValidationIssuePath } from "./validation-issue.ts";
 
 // Config-lint result shapes — the stable, editor/LSP-facing output of
@@ -42,6 +43,30 @@ export const ConfigLintViolation = Schema.Struct({
 });
 export type ConfigLintViolation = typeof ConfigLintViolation.Type;
 
+export const CONFIG_LINT_UNAVAILABLE_SKIP_LIMIT = 100;
+
+const ConfigLintSkipEntry = Schema.Struct({
+  stage: Schema.Literals(["effective", "resolve", "planning"]).annotate({
+    description: "First lint stage affected by this omission.",
+  }),
+  reason: Schema.Literals([
+    "load-failure",
+    "unavailable",
+    "earlier-errors",
+    "diagnostic-document",
+    "capabilities-undeclared",
+  ]).annotate({ description: "Stable machine-readable reason the work was not checked." }),
+  path: Schema.optionalKey(ValidationIssuePath).annotate({
+    description: "Effective path of the omitted entry, when known.",
+  }),
+  source: Schema.optionalKey(
+    Schema.Struct({ file: Schema.String, layer: LandofileLayer, path: ValidationIssuePath }),
+  ).annotate({ description: "Authored location of the failure that caused the omission, when known." }),
+  message: Schema.String.annotate({
+    description: "Short explanation of what was not checked and why.",
+  }),
+}).annotate({ identifier: "ConfigLintSkip" });
+
 /**
  * The full result of linting one Landofile against the canonical schema.
  * `valid` is true when no error-severity violation exists.
@@ -55,5 +80,9 @@ export const ConfigLintResult = Schema.Struct({
   valid: Schema.Boolean,
   /** Ordered findings, including warnings that do not invalidate configuration. */
   violations: Schema.Array(ConfigLintViolation),
+  skipped: Schema.optionalKey(
+    Schema.Array(ConfigLintSkipEntry).check(Schema.isMaxLength(CONFIG_LINT_UNAVAILABLE_SKIP_LIMIT + 1)),
+  ).annotate({ description: "Bounded coverage omissions, separate from findings and validity." }),
 });
 export type ConfigLintResult = typeof ConfigLintResult.Type;
+export type ConfigLintSkip = NonNullable<ConfigLintResult["skipped"]>[number];

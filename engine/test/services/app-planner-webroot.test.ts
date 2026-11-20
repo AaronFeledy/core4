@@ -12,7 +12,7 @@ import { Cause, Effect, Exit, Option, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { composeExtendedServiceType } from "../../src/services/extends.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
-import { literalTestLandofile } from "../compiled-landofile.ts";
+import { compileTestLandofile } from "../compiled-landofile.ts";
 
 const APP_ROOT = process.cwd();
 const plan = (service: typeof ServiceConfig.Encoded) => {
@@ -21,9 +21,11 @@ const plan = (service: typeof ServiceConfig.Encoded) => {
     runtime: 4,
     services: { web: { home: false, certs: false, ...service } },
   });
-  return Effect.flatMap(AppPlanner, (planner) =>
-    planner.plan(literalTestLandofile(landofile, APP_ROOT), TestRuntimeProvider.capabilities),
-  ).pipe(Effect.provide(AppPlannerLayer.layer));
+  return Effect.gen(function* () {
+    const planner = yield* AppPlanner;
+    const compiled = yield* compileTestLandofile(landofile, APP_ROOT);
+    return yield* planner.plan(compiled, TestRuntimeProvider.capabilities);
+  }).pipe(Effect.provide(AppPlannerLayer.layer));
 };
 
 test.each([
@@ -231,6 +233,7 @@ test.each([
       rule: "landofile.service",
       message: expect.stringContaining("nothing in this service uses it"),
       suggestion: expect.any(String),
+      source: { layer: "canonical", file: `${APP_ROOT}/.lando.yml`, path: ["services", "web", "webroot"] },
     },
   ]);
 });

@@ -30,7 +30,7 @@ export const plannedContainerDestination = (
     return new LandofileValidationError({
       message: containerDestinationRefusalMessage(parsed.reason, target),
       remediation: "Use an absolute in-container destination without parent traversal.",
-      file: `${appRoot}/.lando.yml`,
+      file: appRoot,
       issues: [validationIssue(issue, containerDestinationRefusalMessage(parsed.reason, target))],
     });
   }
@@ -54,13 +54,13 @@ export const authoredStorageScopes = (
       return {
         byStore,
         invalidCacheEntry: new LandofileValidationError({
-          message: `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}] in ${appRoot}/.lando.yml. Cache storage is shared across apps by design.`,
+          message: `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}]. Cache storage is shared across apps by design.`,
           remediation: "Remove scope: service from cache storage; caches are shared across apps.",
-          file: `${appRoot}/.lando.yml`,
+          file: appRoot,
           issues: [
             validationIssue(
               ["services", serviceName, "storage", index, "scope"],
-              `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}] in ${appRoot}/.lando.yml. Cache storage is shared across apps by design.`,
+              `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}]. Cache storage is shared across apps by design.`,
             ),
           ],
         }),
@@ -85,12 +85,11 @@ export const authoredStorageScopes = (
 };
 
 export const rejectGlobalScope = (
-  appRoot: string,
   serviceName: string,
   entry: { index: number; store?: string },
 ): NotImplementedError =>
   new NotImplementedError({
-    message: `Service ${serviceName} declares storage scope: global at services.${serviceName}.storage[${entry.index}]${entry.store ? ` (store ${entry.store})` : ""} in ${appRoot}/.lando.yml.`,
+    message: `Service ${serviceName} declares storage scope: global at services.${serviceName}.storage[${entry.index}]${entry.store ? ` (store ${entry.store})` : ""}.`,
     commandId: "landofile.parse",
     remediation: GLOBAL_SCOPE_REMEDIATION,
   });

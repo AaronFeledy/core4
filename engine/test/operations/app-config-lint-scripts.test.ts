@@ -160,3 +160,25 @@ test("retains script metadata and body findings when the Landofile cannot load",
   ).toEqual(["script.front-matter", "script.host-shell"]);
   expect(result.violations.some(({ rule }) => rule === "landofile.load")).toBe(true);
 });
+
+test("skips a shadowed script body when a local load failure leaves a diagnostic Landofile", async () => {
+  const { result } = await lint(
+    { "bad.bun.sh": "# ---\n# desc: x\n# ---\necho ${NAME}" },
+    [
+      "name: scripts",
+      "services:",
+      "  other:",
+      "    type: node:22",
+      "    environment:",
+      '      FOO: "{{ env.LANDO_SCRIPT_LINT_UNSET_7F3A }}"',
+      "tooling:",
+      "  bad:",
+      "    service: ':host'",
+      "    cmd: echo valid",
+      "",
+    ].join("\n"),
+  );
+  expect(result.violations.map(({ rule, path }) => [rule, path])).toEqual([
+    ["landofile.load", ["services", "other", "environment", "FOO"]],
+  ]);
+});

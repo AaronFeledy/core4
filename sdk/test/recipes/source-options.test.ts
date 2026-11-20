@@ -138,7 +138,7 @@ test("rejects a mistyped default without copying its value into diagnostics", ()
   // Then
   expect(result).toMatchObject({
     _tag: "Failure",
-    failure: { reason: "option-default", path: "options.enabled.default" },
+    failure: { reason: "option-default", path: ["options", "enabled", "default"] },
   });
   expect(JSON.stringify(result)).not.toContain("private-value");
 });
@@ -218,6 +218,6 @@ test("rejects action sinks bound to undeclared or nonsecret options", () => {
   // Then
   expect(result).toMatchObject({
     _tag: "Failure",
-    failure: { reason: "secret-invalid", path: "options.token" },
+    failure: { reason: "secret-invalid", path: ["options", "token"] },
   });
 });

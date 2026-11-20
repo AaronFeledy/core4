@@ -17,9 +17,9 @@ export const quoteShellPath = (target: string): string => `'${target.replaceAll(
 
 /**
  * A copy-pasteable argument for the host's shell: bare when it has no metacharacters. Otherwise
- * POSIX single-quoted; on Windows double-quoted, which cmd.exe and PowerShell both accept (a path
- * can never contain `"`), unless it holds `$` or a backtick, which PowerShell would expand inside
- * double quotes, so it gets PowerShell single quotes instead.
+ * POSIX single-quoted; on Windows double-quoted, which cmd.exe and PowerShell both accept, unless it
+ * holds `$` or a backtick, which PowerShell would expand inside double quotes, or a `"` (a quoted
+ * config selector key), so it gets PowerShell single quotes instead.
  */
 export const shellArg = (
   value: string,
@@ -27,7 +27,7 @@ export const shellArg = (
 ): string => {
   if (shell === "windows") {
     if (/^[a-zA-Z0-9_.\\/:@+=-]+$/.test(value)) return value;
-    return /[$`]/.test(value) ? `'${value.replaceAll("'", "''")}'` : `"${value}"`;
+    return /[$`"]/.test(value) ? `'${value.replaceAll("'", "''")}'` : `"${value}"`;
   }
   return /^[a-zA-Z0-9_./:@%+=,-]+$/.test(value) ? value : quoteShellPath(value);
 };

@@ -89,7 +89,7 @@ const validationError = (
   new LandofileValidationError({
     message: `services.${input.serviceName}.certs ${failure.message}`,
     remediation: failure.remediation,
-    file: `${input.appRoot}/.lando.yml`,
+    file: input.appRoot,
     issues: [validationIssue(["services", input.serviceName, "certs"], failure.message, failure.remediation)],
     cause: failure.cause,
   });

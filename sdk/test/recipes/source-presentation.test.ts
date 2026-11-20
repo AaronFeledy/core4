@@ -48,6 +48,6 @@ test.each([
   // Then
   expect(result).toMatchObject({
     _tag: "Failure",
-    failure: { reason: "option-descriptor", path: "options.value.type" },
+    failure: { reason: "option-descriptor", path: ["options", "value", "type"] },
   });
 });

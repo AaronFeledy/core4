@@ -92,6 +92,7 @@ export {
   type ParseOptions,
   detectLandofileTags,
   parseLandofile,
+  splitMappingEntry,
 } from "./parser.ts";
 export {
   expandRouteSchemes,

@@ -33,6 +33,7 @@ import {
   keyValueEntryPath,
   templateExpression,
 } from "./load-expression-shape.ts";
+import { loadExpressionFailureKind } from "./load-failures.ts";
 import type { LandofileReferencedFile } from "./provenance.ts";
 import { LOAD_DEFERRED_EXPRESSION_SCOPES } from "./recipe-expressions.ts";
 import { eligibleBindingPath, isLoweredSecretReferenceSite } from "./secret-reference.ts";
@@ -130,7 +131,7 @@ export const resolveLandofileLoadExpressions = (
           const source = { file: options.source.sourcePath, layer: options.source.layer, path };
           const failure = normalizeLoadExpressionFailure(cause, options.source, path);
           if (failure instanceof NotImplementedError) options.recorder.deferRefusal(failure, source);
-          else options.recorder.record(failure, source);
+          else options.recorder.record(failure, { kind: loadExpressionFailureKind(path), source });
           return value;
         }
       };

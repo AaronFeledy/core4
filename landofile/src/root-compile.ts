@@ -62,7 +62,7 @@ const acquireRootSources = Effect.fn("Landofile.acquireSources")(function* (
         const error = classified.failure;
         if (error._tag === "Lando3LandofileDetected" || error._tag === "LandofileDialectMixError")
           return yield* Effect.fail(error);
-        runtime.recorder?.record(error);
+        runtime.recorder?.record(error, { kind: "missing-content" });
         if (runtime.recorder !== undefined) runtime.recorder.recipeAvailable = false;
       }
     }
@@ -110,7 +110,7 @@ const prepareRootSources = Effect.fn("Landofile.prepareSources")(function* (
       ]),
       Effect.catch((error) => {
         if (!Schema.is(LandofileLoadFailure)(error)) return Effect.fail(error);
-        runtime.recorder?.record(error);
+        runtime.recorder?.record(error, { kind: "missing-content" });
         return Effect.succeed([]);
       }),
     ),

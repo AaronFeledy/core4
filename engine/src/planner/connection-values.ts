@@ -58,7 +58,7 @@ export const validateConnectionValues = Effect.fn("Planner.validateConnectionVal
       return yield* Effect.fail(
         new LandofileValidationError({
           message: `Service ${name} environment.${key} conflicts with its resolved connection after feature composition.`,
-          file: `${appRoot}/.lando.yml`,
+          file: appRoot,
           remediation:
             "Keep database environment projections consistent with the resolved connection; change the connection inputs instead.",
           issues: [

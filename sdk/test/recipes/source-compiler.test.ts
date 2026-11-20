@@ -161,7 +161,7 @@ test("returns the exact variant budget diagnostic before exponential expansion",
   // Then
   expect(result).toMatchObject({
     _tag: "Failure",
-    failure: { _tag: "RecipeSourceCompileError", reason: "variant-budget", path: "variants" },
+    failure: { _tag: "RecipeSourceCompileError", reason: "variant-budget", path: ["variants"] },
   });
 });
 

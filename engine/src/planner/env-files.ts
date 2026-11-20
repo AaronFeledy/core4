@@ -31,7 +31,7 @@ const loadEnvFiles = Effect.fnUntraced(function* (
       new LandofileValidationError({
         message: `${input.owner} declares env_file, but the FileSystem service is unavailable. Provide FileSystem so env files can be read.`,
         remediation: "Provide FileSystem so env files can be read.",
-        file: `${input.appRoot}/.lando.yml`,
+        file: input.appRoot,
         issues: [
           validationIssue(
             input.issuePath,

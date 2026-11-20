@@ -6,7 +6,6 @@ import {
   type RecipePostInitAction,
   type RecipeProducer,
   type RecipeSnapshot,
-  parseValidationIssuePath,
   validationIssue,
 } from "@lando/sdk/schema";
 import { Effect } from "effect";
@@ -103,7 +102,7 @@ export const compileResolvedRecipe = Effect.fn("RecipeSource.compileResolved")(f
           new RecipeManifestValidationError({
             source: current.source.id,
             message: error.message,
-            issues: [validationIssue(parseValidationIssuePath(error.path ?? "config") ?? [], error.message)],
+            issues: [validationIssue(error.path, error.message)],
             remediation: error.remediation,
           }),
       ),

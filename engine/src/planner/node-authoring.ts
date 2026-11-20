@@ -25,7 +25,7 @@ const landofileFailure = (
   message: string,
   remediation: string,
 ) =>
-  landofileValidationError(`${appRoot}/.lando.yml`, [validationIssue(path, message, remediation)], {
+  landofileValidationError(appRoot, [validationIssue(path, message, remediation)], {
     headline: "Landofile has invalid values",
     remediation,
   });
