@@ -1,7 +1,6 @@
 ---
 id: xhprof-xhgui
 provider: test
-timeout: 600000
 tags: [docs, php, tooling, profiling, xhprof, xhgui, postgres]
 ---
 
@@ -244,7 +243,7 @@ These checks exercise the declared services and tooling, with the large-profile 
     </Step>
   </Scenario>
 
-  <Scenario id="profile-and-import" layer="e2e" render={false} reason="Profile real requests, then prove the stock 413 and the raised limits across a restart">
+  <Scenario id="profile-and-import" layer="e2e" timeout={600000} render={false} reason="Profile real requests, then prove the stock 413 and the raised limits across a restart">
     <Step name="scaffold">
       <UseFixture name="xhprof-demo" />
     </Step>

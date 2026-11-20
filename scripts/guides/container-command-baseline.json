@@ -712,11 +712,6 @@
     "lando db:snapshots:prune --service appserver --keep-latest=3 --preview"
   ],
   "docs/guides/tooling/xdebug-phpstorm.mdx": ["lando xdebug off", "lando xdebug on", "lando xdebug status"],
-  "docs/guides/tooling/xhprof-xhgui.mdx": [
-    "lando exec app -- curl -s 'http://localhost/big.php?n=120000'",
-    "lando exec xhgui -- cat /etc/nginx/http.d/default.conf",
-    "lando logs -s xhgui"
-  ],
   "recipes/astro/README.mdx": ["lando astro --version", "lando npm install"],
   "recipes/django/README.mdx": [
     "lando django migrate",
