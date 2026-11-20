@@ -13,14 +13,13 @@ export const variantsOf = (guide: ParsedGuide): ReadonlyArray<GuideVariant | und
     fm.tabs !== undefined && fm.tabs.length > 0
       ? [["default", fm.tabs] as const]
       : Object.entries(fm.axes ?? {});
-  if (entries.length === 0 && fm.skip === undefined) return [undefined];
+  if (entries.length === 0) return [undefined];
   let combinations: ReadonlyArray<ReadonlyArray<GuideVariantPair>> = [[]];
   for (const [axis, values] of entries)
     combinations = combinations.flatMap((prefix) => values.map((value) => [...prefix, { axis, value }]));
   return combinations.map((pairs) => {
     const override = fm.variants?.[pairs.map((pair) => pair.value).join(".")];
-    const skip = override?.skip ?? fm.skip;
-    const platforms = override?.platforms ?? fm.platforms;
+    const { skip, platforms } = override ?? {};
     const tags = [...new Set([...(fm.tags ?? []), ...(override?.tags ?? [])])];
     return {
       pairs,

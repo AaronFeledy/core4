@@ -2,7 +2,8 @@ import { Effect, Result, Schema } from "effect";
 
 import { NotImplementedError } from "../../errors/index.ts";
 import { KEBAB_CASE_ID_PATTERN, patternString } from "../../schema/string-forms.ts";
-import { GuideId } from "../guide-frontmatter.ts";
+import { GuideSkip, GuideTimeout } from "../guide-execution-fields.ts";
+import { GuideFrontmatter, GuideId } from "../guide-frontmatter.ts";
 
 /** Scenario/step id token — same kebab alphabet as GuideId, distinct schema identity. */
 export const ComponentId = GuideId.annotate({ identifier: "ComponentId" });
@@ -120,6 +121,19 @@ export const ScenarioProps = Schema.Struct({
   reason: Schema.optionalKey(Schema.String),
   tags: Schema.optionalKey(Schema.Array(Schema.String)),
   layer: Schema.optionalKey(Schema.Literals(["scenario", "e2e"])),
+  timeout: Schema.optionalKey(
+    GuideTimeout.annotate({
+      description: "Scenario test timeout in milliseconds. Overrides the guide timeout.",
+    }),
+  ),
+  platforms: GuideFrontmatter.fields.platforms.annotate({
+    description: "Host platforms allowed to run this scenario, unless the variant cell overrides them.",
+  }),
+  skip: Schema.optionalKey(
+    GuideSkip.annotate({
+      description: "Skip this scenario with a reason, unless the variant cell overrides it.",
+    }),
+  ),
 })
   .pipe(
     Schema.check(

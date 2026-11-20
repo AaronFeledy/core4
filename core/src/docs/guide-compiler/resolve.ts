@@ -226,7 +226,8 @@ const resolveCell = (
   const hasBehavior = selected.steps.some((step) =>
     step.components.some((component) => component.kind === "Run" || component.kind === "Verify"),
   );
-  if (!hasBehavior && variant?.skip === undefined && !selected.skipOnly)
+  const skip = variant?.skip ?? scenario.skip ?? guide.frontmatter.skip;
+  if (!hasBehavior && skip === undefined && !selected.skipOnly)
     semanticError(guide, scenario, {
       ...variantDetail(variant),
       code: "guide.scenario.no-behavior",
@@ -236,7 +237,8 @@ const resolveCell = (
       name: scenario.id,
     });
   return {
-    variant,
+    variant: skip === undefined ? variant : { ...variant, pairs: variant?.pairs ?? [], skip },
+    platforms: variant?.platforms ?? scenario.platforms ?? guide.frontmatter.platforms,
     skipOnly: selected.skipOnly,
     skipReason: selected.skipReason,
     steps,

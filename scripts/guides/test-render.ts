@@ -17,6 +17,7 @@ export const renderScenarioTest = (
   const resolved = resolveScenario(guide, scenario, requestedVariant);
   const variant = resolved.variant;
   const scenarioLayer = scenario.layer ?? guide.frontmatter.defaultLayer ?? "scenario";
+  const timeout = scenario.timeout ?? guide.frontmatter.timeout;
   const usesLibraryRuntime = resolved.runMode === "library";
   const usesE2eRuntime = scenarioLayer === "e2e";
   const variableSetup = renderVariableSetup(resolved.variables);
@@ -52,7 +53,7 @@ export const renderScenarioTest = (
   const effectiveTags = [
     ...new Set([...(variant?.tags ?? guide.frontmatter.tags ?? []), ...(scenario.tags ?? [])]),
   ];
-  const effectivePlatforms = variant?.platforms ?? guide.frontmatter.platforms;
+  const effectivePlatforms = resolved.platforms;
   const hostPlatforms = hostPlatform === "wsl" ? ["wsl", "linux"] : [hostPlatform];
   const platformSkip =
     effectivePlatforms !== undefined &&
@@ -189,7 +190,7 @@ ${
   const deadline = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, ${guide.frontmatter.timeout - Math.min(120_000, Math.floor(guide.frontmatter.timeout / 4))});
+  }, ${timeout - Math.min(120_000, Math.floor(timeout / 4))});
   try {
 `
 }  const exit = await Effect.runPromiseExit(
@@ -218,6 +219,6 @@ ${
     process.off("SIGTERM", interrupt);
   }`
   }
-}, ${guide.frontmatter.timeout});
+}, ${timeout});
 ${skips === "" ? "" : `\n${skips}\n`}`;
 };
