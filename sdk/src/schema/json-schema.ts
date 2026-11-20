@@ -530,6 +530,7 @@ import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceFeatureValidationResult } from "./service-feature-validation.ts";
 import { ServiceContainerChange, ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
+import { ServiceLauncherMarker, ServiceLaunchers } from "./service-launchers.ts";
 import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
 import { GeneratedCertificateEndpoint } from "./service-resolution.ts";
 import {
@@ -970,6 +971,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   GeneratedCertificateEndpoint,
   ServiceConnection,
   ServiceState,
+  ServiceLauncherMarker,
+  ServiceLaunchers,
   RouteEvidence,
   EmbeddingPluginPolicy,
   CommandContribution,
@@ -1288,6 +1291,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
     "Owned launcher HTTPS listener that can serve the service's generated certificate.",
   ServiceConnection: "Scoped service connection with explicit binding and activity evidence.",
   ServiceState: "Shared observed and supervised service lifecycle vocabulary.",
+  ServiceLauncherMarker: "Colon-prefixed kebab-case launcher marker such as :local-bin or :node-install-run.",
+  ServiceLaunchers:
+    "Service-type table from launcher marker to non-empty argv prefix; keys exclude the reserved :host site.",
   RouteEvidence: "Read-only configured ingress and live route publication evidence.",
   ServiceInfoLogSource: "Declared service log source and provider availability returned by info.",
   ServiceShutdownObservation: "Attributed daemon shutdown facts without inferred graceful or forced cleanup.",

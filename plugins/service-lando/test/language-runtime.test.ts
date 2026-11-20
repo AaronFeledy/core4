@@ -8,7 +8,9 @@ import { serviceTypeResolve } from "../src/services/_feature-helpers.ts";
 import { makeLanguageRuntime } from "../src/services/_language-runtime.ts";
 import { go122ServiceType, goServiceFeature } from "../src/services/go.ts";
 import { python312ServiceType, pythonServiceFeature } from "../src/services/python.ts";
+import { pythonServiceLaunchers } from "../src/services/python-local-launcher.ts";
 import { ruby33ServiceType, rubyServiceFeature } from "../src/services/ruby.ts";
+import { rubyServiceLaunchers } from "../src/services/ruby-local-launcher.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
 
@@ -72,6 +74,7 @@ const fixtures = [
           config: { target: "/app", excludes: ["__pycache__", ".venv"] },
         },
       ],
+      launchers: pythonServiceLaunchers,
     },
     mounts: [
       [
@@ -107,6 +110,7 @@ const fixtures = [
         { id: "lando.env", config: { webroot: "/app" } },
         { id: "lando.app-mount", config: { target: "/app", excludes: [".bundle"] } },
       ],
+      launchers: rubyServiceLaunchers,
     },
     mounts: [
       [
@@ -180,6 +184,7 @@ for (const fixture of fixtures) {
     configFor: (ctx) => Schema.decodeUnknownSync(FeatureConfig)(ctx.config),
     applyFallback: `service-lando.${fixture.language} failed to apply`,
     resolveFallback: (version) => `Failed to resolve ${fixture.language}:${version}`,
+    ...("launchers" in fixture.resolution ? { launchers: fixture.resolution.launchers } : {}),
   });
 
   for (const [source, serviceType, feature] of [

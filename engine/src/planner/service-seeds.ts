@@ -26,6 +26,7 @@ import {
   orderServicesByCredsReferences,
   serviceScopeContext,
 } from "./landofile-scopes.ts";
+import { lowerLauncher } from "./launchers.ts";
 import { normalizeAppSlug } from "./naming.ts";
 import { loadAuthorizedServiceProjectFiles } from "./node-authoring.ts";
 import { type PlannerIssue, attributePlannerIssue } from "./resolved-validation.ts";
@@ -146,7 +147,7 @@ const resolveSeed = Effect.fnUntraced(function* (
     resolvedArtifactTag,
     fileSystem,
   });
-  const resolution = yield* serviceType
+  const contribution = yield* serviceType
     .resolve({
       name,
       service: pinnedService,
@@ -164,6 +165,26 @@ const resolveSeed = Effect.fnUntraced(function* (
       Effect.flatMap((raw) => normalizeConnectionClients(serviceType, name, { raw })),
       mapFailures((error) => servicePlanError({ appRoot, serviceName: name, cause: error, projectFiles })),
     );
+  const command = contribution.normalizedConfig.command;
+  let resolution = contribution;
+  if (command !== undefined && typeof command !== "string") {
+    const lowered = lowerLauncher(command, { name, facts: { serviceTypeId, ...contribution } });
+    if (Result.isFailure(lowered)) {
+      const issue = lowered.failure;
+      return yield* Effect.fail(
+        new LandofileValidationError({
+          message: issue.message,
+          remediation: issue.suggestion,
+          file: input.landofilePath,
+          issues: [{ ...issue, path: ["services", name, "command"] }],
+        }),
+      );
+    }
+    resolution = {
+      ...contribution,
+      normalizedConfig: { ...contribution.normalizedConfig, command: lowered.success },
+    };
+  }
   return {
     name,
     authoredService: service,
