@@ -9,6 +9,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ApplyOptions } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { compileServiceProbe } from "./service-probe.ts";
 
 export const unsupportedHealthcheckTarget = (
   service: ServiceName,
@@ -37,14 +38,14 @@ export const validateHealthcheckExecution = Effect.fnUntraced(function* (
       const target = plan.services[dependency.service];
       if (target === undefined) continue;
       const probe = effectiveReadiness(target);
-      if (probe?.kind !== "command" || probe.command === undefined)
+      if (probe === undefined || probe.kind === "none")
         return yield* Effect.fail(
           new ProviderConfigError({
             providerId: String(plan.provider),
             operation: "readiness.preflight",
-            message: `Service ${service.name} requires command readiness from ${target.name}, but that policy is disabled or unavailable.`,
+            message: `Service ${service.name} requires readiness from ${target.name}, but that policy is disabled or unavailable.`,
             remediation:
-              "Configure an enabled readiness command or change the dependency to service_started. Optional dependencies still require a satisfiable healthy gate.",
+              "Configure an enabled readiness probe or change the dependency to service_started. Optional dependencies still require a satisfiable healthy gate.",
           }),
         );
     }
@@ -55,6 +56,18 @@ export const validateHealthcheckExecution = Effect.fnUntraced(function* (
       if (invalid !== undefined) return yield* Effect.fail(invalid);
       if (probe.kind !== "none" && probe.executionTarget === "host" && executeReadinessAttempt === undefined)
         return yield* Effect.fail(unsupportedHealthcheckTarget(service.name, probe));
+      if (probe.executionTarget !== "host")
+        yield* Effect.try({
+          try: () => compileServiceProbe(probe, plan, service),
+          catch: (cause) =>
+            new ProviderConfigError({
+              providerId: String(plan.provider),
+              operation: "readiness.preflight",
+              message: `Service ${service.name} has an invalid ${role} probe.`,
+              remediation:
+                cause instanceof Error ? cause.message : `Review the service's ${role} configuration.`,
+            }),
+        });
     }
   }
 });
