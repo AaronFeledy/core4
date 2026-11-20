@@ -1,4 +1,5 @@
-// Historical bytes written by origin/main 140f4828f (v3) and the pinned old writer (v7).
+// Historical bytes written by origin/main 140f4828f (v3), the pinned old writer (v7), and the
+// origin/main bfc9496f2 writer (v8, persisted from the v7 corpus).
 // Never regenerate these fixture files from the code under test.
 // Each future state-version bump adds a new snapshot alongside this corpus.
 import { expect, test } from "bun:test";
@@ -13,6 +14,7 @@ import { Effect } from "effect";
 
 const v3Fixtures = join(import.meta.dir, "fixtures/applied-state-v3");
 const v7Fixtures = join(import.meta.dir, "fixtures/applied-state-v7");
+const v8Fixtures = join(import.meta.dir, "fixtures/applied-state-v8");
 const access = { enforce: async () => undefined, verify: async () => undefined };
 
 const openState = (root: string) =>
@@ -321,8 +323,8 @@ test.each([
   }
 });
 
-test("current v8 decode rejects old discriminators and never migrates", async () => {
-  const root = await mkdtemp(join(tmpdir(), "lando-state-v8-old-keys-"));
+test("current decode rejects old discriminators and never migrates", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-state-current-old-keys-"));
   const target = join(root, "applied-plans/historical.json");
   try {
     const source = JSON.parse(
@@ -345,3 +347,56 @@ test("current v8 decode rejects old discriminators and never migrates", async ()
     await rm(root, { recursive: true, force: true });
   }
 });
+
+const v8Cases = [
+  {
+    name: "lando/applied-plans/historical.json",
+    source: join(v8Fixtures, "lando/applied-plans/historical.json"),
+    target: "applied-plans/historical.json",
+    providerId: "lando" as const,
+    layout: "per-app" as const,
+    appId: "historical",
+  },
+  {
+    name: "podman/applied-plans.json",
+    source: join(v8Fixtures, "podman/applied-plans.json"),
+    target: "applied-plans.json",
+    providerId: "podman" as const,
+    layout: "record" as const,
+    appId: "historical",
+  },
+] as const;
+
+for (const fixture of v8Cases) {
+  test(`reads v8 ${fixture.name} unchanged and persists it as the current envelope`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-state-v8-"));
+    const target = join(root, fixture.target);
+    try {
+      await mkdir(dirname(target), { recursive: true });
+      await copyFile(fixture.source, target);
+      const before = await readFile(target);
+      const state = openState(root);
+      const store =
+        fixture.layout === "record" ? makeAppliedPlanStore(fixture) : makeAppliedPlanStore(fixture);
+
+      const read = await Effect.runPromise(store.inspectAppliedPlan(state, AppId.make(fixture.appId)));
+
+      expect(read.status).toBe("readable");
+      if (read.status !== "readable") throw new Error(`v8 state is ${read.status}`);
+      expect(Object.keys(read.plan.services)).toEqual(["web", "worker"]);
+      expectMigratedNetworkVocabulary(read.plan);
+      expect(Buffer.compare(await readFile(target), before)).toBe(0);
+
+      await Effect.runPromise(store.persistAppliedPlan(state, read.plan));
+      const envelope = JSON.parse(await readFile(target, "utf8")) as {
+        version: number;
+        data: Record<string, PersistedPlan> | PersistedPlan;
+      };
+      expect(envelope.version).toBe(APPLIED_STATE_VERSION);
+      const source = JSON.parse(before.toString("utf8")) as { data: unknown };
+      expect(envelope.data).toEqual(source.data as Record<string, PersistedPlan> | PersistedPlan);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}

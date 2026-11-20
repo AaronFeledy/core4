@@ -11,6 +11,7 @@ import {
   evaluateTemplateEither,
   expressionInterpolationsTouchOnlyScopes,
   expressionScopeMembers,
+  expressionScopeRoots,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
 import { isLandofileOverride, isLandofileReset, override } from "@lando/sdk/landofile";
@@ -36,6 +37,7 @@ import {
 import { loadExpressionFailureKind } from "./load-failures.ts";
 import type { LandofileReferencedFile } from "./provenance.ts";
 import { LOAD_DEFERRED_EXPRESSION_SCOPES } from "./recipe-expressions.ts";
+import { isServiceEnvironmentValuePath, routeUrlSiteError } from "./route-url-expression.ts";
 import { eligibleBindingPath, isLoweredSecretReferenceSite } from "./secret-reference.ts";
 import { deferredToolingScopeError } from "./tooling-deferred-scopes.ts";
 import { loweredSecretRefusal } from "./tooling-shell-binding.ts";
@@ -99,14 +101,19 @@ export const resolveLandofileLoadExpressions = (
         path: ReadonlyArray<string | number>,
         description: string,
         shell?: { readonly name: string; readonly operator: string },
+        scopeRoots: readonly string[] = [],
       ): never => {
         const message =
           shell === undefined
-            ? `${description} are not supported at ${path.join(".")}.`
+            ? scopeRoots.length === 0
+              ? `${description} are not supported at ${path.join(".")}.`
+              : `The ${scopeRoots.map((root) => `\`${root}\``).join(", ")} ${scopeRoots.length === 1 ? "scope is" : "scopes are"} not available in Landofile values (${path.join(".")}).`
             : `\`\${${shell.name}${shell.operator === "plain" ? "" : "..."}}\` at ${path.join(".")} is shell syntax Lando does not expand.`;
         const suggestion =
           shell === undefined
-            ? "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope."
+            ? scopeRoots.some((root) => root === "info" || root === "service")
+              ? "Read a public URL with `{{ service.url }}` or `{{ services.<name>.url }}` in a service's map-form environment."
+              : "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope."
             : shellParameterSuggestion(path, shell.name);
         throw new LandofileValidationError({
           file: options.source.sourcePath,
@@ -152,7 +159,7 @@ export const resolveLandofileLoadExpressions = (
         if (
           Predicate.isObject(value) &&
           "_tag" in value &&
-          (value._tag === "SecretRef" || value._tag === "BoundText")
+          (value._tag === "SecretRef" || value._tag === "BoundText" || value._tag === "RouteText")
         )
           return unsupported(path, "Reserved binding objects");
         if (
@@ -184,6 +191,12 @@ export const resolveLandofileLoadExpressions = (
                 },
               ],
             });
+          const routeError = routeUrlSiteError(parsed.success, {
+            file: options.source.sourcePath,
+            layer: options.source.layer,
+            path,
+          });
+          if (routeError !== undefined) throw routeError;
           if (options.environmentRecorder !== undefined)
             recordExpressionEnvironment(options.environmentRecorder, parsed.success);
           const deferred = deferredToolingScopeError(parsed.success, path, options.source.sourcePath);
@@ -225,11 +238,19 @@ export const resolveLandofileLoadExpressions = (
           const shell = parsed.success.segments.find((segment) => segment.kind === "ShellParamSegment");
           if (shell !== undefined) return unsupported(path, "Configuration expressions", shell);
           const secretMembers = expressionScopeMembers(parsed.success, "secrets");
+          const selfMembers = expressionScopeMembers(parsed.success, "service");
           const scopes =
             (bindable || lowered) && secretMembers.analyzable
               ? [...LOAD_DEFERRED_EXPRESSION_SCOPES, "secrets"]
               : LOAD_DEFERRED_EXPRESSION_SCOPES;
-          const admittedScopes = executableExpressionPath(path) ? [...scopes, ...INVOCATION_SCOPES] : scopes;
+          const availableScopes =
+            isServiceEnvironmentValuePath(path) &&
+            (!selfMembers.analyzable || (selfMembers.members.size === 1 && selfMembers.members.has("url")))
+              ? [...scopes, "service"]
+              : scopes;
+          const admittedScopes = executableExpressionPath(path)
+            ? [...availableScopes, ...INVOCATION_SCOPES]
+            : availableScopes;
           if (expressionInterpolationsTouchOnlyScopes(parsed.success, admittedScopes)) {
             if (
               parsed.success.segments.every(
@@ -248,7 +269,12 @@ export const resolveLandofileLoadExpressions = (
           }
           const expression = templateExpression(parsed.success);
           if (expression === undefined || !containsLoad(expression) || containsContextPath(expression)) {
-            return unsupported(path, "Template expressions");
+            return unsupported(
+              path,
+              "Template expressions",
+              undefined,
+              [...expressionScopeRoots(parsed.success)].filter((root) => !admittedScopes.includes(root)),
+            );
           }
           const depth = callDepth(expression);
           if (depth > options.policy.maxRecursionDepth) {

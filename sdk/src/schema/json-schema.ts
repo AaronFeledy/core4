@@ -26,7 +26,11 @@ import {
 } from "../docs/components/props.ts";
 import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 import { PublicTranscript, Transcript } from "../docs/transcript.ts";
-import { EnvironmentValueResolutionError, PlanReplanRequiredError } from "../errors/environment-value.ts";
+import {
+  EnvironmentValueResolutionError,
+  PlanReplanRequiredError,
+  RouteUrlBindingError,
+} from "../errors/environment-value.ts";
 import {
   AppDataIdentityError,
   AppPlacementError,
@@ -288,6 +292,8 @@ import {
   BoundTextReference,
   Environment,
   EnvironmentValue,
+  RouteText,
+  RouteUrlPart,
   SecretRef,
   SecretReference,
 } from "./environment-value.ts";
@@ -650,6 +656,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   SecretRef,
   BoundTextReference,
   BoundText,
+  RouteText,
+  RouteUrlPart,
   EnvironmentValue,
   Environment,
   ServiceCreds,
@@ -674,6 +682,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceScopedLandofile,
   CompiledLandofile,
   EnvironmentValueResolutionError,
+  RouteUrlBindingError,
   PlanReplanRequiredError,
   SshAgentConfig,
   GpgAgentConfig,

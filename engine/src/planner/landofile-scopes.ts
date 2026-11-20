@@ -8,7 +8,7 @@ import {
 import { pathHasPrefix, pathsOverlap } from "@lando/landofile/validation";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigExpressionError } from "@lando/sdk/errors";
-import { type ExpressionContext, expressionScopeMembers } from "@lando/sdk/expressions";
+import { type ExpressionContext, expressionScopeMemberPaths } from "@lando/sdk/expressions";
 import {
   type AppPlan,
   type CompilationContext,
@@ -121,10 +121,10 @@ export const materializeServiceScopeSites = Effect.fn("Landofile.serviceSites")(
 
 export const serviceCredsScopeForPlan = (plan: AppPlan): ServiceCredsScope =>
   Object.fromEntries(
-    Object.values(plan.services).flatMap((service) => {
-      const facts = serviceExpressionFacts(service);
-      return facts === undefined ? [] : [[service.name, facts]];
-    }),
+    Object.values(plan.services).map((service) => [
+      service.name,
+      serviceExpressionFacts(service.name, service),
+    ]),
   );
 
 export const materializeLandofileScopesForPlan = Effect.fn("Landofile.planScopes")(function* (
@@ -157,7 +157,7 @@ export const referencedServices = (
   const references = new Set<string>();
   for (const site of sites) {
     if (!pathHasPrefix(site.path, pathPrefix)) continue;
-    const members = expressionScopeMembers(site.template, "services");
+    const members = expressionScopeMemberPaths(site.template, "services");
     if (!members.analyzable)
       return Result.fail(
         new ConfigExpressionError({
@@ -168,7 +168,7 @@ export const referencedServices = (
           remediation: "Write the service name directly, for example services.database.creds.user.",
         }),
       );
-    for (const member of members.members) references.add(member);
+    for (const [name, member] of members.paths) if (member !== "url") references.add(name);
   }
   return Result.succeed(references);
 };

@@ -228,7 +228,9 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   // credentials published so far, before env files and user defaults merge in
   // (those values are never interpolated) and before its type runs, so the
   // type sees concrete values wherever it reads its configuration.
-  const serviceCredsScope: Record<string, ServiceCredsScope[string]> = {};
+  const serviceCredsScope: Record<string, ServiceCredsScope[string]> = Object.fromEntries(
+    Object.keys(landofile.services ?? {}).map((name) => [name, serviceExpressionFacts(name)]),
+  );
   let pendingSites: readonly ParsedPendingSite[] = input.deferredSites;
   const documents = { ...landofile.services };
   const resolvedByName = new Map<
@@ -304,8 +306,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
       continue;
     }
     const seed = resolved.success;
-    const facts = serviceExpressionFacts(seed.resolution);
-    if (facts !== undefined) serviceCredsScope[name] = facts;
+    serviceCredsScope[name] = serviceExpressionFacts(name, seed.resolution);
     const checked = yield* validateServiceSeed(
       seed,
       { appRoot, appSlug, serviceName: name, configs: landofile.configs },

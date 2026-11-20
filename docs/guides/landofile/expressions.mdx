@@ -183,6 +183,24 @@ lando app:cache:refresh
 
 See [Secret stores](../config/secret-stores.mdx#where-references-resolve) for which authored sites create a reference.
 
+## Read a service's public URL
+
+Use `{{ service.url }}` for the current service's public URL or `{{ services.<name>.url }}` for a named service in the same app. For example, add this to the `web` service in your Landofile if the app also has a routed `api` service:
+
+```yaml
+environment:
+  APP_URL: "{{ service.url }}"
+  API_URL: "{{ services.api.url }}/v1"
+```
+
+Lando uses the first route with a concrete hostname that serves HTTPS, or the first concrete HTTP route if there isn't one. The URL matches `lando info --format=json`: it includes the route's path prefix without a trailing slash and the router's actual host port, including fallback ports such as `8443`. It omits the port only for HTTP on `80` or HTTPS on `443`. This is a browser URL, not a container-to-container address.
+
+When the router moves to another port, the next `lando start` recreates only the services that read the URL.
+
+Use the expression only in a map-form service `environment`, including for `type: compose` services. Read `APP_URL` from the process environment instead of putting the expression in `command`, tooling, or another field. You can copy the URL, concatenate it with text or other public URLs, or pass it to `url.encodeComponent()`. Other helpers and conditional tests can't consume the URL. Put any secret in a separate variable.
+
+Run `lando app:config:lint` to find the Landofile path of a misplaced expression or a reference to a service without a concrete route. If the router is disabled, enable it before using a URL expression. `lando app:config` still shows the authored expression; Lando fills in the URL at activation. Global apps don't support public URL bindings.
+
 ## Use invocation values in tooling
 
 Tooling command text, var definitions, and step overrides can read `flags`, `args`, `raw`, and `task` when the task runs. Lando binds declared inputs first, so `{{ flags.name }}` reads the validated value and `{{ default(args.label, 'latest') }}` handles an omitted optional argument. `task` has `name`, `subnamespace`, `commandNamespace`, and `canonicalId`; for `app:db:dump` these are `db:dump`, `db`, `app`, and `app:db:dump`. `raw` is the passthrough argument array for tasks with no declared flags or args.
@@ -238,6 +256,62 @@ lando app:config:lint --format=json
 That returns `valid: false` and a violation whose `path` walks to the bad site, for example `["tooling", "probe", "cmds", 0]`. An unescaped `${HOME}` lints the same way, with its `path` at the value, for example `["services", "app", "environment", "GREETING"]`.
 
 <Guide>
+  <Scenario id="public-service-url-live" layer="e2e" render={false} reason="Verify injected URL and warm container reuse">
+    <Step name="scaffold-public-url-live"><UseFixture name="expressions-public-url-live" /></Step>
+    <Step name="start-public-url-live"><Run command="lando start" /></Step>
+    <Step name="check-public-url-live">
+      <Verify command="lando exec web -- printenv APP_URL" expect={{ stdout: { regex: "^https://expressions-public-url\\.lndo\\.site(:[0-9]+)?\\s*$" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"url\":\\s*\"https://expressions-public-url\\.lndo\\.site(:[0-9]+)?\"" } }} />
+    </Step>
+    <Step name="check-warm-public-url-live">
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"container\":\\s*\\{\\s*\"action\":\\s*\"kept\"" } }} />
+    </Step>
+    <Step name="cleanup-public-url-live">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="public-service-url-resolves" render={false} reason="Validate public URL expressions without starting containers">
+    <Step name="scaffold-public-url"><UseFixture name="expressions-public-url" /></Step>
+    <Step name="lint-public-url">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="refresh-public-url"><Run command="lando app:cache:refresh" /></Step>
+    <Step name="cleanup-public-url"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="public-url-command-refused" render={false} reason="Check that a command cannot read a public URL expression">
+    <Step name="scaffold-url-command"><UseFixture name="expressions-url-command" /></Step>
+    <Step name="lint-url-command">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"command\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-url-command"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="info-scope-refused" render={false} reason="Check that a scope error names the scope the author used">
+    <Step name="scaffold-info-scope"><UseFixture name="expressions-info-scope" /></Step>
+    <Step name="lint-info-scope">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "`info` scope" } }} />
+    </Step>
+    <Step name="cleanup-info-scope"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="public-url-without-route-refused" render={false} reason="Check that lint and refresh both refuse a missing route">
+    <Step name="scaffold-no-route"><UseFixture name="expressions-url-no-route" /></Step>
+    <Step name="refresh-no-route">
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="ConfigExpressionError" expect={{ regex: "no route" }} />
+    </Step>
+    <Step name="lint-no-route">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"environment\",\\s*\"APP_URL\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-no-route"><Cleanup /></Step>
+  </Scenario>
   <Scenario id="plan-time-sites-resolve" render>
     <Step name="scaffold-plan-time">
       <UseFixture name="expressions-plan-time" />

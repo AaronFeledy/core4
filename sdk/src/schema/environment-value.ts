@@ -65,16 +65,47 @@ export const BoundText = Schema.Struct({
 });
 export type BoundText = typeof BoundText.Type;
 
-const EnvironmentValueDescriptor = Schema.Union([Schema.String, SecretRef, BoundText])
+export const RouteUrlPart = Schema.Struct({
+  service: Schema.String.annotate({ description: "Name of the service whose public URL is read." }),
+  encoding: Schema.Literals(["raw", "uri-component"]).annotate({
+    description: "Encoding applied to the public URL.",
+  }),
+}).annotate({ identifier: "RouteUrlPart", description: "One deferred public service URL." });
+export type RouteUrlPart = typeof RouteUrlPart.Type;
+
+export const RouteText = Schema.Struct({
+  _tag: Schema.Literal("RouteText").annotate({ description: "Public route text discriminator." }),
+  parts: layerMerge(Schema.Array(Schema.Union([Schema.String, RouteUrlPart])), { kind: "replace" })
+    .annotate({ description: "Literal and public URL parts in output order, limited to 10000 parts." })
+    .check(Schema.isMaxLength(10_000)),
+}).annotate({
+  identifier: "RouteText",
+  description: "Non-secret text containing deferred public service URLs.",
+  [SchemaNotCredentialAnnotationId]: true,
+});
+export type RouteText = typeof RouteText.Type;
+
+const EnvironmentValueDescriptor = Schema.Union([Schema.String, SecretRef, BoundText, RouteText])
   .check(
     Schema.makeFilter((value) => new TextEncoder().encode(JSON.stringify(value)).length <= 1_048_576, {
       message: "Environment value exceeds the 1048576-byte expression output budget.",
     }),
   )
   .annotate({
-    description: "Literal string or deferred secret descriptor, limited to 1048576 encoded UTF-8 bytes.",
+    description: "Literal string or deferred environment descriptor, limited to 1048576 encoded UTF-8 bytes.",
   });
 type Descriptor = typeof EnvironmentValueDescriptor.Type;
+
+const normalizeParts = <A>(input: readonly (string | A)[]): (string | A)[] => {
+  const parts: (string | A)[] = [];
+  for (const part of input) {
+    if (part === "") continue;
+    const previous = parts.at(-1);
+    if (typeof previous === "string" && typeof part === "string") parts[parts.length - 1] = previous + part;
+    else parts.push(part);
+  }
+  return parts;
+};
 
 /** Trusted projection only: flatten parts, merge literals, and collapse trivial bindings. */
 const normalizeDescriptor = (value: Descriptor): Descriptor => {
@@ -83,23 +114,20 @@ const normalizeDescriptor = (value: Descriptor): Descriptor => {
     case "SecretRef":
       return value;
     case "BoundText": {
-      const parts: Array<string | BoundTextReference> = [];
-      for (const part of value.parts) {
-        if (typeof part !== "string") {
-          parts.push(part);
-          continue;
-        }
-        if (part === "") continue;
-        const previous = parts[parts.length - 1];
-        if (typeof previous === "string") parts[parts.length - 1] = previous + part;
-        else parts.push(part);
-      }
+      const parts = normalizeParts(value.parts);
       if (parts.length === 0) return "";
       const only = parts[0];
       if (parts.length === 1 && typeof only === "string") return only;
       if (parts.length === 1 && only !== undefined && typeof only !== "string" && only.encoding === "raw")
         return { _tag: "SecretRef", reference: only.reference };
       return { _tag: "BoundText", parts };
+    }
+    case "RouteText": {
+      const parts = normalizeParts(value.parts);
+      const first = parts[0];
+      if (first === undefined) return "";
+      if (parts.length === 1 && typeof first === "string") return first;
+      return { _tag: "RouteText", parts };
     }
     default:
       return assertNever(value);
@@ -110,7 +138,12 @@ const assertNever = (value: never): never => value;
 export const normalizeEnvironmentValue = (value: EnvironmentValue): EnvironmentValue =>
   normalizeDescriptor(Schema.decodeUnknownSync(EnvironmentValueDescriptor)(value));
 
-export const EnvironmentValue = EnvironmentValueDescriptor.pipe(
+export type EnvironmentValueSchema = Schema.decodeTo<
+  typeof EnvironmentValueDescriptor,
+  typeof EnvironmentValueDescriptor
+>;
+
+export const EnvironmentValue: EnvironmentValueSchema = EnvironmentValueDescriptor.pipe(
   Schema.decodeTo(
     EnvironmentValueDescriptor,
     SchemaTransformation.transform({ decode: normalizeDescriptor, encode: normalizeDescriptor }),
@@ -118,7 +151,7 @@ export const EnvironmentValue = EnvironmentValueDescriptor.pipe(
 ).annotate({
   identifier: "EnvironmentValue",
   description:
-    "Literal string or normalized deferred secret-bearing text. Literal strings are never rescanned.",
+    "Literal string or normalized deferred secret or public route text. Literal strings are never rescanned.",
 });
 export type EnvironmentValue = typeof EnvironmentValue.Type;
 

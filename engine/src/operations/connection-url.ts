@@ -1,4 +1,45 @@
-import type { EndpointRef, ServiceConnection, ServicePlan } from "@lando/sdk/schema";
+import {
+  type EndpointRef,
+  type RoutePlan,
+  type ServiceConnection,
+  type ServicePlan,
+  routeListenerPreference,
+  selectHttpEndpoint,
+} from "@lando/sdk/schema";
+
+export const primaryRouteCandidates = (
+  routes: readonly RoutePlan[],
+  service: Pick<ServicePlan, "name" | "endpoints" | "certs">,
+  options?: { readonly concreteOnly: true },
+): readonly RoutePlan[] => {
+  const own = routes.filter(
+    (route) => route.service === service.name && (!options?.concreteOnly || !route.hostname.includes("*")),
+  );
+  const https = own.filter((route) => route.scheme !== "http");
+  if (options?.concreteOnly) return https.length > 0 ? https : own;
+  const endpoint = selectHttpEndpoint(
+    service.endpoints,
+    undefined,
+    routeListenerPreference("https", service.certs !== undefined),
+  );
+  const listeners =
+    endpoint.status === "selected"
+      ? own.filter(
+          (route) =>
+            route.backend.port === endpoint.endpoint.port &&
+            route.backend.protocol === endpoint.endpoint.protocol,
+        )
+      : [];
+  return listeners.length > 0 ? listeners : https.length > 0 ? https : own;
+};
+
+export const routeUrl = (route: RoutePlan, protocol: "http" | "https", port: number): string =>
+  connectionUrl({
+    host: route.hostname,
+    protocol,
+    port,
+    pathPrefix: (route.pathPrefix ?? "").replace(/\/+$/u, ""),
+  });
 
 export const connectionHost = (address: string): string => {
   const host = address.replace(/^\[|\]$/gu, "").toLowerCase();

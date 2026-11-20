@@ -1202,16 +1202,6 @@
     "justification": "Reviewed P2b narrowing: whitespace-only additional failure remediation is invalid, matching primary errors."
   },
   {
-    "surface": "schema:ServicePlan",
-    "changeKind": "unsupported-construct",
-    "path": "$.anyOf",
-    "justification": "ServicePlan anyOf evolves with endpoint kind discriminators and nested plan fields (#2456, #2109). applied-state version 8 migrates endpoint _tag\u2192kind and route filter type\u2192kind under data.services and data.routes (map: data[appId].\u2026) on read only; no write-back. Historical applied ServicePlan values remain readable after that pass; v8 never accepts old keys.",
-    "persistedState": {
-      "store": "applied-state",
-      "version": 8
-    }
-  },
-  {
     "surface": "schema:CurrentExecutableAppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
@@ -3516,16 +3506,6 @@
     "justification": "Stored-secret input intentionally narrows to one canonical ${secret:...} reference so raw secret bytes and composite expressions cannot cross the translation boundary."
   },
   {
-    "surface": "schema:AppPlan",
-    "changeKind": "unsupported-keyword",
-    "path": "$.services.additionalProperties",
-    "justification": "AppPlan.services additionalProperties tracks ServicePlan endpoint/filter kind vocabulary (#2456). applied-state version 8 rewrites the two paths data.services[service].endpoints[i]._tag\u2192kind and data.routes[r].filters[f].type\u2192kind (map-prefixed for Podman) in memory on read; ordinary successful persist writes v8. Prior additive ServicePlan fields remain valid.",
-    "persistedState": {
-      "store": "applied-state",
-      "version": 8
-    }
-  },
-  {
     "surface": "schema:ConfigTranslateEncodeInput",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateEncodeInput.context.services.anyOf",
@@ -5300,16 +5280,6 @@
     "justification": "Reviewed validate defaults output: scalar maps remain accepted, numbers/booleans now normalize to strings, and descriptors/KEY=value lists are added. Literal strings retain meaning; consumers discriminate _tag. Raw reserved tags must be rejected before authored admission; null/bare entries and __proto__ fail runtime decode. Tests: environment-value, service-config-compose-spellings, public-schema-contracts."
   },
   {
-    "surface": "schema:AppPlan",
-    "changeKind": "unsupported-keyword",
-    "path": "$.events.additionalProperties",
-    "justification": "Reviewed plan output: EventStepPlan provenance/status/sourceIndex and step variants are unchanged; only env adds descriptors/lists with numeric/boolean coercion and literal strings preserved. Consumers discriminate _tag; raw reserved tags require authored admission rejection. Public events remain present, never waived away. Tests: app-plan, environment-value, event-step, public-schema-contracts.",
-    "persistedState": {
-      "store": "applied-state",
-      "version": 4
-    }
-  },
-  {
     "surface": "schema:DatasetContext",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.events.additionalProperties",
@@ -6974,5 +6944,403 @@
     "changeKind": "unsupported-keyword",
     "path": "$.landofile.services.patternProperties",
     "justification": "Carries the LandofileShape service-key narrowing: service names must be DNS names. These compiled and template-context views are in-memory, not persisted, and the compatibility normalizer folds propertyNames into patternProperties."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.events.additionalProperties",
+    "justification": "History: Reviewed plan output: EventStepPlan provenance/status/sourceIndex and step variants are unchanged; only env adds descriptors/lists with numeric/boolean coercion and literal strings preserved. Consumers discriminate _tag; raw reserved tags require authored admission rejection. Public events remain present, never waived away. Tests: app-plan, environment-value, event-step, public-schema-contracts. Current (applied-state v9): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 9
+    }
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.additionalProperties",
+    "justification": "History: AppPlan.services additionalProperties tracks ServicePlan endpoint/filter kind vocabulary (#2456). applied-state version 8 rewrites the two paths data.services[service].endpoints[i]._tag\u2192kind and data.routes[r].filters[f].type\u2192kind (map-prefixed for Podman) in memory on read; ordinary successful persist writes v8. Prior additive ServicePlan fields remain valid. Current (applied-state v9): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 9
+    }
+  },
+  {
+    "surface": "schema:CurrentExecutableAppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.events.additionalProperties",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:DatabaseClientCreds",
+    "changeKind": "unsupported-construct",
+    "path": "$.password.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:DatabaseClientCreds",
+    "changeKind": "unsupported-construct",
+    "path": "$.rootPassword.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:DatabaseConnection",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.password.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 9
+    }
+  },
+  {
+    "surface": "schema:DatabaseConnection",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.rootPassword.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 9
+    }
+  },
+  {
+    "surface": "schema:DatabaseLocalCheck",
+    "changeKind": "unsupported-keyword",
+    "path": "$.environment.additionalProperties",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:Environment",
+    "changeKind": "unsupported-keyword",
+    "path": "$.additionalProperties",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 9
+    }
+  },
+  {
+    "surface": "schema:EnvironmentValue",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 9
+    }
+  },
+  {
+    "surface": "schema:EventStepPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.step.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 9
+    }
+  },
+  {
+    "surface": "schema:EventsPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.additionalProperties",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 9
+    }
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-destroy.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-init.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-rebuild.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-restart.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-start.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-stop.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-destroy.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-init.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-rebuild.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-restart.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-start.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-stop.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.events.additionalProperties",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingDefaults.env.additionalProperties",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-destroy.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-init.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-rebuild.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-restart.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-start.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-stop.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-destroy.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-init.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-rebuild.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-restart.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-start.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-stop.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.events.additionalProperties",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingDefaults.env.additionalProperties",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceCreds",
+    "changeKind": "unsupported-construct",
+    "path": "$.password.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 9
+    }
+  },
+  {
+    "surface": "schema:ServiceCreds",
+    "changeKind": "unsupported-construct",
+    "path": "$.rootPassword.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 9
+    }
+  },
+  {
+    "surface": "schema:ServiceCredsConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.password.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceCredsConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.rootPassword.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServicePlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "History: ServicePlan anyOf evolves with endpoint kind discriminators and nested plan fields (#2456, #2109). applied-state version 8 migrates endpoint _tag\u2192kind and route filter type\u2192kind under data.services and data.routes (map: data[appId].\u2026) on read only; no write-back. Historical applied ServicePlan values remain readable after that pass; v8 never accepts old keys. Current (applied-state v9): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "persistedState": {
+      "store": "applied-state",
+      "version": 9
+    }
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-destroy.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-init.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-rebuild.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-restart.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-start.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.post-stop.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-destroy.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-init.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-rebuild.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-restart.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-start.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.events.pre-stop.items.anyOf",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.events.additionalProperties",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingDefaults.env.additionalProperties",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
   }
 ]

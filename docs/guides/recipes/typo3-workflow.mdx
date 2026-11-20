@@ -21,12 +21,14 @@ The named init creates `typo3-demo/` and writes only `.lando.yml` there. `--answ
 ```sh
 lando app:config:set services.appserver.uploadDirs '["fileadmin"]' --type json
 lando app:config:set tooling.typo3 '{"service":"appserver","cmds":["php vendor/bin/typo3"],"wrapper":true,"description":"Run the TYPO3 CLI inside the appserver service."}' --type json
+lando app:config:set services.appserver.environment.TYPO3_SETUP_CREATE_SITE '{{ services.appserver.url }}'
 ```
 
 `app:config:set` checks the new Landofile before it writes `.lando.yml`.
 
 - `uploadDirs` is relative to the webroot, so `fileadmin` covers `public/fileadmin`. A PHP request there gets Lando's 403 page instead of running.
 - `lando typo3` runs the TYPO3 CLI. `wrapper: true` sends everything after `lando typo3` to it, including `--help`, `--version`, and flags Lando also has, such as `--verbose`. Lando's own flags go before `typo3`.
+- `TYPO3_SETUP_CREATE_SITE` is the variable `typo3 setup` reads for the site URL when you leave out `--create-site`. `{{ services.appserver.url }}` is the URL the router publishes for `appserver`, the same one `lando info` prints. Lando fills it in when it creates the container.
 
 Check the file, then start the app:
 
@@ -35,7 +37,11 @@ lando app:config:lint
 lando start
 ```
 
-If something else owns 80 or 443, `lando info` shows the fallback port it picked, usually `:8080` / `:8443`.
+If something else owns 80 or 443, `lando info` shows the fallback port it picked, usually `:8080` / `:8443`. `TYPO3_SETUP_CREATE_SITE` carries that port too:
+
+```sh
+lando exec appserver -- printenv TYPO3_SETUP_CREATE_SITE
+```
 
 ## Install TYPO3
 
@@ -49,10 +55,7 @@ Run the rest of this section from a POSIX shell on your host (WSL on Windows). T
 
 TYPO3's default password policy requires an uppercase letter, a lowercase letter, a digit, and a special character. Random base64 doesn't always include a special character, so the `Aa1-` prefix guarantees all four.
 
-Check two values before you run setup:
-
-- `--dbname` matches the app name (here `typo3-demo`).
-- `--create-site` takes the full HTTPS URL `lando info` prints. On a fallback port the URL includes the port, for example `https://typo3-demo.lndo.site:8443/`.
+`--dbname` matches the app name (here `typo3-demo`). The command has no `--create-site`: setup creates the site at the URL in `TYPO3_SETUP_CREATE_SITE`.
 
 Generate the admin password, then run setup. The password stays out of shell history, but it's on the command line, so process lists can see it while setup runs.
 
@@ -70,7 +73,6 @@ lando typo3 setup \
   --admin-user-password="$TYPO3_ADMIN_PASSWORD" \
   --admin-email=admin@example.com \
   --project-name='TYPO3 Demo' \
-  --create-site=https://typo3-demo.lndo.site/ \
   --server-type=apache \
   --force \
   -n
@@ -78,6 +80,20 @@ unset TYPO3_ADMIN_PASSWORD
 ```
 
 `--server-type=apache` writes `public/.htaccess`.
+
+Setup wrote the URL it read into the site configuration as a fixed value. Point the site at the variable instead, so it follows the router. In `config/sites/main/config.yaml`, change the top-level `base:` line to:
+
+```yaml
+base: '%env(TYPO3_SETUP_CREATE_SITE)%'
+```
+
+Leave the indented `base: /` under `languages` alone. TYPO3 caches the site configuration with the variable already filled in, so flush the caches:
+
+```sh
+lando typo3 cache:flush
+```
+
+When the router moves to another port, the next `lando start` recreates `appserver` with the new URL. Run `lando typo3 cache:flush` again after that, or TYPO3 keeps answering on the old one.
 
 On Linux, the default `lando` provider, rootless `podman`, and rootful `podman` or `docker` run `lando typo3`, `lando composer`, and `lando exec` as `www-data`, the account Apache uses to serve TYPO3, and make that account's writes belong to your host user. `config/`, `var/`, and `public/fileadmin/` stay yours and writable by the site. Other providers and platforms keep their own command and ownership defaults, which [Who owns your app files](../services/file-ownership.mdx) covers.
 
@@ -186,6 +202,7 @@ lando db:restore before-update --yes
       <Run command="lando init --recipe lamp --name={{appName}} --answer=webroot=public --yes" />
       <Run command={`lando app:config:set services.appserver.uploadDirs '["fileadmin"]' --type json`} />
       <Run command={`lando app:config:set tooling.typo3 '{"service":"appserver","cmds":["php vendor/bin/typo3"],"wrapper":true,"description":"Run the TYPO3 CLI inside the appserver service."}' --type json`} />
+      <Run command={`lando app:config:set services.appserver.environment.TYPO3_SETUP_CREATE_SITE '{{ services.appserver.url }}'`} />
     </Step>
     <Step name="confirm-config">
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
@@ -197,6 +214,7 @@ lando db:restore before-update --yes
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"typo3\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"typo3\":\\s*\\{[^}]*\"wrapper\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"TYPO3_SETUP_CREATE_SITE\":\\s*\"\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -209,6 +227,7 @@ lando db:restore before-update --yes
       <Run command="lando init --recipe lamp --name=typo3-demo --answer=webroot=public --yes" />
       <Run command={`lando app:config:set services.appserver.uploadDirs '["fileadmin"]' --type json`} />
       <Run command={`lando app:config:set tooling.typo3 '{"service":"appserver","cmds":["php vendor/bin/typo3"],"wrapper":true,"description":"Run the TYPO3 CLI inside the appserver service."}' --type json`} />
+      <Run command={`lando app:config:set services.appserver.environment.TYPO3_SETUP_CREATE_SITE '{{ services.appserver.url }}'`} />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
     </Step>
     <Step name="install">
@@ -216,19 +235,23 @@ lando db:restore before-update --yes
       <Verify command="lando exec appserver -- test -f /app/vendor/bin/typo3" />
     </Step>
     <Step name="setup">
-      <Run command="lando typo3 setup --driver=mysqli --host=database --port=3306 --dbname=typo3-demo --username=lando --password=lando --admin-username=admin --admin-user-password=Aa1-typo3-e2e-only --admin-email=admin@example.com --project-name=TYPO3 --create-site=https://typo3-demo.lndo.site/ --server-type=apache --force -n" />
+      <Run command="lando typo3 setup --driver=mysqli --host=database --port=3306 --dbname=typo3-demo --username=lando --password=lando --admin-username=admin --admin-user-password=Aa1-typo3-e2e-only --admin-email=admin@example.com --project-name=TYPO3 --server-type=apache --force -n" />
       <Verify command="lando exec appserver -- test -f /app/public/.htaccess" />
+      <Verify command="lando exec appserver -- printenv TYPO3_SETUP_CREATE_SITE" expect={{ stdout: { regex: "^https://typo3-demo\\.lndo\\.site(:\\d+)?/?\\s*$" } }} />
+      <Run command={`lando exec appserver -- sed -i "s|^base: .*|base: '%env(TYPO3_SETUP_CREATE_SITE)%'|" config/sites/main/config.yaml`} />
+      <Verify command="lando exec appserver -- grep -c TYPO3_SETUP_CREATE_SITE config/sites/main/config.yaml" expect={{ stdout: { regex: "^1\\s*$" } }} />
+      <Run command="lando typo3 cache:flush" />
     </Step>
     <Step name="ownership">
       <Verify command={`lando exec appserver -- sh -c 'test "$(stat -c %u config/system/settings.php)" = "$(stat -c %u .lando.yml)" && test "$(stat -c %u var)" = "$(stat -c %u .lando.yml)"'`} />
     </Step>
     <Step name="tools">
       <Verify command="lando typo3 --version" expect={{ stdout: { regex: "TYPO3 CMS 14\\." } }} />
-      <Verify command="lando typo3 site:list" expect={{ stdout: { regex: "https://typo3-demo\\.lndo\\.site/" } }} />
+      <Verify command="lando typo3 site:list" expect={{ stdout: { regex: "https://typo3-demo\\.lndo\\.site" } }} />
       <Verify command={`lando mariadb -e "SELECT username FROM be_users;"`} expect={{ stdout: { regex: "admin" } }} />
     </Step>
     <Step name="router-tls">
-      <Verify command={`lando exec appserver -- sh -c 'curl -fsS --resolve typo3-demo.lndo.site:443:127.0.0.1 --cacert "$LANDO_SERVICE_CERT" https://typo3-demo.lndo.site/'`} expect={{ stdout: { regex: "Welcome to your default website" } }} />
+      <Verify command={`lando exec appserver -- sh -c 'curl -fsS --connect-to ::127.0.0.1:443 --cacert "$LANDO_SERVICE_CERT" "$TYPO3_SETUP_CREATE_SITE"'`} expect={{ stdout: { regex: "Welcome to your default website" } }} />
     </Step>
     <Step name="upload-directory">
       <Run command="lando exec appserver -- cp public/index.php public/fileadmin/probe.php" />

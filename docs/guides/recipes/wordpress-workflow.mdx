@@ -12,12 +12,19 @@ Create a local WordPress site with PHP and MariaDB. Run these commands from your
 ```sh
 lando init --recipe wordpress --name=wp-demo --yes
 cd wp-demo
+lando app:config:set services.appserver.environment.WP_HOME '{{ services.appserver.url }}'
 lando start
 ```
 
 The named init creates `wp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4 and skips Redis. Start builds `appserver` with mysqli and checksum-verified WP-CLI, then brings up Apache and MariaDB. Confirm the tools below, then install WordPress.
 
-If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it.
+The `app:config:set` line gives `appserver` a `WP_HOME` variable. `{{ services.appserver.url }}` is the URL the router publishes for `appserver`, the same one `lando info` prints, and Lando fills it in when it creates the container. The install steps below read the site address from it.
+
+If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it. `WP_HOME` carries that port too:
+
+```sh
+lando exec appserver -- printenv WP_HOME
+```
 
 ## Confirm the tools
 
@@ -34,20 +41,19 @@ lando mariadb -e 'SELECT 1 AS ok;'
 ```sh
 lando wp core download
 lando wp config create --dbname=wp-demo --dbuser=lando --dbpass=lando --dbhost=database --skip-check
+lando wp config set WP_HOME "getenv('WP_HOME')" --raw
+lando wp config set WP_SITEURL "getenv('WP_HOME')" --raw
 ```
 
-Use the HTTPS endpoint from `lando info` for `--url`, including any fallback port. Leave `--admin_password` off: WP-CLI generates one and prints it once on an `Admin password:` line, so save it in your password manager.
+The two `config set` lines add `define( 'WP_HOME', getenv('WP_HOME') );` and its `WP_SITEURL` twin to `wp-config.php`. WordPress uses those constants instead of the addresses stored in the database, so the site follows the router: when it moves to another port, the next `lando start` recreates `appserver` with the new URL and WordPress picks it up.
+
+`core install` still needs `--url`. The command below runs in a shell inside `appserver`, where `$WP_HOME` holds the URL. Keep the outer single quotes so your host shell leaves `$WP_HOME` alone. Leave `--admin_password` off: WP-CLI generates one and prints it once on an `Admin password:` line, so save it in your password manager.
 
 ```sh
-lando wp core install \
-  --url='https://wp-demo.lndo.site' \
-  --title='WP Demo' \
-  --admin_user=admin \
-  --admin_email=admin@example.com \
-  --skip-email
+lando exec appserver -- sh -c 'wp core install --url="$WP_HOME" --title="WP Demo" --admin_user=admin --admin_email=admin@example.com --skip-email'
 ```
 
-Match `--url` to the HTTPS endpoint `lando info` prints (add the port when info shows one). Then:
+Then:
 
 ```sh
 lando wp core is-installed
@@ -91,7 +97,7 @@ Import executes the dump's SQL, which can change or replace data in the app data
 ```sh
 lando db:snapshot --label before-import
 lando db:import prod.sql.gz --yes
-lando wp search-replace 'https://www.example.com' 'https://wp-demo.lndo.site' --all-tables --skip-columns=guid
+lando exec appserver -- sh -c 'wp search-replace "https://www.example.com" "$WP_HOME" --all-tables --skip-columns=guid'
 lando wp cache flush
 ```
 
@@ -188,6 +194,7 @@ Add `node` next to `appserver`, point `lando npm` at the theme with tooling
     <Step name="scaffold">
       <Variable name="appName" value="wp-demo" display="wp-demo" />
       <Run command="lando init --recipe wordpress --name={{appName}} --yes" />
+      <Run command={`lando app:config:set services.appserver.environment.WP_HOME '{{ services.appserver.url }}'`} />
     </Step>
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
@@ -195,6 +202,7 @@ Add `node` next to `appserver`, point `lando npm` at the theme with tooling
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"wordpress\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"wp\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"WP_HOME\":\\s*\"\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
     </Step>
     <Step name="start">

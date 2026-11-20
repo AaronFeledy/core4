@@ -40,6 +40,7 @@ import { resolveRouterConfigForApp, routerEnabled } from "../config/router-confi
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
+import { type PreparedRouteUrls, prepareRouteUrlBindings } from "../lifecycle/route-url-bindings.ts";
 import { type PreparedCertificates, prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
@@ -326,6 +327,7 @@ const announceAppLaunch = Effect.fnUntraced(function* (input: {
 
 /** Capture the apply result separately because the progress tree returns only per-service rows. */
 const applyAppLaunch = Effect.fnUntraced(function* (input: {
+  readonly routeUrls: PreparedRouteUrls | undefined;
   readonly admitted: AdmittedApp;
   readonly plan: AppPlan;
   readonly runtimePlan: AppPlan;
@@ -370,6 +372,7 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
           provider,
           plan: runtimePlan,
           certificates,
+          routeUrls: input.routeUrls,
           reconcile: options.reconcile ?? false,
           complete: true,
           ...(environment === undefined ? {} : { environment }),
@@ -410,6 +413,7 @@ const completeAppLaunch = Effect.fnUntraced(function* (input: {
   readonly observedBefore: ReadonlyArray<ServiceRuntimeInfo>;
   readonly initial: ReadonlyMap<string, ServiceRuntimeInfo>;
   readonly applyOutcome: ApplyResult | undefined;
+  readonly routeUrls: PreparedRouteUrls | undefined;
   readonly forceAppBuild?: boolean;
 }) {
   const { admitted, plan, runtimePlan, options, environment, observedBefore, initial, applyOutcome } = input;
@@ -421,6 +425,7 @@ const completeAppLaunch = Effect.fnUntraced(function* (input: {
   const services = Object.values(runtimePlan.services);
   const ready = yield* completeStartup({
     policy: "user-start",
+    routeUrls: input.routeUrls,
     builds,
     router: proxy,
     events,
@@ -541,7 +546,13 @@ const activateAppLaunch = Effect.fnUntraced(function* (input: {
                 : { preparedTargets: execution.preparedTargets }),
             });
             if (pendingStart !== undefined) yield* pendingStart.advance("record-sessions");
+            const routeUrls = yield* prepareRouteUrlBindings({
+              plan: runtimePlan,
+              routes: runtimePlan.routes,
+              router: yield* RouterService,
+            });
             const launch = yield* applyAppLaunch({
+              routeUrls,
               admitted,
               plan,
               runtimePlan,
@@ -554,6 +565,7 @@ const activateAppLaunch = Effect.fnUntraced(function* (input: {
             if (execution.announceApplyOutcome === true)
               yield* publishApplyOutcomeNotices(events, launch.applyOutcome?.services, { created: false });
             const completed = yield* completeAppLaunch({
+              routeUrls,
               admitted,
               plan,
               runtimePlan,
