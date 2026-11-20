@@ -133,10 +133,24 @@ describe("route input and plans", () => {
 });
 
 describe("RouteInputError", () => {
-  for (const key of ["services.appserver.routes[2]", "proxy.appserver[0]"]) {
-    it(`carries remediation and the authored key ${key}`, () => {
-      // Given a route failure with an authored key path.
-      const fields = { message: "Invalid route", key, remediation: "Use a hostname or route object." };
+  for (const [path, otherPath] of [
+    [
+      ["services", "appserver", "routes", 2],
+      ["proxy", "appserver", 0],
+    ],
+    [
+      ["proxy", "appserver", 0],
+      ["services", "appserver", "routes", 2],
+    ],
+  ] as const) {
+    it(`carries remediation and both authored paths ${JSON.stringify(path)}`, () => {
+      // Given a route failure with structured coordinates for both declarations.
+      const fields = {
+        message: "Invalid route",
+        path: [...path],
+        otherPath: [...otherPath],
+        remediation: "Use a hostname or route object.",
+      };
       // When constructing the public tagged error.
       const error = new Errors.RouteInputError(fields);
       // Then consumers retain the tag and actionable context.

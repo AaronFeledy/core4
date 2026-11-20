@@ -5,8 +5,16 @@ import { ValidationIssue, ValidationIssuePath } from "../schema/validation-issue
 
 export class RouteInputError extends Schema.TaggedError<RouteInputError>()("RouteInputError", {
   message: Schema.String.annotate({ description: "Human-readable route input failure." }),
-  key: Schema.String.annotate({ description: "Authored route key path, including its array index." }),
+  path: ValidationIssuePath.annotate({
+    description: "Authored path of the conflicting route declaration, including its array index.",
+  }),
   file: Schema.optional(Schema.String).annotate({ description: "File containing the authored route." }),
+  otherPath: ValidationIssuePath.annotate({
+    description: "Authored path of the earlier route declaration that conflicts.",
+  }),
+  otherFile: Schema.optional(Schema.String).annotate({
+    description: "File containing the earlier conflicting route declaration.",
+  }),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
     description: "Action required to correct the route input.",
   }),

@@ -1243,7 +1243,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   RouteFilterKind: "Supported provider-neutral route filter kinds.",
   RouteFilter:
     "Provider-neutral route filter discriminated by kind, shared by Landofile routes and route plans.",
-  RouteInputError: "Invalid authored route with its key path and remediation.",
+  RouteInputError: "Invalid authored route with both declaration paths and remediation.",
   RouteProviderMismatchError: "Routed app provider differs from the host router provider.",
   AppPlacementError: "App realized on a provider other than the selected provider.",
   AppDataIdentityError: "The app folder's durable data identity cannot be established safely.",

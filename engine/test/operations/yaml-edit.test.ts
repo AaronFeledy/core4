@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { parseLandofile, reset } from "@lando/sdk/landofile";
 import { Effect, Predicate, Result } from "effect";
-import { setAtPath, unsetAtPath } from "../../src/config-write/dot-path";
+import { parsePathSegments, setAtPath, unsetAtPath } from "../../src/config-write/dot-path";
 import { prepareConfigEdit } from "../../src/config-write/prepare-edit";
 import { authoredTreesEqual } from "../../src/config-write/yaml-verify";
 
@@ -50,6 +50,30 @@ const fixtures = [
     expected: "# c\na: # keep\n  - y\n  - z\nb: 1\n",
   },
   { source: "a: 1\nb: 2\n", key: "a", value: { c: 3 }, expected: "a:\n  c: 3\nb: 2\n" },
+  {
+    source: "env:\n  APP_ENV: dev # keep\n# tail\n",
+    key: 'env["x.dotted"]',
+    value: 1,
+    expected: "env:\n  APP_ENV: dev # keep\n  x.dotted: 1\n# tail\n",
+  },
+  {
+    source: 'env:\n  "x.dotted": old # keep\n  APP_ENV: dev\n',
+    key: 'env["x.dotted"]',
+    value: "new",
+    expected: 'env:\n  "x.dotted": new # keep\n  APP_ENV: dev\n',
+  },
+  {
+    source: 'env:\n  "x.dotted: # key": old # keep\n  APP_ENV: dev\n',
+    key: 'env["x.dotted: # key"]',
+    value: { child: 1 },
+    expected: 'env:\n  "x.dotted: # key": # keep\n    child: 1\n  APP_ENV: dev\n',
+  },
+  {
+    source: 'env:\n  "x.dotted": old # keep\n  APP_ENV: dev # sibling\n',
+    key: "env.APP_ENV",
+    value: "prod",
+    expected: 'env:\n  "x.dotted": old # keep\n  APP_ENV: prod # sibling\n',
+  },
 ];
 
 for (const mode of ["landofile", "config"] as const) {
@@ -61,12 +85,15 @@ for (const mode of ["landofile", "config"] as const) {
         );
   const prepare = async (source: string, key: string, operation: "set" | "unset", value?: unknown) => {
     const tree = await Effect.runPromise(parse(source));
-    const next = operation === "set" ? setAtPath(tree, key, value) : unsetAtPath(tree, key).next;
+    const path = parsePathSegments(key);
+    if (path === undefined) throw new Error(`Invalid test selector: ${key}`);
+    const next = operation === "set" ? setAtPath(tree, path, value) : unsetAtPath(tree, path).next;
     return Effect.runPromise(
       Effect.result(
         prepareConfigEdit({
           source,
           key,
+          path,
           operation,
           next,
           tree,
@@ -77,6 +104,15 @@ for (const mode of ["landofile", "config"] as const) {
       ),
     );
   };
+
+  test("unsets a quoted dotted key without touching sibling bytes", async () => {
+    const result = await prepare(
+      'env:\n  "x.dotted": old\n  APP_ENV: dev # keep\n',
+      'env["x.dotted"]',
+      "unset",
+    );
+    expect(result).toEqual(Result.succeed("env:\n  APP_ENV: dev # keep\n"));
+  });
   describe(`${mode} verified offset edits`, () => {
     test.each(fixtures)("keeps exact bytes for $key in $source", async ({ source, key, value, expected }) => {
       // Given: authored YAML and its intended mutation.
@@ -134,7 +170,7 @@ for (const mode of ["landofile", "config"] as const) {
 }
 
 test.each([
-  ['# keep\n"a": 1\n', "a"],
+  ['# keep\na: 1\n"a": 2\n', "a"],
   ["# keep\na: !reset\n", "a"],
   ["# keep\na: &base\n  b: 1\n", "a.b"],
   ["# keep\na:\n  b: &base value\n", "a"],
@@ -153,6 +189,7 @@ test.each([
       prepareConfigEdit({
         source,
         key,
+        path: parsePathSegments(key) ?? [],
         tree,
         next: setAtPath(tree, key, 3),
         operation: "set",

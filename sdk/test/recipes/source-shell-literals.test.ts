@@ -18,7 +18,11 @@ test.each(["${HOME}", "${HOME:-fallback}", "${HOME-fallback}", "${HOME:?required
     // Then
     expect(result).toMatchObject({
       _tag: "Failure",
-      failure: { _tag: "RecipeSourceCompileError", reason: "config-invalid", path: "services.app.command" },
+      failure: {
+        _tag: "RecipeSourceCompileError",
+        reason: "config-invalid",
+        path: ["services", "app", "command"],
+      },
     });
   },
 );
@@ -40,7 +44,7 @@ test("rejects active shell syntax even in an unselected binding-site variant", (
     failure: {
       _tag: "RecipeSourceCompileError",
       reason: "config-invalid",
-      path: "services.app.environment.HOME",
+      path: ["services", "app", "environment", "HOME"],
     },
   });
 });

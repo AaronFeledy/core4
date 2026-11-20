@@ -37,7 +37,9 @@ export const inspectIncludeComposition = Effect.fnUntraced(function* (
     siteFilter: (site) => site.path[0] !== "lando",
   });
   if (!isPlainRecord(value.value))
-    context.recorder.record(validationErrorFromCause(file, value.value, undefined));
+    context.recorder.record(validationErrorFromCause(file, value.value, undefined), {
+      kind: "missing-content",
+    });
   const acquired = prepareIncludeAcquisition(value, {
     recorder: context.recorder,
     source: { file, layer: "canonical", path: [] },

@@ -143,7 +143,7 @@ describe("Planned-user ownership of volume-backed data trees", () => {
         service: "search",
         serviceType: "solr",
         target: "/var/solr",
-        option: "services.search.user",
+        path: ["services", "search", "user"],
         user: "www-data",
       });
     });
@@ -162,7 +162,7 @@ describe("Planned-user ownership of volume-backed data trees", () => {
         _tag: "DataTreeOwnershipCapabilityError",
         service: "store",
         target: "/data",
-        option: "services.store.image",
+        path: ["services", "store", "image"],
       });
     });
   });
@@ -183,7 +183,7 @@ describe("Planned-user ownership of volume-backed data trees", () => {
           }),
         );
         expect(failure).toBeInstanceOf(DataTreeOwnershipCapabilityError);
-        expect(failure).toMatchObject({ option: "services.search.image" });
+        expect(failure).toMatchObject({ path: ["services", "search", "image"] });
       });
     },
   );

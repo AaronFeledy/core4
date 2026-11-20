@@ -20,6 +20,7 @@ import { DataTreeOwnershipCapabilityError } from "@lando/sdk/errors";
 import {
   type MountPlan,
   type ServiceProjectUser,
+  formatValidationIssuePath,
   parseContainerDestination,
   serviceAppMount,
 } from "@lando/sdk/schema";
@@ -68,9 +69,9 @@ const refusal = (input: {
     service: input.serviceName,
     serviceType: input.serviceType,
     target: input.target,
-    option: input.option,
+    path: ["services", input.serviceName, input.option],
     user: input.user,
-    remediation: `Set services.${input.serviceName}.user to root, to a numeric uid such as "10001", or to a user service type ${input.serviceType} declares.`,
+    remediation: `Set ${formatValidationIssuePath(["services", input.serviceName, "user"])} to root, to a numeric uid such as "10001", or to a user service type ${input.serviceType} declares.`,
   });
 
 /**
@@ -111,7 +112,7 @@ export const resolveDataTreeOwnership = (input: {
         serviceName: input.serviceName,
         serviceType: input.serviceType,
         target: tree.target,
-        option: `services.${input.serviceName}.image`,
+        option: "image",
         user: input.plannedUser,
         reason: `its image is supplied by the Landofile, so Lando does not know whether user ${principal} exists inside it.`,
       });
@@ -121,7 +122,7 @@ export const resolveDataTreeOwnership = (input: {
         serviceName: input.serviceName,
         serviceType: input.serviceType,
         target: tree.target,
-        option: `services.${input.serviceName}.type`,
+        option: "type",
         user: input.plannedUser,
         reason: `service type ${input.serviceType} declares no image identities, so Lando does not know whether user ${principal} exists inside it.`,
       });
@@ -131,7 +132,7 @@ export const resolveDataTreeOwnership = (input: {
         serviceName: input.serviceName,
         serviceType: input.serviceType,
         target: tree.target,
-        option: `services.${input.serviceName}.user`,
+        option: "user",
         user: input.plannedUser,
         reason: `service type ${input.serviceType} does not declare user ${principal}, so Lando cannot give that user the tree.`,
       });

@@ -11,6 +11,7 @@ import {
   closestKeys,
   deriveAuthoringAst,
   formatValidationIssueLine,
+  formatValidationIssuePath,
   parseValidationIssuePath,
   schemaIssueLeaves,
   suggestionForUnknownKey,
@@ -169,10 +170,26 @@ describe("validation issues", () => {
     expect(formatValidationIssueLine(image ?? { path: [], message: "" })).toContain("services.web.imgae:");
   });
 
-  test("parses document paths and rejects prose", () => {
-    expect(parseValidationIssuePath("not a path")).toBeUndefined();
-    expect(parseValidationIssuePath("services.web.ports[0]")).toEqual(["services", "web", "ports", 0]);
+  test.each([
+    ["", []],
+    ["services.web-app.ports[0]", ["services", "web-app", "ports", 0]],
+    ['services.web.environment["x.dotted"]', ["services", "web", "environment", "x.dotted"]],
+    ['["8.3"].routes[0]', ["8.3", "routes", 0]],
+    ['["8web"]', ["8web"]],
+    ['["0"][0]', ["0", 0]],
+    ['[0]["0"]', [0, "0"]],
+    [String.raw`["quote\"and\\bracket]"]`, ['quote"and\\bracket]']],
+    ['["日本語"][""]', ["日本語", ""]],
+    [String.raw`["key\n"]`, ["key\n"]],
+  ] as const)("round-trips %j without changing segment identity", (text, path) => {
+    expect(formatValidationIssuePath(path)).toBe(text);
+    expect(parseValidationIssuePath(text)).toEqual(path);
   });
+
+  test.each(["services..web", "services.", 'services.["x"]', 'services["\\q"]', "services[0]routes"])(
+    "rejects malformed path %j",
+    (text) => expect(parseValidationIssuePath(text)).toBeUndefined(),
+  );
 });
 
 const issuesFor = (schema: Schema.ConstraintDecoder<unknown, never>, input: unknown) => {

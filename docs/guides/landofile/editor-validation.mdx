@@ -75,7 +75,9 @@ contents. The published schema lists both tags under
 
 The editor schema is a draft-07 closed object generated from the same Effect
 Schema `lando` decodes with. It covers structure: unknown keys, wrong types,
-ranges, enums, required fields.
+ranges, enums, required fields, and service names. A key under `services:`
+must use dot-separated DNS labels of at most 63 characters each and 253
+characters overall. Letters, digits, underscores, and interior hyphens are allowed.
 
 It checks the file as you wrote it, so expressions pass where Lando accepts
 them. A boolean, number, list, or object field takes the literal or one
@@ -99,6 +101,7 @@ them:
 | A versioned service type names a version Lando ships | `lando app:config:lint` |
 | Service-type configuration holds up: a native port var such as `PGPORT` matches `port:`, a reserved port is not taken, `webroot` and `appMount` land on a type that supports them, log source ids are unique | `lando app:config:lint` |
 | Each `hostnames:` entry is a plain DNS name once its expressions evaluate | `lando app:config:lint` |
+| The full `<service>.<slug>.internal` name fits within 253 characters | `lando app:config:lint` |
 | Route `hostname`, `pathPrefix`, and shorthand are well formed once their expressions evaluate | `lando app:config:lint` |
 | Includes resolve, reported at `includes[<index>]` in the file that declares them | `lando app:config:lint` |
 | The include lockfile is current | `lando app:config` |

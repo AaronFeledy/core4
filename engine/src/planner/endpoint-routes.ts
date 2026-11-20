@@ -141,7 +141,7 @@ export const resolveRoute = Effect.fnUntraced(function* (
         new LandofileValidationError({
           message: issue.message,
           remediation: issue.suggestion ?? "Declare or select an HTTP endpoint.",
-          file: route.source?.file ?? `${appRoot}/.lando.yml`,
+          file: route.source?.file ?? appRoot,
           issues: [issue],
         }),
     ),

@@ -1,0 +1,17 @@
+name: selector-quoted-key
+services:
+  web:
+    type: "node:22"
+    primary: true
+    environment:
+      APP_ENV: dev
+      "0": zero-key
+tooling:
+  test:
+    service: web
+    cmds:
+      - echo first
+      - echo second
+  "2fa":
+    service: web
+    cmd: echo two-factor
