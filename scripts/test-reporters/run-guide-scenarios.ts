@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { availableParallelism } from "node:os";
+import { join } from "node:path";
 import { rewriteScenarioSourceMappedOutput } from "./scenario-source-mapper.ts";
 
 export const LIVE_OUTPUT_ENV = "LANDO_GUIDE_SCENARIO_LIVE_OUTPUT";
@@ -10,6 +11,42 @@ export const MAPPED_OUTPUT_BANNER =
 
 export const liveOutputEnabled = (env: Readonly<Record<string, string | undefined>>): boolean =>
   env[LIVE_OUTPUT_ENV] === "1";
+
+export const SMOKE_E2E_FLAG = "--smoke-e2e";
+const SMOKE_E2E_TEST_NAME_PATTERN = "--test-name-pattern=@smoke.*\\[e2e\\]";
+const GENERATED_GUIDES = "test/scenarios/generated/guides";
+
+// scripts/guides/test-render.ts writes these header lines at the top of every generated scenario.
+export const isSmokeE2eScenario = (header: string): boolean =>
+  /^\/\/ @layer: e2e$/m.test(header) && /^\/\/ @tags: (?:.*,)?@smoke(?:,.*)?$/m.test(header);
+
+// `--smoke-e2e` names the generated @smoke [e2e] files explicitly, so `bun test --shard=<i>/<n>`
+// splits exactly those files instead of every generated guide file.
+export const expandSmokeE2e = async (
+  args: ReadonlyArray<string>,
+  root: string,
+): Promise<ReadonlyArray<string>> => {
+  if (!args.includes(SMOKE_E2E_FLAG)) return args;
+  const files: string[] = [];
+  for await (const path of new Bun.Glob(`${GENERATED_GUIDES}/**/*.test.ts`).scan({ cwd: root })) {
+    if (isSmokeE2eScenario(await Bun.file(join(root, path)).slice(0, 2048).text())) files.push(`./${path}`);
+  }
+  if (files.length === 0) {
+    throw new Error(
+      `${SMOKE_E2E_FLAG} found no @smoke [e2e] scenarios under ${GENERATED_GUIDES}; run \`bun run codegen\` first`,
+    );
+  }
+  // Bun passes a shard that receives no files, so a shard count above the file count would hide a skipped leg.
+  const shardCount = Number(
+    /^--shard=\d+\/(\d+)$/.exec(args.find((arg) => arg.startsWith("--shard=")) ?? "")?.[1] ?? 1,
+  );
+  if (files.length < shardCount) {
+    throw new Error(
+      `${SMOKE_E2E_FLAG} found ${files.length} @smoke [e2e] scenarios for ${shardCount} shards; lower the shard count`,
+    );
+  }
+  return [...files.sort(), SMOKE_E2E_TEST_NAME_PATTERN, ...args.filter((arg) => arg !== SMOKE_E2E_FLAG)];
+};
 
 // Response.text() owns the buffered read: a hand-rolled getReader() loop over a
 // subprocess stream intermittently drops trailing bytes. Live callers get their
@@ -60,7 +97,11 @@ export const guideScenarioTestArgs = (
 const main = async (): Promise<never> => {
   const live = liveOutputEnabled(process.env);
   const proc = Bun.spawn({
-    cmd: [process.execPath, "test", ...guideScenarioTestArgs(Bun.argv.slice(2))],
+    cmd: [
+      process.execPath,
+      "test",
+      ...guideScenarioTestArgs(await expandSmokeE2e(Bun.argv.slice(2), process.cwd())),
+    ],
     cwd: process.cwd(),
     env: process.env,
     stdout: "pipe",
