@@ -89,7 +89,7 @@ Built and not listed below: the Effect runtime and SDK contracts; the service-ty
 
 | Capability | Spec | Status | Notes |
 | --- | --- | --- | --- |
-| App checks: ownership-classified verdicts | §10.5.2 | Partial | `ready`, `app-error`, `service-error`, and `lando-error` with the router marker exist; the neutral `expected` state does not. |
+| App checks: ownership-classified verdicts | §10.5.2 | Done | HTTP checks classify redirects by origin, distinguish router and server failures, and report idle application listeners as neutral `expected`. |
 | App checks: Landofile `checks` replacing `scanner` | §10.5.2 | Not started | Depends on the verdict row. |
 | App checks: `command` and `tcp` kinds plus `app:check` | §10.5.2 | Not started | Checks are HTTP only. Depends on the `checks` row. |
 | Programmable execution | §22 | Not started | The §22 contracts are on `main`, so nothing blocks implementation. Build in dependency order: contracts and retained runtime; configuration-backed scratch and admission; environment, process, and artifact integration; public access, guides, and performance proof. Each slice includes its tests. |
