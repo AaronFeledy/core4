@@ -6,6 +6,12 @@ import type { Root } from "mdast";
 import { decodeGuideFrontmatterEither } from "../sdk/src/docs/components/index.ts";
 import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
 import { discoverGuideMdxFiles, resolveHostGuidePlatform } from "./build-guide-scenarios.ts";
+import {
+  CONTAINER_COMMAND_BASELINE_PATH,
+  decodeContainerCommandBaseline,
+  lintContainerCommandCoverage,
+} from "./guides/container-command-lint.ts";
+import type { CoverageLintDocument } from "./guides/coverage-lint-input.ts";
 import { lintE2eDestroyVolumes } from "./guides/e2e-destroy-lint.ts";
 import { lintComponentSyntax, lintEditorial } from "./guides/editorial-lint.ts";
 import {
@@ -13,7 +19,7 @@ import {
   buildFixtureInventory,
   lintFixtures,
 } from "./guides/fixture-lint.ts";
-import { type InstallLintDocument, lintInstallCoverage } from "./guides/install-lint.ts";
+import { lintInstallCoverage } from "./guides/install-lint.ts";
 import {
   type GuideLintDiagnostic,
   diagnostic,
@@ -40,6 +46,7 @@ export interface GuideLintContentOptions {
 }
 export interface GuideLintOptions {
   readonly guideRoot?: string;
+  readonly pruneContainerCommandBaseline?: boolean;
 }
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
@@ -159,7 +166,8 @@ export const lintGuides = async (
   options: GuideLintOptions = {},
 ): Promise<GuideLintResult> => {
   const diagnostics: GuideLintDiagnostic[] = [];
-  const documents: InstallLintDocument[] = [];
+  const documents: CoverageLintDocument[] = [];
+  const unchecked = new Set<string>();
   for (const sourcePath of await discoverLintFiles(root, options.guideRoot)) {
     const content = await Bun.file(resolve(root, sourcePath)).text();
     let mdx: Root;
@@ -169,6 +177,7 @@ export const lintGuides = async (
       frontmatter = parseFrontmatter(sourcePath, firstYaml(mdx));
     } catch (error) {
       diagnostics.push(errorDiagnostic(sourcePath, error));
+      unchecked.add(sourcePath);
       continue;
     }
     const fixtures =
@@ -176,13 +185,42 @@ export const lintGuides = async (
         ? await buildFixtureInventory(root, frontmatter.id, options.guideRoot)
         : [];
     const result = lintParsed(sourcePath, mdx, { fixtures });
-    documents.push({ sourcePath, root: mdx, ...(result.guide === undefined ? {} : { guide: result.guide }) });
+    documents.push({
+      sourcePath,
+      root: mdx,
+      content,
+      ...(result.guide === undefined ? {} : { guide: result.guide }),
+    });
+    if (result.guide === undefined) unchecked.add(sourcePath);
     diagnostics.push(...result.diagnostics);
     await lintFixtureLandofiles(root, fixtures, diagnostics);
     if (result.guide !== undefined)
       diagnostics.push(...lintResolvedTranscripts(result.guide, resolveHostGuidePlatform()).diagnostics);
   }
   diagnostics.push(...lintInstallCoverage(documents));
+  const baselineFile = Bun.file(resolve(root, CONTAINER_COMMAND_BASELINE_PATH));
+  try {
+    const baseline = decodeContainerCommandBaseline(
+      (await baselineFile.exists()) ? await baselineFile.json() : {},
+    );
+    const coverage = lintContainerCommandCoverage(documents, baseline, {
+      fullScan: options.guideRoot === undefined,
+      unchecked,
+    });
+    diagnostics.push(...coverage.diagnostics);
+    if (options.pruneContainerCommandBaseline && coverage.stale.length > 0)
+      await Bun.write(baselineFile, `${JSON.stringify(coverage.retained, null, 2)}\n`);
+    else diagnostics.push(...coverage.stale);
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    diagnostics.push({
+      sourcePath: CONTAINER_COMMAND_BASELINE_PATH,
+      line: 1,
+      column: 1,
+      code: "guide.container-command.e2e-coverage",
+      message: `Could not read or prune the container command baseline: ${error.message}`,
+    });
+  }
   return { diagnostics };
 };
 export const formatGuideLintDiagnostic = (entry: GuideLintDiagnostic): string =>
@@ -191,6 +229,7 @@ if (import.meta.main) {
   const guideRoot = process.env.GUIDES_DIR_OVERRIDE;
   const result = await lintGuides(REPO_ROOT, {
     ...(guideRoot === undefined || guideRoot.trim() === "" ? {} : { guideRoot }),
+    pruneContainerCommandBaseline: process.argv.includes("--prune-container-command-baseline"),
   });
   if (result.diagnostics.length === 0) process.stdout.write("Guide lint passed.\n");
   else {

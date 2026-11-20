@@ -20,7 +20,16 @@ export type MdxNode = {
   readonly depth?: number;
   readonly attributes?: ReadonlyArray<MdxAttribute>;
   readonly children?: ReadonlyArray<MdxNode>;
-  readonly position?: { readonly start?: { readonly line?: number; readonly column?: number } } | undefined;
+  readonly position?:
+    | {
+        readonly start?: {
+          readonly line?: number;
+          readonly column?: number;
+          readonly offset?: number | undefined;
+        };
+        readonly end?: { readonly offset?: number | undefined };
+      }
+    | undefined;
 };
 type MdxAttribute = {
   readonly type: string;

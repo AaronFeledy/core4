@@ -54,6 +54,12 @@ const cases: readonly InstallCase[] = [
     keys: ["lando create-project vendor/missing"],
   },
   {
+    name: "reports an uncovered install after a shell prompt",
+    prose: "$ lando create-project vendor/missing",
+    language: "console",
+    keys: ["lando create-project vendor/missing"],
+  },
+  {
     name: "expands scenario values rather than display values in template literals",
     prose: "lando create-project vendor/project",
     exercise: "<Run command={`lando create-project {{ package }} --no-scripts`} />",
@@ -128,7 +134,7 @@ describe("guide.install.e2e-coverage", () => {
 
       const { diagnostics } = await lintGuides(root);
 
-      expect(diagnostics).toEqual(
+      expect(diagnostics.filter(({ code }) => code !== "guide.container-command.e2e-coverage")).toEqual(
         keys.map((key) => ({
           sourcePath: page,
           line: 6,
