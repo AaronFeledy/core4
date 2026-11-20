@@ -162,9 +162,9 @@ To check the result end to end, start an app with an HTTPS route and open its UR
 
 ## Fix a curl (60) error
 
-The browser can show a trusted padlock, and `lando doctor` can pass, while `curl` still fails with `curl: (60)` and `unable to get local issuer certificate`. That happens when the `curl` in your `PATH` is Homebrew's. Homebrew `curl` reads Homebrew's CA bundle, which is built when the `ca-certificates` formula is installed. `lando setup` adds the local CA to the system trust store, so an earlier bundle does not include it.
+The browser can show a trusted padlock, and `lando doctor` can pass, while `curl` still fails with `curl: (60)` and `unable to get local issuer certificate`. On Linux, that happens when the `curl` in your `PATH` is Homebrew's. That `curl` uses OpenSSL with Homebrew's CA bundle, which is built when the `ca-certificates` formula is installed. `lando setup` adds the local CA to the system trust store, so an earlier bundle does not include it.
 
-Rebuild the bundle:
+On Linux, rebuild the bundle:
 
 ```sh
 brew postinstall ca-certificates
@@ -174,4 +174,4 @@ Then curl the HTTPS URL again.
 
 If you would rather not rebuild the bundle, use the system `/usr/bin/curl`. On Linux, you can also add `capath=/etc/ssl/certs/` to `~/.curlrc` so Homebrew `curl` reads the system store.
 
-On Linux, Homebrew `curl` is first in `PATH` after `brew shellenv`. On macOS, Homebrew does not put its `curl` on `PATH` unless you add it.
+On Linux, Homebrew `curl` is first in `PATH` after `brew shellenv`. On macOS, Homebrew does not put its `curl` on `PATH` unless you add it. That `curl` is built with Apple SecTrust, so it uses the Keychain that `lando setup` already updates.
