@@ -54,6 +54,7 @@ Prop schemas live in `@lando/sdk/docs/components`; implementations and AST helpe
 | `<Step>` | Names an ordered, unique scenario step. |
 | `<Run>` | Executes exactly one command, shell pipeline, tooling task, or runtime operation and MAY display it. |
 | `<Verify>` | Applies declarative assertions to events, commands, files, tooling, runtime results, or tagged errors. |
+| `<Fetch>` | Sends a real HTTP request and checks the response in an e2e scenario. |
 | `<Inspect>` | Captures and optionally renders files, JSON, events, or output. |
 | `<Variable>` | Binds an execution value and optional short display substitution; every variable MUST be interpolated. |
 | `<Hidden>` | Runs steps readers do not see, such as setup or edge-case and regression assertions for the feature, and requires a reason. |
@@ -72,9 +73,11 @@ A CLI `command` on `<Run>` or `<Verify>` is one POSIX shell command line, and it
 
 `<Verify event>` matches the events published by the scenario's most recent CLI invocation, whether a `<Run command>` or a `<Verify command>`. Only in-process scenario invocations publish to the scenario, so a `<Verify event>` in an `e2e` scenario fails generation and lint with `guide.event.e2e`.
 
+`<Fetch>` is valid only in a scenario whose effective layer is `e2e`; other layers fail generation and lint with `guide.fetch.requires-e2e`. The method is `GET` (default) or `HEAD`, with optional request headers. `expect.status` MUST be one integer from 200 to 599 or a nonempty list of such codes. `expect.headers` optionally applies `MatcherSchema` by case-insensitive response header name, and `expect.body` optionally matches the response body as text. Redirects MUST NOT be followed.
+
 `<Hidden>` MUST NOT change the outcome of the visible steps: a reader who runs only the visible steps observes what the page shows. `<Inline>` MUST remain exceptional. `<Variable>` display values MUST be short substitutions, never explanatory sentences.
 
-Component placement is fail-closed. `<Guide>` is a root-level element. `<Scenario>` is a direct child of `<Guide>`. `<Step>`, `<Hidden>`, `<Skip>`, and `<Tabs>` are direct children of `<Scenario>`; `<Tab>` is a direct child of `<Tabs>`; `<Hidden>`, `<Skip>`, and `<Tab>` contain only `<Step>`. Leaf actions (`<Run>`, `<Verify>`, `<Cleanup>`, `<Variable>`, `<UseFixture>`, `<Inspect>`, `<Inline>`) are direct children of `<Step>`. Markdown prose MAY appear inside any wrapper. An executable component anywhere else, including a wrapper nested in another wrapper or an executable component written inline within a paragraph, MUST be rejected with its source path and line rather than silently ignored.
+Component placement is fail-closed. `<Guide>` is a root-level element. `<Scenario>` is a direct child of `<Guide>`. `<Step>`, `<Hidden>`, `<Skip>`, and `<Tabs>` are direct children of `<Scenario>`; `<Tab>` is a direct child of `<Tabs>`; `<Hidden>`, `<Skip>`, and `<Tab>` contain only `<Step>`. Leaf actions (`<Run>`, `<Verify>`, `<Fetch>`, `<Cleanup>`, `<Variable>`, `<UseFixture>`, `<Inspect>`, `<Inline>`) are direct children of `<Step>`. Markdown prose MAY appear inside any wrapper. An executable component anywhere else, including a wrapper nested in another wrapper or an executable component written inline within a paragraph, MUST be rejected with its source path and line rather than silently ignored.
 
 ### 19.4 The ScenarioContext
 
@@ -83,6 +86,8 @@ Every generated scenario acquires an Effect `Scope` and one `ScenarioContext`. T
 The context is the execution-time view of one resolved scenario (§19.7). It receives bindings already validated and resolved for its scenario and variant; it MUST NOT re-interpolate, re-declare, or mutate them. Hidden and visible bindings are both available to execution; visibility only governs public output (§19.9).
 
 `ScenarioContext` is stable across providers, layers, and variants, and is part of `@lando/core/testing` (§16.8). Scope finalization removes temporary state unless an explicit author/debug option preserves it.
+
+For `<Fetch>`, the e2e context connects to `127.0.0.1` while preserving the URL authority. HTTPS verifies the peer using Lando's local `rootCA.pem` from `mkcert -CAROOT`, not ambient host trust. If the root is missing, the request fails and directs the author to `lando setup`.
 
 The default scenario layer dispatches the real CLI in process against the scenario's own in-memory provider registry, supplied to every provider-level runtime consumer. Each invocation MUST pass an explicit cwd, environment, renderer IO, exit-status sink, service substitutions, and event observer without patching process globals. Each in-process scenario MUST own separate Lando data, cache, configuration, and system-plugin roots (e2e scenarios use the job-provisioned roots that hold the real runtime), and fixture lookup MUST resolve from a captured repository root. Lifecycle commands take their real code paths: an apply persists the applied plan through the applied-state store that real providers use, later commands resolve applied state and teardown evidence from that record, and destroy removes it. Provider observation reports only containers the scenario created. Container execution, routing, and post-start URL scanning use in-memory test doubles. Every event an invocation publishes is recorded, redacted, on the context and on that invocation's result. The harness MUST NOT synthesize command results or events, including static-site fetches; assertions requiring real container output belong in an e2e scenario with cleanup and app destruction.
 
@@ -96,6 +101,8 @@ Display and execution are bound by default. They MAY diverge only through explic
 
 An empty string is a valid bound value. Display values MUST be short literals such as paths, names, or masked credentials, never explanatory prose; this is an authoring requirement enforced by review, not a subjective machine check. A `display` value masks what readers see and is not secret storage: raw credentials MUST NOT appear in `value` or `display` of committed MDX. Divergence between display and execution MUST be explicit through bindings or display props; the compiler imposes no count-based or percentage limit on it.
 
+`<Fetch>` props do not interpolate guide variables. Its `url` MUST be an absolute HTTP(S) URL without credentials or begin with the separate `{{route:service}}` token, optionally followed by a path, query, or fragment. At execution the token selects an assigned route for the named service from `lando info` JSON, preferring HTTPS and otherwise taking the first assigned route. The request fails if there is no assigned route.
+
 ### 19.6 Transcripts
 
 Each scenario variant captures stdout, stderr, exit status, lifecycle events, inspected artifacts, and cleanup status as a `Transcript` of `TranscriptFrame` values under `dist/transcripts/`.
@@ -104,6 +111,8 @@ Each scenario variant captures stdout, stderr, exit status, lifecycle events, in
 |---|---|
 | Internal transcript | Contains all sanitized frames, including hidden, test-only, fixture, event, and cleanup frames; consumed by CI and diagnostics. |
 | Public transcript | Generated statically from the resolved scenario at codegen time; contains only visible frames from rendered reader scenarios; consumed by docs and recipe README generation. Not execution evidence. |
+
+A public `<Fetch>` frame renders only the request line (method and authored URL without query or fragment) and the expected HTTP status or statuses. It MUST NOT render headers or response content.
 
 Transcripts are regenerated, gitignored, and never committed. Public output MUST NOT include hidden blocks, test-only scenarios, internal event traces, or fixtures. When public output is unavailable, the docs renderer MAY show the static command and an explicit uncaptured-output placeholder rather than fabricate output.
 
