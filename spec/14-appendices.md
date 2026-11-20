@@ -1,6 +1,6 @@
 # Lando v4: Appendices
 
-> **Part 14 of 20** · [Index](./README.md)
+> **Part 14 of 21** · [Index](./README.md)
 > **Read next:** [15 Binary Build and Release Engineering](./15-binary-build-and-release.md)
 
 This part is reference material, not workflow. Keep it open while reading the other parts.
@@ -54,7 +54,7 @@ The implementation must satisfy every item below; binary-shipping criteria remai
 - Tooling supports Taskfile-style `cmds`, `deps`, `vars`, `env`, `dotenv`, `sources`, `generates`, `status`, `preconditions`, `run`, `internal`, `aliases`, `toolingIncludes`, subdirectory cwd mapping, dynamic service selection, expressions, pass-through args, and host execution through `ShellRunner`.
 - Lazy replaceable `ShellRunner` and `ProcessRunner` both ship. The host `ToolingEngine` preserves Bun Shell pipelines and built-ins cross-platform, runs list commands as exact argv through `ProcessRunner`, and refuses the POSIX forms Bun Shell would misread (§3.4); host `vars.sh` escapes interpolation, redacts secrets, and rejects raw values.
 - `.lando/scripts/<name>.bun.sh` auto-registers validated `app:` commands, with Landofile tooling winning conflicts. `app:shell` provides host or service REPL behavior and raises `ShellRequiresTtyError` without a TTY.
-- Host readiness strings use Bun Shell through `ShellRunner`; argv uses exact `ProcessRunner` execution. Both run as CLI-current-identity at app-root cwd, not in a provider VM or sandbox. Host plus container user, listener `EndpointRef`, or no own authored/composed command raises `HealthcheckTargetUnsupportedError` before mutation; type commands/users/listeners cannot be inherited. Native health rejects host targets and any explicit user with move-to-readiness remediation, including disabled-object metadata; `target: service` is a no-op. Recipe `postInit.bun` scripts remain destination- and recipe-tree-contained and MUST match their prepared digest immediately before invocation. Public initialization reports execution or integrity failure as `RecipeInitPostInitError`, retaining the scaffold and failed-action context (§8.8.8).
+- Host readiness strings use Bun Shell through `ShellRunner`; argv uses exact `ProcessRunner` execution. Both run as CLI-current-identity at app-root cwd, not in a provider VM or sandbox. Host plus container user, listener `EndpointRef`, or no own authored/composed command raises `HealthcheckTargetUnsupportedError` before mutation; type commands/users/listeners cannot be inherited. Native health rejects host targets and any explicit user with move-to-readiness remediation, including disabled-object metadata; `target: service` is a no-op. Public initialization reports execution or integrity failure as `RecipeInitPostInitError`, retaining the scaffold and failed-action context (§8.8.8).
 - Native `healthcheck` and lifecycle `readiness` accept independent false/string/argv/object policies. Omitted readiness preserves contributed defaults (including stronger MongoDB readiness), otherwise falls back to native health. Readiness false blocks fallback without disabling process/completion supervision or relaxing healthy dependency validation; native false disables only native/image health. Service probe user and host execution never change main-process identity or native policy. Execution `target` lowers to `executionTarget`, separate from persisted listener `target: EndpointRef`, called `listener` in inspection. Fixtures MUST NOT wait on app routes or dependents behind their gate.
 - Engine-owned per-apply `executeReadinessAttempt` handles both service and host attempts; providers retain resource/start-graph ownership. Direct apply without the delegate rejects host readiness before mutation. Private SDK capture suppresses process/shell execution events, terminal streaming, and ambient sinks, preserves stdin/exit semantics, rejects inherited output before spawn, and enforces 1 MiB per channel with tagged overflow failure and child termination/reaping. Capture is not command confidentiality: redacted lifecycle plan metadata may include authored commands, and bounded redacted stderr/command context may appear in failure and timeout evidence (§10.5.1). Registered sensitive values remain redacted, info policy projection omits raw command text, and overflow exposes no raw captured cause. Cancellation terminates/reaps the real child and propagates interruption without retry. Full scheduler extraction remains deferred.
 - Info performs no probes, extra inspection calls, or durable writes. Readiness states are disabled/not-configured/not-observed and sources authored/contributed/healthcheck/unknown/none, with safe target/userSource/listener/timing/command-presence/configuration-pointer metadata only. Native health is observed healthy/starting/unhealthy, explicit none is not-monitored, and absent evidence is neutral unknown. Start ready remains invocation-local observed success; durable last-proof storage remains deferred pending identity and invalidation design.
@@ -85,11 +85,12 @@ The implementation must satisfy every item below; binary-shipping criteria remai
 - User slug `global` raises `AppIdReservedError`. `<userDataRoot>/global/` is excluded from cwd discovery. `globalServices:` regenerates the global `.lando.dist.yml`, starts through `meta:global:*`, and supports `<service>.global.internal` only with shared networking.
 - `AppFeature.requires.globalServices` auto-starts requirements or raises `GlobalServiceMissingError`. `apps:poweroff` includes global services unless `--keep-global`. In sidecar mode, app start after `apps:poweroff` or a host reboot starts the SSH agent sidecar and waits for its agent, restoring forwarding without `lando setup`; a sidecar failure warns and never aborts start. `meta:global:restart` and `meta:global:rebuild` revalidate router startup so a cleared watcher condition clears its persisted record (§20.6.5). The `@lando/proxy-traefik` router layer requires paired router/global contributions or raises `ProxyContributionPairError`.
 - `@lando/service-mailpit` contributes its service type, global service, and framework-aware mail env feature. `global:` alias prefix is reserved. Global-app volumes carry `dev.lando.app: "global"` and the standard storage labels (§6.5).
-- Fork scratch apps copy into `<userDataRoot>/scratch/<scratch-id>/root/` with exclusions and distinct labels; recipe scratches skip `postInit` by default and honor `baked`/`cwd` isolation and `--mount-cwd`.
+- Fork scratch apps copy into `<userDataRoot>/scratch/<scratch-id>/root/` with exclusions and distinct labels; recipe scratches honor `baked`/`cwd` isolation and `--mount-cwd`.
 - Scratch global storage rewrites to app scope unless `--share-global-storage`; routes use `ScratchHostnameSuffix` unless overridden. Foreground scope interruption destroys all scratch state; detached state persists in `<userDataRoot>/scratch/registry.bin` and GC reconciles provider labels.
 - `apps:poweroff` destroys scratches unless `--keep-scratch`; keep flags compose. Scratch ids and user slugs are separate namespaces keyed by `AppRef.kind`; every consumer considers both kind and id.
 - Library scratch acquisition finalizes on scope close and remains steady-state under runtime reuse. The scratch contract suite covers copy, recipes, isolation, storage rewrite, routes, finalization, registry concurrency, and orphan GC.
 - Programmable execution remains opt-in and local-development-first: minimal host work needs no app/provider, borrowed apps survive closure, config-backed scratch retains its source, admission survives captured-context delegation, process outcomes remain truthful, and artifacts follow explicit lifetime ownership. Existing commands/hooks/budgets are unchanged (§22).
+- Templates run no host code, never overwrite a pre-existing file, undo a failed step from a private snapshot, and need consent keyed to a digest of what they run; recipes run nothing (§23, §8.8).
 
 ### D. Why OCLIF (and not `@effect/cli`) — historical decision
 
@@ -144,7 +145,7 @@ OCLIF was originally selected for its mature plugin manifest, lazy-loading, inst
 - **Plan cache** — On-disk schema-encoded `AppPlan` for hot paths.
 - **Port** — Service tag and interface on which core depends.
 - **Provider** — `RuntimeProvider` implementation realizing app plans.
-- **Recipe** — Init-time scaffold with prompts, files, and optional post-init actions; not a runtime abstraction.
+- **Recipe** — Init-time source of a Landofile and its support files, with questions. It runs nothing and is not a runtime abstraction.
 - **Recipe suite** — Tests every canonical recipe with default and varied answers.
 - **Renderer** — Plugin rendering progress, tables, and messages.
 - **Route** — Host-facing HTTP/TLS mapping to endpoints.
@@ -165,6 +166,7 @@ OCLIF was originally selected for its mature plugin manifest, lazy-loading, inst
 - **Service type** — Plugin resolver for `type: <name>` producing normalized config and features.
 - **Subscriber** — Manifest-declared plugin event handler.
 - **TaggedError** — Effect Schema error with discriminating `_tag`.
+- **Template** — Directory with a `template.yml`, a file tree, and steps that generates a project or adds to one through `lando create` (§23).
 - **TestRuntime** — Pre-composed in-memory testing Layer from `@lando/core/testing`.
 - **Tooling** — User-defined commands materialized from Landofile `tooling:` under `app:` by default.
 - **Transcript** — Redacted generated capture of scenario runtime behavior and inspected artifacts.

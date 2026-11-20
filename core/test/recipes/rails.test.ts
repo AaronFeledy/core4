@@ -23,7 +23,11 @@ describe("rails canonical recipe", () => {
       tooling: {
         rails: { service: "web" },
         bundle: { service: "web" },
-        rake: { service: "web", description: "Run Rake inside the web service.", cmds: ["rake"] },
+        rake: {
+          service: "web",
+          description: "Run Rake inside the web service.",
+          cmd: [":ruby-local", "rake"],
+        },
       },
     });
   });

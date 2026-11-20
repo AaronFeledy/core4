@@ -122,7 +122,7 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
             expression: target.value.when,
             remediation: "Use a whole-value boolean expression over recipe and env.",
           }),
-          source,
+          { kind: "missing-content", source },
         );
         continue;
       }
@@ -132,10 +132,10 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
         segment.kind === "SecretRefSegment" ? [segment.name] : [],
       );
       if (references.length > 0) {
-        recorder.record(
-          unsupportedSecretReferenceError({ source, references, value: target.value.when }),
+        recorder.record(unsupportedSecretReferenceError({ source, references, value: target.value.when }), {
+          kind: "missing-content",
           source,
-        );
+        });
         continue;
       }
       scope.pendingSites.push({
@@ -191,7 +191,7 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
           expression: String(entry.when),
           remediation: "Use a boolean or a whole-value boolean expression over recipe and env.",
         }),
-        source,
+        { kind: "missing-content", source },
       );
       continue;
     }

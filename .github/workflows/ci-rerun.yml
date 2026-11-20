@@ -23,7 +23,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
-          CI_SUMMARY_VALIDATORS: '{"static-checks":"Validate selected job results","unit-tests-linux-x64":"Validate selected job results","library-api-tests":"Validate selected job results","recipe-tests":"Validate selected job results","guide-scenarios-linux-x64":"Validate selected job results","provider-integration-linux-x64":"Validate selected job results","ci":"Validate selected job results"}'
+          CI_SUMMARY_VALIDATORS: '{"static-checks":"Validate selected job results","unit-tests-linux-x64":"Validate selected job results","library-api-tests":"Validate selected job results","recipe-tests":"Validate selected job results","guide-scenarios-linux-x64":"Validate selected job results","guide-e2e-linux-x64":"Validate selected job results","provider-integration-linux-x64":"Validate selected job results","ci":"Validate selected job results"}'
         run: |
           set -euo pipefail
           run="repos/$GH_REPO/actions/runs/$RUN_ID"

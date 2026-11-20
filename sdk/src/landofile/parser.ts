@@ -110,7 +110,7 @@ interface MappingEntry {
   readonly isMergeKey: boolean;
 }
 
-const splitMappingEntry = (
+export const splitMappingEntry = (
   text: string,
   options: { readonly compactValue?: boolean } = {},
 ): MappingEntry | undefined => {

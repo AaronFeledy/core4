@@ -78,6 +78,15 @@ test("reports an array-position expression failure with a numeric path segment",
         source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["tooling", "seed", "cmds", 1] },
       },
     ]);
+    expect(result.skipped).toMatchObject([
+      {
+        stage: "resolve",
+        reason: "earlier-errors",
+        path: ["tooling", "seed", "cmds", 1],
+        source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["tooling", "seed", "cmds", 1] },
+      },
+      { stage: "planning", reason: "earlier-errors" },
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

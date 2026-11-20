@@ -1,19 +1,24 @@
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
-import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
+import {
+  type ValidationIssue,
+  type ValidationIssuePath,
+  formatValidationIssuePath,
+  validationIssue,
+} from "@lando/sdk/schema";
 import { Predicate, Result, Schema } from "effect";
-import { type PathSegment, parsePathSegments, setAtPath, unsetAtPath } from "./dot-path";
+import { listAddressedByKey, parsePathSegments, resolveSelector } from "./dot-path";
 import { type ValueType, parseTypedValue } from "./value-parse";
 
 export type { ValueType } from "./value-parse";
 
 const pathRemediation =
-  "Use a dot-separated path (`services.web.type`) with `[n]` for array indices (`tooling.test.cmds[0]`).";
+  'Use dots for bare keys, `[n]` for array indices, and `["key.with.dots"]` for literal keys.';
 
 export const parseConfigPath = (
   key: string,
   file: string,
-): Result.Result<ReadonlyArray<PathSegment>, LandofileWriteValidationError> => {
+): Result.Result<ValidationIssuePath, LandofileWriteValidationError> => {
   const segments = parsePathSegments(key);
   if (segments === undefined) {
     return Result.fail(
@@ -27,6 +32,28 @@ export const parseConfigPath = (
     );
   }
   return Result.succeed(segments);
+};
+
+/** The selector's segments for this document; a key segment cannot address an existing list. */
+export const resolveConfigPath = (
+  tree: unknown,
+  key: string,
+  file: string,
+): Result.Result<ValidationIssuePath, LandofileWriteValidationError> => {
+  const path = resolveSelector(tree, key);
+  if (path === undefined) return parseConfigPath(key, file);
+  const position = listAddressedByKey(tree, path);
+  if (position === undefined) return Result.succeed(path);
+  const list = formatValidationIssuePath(path.slice(0, position));
+  return Result.fail(
+    new LandofileWriteValidationError({
+      message: `\`${list}\` is a list, so \`${key}\` cannot address it by key.`,
+      file,
+      path: key,
+      issues: [validationIssue(path.slice(0, position + 1), "Expected a list index.")],
+      remediation: `Address list items by index, for example \`${list}[0]\`.`,
+    }),
+  );
 };
 
 export const parseConfigValue = (
@@ -46,41 +73,6 @@ export const parseConfigValue = (
     );
   }
   return Result.succeed(parsed.success);
-};
-
-export interface SetMutationInput {
-  readonly tree: Record<string, unknown>;
-  readonly key: string;
-  readonly raw: string;
-  readonly type: ValueType;
-  readonly file: string;
-}
-
-export const applySetMutation = (
-  input: SetMutationInput,
-): Result.Result<{ readonly next: unknown; readonly value: unknown }, LandofileWriteValidationError> => {
-  const pathResult = parseConfigPath(input.key, input.file);
-  if (Result.isFailure(pathResult)) return Result.fail(pathResult.failure);
-  const valueResult = parseConfigValue(input.raw, input.type, input.file);
-  if (Result.isFailure(valueResult)) return Result.fail(valueResult.failure);
-  return Result.succeed({
-    next: setAtPath(input.tree, input.key, valueResult.success),
-    value: valueResult.success,
-  });
-};
-
-export interface UnsetMutationInput {
-  readonly tree: Record<string, unknown>;
-  readonly key: string;
-  readonly file: string;
-}
-
-export const applyUnsetMutation = (
-  input: UnsetMutationInput,
-): Result.Result<{ readonly next: unknown; readonly changed: boolean }, LandofileWriteValidationError> => {
-  const pathResult = parseConfigPath(input.key, input.file);
-  if (Result.isFailure(pathResult)) return Result.fail(pathResult.failure);
-  return Result.succeed(unsetAtPath(input.tree, input.key));
 };
 
 export const writeValidationErrorFromIssues = (input: {

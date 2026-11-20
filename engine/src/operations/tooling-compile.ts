@@ -20,11 +20,15 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 import { Effect, Option, Schema, type Scope } from "effect";
+import { launcherServicesForPlan } from "../planner/effective-tooling.ts";
+import { isLauncherMarker } from "../planner/launchers.ts";
+import { primaryServiceName } from "../planner/primary-service.ts";
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
 import { appliedAppPlan, selectCommandIdentity } from "../services/execution-identity.ts";
 import { validateHostShellSteps } from "../services/host-shell-validation.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
+import { compileToolingLauncher } from "../tooling/launchers.ts";
 import type { ToolingShellBindings } from "../tooling/task-shape.ts";
 import { publishNodePackageManagerWarning } from "./node-package-manager-warning.ts";
 import type { AdmittedToolingInput } from "./tooling-input-admission.ts";
@@ -112,6 +116,7 @@ export interface CompileToolingInput extends Omit<InvocationOptions, "args"> {
  */
 export const compileToolingInvocations = Effect.fnUntraced(function* (
   input: CompileToolingInput,
+  plan?: AppPlan,
 ): Effect.fn.Return<CompiledTooling, ToolingCompileError | ToolingInputError> {
   const normalized = yield* Effect.fromResult(
     normalizeToolingTask(input.lookupKey, input.task, input.source),
@@ -131,6 +136,22 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
     (step, index): Effect.Effect<ToolingInvocation, ToolingInputError | ToolingCompileError> =>
       Effect.gen(function* () {
         const service = yield* Effect.fromResult(resolveServiceRef(step.service, values, normalized));
+        const loweredArgv =
+          plan === undefined ||
+          step.argv === undefined ||
+          input.task.cmd === undefined ||
+          !isLauncherMarker(step.argv[0])
+            ? step.argv
+            : yield* Effect.fromResult(
+                compileToolingLauncher(
+                  step.argv,
+                  {
+                    name: service ?? primaryServiceName(plan.services),
+                    services: launcherServicesForPlan(plan),
+                  },
+                  { name: input.lookupKey, source: input.source },
+                ),
+              );
         const bound = input.bindings?.commands.get(input.task.cmd !== undefined ? "cmd" : `cmds.${index}`);
         const clash = Object.entries(bound ?? {}).find(([name, ref]) => {
           const existing =
@@ -150,7 +171,11 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
           );
         return stepInvocation(
           input.name,
-          { ...step, ...(service === undefined ? {} : { resolvedService: service }) },
+          {
+            ...step,
+            ...(loweredArgv === undefined ? {} : { argv: loweredArgv }),
+            ...(service === undefined ? {} : { resolvedService: service }),
+          },
           {
             ...input,
             args: index === normalized.steps.length - 1 ? argv : [],

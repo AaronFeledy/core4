@@ -5,7 +5,7 @@ import {
   formatValidationIssuePath,
 } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import type { DoctorFinding } from "./doctor-contract";
+import type { DoctorFinding, DoctorSectionResult } from "./doctor-contract";
 
 export const appConfigForReport = () =>
   appConfigLint().pipe(
@@ -81,3 +81,15 @@ export const appConfigFindings = (result: ConfigLintResult): ReadonlyArray<Docto
     };
   });
 };
+
+export const appConfigSection = (result: ConfigLintResult): DoctorSectionResult => ({
+  checks: appConfigFindings(result),
+  ...(result.skipped?.length
+    ? {
+        skipped: result.skipped.map(({ stage, path, message }) => ({
+          check: path === undefined ? stage : `${stage} [${formatValidationIssuePath(path)}]`,
+          reason: message,
+        })),
+      }
+    : {}),
+});

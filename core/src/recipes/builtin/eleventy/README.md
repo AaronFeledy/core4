@@ -10,13 +10,23 @@ app root, or configure their location in `.eleventy.js`.
 
 ## Generated services
 
-- `builder`: `node:lts` running `npx @11ty/eleventy --serve` on port 8080
-  for iterative development.
+- `builder`: `node:lts` with `command: [":node-install-run", "start"]`. Each
+  time its process starts, it installs the project's dependencies with the
+  project's package manager, then runs the `start` script
+  (`eleventy --serve --port 8080`) for iterative development. A failed install
+  means the server does not start.
 - `web`: `static:nginx`, serves the build output directory `/app/_site` as its document root.
+
+## Generated files
+
+- `.lando.yml`
+- `package.json`: private, with `@11ty/eleventy` as a dev dependency, `start`
+  set to `eleventy --serve --port 8080`, and `build` set to `eleventy`.
 
 ## Generated tooling
 
-- `lando eleventy …`: Eleventy CLI through `npx @11ty/eleventy`.
+- `lando eleventy …`: the project's installed Eleventy CLI, run through the
+  project's package manager. It never downloads Eleventy.
 - `lando npm …`: npm inside the builder service.
 
 ## Limitations

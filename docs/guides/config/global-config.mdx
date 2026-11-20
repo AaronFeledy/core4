@@ -213,6 +213,15 @@ Leave out the key to list every top-level key, or name a mapping such as `router
 
 ## Get, set, unset, validate, or edit a key
 
+Use dots to descend into a mapping. If a key itself contains a dot, put it in JSON-quoted brackets and wrap the whole selector in shell single quotes, for example `lando config set 'appLabels["team.owner"]' platform`. The same selector works with `get`, `unset`, and `describe`. See [Select inside a document](../landofile/config-views.mdx#select-inside-a-document) for the syntax shared with `lando app:config` and `lando global:config`.
+
+  <Scenario id="quoted-label-selector" render={false} reason="Round-trip a quoted config.yml key">
+    <Step name="write-and-read-label">
+      <Run command={`lando config set 'appLabels["team.owner"]' platform --format=json`} />
+      <Verify command={`lando config get 'appLabels["team.owner"]' --format=json`} expect={{ stdout: { regex: "\"value\":\\s*\"platform\"" } }} />
+    </Step>
+  </Scenario>
+
 `set` works out the value type for you. It tries your value as text first, then as a number, boolean, null, or JSON, and keeps the first one the config schema accepts. Pass `--type` only when a field accepts more than one type and you want the later one, for example `--type=number` to store `8080` as a number in a field that also accepts text.
 
 When no reading of the value fits, the error reports the one that got past the type check, so `lando config set router.httpPort 99999999` fails with `Expected a value between 1 and 65535`, and its remediation names what the key takes: an integer from 1 to 65535. Each issue in `--format=json` carries `kind`: `type` when the value is the wrong kind of value, `value` when the kind fits but a limit or allowed value rejects it, and `unexpected` or `missing` for a key that shouldn't or must be there.
@@ -475,6 +484,7 @@ lando global:start
       <Verify command="lando global:config --format=json" expect={{ stdout: { regex: "\"source\":\\s*\"global\"" } }} />
       <Verify command="lando global:config --format=json" expect={{ stdout: { regex: "\"paths\":\\s*\\{" } }} />
       <Verify command="lando global:config --format=json" expect={{ stdout: { regex: "\"landofile\":\\s*\\{" } }} />
+      <Verify command="lando global:config get --path=name --format=json" expect={{ stdout: { regex: "\"subcommand\":\\s*\"get\",\\s*\"key\":\\s*\"name\",\\s*\"value\":\\s*\"global\"" } }} />
     </Step>
   </Scenario>
 </Guide>
@@ -482,6 +492,8 @@ lando global:start
 ## Read the effective global config
 
 `lando global:config --format=json` prints the effective global Landofile, not the raw files. `result.landofile` is every present layer merged in order with ineligible contributions excluded, and `result.paths` names the files behind it. The envelope also reports `app` (always `global`), `source` (the fixed literal `global`), and `materialized` (whether the generated file exists yet). Until `.lando.dist.yml` has been generated, the view reports `materialized: false` with an empty Landofile, even if your `.lando.yml` already has overrides. Run `lando global:reconcile` to generate configuration from your saved choices without starting services.
+
+Use `lando global:config get <key>` to read one value from that effective Landofile, for example `lando global:config get 'services.mailpit.environment["MP_MAX_MESSAGES"]'`. You can also pass the selector as `get --path=<key>`. If the key is missing, text output is empty and JSON omits `value`. Lando masks secret literals it finds in any retained layer, even if a different key holds the value you select. It doesn't resolve secret references or read env files to redact the output.
 
 Lando loads the global root exactly like an app root: the same six layers from `<userDataRoot>/global/`, each in YAML or TypeScript form. A later layer wins:
 
@@ -548,10 +560,10 @@ If `<userDataRoot>/global/.lando.ts` exists, it is the canonical layer. `lando g
 ## Change the global app
 
 ```sh
-# Write a dot-path key into the canonical global Landofile
+# Write a key into the canonical global Landofile
 lando global:config set services.mailpit.environment.MP_MAX_MESSAGES 1000
 
-# Remove a dot-path key from the canonical global Landofile
+# Remove a key from the canonical global Landofile
 lando global:config unset services.mailpit.environment.MP_MAX_MESSAGES
 
 # Decode the canonical global Landofile against the Landofile schema without changing anything

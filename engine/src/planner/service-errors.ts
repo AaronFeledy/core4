@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { primaryIssueFile } from "@lando/landofile/validation";
 import {
   LandofileValidationError,
   PluginLoadError,
@@ -18,7 +19,7 @@ export const serviceTypeCollision = (
   new LandofileValidationError({
     message: error.remediation === undefined ? error.message : `${error.message} ${error.remediation}`,
     remediation: error.remediation ?? "Remove or rename the conflicting service type registration.",
-    file: `${appRoot}/.lando.yml`,
+    file: appRoot,
     issues: [
       validationIssue(
         ["services", serviceName, "type"],
@@ -86,11 +87,10 @@ export const servicePlanError = ({ appRoot, serviceName, cause, projectFiles }: 
             remediation,
           ),
         ];
-  const projectFile = issues.find((issue) => issue.source?.layer === "project-file")?.source;
   return new LandofileValidationError({
     message: cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
     remediation: remediation ?? `Correct the configuration of service ${serviceName}.`,
-    file: projectFile !== undefined && "file" in projectFile ? projectFile.file : `${appRoot}/.lando.yml`,
+    file: primaryIssueFile(issues, appRoot),
     issues,
   });
 };

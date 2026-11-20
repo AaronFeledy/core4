@@ -1,6 +1,7 @@
 import type { ToolingNormalizationSource } from "@lando/landofile/tooling-normalize";
 import { type AppPlan, ServiceName, ToolingTaskShape, type ValidationIssuePath } from "@lando/sdk/schema";
 import { Schema } from "effect";
+import { LauncherServiceFacts } from "./launchers.ts";
 import type { EffectiveTooling } from "./tooling-composition.ts";
 import type { EffectiveToolingResolution } from "./tooling-provenance.ts";
 import { ToolingProvenance, UNKNOWN_TOOLING_ORIGIN, toolingIssueSource } from "./tooling-provenance.ts";
@@ -29,6 +30,7 @@ const ToolingPlan = Schema.Struct({
   internalNames: Schema.Array(Schema.String),
   connectionClients: Schema.Record(Schema.String, ServiceName),
   provenance: ToolingProvenance,
+  launcherServices: Schema.optionalKey(LauncherServiceFacts),
 }).check(
   Schema.makeFilter(
     (value) => Object.keys(value.tasks).every((name) => Object.hasOwn(value.provenance, name)),
@@ -83,10 +85,16 @@ export const toolingSourceResolverForPlan = (plan: AppPlan) => {
 export const connectionClientsForPlan = (plan: AppPlan): Readonly<Record<string, ServiceName>> =>
   toolingPlanFor(plan)?.connectionClients ?? {};
 
+export const launcherServicesForPlan = (plan: AppPlan): LauncherServiceFacts => {
+  const tooling = toolingPlanFor(plan);
+  return tooling?.version === 2 ? (tooling.launcherServices ?? {}) : {};
+};
+
 export interface ToolingPlanOptions {
   readonly connectionClients?: Readonly<Record<string, ServiceName>>;
   readonly provenance?: ToolingProvenance;
   readonly internalNames?: readonly string[];
+  readonly launcherServices?: LauncherServiceFacts;
 }
 
 export const attachEffectiveTooling = <Plan extends AppPlan>(
@@ -102,6 +110,7 @@ export const attachEffectiveTooling = <Plan extends AppPlan>(
       tasks: tooling,
       internalNames: [...(options.internalNames ?? [])],
       connectionClients: options.connectionClients ?? {},
+      ...(options.launcherServices === undefined ? {} : { launcherServices: options.launcherServices }),
       provenance: Object.fromEntries(
         Object.keys(tooling).map((name) => [
           name,

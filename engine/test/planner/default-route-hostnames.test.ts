@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
+import { LandofileValidationError } from "@lando/sdk/errors";
 
 import { AppId, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect, Result, Schema } from "effect";
 
 import { finalizeServices } from "../../src/planner/endpoints.ts";
 import type { PlannedServiceDraft } from "../../src/planner/service-types.ts";
@@ -58,6 +59,32 @@ const metadata: ServicePlan["metadata"] = {
 };
 
 describe("finalizeServices auto-generated hostnames", () => {
+  test("attributes an overlong default hostname to its service before binding", async () => {
+    const defaultDomain = ["a".repeat(63), "b".repeat(63), "c".repeat(63), "d".repeat(61)].join(".");
+    const result = await Effect.runPromise(
+      finalizeServices({
+        manifests: [],
+        plannedServiceDrafts: [phpishDraft(undefined)],
+        appId: AppId.make(APP_SLUG),
+        appRoot: APP_ROOT,
+        appSlug: APP_SLUG,
+        appName: APP_SLUG,
+        defaultDomain,
+        provider: PROVIDER,
+        providerCapabilities: TestRuntimeProvider.capabilities,
+        metadata,
+        selectFileSyncEngine: Effect.succeed(undefined),
+        ordinaryFileSyncReason: "native-provider",
+      }).pipe(Effect.result),
+    );
+
+    if (Result.isSuccess(result) || !(result.failure instanceof LandofileValidationError))
+      throw new Error("Expected default hostname validation to fail");
+    expect(result.failure.issues).toMatchObject([
+      { rule: "landofile.route", path: ["services", "appserver"] },
+    ]);
+  });
+
   test.each(["docker", "lando"])("keeps %s HTTP endpoints internal", async (providerId) => {
     const provider = ProviderId.make(providerId);
     const draft = phpishDraft(undefined);

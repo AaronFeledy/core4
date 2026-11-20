@@ -14,7 +14,7 @@ import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
 
 import type { ProjectFileFingerprint } from "./project-file-fingerprint.ts";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 14n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 15n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 

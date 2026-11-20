@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { sha256Hex } from "@lando/sdk/digest";
 import {
+  defaultRouteHostname,
   landoAppStoreName,
   landoCacheStoreName,
   landoServiceContainerName,
@@ -11,6 +12,17 @@ import {
 } from "@lando/sdk/schema";
 
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
+
+test.each([
+  ["WEB--API", "web--api"],
+  ["8.3", "8.3"],
+  ["pma_theme", "pma-theme"],
+  ["-Web__API-", "web-api"],
+  ["a".repeat(64), "a".repeat(63)],
+  ["_", sha256Hex("_").slice(0, 8)],
+])("derives the default hostname for %s", (service, label) => {
+  expect(defaultRouteHostname(service, "demo", "custom.test")).toBe(`${label}.demo.custom.test`);
+});
 
 const strings = (alphabet: string, maxLength: number): ReadonlyArray<string> => {
   const out: string[] = [];

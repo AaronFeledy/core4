@@ -1,6 +1,6 @@
 # Lando v4: Executable Guides and Scenarios
 
-> **Part 17 of 20** · [Index](./README.md)
+> **Part 17 of 21** · [Index](./README.md)
 > **Read next:** [18 The Global App](./18-global-app.md)
 
 This part defines how MDX-authored user guides generate runnable scenarios without turning reader prose into test syntax.
@@ -11,7 +11,7 @@ This part defines how MDX-authored user guides generate runnable scenarios witho
 
 ### 19.1 Mission
 
-An executable guide is a prose-first MDX guide that defines Scenarios, the engine's runnable units. Readers receive clear Markdown, CI receives deterministic execution and assertions, and authors keep visible promises with closely related edge coverage.
+An executable guide is a prose-first MDX guide that defines Scenarios, the engine's runnable units. Readers receive clear Markdown, CI receives deterministic execution and assertions, and each feature's home guide keeps the feature's visible promises together with every test that guards the feature.
 
 Components are the executable minority. Documentation MUST remain Markdown; component props are machine hints, not prose. Non-executed examples stay outside `<Scenario>`. A scenario MUST execute or assert behavior.
 
@@ -20,7 +20,9 @@ Executable components are allowed only in the guide discovery roots:
 - `docs/guides/**/*.mdx`
 - `recipes/<id>/README.mdx`
 
-Explanation, reference, and blog content MUST NOT contain rendered executable scenarios. Unrelated regressions belong in the owning workspace package's `test/` tree.
+Explanation, reference, and blog content MUST NOT contain rendered executable scenarios. A page under the discovery roots whose `diataxis` is `reference` or `explanation` MAY still be a feature's home guide and hold test-only scenarios.
+
+Each feature has exactly one home guide under the discovery roots. The home guide owns every test that drives Lando through its CLI or library API for that feature: the promises the page shows readers, plus edge cases and regressions whether or not the page mentions them. Tests readers do not see live in hidden steps, test-only scenarios, or case scenarios (§19.7). Tests that call internal modules directly, rather than going through the CLI or library API, belong in the owning workspace package's `test/` tree.
 
 ### 19.2 Model and artifact
 
@@ -36,7 +38,7 @@ An executable guide has `GuideFrontmatter`, one top-level `<Guide>`, and one or 
 | Scenario | One executable behavior flow, expanded once per variant. |
 | Reader scenario | `render` is true; visible steps and public transcript frames MAY render. |
 | Test-only scenario | `render={false}`; source-mapped tests run, but no public content is emitted. |
-| Fixture scenario | Standalone non-doc coverage under the scenario test tree. |
+| Case scenario | A test-only scenario written in TypeScript against `ScenarioContext` in a case file beside its home guide (§19.7). |
 | Variant | One resolved axes/platform/provider cell with its own test and transcript. |
 | Step | Ordered unit within a scenario. |
 | Fixture | Immutable input copied before mutation. Fixtures MAY hold executable project files, such as sample tests a documented command runs; scenario orchestration and assertions belong in the guide. |
@@ -54,7 +56,7 @@ Prop schemas live in `@lando/sdk/docs/components`; implementations and AST helpe
 | `<Verify>` | Applies declarative assertions to events, commands, files, tooling, runtime results, or tagged errors. |
 | `<Inspect>` | Captures and optionally renders files, JSON, events, or output. |
 | `<Variable>` | Binds an execution value and optional short display substitution; every variable MUST be interpolated. |
-| `<Hidden>` | Performs support work for the current behavior only and requires a reason. |
+| `<Hidden>` | Runs steps readers do not see, such as setup or edge-case and regression assertions for the feature, and requires a reason. |
 | `<Cleanup>` | Registers its step before scenario actions begin. On scope exit, registered cleanup steps are attempted once in reverse registration order, with their actions in authored order, on success, failure, interruption, or a scenario that runs out of time; a generated test stops its body before the test runner's deadline so cleanup can finish. The first SIGINT or SIGTERM requests that interruption; a second terminates as usual. It MAY render a collapsed reader block at its authored position. |
 | `<Skip>` | Marks contained coverage skipped with a reason and optional expiry. |
 | `<Inline>` | Injects justified TypeScript only when declarative components cannot express the assertion. |
@@ -70,19 +72,21 @@ A CLI `command` on `<Run>` or `<Verify>` is one POSIX shell command line, and it
 
 `<Verify event>` matches the events published by the scenario's most recent CLI invocation, whether a `<Run command>` or a `<Verify command>`. Only in-process scenario invocations publish to the scenario, so a `<Verify event>` in an `e2e` scenario fails generation and lint with `guide.event.e2e`.
 
-`<Hidden>` MUST NOT define distinct product behavior. `<Inline>` MUST remain exceptional. `<Variable>` display values MUST be short substitutions, never explanatory sentences.
+`<Hidden>` MUST NOT change the outcome of the visible steps: a reader who runs only the visible steps observes what the page shows. `<Inline>` MUST remain exceptional. `<Variable>` display values MUST be short substitutions, never explanatory sentences.
 
 Component placement is fail-closed. `<Guide>` is a root-level element. `<Scenario>` is a direct child of `<Guide>`. `<Step>`, `<Hidden>`, `<Skip>`, and `<Tabs>` are direct children of `<Scenario>`; `<Tab>` is a direct child of `<Tabs>`; `<Hidden>`, `<Skip>`, and `<Tab>` contain only `<Step>`. Leaf actions (`<Run>`, `<Verify>`, `<Cleanup>`, `<Variable>`, `<UseFixture>`, `<Inspect>`, `<Inline>`) are direct children of `<Step>`. Markdown prose MAY appear inside any wrapper. An executable component anywhere else, including a wrapper nested in another wrapper or an executable component written inline within a paragraph, MUST be rejected with its source path and line rather than silently ignored.
 
 ### 19.4 The ScenarioContext
 
-Every generated scenario acquires an Effect `Scope` and one `ScenarioContext`. The context owns guide/scenario identity, resolved variant, isolated working directory, scenario or real runtime, the resolved variable bindings, CLI and shell invocation, lifecycle events, transcript writing, and fixture resolution.
+Every generated scenario acquires an Effect `Scope` and one `ScenarioContext`. The context owns guide/scenario identity, resolved variant, isolated working directory, scenario or real runtime, the resolved variable bindings, CLI and shell invocation, background runs, lifecycle events, transcript writing, and fixture resolution.
 
 The context is the execution-time view of one resolved scenario (§19.7). It receives bindings already validated and resolved for its scenario and variant; it MUST NOT re-interpolate, re-declare, or mutate them. Hidden and visible bindings are both available to execution; visibility only governs public output (§19.9).
 
 `ScenarioContext` is stable across providers, layers, and variants, and is part of `@lando/core/testing` (§16.8). Scope finalization removes temporary state unless an explicit author/debug option preserves it.
 
 The default scenario layer dispatches the real CLI in process against the scenario's own in-memory provider registry, supplied to every provider-level runtime consumer. Each invocation MUST pass an explicit cwd, environment, renderer IO, exit-status sink, service substitutions, and event observer without patching process globals. Each in-process scenario MUST own separate Lando data, cache, configuration, and system-plugin roots (e2e scenarios use the job-provisioned roots that hold the real runtime), and fixture lookup MUST resolve from a captured repository root. Lifecycle commands take their real code paths: an apply persists the applied plan through the applied-state store that real providers use, later commands resolve applied state and teardown evidence from that record, and destroy removes it. Provider observation reports only containers the scenario created. Container execution, routing, and post-start URL scanning use in-memory test doubles. Every event an invocation publishes is recorded, redacted, on the context and on that invocation's result. The harness MUST NOT synthesize command results or events, including static-site fetches; assertions requiring real container output belong in an e2e scenario with cleanup and app destruction.
+
+A scenario MAY start a CLI invocation as a background run. The run uses the same argument vector, roots, and environment as a foreground invocation on the scenario's layer. The scenario waits on a readiness condition over the run's output or a workspace file with a bounded timeout, delivers at most one signal, and then awaits the result: exit status or terminating signal, stdout, and stderr. Readiness waits are event-driven; fixed sleeps are forbidden. The scenario `Scope` terminates and reaps any background run the scenario did not finish. A platform that cannot deliver the requested signal fails with a tagged error rather than skipping. Background runs are available to case scenarios (§19.7); no MDX component exposes them.
 
 ### 19.5 Display vs. execute
 
@@ -109,7 +113,7 @@ All frames use the canonical transcript redaction profile (§3.7): registered se
 
 `scripts/build-guide-scenarios.ts` is the canonical §17.2 codegen entry. A transitional `build-doc-tests` alias MAY exist, but MUST delegate without changing semantics.
 
-Inputs are the allowed MDX locations and supported colocated case files. Outputs are one gitignored TypeScript test per scenario variant plus a generated index under `test/scenarios/generated/`.
+Inputs are the allowed MDX locations and the case files beside them. A case file is `<stem>.cases.ts` beside `<stem>.mdx` (for a recipe, `recipes/<id>/README.cases.ts`) and exports test-only case scenarios written against `ScenarioContext`. Each case scenario declares an id unique within its guide, a reason, tags, and a layer, and MAY declare platforms, timeout, and skip. Case scenarios compile with their guide's MDX scenarios under the guide's id, write internal transcripts only, and never produce public or scaffold output. Case files are typechecked even though the docs tree is outside the root TypeScript project graph. A test that needs code the component vocabulary cannot express belongs in a case file; declarative checks stay in MDX. Outputs are one gitignored TypeScript test per scenario variant plus a generated index under `test/scenarios/generated/`.
 
 Generation MUST validate frontmatter and props, resolve variants, flatten the component tree, preserve visibility, and emit deterministic tests. Identical inputs MUST produce byte-identical outputs. Because outputs are uncommitted, the gate is successful generation, typecheck, and execution under the applicable §13.6 matrix. `bun run dev:guides` regenerates and runs affected scenarios during authoring.
 
@@ -127,9 +131,10 @@ Generated tests MUST preserve source path, line range, scenario, variant, step, 
 - A hidden step MAY reference visible or hidden bindings. A visible component MUST NOT reference a binding declared only in a hidden step, even when that binding supplies a `display`, because public output would show a value whose declaration readers cannot see. A test-only scenario has no public components, so this rule does not apply inside it.
 - A test-only scenario MUST declare `render={false}`, a reason, tags, and ownership metadata when available; it MUST execute or assert behavior.
 - Variable-only or documentation-only scenarios are forbidden.
-- Non-documentary behavior belongs in standalone fixture scenarios.
+- Feature behavior the page does not document still belongs to the feature's home guide, as hidden steps, test-only scenarios, or case scenarios.
 - Fixtures are immutable and copied before mutation; shared fixtures require explicit ownership.
-- Core invariants graduate to the regular scenario suite. Guide-specific promises stay with the guide. Coverage reused by three guides is no longer guide-specific.
+- Each feature names one home guide. Other pages that teach the feature link to it instead of repeating its edge-case and regression tests.
+- A standalone live suite MUST NOT replay a flow its home guide proves. Until a compiled-CLI suite moves into its home guide, it drives the binary through `ScenarioContext` in e2e mode rather than its own spawning, environment scrubbing, and result-envelope parsing.
 - Provider-unstable coverage SHOULD move to e2e/nightly rather than weakening a reader guide.
 
 ### 19.10 Lint and quality gates
@@ -145,6 +150,7 @@ Generated tests MUST preserve source path, line range, scenario, variant, step, 
 - No raw shell fence inside a scenario; executable shell uses `<Run>` or justified `<Inline>`.
 - Binding semantics from §19.5 and §19.7: every binding is referenced, every reference resolves, no name is declared twice in one scenario, and no visible component references a hidden-only binding. These are machine-enforced by the shared compiler; display literal quality remains an authoring requirement.
 - Every scenario contains an action or assertion.
+- Every case file sits beside an MDX guide, and no case scenario id collides with a scenario id in that guide.
 - Every CLI command has exactly one POSIX shell-word reading, and no `e2e` scenario verifies an event (§19.3).
 - Markdown remains the dominant reader surface.
 - Event assertions reference the canonical event registry.
@@ -167,7 +173,7 @@ The author workflow MUST run a guide, scenario, variant, step, or fixture; prese
 
 ### 19.13 Recipe README integration
 
-`recipes/<id>/README.mdx` is the canonical recipe guide (§8.8.2). `scripts/build-recipe-readmes.ts` generates one prose-only scaffold README per legal variant cell and selects the cell from resolved recipe answers.
+`recipes/<id>/README.mdx` is the canonical recipe guide (§8.8.2). `templates/<id>/README.mdx` is the canonical guide of a bundled template (§23.3) and follows the same rules. `scripts/build-recipe-readmes.ts` generates one prose-only scaffold README per legal variant cell and selects the cell from resolved recipe answers.
 
 Strip-and-flatten consumes the resolved scenario (§19.7). It MUST unwrap the guide and rendered reader scenario, keep authored scenario and step order including steps from the selected tab, turn steps into numbered headings, render displayed commands as fences, omit hidden and test-only content, substitute variable displays, flatten cleanup into a final section, resolve tabs to the selected cell, and include inspected public output only when captured. The cleanup section hoists the cleanup step's ordered fences and coalesces only adjacent fences of the same language; it does not change cleanup execution semantics. Output MUST contain no MDX JSX, imports, test-only content, or unresolved guide references; opaque foreign template syntax inside literal props is not a guide reference and is preserved. `scaffoldStrip={false}` MAY explicitly preserve MDX.
 
@@ -177,7 +183,7 @@ A scaffold README MUST exist for every declared legal variant cell, including ce
 
 Embedding guides (§16) MAY target runtime operations and `App` handles instead of the binary. Rendered docs MUST show the corresponding host TypeScript. Command-shaped library operations MAY use `@lando/core/cli`; lifecycle guides SHOULD prefer `App` handles.
 
-Each scenario runs in exactly one mode: CLI or shell commands, or library `<Run runtime="library">`. Mixing modes within one scenario is an error, and an `e2e` scenario is CLI only. CLI and library forms MAY coexist on one page as separate scenarios when the reader workflow needs both. Library `code` and `displayCode` are opaque to guide interpolation (§19.5).
+Each MDX scenario runs in exactly one mode: CLI or shell commands, or library `<Run runtime="library">`. Mixing modes within one scenario is an error, and an `e2e` MDX scenario is CLI only. CLI and library forms MAY coexist on one page as separate scenarios when the reader workflow needs both. Library `code` and `displayCode` are opaque to guide interpolation (§19.5). Case scenarios (§19.7) are TypeScript against `ScenarioContext` and are not bound by this mode rule; an `e2e` case scenario still reaches the product only through the compiled binary.
 
 ### 19.15 Acceptance criteria
 

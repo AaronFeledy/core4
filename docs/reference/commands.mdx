@@ -100,7 +100,7 @@ Flags:
 | --- | --- |
 | `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
-| `--path` | Dot-path key selector. |
+| `--path` | Key selector with dots, [0] for indices, and ["key.with.dots"] for literal keys. |
 | `--source` | Inspect raw layers, authored composition, or resolved config. (one of `raw`, `merged`, `resolved`) |
 | `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
@@ -958,7 +958,7 @@ Flags:
 | --- | --- |
 | `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
-| `--path` | Dot-path key selector. |
+| `--path` | Key selector with dots, [0] for indices, and ["key.with.dots"] for literal keys. |
 | `--source` | Inspect raw config.yml or resolved config. (one of `raw`, `resolved`) |
 | `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
@@ -998,8 +998,8 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `key` | Dot-path key for get/set/unset/describe. |
-| `subcommand` | Subcommand to run (default: view). (one of `view`, `set`, `unset`, `edit`, `validate`, `describe`) |
+| `key` | Key selector for get/set/unset/describe. |
+| `subcommand` | Subcommand to run (default: view). (one of `view`, `get`, `set`, `unset`, `edit`, `validate`, `describe`) |
 | `value` | Value for set. |
 
 Flags:
@@ -1008,7 +1008,7 @@ Flags:
 | --- | --- |
 | `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
-| `--path` | Dot-path key selector. |
+| `--path` | Key selector with dots, [0] for indices, and ["key.with.dots"] for literal keys. |
 | `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando meta:global:config:describe`

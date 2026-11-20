@@ -37,7 +37,7 @@ export const requireServiceProjection = (
       new LandofileValidationError({
         message: `Service ${name} has no successful prepared endpoint contribution.`,
         remediation: "Resolve endpoint preparation failures before assembling the plan.",
-        file: `${appRoot}/.lando.yml`,
+        file: appRoot,
         issues: [validationIssue(["services", name], "Endpoint preparation invariant failed.")],
       }),
     );

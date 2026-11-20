@@ -4,6 +4,7 @@ import type { LandofileFormConflictError, LandofileNotFoundError } from "@lando/
 import { LandofileLoadFailure, landofileLoadFailures } from "@lando/sdk/errors";
 import {
   type ConfigLintResult,
+  type ConfigLintSkip,
   type ConfigLintViolation,
   type LoadScopedLandofile,
   ServiceName,
@@ -11,14 +12,19 @@ import {
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema, type Scope } from "effect";
 import { createIncludeResolutionSession } from "./include-session.ts";
+import { type LandofileLintDiagnostic, overlapsUnavailable } from "./lint-diagnostic.ts";
 import { fragmentIssues, isToolingRefusal, unreportedToolingRefusals } from "./lint-fragments.ts";
 import { healthcheckWarnings } from "./lint-healthcheck.ts";
 import { loadFailureViolation } from "./lint-load-failure.ts";
 import { routerBindWarnings } from "./lint-router.ts";
+import { blockedLoadSkip, unavailableEntrySkips } from "./lint-skips.ts";
+
+export { unavailableEntrySkips } from "./lint-skips.ts";
+
 import { attributeLintIssue } from "./lint-source.ts";
 import { appNameOf } from "./lint-violations.ts";
 import { prepareIncludeAcquisition } from "./load-acquisition.ts";
-import type { DeferredLoadRefusal } from "./load-failures.ts";
+import type { DeferredLoadRefusal, RecordedLoadFailure } from "./load-failures.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import type { LandofileRuntimeInputs, TemplateEngineInputs } from "./ports.ts";
@@ -26,8 +32,10 @@ import type { AuthoredDocument, SourceDocument } from "./provenance.ts";
 import { inspectLandofileRootLayers } from "./root-compile.ts";
 import { findDiscoveredLandofilePath } from "./service.ts";
 import { prepareLandofileValue } from "./source.ts";
+import { pathsOverlap, probeTargetIsBlocked } from "./validation-path.ts";
 
-export { attributeEffectiveLintIssue } from "./lint-source.ts";
+export { type LoadUnavailableSite, overlapsUnavailable } from "./lint-diagnostic.ts";
+export { attributeEffectiveLintIssue, attributeLintIssue } from "./lint-source.ts";
 
 export const mergeLintFindings = (
   findings: ReadonlyArray<ConfigLintViolation>,
@@ -55,6 +63,7 @@ export interface LandofileLintSnapshot {
   readonly result: ConfigLintResult;
   readonly landofilePath: string;
   readonly resolved?: LoadScopedLandofile;
+  readonly diagnostic?: LandofileLintDiagnostic;
 }
 
 // Effect.fn infers the call signature from its combinators, so the scope combinator restates the args.
@@ -78,6 +87,9 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   let deferredRefusals: readonly DeferredLoadRefusal[] = [];
   let composed: unknown;
   let assembled: AuthoredDocument | undefined;
+  let diagnostic: LandofileLintDiagnostic | undefined;
+  let blockedLoad: RecordedLoadFailure | undefined;
+  let skipped: readonly ConfigLintSkip[] | undefined;
   const finalized = yield* Effect.gen(function* () {
     const acquired = yield* inspectLandofileRootLayers(
       dirname(file),
@@ -111,7 +123,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
         ]),
         Effect.catch((error) => {
           if (!Schema.is(LandofileLoadFailure)(error)) return Effect.fail(error);
-          acquired.runtime.recorder?.record(error);
+          acquired.runtime.recorder?.record(error, { kind: "missing-content" });
           return Effect.succeed([]);
         }),
       ),
@@ -141,6 +153,12 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       onAssembled: (document) => {
         assembled = document;
       },
+      onDiagnostic: (value) => {
+        diagnostic = value;
+      },
+      onLoadBlocked: (cause) => {
+        blockedLoad = cause;
+      },
       ...(templates?.context?.env === undefined ? {} : { env: templates.context.env }),
     }).pipe(Effect.result);
     const finalizedDocuments = merged.provenance.documents;
@@ -148,12 +166,24 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       ...finalizedDocuments.filter((document) => !knownDocuments.has(document)).flatMap(fragmentIssues),
     );
     documents = finalizedDocuments;
-    if (Result.isFailure(effective)) return yield* Effect.fail(effective.failure);
-    violations.push(...healthcheckWarnings(merged), ...routerBindWarnings(merged));
-    for (const [name, service] of Object.entries(effective.success.document.services ?? {})) {
+    const available = Result.isSuccess(effective) ? effective.success : diagnostic?.landofile;
+    const unavailable = diagnostic?.unavailable ?? [];
+    if (available !== undefined)
+      violations.push(
+        ...healthcheckWarnings(merged, unavailable),
+        ...routerBindWarnings(merged).filter((finding) => !overlapsUnavailable(finding.path, unavailable)),
+      );
+    for (const [name, service] of Object.entries(available?.document.services ?? {})) {
       for (const role of ["healthcheck", "readiness"] as const) {
         const probe = service[role];
-        if (probe === undefined) continue;
+        if (probe === undefined || overlapsUnavailable(["services", name, role], unavailable)) continue;
+        if (
+          available?.pendingSites.length &&
+          probeTargetIsBlocked(["services", name, role], (path) =>
+            available.pendingSites.some((site) => pathsOverlap(site.path, path)),
+          )
+        )
+          continue;
         const invalid = authoredProbeTargetError(probe, ServiceName.make(name), role);
         if (invalid === undefined) continue;
         violations.push(
@@ -171,7 +201,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
         );
       }
     }
-    return effective.success;
+    return yield* Effect.fromResult(effective);
   }).pipe(Effect.result);
   if (Result.isFailure(finalized)) {
     if (finalized.failure._tag === "LandofileFormConflictError") return yield* Effect.fail(finalized.failure);
@@ -179,6 +209,11 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       finalized.failure._tag === "LandofileLoadError"
         ? landofileLoadFailures(finalized.failure)
         : [finalized.failure];
+    if (diagnostic === undefined && errors[0] !== undefined) {
+      skipped = [
+        blockedLoadSkip({ failure: errors[0], recorded: blockedLoad, context: { file, scope, documents } }),
+      ];
+    }
     // A refused root stops finalization before the composed value exists; the assembled
     // document still holds the tooling tasks the include contributed.
     const assembledValue = assembled?.value ?? composed;
@@ -237,6 +272,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     : (documents.map((source) => appNameOf(source.document)).find((name) => name !== "") ?? "");
   const primarySource = unique[0]?.source;
   const primary = primarySource !== undefined && "file" in primarySource ? primarySource.file : file;
+  if (diagnostic?.unavailable.length) skipped = unavailableEntrySkips(diagnostic.unavailable);
   return {
     landofilePath: file,
     result: {
@@ -244,8 +280,10 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       file: primary,
       valid: !unique.some((issue) => issue.severity === "error"),
       violations: unique,
+      ...(skipped === undefined ? {} : { skipped }),
     },
     ...(Result.isSuccess(finalized) ? { resolved: finalized.success } : {}),
+    ...(diagnostic === undefined ? {} : { diagnostic }),
   };
 }, scopedSnapshot);
 

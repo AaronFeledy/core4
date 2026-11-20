@@ -1,6 +1,6 @@
 # Lando v4: The Global App
 
-> **Part 18 of 20** · [Index](./README.md)
+> **Part 18 of 21** · [Index](./README.md)
 > **Read next:** [19 Scratch Apps](./19-scratch-apps.md)
 
 The **global app** is the reserved host-level Lando app for services shared across user apps. Plugins contribute those services through `globalServices:`, and `AppFeature` activations declare user-app dependencies on them (§6.11.4).
@@ -210,7 +210,7 @@ Bootstrap levels for these commands are declared once in the §8.1 command regis
 
 | Canonical id | Alias | Contract |
 |---|---|---|
-| `meta:global:config` | `global:config` | Read or write the canonical global Landofile using current contribution eligibility; policy is separate. `set`, `unset`, and `edit` follow the §8.2.1 shared mutation workflow, including its format-preserving, fail-closed write and no-op rules. The generated layer is read-only. |
+| `meta:global:config` | `global:config` | Read (`view`, `get`) or write the canonical global Landofile using current contribution eligibility; policy is separate. `set`, `unset`, and `edit` follow the §8.2.1 shared mutation workflow, including its format-preserving, fail-closed write and no-op rules. The generated layer is read-only. |
 | `meta:global:destroy` | `global:destroy` | Destroy services and resources; requires confirmation unless `--yes`, and a non-interactive run without it fails with the `--yes` remediation. `--provider=<id>` restricts applied evidence and cleanup to that provider. `--volumes` removes service- and app-scoped data volumes; `--purge` also removes built images. Both follow §20.9. |
 | `meta:global:disable` | `global:disable` | Save disabled intent for explicit selectors or `--all`, remove ownership-verified selected containers and routes, and regenerate. Named volumes and unselected services survive. Partial work follows §20.3.2. |
 | `meta:global:enable` | `global:enable` | Enable explicit selectors or `--all` and regenerate eligible configuration without starting. Package selection applies to current and future owned contributions (§20.3.1). |
@@ -232,7 +232,7 @@ Enable, disable, and reconcile accept `--dry-run`. A preview returns `dryRun: tr
 
 A dry-run nested in the activation's Effect context MUST report intersecting in-process reservations. A separate process observes available policy and runtime impact without acquiring a mutation lease or inspecting another process's private reservations. Its preview MUST NOT imply admission to mutate during that activation; a real mutation acquires its own lease and repeats admission against current state.
 
-Policy and service configuration are independent: `meta:global:config` view, validation, and writes MUST use the same eligibility resolver as startup. `describe` is schema-only (§8.2.1) and does not consult eligibility. Editing an override MUST NOT enable its contribution. Data deletion belongs to `meta:global:destroy --yes --volumes` or `--yes --purge` under §20.9, never to contribution disablement.
+Policy and service configuration are independent: `meta:global:config` view, get, validation, and writes MUST use the same eligibility resolver as startup. `get` is a read-only selection from the same effective Landofile as `view`; it selects `key ?? --path` and returns `{ subcommand: "get", key, value? }`. The selected value retains its type; a miss omits `value` and produces empty text. `view --path` selects from that same document and returns `{ source: "global", path, value? }` rather than the full view. Neither read changes contribution eligibility. Both collect redaction tokens from the retained Landofile stack before selecting (§8.2.1). `describe` is schema-only (§8.2.1) and does not consult eligibility. Editing an override MUST NOT enable its contribution. Data deletion belongs to `meta:global:destroy --yes --volumes` or `--yes --purge` under §20.9, never to contribution disablement.
 
 #### 20.7.1 Top-level alias reservation
 
@@ -272,7 +272,7 @@ The default `RouterService` layer (`@lando/proxy-traefik`) realizes routes throu
 
 Routed user and scratch apps MUST use the host provider. Nonempty routes with an enabled router on another provider MUST fail planning with `RouteProviderMismatchError` (§10.2), never route through host-published ports.
 
-The router's own `traefik` and `traefik-diagnostics` global services author `routes: []` (§6.6), so global ready output and `lando global:info` list Traefik's published host connections (§6.10) and never a generated `<service>.global.<domain>` hostname the router does not serve. The router-owned dashboard keeps its own route above `ROUTE_PRIORITY_MAX` (§10.2).
+The router's own `traefik` and `traefik-diagnostics` global services author `routes: []` (§6.6), so global ready output and `lando global:info` list Traefik's published host connections (§6.10) and never a generated default hostname (§6.6) the router does not serve. The router-owned dashboard keeps its own route above `ROUTE_PRIORITY_MAX` (§10.2).
 
 Alternative `RouterService` implementations MAY avoid `GlobalAppService`. Selection follows §4.3: global `defaultRouterService`, then a unique host-family `defaultFor.platform` match, then a sole installed implementation, with no Landofile implementation choice.
 

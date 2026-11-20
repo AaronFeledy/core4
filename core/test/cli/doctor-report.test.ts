@@ -1139,6 +1139,10 @@ describe("meta:doctor combined report", () => {
       const appConfig = report.checks.find((entry) => entry.section === "app-config");
       expect(appConfig).toBeDefined();
       expect(appConfig?.status).toBe("fail");
+      expect(report.skipped.filter((entry) => entry.section === "app-config")).toMatchObject([
+        { check: "resolve" },
+        { check: "planning" },
+      ]);
       expect(
         appConfig?.details !== undefined && "path" in appConfig.details ? appConfig.details.path : undefined,
       ).toContain("bogusKey");

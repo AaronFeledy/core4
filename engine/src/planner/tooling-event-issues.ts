@@ -2,17 +2,19 @@ import { suggestionForUnknownKey } from "@lando/sdk/schema";
 import { reservedToolingNameConflict } from "../operations/reserved-aliases.ts";
 import { reservedEventCollisions, validEventNames } from "./event-names.ts";
 import type { ResolvedLandofile } from "./event-set.ts";
+import { pathIsBlocked } from "./landofile-scopes.ts";
 import { type PlannerIssue, attributePlannerIssue } from "./resolved-validation.ts";
 import { enabledToolingEntries } from "./tooling-composition.ts";
 import { toolingIssueSource } from "./tooling-provenance.ts";
 
 export const toolingAndEventIssues = (resolution: ResolvedLandofile): ReadonlyArray<PlannerIssue> => {
   const { landofile } = resolution;
+  const { blocked } = resolution;
   const { tasks: effectiveTooling, provenance, internalNames } = resolution.toolingResolution;
   const internal = new Set(internalNames);
   const issues: PlannerIssue[] = [];
   for (const [name] of enabledToolingEntries(effectiveTooling)) {
-    if (internal.has(name)) continue;
+    if (internal.has(name) || pathIsBlocked(blocked, ["tooling", name])) continue;
     const serviceTypeId = provenance[name]?.serviceTypeId;
     const source = toolingIssueSource(provenance, name, []);
     const issue = (message: string, suggestion: string): PlannerIssue => ({
@@ -41,7 +43,7 @@ export const toolingAndEventIssues = (resolution: ResolvedLandofile): ReadonlyAr
     const valid = validEventNames(effectiveTooling, internalNames);
     const known = new Set(valid);
     for (const name of Object.keys(landofile.events ?? {})) {
-      if (known.has(name)) continue;
+      if (known.has(name) || pathIsBlocked(blocked, ["events", name])) continue;
       const suggestion = suggestionForUnknownKey(name, valid);
       issues.push(
         attributePlannerIssue(resolution.provenance, {

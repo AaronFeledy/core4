@@ -12,7 +12,7 @@ export const loadIncludePins = Effect.fnUntraced(function* (input: {
   if (Result.isSuccess(result)) return { entries: result.success, available: true };
   if (input.recorder === undefined) return yield* Effect.fail(result.failure);
   if (!input.recorder.prerequisites.has(input.lockfile)) {
-    input.recorder.record(result.failure);
+    input.recorder.record(result.failure, { kind: "missing-content" });
     input.recorder.prerequisites.add(input.lockfile);
   }
   return { entries: new Map<string, LockEntry>(), available: false };

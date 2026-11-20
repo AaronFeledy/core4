@@ -128,6 +128,7 @@ describe("CI selection", () => {
       "build-linux-x64",
       "runtime-bundle-linux-x64",
       "guide-scenarios-linux-x64-runner",
+      "guide-e2e-linux-x64-runner",
       "guide-scenarios-windows-x64",
     ]) {
       const tier = CI_JOB_TIERS[id];
@@ -353,6 +354,8 @@ describe("CI selection", () => {
         "runtime-bundle-linux-x64",
         "guide-scenarios-linux-x64-runner",
         "guide-scenarios-linux-x64",
+        "guide-e2e-linux-x64-runner",
+        "guide-e2e-linux-x64",
         "guide-scenarios-windows-x64",
       ];
       const runtime = [

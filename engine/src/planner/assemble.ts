@@ -1,6 +1,5 @@
 import { resolveNetworkTrustPlan } from "@lando/http-client/network-trust";
 import { versionConstraintsFor } from "@lando/landofile/provenance";
-import { landofileValidationError } from "@lando/landofile/validation";
 import { hasSkippedUnsatisfiedVersionConstraint } from "@lando/landofile/version-constraint";
 import { makeLandoPaths } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
@@ -16,6 +15,7 @@ import {
   type NetworkingPlan,
   type ProviderCapabilities,
   type ServicePlan,
+  defaultRouteHostname,
   landoNetworkingPlan,
   normalizeAppSlug,
   validationIssue,
@@ -81,8 +81,9 @@ import { attachResolutionTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { environmentCacheInput } from "./environment-cache-input.ts";
 import { type ResolvedLandofile, resolveKnownEventSet } from "./event-set.ts";
+import { attributePlanningFailure } from "./failure-attribution.ts";
 import { fileSyncCacheInput } from "./file-sync-cache-input.ts";
-import { hostEventsShellIssues } from "./host-shell-issues.ts";
+import { checkHostEventsShell } from "./host-shell-issues.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
 import { normalizeNetworks } from "./networks.ts";
 import { assertRoutesCertificateCoverable, decodeAppPlan } from "./plan-decode.ts";
@@ -111,7 +112,7 @@ export interface PlanAppInput {
   readonly mode?: "validate";
   readonly resolution?: ResolvedLandofile;
 }
-export const planApp = Effect.fn("AppPlanner.assemble")(function* (
+function* assemblePlan(
   input: PlanAppInput,
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
   const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot } = input;
@@ -289,7 +290,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
             certs: resolution.normalizedConfig.certs ?? pinnedService.certs,
             hostnames: pinnedService.hostnames ?? [],
             routes: routes ?? [],
-            defaultRouteHostname: routes === undefined ? `${name}.${appSlug}.${defaultDomain}` : undefined,
+            defaultRouteHostname:
+              routes === undefined ? defaultRouteHostname(name, appSlug, defaultDomain) : undefined,
             certificateAuthority,
             leafLocation,
             fileSystem,
@@ -333,33 +335,17 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     });
   }
   const versionConstraints = versionConstraintsFor(landofileProvenance, landofile, landofilePath);
-  const hostEvents =
-    AppDefaults.isExcludedFromUserAppDefaults(appName, appRoot, pathsService) ||
-    globalConfig?.hostEvents === undefined
-      ? undefined
-      : globalConfig.hostEvents;
+  const hostEvents = AppDefaults.isExcludedFromUserAppDefaults(appName, appRoot, pathsService)
+    ? undefined
+    : globalConfig?.hostEvents;
+  const skipHostEvents = process.env[LANDO_HOST_EVENT_ENV] === "1";
+  if (hostEvents !== undefined && !skipHostEvents)
+    yield* checkHostEventsShell(hostEvents, pathsService?.configFile ?? "config.yml");
   const hostEventCompileBase = {
     landofile,
     ...(hostEvents === undefined ? {} : { hostEvents }),
-    skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",
+    skipHostEvents,
   };
-  // Every hostEvents name is a lifecycle event, so a bad host step stops this app's plan like a
-  // project lifecycle step would; commands that only read config are unaffected. Checked before
-  // the steps compile, so an unreadable expression is reported against config.yml.
-  if (hostEvents !== undefined && !hostEventCompileBase.skipHostEvents) {
-    const configFile = pathsService?.configFile ?? "config.yml";
-    const hostShellIssues = hostEventsShellIssues(hostEvents).map((issue) => ({
-      ...issue,
-      source: { layer: "config-file" as const, file: configFile, path: issue.path },
-    }));
-    if (hostShellIssues.length > 0)
-      return yield* Effect.fail(
-        landofileValidationError(configFile, hostShellIssues, {
-          headline: "Global config hostEvents has steps that cannot run as written",
-          remediation: "Fix each listed hostEvents step in config.yml, then rerun the command.",
-        }),
-      );
-  }
   const executableSites = yield* compilePlanInvocationSites({
     sites: invocationSites,
     hostEvents: hostEventCompileBase.skipHostEvents ? undefined : hostEvents,
@@ -593,4 +579,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     );
   }
   return attachProjectFileSnapshot(plan, resolvedServices);
-});
+}
+
+export const planApp = Effect.fn("AppPlanner.assemble")(assemblePlan, (effect, input) =>
+  effect.pipe(mapFailures((error) => attributePlanningFailure(error, input))),
+);

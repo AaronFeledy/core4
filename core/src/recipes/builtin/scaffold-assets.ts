@@ -1,5 +1,6 @@
 import type { RecipeFile } from "@lando/sdk/schema";
 import { DRUPAL_CMS_PHP_INI, DRUPAL_CMS_PHP_INI_PATH } from "./drupal-cms/php-config.ts";
+import { ELEVENTY_PACKAGE_JSON_TEMPLATE } from "./eleventy/scaffold.ts";
 import { HUGO_SCAFFOLD } from "./hugo/scaffold.ts";
 import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "./mean/scaffold.ts";
 import { NODE_POSTGRES_PACKAGE_JSON_TEMPLATE, NODE_POSTGRES_SERVER_JS } from "./node-postgres/scaffold.ts";
@@ -15,6 +16,7 @@ import { RAILS_GEMFILE } from "./rails/scaffold.ts";
  */
 const BUNDLED_SCAFFOLD_ASSETS: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map([
   ["drupal-cms", new Map([[DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI]])],
+  ["eleventy", new Map([["package.json", ELEVENTY_PACKAGE_JSON_TEMPLATE]])],
   ["hugo", new Map(Object.entries(HUGO_SCAFFOLD))],
   [
     "mean",

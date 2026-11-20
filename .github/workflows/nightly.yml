@@ -25,7 +25,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -45,7 +45,7 @@ jobs:
           bun run test:selection container-helper
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: container-helper
           path: core/container-helper/dist/
@@ -61,7 +61,7 @@ jobs:
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -86,7 +86,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
 
       - name: Upload current-commit Linux x64 runtime bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: runtime-bundle-linux-x64-current
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
@@ -108,7 +108,7 @@ jobs:
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -133,7 +133,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
 
       - name: Upload current-commit Linux arm64 runtime bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: runtime-bundle-linux-arm64-current
           path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
@@ -154,7 +154,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -181,7 +181,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -214,7 +214,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -240,7 +240,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -266,7 +266,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -292,7 +292,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -319,7 +319,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -532,7 +532,7 @@ jobs:
 
       - name: Upload provider-lando e2e diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: provider-lando-e2e-diagnostics-linux-x64
           path: provider-lando-e2e-diagnostics
@@ -559,7 +559,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -768,7 +768,7 @@ jobs:
 
       - name: Upload listener diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: service-listener-acceptance-linux-x64
           path: |
@@ -797,7 +797,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -997,7 +997,7 @@ jobs:
 
       - name: Upload listener matrix diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: service-listener-matrix-linux-x64
           path: |
@@ -1025,7 +1025,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1147,7 +1147,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1312,7 +1312,7 @@ jobs:
 
       - name: Upload ARM MySQL client diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mysql-arm-client-diagnostics-linux-arm64
           path: mysql-arm-client-diagnostics
@@ -1334,7 +1334,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1389,7 +1389,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1444,7 +1444,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1495,7 +1495,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1526,7 +1526,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1551,7 +1551,7 @@ jobs:
 
       - name: Upload refreshed timings
         if: success()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bun-test-timings
           path: .bun-test-timings.json
@@ -1566,7 +1566,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1587,7 +1587,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1636,7 +1636,7 @@ jobs:
         run: bun run scripts/dist-bundle.ts --verify dist/bundle
 
       - name: Upload distribution rehearsal bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lando-dist-rehearsal-v4.0.0-nightly.${{ github.run_number }}
           path: dist/bundle

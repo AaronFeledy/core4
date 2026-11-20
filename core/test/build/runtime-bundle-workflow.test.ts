@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
+import { pinnedAction } from "../../../scripts/action-pins.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const workflowPath = resolve(repoRoot, ".github/workflows/runtime-bundle.yml");
@@ -70,7 +71,7 @@ describe("runtime-bundle workflow", () => {
       "  assemble:\n    needs: [classify]\n    if: github.ref == 'refs/heads/main' && needs.classify.outputs.state == 'publish_new'\n    runs-on",
     );
     expect(workflow).toContain(
-      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          persist-credentials: false",
+      `      - uses: ${pinnedAction("actions/checkout")}\n        with:\n          persist-credentials: false`,
     );
     expect(workflow).toContain(
       "  publish:\n    needs: [classify, assemble]\n    if: github.ref == 'refs/heads/main' && always() && ((needs.classify.outputs.state == 'publish_new' && needs.assemble.result == 'success') || needs.classify.outputs.state == 'recover_pin')\n    permissions:\n      contents: write",

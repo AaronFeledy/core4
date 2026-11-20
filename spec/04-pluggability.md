@@ -1,6 +1,6 @@
 # Lando v4: Pluggability Catalog
 
-> **Part 4 of 20** · [Index](./README.md)
+> **Part 4 of 21** · [Index](./README.md)
 > **Read next:** [05 Runtime Providers](./05-runtime-providers.md)
 
 This part is the master contract index for replaceable abstractions, selection, registration, and conformance.
@@ -48,7 +48,9 @@ This part is the master contract index for replaceable abstractions, selection, 
 | Doctor diagnostics | `DoctorService` | Core app/provider checks | `doctorChecks:`; checks receive `DoctorCheckContext` and MUST pass the doctor-check contract suite (§10.9, §13.1). |
 | Plugin source | `PluginSource` | Registry, git, local, tarball | `pluginSources:`; implementations MUST pass the plugin-source contract suite (§13.1). |
 | Init source | `InitSource` | Built-in `cwd`, `git`, and `tarball` | `initSources:`; selected by `apps:init --source`. Implementations supply prompts, source auth, dynamic choices, and locators only; core acquires and commits, and implementations MUST pass the init-source contract suite (§8.8.13, §13.1). |
-| Service type | `ServiceType` | Bundled canonical catalog (§6.11) | `serviceTypes:` adds or replaces types under collision rules. |
+| Template step kind | `TemplateStepKind` | Built-in step kinds (§23.7) | `templateSteps:`; trusted host code with a pure `plan` and a `run`; implementations MUST pass the template-step contract suite (§23.14, §13.1). |
+| Template choice source | `TemplateChoiceSource` | Plugin-only | `templateChoices:`; returns bounded choices for a question (§23.5). |
+| Service type | `ServiceType` | Bundled canonical catalog (§6.12.1) | `serviceTypes:` adds or replaces types under collision rules. A resolver can contribute argv launchers through `ServiceTypeResolution`, not a separate registry (§6.11). |
 | Service feature | `ServiceFeature` | Plugin-only | `serviceFeatures:`; optional `declareEndpoints` returns `EndpointDeclaration.Encoded` entries from immutable service facts. Core strictly decodes them once as input to endpoint normalization (§6.11.0). |
 | App feature | `AppFeature` | Plugin-only | `appFeatures:`; selector-driven, app-scoped, and idempotent. Optional `declareEndpoints` returns the same encoded declarations keyed by selected service and uses the same selection facts as `apply` (§6.11.4). |
 | Global service | No service tag | Plugin-only | `globalServices:` contributes `ServiceConfig`; owner-scoped policy in `<userConfRoot>/global.config.yml` applies an individual override, package policy, then the recorded initial default. `meta:global:enable`/`meta:global:disable` change intent; `meta:global:reconcile` preserves it (§20). |
@@ -87,7 +89,7 @@ Secret stores add one rule ahead of this list: a `${secret:...}` reference that 
 
 ### 4.4 Manifest contributions
 
-Every contribution is declared under manifest `contributes:` and validated by §9.4. Registered keys include `providers`, `fileSyncEngines`, `toolingEngines`, `templateEngines`, `loggers`, `renderers`, `configTranslators`, `shellRunners`, `httpClients`, `downloaders`, `certificateAuthorities`, `routerServices`, `tunnelServices`, `remoteSources`, `datasets`, `healthcheckRunners`, `checkKinds`, `checkProfiles`, `doctorChecks`, `pluginSources`, `initSources`, `serviceTypes`, `serviceFeatures`, `appFeatures`, `globalServices`, `routeFilters`, `interactionServices`, and `secretStores`.
+Every contribution is declared under manifest `contributes:` and validated by §9.4. Registered keys include `providers`, `fileSyncEngines`, `toolingEngines`, `templateEngines`, `loggers`, `renderers`, `configTranslators`, `shellRunners`, `httpClients`, `downloaders`, `certificateAuthorities`, `routerServices`, `tunnelServices`, `remoteSources`, `datasets`, `healthcheckRunners`, `checkKinds`, `checkProfiles`, `doctorChecks`, `pluginSources`, `initSources`, `templates`, `recipes`, `templateSteps`, `templateChoices`, `serviceTypes`, `serviceFeatures`, `appFeatures`, `globalServices`, `routeFilters`, `interactionServices`, and `secretStores`.
 
 Descriptors name an `id` and MAY declare `module`, `defaultFor`, `capabilities`, `extensions`, `inputKinds`, or `tags` as their abstraction's schema permits. A `contributes.fileSyncEngines` entry is a `FileSyncEngineDescriptor`: `capabilities` and `supports` are required and planning-sensitive. `supports.platform` is a nonempty list of host families (`linux`, `darwin`, `win32`). `module` is optional when the plugin's contribution map supplies the `{ make(ctx) }` factory. Separate preference metadata `defaultFor` has typed dimensions `platform` and `bindMountPerformance` (`native`, `slow`); nonempty dimensions AND together, alternatives within one dimension OR, and an absent or empty matcher nominates nothing. The id `passthrough` is reserved and MUST NOT be contributed. Capability manifests retain the keys `verbs`, `offlineOnly`, `streaming`, `upload`, `offlinePolicy`, `schemes`, `atomicFileWrites`, `checksumAlgorithms`, `offlineCache`, `progressEvents`, `bindMountPerformance`, `modes`, `remoteAgentDeployment`, `exclusionPatterns`, `conflictReporting`, `progressReporting`, `wholeFile`, `stringInterpolation`, `partials`, and `unsafe`. A plugin contributes one lazily loaded Effect Layer per abstraction. After validation, `module` resolves to an absolute `file://` URL whose real path MUST remain inside the plugin root (§9.7).
 

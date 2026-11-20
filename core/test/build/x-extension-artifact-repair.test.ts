@@ -47,6 +47,7 @@ import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
+import { SERVICE_KEY_PATTERN, evolveHistoricalServiceKeys } from "./x-extension-service-keys-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
 import { evolveHistoricalSwarmReservations } from "./x-extension-swarm-reservations-proof.ts";
@@ -120,7 +121,8 @@ const historicalLandofile = (): JsonSchema =>
     ),
   );
 
-const expectedLandofile = (): JsonSchema => evolveHistoricalEndpointKind(historicalLandofile(), "bare");
+const expectedLandofile = (): JsonSchema =>
+  evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historicalLandofile(), "bare"));
 
 describe("closed x-* extension artifact repair", () => {
   test("pins the independently reviewed tooling sensitivity delta and source provenance", async () => {
@@ -204,7 +206,12 @@ describe("closed x-* extension artifact repair", () => {
       expect(jsonEquals(repaired, current)).toBe(true);
     }
     const shapeServices = schemaAt(await loadNormalizedArtifact("schema:LandofileShape"), "$.services");
-    expect(jsonEquals(schemaAt(repaired, "$.services"), shapeServices)).toBe(true);
+    const expectedServices = schemaAt(repaired, "$.services");
+    expect(jsonEquals(expectedServices, shapeServices)).toBe(true);
+    for (const stage of ["LoadScopedLandofile", "IdentityScopedLandofile", "ServiceScopedLandofile"]) {
+      const services = schemaAt(await loadNormalizedArtifact(`schema:${stage}`), "$.document.services");
+      expect(jsonEquals(expectedServices, services)).toBe(true);
+    }
   });
 
   test("repairs the captured network map onto every current service schema", async () => {
@@ -311,6 +318,7 @@ describe("closed x-* extension artifact repair", () => {
       "unsupported-keyword $.landofile.propertyNames",
       "unsupported-keyword $.landofile.proxy.additionalProperties",
       "unsupported-keyword $.landofile.services.additionalProperties",
+      "unsupported-keyword $.landofile.services.patternProperties",
       "unsupported-keyword $.landofile.tooling.additionalProperties",
       "unsupported-keyword $.landofile.toolingDefaults.vars.additionalProperties",
     ]);
@@ -380,7 +388,8 @@ describe("closed x-* extension artifact repair", () => {
       const current = configOutputLandofile(await loadNormalizedArtifact("command:app:config"));
       const properties = requireObject(current.properties, "properties");
       const services = requireObject(properties.services, "services");
-      const serviceProperties = requireObject(services.additionalProperties, "service");
+      const patterns = requireObject(services.patternProperties, "service name patterns");
+      const serviceProperties = requireObject(patterns[SERVICE_KEY_PATTERN], "service");
       const fields = requireObject(serviceProperties.properties, "service properties");
       const healthcheck = requireObject(fields[field], field);
       if (!Array.isArray(healthcheck.anyOf)) throw new Error("approved healthcheck union missing");
@@ -395,13 +404,16 @@ describe("closed x-* extension artifact repair", () => {
           ...properties,
           services: {
             ...services,
-            additionalProperties: {
-              ...serviceProperties,
-              properties: {
-                ...fields,
-                [field]: {
-                  ...healthcheck,
-                  anyOf: healthcheck.anyOf.map((branch) => (branch === argv ? tightened : branch)),
+            patternProperties: {
+              ...patterns,
+              [SERVICE_KEY_PATTERN]: {
+                ...serviceProperties,
+                properties: {
+                  ...fields,
+                  [field]: {
+                    ...healthcheck,
+                    anyOf: healthcheck.anyOf.map((branch) => (branch === argv ? tightened : branch)),
+                  },
                 },
               },
             },
