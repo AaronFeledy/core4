@@ -14,14 +14,14 @@ import {
   isSupervisedTarget,
   readinessCommands,
   readinessFailureRuntime,
+  readinessIncarnation,
   redactorForReadiness,
-  sameReadinessIncarnation,
 } from "./service-readiness-error.ts";
 
 const inspectSameIncarnation = (target: ReadinessTarget, initial: ServiceRuntimeInfo) =>
   inspectReadinessRuntime(target).pipe(
     Effect.flatMap((runtime) =>
-      sameReadinessIncarnation(initial, runtime)
+      readinessIncarnation(initial, runtime) !== "different"
         ? Effect.succeed(runtime)
         : failReadinessIncarnation(target, runtime),
     ),
@@ -82,10 +82,13 @@ export const makeServiceSupervision = Effect.fnUntraced(function* (
     const actor = actors.get(error.service);
     if (actor === undefined) return yield* Effect.fail(error);
     const failed = readinessFailureRuntime(error);
-    if (failed === undefined || !sameReadinessIncarnation(actor.initial, failed))
-      return yield* Effect.fail(error);
-    if (failed.status !== "restarting" && !(failed.status === "exited" && failed.exitCode !== undefined))
-      return yield* Effect.fail(error);
+    if (failed === undefined) return yield* Effect.fail(error);
+    const incarnation = readinessIncarnation(actor.initial, failed);
+    if (incarnation === "different") return yield* Effect.fail(error);
+    const { status, exitCode } = failed;
+    const observedExit = status === "exited" && exitCode !== undefined;
+    const missedExit = status === "running" && incarnation === "restarted";
+    if (status !== "restarting" && !observedExit && !missedExit) return yield* Effect.fail(error);
     const service = actor.target.plan.services[actor.target.service];
     if (service === undefined)
       return yield* Effect.die("Supervised readiness service is absent from its full plan.");
@@ -93,8 +96,8 @@ export const makeServiceSupervision = Effect.fnUntraced(function* (
       restartVerdict({
         source: "planned",
         service,
-        state: failed.status,
-        exitCode: failed.exitCode,
+        state: status === "restarting" ? "restarting" : "exited",
+        exitCode,
       }) !== "expected"
     )
       return yield* Effect.fail(error);
