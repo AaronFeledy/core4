@@ -117,6 +117,21 @@ What each part does:
 A scenario must exercise or assert product behavior. Keep prose outside the
 scenario, and do not add a scenario solely to hold variables or setup.
 
+### Override execution for one scenario
+
+- Set `timeout={300000}` on a slow scenario instead of raising the guide's
+  timeout. Use a positive whole number of milliseconds. Without an override,
+  the scenario uses the guide timeout, which defaults to `60000`.
+- Set `platforms={["linux", "darwin"]}` to run only on the hosts you list.
+  The accepted values are `darwin`, `linux`, `win32`, and `wsl`. WSL also
+  matches `linux`. Use `platforms={[]}` to allow every host.
+- Set `skip={{ reason: "Waiting for a provider fix", until: "Next release" }}`
+  to skip the scenario's tests and omit its public transcript. You can omit
+  `until`; it records when to revisit the skip and does not expire it.
+
+For `platforms` and `skip`, an explicit frontmatter `variants` cell value wins
+over the scenario prop. If neither supplies a value, the guide frontmatter applies.
+
 ### Where each component goes
 
 The compiler checks placement and rejects anything out of place with the
