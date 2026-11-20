@@ -215,6 +215,11 @@ The same export, destroy, and import route also works when you'd rather start th
         <Run command={`lando mariadb -e "CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('still here');"`} />
       </Step>
     </Hidden>
+    <Hidden reason="Tripwire for #2566: the stock mariadb service does not set MARIADB_AUTO_UPGRADE yet">
+      <Step name="no-auto-upgrade-default">
+        <Verify command="lando exec db -- env" expect={{ stdout: { regex: "^(?![\\s\\S]*MARIADB_AUTO_UPGRADE=)[\\s\\S]*MYSQL_TCP_PORT=3306" } }} />
+      </Step>
+    </Hidden>
     <Step name="export"><Run command="lando db:export before-upgrade.sql.gz" /></Step>
     <Step name="upgrade">
       <Run command="lando app:config:set services.db.environment.MARIADB_AUTO_UPGRADE 1" />
