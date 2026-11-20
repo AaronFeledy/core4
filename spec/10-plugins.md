@@ -221,6 +221,8 @@ App-declared plugins install only into their app-scoped store, use the same trus
 
 `stateStore` MUST prevent access to core or other-plugin state, and plugins MUST NOT hand-roll atomic writes or lockfiles outside it. `secrets` MUST prevent cross-plugin access, never returns a raw value into an event, result, or receipt, and is the only place a plugin may persist a credential. `managedFiles` MUST prevent cross-owner remove, adopt, or release operations. `events.publishRender` schema-validates and redacts events and does not expose arbitrary publish, subscribe, wait, or query access. Plugins never receive the runtime Layer; they receive only declared services.
 
+`PluginStateStore.withLock(key, body, options?)` MUST acquire an exclusive lock in the plugin's own namespace. `PluginStateLockOptions` accepts only an optional integer `timeoutMs` from `0` through `600000`; invalid options MUST fail before opening the lock. Omitting the option uses the `brief` budget (§12.7.1). A plugin operation that needs the operation budget passes it explicitly as `timeoutMs`; plugins do not select a lock mode or wait class through this API.
+
 ### 9.10 Plugin authoring toolkit
 
 Core provides `meta:plugin:test`, `meta:plugin:build`, `meta:plugin:link`, `meta:plugin:unlink`, and `meta:plugin:publish`. These are not contribution surfaces and have no default top-level aliases. New plugins start from the bundled `plugin` template (`lando create plugin`, §23), which replaces `meta:plugin:new`. Its variants cover service types, providers, tooling engines, template engines, route filters, config translators, recipes, and bare plugins, and MUST emit a buildable, testable, linkable plugin package.

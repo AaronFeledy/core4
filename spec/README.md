@@ -130,7 +130,7 @@ If you are looking for a public surface or policy:
 | MinIO console ports and effective Mailpit/MailHog secondary listeners | 06 | §6.12.1 |
 | Explicit MinIO BYO image/build and typed mail wildcard-bind reachability | 06 | §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, owner-scoped results and transcripts, app-step settlement, container-bound app-step reuse, and errors | 06 + 05 + 12 | §6.13 + §5.3 + §12.1 |
-| Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
+| Start convergence, failure warning, bare restart, selected restart, rebuild, and physical-volume lock policy | 06 | §6.15 |
 | Early conditional non-root low-port warning without runtime probing | 06 | §6.15 |
 | User-app admission order, single admission for whole-app restart and rebuild, and the activation applier | 06 + 11 | §6.15 + §10.3 |
 | Pathless console aliases, pipe selection, file followers, and PHP Apache/FPM routing | 06 | §6.10 + §6.14 |
@@ -143,7 +143,7 @@ If you are looking for a public surface or policy:
 | Config translation contracts, diagnostics, and Lando 3 proxy selector lowering | 07 | §7.4.1 |
 | Translation sources, `translate:` refresh, and drift | 07 | §7.4.2 |
 | Global config keys, root defaults, and pure path resolution | 07 | §7.5 + §7.5.1 |
-| Environment override naming | 07 | §7.6 |
+| Environment override naming and operation-lock timeout | 07 + 12 | §7.6 + §12.7.1 |
 | Includes, fragments, lockfile, cache, and security | 07 | §7.7 |
 | Project host approval for host code and host exposure | 07 | §7.9 |
 | Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
@@ -221,10 +221,10 @@ If you are looking for a public surface or policy:
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |
 | Durable resource-ownership manifest | 12 | §12.4.2 |
 | Hot-path caches, compiled decoder targets, and offline-state policies | 12 | §12.5 + §12.6 |
-| `StateStore`, buckets, app/worker locks, consumers, and plugin access | 12 | §12.7 |
+| `StateStore`, buckets, kernel lock modes and waits, app/worker locks, consumers, and plugin access | 12 | §12.7 |
 | Source store: layout, integrity, publication and leases, offline reuse, and `meta:sources:gc` | 12 | §12.8 |
 | Test and contract-suite layers | 13 | §13.1 |
-| Schema, documentation, type, and PR gates, including merge-gate job results and automatic reruns after runner loss | 13 | §13.2 + §13.4 |
+| Schema, documentation, type, native-lock, and PR gates, including merge-gate job results and automatic reruns after runner loss | 13 | §13.2 + §13.4 |
 | Distribution forms, CI matrix, and release channels | 13 | §13.5 + §13.7 |
 | Startup and TTY renderer process-exit overhead gates | 13 | §13.6 |
 | Boundary gate policy | 13 | §13.8 |
