@@ -5,6 +5,7 @@ import { Result } from "effect";
 import type { Root } from "mdast";
 import { decodeGuideFrontmatterEither } from "../sdk/src/docs/components/index.ts";
 import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
+import { formatGeneratedPaths } from "./_codegen-output.ts";
 import { discoverGuideMdxFiles, resolveHostGuidePlatform } from "./build-guide-scenarios.ts";
 import {
   CONTAINER_COMMAND_BASELINE_PATH,
@@ -228,10 +229,12 @@ export const formatGuideLintDiagnostic = (entry: GuideLintDiagnostic): string =>
   `${entry.sourcePath}:${entry.line}:${entry.column}: ${entry.code}: ${entry.message}`;
 if (import.meta.main) {
   const guideRoot = process.env.GUIDES_DIR_OVERRIDE;
+  const prune = process.argv.includes("--prune-container-command-baseline");
   const result = await lintGuides(REPO_ROOT, {
     ...(guideRoot === undefined || guideRoot.trim() === "" ? {} : { guideRoot }),
-    pruneContainerCommandBaseline: process.argv.includes("--prune-container-command-baseline"),
+    pruneContainerCommandBaseline: prune,
   });
+  if (prune) await formatGeneratedPaths([resolve(REPO_ROOT, CONTAINER_COMMAND_BASELINE_PATH)]);
   if (result.diagnostics.length === 0) process.stdout.write("Guide lint passed.\n");
   else {
     process.stderr.write(`${result.diagnostics.map(formatGuideLintDiagnostic).join("\n")}\n`);
