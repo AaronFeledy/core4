@@ -52,7 +52,10 @@ import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { DEFAULT_APP_MOUNT_EXCLUDES } from "../../src/services/planner.ts";
 import { HOST_INTERNAL_ALIAS, HOST_IP_ENV_KEY } from "../../src/subsystems/networking.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
-import { planLiteralTestLandofile as planTestLandofile } from "../compiled-landofile.ts";
+import {
+  planTestLandofile as planCompiledTestLandofile,
+  planLiteralTestLandofile as planTestLandofile,
+} from "../compiled-landofile.ts";
 import { fileSyncEngineLayer } from "../file-sync-engine.ts";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
@@ -161,6 +164,17 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
+    ),
+  );
+
+// Authored values reach the planner only after Landofile load has decoded them.
+const compiledPlanExit = (landofile: LandofileShape) =>
+  Effect.runPromiseExit(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planCompiledTestLandofile(appPlanner, landofile, providerLandoCapabilities),
     ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
@@ -4232,7 +4246,7 @@ describe("AppPlannerLayer.layer", () => {
 
   test.each([undefined, 0, 65536, 3.5])("rejects invalid authored TCP port %s", async (port) => {
     await withTempCwd(async () => {
-      const exit = await planExit({
+      const exit = await compiledPlanExit({
         name: "myapp",
         runtime: 4,
         services: {
@@ -4262,7 +4276,7 @@ describe("AppPlannerLayer.layer", () => {
     "rejects invalid authored HTTP URL %s",
     async (url) => {
       await withTempCwd(async () => {
-        const exit = await planExit({
+        const exit = await compiledPlanExit({
           name: "myapp",
           runtime: 4,
           services: {
