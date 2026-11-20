@@ -31,7 +31,7 @@ const plan: AppPlan = {
   metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
 };
 
-test.each(["app-error", "service-error", "lando-error"] as const)(
+test.each(["expected", "app-error", "service-error", "lando-error"] as const)(
   "%s produces only owner-appropriate JSON warnings",
   async (verdict) => {
     const io = createBufferedRendererIO();
