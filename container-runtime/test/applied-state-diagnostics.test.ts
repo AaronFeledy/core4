@@ -31,7 +31,7 @@ test.each([
     data: { demo: { id: "demo", services: {}, routes: [] }, [secret]: secret },
     coordinate: "apps[1].id",
   },
-] as const)("reports a safe coordinate for $name", async ({ layout, data, coordinate }) => {
+] as const)("reports a safe current-envelope coordinate for $name", async ({ layout, data, coordinate }) => {
   const root = await mkdtemp(join(tmpdir(), "lando-applied-diagnostic-"));
   const access = { enforce: async () => undefined, verify: async () => undefined };
   const state = makePluginStateStore(

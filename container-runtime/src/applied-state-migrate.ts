@@ -14,7 +14,7 @@ import { migrateAppliedInit } from "./applied-init-migrate.ts";
 import { migrateAppliedNames } from "./applied-names-migrate.ts";
 import { visitAppliedNetworkVocabulary } from "./applied-network-vocabulary.ts";
 
-/** Durable applied-plan frame version with canonical endpoint and route-filter kinds. */
+/** Durable applied-plan frame version: kind discriminators plus optional keepAlive intent. */
 export const APPLIED_STATE_VERSION = 9;
 
 const APP_MOUNT_KEY = "app-mount";
