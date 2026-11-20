@@ -35,7 +35,7 @@ The engine owns readiness attempt execution. Service execution uses the selected
 
 The runner probes immediately, including during `startPeriodSeconds`. Failed probes during that period do not consume retries; probes run at one-second intervals or `intervalSeconds` when shorter. The first passing probe returns immediately. After the start period, the runner permits `retries` attempts (at least one) at `intervalSeconds`, with `timeoutSeconds` per attempt.
 
-Start, restart, rebuild, and global-service start wait for effective readiness before post-start subscribers run. The barrier, `service_healthy` dependencies, and app-build gates use the same policy. Disabling readiness does not relax a healthy dependency: its target must still have enabled command readiness, or planning fails. Language runtimes add no default checks; authors provide `readiness:` when needed.
+Start, restart, rebuild, and global-service start wait for effective readiness before post-start subscribers run. The barrier, `service_healthy` dependencies, and app-build gates use the same policy. Disabling readiness does not relax a healthy dependency: its target must still have an enabled readiness probe, or planning fails. Language runtimes add no default checks; authors provide `readiness:` when needed.
 
 ## Separate startup readiness from ongoing health
 

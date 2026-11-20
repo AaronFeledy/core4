@@ -285,7 +285,7 @@ lando logs -s app
 lando start
 ```
 
-An exhausted readiness probe stays fatal even if the service has a restart policy. To skip that command gate and keep process supervision, set `readiness: false`.
+An exhausted readiness probe stays fatal even if the service has a restart policy. To skip the readiness gate and keep process supervision, set `readiness: false`.
 
 ## Inspect configuration without claiming readiness
 
