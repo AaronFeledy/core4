@@ -1,0 +1,13 @@
+id: site
+title: Router page
+description: Serve one page through the router.
+version: 0.1.0
+config:
+  services:
+    web:
+      type: static
+      routes:
+        - https://guide-router-page.lndo.site
+files:
+  - src: index.html
+    dest: index.html

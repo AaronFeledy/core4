@@ -1,7 +1,7 @@
 ---
 id: e2e-smoke-scenarios
 provider: test
-timeout: 60000
+timeout: 180000
 tags: [docs, authoring, e2e]
 ---
 
@@ -63,6 +63,48 @@ prints on stderr, which are written for people and change without notice:
 
 A second `lando start` changes nothing on a running app, so the step only
 repeats the check.
+
+## Request a page through the router
+
+Use `<Fetch>` when you need to check a specific page, header, or redirect,
+rather than the readiness verdict from `lando start`. Run it in an e2e scenario
+after `lando start`. The `{{route:web}}` token in the example uses the `web`
+service's assigned router URL, including any fallback port. HTTPS requests
+verify the router certificate against the CA that `lando setup` installed.
+
+```mdx
+<Step name="request-homepage">
+  <Fetch url="{{route:web}}/" expect={{ status: 200, headers: { "Content-Type": { regex: "^text/html" } }, body: { regex: "Hello from the router" } }} />
+</Step>
+```
+
+<Guide>
+  <Scenario id="request-router-page" layer="e2e" render>
+    <Hidden reason="Start the fixture site for the request example">
+      <Step name="start-static-site">
+        <UseFixture name="router-page" />
+        <Run command="lando init . --recipe=./site --name=guide-router-page --yes --format=json" />
+        <Run command="lando start --format=json" />
+      </Step>
+    </Hidden>
+    <Step name="request-homepage">
+      <Fetch url="{{route:web}}/" expect={{ status: 200, headers: { "Content-Type": { regex: "^text/html" } }, body: { regex: "Hello from the router" } }} />
+    </Step>
+    <Hidden reason="Clean up the fixture site after the request example">
+      <Step name="destroy-site">
+        <Cleanup />
+        <Run command="lando destroy -y --volumes --format=json" />
+      </Step>
+    </Hidden>
+  </Scenario>
+  <Scenario id="prepare-router-page" render={false} reason="Check the request fixture can be initialized without a live provider">
+    <Step name="initialize-static-site">
+      <UseFixture name="router-page" />
+      <Run command="lando init . --recipe=./site --name=guide-router-page --yes --format=json" />
+      <Verify file="router-page/index.html" expect={{ regex: "Hello from the router" }} />
+    </Step>
+  </Scenario>
+</Guide>
 
 ## Pin a known limitation
 
