@@ -52,6 +52,7 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - On how-to and tutorial pages only: heading that does not name the action or the command
 - Install, start, or config with no verify command (how-to / tutorial)
 - A guide teaches an app install that no `layer="e2e"` scenario runs anywhere in the docs tree (`guide.install.e2e-coverage`)
+- You show a container command in a prose shell fence without an exact-argv e2e step on the same page or an explicit fence waiver (`guide.container-command.e2e-coverage`). Do not add baseline entries
 - Copied Lando 3 product facts (recipes-as-the-product, Drupal 9 first-app, Docker-as-default, start Traefik)
 
 ## Before you write

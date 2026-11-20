@@ -233,7 +233,8 @@ An app-install command in a prose shell fence must also run in a live
 `layer="e2e"` scenario somewhere under `docs/guides/**` or
 `recipes/*/README.mdx`. `bun run lint:guides` checks this across files with
 `guide.install.e2e-coverage`. It checks `sh`, `bash`, `shell`, and `console`
-fences outside `<Guide>`, including commands split with backslash continuations.
+fences outside `<Guide>`, including commands split with backslash continuations
+or prefixed with a `$ ` prompt.
 
 Coverage matches `lando create-project` and `lando composer create-project`
 by package name, ignoring quotes, versions, and flags. A version written
@@ -250,6 +251,35 @@ on the default `lando` provider (managed Podman). A passing lint run proves
 coverage is declared; a passing live run proves the install works. Use the
 [e2e scenario instructions](../guides/authoring/e2e-smoke-scenarios.mdx#where-it-runs)
 to enable live execution and confirm the scenario passed rather than skipped.
+
+### Run every container command you show
+
+When you show `lando exec`, `lando ssh`, `lando logs`, or Landofile tooling
+such as `lando composer` in a prose shell fence, run it in an e2e scenario
+on the **same page**. The rule includes command IDs and aliases. It treats
+names not in the built-in registry as tooling, except for the CLI's `help`
+entry point.
+
+Use a `<Run command>` or `<Verify command>` with the same command name,
+arguments, and argument order. Quoting can differ if it produces the same
+argv. Variables match by execution value. A `<Hidden>` step counts, but a
+skipped step or scenario does not. You can set `layer="e2e"` on the scenario
+or inherit it from the guide's `defaultLayer`.
+
+`bun run lint:guides` checks `sh`, `bash`, `shell`, `console`, and `zsh` fences
+outside `<Guide>`. It checks each command in a shell list, ignoring host pipes
+and redirects after the command. It skips illustrative arguments such as an
+entire `...` argument or an angle-bracket name like `<service>` used as an
+argument, option value, or path segment.
+
+If the fence cannot run in CI, put `{/* lando-lint: not-e2e <reason> */}` directly
+above it, with only whitespace in between. Give a reason of at least eight
+characters. The waiver applies to the whole fence. Remove it if the fence no
+longer shows a container command.
+
+Do not add entries to `scripts/guides/container-command-baseline.json`. When
+you cover, waive, or remove a listed command, delete its entry or run
+`bun run scripts/lint-guides.ts --prune-container-command-baseline`.
 
 ## How variables bind
 

@@ -632,6 +632,8 @@ Provider integration also runs as platform-specific jobs (`provider-integration-
 ## Lint guide YAML and negative fixtures
 
 Run `bun run lint:guides` to validate identifiable Landofile fences and fixture files.
+It also checks [app install coverage](./guide-authoring.md#exercise-every-app-install-you-teach)
+and [same-page container command coverage](./guide-authoring.md#run-every-container-command-you-show).
 Full `.lando.yml` documents keep full authoring requirements, including native
 `!reset` and `!override` placement checks. `.lando.*.yml` files are fragments.
 Unrelated YAML, such as Actions workflows, Kubernetes resources, recipe manifests,
