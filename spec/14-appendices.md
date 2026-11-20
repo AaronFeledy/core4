@@ -92,6 +92,8 @@ The implementation must satisfy every item below; binary-shipping criteria remai
 - Programmable execution remains opt-in and local-development-first: minimal host work needs no app/provider, borrowed apps survive closure, config-backed scratch retains its source, admission survives captured-context delegation, process outcomes remain truthful, and artifacts follow explicit lifetime ownership. Existing commands/hooks/budgets are unchanged (§22).
 - Templates run no host code, never overwrite a pre-existing file, undo a failed step from a private snapshot, and need consent keyed to a digest of what they run; recipes run nothing (§23, §8.8).
 
+- Compatible stock Python services share one app-scoped environment; fresh consumers wait for requirements preparation, unchanged warm starts skip the job, and unchanged tracked inputs remain offline after stop/start. A failed first apply leaves the job logs available. Selected restart permits additive updates while an unselected sibling runs (§5.3, §6.5.1, §6.12.1, §6.15, §8.2, §13.1).
+
 ### D. Why OCLIF (and not `@effect/cli`) — historical decision
 
 OCLIF was originally selected for its mature plugin manifest, lazy-loading, install, and update ecosystem despite adapter costs around Effect and typed flags. Compiled Bun binaries later proved unable to use supported OCLIF dispatch because root discovery and runtime module loading require adjacent filesystem packages. The normative architecture is now one native registry and dispatcher for source and compiled modes (§8.4.1); registry completeness, machine-output conformance, and relocated-binary smoke replace the retired dual-dispatch parity design.
@@ -113,6 +115,7 @@ OCLIF was originally selected for its mature plugin manifest, lazy-loading, inst
 - **Command namespace** — Core `app`, `apps`, `meta`, or a plugin-owned topic.
 - **Command step** — Tooling `cmds[].command` invocation of a validated canonical command with lifecycle and bootstrap propagation.
 - **Config translator** — Explicit plugin conversion from an external config source to a Landofile fragment and diagnostics.
+- **Dependency environment** — An app-scoped dependency tree shared by compatible services and prepared by a required completion job when a consumer starts (§6.5.1).
 - **DeprecationNotice** — Canonical schema for `since`, `removeIn`, severity, replacement, note, and optional documentation/ticket metadata (§18.2).
 - **DeprecationService** — Service that records, deduplicates, publishes, and reports deprecated-surface use.
 - **`deprecation-used` event** — Event emitted for registered deprecated-surface use.
@@ -145,7 +148,7 @@ OCLIF was originally selected for its mature plugin manifest, lazy-loading, inst
 - **Plan cache** — On-disk schema-encoded `AppPlan` for hot paths.
 - **Port** — Service tag and interface on which core depends.
 - **Provider** — `RuntimeProvider` implementation realizing app plans.
-- **Recipe** — Init-time source of a Landofile and its support files, with questions. It runs nothing and is not a runtime abstraction.
+- **Recipe** — Init-time source of a Landofile and its support files, with questions. It runs nothing at init and is not a runtime abstraction; the emitted Landofile can declare service commands and tooling (§8.8).
 - **Recipe suite** — Tests every canonical recipe with default and varied answers.
 - **Renderer** — Plugin rendering progress, tables, and messages.
 - **Route** — Host-facing HTTP/TLS mapping to endpoints.

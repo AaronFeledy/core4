@@ -14,6 +14,8 @@ import { composeBuildToArtifact, isComposeBuild } from "../services/compose-buil
 import { mergeComposeKnobs } from "../services/compose-knobs.ts";
 import { applyPreparedService } from "../services/feature.ts";
 import { AUTHORED_BUILD_STEP_PREFIX } from "./authored-build-step.ts";
+import type { MountAuthoringContext } from "./authored-mount-entry.ts";
+import { compileAuthoredMounts } from "./authored-mounts.ts";
 import { applyAuthoredHealthcheck } from "./authored-probes.ts";
 import {
   SERVICE_FEATURES_EXTENSION_KEY,
@@ -88,8 +90,9 @@ export { applyAuthoredDependencies } from "../services/authored-dependencies.ts"
 
 export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* (input: {
   readonly resolvedServices: ReadonlyArray<ResolvedService>;
-  readonly appRoot: string;
+  readonly mountContext: Omit<MountAuthoringContext, "serviceName">;
 }): Effect.fn.Return<ReadonlyArray<PlannedServiceDraft>, LandofileValidationError> {
+  const { appRoot } = input.mountContext;
   const plannedServiceDrafts: PlannedServiceDraft[] = [];
   for (const {
     name,
@@ -105,21 +108,28 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
     resolvedArtifactTag,
     configSourceInputs,
   } of input.resolvedServices) {
+    const mounts = compileAuthoredMounts(
+      { ...input.mountContext, serviceName: name },
+      resolution.normalizedConfig,
+      service.storage,
+    );
+    if (mounts instanceof LandofileValidationError) return yield* Effect.fail(mounts);
     const composition = yield* applyPreparedService({
       prepared,
       endpointContributions,
       applicationConfigs,
+      authoredMounts: mounts.mounts,
     }).pipe(
       mapFailures((error) =>
         servicePlanError({
-          appRoot: input.appRoot,
+          appRoot,
           serviceName: name,
           cause: error.cause instanceof LandofileValidationError ? error.cause : error,
         }),
       ),
     );
     const authoredServicePlanWithoutLabels = applyAuthoredDependencies(
-      yield* applyAuthoredSqlite(applyAuthoredHealthcheck(composition.plan, service), service, input.appRoot),
+      yield* applyAuthoredSqlite(applyAuthoredHealthcheck(composition.plan, service), service, appRoot),
       service,
     );
     const authoredServicePlan = mergeComposeKnobs(
@@ -128,7 +138,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
     );
     const build = service.build;
     const composeArtifact =
-      build !== undefined && isComposeBuild(build) ? composeBuildToArtifact(build, input.appRoot) : undefined;
+      build !== undefined && isComposeBuild(build) ? composeBuildToArtifact(build, appRoot) : undefined;
     const authoredArtifact =
       composeArtifact ??
       (service.image === undefined ? undefined : { kind: "ref" as const, ref: service.image });
@@ -163,6 +173,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
           };
     plannedServiceDrafts.push({
       name,
+      dependencyEnvironments: composition.dependencyEnvironments,
       authoredStorage: service.storage,
       hostnames: service.hostnames ?? [],
       authoredArtifact,

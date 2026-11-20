@@ -159,6 +159,7 @@ export const projectUserVolumeTrees = (input: {
   readonly projectUser?: ServiceProjectUser;
   readonly homeStore?: string | undefined;
   readonly cacheStores?: ReadonlySet<string>;
+  readonly dependencyEnvironmentStores?: ReadonlyMap<string, unknown>;
 }): ReadonlyArray<DataTreeOwnership> => {
   const { mounts, projectUser, homeStore } = input;
   if (projectUser === undefined) return [];
@@ -176,7 +177,8 @@ export const projectUserVolumeTrees = (input: {
       nestedTarget(appMount.target, mount.target) !== undefined;
     const serviceStore =
       mount.origin === "service" &&
-      input.cacheStores?.has(mount.store) === true;
+      (input.cacheStores?.has(mount.store) === true ||
+        input.dependencyEnvironmentStores?.has(mount.store) === true);
     if (mount.origin !== "derived" && !enclosesApp && !insideApp && !serviceStore) return [];
     const parents = new Set<string>();
     for (const other of mounts) {

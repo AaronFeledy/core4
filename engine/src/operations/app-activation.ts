@@ -14,7 +14,7 @@ import { runAppInitEvents } from "./events.ts";
 import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
 import { requireSelectableRouter } from "./global-consumer-admission.ts";
 import { preflightSelectedRelaunch } from "./selected-relaunch.ts";
-import { selectInfoPlan, selectRebuildPlan } from "./service-selection.ts";
+import { selectRebuildPlan, selectRestartPlan } from "./service-selection.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
 import {
@@ -99,7 +99,7 @@ export function withAppActivation<A, E, R>(
             break;
           case "restart":
             scoped = request.services !== undefined && request.services.length > 0;
-            if (scoped) selectedPlan = yield* selectInfoPlan(plan, request.services);
+            if (scoped) selectedPlan = yield* selectRestartPlan(plan, request.services);
             break;
           case "rebuild":
             selectedPlan = yield* selectRebuildPlan(plan, request.services);

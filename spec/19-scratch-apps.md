@@ -137,6 +137,8 @@ Acquisition wraps materialization and start; scratch start wraps the standard Ap
 
 `--mount-cwd` is sugar for `--isolate=cwd`; in fork mode it MUST warn that it overrides the safer `full` default. Combining it with an explicit incompatible isolation mode fails with `ScratchIsolationConflictError`. `--isolate=passthrough` is reserved and unsupported, raising `ScratchIsolationUnsupportedError`. Copy exclusions apply only to fork materialization.
 
+Scratch planning MUST skip dependency-environment materialization before deriving mount isolation: no generated store, activation defaults, or prepare job. This applies to all isolation modes, including passthrough (§6.5.1).
+
 ### 21.8 Storage shadowing
 
 At plan time, scratch storage obeys this rewrite:
