@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
+import { pinnedAction } from "../../../scripts/action-pins.ts";
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -132,7 +132,6 @@ describe("ci workflow", () => {
       "provider-matrix.yml",
       "rails-journey.yml",
       "release.yml",
-      "retarget-action-bump.yml",
       "runtime-bundle.yml",
       "tomcat-bump.yml",
       "workflow-performance.yml",
@@ -458,7 +457,7 @@ describe("ci workflow", () => {
     const rehearsal = findIndentedBlock(jobs, "distribution-rehearsal-linux-x64", 2);
 
     expect(rehearsal).toContain("    runs-on: ubuntu-24.04");
-    expect(rehearsal).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(rehearsal).toContain(`        uses: ${pinnedAction("oven-sh/setup-bun")}`);
     expect(rehearsal).toContain("          bun-version-file: .bun-version");
     expect(rehearsal).toContain("        run: bun install --frozen-lockfile");
     expect(rehearsal).toContain("        run: bun run --filter='@lando/core' build:manifest");
@@ -492,7 +491,7 @@ describe("ci workflow", () => {
     expect(rehearsal).toContain("        run: bun run scripts/dist-bundle.ts --verify dist/bundle");
 
     expect(rehearsal).toContain("      - name: Upload distribution rehearsal bundle");
-    expect(rehearsal).toContain("        uses: actions/upload-artifact@v7");
+    expect(rehearsal).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(rehearsal).toContain(
       "          name: lando-dist-rehearsal-v4.0.0-nightly.${{ github.run_number }}",
     );
@@ -531,7 +530,7 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("fromJSON(needs.selection.outputs.broad");
     expect(staticChecksPlatform).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(staticChecksPlatform).toContain("    timeout-minutes: 35");
-    expect(staticChecksPlatform).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(staticChecksPlatform).toContain(`        uses: ${pinnedAction("oven-sh/setup-bun")}`);
     expect(staticChecksPlatform).toContain("          bun-version-file: .bun-version");
     expect(staticChecksPlatform).toContain("        run: bun install --frozen-lockfile");
     expect(staticChecksPlatform).toContain("      - name: Native Windows private-file ACL tests");
@@ -597,10 +596,8 @@ describe("ci workflow", () => {
     // Then
     expect(jobs).toContain("  docs-build:");
     expect(docsBuild).toContain("    runs-on: ubuntu-26.04");
-    expect(docsBuild).toContain(
-      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
-    );
-    expect(docsBuild).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(docsBuild).toContain(`      - uses: ${pinnedAction("actions/checkout")}`);
+    expect(docsBuild).toContain(`        uses: ${pinnedAction("oven-sh/setup-bun")}`);
     expect(docsBuild).toContain("          bun-version-file: .bun-version");
     expect(docsBuild).toContain("        run: bun install --frozen-lockfile");
     expect(docsBuild).toContain("        run: bun run codegen");
@@ -608,9 +605,7 @@ describe("ci workflow", () => {
     expect(docsBuild).toContain("        run: bun run test:selection docs");
     expect(docsBuild).toContain("        run: bun run docs:build");
     expect(docsBuild).toContain("        run: test -f docs/dist/reference/schemas/app-plan/index.html");
-    expect(docsBuild).toContain(
-      "        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0",
-    );
+    expect(docsBuild).toContain(`        uses: ${pinnedAction("actions/upload-pages-artifact")}`);
     expect(docsBuild).toContain("          path: docs/dist");
     expect(docsBuild).toContain("        if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
     expect(docsBuild.indexOf("bun install --frozen-lockfile")).toBeLessThan(
@@ -643,7 +638,7 @@ describe("ci workflow", () => {
     expect(deployDocs).toContain("      pages: write");
     expect(deployDocs).toContain("      id-token: write");
     expect(deployDocs).toContain("      name: github-pages");
-    expect(deployDocs).toContain("        uses: actions/deploy-pages@v5");
+    expect(deployDocs).toContain(`        uses: ${pinnedAction("actions/deploy-pages")}`);
   });
 
   test("uses minimal read-only permissions for fork-safe pull requests", async () => {
@@ -686,9 +681,7 @@ describe("ci workflow", () => {
     expect(schemaSnapshot).not.toContain("dist/command-schemas");
     expect(schemaSnapshot).not.toContain("docs/reference/schemas");
     expect(schemaSnapshot).toContain('if [[ -n "$schema_changes" ]]; then');
-    expect(
-      schemaSnapshot,
-    ).toContain(`      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    expect(schemaSnapshot).toContain(`      - uses: ${pinnedAction("actions/checkout")}
         with:
           fetch-depth: 0`);
     expect(schemaSnapshot).toContain("      - name: Check schema compatibility");
@@ -761,9 +754,7 @@ describe("ci workflow", () => {
     expect(helper).toContain("    needs: [selection, container-helper]");
     expect(helper).toContain("    runs-on: ubuntu-24.04-arm");
     expect(helper).toContain("        run: bun install --frozen-lockfile");
-    expect(helper).toContain(
-      "        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2",
-    );
+    expect(helper).toContain(`        uses: ${pinnedAction("actions/download-artifact")}`);
     expect(helper).toContain("          name: container-helper");
     expect(helper).toContain("          path: core/container-helper/dist");
     expect(helper).toContain(
@@ -801,7 +792,7 @@ describe("ci workflow", () => {
     expect(buildLinux).toContain("          ./dist/lando --version");
     expect(buildLinux).toContain("          ./dist/lando --help");
     expect(buildLinux).toContain("          ./dist/lando shellenv");
-    expect(buildLinux).toContain("        uses: actions/upload-artifact@v7");
+    expect(buildLinux).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(buildLinux).toContain("            dist/THIRD_PARTY_NOTICES.md");
     expect(buildLinux).toContain("          bun run check:compiled-binary-notices");
     expect(buildLinux).toContain("        if: always()");
@@ -816,7 +807,7 @@ describe("ci workflow", () => {
       buildLinux.indexOf("./dist/lando shellenv"),
     );
     expect(buildLinux.indexOf("./dist/lando shellenv")).toBeLessThan(
-      buildLinux.indexOf("uses: actions/upload-artifact@v7"),
+      buildLinux.indexOf(`uses: ${pinnedAction("actions/upload-artifact")}`),
     );
   });
 
@@ -838,7 +829,7 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("          ./dist/lando --version");
     expect(buildDarwin).toContain("          ./dist/lando --help");
     expect(buildDarwin).toContain("          ./dist/lando shellenv");
-    expect(buildDarwin).toContain("        uses: actions/upload-artifact@v7");
+    expect(buildDarwin).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(buildDarwin).toContain("        if: always()");
     expect(buildDarwin).toContain("          name: lando-darwin-arm64");
     expect(buildDarwin).toContain(
@@ -853,7 +844,7 @@ describe("ci workflow", () => {
       buildDarwin.indexOf("./dist/lando shellenv"),
     );
     expect(buildDarwin.indexOf("./dist/lando shellenv")).toBeLessThan(
-      buildDarwin.indexOf("uses: actions/upload-artifact@v7"),
+      buildDarwin.indexOf(`uses: ${pinnedAction("actions/upload-artifact")}`),
     );
   });
 
@@ -887,7 +878,7 @@ describe("ci workflow", () => {
     expect(buildWindows).not.toContain("[Console]::OutputEncoding");
     expect(buildWindows).not.toContain("          ./dist/lando-windows-x64.exe --version");
     expect(buildWindows).not.toContain("          ./dist/lando-windows-x64.exe shellenv");
-    expect(buildWindows).toContain("        uses: actions/upload-artifact@v7");
+    expect(buildWindows).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(buildWindows).toContain("        if: always()");
     expect(buildWindows).toContain("          name: lando-windows-x64");
     expect(buildWindows).toContain(
@@ -900,7 +891,7 @@ describe("ci workflow", () => {
       buildWindows.indexOf("bun run scripts/smoke-windows-binary.ts"),
     );
     expect(buildWindows.indexOf("bun run scripts/smoke-windows-binary.ts")).toBeLessThan(
-      buildWindows.indexOf("uses: actions/upload-artifact@v7"),
+      buildWindows.indexOf(`uses: ${pinnedAction("actions/upload-artifact")}`),
     );
   });
 
@@ -922,7 +913,7 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("          ./dist/lando --version");
     expect(buildDarwin).toContain("          ./dist/lando --help");
     expect(buildDarwin).toContain("          ./dist/lando shellenv");
-    expect(buildDarwin).toContain("        uses: actions/upload-artifact@v7");
+    expect(buildDarwin).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(buildDarwin).toContain("        if: always()");
     expect(buildDarwin).toContain("          name: lando-darwin-x64");
     expect(buildDarwin).toContain(
@@ -937,7 +928,7 @@ describe("ci workflow", () => {
       buildDarwin.indexOf("./dist/lando shellenv"),
     );
     expect(buildDarwin.indexOf("./dist/lando shellenv")).toBeLessThan(
-      buildDarwin.indexOf("uses: actions/upload-artifact@v7"),
+      buildDarwin.indexOf(`uses: ${pinnedAction("actions/upload-artifact")}`),
     );
   });
 
@@ -959,7 +950,7 @@ describe("ci workflow", () => {
     expect(buildLinuxArm).toContain("          ./dist/lando --version");
     expect(buildLinuxArm).toContain("          ./dist/lando --help");
     expect(buildLinuxArm).toContain("          ./dist/lando shellenv");
-    expect(buildLinuxArm).toContain("        uses: actions/upload-artifact@v7");
+    expect(buildLinuxArm).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(buildLinuxArm).toContain("        if: always()");
     expect(buildLinuxArm).toContain("          name: lando-linux-arm64");
     expect(buildLinuxArm).toContain(
@@ -974,7 +965,7 @@ describe("ci workflow", () => {
       buildLinuxArm.indexOf("./dist/lando shellenv"),
     );
     expect(buildLinuxArm.indexOf("./dist/lando shellenv")).toBeLessThan(
-      buildLinuxArm.indexOf("uses: actions/upload-artifact@v7"),
+      buildLinuxArm.indexOf(`uses: ${pinnedAction("actions/upload-artifact")}`),
     );
   });
 
@@ -1012,7 +1003,7 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(guideScenarios).toContain("    needs: [selection, guide-scenarios-linux-x64-runner]");
     expect(guideScenarios).toContain("always() && !cancelled()");
-    expect(guideScenariosRunner).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(guideScenariosRunner).toContain(`        uses: ${pinnedAction("oven-sh/setup-bun")}`);
     expect(guideScenariosRunner).toContain("          bun-version-file: .bun-version");
     expect(guideScenariosRunner).toContain("        run: bun install --frozen-lockfile");
     expect(guideScenariosRunner).toContain("        run: bun run codegen");
@@ -1100,7 +1091,7 @@ describe("ci workflow", () => {
     expect(guideE2eRunner).toContain('          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"');
     expect(guideE2eRunner).toContain("      - name: Upload guide e2e provider diagnostics");
     expect(guideE2eRunner).toContain("        if: failure()");
-    expect(guideE2eRunner).toContain("        uses: actions/upload-artifact@v7");
+    expect(guideE2eRunner).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(guideE2eRunner).toContain(
       "          name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}-shard${{ matrix.shard }}.zip",
     );
@@ -1327,7 +1318,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("        if: failure() || cancelled()");
     expect(providerIntegration).toContain('          journalctl --no-pager --since "-30 minutes"');
     expect(providerIntegration).toContain("      - name: Upload provider integration diagnostics");
-    expect(providerIntegration).toContain("        uses: actions/upload-artifact@v7");
+    expect(providerIntegration).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(providerIntegration).toContain(
       "          name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}-${{ matrix.suite }}",
     );

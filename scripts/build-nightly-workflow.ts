@@ -10,6 +10,7 @@ import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
 import { renderNightlyFailureJob } from "./_nightly-failure-workflow.ts";
 import { serviceListenerMatrixNightlyJob } from "./_service-listener-matrix-nightly.ts";
 import { serviceListenerNightlyJob } from "./_service-listener-nightly.ts";
+import { pinnedAction } from "./action-pins.ts";
 
 import {
   landoManagedPodmanRuntimeDirCommands,
@@ -55,7 +56,7 @@ const providerLandoE2eJob = `
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 ${isolateLandoRootsStep}
 ${bunSetupStep}
 
@@ -106,7 +107,7 @@ ${landoManagedPodmanTeardownCommands}
 
       - name: Upload provider-lando e2e diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: provider-lando-e2e-diagnostics-linux-x64
           path: provider-lando-e2e-diagnostics
@@ -123,7 +124,7 @@ const publishedManifestSetupJob = `
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 ${isolateLandoRootsStep}
 ${bunSetupStep}
 
@@ -212,7 +213,7 @@ const distributionRehearsalJob = `
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 ${bunSetupStep}
 
 ${regenerateDerivedSourcesStep}
@@ -238,7 +239,7 @@ ${distributionSanitizeLines}
         run: bun run scripts/dist-bundle.ts --verify dist/bundle
 
       - name: Upload distribution rehearsal bundle
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: lando-dist-rehearsal-v4.0.0-nightly.\${{ github.run_number }}
           path: dist/bundle
@@ -263,7 +264,7 @@ const renderJob = (job: NightlyJob): string => `
     runs-on: ${job.runsOn}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 ${isolateLandoRootsStep}
 ${bunSetupStep}
 ${regenerateDerivedSourcesStep}
@@ -275,7 +276,7 @@ const nightlyTierUnitTestsJob = `
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 ${bunSetupStep}
 
 ${regenerateDerivedSourcesStep}
@@ -291,7 +292,7 @@ const refreshTestTimingsJob = `
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 ${bunSetupStep}
 
 ${regenerateDerivedSourcesStep}
@@ -303,7 +304,7 @@ ${containerHelperDownloadStep}
 
       - name: Upload refreshed timings
         if: success()
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: bun-test-timings
           path: ${TEST_TIMINGS_FILE}
@@ -316,7 +317,7 @@ const runtimeBundleManifestLiveJob = `
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 ${bunSetupStep}
 
       - name: Verify committed runtime-bundle manifest resolves live
@@ -335,11 +336,11 @@ const runtimeBundleReproducibilityJob = (hostKey: "linux-x64" | "linux-arm64"): 
     runs-on: ${hostKey === "linux-x64" ? LINUX_X64_PRIMARY_RUNNER : linuxArm64.runsOn}
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 ${bunSetupStep}
 
       - name: Download the ${label} runtime bundle CI assembled for this commit
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: ${pinnedAction("actions/download-artifact")}
         with:
           name: runtime-bundle-${hostKey}-current
           path: dist/cache/runtime-bundle-reference
@@ -357,7 +358,7 @@ const mysqlArmClientLinuxArm64Job = `
     runs-on: ${linuxArm64.runsOn}
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 ${isolateLandoRootsStep}
 ${bunSetupStep}
 
@@ -366,7 +367,7 @@ ${containerHelperDownloadStep}
 ${landoRootlessPrereqSteps}
 
       - name: Download current-commit Linux arm64 runtime bundle
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: ${pinnedAction("actions/download-artifact")}
         with:
           name: runtime-bundle-linux-arm64-current
           path: dist/cache/runtime-bundle
@@ -488,7 +489,7 @@ ${landoManagedPodmanRuntimeDirCommands}
 
       - name: Upload ARM MySQL client diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: mysql-arm-client-diagnostics-linux-arm64
           path: mysql-arm-client-diagnostics
@@ -532,7 +533,7 @@ const renderSourceStoreAcceptanceJob = (platform: CiPlatform): string => {
     runs-on: ${platform.runsOn}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 ${isolateLandoRootsStep}
 ${bunSetupStep}
 

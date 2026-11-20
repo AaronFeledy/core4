@@ -187,9 +187,20 @@ Heavy meta-suites that re-run generators or other test files (`core/test/scripts
 
 ## Dependency maintenance
 
-Dependabot checks Bun dependencies and GitHub Actions weekly. Minor and patch updates are grouped per ecosystem; major updates get separate pull requests. Actions workflows are generated, so an Actions update PR must also update its owning generator or action-pin source and regenerate YAML before merge.
+Renovate keeps Bun packages and GitHub Actions current through the Mend Renovate GitHub App. Its configuration is `.github/renovate.json`, and its Dependency Dashboard issue lists every open, approval-gated, and errored update. Renovate pushes branches as an app, so pull-request CI runs on its PRs like any other.
 
-The daily `dependency-audit` workflow runs `bun run scripts/dependency-audit.ts` from the trusted default branch. It can also be dispatched there manually. It is not a pull-request check. Bun version-update PRs do not replace Bun vulnerability detection; Dependabot does not currently support Bun security-update PRs.
+Renovate proposes updates early on Mondays, Central time, and waits until a release is three days old:
+
+- Minor and patch updates arrive as one `Bun packages` PR and one `GitHub Actions` PR. Each major update gets its own PR.
+- Security fixes for direct Bun dependencies and `overrides` arrive outside the weekly schedule, from the OSV advisory database.
+- Bun and Effect upgrades wait until you approve them on the Dependency Dashboard. A Bun PR moves `.bun-version`, `constraints.bun` in the Renovate configuration, every `engines.bun`, and `@types/bun` together. Finish it by updating the [runtime-bundle builder pins](#update-the-builder-pins), `BUN_LICENSE_PIN` in `scripts/compiled-binary-notices.ts`, and the Bun version the contributor docs name. Effect stays pinned in the root workspace catalog, which `core/test/build/effect-version-pin.test.ts` guards.
+- `@opentui/core` stays on 0.8.0 until upstream ships a native build without FFmpeg.
+
+Every action a generated workflow uses is pinned once in `.github/actions/pins.yml`, as a full commit labeled with its release: `owner/repo@<commit> # vX.Y.Z`. Generators read that file through `scripts/action-pins.ts`, and `core/test/build/action-pins.test.ts` fails when a committed workflow uses an action any other way. Renovate moves a pin in that file and in every committed workflow in one PR, writing the same text the generators write, so `codegen:check` passes without a regeneration step. It also proposes a fix when a pin's commit stops matching its release tag. Renovate never edits runner labels, job containers, or action inputs. To add an action or move a pin yourself, edit its line in `pins.yml` and run `bun run codegen`.
+
+If a dependency update changes a committed generated file, `codegen:check` fails on the Renovate PR. Run `bun run codegen` on that branch and push the result.
+
+The daily `dependency-audit` workflow runs `bun run scripts/dependency-audit.ts` from the trusted default branch. It can also be dispatched there manually. It is not a pull-request check. It reads the whole lockfile, so it also reports transitive packages that Renovate's security PRs do not cover.
 
 The audit maintains one bot-owned issue titled `Dependency audit findings`. New findings create it, changed findings update it, a clean audit closes it, and recurring findings reopen the same issue. Unchanged findings do not rewrite the issue. Ignore policy comes from the existing `audit` command in `package.json`. Registry errors, malformed output, and inconsistent audit exits fail the scheduled job without marking the issue resolved.
 

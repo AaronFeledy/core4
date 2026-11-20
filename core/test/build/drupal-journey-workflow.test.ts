@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
+import { pinnedAction } from "../../../scripts/action-pins.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const workflowPath = resolve(repoRoot, ".github/workflows/drupal-journey.yml");
@@ -283,7 +284,7 @@ describe("drupal-journey workflow", () => {
   test("exports LANDO_USER roots from RUNNER_TEMP via GITHUB_ENV after checkout", async () => {
     // Given / When
     const linuxX64 = jobBlock(await readWorkflow(), "linux-x64");
-    const checkout = linuxX64.indexOf("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1");
+    const checkout = linuxX64.indexOf(pinnedAction("actions/checkout"));
     const isolate = linuxX64.indexOf("Isolate Lando roots");
 
     // Then: job-level env cannot use the runner context; roots are exported from a step.

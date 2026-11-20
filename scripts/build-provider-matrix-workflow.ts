@@ -1,5 +1,4 @@
 import { resolve } from "node:path";
-
 import { setupBunSteps as sharedSetupBunSteps } from "./_bun-workflow.ts";
 import {
   CONTAINER_HELPER_JOB_ID,
@@ -7,6 +6,7 @@ import {
   renderContainerHelperJob,
 } from "./_container-helper-workflow.ts";
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
+import { pinnedAction } from "./action-pins.ts";
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
 import { renderInstallDockerCeLatestStep } from "./ci-docker-install.ts";
 import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
@@ -113,7 +113,7 @@ const dockerFallbackSmoke = `  docker-fallback-smoke:
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
       - name: Isolate Lando roots
         run: |
@@ -173,7 +173,7 @@ ${renderMatrixInclude(args.includeCells)}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${isolateLandoRootsStep}
 
@@ -250,7 +250,7 @@ ${renderInstallDockerCeLatestStep({ condition: "matrix.cell == 'docker-engine-li
 
       - name: Upload provider matrix cell report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: provider-matrix-report-\${{ matrix.cell }}
           path: provider-matrix-reports/\${{ matrix.cell }}.json
@@ -282,7 +282,7 @@ ${managedLandoTeardown}
 
       - name: Upload provider matrix diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: provider-matrix-diagnostics-\${{ matrix.cell }}
           path: provider-matrix-diagnostics
