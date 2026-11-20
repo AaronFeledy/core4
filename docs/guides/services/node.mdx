@@ -384,6 +384,80 @@ tooling:
 
 `lando exec worker -- npm install` also works without any tooling.
 
+### Run a binary your project installed
+
+Tools such as `vite`, `next`, or `eslint` live in your project's
+`node_modules`, and each package manager runs them its own way. Start an
+argv-list tooling `cmd` with `:node-local` and Lando uses the manager the
+service selected:
+
+```yaml
+tooling:
+  vite:
+    service: app
+    cmd: [":node-local", "vite"]
+    wrapper: true
+```
+
+`lando vite build` then runs `pnpm exec vite build`, `yarn run vite build`, or
+`npm exec --no -- vite build`. A Bun declaration and a project with no
+declaration both use the npm form. None of them downloads a missing package,
+so install your dependencies first. `:node-local` works on every Node
+service, including one with a custom `image:`.
+
+### Install dependencies, then start your server
+
+A service `command` can install before it serves. Start an argv-list
+`command` with `:node-install-run` and name a `package.json` script:
+
+```yaml
+services:
+  app:
+    type: node:lts
+    primary: true
+    command: [":node-install-run", "start"]
+```
+
+Each time the container's process starts, Lando runs the selected manager's
+install (`npm install`, `pnpm install`, or `yarn install`) and then runs the
+`start` script through that same manager. Extra items after the script name
+reach the script as arguments. If the install fails, the script never starts, and
+`lando logs --service app` shows the manager's error. When the service stops,
+Lando sends the stop signal to every process the script started, not just the
+manager, and waits for them to exit, so your server's shutdown handler runs.
+
+`:node-install-run` exists only on a bundled Node type whose `package.json`
+declares npm, pnpm, Yarn, or no package manager. A service with a custom
+`image:` or replacement build, or a project that declares Bun, doesn't get
+it, and planning fails at `services.app.command` if you use it there. Write
+that service's own install and start command instead.
+
+Both markers are launchers.
+[Run a command through the project's toolchain](../tooling/flags-and-args.mdx#run-a-command-through-the-projects-toolchain)
+covers where a marker is recognized and how a bad one fails.
+
+  <Scenario id="launchers-follow-package-manager" render={false} reason="Node launchers lower through the selected manager and install-run is refused for a Bun project">
+    <Step name="start-with-pnpm">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: node-launchers\nservices:\n  app:\n    type: node:lts\n    primary: true\n    command: [\":node-install-run\", \"start\"]\ntooling:\n  vite:\n    service: app\n    cmd: [\":node-local\", \"vite\"]\n    wrapper: true\n"));
+yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "node-launchers", private: true, packageManager: "pnpm@9.15.0", scripts: { start: "node server.js" } })));
+lastRun = yield* context.runCli("lando start --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout + JSON.stringify(lastRun.events)).toMatch(/"command":\["sh","-c","pnpm install /);
+expect(lastRun.stdout + JSON.stringify(lastRun.events)).toContain("setsid pnpm run");
+expect(lastRun.stdout + JSON.stringify(lastRun.events)).toMatch(/"node-install-run","start"\]/);`} displayCode={`lando start --format=json`} />
+    </Step>
+    <Step name="local-binary-through-pnpm">
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando --format=json vite build");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"service":"app"[\s\S]*"stdout":"pnpm exec vite build\\n"/);`} displayCode={`lando --format=json vite build`} />
+    </Step>
+    <Step name="bun-project-has-no-install-run">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "node-launchers", private: true, packageManager: "bun@1.2.0", scripts: { start: "node server.js" } })));
+lastRun = yield* context.runCli("lando app:config:lint --format=json");
+expect(lastRun.stdout).toMatch(/"path":\["services","app","command"\],"message":"Launcher :node-install-run is not declared for service app \(node:lts\)\. Declared launchers: :node-local\."/);`} displayCode={`lando app:config:lint --format=json`} />
+    </Step>
+  </Scenario>
+
 ### Where the release comes from
 
 Lando downloads the Yarn or pnpm release on your host, not inside the image

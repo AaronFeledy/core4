@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CommandAliasConflictError, LandofileValidationError, PluginLoadError } from "@lando/sdk/errors";
 import {
-  type LandofileShape,
+  LandofileShape,
   PluginManifest,
   PluginName,
   PortNumber,
@@ -27,7 +27,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
-
+import { compileToolingCommands } from "../../src/cache/command-compiler.ts";
 import * as AppCacheService from "../../src/cache/service.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { effectiveEventsForPlan } from "../../src/planner/effective-events.ts";
@@ -252,7 +252,7 @@ const phpServiceType = (tooling: PhpTooling): ServiceType => ({
     }),
 });
 
-const phpPlannerLayer = (serviceType: ServiceType) => {
+const phpPlannerLayer = (serviceType: ServiceType, feature?: ServiceFeatureDefinition) => {
   const manifest = Schema.decodeUnknownSync(PluginManifest)({
     name: PluginName.make("@lando/php"),
     version: "1.0.0",
@@ -265,6 +265,8 @@ const phpPlannerLayer = (serviceType: ServiceType) => {
       PluginRegistry.of({
         ...registry,
         list: Effect.succeed([manifest]),
+        loadServiceFeature: (id) =>
+          id === feature?.id ? Effect.succeed(feature) : registry.loadServiceFeature(id),
         loadServiceType: (id: string) =>
           id === serviceType.id
             ? Effect.succeed(serviceType)
@@ -357,6 +359,56 @@ test("plans successfully when php contributes unreserved inspect tooling", async
     // Then
     expect(effectiveToolingForPlan(plan)?.inspect).toEqual({ cmd: "php -v", service: "web" });
   });
+});
+
+test("plans a launcher-backed service command without admitting a broken tooling sibling", async () => {
+  const original = phpServiceType({});
+  const feature: ServiceFeatureDefinition = {
+    id: "test.command",
+    priority: 1000,
+    apply: (ctx) =>
+      Effect.sync(() => {
+        if (ctx.normalizedConfig.command !== undefined) ctx.setCommand(ctx.normalizedConfig.command);
+      }),
+  };
+  const layer = phpPlannerLayer(
+    {
+      ...original,
+      resolve: (input) =>
+        original.resolve(input).pipe(
+          Effect.map((resolution) => ({
+            ...resolution,
+            features: [{ id: feature.id }],
+            launchers: { ":local": ["env", "MODE=serve"] as const },
+          })),
+        ),
+    },
+    feature,
+  );
+  const web = ServiceName.make("web");
+  const base = phpLandofile("launcher-app", {
+    broken: { cmd: [":wrong", "tool"] },
+    healthy: { cmd: [":local", "tool"] },
+    disabled: { disabled: true },
+  });
+  const landofile = Schema.decodeUnknownSync(LandofileShape)({
+    ...base,
+    services: { web: { ...base.services[web], command: [":local", "server", "two words"] } },
+  });
+  const plan = await Effect.runPromise(planPhp(landofile, layer));
+  expect(plan.services[web]?.command).toEqual(["env", "MODE=serve", "server", "two words"]);
+  expect(landofile.services?.[web]?.command).toEqual([":local", "server", "two words"]);
+  expect(
+    compileToolingCommands(landofile, (text) => text, { sourcePath: plan.metadata.source, plan }),
+  ).toMatchObject([
+    {
+      id: "app:broken",
+      _tag: "Unavailable",
+      diagnostic: { _tag: "ToolingCompileError", issues: [{ path: ["tooling", "broken", "cmd"] }] },
+    },
+    { id: "app:disabled", _tag: "Disabled" },
+    { id: "app:healthy", _tag: "Ready" },
+  ]);
 });
 
 test("fails plan with landofile.tooling when php contributes reserved run tooling", async () => {

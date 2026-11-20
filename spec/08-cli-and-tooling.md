@@ -416,7 +416,13 @@ A namespace head owned by plugin command ids and not a core namespace or topic i
 
 Catalog-owned Node types contribute wrapper tasks bound to their service: `pnpm` and `pnpx` for pnpm, `yarn` for Yarn, `npm` and `npx` for npm or no declaration, and no manager wrappers for Bun. Replacement images and builds contribute none. Each task name requires exactly one eligible Node owner; an authored task (including a disabled entry) still wins over a contribution.
 
-Bundled Node framework aliases retain their explicit service targets. The planner lowers their `:node-local` argv prefix using that service's selected manager: `pnpm exec`, `yarn run` (including Plug'n'Play), or `npm exec --no --` for npm, Bun, or no declaration (Lando provisions no Bun). Aliases run local tools without automatically installing missing packages. They preserve ordinary tooling cwd selection; `packageRoot` selects manifest candidates and does not change the command's cwd.
+Launcher lowering (§6.11) applies only to tooling `cmd` argv and service `command` argv. String forms, `cmds`, direct event commands, and `app:exec` do not expand markers. The first element after a marker MUST be a non-empty command or script name, not another marker; all later arguments are passed through. The engine never rescans the contributed prefix. Use `./:name` for a literal executable whose name would be reserved in either position. `:host` is a tooling target, never a launcher.
+
+Node declares `:node-local` and, where it owns the install contract, `:node-install-run` (§6.12.1). Ruby declares `:ruby-local`: run through `bundle exec` when the bundle is locked, or execute the tool directly when there is genuinely no manifest or lockfile. Resolve a nonempty `BUNDLE_GEMFILE` override first; otherwise search upward from the command's working directory for `gems.rb` or `Gemfile`. Use Bundler's lockfile naming, including `gems.locked`. A missing explicit override, unreadable or invalid file kind, or other probe error MUST fail; a failed Bundler invocation MUST NOT fall back to the system tool. Both modes preserve argv boundaries.
+
+Tooling keeps authored argv and source indexes intact through composition. The shared invocation path for CLI tooling and event `task:` calls lowers after expanding authored argv and binding the actual target. An invalid marker use, including a marker on a host target, fails only the selected task with `ToolingCompileError` at `tooling.<task>.cmd`. Merely declaring a broken task MUST NOT break sibling tasks, help listings, or app startup. Lint and the command index project the same static findings, skipping disabled tasks and deferring unresolved late-bound targets (§8.7).
+
+Bundled Node framework aliases retain their explicit service targets and typically author `:node-local` so local package bins run without automatically installing missing packages. They preserve ordinary tooling cwd selection; `packageRoot` selects manifest candidates and does not change the command's cwd.
 
 `app:exec` and container tooling compare the target's desired and applied Node package-manager provenance when both are available from the same provider. A pin addition, removal, or change to the name, version, integrity, or launcher revision emits `LANDO_NODE_PACKAGE_MANAGER_STALE` once per target service, naming the built and declared releases in `context.built` and `context.declared`, with remediation `lando start`. Execution continues; no broader image or build-key comparison is performed.
 
@@ -582,6 +588,8 @@ Core ships `providerExec` and `host`. `providerExec` targets services through th
 Selection precedence is step `engine` → task `engine` → `toolingDefaults.engine` → Landofile `toolingEngine` → global `toolingEngine` → `providerExec`.
 
 ### 8.7 Tooling compilation pipeline
+
+Statically invalid launcher uses (§8.5) use the same unavailable-entry, diagnostic, and source-attribution rules as task normalization failures. A finding that depends on a late-bound value is deferred to invocation.
 
 App cache refresh MUST inspect scripts once and derive command entries and freshness fingerprints from that same snapshot; the writer MUST NOT perform a second discovery. A deterministic script content failure produces one `LANDO_SCRIPT_INVALID` command warning per unavailable script id (or unusable path), carrying its path, bounded redacted message, and remediation naming `lando app:config:lint`. Explicit `app:cache:refresh`, start, restart, and rebuild publish these warnings and continue. Implicit index rebuilds stay silent, as for `LANDO_HOST_SHELL_SYNTAX`. This tolerance applies only to discovery: a lifecycle hook or `task:` step that invokes the broken script still fails through the normal event failure projection with the script's current error and remediation.
 
@@ -761,11 +769,12 @@ Recipes run nothing. The `postInit` key with its `gitInit`, `command`, and `bun`
 | `symfony` | Symfony, PHP, PostgreSQL or MariaDB, Redis |
 | `backdrop` | Backdrop on `lamp`; appserver `uploadDirs: [files]` |
 | `joomla` | Joomla on `lamp`; appserver `uploadDirs: [images]` |
-| `mean` | Node, MongoDB, optional Redis |
+| `mean` | Node, MongoDB, optional Redis; starts the scaffolded server via `[:node-install-run, start]` |
 | `lamp` | Apache, PHP, MariaDB |
 | `lemp` | nginx, PHP-FPM, MariaDB |
 | `toolbox` | Disposable version-pinned CLI service with non-interactive defaults |
-| `rails` | Rails, PostgreSQL, Redis |
+| `rails` | Rails, PostgreSQL or SQLite, Redis; `rake` uses `:ruby-local`, while `rails` stays a bare executable |
+| `eleventy` | Node builder and static web service; scaffolds `package.json` with a local Eleventy dependency and serves via `[:node-install-run, start]` |
 
 Bundled recipes are authored as `RecipeSource` values, compiled at codegen through the same source compiler as external recipes into inert generated manifests and a cold catalog, and ship `README.mdx` under `recipes/<id>/`. Generated artifacts contain no callable logic and no handwritten snapshot, digest, or fragment twins. The set MAY grow in a minor release; removal requires a major version and `DeprecationNotice` (§18). Generated Landofiles MUST be YAML.
 

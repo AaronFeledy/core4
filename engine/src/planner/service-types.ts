@@ -194,6 +194,7 @@ export const resolvedServiceCacheInput = (entry: ResolvedService) => ({
   base: entry.resolution.base,
   normalizedConfig: entry.resolution.normalizedConfig,
   tooling: entry.resolution.tooling ?? {},
+  launchers: entry.resolution.launchers ?? {},
   connectionClientNames: entry.resolution.connectionClientNames ?? [],
   ...(entry.resolution.connection === undefined ? {} : { connection: entry.resolution.connection }),
   ...(entry.resolution.nonSqlCreds === undefined ? {} : { nonSqlCreds: entry.resolution.nonSqlCreds }),

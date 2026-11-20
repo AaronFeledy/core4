@@ -182,6 +182,7 @@ export * from "./service-connection.ts";
 export * from "./service-dependency.ts";
 export * from "./service-feature-validation.ts";
 export * from "./service-info.ts";
+export * from "./service-launchers.ts";
 export * from "./service-mount.ts";
 export * from "./service-probe.ts";
 export * from "./service-resolution.ts";

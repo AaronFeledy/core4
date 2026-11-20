@@ -16,6 +16,7 @@ import { resolveNodeInference } from "./node-inference.ts";
 import { applyProvisionedGlobals, packageManagerConfigFor } from "./node-package-manager.ts";
 import { resolveNodePackageManager } from "./node-package-manager-declaration.ts";
 import { validatePackageManagerDistribution } from "./node-package-manager-install.ts";
+import { nodeServiceLaunchers } from "./node-service-launchers.ts";
 import { nodeManagerTooling } from "./node-tooling.ts";
 import { NODE_ARTIFACTS, SUPPORTED_NODE_VERSIONS, type SupportedNodeVersion } from "./node-versions.ts";
 
@@ -103,6 +104,10 @@ const resolveCatalogNode = (
         },
         { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
       ],
+      launchers: nodeServiceLaunchers({
+        catalogOwned,
+        manager: packageManager?.name,
+      }),
       ...(catalogOwned ? { tooling: nodeManagerTooling(input.name, packageManager?.name) } : {}),
       metadata: {
         node: {

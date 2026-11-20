@@ -10,6 +10,7 @@ import type {
   ServiceTypeResolution,
 } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { launcherPrefix } from "../planner/launchers.ts";
 import { normalizeConnectionClients } from "./connection-client-resolution.ts";
 
 /** Single inheritance chain, depth-limited to at most four `extends` hops. */
@@ -111,25 +112,38 @@ const ownershipChanged = (parent: ServiceConfig, child: ServiceConfig): boolean 
   (child.image !== undefined &&
     (parent.image === undefined || !sameImageReference(parent.image, child.image)));
 
+/** Launchers merge by marker: a child entry replaces the parent's, omitted markers are inherited. */
+const mergeLaunchers = (
+  parent: ServiceTypeResolution["launchers"],
+  child: ServiceTypeResolution["launchers"],
+): ServiceTypeResolution["launchers"] =>
+  parent === undefined ? child : child === undefined ? parent : { ...parent, ...child };
+
 /**
  * The service-owned generated-listener association survives inheritance unless
  * the child replaces the launcher whose owned configuration could serve the
- * generated certificate.
+ * generated certificate, including a different prefix for the command's marker.
  */
 const mergeGeneratedCertificateEndpoint = (
   parent: ServiceTypeResolution,
   child: ServiceTypeResolution,
+  launchers: ServiceTypeResolution["launchers"],
 ): ServiceTypeResolution["generatedCertificateEndpoint"] => {
   if (child.generatedCertificateEndpoint !== undefined) return child.generatedCertificateEndpoint;
-  return ownershipChanged(parent.normalizedConfig, child.normalizedConfig)
+  const command = parent.normalizedConfig.command;
+  const head = typeof command === "string" ? undefined : command?.[0];
+  const prefixChanged =
+    canonicalJson(launcherPrefix(head, parent.launchers) ?? null) !==
+    canonicalJson(launcherPrefix(head, launchers) ?? null);
+  return ownershipChanged(parent.normalizedConfig, child.normalizedConfig) || prefixChanged
     ? undefined
     : parent.generatedCertificateEndpoint;
 };
 
 /**
  * Overlay a child resolution onto its parent: deep-merge normalized config,
- * merge features by id, merge logSources by id (child wins), child-wins for
- * tooling/metadata. The child's declared `base` is authoritative.
+ * merge features by id, merge logSources by id (child wins), child-wins per key
+ * for tooling, metadata, and launchers. The child's declared `base` is authoritative.
  */
 export const mergeResolutionOverParent = (
   parent: ServiceTypeResolution,
@@ -140,12 +154,14 @@ export const mergeResolutionOverParent = (
     | Record<string, unknown>
     | undefined;
   const logSources = mergeLogSources(parent.logSources, child.logSources);
-  const generatedCertificateEndpoint = mergeGeneratedCertificateEndpoint(parent, child);
+  const launchers = mergeLaunchers(parent.launchers, child.launchers);
+  const generatedCertificateEndpoint = mergeGeneratedCertificateEndpoint(parent, child, launchers);
   const source = child.connection !== undefined || child.nonSqlCreds !== undefined ? child : parent;
   return {
     base: child.base,
     normalizedConfig: mergeServiceConfig(parent.normalizedConfig, child.normalizedConfig),
     features: mergeFeatures(parent.features, child.features),
+    ...(launchers === undefined ? {} : { launchers }),
     ...(source.connection === undefined ? {} : { connection: source.connection }),
     ...(source.nonSqlCreds === undefined ? {} : { nonSqlCreds: source.nonSqlCreds }),
     ...(logSources === undefined ? {} : { logSources }),
