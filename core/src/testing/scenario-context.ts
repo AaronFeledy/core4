@@ -6,8 +6,13 @@ import { fileURLToPath } from "node:url";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { annotateFailureRole, failureDefectCause, mergeFailure } from "@lando/sdk/command-result";
-import { Transcript, type TranscriptFrame } from "@lando/sdk/docs/components";
+import {
+  annotateFailureRole,
+  failureDefectCause,
+  mapFailures,
+  mergeFailure,
+} from "@lando/sdk/command-result";
+import { type FetchProps, Transcript, type TranscriptFrame } from "@lando/sdk/docs/components";
 import {
   FileIoError,
   FileNotFoundError,
@@ -38,6 +43,12 @@ import { redactDetails } from "../cli/redact";
 import { type GuideCommandSyntaxError, guideCommandArgv } from "../docs/guide-compiler/command-argv.ts";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
 import { makeTestInteractionService } from "./interaction";
+import {
+  ScenarioFetchError,
+  readScenarioCa,
+  requestScenarioRoute,
+  resolveFetchUrl,
+} from "./scenario-fetch.ts";
 import { makeScenarioProvider } from "./scenario-provider.ts";
 import { type TestRuntime, makeTestRuntime } from "./test-runtime";
 
@@ -780,11 +791,18 @@ const createRunCli = (
   });
 };
 
+type E2eScenarioContext = ScenarioContext & {
+  readonly fetch: (
+    props: Pick<FetchProps, "url" | "headers" | "method">,
+  ) => ReturnType<typeof requestScenarioRoute>;
+};
+type InternalScenarioContext = ScenarioContext & Partial<Pick<E2eScenarioContext, "fetch">>;
+
 const makeScenarioContext = (
   options: WithScenarioContextOptions,
   testDir: string,
   runnerKind: ScenarioRunnerKind,
-): ScenarioContext => {
+): InternalScenarioContext => {
   const runtime = options.runtime ?? makeTestRuntime({ bootstrap: "provider" });
   const events: LandoEvent[] = [];
   const transcriptFrames: ScenarioTranscriptFrame[] = [];
@@ -852,7 +870,7 @@ const makeScenarioContext = (
     };
   });
 
-  return ScenarioContext.of({
+  const context = ScenarioContext.of({
     guideId: options.guideId,
     scenarioId: options.scenarioId,
     layer: runnerKind === "e2e" ? "e2e" : "scenario",
@@ -895,12 +913,35 @@ const makeScenarioContext = (
       ),
     },
   });
+  if (runnerKind !== "e2e") return context;
+  return {
+    ...context,
+    fetch: Effect.fnUntraced(function* (props: Pick<FetchProps, "url" | "headers" | "method">) {
+      const info = hidden(context.runCli(["info", "--format=json"])).pipe(
+        mapFailures(
+          () => new ScenarioFetchError({ message: "Fetch could not run lando info to resolve the route." }),
+        ),
+        Effect.flatMap((run) =>
+          run.exitCode === 0
+            ? Effect.succeed(run.stdout)
+            : Effect.fail(
+                new ScenarioFetchError({
+                  message: `Fetch could not resolve the route: lando info exited with status ${run.exitCode}.`,
+                }),
+              ),
+        ),
+      );
+      const url = yield* resolveFetchUrl(props.url, info);
+      const ca = url.protocol === "https:" ? yield* readScenarioCa(getWorkingDirectory()) : undefined;
+      return yield* requestScenarioRoute(url, props, ca);
+    }),
+  } satisfies E2eScenarioContext;
 };
 
 const withScenarioContextInternal = <A, E, R>(
   options: WithScenarioContextOptions,
   runnerKind: ScenarioRunnerKind,
-  body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
+  body: (context: InternalScenarioContext) => Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
   Effect.scoped(
     Effect.acquireRelease(
@@ -973,9 +1014,12 @@ export const ScenarioContextFactory = {
    */
   e2e: <A, E, R>(
     options: WithScenarioContextOptions,
-    body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
+    body: (context: E2eScenarioContext) => Effect.Effect<A, E, R>,
   ): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
-    withScenarioContextInternal(options, "e2e", body),
+    withScenarioContextInternal(options, "e2e", ({ fetch, ...context }) => {
+      if (fetch === undefined) throw new Error("The e2e runner must supply Fetch.");
+      return body({ ...context, fetch });
+    }),
   /**
    * Runs the real CLI in process against the scenario's in-memory provider, as generated guides do.
    * @param options Context creation options for the guide scenario.
