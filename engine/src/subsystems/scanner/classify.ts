@@ -21,9 +21,11 @@ const redirect = (
   location: string,
   context: { url: string; redactor: Redactor },
 ): ScanClassification => {
+  if (location.trim() === "") return { verdict: "app-error" };
   const from = URL.parse(context.url);
-  const to = from === null ? null : URL.parse(location, from.href);
-  if (location.trim() === "" || from === null || to === null) return { verdict: "app-error" };
+  if (from === null) return { verdict: "app-error" };
+  const to = URL.parse(location, from.href);
+  if (to === null) return { verdict: "app-error" };
   if (to.protocol !== "http:" && to.protocol !== "https:") {
     return { verdict: "app-error", detail: `${status} redirects to a non-HTTP URL` };
   }
