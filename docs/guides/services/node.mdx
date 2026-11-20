@@ -319,6 +319,42 @@ lando pnpm --version
 
 That prints `9.15.0`.
 
+### Use Yarn Plug'n'Play
+
+Pin a supported Yarn Berry release in `package.json`, for example
+`"packageManager": "yarn@4.5.3"`. With the default Plug'n'Play (PnP) linker or
+`nodeLinker: pnp`, Lando leaves `/app/node_modules` in the app bind instead of
+mounting a volume there. That path is your host directory, so
+`lando yarn install` can delete an existing host `node_modules`. Lando does not
+change how `.yarn/` is mounted.
+
+Lando reads `nodeLinker` from `.yarnrc.yml` at `packageRoot` and, for a nested
+package, at the app root; the nearest one wins. It ignores other ancestor configs
+and `YARN_NODE_LINKER`, so set the linker in one of those two files to keep the
+mount plan in step with Yarn. Yarn Classic and Berry with
+`nodeLinker: node-modules` or `nodeLinker: pnpm` keep the default volume.
+Explicit `appMount.excludes` and `appMount.includes` take precedence over this default.
+
+After changing linkers, run `lando start` for the whole app to apply the new
+mount plan, then run `lando yarn install` if your service does not install on start.
+
+  <Scenario id="yarn-pnp-keeps-node-modules-in-the-bind" render={false} reason="Yarn Plug'n'Play leaves node_modules in the app bind, and the node-modules linker keeps the volume">
+    <Step name="pnp-has-no-node-modules-volume">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: yarn-pnp\nservices:\n  app:\n    type: node:lts\n    primary: true\n"));
+yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "yarn-pnp", private: true, packageManager: "yarn@4.5.3" })));
+lastRun = yield* context.runCli("lando info --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"overlays":\[[^\]]*"\/app\/vendor"/);
+expect(lastRun.stdout).not.toMatch(/"overlays":\[[^\]]*"\/app\/node_modules"/);`} displayCode={`lando info --format=json`} />
+    </Step>
+    <Step name="node-modules-linker-keeps-the-volume">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".yarnrc.yml"), "nodeLinker: node-modules\n"));
+lastRun = yield* context.runCli("lando info --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"overlays":\[[^\]]*"\/app\/node_modules"/);`} displayCode={`lando info --format=json`} />
+    </Step>
+  </Scenario>
+
 ### Run your package manager from the host
 
 A bundled Node service adds tooling commands for the manager its
@@ -677,8 +713,8 @@ image, so `globals` is where Yarn or pnpm goes there. See [Pin the service type]
 ## Read a nested package
 
 Set `packageRoot` when the Node package lives below the app root. It defaults
-to `.` and selects which `package.json` Lando reads. It never changes mounts
-or the container working directory.
+to `.` and selects where Lando looks for `package.json` and `.yarnrc.yml`.
+It does not move the app mount or change the container working directory.
 
 ```yaml
 services:

@@ -82,9 +82,9 @@ lando next dev
 ```
 
 `lando next` runs the `next` binary your project installed, through the
-project's own manager: `pnpm exec`, `yarn run`, or `npm exec`. That includes
-Yarn Plug'n'Play, where there is no `node_modules` directory. It never
-downloads Next for you, so run the install first.
+project's own manager: `pnpm exec`, `yarn run`, or `npm exec`. It never
+downloads Next for you, so run the install first. For Yarn Plug'n'Play, see
+[how Lando handles the linker and dependency directory](https://aaronfeledy.github.io/core4/guides/services/node/#use-yarn-plugnplay).
 
 In a pnpm project there is no `lando npm`, and in a Yarn project there is
 neither `lando npm` nor `lando pnpm`. See

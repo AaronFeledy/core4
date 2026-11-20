@@ -19,6 +19,7 @@ import { validatePackageManagerDistribution } from "./node-package-manager-insta
 import { nodeServiceLaunchers } from "./node-service-launchers.ts";
 import { nodeManagerTooling } from "./node-tooling.ts";
 import { NODE_ARTIFACTS, SUPPORTED_NODE_VERSIONS, type SupportedNodeVersion } from "./node-versions.ts";
+import { YARN_RC, usesYarnPnp } from "./node-yarn-linker.ts";
 
 export {
   DEFAULT_PORT,
@@ -50,7 +51,7 @@ const validateVersion = (
   );
 };
 
-/** Version inputs are declared only for bare `node`; every catalog type reads manifests for the manager. */
+/** Only bare `node` infers its version; all catalog types inspect the manager and linker. */
 const nodeProjectFiles = (
   service: ServiceConfig,
   includeVersionInputs: boolean,
@@ -60,8 +61,11 @@ const nodeProjectFiles = (
   return [
     ...(includeVersionInputs ? [{ path: `${prefix}.nvmrc`, maxBytes: PROJECT_FILE_LIMIT }] : []),
     { path: `${prefix}package.json`, maxBytes: PROJECT_FILE_LIMIT },
-    // A nested package can inherit its workspace root's manager.
-    ...(packageRoot === "." ? [] : [{ path: "package.json", maxBytes: PROJECT_FILE_LIMIT }]),
+    { path: `${prefix}${YARN_RC}`, maxBytes: PROJECT_FILE_LIMIT },
+    // A nested package can inherit its workspace root's manager and linker.
+    ...(packageRoot === "."
+      ? []
+      : ["package.json", YARN_RC].map((path) => ({ path, maxBytes: PROJECT_FILE_LIMIT }))),
   ];
 };
 
@@ -80,6 +84,7 @@ const resolveCatalogNode = (
     const selected = selectVersion(projectFiles);
     const packageManager = resolveNodePackageManager(projectFiles);
     if (packageManager !== undefined) validatePackageManagerDistribution(packageManager);
+    const includes = usesYarnPnp(packageManager, projectFiles) ? ["node_modules"] : [];
     const packageManagerConfig =
       packageManager === undefined ? undefined : packageManagerConfigFor(packageManager);
     // The planner supplies no candidates when the author owns the image/build.
@@ -102,7 +107,7 @@ const resolveCatalogNode = (
             ...(packageManagerConfig === undefined ? {} : { packageManager: packageManagerConfig }),
           },
         },
-        { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
+        { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET, includes } },
       ],
       launchers: nodeServiceLaunchers({
         catalogOwned,
