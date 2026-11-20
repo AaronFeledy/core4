@@ -43,6 +43,7 @@ import { sortRecord } from "../services/draft.ts";
 import { endpointValidationError, normalizeEndpointFacts } from "../services/endpoint-normalizer.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
+import { isAuthoredBuildStep } from "./authored-build-step.ts";
 import { missingCapability } from "./compose-capabilities.ts";
 import { dataTreeOwnershipStep, projectUserVolumeTrees, resolveDataTreeOwnership } from "./data-tree.ts";
 import { endpointsForRoutes, resolveRoute } from "./endpoint-routes.ts";
@@ -380,6 +381,9 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       );
     }
     const ownershipStep = dataTreeOwnershipStep(ownershipTrees);
+    // Features seed the image trees before ownership is prepared for authored build steps.
+    const firstAuthoredStep = draft.buildSteps.findIndex(isAuthoredBuildStep);
+    const ownershipIndex = firstAuthoredStep === -1 ? draft.buildSteps.length : firstAuthoredStep;
     // Renumber before anything gives a tree to the account by name, so a
     // prepared home and every owned data tree resolve to the host ids.
     const renumberStep = projectUserRenumberStep({
@@ -393,8 +397,9 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       storageOwnership,
       buildSteps: [
         ...(renumberStep === undefined ? [] : [renumberStep]),
+        ...draft.buildSteps.slice(0, ownershipIndex),
         ...(ownershipStep === undefined ? [] : [ownershipStep]),
-        ...draft.buildSteps,
+        ...draft.buildSteps.slice(ownershipIndex),
         ...redirectSteps,
       ],
     };

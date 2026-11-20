@@ -13,6 +13,7 @@ import { applyAuthoredDependencies } from "../services/authored-dependencies.ts"
 import { composeBuildToArtifact, isComposeBuild } from "../services/compose-build-artifact.ts";
 import { mergeComposeKnobs } from "../services/compose-knobs.ts";
 import { applyPreparedService } from "../services/feature.ts";
+import { AUTHORED_BUILD_STEP_PREFIX } from "./authored-build-step.ts";
 import { applyAuthoredHealthcheck } from "./authored-probes.ts";
 import {
   SERVICE_FEATURES_EXTENSION_KEY,
@@ -145,13 +146,13 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
                 buildSteps: [
                   ...serviceFeatureBuildSteps(authoredServicePlan.extensions),
                   ...artifactScripts.map((script, index) => ({
-                    id: `authored-artifact:${index + 1}`,
+                    id: `${AUTHORED_BUILD_STEP_PREFIX}artifact:${index + 1}`,
                     phase: "build" as const,
                     command: ["sh", "-c", script.run],
                     ...(script.user === undefined ? {} : { user: script.user }),
                   })),
                   ...appScripts.map((script, index) => ({
-                    id: `authored-app:${index + 1}`,
+                    id: `${AUTHORED_BUILD_STEP_PREFIX}app:${index + 1}`,
                     phase: "app" as const,
                     command: { command: ["sh", "-c", script.run] },
                     ...(script.user === undefined ? {} : { user: script.user }),

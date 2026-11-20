@@ -151,8 +151,8 @@ const nestedTarget = (tree: string, target: string): string | undefined => {
 /**
  * A fresh volume copies up the image tree with ownership intact. Prepare
  * nested mount parents there so the runtime does not create them as root.
- * Exclude shadows, writable service caches, and authored storage enclosing the
- * app bind are project-user write targets; a home the catalog already prepares is skipped.
+ * Exclude shadows, writable service caches, and writable authored volumes inside
+ * or enclosing the app bind are project-user write targets.
  */
 export const projectUserVolumeTrees = (input: {
   readonly mounts: ReadonlyArray<MountPlan>;
@@ -165,14 +165,19 @@ export const projectUserVolumeTrees = (input: {
   const owner = `${projectUser.uid}:${projectUser.gid}`;
   const appMount = serviceAppMount(input);
   return mounts.flatMap((mount) => {
-    if (mount.type !== "volume" || mount.store === homeStore) return [];
+    if (mount.type !== "volume" || mount.readOnly || mount.store === homeStore) return [];
     const enclosesApp =
       mount.origin === "authored" &&
       appMount !== undefined &&
       nestedTarget(mount.target, appMount.target) !== undefined;
-    const serviceCache =
-      mount.origin === "service" && !mount.readOnly && input.cacheStores?.has(mount.store) === true;
-    if (mount.origin !== "derived" && !enclosesApp && !serviceCache) return [];
+    const insideApp =
+      mount.origin === "authored" &&
+      appMount !== undefined &&
+      nestedTarget(appMount.target, mount.target) !== undefined;
+    const serviceStore =
+      mount.origin === "service" &&
+      input.cacheStores?.has(mount.store) === true;
+    if (mount.origin !== "derived" && !enclosesApp && !insideApp && !serviceStore) return [];
     const parents = new Set<string>();
     for (const other of mounts) {
       const child = nestedTarget(mount.target, other.target);

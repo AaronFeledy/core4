@@ -3,6 +3,7 @@ import type { EndpointPlan, ServiceConfig, ServicePlan } from "@lando/sdk/schema
 import { landoServiceStoreName, normalizeAppSlug } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { AUTHORED_BUILD_STEP_PREFIX, isAuthoredBuildStep } from "../planner/authored-build-step.ts";
 
 import { type BaseSeed, type DraftServicePlan, makeDraft } from "./draft.ts";
 import { endpointValidationError, normalizeEndpoints } from "./endpoint-normalizer.ts";
@@ -150,7 +151,18 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
           feature,
           input.applicationConfigs.get(feature.index) ?? { _tag: "Original" },
         );
+        const firstStep = draft.buildSteps.length;
         yield* feature.definition.apply(makeContext(facts, draft, config));
+        const reserved = draft.buildSteps.slice(firstStep).find(isAuthoredBuildStep);
+        if (reserved !== undefined) {
+          return yield* Effect.fail(
+            new ServiceFeatureError({
+              feature: feature.id,
+              message: `Build step ${reserved.id} uses the reserved ${AUTHORED_BUILD_STEP_PREFIX} prefix.`,
+              remediation: "Rename the build step and its dependencies to use a feature-specific prefix.",
+            }),
+          );
+        }
       }),
     { discard: true },
   );
