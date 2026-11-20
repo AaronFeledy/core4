@@ -235,6 +235,7 @@ If you are looking for a public surface or policy:
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |
 | Deprecation presentation, removal, and gates | 16 | §18.6 + §18.8 |
 | Executable-guide model, components, scenario runtime, and display vs. execute bindings | 17 | §19.2 + §19.4 + §19.5 |
+| Feature home guides, test placement, case files, and background scenario runs | 13 + 17 | §13.1 + §19.1 + §19.4 + §19.7 + §19.9 |
 | Transcripts, shared scenario compiler, source maps, and binding diagnostics | 17 | §19.6 + §19.7 + §19.10 |
 | Recipe scaffold README cells, skips, and single-mode library scenarios | 17 | §19.13 + §19.14 |
 | Guide acceptance and tabbed variants | 17 | §19.15 + §19.16 |
