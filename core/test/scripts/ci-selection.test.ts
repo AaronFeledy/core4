@@ -469,6 +469,7 @@ describe("platform build path selection", () => {
 
   test.each([
     "engine/src/runtime/libc.ts",
+    "state-store/src/native-lock.ts",
     "core/test/build/host-execution-compiled.integration.test.ts",
     "core/test/build/opentui-compiled-acceptance.integration.test.ts",
     "core/test/build/renderer-output-compiled.integration.test.ts",

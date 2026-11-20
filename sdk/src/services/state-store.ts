@@ -1,4 +1,4 @@
-import { Context, type Effect, type Schema } from "effect";
+import { Context, type Effect, Schema } from "effect";
 
 import { sha256Hex } from "../digest/index.ts";
 import type { StateStoreError } from "../errors/index.ts";
@@ -115,6 +115,14 @@ export interface StateBucket<A> {
   readonly exists: Effect.Effect<boolean, StateStoreError>;
 }
 
+export const StateLockOptions = Schema.Struct({
+  mode: Schema.optionalKey(Schema.Literals(["exclusive", "shared"])),
+  wait: Schema.optionalKey(Schema.Literals(["brief", "operation"])),
+  resource: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
+  timeoutMs: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 600_000 }))),
+});
+export type StateLockOptions = typeof StateLockOptions.Type;
+
 /** The `StateStore` service surface: mint `StateBucket` handles from a spec. */
 export class StateStore extends Context.Service<
   StateStore,
@@ -124,6 +132,7 @@ export class StateStore extends Context.Service<
     readonly withLock: <A, E, R>(
       key: string,
       body: Effect.Effect<A, E, R>,
+      options?: StateLockOptions,
     ) => Effect.Effect<A, E | StateStoreError, R>;
   }
 >()("@lando/core/StateStore") {}

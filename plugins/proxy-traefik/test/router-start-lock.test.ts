@@ -4,6 +4,7 @@ import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins
 import { AbsolutePath, ServiceName, type StartedService } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { resolveOperationLockTimeoutMs } from "@lando/state-store/lock";
 import { Deferred, Effect, Fiber, Semaphore } from "effect";
 import type { SchemeProbe } from "../src/port-acquisition.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
@@ -68,7 +69,7 @@ const makeSharedStateStore = (onAttempt: (count: number) => Effect.Effect<void>)
           locks.set(key, lock);
         }
         if (key === routeReloadLockKey()) {
-          expect(options?.timeoutMs).toBe(120_000);
+          expect(options?.timeoutMs).toBe(resolveOperationLockTimeoutMs());
           attempts++;
           yield* onAttempt(attempts);
         }

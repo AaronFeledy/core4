@@ -1,5 +1,6 @@
 import type { HostMaintenanceContribution, PluginStateStore } from "@lando/sdk/plugins";
 import { hostPlatformFamily } from "@lando/sdk/schema";
+import { resolveOperationLockTimeoutMs } from "@lando/state-store/lock";
 import { Effect } from "effect";
 import { buildManagedRuntimeServiceSpec, terminateOwnedRuntimeService } from "./managed-runtime-service.ts";
 import { makeRuntimeShutdownStore } from "./runtime-shutdown.ts";
@@ -24,6 +25,7 @@ export const withRuntimeShutdownReceipt = (
         }
         return result;
       }),
+      { timeoutMs: resolveOperationLockTimeoutMs() },
     )
     .pipe(Effect.catch(() => (completed === undefined ? teardown : Effect.succeed(completed))));
 };

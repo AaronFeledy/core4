@@ -6,7 +6,7 @@ import { AbsolutePath } from "@lando/sdk/schema";
 import type { StateWrite } from "@lando/sdk/services";
 import { defineTransitions } from "@lando/sdk/transitions";
 import { syncDirectory } from "@lando/state-store/atomic";
-import { acquireAdvisoryLockAt } from "@lando/state-store/lock";
+import { ADVISORY_LOCK_SUFFIX, acquireAdvisoryLockAt } from "@lando/state-store/lock";
 import { realpathOrDeepestExisting } from "@lando/state-store/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
@@ -91,7 +91,7 @@ export const journalDirectory = (root: string, userDataRoot: string): string =>
   );
 
 /**
- * Proof that the caller holds the coordinator's `transaction.lock` for one
+ * Proof that the caller holds the coordinator's transaction advisory lock for one
  * journal directory. Only `acquireLock` on an open journal mints it, and it
  * stops matching once the acquiring scope closes, so a journal write without
  * the lock is a type error and a write with a stale or foreign lock fails.
@@ -129,7 +129,7 @@ export const openJournal = Effect.fnUntraced(function* (
       version: JOURNAL_VERSION,
       schema: Journal,
       mode: 0o600,
-      // Writes are serialized by the coordinator's `transaction.lock`, which
+      // Writes are serialized by the coordinator's transaction advisory lock, which
       // every write method demands as a `TransactionLock`.
       lock: "none",
       onCorrupt: "fail",
@@ -163,17 +163,15 @@ export const openJournal = Effect.fnUntraced(function* (
     Effect.withSpan("ManagedFileJournal.read"),
   );
   const acquireLock = Effect.fn("ManagedFileJournal.acquireLock")(function* (phase: "prepare" | "recover") {
-    const { lock } = yield* Effect.acquireRelease(
-      acquireAdvisoryLockAt(join(dir, "transaction.lock"), "transaction", {
-        privateFileAccess,
-      }).pipe(
-        Effect.map((file) => ({ file, lock: new HeldTransactionLock(dir) })),
-        mapFailures(() => transactionError("lock", phase)),
-      ),
-      ({ file, lock }) =>
-        Effect.sync(() => HeldTransactionLock.release(lock)).pipe(Effect.andThen(file.release)),
+    yield* acquireAdvisoryLockAt(join(dir, `transaction${ADVISORY_LOCK_SUFFIX}`), "transaction", {
+      wait: "operation",
+      resource: "managed-file transaction",
+      privateFileAccess,
+    }).pipe(mapFailures((cause) => transactionError("lock", phase, cause.path, cause.remediation)));
+    return yield* Effect.acquireRelease(
+      Effect.sync(() => new HeldTransactionLock(dir)),
+      (held) => Effect.sync(() => HeldTransactionLock.release(held)),
     );
-    return lock;
   });
   const write = Effect.fn("ManagedFileJournal.write")(function* (
     lock: TransactionLock,

@@ -80,7 +80,10 @@ export class WorkerClaim {
       makeLandoPaths(options.paths).roots,
     ).pipe(
       Effect.flatMap(({ file }) =>
-        withAdvisoryLockUsing(options.privateFileAccess)(file, options.label, claimed),
+        withAdvisoryLockUsing(options.privateFileAccess, {
+          wait: "operation",
+          resource: options.label,
+        })(file, options.label, claimed),
       ),
     );
   }

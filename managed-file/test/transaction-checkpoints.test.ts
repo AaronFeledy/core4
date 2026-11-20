@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { lstat, readFile, readdir, rename, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { ADVISORY_LOCK_SUFFIX } from "@lando/state-store/lock";
 import { Effect, Fiber, Latch } from "effect";
 import type { TransactionCheckpoint } from "../src/transaction.ts";
 import { fixture, scoped } from "./transaction-fixture.ts";
@@ -131,8 +132,15 @@ test("holds one canonical-root lock and releases it on interruption", async () =
   await Effect.runPromise(ready.await);
   const journal = await scoped(transactions.readJournal(alias));
   // When the alias contends, then the original scope is interrupted
-  const contention = await scoped(Effect.result(transactions.prepare({ appRoot: alias, operations: [] })));
-  await Effect.runPromise(Fiber.interrupt(fiber));
+  const previous = process.env.LANDO_LOCK_TIMEOUT_MS;
+  process.env.LANDO_LOCK_TIMEOUT_MS = "0";
+  const contention = await scoped(
+    Effect.result(transactions.prepare({ appRoot: alias, operations: [] })),
+  ).finally(async () => {
+    if (previous === undefined) delete process.env.LANDO_LOCK_TIMEOUT_MS;
+    else process.env.LANDO_LOCK_TIMEOUT_MS = previous;
+    await Effect.runPromise(Fiber.interrupt(fiber));
+  });
   // Then contention was lock-bounded and interruption released that exact lock
   expect(contention._tag).toBe("Failure");
   if (contention._tag === "Failure") expect(contention.failure.reason).toBe("lock");
@@ -158,9 +166,8 @@ test("keeps stages physically owner-only before publication", async () => {
     expect((await lstat(stage?.path ?? "missing")).mode & 0o777).toBe(0o600);
     expect((await lstat(prepared.journalPath)).mode & 0o777).toBe(0o600);
   }
-  await expect(lstat(join(dirname(prepared.journalPath), "transaction.lock"))).rejects.toMatchObject({
-    code: "ENOENT",
-  });
+  const sentinel = join(dirname(prepared.journalPath), `transaction${ADVISORY_LOCK_SUFFIX}`);
+  expect(await Bun.file(sentinel).exists()).toBe(process.platform === "win32");
 });
 
 test("never overwrites a stage planted after path validation", async () => {

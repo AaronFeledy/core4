@@ -651,7 +651,7 @@ test("descendant policy operation without inherited holder environment refuses t
         withGlobalConsumerAdmission(
           { plan: f.plan },
           Effect.promise(async () => {
-            const env = { ...process.env, LANDO_APP_LOCK_TIMEOUT_MS: "200" };
+            const env = { ...process.env, LANDO_LOCK_TIMEOUT_MS: "200" };
             Reflect.deleteProperty(env, APP_LOCK_HOLDERS_ENV);
             const child = Bun.spawn([process.execPath, script], {
               cwd: repo,

@@ -16,6 +16,7 @@ import {
   type ServicePlan,
   landoServiceContainerName,
 } from "@lando/sdk/schema";
+import { resolveOperationLockTimeoutMs } from "@lando/state-store/lock";
 import { DateTime, Effect } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
@@ -434,10 +435,11 @@ describe("managed Windows published lifecycle", () => {
     expect(
       calls.filter((call) => call.includes("lando-global--traefik") && call.endsWith("/restart")),
     ).toHaveLength(1);
+    const operationTimeoutMs = resolveOperationLockTimeoutMs();
     expect(lockCalls.filter((call) => call.key === "windows-published-lifecycle")).toEqual([
-      { key: "windows-published-lifecycle", timeoutMs: 120_000 },
-      { key: "windows-published-lifecycle", timeoutMs: 120_000 },
-      { key: "windows-published-lifecycle", timeoutMs: 120_000 },
+      { key: "windows-published-lifecycle", timeoutMs: operationTimeoutMs },
+      { key: "windows-published-lifecycle", timeoutMs: operationTimeoutMs },
+      { key: "windows-published-lifecycle", timeoutMs: operationTimeoutMs },
     ]);
   }, 10_000);
 });
