@@ -4,6 +4,7 @@ import {
   type HealthcheckPlan,
   PortNumber,
   type ServicePlan,
+  ServiceProbeHttpUrl,
   serviceListenerTarget,
 } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
@@ -11,6 +12,7 @@ import { CONTAINER_HELPER_PROBE_EXECUTABLE } from "./container-helper.ts";
 import { ContainerPlanError } from "./container-plan-error.ts";
 
 const isPort = Schema.is(PortNumber);
+const isProbeUrl = Schema.is(ServiceProbeHttpUrl);
 
 export const serviceProbeInputIssue = (
   probe: Pick<HealthcheckPlan, "kind" | "url" | "port" | "command" | "target">,
@@ -23,10 +25,7 @@ export const serviceProbeInputIssue = (
         ? { field: "command", message: "Supply a command or disable the probe with false." }
         : undefined;
     case "http":
-      return probe.url !== undefined &&
-        /^https?:\/\/[^/]/iu.test(probe.url) &&
-        !/[\s\\]/u.test(probe.url) &&
-        URL.canParse(probe.url)
+      return isProbeUrl(probe.url)
         ? undefined
         : { field: "url", message: "Supply an absolute HTTP or HTTPS URL." };
     case "tcp":

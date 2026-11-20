@@ -1838,6 +1838,7 @@
       "ServiceName",
       "ServiceNetworkAttachment",
       "ServicePlan",
+      "ServiceProbeHttpUrl",
       "ServiceProjectUser",
       "ServicePullPolicy",
       "ServiceRunObservation",
