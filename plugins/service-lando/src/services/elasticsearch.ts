@@ -21,7 +21,7 @@ import {
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
-const DEFAULT_IMAGE = "docker.elastic.co/elasticsearch/elasticsearch:8.17.0";
+const DEFAULT_IMAGE = "docker.elastic.co/elasticsearch/elasticsearch:8.19.25";
 const VERSIONS = ["8"] as const;
 const ARTIFACTS = { "8": DEFAULT_IMAGE } as const;
 export const DEFAULT_PORT = 9200;

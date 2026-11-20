@@ -10,7 +10,7 @@ const EXPECTED_OWNED_MATRICES = {
     "8.0": "mcr.microsoft.com/dotnet/sdk:8.0",
     "9.0": "mcr.microsoft.com/dotnet/sdk:9.0",
   },
-  elasticsearch: { "8": "docker.elastic.co/elasticsearch/elasticsearch:8.17.0" },
+  elasticsearch: { "8": "docker.elastic.co/elasticsearch/elasticsearch:8.19.25" },
   go: { "1.22": "golang:1.22", "1.23": "golang:1.23" },
   mariadb: { "11.4": "mariadb:11.4" },
   meilisearch: { "1": "getmeili/meilisearch:v1.11" },

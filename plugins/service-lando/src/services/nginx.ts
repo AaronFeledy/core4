@@ -31,7 +31,7 @@ import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultNginxStaticCommand } from "./static.ts";
 import { uploadDirRegex } from "./upload-dirs.ts";
 
-const DEFAULT_IMAGE = "nginx:1.26-alpine";
+const DEFAULT_IMAGE = "nginx:1.30-alpine";
 export const NGINX_LISTENER = {
   port: 80,
   daemon: "nginx",
@@ -249,8 +249,8 @@ export const nginxServiceType: ServiceType = {
   id: "nginx",
   name: "nginx",
   base: "lando",
-  // Verified /etc/passwd in nginx:1.26-alpine (linux/amd64), config:
-  // sha256:42ce3d3585d47518cb0c1ef4bd3d8a65c1edfcbbfd423eda86990a83f378b111.
+  // Verified /etc/passwd in nginx:1.30-alpine (linux/amd64), config:
+  // sha256:d5f49e5ab196322ceaca86fd802279f6ace122b19c43fa67d80b029f23936f53.
   // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin
   // Its passwd home is a cache directory, intentionally excluded from home persistence.
   identity: rootIdentity(),

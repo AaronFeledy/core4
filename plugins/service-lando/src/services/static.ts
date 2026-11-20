@@ -27,7 +27,7 @@ export const SUPPORTED_STATIC_SERVERS = ["nginx", "caddy"] as const;
 export type SupportedStaticServer = (typeof SUPPORTED_STATIC_SERVERS)[number];
 
 export const STATIC_SERVER_IMAGES: Record<SupportedStaticServer, string> = {
-  nginx: "nginx:1.26-alpine",
+  nginx: "nginx:1.30-alpine",
   caddy: "caddy:2-alpine",
 };
 
@@ -197,8 +197,8 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
     id,
     name: id,
     base: "lando",
-    // Verified linux/amd64: nginx:1.26-alpine config
-    // sha256:42ce3d3585d47518cb0c1ef4bd3d8a65c1edfcbbfd423eda86990a83f378b111 has
+    // Verified linux/amd64: nginx:1.30-alpine config
+    // sha256:d5f49e5ab196322ceaca86fd802279f6ace122b19c43fa67d80b029f23936f53 has
     // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin (cache, not a persisted home).
     // caddy:2-alpine config sha256:3067cc4e02c091399edbd5d65f85a3ff4d511574aecadb47f280c3761e68852e
     // has only root. Both server choices therefore declare only the root home.
