@@ -144,8 +144,8 @@ export interface ScanEndpoint {
    */
   readonly outcome?: ProbeOutcome;
   /**
-   * Optional structured detail for non-`green` verdicts (e.g. the last
-   * transport error or `HTTP <code>`). Scanners MUST redact this through the
+   * Optional diagnostic detail (e.g. a redirect, transport error, or next
+   * step for an `expected` verdict). Scanners MUST redact this through the
    * canonical redaction primitive before returning it.
    */
   readonly detail?: string;
@@ -193,7 +193,7 @@ export class UrlScanner extends Context.Service<
           readonly url: string;
           readonly endpoint?: EndpointRef;
         }>;
-        /** Observe completed attempts without affecting probe verdicts; detail is redacted. */
+        /** Observe completed attempts without affecting probe verdicts; detail is redacted and expected is final. */
         readonly onAttempt?: (attempt: ScanAttempt) => Effect.Effect<void>;
       },
     ) => Effect.Effect<ScanResult, ScannerError>;

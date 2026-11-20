@@ -1,5 +1,78 @@
 [
   {
+    "surface": "command:app:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.listenerAuthority.anyOf",
+    "justification": "Application listener authority can report optional keepAlive intent; all existing listener authority shapes remain valid."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.listenerAuthority.anyOf",
+    "justification": "Application listener authority can report optional keepAlive intent; all existing listener authority shapes remain valid."
+  },
+  {
+    "surface": "schema:InfoAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.listenerAuthority.anyOf",
+    "justification": "Application listener authority can report optional keepAlive intent; all existing listener authority shapes remain valid."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-construct",
+    "path": "$.listenerAuthority.anyOf",
+    "justification": "Application listener authority can report optional keepAlive intent; all existing listener authority shapes remain valid."
+  },
+  {
+    "surface": "schema:ListenerAuthority",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Applied state v9 decodes v8 plans unchanged; only the application branch gains optional keepAlive intent.",
+    "persistedState": { "store": "applied-state", "version": 9 }
+  },
+  {
+    "surface": "schema:CheckResult",
+    "changeKind": "enum-widened",
+    "path": "$.verdict",
+    "justification": "Check consumers must handle the new neutral expected verdict for intentional idle listeners. Existing verdicts retain their meaning."
+  },
+  {
+    "surface": "schema:StartAppResult",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.verdict",
+    "justification": "Start can return an expected check, distinct from both readiness and a URL error."
+  },
+  {
+    "surface": "schema:RebuildAppResult",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.verdict",
+    "justification": "Rebuild can return an expected check, distinct from both readiness and a URL error."
+  },
+  {
+    "surface": "schema:RestartAppResult",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.verdict",
+    "justification": "Restart can return an expected check, distinct from both readiness and a URL error."
+  },
+  {
+    "surface": "command:app:start",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.verdict",
+    "justification": "Start can return an expected check, distinct from both readiness and a URL error."
+  },
+  {
+    "surface": "command:app:rebuild",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.verdict",
+    "justification": "Rebuild can return an expected check, distinct from both readiness and a URL error."
+  },
+  {
+    "surface": "command:app:restart",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.verdict",
+    "justification": "Restart can return an expected check, distinct from both readiness and a URL error."
+  },
+  {
     "surface": "schema:RouteInputError",
     "changeKind": "property-added",
     "path": "$.otherPath",
@@ -1205,10 +1278,10 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "ServicePlan anyOf evolves with endpoint kind discriminators and nested plan fields (#2456, #2109). applied-state version 8 migrates endpoint _tag\u2192kind and route filter type\u2192kind under data.services and data.routes (map: data[appId].\u2026) on read only; no write-back. Historical applied ServicePlan values remain readable after that pass; v8 never accepts old keys.",
+    "justification": "Versions before v8 migrate endpoint and route-filter discriminator keys. Applied state v9 decodes v8 plans unchanged; the application listener can now record optional keepAlive intent.",
     "persistedState": {
       "store": "applied-state",
-      "version": 8
+      "version": 9
     }
   },
   {
@@ -3519,10 +3592,10 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "AppPlan.services additionalProperties tracks ServicePlan endpoint/filter kind vocabulary (#2456). applied-state version 8 rewrites the two paths data.services[service].endpoints[i]._tag\u2192kind and data.routes[r].filters[f].type\u2192kind (map-prefixed for Podman) in memory on read; ordinary successful persist writes v8. Prior additive ServicePlan fields remain valid.",
+    "justification": "Versions before v8 migrate endpoint and route-filter discriminator keys. Applied state v9 decodes v8 plans unchanged; ServicePlan's application listener gains optional keepAlive intent.",
     "persistedState": {
       "store": "applied-state",
-      "version": 8
+      "version": 9
     }
   },
   {
