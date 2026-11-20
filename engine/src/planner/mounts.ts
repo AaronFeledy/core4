@@ -6,6 +6,7 @@ import {
   type ProviderCapabilities,
   type ServiceConfig,
   type ServicePlan,
+  canonicalMountEntry,
   duplicateMountTarget,
   landoServiceShadowStoreName,
   orderMounts,
@@ -70,7 +71,19 @@ export const prepareServiceMounts = (input: {
     storageByTarget: authored.storageByTarget,
     servicePlan: {
       ...service,
-      mounts,
+      mounts: mounts.map((mount) =>
+        mount.type === "bind"
+          ? {
+              ...mount,
+              ...(mount.excludes === undefined
+                ? {}
+                : { excludes: [...new Set(mount.excludes.map(canonicalMountEntry))] }),
+              ...(mount.includes === undefined
+                ? {}
+                : { includes: [...new Set(mount.includes.map(canonicalMountEntry))] }),
+            }
+          : mount,
+      ),
       extensions: { ...service.extensions, [SERVICE_FEATURES_EXTENSION_KEY]: { ...extension, dataTrees } },
     },
   };

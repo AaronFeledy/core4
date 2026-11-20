@@ -1961,6 +1961,7 @@
       "authoringExpressionSlot",
       "bindSyncIgnores",
       "canonicalImageReference",
+      "canonicalMountEntry",
       "canonicalSqlitePath",
       "certificateNameForHostname",
       "classifyAuthoringSource",
