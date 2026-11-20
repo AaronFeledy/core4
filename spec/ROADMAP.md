@@ -89,9 +89,8 @@ Built and not listed below: the Effect runtime and SDK contracts; the service-ty
 
 | Capability | Spec | Status | Notes |
 | --- | --- | --- | --- |
-| App checks: ownership-classified verdicts | §10.5.2 | Done | HTTP checks classify redirects by origin, distinguish router and server failures, and report idle application listeners as neutral `expected`. |
-| App checks: Landofile `checks` replacing `scanner` | §10.5.2 | Not started | Depends on the verdict row. |
-| App checks: `command` and `tcp` kinds plus `app:check` | §10.5.2 | Not started | Checks are HTTP only. Depends on the `checks` row. |
+| HTTP scanner verdicts | §10.5.2 | Done | The HTTP scanner classifies redirects by origin, distinguishes router and server failures, and reports idle application listeners as neutral `expected`. |
+| Declarative app checks | §10.5.2 | Partial | HTTP scanning ships through `scanner`; the Landofile `checks` replacement, `command` and `tcp` check kinds, and `app:check` are not implemented. |
 | Programmable execution | §22 | Not started | The §22 contracts are on `main`, so nothing blocks implementation. Build in dependency order: contracts and retained runtime; configuration-backed scratch and admission; environment, process, and artifact integration; public access, guides, and performance proof. Each slice includes its tests. |
 | Templates and `lando create` | §23 | Not started | Depends on programmable execution (§22) and configuration-backed scratch (§21.4.3). Tracked in #2469. |
 | Recipes that run nothing; one source locator for `init` | §8.8, §23.3 | Not started | Recipes still accept `postInit` actions and `init` still uses `--source` flags. |
