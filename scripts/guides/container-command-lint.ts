@@ -1,16 +1,14 @@
-import { Schema } from "effect";
 import { COMMAND_REGISTRY_MANIFEST } from "../../core/src/cli/generated/command-registry-manifest.ts";
 import { guideProseCommandArgvs } from "../../core/src/docs/guide-compiler/command-argv.ts";
+import {
+  CONTAINER_COMMAND_CODE as CODE,
+  CONTAINER_COMMAND_BASELINE_PATH,
+  type ContainerCommandBaseline,
+  CONTAINER_COMMAND_WAIVER as WAIVER,
+} from "./container-command-baseline.ts";
 import { type CoverageLintDocument, e2eCommandArgvs } from "./coverage-lint-input.ts";
 import { type GuideLintDiagnostic, diagnostic } from "./lint-diagnostic.ts";
 import type { MdxNode } from "./mdx.ts";
-
-const CODE = "guide.container-command.e2e-coverage";
-const WAIVER = "{/* lando-lint: not-e2e <reason> */}";
-export const CONTAINER_COMMAND_BASELINE_PATH = "scripts/guides/container-command-baseline.json";
-const baselineSchema = Schema.Record(Schema.String, Schema.Array(Schema.String));
-type Baseline = typeof baselineSchema.Type;
-export const decodeContainerCommandBaseline = Schema.decodeUnknownSync(baselineSchema);
 
 const builtinIds = new Map<string, string>();
 for (const [id, command] of Object.entries(COMMAND_REGISTRY_MANIFEST.commands)) {
@@ -101,7 +99,7 @@ const inspectPage = (doc: CoverageLintDocument) => {
 
 export const lintContainerCommandCoverage = (
   documents: readonly CoverageLintDocument[],
-  baseline: Baseline,
+  baseline: ContainerCommandBaseline,
   options: { readonly fullScan: boolean; readonly unchecked: ReadonlySet<string> },
 ) => {
   const diagnostics: GuideLintDiagnostic[] = [];

@@ -8,6 +8,8 @@ import {
   parsePrdSourceArgs,
   resolvePrdSources,
 } from "./check-guide-coverage.ts";
+import { checkContainerCommandBaselineOnDisk } from "./guides/container-command-baseline.ts";
+import { type DriftContext, resolveDriftContext } from "./guides/drift-context.ts";
 
 export { parsePrdSourceArgs } from "./check-guide-coverage.ts";
 
@@ -30,12 +32,14 @@ export interface GuideDriftDeclaration {
 }
 
 export interface DriftDiagnostic {
+  readonly sourcePath?: string;
   readonly code: string;
   readonly message: string;
 }
 
 export interface DriftResult {
   readonly diagnostics: ReadonlyArray<DriftDiagnostic>;
+  readonly baselineBootstrap?: boolean;
   /** Present only when a valid `Guide-Coverage-Skip:` tag bypassed the gate. */
   readonly skip?: { readonly reason: string };
 }
@@ -47,6 +51,7 @@ export interface CheckGuideDriftInput {
 }
 
 export interface CheckGuideDriftOptions {
+  readonly baseRef?: string;
   readonly prdSources?: ReadonlyArray<string>;
   readonly env?: NodeJS.ProcessEnv;
   readonly changedFiles?: ReadonlyArray<string>;
@@ -171,15 +176,20 @@ export const checkGuideDriftOnDisk = async (
     await pushDeclaration(prdFile, resolve(root, prdFile));
   }
 
-  return checkGuideDrift({
+  const drift = checkGuideDrift({
     declarations,
     changedFiles: options.changedFiles ?? [],
     prBody: options.prBody ?? "",
   });
+  if (options.baseRef === undefined) return drift;
+  const baseline = await checkContainerCommandBaselineOnDisk(root, options.baseRef);
+  return baseline.diagnostics.length > 0
+    ? { diagnostics: [...drift.diagnostics, ...baseline.diagnostics] }
+    : { ...drift, baselineBootstrap: baseline.bootstrap };
 };
 
 export const formatDriftDiagnostic = (diagnostic: DriftDiagnostic): string =>
-  `${diagnostic.code}: ${diagnostic.message}`;
+  `${diagnostic.sourcePath === undefined ? "" : `${diagnostic.sourcePath}: `}${diagnostic.code}: ${diagnostic.message}`;
 
 const formatSummaryFileList = (files: ReadonlyArray<string>): string =>
   files.length === 0 ? "_No changed files detected._" : files.map((file) => `- \`${file}\``).join("\n");
@@ -197,51 +207,6 @@ export const formatGuideDriftSummary = (result: DriftResult, context: DriftConte
     .map((diagnostic) => `- ${formatDriftDiagnostic(diagnostic)}`)
     .join("\n");
   return `${header}\n\nStatus: failed.\n\n### Diagnostics\n${diagnostics}\n\n${changedFiles}\n`;
-};
-
-const splitFileList = (value: string): ReadonlyArray<string> =>
-  value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-const gitChangedFiles = (args: ReadonlyArray<string>): ReadonlyArray<string> | undefined => {
-  const result = Bun.spawnSync({
-    cmd: ["git", "diff", "--name-only", ...args],
-    cwd: REPO_ROOT,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (!result.success) return undefined;
-  return splitFileList(result.stdout.toString());
-};
-
-interface DriftContext {
-  readonly changedFiles: ReadonlyArray<string>;
-  readonly prBody: string;
-}
-
-/** Resolves the PR's changed files + body from the environment / git, or undefined when there is no PR context. */
-export const resolveDriftContext = (env: NodeJS.ProcessEnv = process.env): DriftContext | undefined => {
-  const prBody = env.GUIDE_DRIFT_PR_BODY ?? "";
-
-  const explicit = env.GUIDE_DRIFT_CHANGED_FILES;
-  if (explicit !== undefined) return { changedFiles: splitFileList(explicit), prBody };
-
-  const baseSha = env.GUIDE_DRIFT_BASE_SHA;
-  const headSha = env.GUIDE_DRIFT_HEAD_SHA;
-  if (baseSha && headSha) {
-    const files = gitChangedFiles([baseSha, headSha]);
-    if (files !== undefined) return { changedFiles: files, prBody };
-  }
-
-  const baseRef = env.GUIDE_DRIFT_BASE_REF;
-  if (baseRef) {
-    const files = gitChangedFiles(["--merge-base", baseRef, "HEAD"]);
-    if (files !== undefined) return { changedFiles: files, prBody };
-  }
-
-  return undefined;
 };
 
 const appendStepSummary = async (summary: string, env: NodeJS.ProcessEnv = process.env): Promise<void> => {
@@ -263,6 +228,7 @@ const main = async (): Promise<void> => {
   const baseOptions = {
     changedFiles: context.changedFiles,
     prBody: context.prBody,
+    ...(context.baseRef === undefined ? {} : { baseRef: context.baseRef }),
   };
   const result = await checkGuideDriftOnDisk(
     REPO_ROOT,
@@ -270,6 +236,12 @@ const main = async (): Promise<void> => {
   );
 
   await appendStepSummary(formatGuideDriftSummary(result, context));
+
+  if (result.baselineBootstrap) {
+    process.stdout.write(
+      "Container command baseline growth check skipped for bootstrap: base has neither the baseline nor the lint rule.\n",
+    );
+  }
 
   if (result.skip !== undefined) {
     process.stdout.write(`Guide-drift gate bypassed via Guide-Coverage-Skip: ${result.skip.reason}\n`);

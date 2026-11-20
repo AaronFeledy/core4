@@ -277,8 +277,10 @@ above it, with only whitespace in between. Give a reason of at least eight
 characters. The waiver applies to the whole fence. Remove it if the fence no
 longer shows a container command.
 
-Do not add entries to `scripts/guides/container-command-baseline.json`. When
-you cover, waive, or remove a listed command, delete its entry or run
+CI compares `scripts/guides/container-command-baseline.json` with the base
+revision and rejects new entries. If you move a guide, you can carry its existing
+entries to the new path once the old path is gone. When you cover, waive, or
+remove a listed command, delete its entry or run
 `bun run scripts/lint-guides.ts --prune-container-command-baseline`.
 
 ## How variables bind

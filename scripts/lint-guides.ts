@@ -8,9 +8,10 @@ import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
 import { discoverGuideMdxFiles, resolveHostGuidePlatform } from "./build-guide-scenarios.ts";
 import {
   CONTAINER_COMMAND_BASELINE_PATH,
+  CONTAINER_COMMAND_CODE,
   decodeContainerCommandBaseline,
-  lintContainerCommandCoverage,
-} from "./guides/container-command-lint.ts";
+} from "./guides/container-command-baseline.ts";
+import { lintContainerCommandCoverage } from "./guides/container-command-lint.ts";
 import type { CoverageLintDocument } from "./guides/coverage-lint-input.ts";
 import { lintE2eDestroyVolumes } from "./guides/e2e-destroy-lint.ts";
 import { lintComponentSyntax, lintEditorial } from "./guides/editorial-lint.ts";
@@ -217,7 +218,7 @@ export const lintGuides = async (
       sourcePath: CONTAINER_COMMAND_BASELINE_PATH,
       line: 1,
       column: 1,
-      code: "guide.container-command.e2e-coverage",
+      code: CONTAINER_COMMAND_CODE,
       message: `Could not read or prune the container command baseline: ${error.message}`,
     });
   }
