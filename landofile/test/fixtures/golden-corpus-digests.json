@@ -1198,6 +1198,10 @@
       "digest": "77dba28dbe895de7dcb67bd7f01a3488a0602d9ae48592af386b9bddcfb94279"
     },
     {
+      "fixture": "docs/guides/ruby/fixtures/ruby-local-offline",
+      "digest": "d4c424e658afb04f05ba3167862a1611a3034bbcba0d250c8162c01abb738ab6"
+    },
+    {
       "fixture": "docs/guides/ruby/fixtures/ruby-unmounted-webroot",
       "digest": "03cac783553c63c735d82f0c694c227a9530ad616cea2762db78258687ae06b8"
     },

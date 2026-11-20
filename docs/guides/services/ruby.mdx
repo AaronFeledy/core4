@@ -119,6 +119,25 @@ expect(lastRun.stdout).toMatch(/ToolingCompileError[\s\S]*Launcher :ruby-local i
     </Step>
   </Scenario>
 
+  <Scenario id="ruby-local-offline" layer="e2e" render={false} reason="Exercise bare and locked Ruby plus a missing Gemfile override without fetching gems">
+    <Step name="start">
+      <UseFixture name="ruby-local-offline" />
+      <Run command="lando start" />
+    </Step>
+    <Step name="lock-locally">
+      <Verify command="lando --format=json bundle-mode" expect={{ stdout: { regex: "\"stdout\":\"bare\\\\n\"" } }} />
+      <Run command="lando bundle lock --local" />
+      <Verify command="lando --format=json bundle-mode" expect={{ stdout: { regex: "\"stdout\":\"bundled\\\\n\"" } }} />
+    </Step>
+    <Step name="reject-missing-gemfile">
+      <Verify command="lando missing-gemfile" expectExit={1} expect={{ stdout: "", stderr: { regex: "ruby-local: BUNDLE_GEMFILE points to a missing path: /app/missing.rb" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
 ## Pass `port:` to your Ruby server
 
 See the [Ruby listener reference](../../reference/service-listeners.mdx#ruby) for default ports, variables, and host defaults. Rails reads `PORT` and `BINDING`; Sinatra reads `PORT`, and custom code can read `ENV["PORT"]`.
