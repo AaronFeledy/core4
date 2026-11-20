@@ -11,6 +11,7 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 export class ScenarioFetchError extends Schema.TaggedError<ScenarioFetchError>()("ScenarioFetchError", {
   message: Schema.String,
+  remediation: Schema.String,
 }) {}
 
 const InfoJson = Schema.fromJsonString(
@@ -25,14 +26,21 @@ export const resolveFetchUrl = Effect.fnUntraced(function* (
   const service = FETCH_ROUTE_TOKEN.exec(template)?.[1];
   if (service !== undefined) {
     const { result } = yield* Schema.decodeUnknownEffect(InfoJson)(yield* readInfo).pipe(
-      mapFailures(() => new ScenarioFetchError({ message: "Could not decode the lando info JSON result." })),
+      mapFailures(
+        () =>
+          new ScenarioFetchError({
+            message: "Could not decode the lando info JSON result.",
+            remediation: "Run `lando info --format=json` in the fixture and check its result.",
+          }),
+      ),
     );
     const connections = result.services.find((item) => item.service === service)?.connections ?? [];
     const routes = connections.filter((item) => item.source === "route" && item.binding === "assigned");
     const selected = routes.find((item) => item.protocol === "https") ?? routes[0];
     if (selected === undefined) {
       return yield* new ScenarioFetchError({
-        message: `No assigned host route for ${service}. Start the app and check lando info.`,
+        message: `No assigned host route for ${service}.`,
+        remediation: "Start the fixture app and check its assigned routes with `lando info`.",
       });
     }
     const suffix = template.replace(FETCH_ROUTE_TOKEN, "");
@@ -40,7 +48,10 @@ export const resolveFetchUrl = Effect.fnUntraced(function* (
   }
   const url = URL.parse(target);
   if (url === null || !["http:", "https:"].includes(url.protocol) || url.username || url.password) {
-    return yield* new ScenarioFetchError({ message: "Fetch needs an HTTP(S) URL without credentials." });
+    return yield* new ScenarioFetchError({
+      message: "Fetch needs an HTTP(S) URL without credentials.",
+      remediation: "Use an HTTP(S) URL without user information or a `{{route:service}}` token.",
+    });
   }
   return url;
 });
@@ -63,7 +74,8 @@ export const readScenarioCa = Effect.fnUntraced(function* (cwd: string) {
 
 const missingCa = () =>
   new ScenarioFetchError({
-    message: "Fetch could not read Lando's local CA. Run `lando setup` on this host.",
+    message: "Fetch could not read Lando's local CA.",
+    remediation: "Run `lando setup` on this host.",
   });
 
 type FetchRequest = Pick<FetchProps, "method" | "headers">;
@@ -96,7 +108,8 @@ export const requestScenarioRoute = Effect.fn("ScenarioContext.fetch")(function*
     mapFailures(
       () =>
         new ScenarioFetchError({
-          message: `Fetch could not complete the ${props.method ?? "GET"} request. Check the router port and TLS certificate.`,
+          message: `Fetch could not complete the ${props.method ?? "GET"} request.`,
+          remediation: "Check the router port and TLS certificate.",
         }),
     ),
   );

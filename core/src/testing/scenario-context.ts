@@ -919,7 +919,11 @@ const makeScenarioContext = (
     fetch: Effect.fnUntraced(function* (props: Pick<FetchProps, "url" | "headers" | "method">) {
       const info = hidden(context.runCli(["info", "--format=json"])).pipe(
         mapFailures(
-          () => new ScenarioFetchError({ message: "Fetch could not run lando info to resolve the route." }),
+          () =>
+            new ScenarioFetchError({
+              message: "Fetch could not run lando info to resolve the route.",
+              remediation: "Check that the guide can run `lando info --format=json` in the fixture.",
+            }),
         ),
         Effect.flatMap((run) =>
           run.exitCode === 0
@@ -927,6 +931,7 @@ const makeScenarioContext = (
             : Effect.fail(
                 new ScenarioFetchError({
                   message: `Fetch could not resolve the route: lando info exited with status ${run.exitCode}.`,
+                  remediation: "Run `lando info --format=json` in the fixture and resolve its error first.",
                 }),
               ),
         ),
