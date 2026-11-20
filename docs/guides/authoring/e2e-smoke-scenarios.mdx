@@ -36,9 +36,9 @@ on the page needs a real provider:
 </Scenario>
 ```
 
-If your live scenario needs more time to start containers or pull images, set
-`timeout` on that scenario in milliseconds. Other scenarios keep the guide's
-timeout, or `60000` if you omit it from frontmatter.
+If a live scenario needs more time to pull images or start containers, set
+`timeout` on that scenario, in milliseconds. Other scenarios keep the guide's
+timeout, which defaults to `60000`.
 
 Rules the generator and linter enforce:
 

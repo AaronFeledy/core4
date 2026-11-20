@@ -28,7 +28,7 @@ Each feature has exactly one home guide under the discovery roots. The home guid
 
 An executable guide has `GuideFrontmatter`, one top-level `<Guide>`, and one or more `<Scenario>` elements. The engine compiles scenarios, not pages.
 
-`GuideFrontmatter` names `id`, `defaultLayer`, `provider`, `timeout`, `platforms`, `tags`, `skip`, `deprecated`, mutually exclusive `tabs` or `axes`, and per-cell `variants`. `id` is stable; layer selects `scenario` or `e2e`; scenario props MAY override inherited layer, timeout, platforms, tags, and skip. `provider` and variant policy (`tabs`, `axes`, `variants`) are frontmatter-only: `provider` does not select the execution layer, and variant cells already refine platforms, tags, and skip.
+`GuideFrontmatter` names `id`, `defaultLayer`, `provider`, `timeout`, `platforms`, `tags`, `skip`, `deprecated`, mutually exclusive `tabs` or `axes`, and per-cell `variants`. `id` is stable; layer selects `scenario` or `e2e`; scenario props MAY override inherited layer, timeout, platforms, and skip, and MAY add tags to the inherited set. `provider` and variant policy (`tabs`, `axes`, `variants`) are frontmatter-only: `provider` does not select the execution layer, and variant cells already refine platforms, tags, and skip.
 
 `ScenarioProps` names the scenario `id`, visibility through `render`, required `reason` for test-only scenarios, a layer override, tags, platforms, timeout, and skip. `diataxis` remains independent editorial metadata; only `tutorial` and `how-to` MAY contain rendered executable scenarios.
 

@@ -119,18 +119,22 @@ scenario, and do not add a scenario solely to hold variables or setup.
 
 ### Override execution for one scenario
 
-- Set `timeout={300000}` on a slow scenario instead of raising the guide's
-  timeout. Use a positive whole number of milliseconds. Without an override,
-  the scenario uses the guide timeout, which defaults to `60000`.
-- Set `platforms={["linux", "darwin"]}` to run only on the hosts you list.
-  The accepted values are `darwin`, `linux`, `win32`, and `wsl`. WSL also
-  matches `linux`. Use `platforms={[]}` to allow every host.
-- Set `skip={{ reason: "Waiting for a provider fix", until: "Next release" }}`
-  to skip the scenario's tests and omit its public transcript. You can omit
-  `until`; it records when to revisit the skip and does not expire it.
+A scenario inherits the guide's timeout, platforms, and skip. Set a prop on
+`<Scenario>` to change one of them for that scenario only.
 
-For `platforms` and `skip`, an explicit frontmatter `variants` cell value wins
-over the scenario prop. If neither supplies a value, the guide frontmatter applies.
+- Set `timeout={300000}` on a slow scenario instead of raising the guide's
+  timeout. The value is a positive whole number of milliseconds. A scenario
+  without one uses the guide timeout, which defaults to `60000`.
+- Set `platforms={["linux", "darwin"]}` to run only on the hosts you list.
+  The accepted values are `darwin`, `linux`, `win32`, and `wsl`. A WSL host
+  also matches `linux`. Use `platforms={[]}` to allow every host.
+- Set `skip={{ reason: "Waiting for a provider fix", until: "Next release" }}`
+  to skip the scenario's tests and omit its public transcript. `until` is
+  optional. It notes when to revisit the skip and doesn't end it.
+
+For `platforms` and `skip`, a value set on a frontmatter `variants` cell wins
+over the scenario prop. When neither sets one, the guide's top-level
+frontmatter value applies.
 
 ### Where each component goes
 
@@ -256,29 +260,31 @@ to enable live execution and confirm the scenario passed rather than skipped.
 
 When you show `lando exec`, `lando ssh`, `lando logs`, or Landofile tooling
 such as `lando composer` in a prose shell fence, run it in an e2e scenario
-on the **same page**. The rule includes command IDs and aliases. It treats
-names not in the built-in registry as tooling, except for the CLI's `help`
-entry point.
+on the **same page**. The rule applies to a built-in under its command ID and
+its alias, so both `lando app:exec` and `lando exec` are in scope. Any name
+that isn't a built-in counts as tooling, except `lando help`.
 
-Use a `<Run command>` or `<Verify command>` with the same command name,
-arguments, and argument order. Quoting can differ if it produces the same
-argv. Variables match by execution value. A `<Hidden>` step counts, but a
-skipped step or scenario does not. You can set `layer="e2e"` on the scenario
-or inherit it from the guide's `defaultLayer`.
+Cover the command with a `<Run command>` or `<Verify command>` that has the
+same command name and the same arguments in the same order. Quoting can differ
+as long as the argv is the same, and variables match by their execution
+`value`. A `<Hidden>` step counts. A skipped step or scenario doesn't. The
+scenario is e2e when it sets `layer="e2e"` or inherits it from the guide's
+`defaultLayer`.
 
 `bun run lint:guides` checks `sh`, `bash`, `shell`, `console`, and `zsh` fences
-outside `<Guide>`. It checks each command in a shell list, ignoring host pipes
-and redirects after the command. It skips illustrative arguments such as an
-entire `...` argument or an angle-bracket name like `<service>` used as an
-argument, option value, or path segment.
+outside `<Guide>`. The rule reads each command in a shell list separately and
+ignores host pipes and redirects after it. It skips a command that has a
+placeholder argument: a bare `...`, or an angle-bracket name like `<service>`
+used as an argument, option value, or path segment.
 
-If the fence cannot run in CI, put `{/* lando-lint: not-e2e <reason> */}` directly
-above it, with only whitespace in between. Give a reason of at least eight
-characters. The waiver applies to the whole fence. Remove it if the fence no
-longer shows a container command.
+If the fence can't run in CI, put `{/* lando-lint: not-e2e <reason> */}` directly
+above it with only whitespace in between. The reason needs at least eight
+characters. A waiver covers the whole fence. Remove it once the fence no
+longer shows a container command, or lint reports it as stale.
 
-CI compares `scripts/guides/container-command-baseline.json` with the base
-revision and rejects new entries. If you move a guide, you can carry its existing
+`scripts/guides/container-command-baseline.json` lists the uncovered commands
+lint still allows, and it only shrinks. `check:guide-drift` compares it with
+the base revision and rejects new entries. If you move a guide, carry its
 entries to the new path once the old path is gone. When you cover, waive, or
 remove a listed command, delete its entry or run
 `bun run scripts/lint-guides.ts --prune-container-command-baseline`.
