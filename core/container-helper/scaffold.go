@@ -130,13 +130,25 @@ func (s *scaffold) execute(options scaffoldOptions) error {
 	if err := os.MkdirAll(s.appRoot, 0o755); err != nil {
 		return err
 	}
+	if err := s.acquireLock(); err != nil {
+		return err
+	}
+	defer s.releaseLock()
+	return s.executeLocked(options)
+}
+
+func (s *scaffold) acquireLock() error {
 	lock, err := acquireScaffoldLock(s.appRoot)
 	if err != nil {
 		return err
 	}
 	s.lock = lock
-	defer s.releaseLock()
-	return s.executeLocked(options)
+	return nil
+}
+
+func (s *scaffold) releaseLock() {
+	s.lock.release()
+	s.lock = nil
 }
 
 func (s *scaffold) executeLocked(options scaffoldOptions) error {
