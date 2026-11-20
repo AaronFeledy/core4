@@ -522,6 +522,7 @@ describe("ci workflow", () => {
     const unitTests = findIndentedBlock(jobs, "unit-tests-linux-x64", 2);
 
     expect(triggers).toContain("  pull_request:");
+    expect(triggers).toContain("  merge_group:");
     expect(triggers).toContain("    branches: [main]");
     expect(triggers).toContain("  push:");
     expect(triggers).toContain("  workflow_dispatch:");

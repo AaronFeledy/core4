@@ -23,7 +23,9 @@ export const selectCi = (input: {
   readonly head: string;
   readonly cwd: string;
 }): CiSelection => {
-  if (input.event !== "pull_request") return { profile: "runtime", broad: true, reason: "broad event" };
+  // A merge-queue group is the pull request rebased onto the current main, so it selects like one.
+  if (input.event !== "pull_request" && input.event !== "merge_group")
+    return { profile: "runtime", broad: true, reason: "broad event" };
   const fallback = (reason: string): CiSelection => ({ profile: "providers", broad: false, reason });
   if (![input.base, input.head].every((sha) => /^[a-f0-9]{40,64}$/.test(sha)))
     return fallback("missing or unusable SHAs");
