@@ -61,7 +61,7 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? artifactFor(version) });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   ctx.addEnv("PORT", String(port));
-  ctx.setListenerAuthority(applicationAuthority(NODE_LISTENER, port));
+  ctx.setListenerAuthority(applicationAuthority(NODE_LISTENER, port, service));
   applyAuthoredProcessFields(ctx, ["user", "entrypoint"]);
   if (globals.length > 0) {
     ctx.addBuildStep({
