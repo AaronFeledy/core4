@@ -162,6 +162,31 @@ describe("runPostStartScan", () => {
     ]);
   });
 
+  test("settles an idle check as info and forwards the next step without a warning", async () => {
+    const events = collector();
+    const detail = "lando npm start";
+    const checks = await Effect.runPromise(
+      runPostStartScan({
+        scanner: scannerReturning([
+          endpoint({ verdict: "expected", statusCode: 502, detail, routerMarker: "upstream-unreachable" }),
+        ]),
+        plan,
+        events,
+        urls: [target],
+      }),
+    );
+    expect(checks[0]).toMatchObject({ verdict: "expected", statusCode: 502, detail });
+    expect(
+      project(events.published)
+        .map(([tag, id, , tone]) => [tag, id, tone])
+        .slice(1, 3),
+    ).toEqual([
+      ["task.start", taskId, undefined],
+      ["task.complete", taskId, "info"],
+    ]);
+    expect(events.published.some((event) => event._tag === "message.warn")).toBe(false);
+  });
+
   test("warns for one failed scan without failing start or losing other URL verdicts", async () => {
     const events = collector();
     const scanner: UrlScannerShape = {

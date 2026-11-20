@@ -128,11 +128,13 @@ export const runPostStartScan = Effect.fnUntraced(function* (
                   detail: "no response reported",
                 });
           const detail = redact(
-            endpoint.routerMarker === "no-route"
-              ? "no route matched this hostname"
-              : endpoint.routerMarker === "upstream-unreachable"
-                ? `the router could not reach ${target.service}`
-                : (endpoint.detail ?? "no response reported"),
+            endpoint.verdict === "expected" && endpoint.detail !== undefined
+              ? endpoint.detail
+              : endpoint.routerMarker === "no-route"
+                ? "no route matched this hostname"
+                : endpoint.routerMarker === "upstream-unreachable"
+                  ? `the router could not reach ${target.service}`
+                  : (endpoint.detail ?? "no response reported"),
           );
           const status = endpoint.statusCode ?? "HTTP response";
           const service = input.plan.services[target.service];
@@ -156,11 +158,15 @@ export const runPostStartScan = Effect.fnUntraced(function* (
           let message: string;
           switch (endpoint.verdict) {
             case "ready":
-              message = `${target.label} · ${status}`;
+              message = `${target.label} · ${endpoint.detail ?? status}`;
               yield* tree.completeTask(target.id, redact(message));
               break;
+            case "expected":
+              message = `${target.label} · expected: ${detail}`;
+              yield* tree.infoTask(target.id, redact(message));
+              break;
             case "app-error":
-              message = `${target.label} · your app returned ${status}`;
+              message = `${target.label} · ${typeof status === "number" && status >= 300 && status < 400 && endpoint.detail !== undefined ? detail : `your app returned ${status}`}`;
               yield* tree.infoTask(target.id, redact(message));
               break;
             case "service-error":
@@ -192,7 +198,7 @@ export const runPostStartScan = Effect.fnUntraced(function* (
             verdict: endpoint.verdict,
             ...(endpoint.statusCode === undefined ? {} : { statusCode: endpoint.statusCode }),
             message: redact(message),
-            ...(endpoint.verdict === "ready" ? {} : { detail }),
+            ...(endpoint.verdict === "ready" && endpoint.detail === undefined ? {} : { detail }),
             ...(listener === undefined
               ? {}
               : {
@@ -215,10 +221,12 @@ export const runPostStartScan = Effect.fnUntraced(function* (
         (check) => check.verdict === "app-error" || check.verdict === "service-error",
       ).length;
       const unreachable = checks.filter((check) => check.verdict === "lando-error").length;
+      const expected = checks.filter((check) => check.verdict === "expected").length;
       const urls = (count: number) => `${count} URL${count === 1 ? "" : "s"}`;
       const parts: string[] = [];
       if (errors > 0) parts.push(`${urls(errors)} returned errors`);
       if (unreachable > 0) parts.push(`${unreachable} unreachable`);
+      if (expected > 0) parts.push(`${expected} expected`);
       return warnIfLocalCaUntrusted(input.urls).pipe(
         Effect.andThen(
           tree.settleSuccess(
