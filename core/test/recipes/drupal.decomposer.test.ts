@@ -16,6 +16,12 @@ const {
 } = bundledRecipe("drupal");
 
 import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
+import {
+  PHPCBF_TOOLING_COMMAND,
+  PHPCS_TOOLING_COMMAND,
+  PHPSTAN_TOOLING_COMMAND,
+} from "../../src/recipes/builtin/php-quality-command.ts";
+import { phpcbfTool, phpcsTool, phpstanTool } from "../../src/recipes/builtin/source-php.ts";
 
 const defaults = { ...drupalDefaults };
 const alternatives = {
@@ -99,6 +105,9 @@ describe("drupal decomposition", () => {
           cmds: ["composer"],
           wrapper: true,
         },
+        phpcs: { ...phpcsTool, cmds: [PHPCS_TOOLING_COMMAND] },
+        phpcbf: { ...phpcbfTool, cmds: [PHPCBF_TOOLING_COMMAND] },
+        phpstan: { ...phpstanTool, cmds: [PHPSTAN_TOOLING_COMMAND] },
         "drupal-scaffold": scaffoldTooling,
       },
     });
