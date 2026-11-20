@@ -39,7 +39,7 @@ func (o drupalContribOptions) readExtensionComposer() (contribComposerManifest, 
 	return extension, err
 }
 
-func (streams helperIO) contribComposerEdit(dir, step string, dev bool, packages []string) error {
+func (s *scaffold) contribComposerEdit(dir, step string, dev bool, packages []string) error {
 	if len(packages) == 0 {
 		return nil
 	}
@@ -49,11 +49,11 @@ func (streams helperIO) contribComposerEdit(dir, step string, dev bool, packages
 		args = append(args, "--dev")
 	}
 	args = append(args, "--no-update", "--no-interaction")
-	return streams.contribComposer(dir, step, append(args, packages...))
+	return s.contribComposer(dir, step, append(args, packages...))
 }
 
-func (streams helperIO) contribComposer(dir, step string, args []string) error {
-	if err := streams.runCommand(dir, "composer", args...); err != nil {
+func (s *scaffold) contribComposer(dir, step string, args []string) error {
+	if err := s.runCommand(dir, "composer", args...); err != nil {
 		return fmt.Errorf("Drupal contrib sync: Composer %s failed; fix the Composer error, then rerun lando drupal-contrib-sync: %w", step, err)
 	}
 	return nil
@@ -61,7 +61,7 @@ func (streams helperIO) contribComposer(dir, step string, args []string) error {
 
 func stageDrupalContrib(s *scaffold, manifest *scaffoldManifest, o drupalContribOptions) error {
 	stage := s.stageDir
-	if err := s.streams.contribComposer(s.appRoot, "create-project", []string{"create-project", "--no-install", "--no-scripts", "--no-interaction",
+	if err := s.contribComposer(s.appRoot, "create-project", []string{"create-project", "--no-install", "--no-scripts", "--no-interaction",
 		"drupal/recommended-project:" + o.constraint, stage}); err != nil {
 		return err
 	}
@@ -84,12 +84,12 @@ func stageDrupalContrib(s *scaffold, manifest *scaffoldManifest, o drupalContrib
 	}
 	changes := planContribChanges(contribSyncRecord{}, desired, site)
 	for _, dev := range []bool{false, true} {
-		if err := s.streams.contribComposerEdit(stage, "require", dev, changes.require[dev]); err != nil {
+		if err := s.contribComposerEdit(stage, "require", dev, changes.require[dev]); err != nil {
 			return err
 		}
 	}
 	// Resolve the entire staged site before promotion; install uses this lock.
-	if err := s.streams.contribComposer(s.appRoot, "update (resolve the site dependencies)", []string{"--working-dir=" + stage, "update",
+	if err := s.contribComposer(s.appRoot, "update (resolve the site dependencies)", []string{"--working-dir=" + stage, "update",
 		"--no-install", "--no-scripts", "--no-plugins", "--no-interaction"}); err != nil {
 		return err
 	}
