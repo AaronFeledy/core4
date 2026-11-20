@@ -231,7 +231,7 @@ re-enabling requests you disabled for the whole machine.
       <UseFixture name="redirects-and-idle-listener" />
       <Run command="lando app:cache:refresh --format=json" />
       <Run command="lando start --format=json" />
-      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"owner\":\s*\"application\"[^}]*\"keepAlive\":\s*true" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"owner\":\\s*\"application\"[^}]*\"keepAlive\":\\s*true" } }} />
     </Step>
   </Scenario>
 
