@@ -8,6 +8,7 @@ import { serviceTypeResolve } from "../src/services/_feature-helpers.ts";
 import { makeLanguageRuntime } from "../src/services/_language-runtime.ts";
 import { go122ServiceType, goServiceFeature } from "../src/services/go.ts";
 import { python312ServiceType, pythonServiceFeature } from "../src/services/python.ts";
+import { pythonServiceLaunchers } from "../src/services/python-local-launcher.ts";
 import { ruby33ServiceType, rubyServiceFeature } from "../src/services/ruby.ts";
 import { rubyServiceLaunchers } from "../src/services/ruby-local-launcher.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -73,6 +74,7 @@ const fixtures = [
           config: { target: "/app", excludes: ["__pycache__", ".venv"] },
         },
       ],
+      launchers: pythonServiceLaunchers,
     },
     mounts: [
       [

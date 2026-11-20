@@ -270,6 +270,7 @@ declares its own launchers:
 | --- | --- | --- |
 | `:node-local <bin> [args]` | Every Node service | A binary your project installed, through the service's package manager |
 | `:node-install-run <script> [args]` | Bundled Node types on npm, pnpm, Yarn, or no declared manager | An install with that manager, then a `package.json` script |
+| `:python-local <command> [args]` | Stock Python services that include Lando's `uv` install | The command through `uv run` when a project is found, in the app-root venv if available otherwise, or directly |
 | `:ruby-local <command> [args]` | Ruby services | The command through `bundle exec` when the bundle has a lockfile, and directly otherwise |
 
 `:node-local` picks the command from the package manager the service's
@@ -284,7 +285,7 @@ declares its own launchers:
 None of these downloads a missing package, so run your install first.
 [Use your project's package manager](../services/node.mdx#use-your-projects-package-manager)
 covers how a Node service selects its manager and when to use
-`:node-install-run`. [Add Ruby](../services/ruby.mdx#run-the-app) covers how
+`:node-install-run`. [Run tools in your project's environment](../services/python.mdx#run-tools-in-your-projects-environment) covers when `:python-local` syncs dependencies and updates `uv.lock`. [Add Ruby](../services/ruby.mdx#run-the-app) covers how
 `:ruby-local` finds the bundle.
 
 ### Where a marker works

@@ -125,34 +125,37 @@ If host ports 80 or 443 are taken, `lando info` shows fallback ports such as `:8
     </Step>
   </Scenario>
 
-## Install deps with pip or uv
+## Run tools in your project's environment
 
-Lando installs `uv` in the stock Python service image, so it stays available after a restart or rebuild. Declare tooling in the Landofile (see the FastAPI example above), then install your project dependencies into `/app/.venv`. That path is a service-owned overlay: it is not synced to the host, and a host `.venv` is hidden inside the container. Restart and a plain `lando destroy` keep it. `lando destroy --volumes` or `--purge` removes it.
+On the stock Python service, put `:python-local` before a project tool in your Landofile. For a uv project with `pytest` in its dependencies or default dependency group, add this task:
 
-```sh
-lando uv --version
-lando uv venv /app/.venv
-lando uv pip install --python /app/.venv/bin/python -r requirements.txt
-lando exec app -- /app/.venv/bin/python --version
+```yaml
+tooling:
+  pytest:
+    service: app
+    cmd: [":python-local", "pytest"]
+    wrapper: true
 ```
 
-`lando pip install` into the image works for a quick try, but a rebuild drops those packages. Use `appMount.includes: [.venv]` if you want the host tree, for example for IDE autocomplete. A nested venv such as `backend/.venv` needs its own exclude to get a service-owned overlay. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
+From your app directory, run `lando start` and then `lando pytest -q`. The launcher searches for `pyproject.toml` from the command's working directory up to the app mount root, or up to the filesystem root when the command runs outside the mount. When it finds one, it runs the command through `uv run --` in that working directory, so uv creates and syncs the project environment first. Plain `uv run` can create or update `uv.lock`, from tooling and service commands alike. To reject a missing or stale lockfile instead, run `lando exec app -- uv run --locked -- pytest -q`.
 
-Need a one-shot system install with uv instead of a venv?
+The first run may need network access to your package index and any other sources the project declares. uv uses its default cache, usually `~/.cache/uv` (`/root/.cache/uv` for the default service user). Lando persists the stock service's home, so that cache survives rebuilds. If you disable home persistence or move the cache outside the home, the home volume no longer keeps it.
+
+For projects that use `requirements.txt` without a `pyproject.toml`, create and populate the app-root venv before running your tooling task:
 
 ```sh
-lando exec app -- uv pip install --system -r requirements.txt
+lando exec app -- uv venv /app/.venv
+lando exec app -- uv pip install --python /app/.venv/bin/python -r requirements.txt
+lando pytest -q
 ```
+
+Without a project manifest, the launcher activates the app-root `.venv` when it has an executable `bin/python`, and otherwise runs the command directly. An unreadable manifest, an invalid file type, or a broken interpreter link fails with a `python-local:` error instead of running the system tool, and a failed `uv run` does not fall back either. Plain `lando exec` does not activate the venv.
+
+Lando keeps `/app/.venv` in a service-owned volume by default. It hides the host `.venv` and survives rebuilds and a plain `lando destroy`. `lando destroy --volumes` or `--purge` removes it. Use `appMount.includes: [.venv]` if you want to expose the host tree. A nested venv such as `backend/.venv` needs its own exclude to get a service-owned volume. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
 
 ## Serve FastAPI
 
-The idle container lets you install dependencies before starting the server. The following commands assume your `requirements.txt` includes FastAPI and Uvicorn and your app root contains `main.py` with an ASGI object named `app`. Run Uvicorn once in the foreground:
-
-```sh
-lando exec app -- /app/.venv/bin/uvicorn main:app
-```
-
-Or set it as the service command and restart so Lando starts Uvicorn with the service:
+Declare `fastapi` and `uvicorn` as project dependencies in `pyproject.toml`, and put `main.py` with an ASGI object named `app` in your app root. Set `command` in the Landofile so Lando starts Uvicorn through the project environment:
 
 ```yaml
 services:
@@ -161,21 +164,32 @@ services:
     framework: fastapi
     primary: true
     port: 8000
-    command:
-      - /app/.venv/bin/uvicorn
-      - main:app
+    command: [":python-local", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ```sh
-lando restart
+lando start
 lando info
 ```
 
 Open the URL `lando info` prints. A tiny `main.py` that returns JSON is enough to prove the route.
 
+<Scenario id="python-local" render={false} reason="Check Python launcher lowering without fetching dependencies">
+  <Step name="start-with-a-launcher-command">
+    <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: python-launcher\nservices:\n  app:\n    type: python:3.12\n    primary: true\n    command: [\":python-local\", \"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\ntooling:\n  pytest:\n    service: app\n    cmd: [\":python-local\", \"pytest\"]\n    wrapper: true\n"));
+lastRun = yield* context.runCli("lando start --format=json");
+expect(lastRun.exitCode).toBe(0);`} displayCode={`lando start --format=json`} />
+  </Step>
+  <Step name="forward-pytest-arguments">
+    <Run runtime="library" code={`lastRun = yield* context.runCli("lando --format=json pytest -q tests");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"service":"app"[\s\S]*"stdout":"python -I -S -c [\s\S]* pytest -q tests\\n"/);`} displayCode={`lando --format=json pytest -q tests`} />
+  </Step>
+</Scenario>
+
 ## Django and Flask
 
-Same service type. Swap the framework and bind the server you actually run:
+Same service type. Swap the framework and start the server you run through the project environment:
 
 ```yaml
 services:
@@ -183,6 +197,7 @@ services:
     type: "python:3.12"
     framework: django
     primary: true
+    command: [":python-local", "python", "manage.py", "runserver", "0.0.0.0:8000"]
 ```
 
 ```yaml
@@ -191,16 +206,14 @@ services:
     type: "python:3.12"
     framework: flask
     primary: true
+    command: [":python-local", "flask", "run"]
 ```
 
-```sh
-lando exec app -- /app/.venv/bin/python manage.py runserver 0.0.0.0:8000
-lando exec app -- /app/.venv/bin/gunicorn app:app
-```
+The `flask` preset sets `FLASK_RUN_HOST=0.0.0.0` and `FLASK_RUN_PORT` from `port`, so `flask run` binds where Lando routes traffic. For Gunicorn, use `[":python-local", "gunicorn", "app:app", "--bind", "0.0.0.0:5000"]`.
 
 ## Pin an image
 
-Slim is the default. Use the full image when wheels need build tools. A custom `image:` or a Dockerfile selected by `build.context` owns its toolchain, including `uv`; Lando only installs `uv` for the stock `python:3.12-slim` image:
+Slim is the default. Use the full image when wheels need build tools. A custom `image:` or a Dockerfile selected by `build.context` owns its toolchain. Only the stock image gets Lando's `uv` install and `:python-local`; on a replacement image, invoke the tools your image provides directly:
 
 ```yaml
 services:

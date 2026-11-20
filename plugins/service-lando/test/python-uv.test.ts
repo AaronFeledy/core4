@@ -6,6 +6,7 @@ import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { services } from "../src/index.ts";
+import { python312ServiceType } from "../src/services/python.ts";
 import { compileTestLandofile } from "./support/compiled-landofile.ts";
 
 const BuildSteps = Schema.Struct({
@@ -23,6 +24,37 @@ const BuildSteps = Schema.Struct({
 
 const buildStepsFor = (service: ServicePlan) =>
   Schema.decodeUnknownSync(BuildSteps)(service.extensions["@lando/core/service-features"]).buildSteps ?? [];
+
+test.each([
+  { name: "stock", config: {}, expected: [":python-local"] },
+  {
+    name: "catalog tag with additive build",
+    config: { image: "python:3.12-slim", build: { artifact: ["true"] } },
+    expected: [":python-local"],
+  },
+  { name: "custom image", config: { image: "python:3.12" }, expected: [] },
+  {
+    name: "replacement build carrying the catalog tag",
+    config: { image: "python:3.12-slim", build: { context: ".", dockerfileInline: "FROM python:3.12-slim" } },
+    expected: [],
+  },
+])("declares the expected launchers for $name", async ({ config, expected }) => {
+  const landofile = Schema.decodeUnknownSync(LandofileShape)({
+    name: "python-uv",
+    services: { web: { type: "python:3.12", ...config } },
+  });
+  const service = landofile.services?.[ServiceName.make("web")];
+  if (service === undefined) throw new Error("Python service missing");
+  const resolution = await Effect.runPromise(
+    python312ServiceType.resolve({
+      name: "web",
+      service,
+      appRoot: "/srv/apps/python-uv",
+      metadata: { source: "/srv/apps/python-uv/.lando.yml", runtime: 4, resolvedAt: "2026-01-01T00:00:00Z" },
+    }),
+  );
+  expect(Object.keys(resolution.launchers ?? {})).toEqual([...expected]);
+});
 
 const planPython = async (overrides: Readonly<Record<string, unknown>> = {}) => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({

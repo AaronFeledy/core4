@@ -1,8 +1,10 @@
+import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { serviceFeatureApply } from "./_feature-helpers.ts";
 import { type LanguageFrameworkPreset, makeLanguageRuntime } from "./_language-runtime.ts";
+import { pythonServiceLaunchers } from "./python-local-launcher.ts";
 
 export const SUPPORTED_PYTHON_VERSIONS = ["3.12"] as const;
 export type SupportedPythonVersion = (typeof SUPPORTED_PYTHON_VERSIONS)[number];
@@ -72,14 +74,21 @@ const runtime = makeLanguageRuntime({
   resolveFallback: (version) => `Failed to resolve python:${version}`,
 });
 
+// The planner can stamp the catalog image before resolve. An additive build
+// keeps that image; a replacement Compose build owns the toolchain instead.
+const ownsPythonToolchain = (
+  { image, build }: Pick<ServiceConfig, "image" | "build">,
+  version: SupportedPythonVersion,
+) =>
+  (build === undefined || !("context" in build)) &&
+  (image === undefined || image === PYTHON_ARTIFACTS[version]);
+
 export const pythonServiceFeature: ServiceFeatureDefinition = {
   ...runtime.serviceFeature,
   apply: serviceFeatureApply(PYTHON_FEATURE_ID, "service-lando.python failed to apply", (ctx) => {
     runtime.applyFeature(ctx);
     const { version } = configFor(ctx);
-    const { image, build } = ctx.normalizedConfig;
-    if (build !== undefined && "context" in build) return;
-    if (image === undefined || image === PYTHON_ARTIFACTS[version]) {
+    if (ownsPythonToolchain(ctx.normalizedConfig, version)) {
       ctx.addBuildStep({
         id: "service-lando.python:uv",
         phase: "build",
@@ -89,5 +98,16 @@ export const pythonServiceFeature: ServiceFeatureDefinition = {
     }
   }),
 };
-export const makePythonServiceType = runtime.makeServiceType;
+export const makePythonServiceType = (version: SupportedPythonVersion): ServiceType => {
+  const serviceType = runtime.makeServiceType(version);
+  return {
+    ...serviceType,
+    resolve: (input) =>
+      Effect.map(serviceType.resolve(input), (resolution) =>
+        ownsPythonToolchain(resolution.normalizedConfig, version)
+          ? { ...resolution, launchers: pythonServiceLaunchers }
+          : resolution,
+      ),
+  };
+};
 export const python312ServiceType: ServiceType = makePythonServiceType("3.12");
