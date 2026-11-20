@@ -240,22 +240,6 @@ export const validateResolvedLandofile = (input: {
           message: invalid.message,
           suggestion: invalid.remediation,
         });
-      switch (healthcheck.kind) {
-        case "http":
-        case "tcp":
-          if (blocked === undefined || !isBlocked([...probePath, "kind"]))
-            issues.push({
-              path: [...probePath, "kind"],
-              rule: `landofile.${role}`,
-              message: `Authored ${role} kind ${healthcheck.kind} is not supported by the healthcheck runner.`,
-              suggestion: `Use kind: command with a probe command, or ${role}: false to disable the probe.`,
-            });
-          break;
-        case "command":
-        case "none":
-        case undefined:
-          break;
-      }
       if (
         role === "readiness" &&
         healthcheck.target === "host" &&

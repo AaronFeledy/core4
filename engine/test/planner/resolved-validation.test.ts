@@ -364,14 +364,12 @@ test("local override routes retain layer attribution in lint and planning", asyn
   });
 });
 
-test("all unsupported authored healthcheck kinds are reported together", async () => {
+test("authored HTTP and TCP healthchecks do not block resolution", async () => {
   await withApp(
     "services:\n  a: {type: validation, healthcheck: {kind: http, url: 'http://localhost'}}\n  b: {type: validation, healthcheck: {kind: tcp, port: 80}}\n",
     async (root) => {
-      await compareIssues(root, [
-        ["services", "a", "healthcheck", "kind"],
-        ["services", "b", "healthcheck", "kind"],
-      ]);
+      const result = await Effect.runPromise(planning(root).pipe(Effect.result));
+      expect(Result.isSuccess(result)).toBe(true);
     },
   );
 });
