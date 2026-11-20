@@ -3,7 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  LOOKUP_BUDGET_EXHAUSTED,
   STALE_AFTER_MS,
+  buildCanarySummary,
   classifyTagAge,
   extractStockArtifactTags,
   extractStockArtifactTagsFromDirectory,
@@ -13,7 +15,11 @@ import {
   lookupTagRebuild,
   parseRebuildTimestamp,
   parseStockImageRef,
+  registryBlobUrl,
   registryManifestUrl,
+  registryReferencePath,
+  runCanaryMain,
+  runStockArtifactAgeCanary,
 } from "../../../scripts/stock-artifact-age-canary.ts";
 
 const roots: string[] = [];
@@ -184,6 +190,15 @@ test("builds portable Hub and registry lookup URLs", () => {
     "https://docker.elastic.co/v2/elasticsearch/elasticsearch/manifests/8.17.0",
   );
   expect(hubTagUrl(requireParsedRef("mcr.microsoft.com/mssql/server:2019-latest"))).toBeUndefined();
+  const digest = `sha256:${"ab".repeat(32)}`;
+  expect(registryReferencePath(digest)).toBe(digest);
+  expect(registryReferencePath(digest)).not.toContain("%3A");
+  expect(registryManifestUrl(elastic, digest)).toBe(
+    `https://docker.elastic.co/v2/elasticsearch/elasticsearch/manifests/${digest}`,
+  );
+  expect(registryBlobUrl(elastic, digest)).toBe(
+    `https://docker.elastic.co/v2/elasticsearch/elasticsearch/blobs/${digest}`,
+  );
 });
 
 test("classifies fresh, stale, and unknown rebuild ages", () => {
@@ -230,7 +245,9 @@ test("Hub last_updated is used and HTTP Date is ignored", async () => {
 test("non-Hub registries use config created and never the Date header", async () => {
   const now = Date.parse("2026-11-19T00:00:00Z");
   const created = "2026-10-01T00:00:00.000000000Z";
+  const urls: string[] = [];
   const fetchImpl = async (url: string) => {
+    urls.push(url);
     if (url.endsWith("/manifests/8.17.0")) {
       return Response.json(
         { schemaVersion: 2, config: { digest: "sha256:abc" } },
@@ -252,6 +269,8 @@ test("non-Hub registries use config created and never the Date header", async ()
     source: "registry-config-created",
     rebuiltAt: "2026-10-01T00:00:00.000Z",
   });
+  expect(urls.some((url) => url.endsWith("/blobs/sha256:abc"))).toBe(true);
+  expect(urls.some((url) => url.includes("sha256%3A"))).toBe(false);
 
   const unknown = await lookupTagRebuild("docker.elastic.co/elasticsearch/elasticsearch:8.17.0", {
     nowMs: now,
@@ -343,6 +362,113 @@ test("summary lists stale and unknown tags", () => {
   expect(markdown).not.toContain("`redis:7`");
   expect(markdown).toContain("ARTIFACT_REFRESH_EXTENSION");
   expect(markdown).toContain("refresh:true");
+});
+
+test("remaining tags are unknown when the lookup deadline expires", async () => {
+  const root = await fixtureRoot();
+  await mkdir(join(root, "services"), { recursive: true });
+  await writeFile(join(root, "services", "mysql.ts"), 'const DEFAULT_IMAGE = "mysql:8.0";\n');
+  await writeFile(join(root, "services", "redis.ts"), 'const DEFAULT_IMAGE = "redis:7";\n');
+  let current = 0;
+  let fetches = 0;
+  const summary = await runStockArtifactAgeCanary({
+    directory: join(root, "services"),
+    now: () => current,
+    deadlineMs: 5,
+    nowMs: Date.parse("2026-11-19T00:00:00Z"),
+    sleep: async () => undefined,
+    fetch: async () => {
+      fetches += 1;
+      current = 10;
+      return Response.json({ last_updated: "2026-11-01T00:00:00Z" });
+    },
+  });
+  expect(fetches).toBe(1);
+  expect(summary.lookups.map((entry) => [entry.tag, entry.verdict, entry.detail])).toEqual([
+    ["mysql:8.0", "fresh", "Docker Hub last_updated"],
+    ["redis:7", "unknown", LOOKUP_BUDGET_EXHAUSTED],
+  ]);
+});
+
+test("entrypoint warns and exits 0 when extract or summary write throws", async () => {
+  const previous = process.exitCode ?? 0;
+  process.exitCode = 1;
+  const chunks: string[] = [];
+  const code = await runCanaryMain({
+    nowMs: Date.parse("2026-11-19T00:00:00Z"),
+    execute: async () => {
+      throw new Error("extract exploded");
+    },
+    stdoutWrite: (chunk) => {
+      chunks.push(chunk);
+    },
+    writeOutput: async (summary) => {
+      chunks.push(summary.markdown);
+    },
+  });
+  expect(code).toBe(0);
+  expect(process.exitCode).toBe(0);
+  expect(chunks.some((chunk) => chunk.includes("::warning title=Stock artifact age canary failed::"))).toBe(
+    true,
+  );
+  expect(chunks.some((chunk) => chunk.includes("extract exploded"))).toBe(true);
+  expect(chunks.some((chunk) => chunk.includes("## Unknown"))).toBe(true);
+
+  process.exitCode = 1;
+  const writeChunks: string[] = [];
+  const writeCode = await runCanaryMain({
+    nowMs: Date.parse("2026-11-19T00:00:00Z"),
+    execute: async () => {
+      throw new Error("still broken");
+    },
+    stdoutWrite: (chunk) => {
+      writeChunks.push(chunk);
+    },
+    writeOutput: async () => {
+      throw new Error("disk full");
+    },
+  });
+  expect(writeCode).toBe(0);
+  expect(process.exitCode).toBe(0);
+  expect(
+    writeChunks.some((chunk) => chunk.includes("::warning title=Stock artifact age canary failed::")),
+  ).toBe(true);
+  expect(writeChunks.some((chunk) => chunk.includes("still broken"))).toBe(true);
+  expect(writeChunks.some((chunk) => chunk.includes("## Unknown"))).toBe(true);
+
+  process.exitCode = 1;
+  const summaryChunks: string[] = [];
+  const now = Date.parse("2026-11-19T00:00:00Z");
+  const summaryCode = await runCanaryMain({
+    nowMs: now,
+    execute: async () =>
+      buildCanarySummary(
+        [
+          {
+            tag: "mysql:8.0",
+            rebuiltAt: "2026-01-01T00:00:00.000Z",
+            rebuiltAtMs: Date.parse("2026-01-01T00:00:00Z"),
+            verdict: "stale",
+            source: "hub-last-updated",
+            detail: "Docker Hub last_updated",
+          },
+        ],
+        now,
+      ),
+    stdoutWrite: (chunk) => {
+      summaryChunks.push(chunk);
+    },
+    writeOutput: async () => {
+      throw new Error("disk full");
+    },
+  });
+  expect(summaryCode).toBe(0);
+  expect(process.exitCode).toBe(0);
+  expect(
+    summaryChunks.some((chunk) => chunk.includes("::warning title=Stock artifact age canary failed::")),
+  ).toBe(true);
+  expect(summaryChunks.some((chunk) => chunk.includes("`mysql:8.0`"))).toBe(true);
+  process.exitCode = previous;
 });
 
 test("extracts stock tags from the live service-lando artifact tables", async () => {

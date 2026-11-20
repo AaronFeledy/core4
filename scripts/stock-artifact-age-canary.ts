@@ -10,18 +10,22 @@
  * This is a maintainer canary. It does not replace the stock PHP weekly refresh
  * (`ARTIFACT_REFRESH_EXTENSION`) or rebuild `refresh:true`.
  *
- * Warn, never fail, including on lookup failure or HTTP 429. A failed lookup is
- * never treated as fresh. Non-Hub Registry API v2 hosts have no `last_updated`
- * field; do not use the HTTP Date header for them.
+ * Warn, never fail, including on lookup failure, HTTP 429, thrown extract or
+ * summary errors, and a total registry outage. A failed lookup is never treated
+ * as fresh. Lookups share a 12-minute deadline so a full outage finishes inside
+ * the 20-minute job timeout; leftover tags are unknown. Non-Hub Registry API v2
+ * hosts have no `last_updated` field; do not use the HTTP Date header for them.
  */
 import { appendFile, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import ts from "@typescript/typescript6";
 
 export const STALE_AFTER_MS = 90 * 24 * 60 * 60 * 1000;
-export const DEFAULT_RETRY_ATTEMPTS = 4;
+export const DEFAULT_RETRY_ATTEMPTS = 2;
 export const DEFAULT_RETRY_BASE_DELAY_MS = 1_000;
-const REQUEST_TIMEOUT_MS = 30_000;
+export const REQUEST_TIMEOUT_MS = 8_000;
+export const LOOKUP_DEADLINE_MS = 12 * 60 * 1_000;
+export const LOOKUP_BUDGET_EXHAUSTED = "lookup budget exhausted";
 const ZERO_TIME_MS = Date.parse("0001-01-01T00:00:00Z");
 const HUB_REGISTRIES = new Set(["docker.io", "index.docker.io", "registry-1.docker.io"]);
 const MANIFEST_ACCEPT =
@@ -119,8 +123,14 @@ export const hubTagUrl = (image: ParsedStockImage): string | undefined => {
   return `https://hub.docker.com/v2/repositories/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/tags/${encodeURIComponent(image.tag)}`;
 };
 
-export const registryManifestUrl = (image: ParsedStockImage): string =>
-  `https://${image.registry}/v2/${image.repository}/manifests/${encodeURIComponent(image.tag)}`;
+export const registryReferencePath = (reference: string): string =>
+  reference.startsWith("sha256:") ? reference : encodeURIComponent(reference);
+
+export const registryManifestUrl = (image: ParsedStockImage, reference = image.tag): string =>
+  `https://${image.registry}/v2/${image.repository}/manifests/${registryReferencePath(reference)}`;
+
+export const registryBlobUrl = (image: ParsedStockImage, digest: string): string =>
+  `https://${image.registry}/v2/${image.repository}/blobs/${registryReferencePath(digest)}`;
 
 export const classifyTagAge = (
   rebuiltAtMs: number | undefined,
@@ -509,8 +519,14 @@ const retryAfterMs = (response: Response, attempt: number, baseDelayMs: number):
 
 const isRetryableStatus = (status: number): boolean => status === 429 || status >= 500;
 
+const remainingMs = (budget: LookupBudget): number => budget.deadlineMs - budget.now();
+
 export const canaryFetch: CanaryFetch = (url, init) =>
-  fetch(url, { ...init, redirect: "follow", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  fetch(url, {
+    redirect: "follow",
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
 
 const requestWithRetry = async (
   url: string,
@@ -519,18 +535,28 @@ const requestWithRetry = async (
   sleep: CanarySleep,
   attempts: number,
   baseDelayMs: number,
+  budget: LookupBudget,
 ): Promise<Response | undefined> => {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const remaining = remainingMs(budget);
+    if (remaining <= 0) return undefined;
     try {
-      const response = await fetchImpl(url, init);
+      const response = await fetchImpl(url, {
+        ...init,
+        signal: AbortSignal.timeout(Math.min(budget.requestTimeoutMs, remaining)),
+      });
       if (isRetryableStatus(response.status) && attempt < attempts - 1) {
-        await sleep(retryAfterMs(response, attempt, baseDelayMs));
+        const delay = Math.min(retryAfterMs(response, attempt, baseDelayMs), remainingMs(budget));
+        if (delay <= 0) return response;
+        await sleep(delay);
         continue;
       }
       return response;
     } catch {
       if (attempt < attempts - 1) {
-        await sleep(baseDelayMs * 2 ** attempt);
+        const delay = Math.min(baseDelayMs * 2 ** attempt, remainingMs(budget));
+        if (delay <= 0) return undefined;
+        await sleep(delay);
         continue;
       }
       return undefined;
@@ -562,13 +588,14 @@ const bearerToken = async (
   sleep: CanarySleep,
   attempts: number,
   baseDelayMs: number,
+  budget: LookupBudget,
 ): Promise<string | undefined> => {
   const challenge = parseWwwAuthenticate(authenticate);
   if (challenge === undefined) return undefined;
   const url = new URL(challenge.realm);
   if (challenge.service !== undefined) url.searchParams.set("service", challenge.service);
   if (challenge.scope !== undefined) url.searchParams.set("scope", challenge.scope);
-  const response = await requestWithRetry(url.href, {}, fetchImpl, sleep, attempts, baseDelayMs);
+  const response = await requestWithRetry(url.href, {}, fetchImpl, sleep, attempts, baseDelayMs, budget);
   if (response === undefined || !response.ok) return undefined;
   const body: unknown = await response.json().catch(() => undefined);
   if (!isJsonRecord(body) || typeof body.token !== "string" || body.token.length === 0) {
@@ -610,10 +637,11 @@ const registryGet = async (
   sleep: CanarySleep,
   attempts: number,
   baseDelayMs: number,
+  budget: LookupBudget,
 ): Promise<unknown> => {
   const url = `https://${image.registry}/v2/${image.repository}/${path}`;
   const headers: Record<string, string> = { Accept: MANIFEST_ACCEPT };
-  const first = await requestWithRetry(url, { headers }, fetchImpl, sleep, attempts, baseDelayMs);
+  const first = await requestWithRetry(url, { headers }, fetchImpl, sleep, attempts, baseDelayMs, budget);
   if (first === undefined) return undefined;
   let response = first;
   if (response.status === 401) {
@@ -623,6 +651,7 @@ const registryGet = async (
       sleep,
       attempts,
       baseDelayMs,
+      budget,
     );
     if (token === undefined) return undefined;
     const authorized = await requestWithRetry(
@@ -632,6 +661,7 @@ const registryGet = async (
       sleep,
       attempts,
       baseDelayMs,
+      budget,
     );
     if (authorized === undefined) return undefined;
     response = authorized;
@@ -643,10 +673,28 @@ const registryGet = async (
 export type LookupOptions = {
   readonly fetch?: CanaryFetch;
   readonly sleep?: CanarySleep;
+  readonly now?: () => number;
   readonly nowMs?: number;
   readonly staleAfterMs?: number;
   readonly attempts?: number;
   readonly baseDelayMs?: number;
+  readonly requestTimeoutMs?: number;
+  readonly deadlineMs?: number;
+};
+
+type LookupBudget = {
+  readonly now: () => number;
+  readonly deadlineMs: number;
+  readonly requestTimeoutMs: number;
+};
+
+const lookupBudget = (options: LookupOptions): LookupBudget => {
+  const now = options.now ?? Date.now;
+  return {
+    now,
+    deadlineMs: options.deadlineMs ?? now() + LOOKUP_DEADLINE_MS,
+    requestTimeoutMs: options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS,
+  };
 };
 
 export const lookupTagRebuild = async (tag: string, options: LookupOptions = {}): Promise<TagLookup> => {
@@ -656,6 +704,8 @@ export const lookupTagRebuild = async (tag: string, options: LookupOptions = {})
   const staleAfterMs = options.staleAfterMs ?? STALE_AFTER_MS;
   const attempts = options.attempts ?? DEFAULT_RETRY_ATTEMPTS;
   const baseDelayMs = options.baseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
+  const budget = lookupBudget(options);
+  if (remainingMs(budget) <= 0) return unknownLookup(tag, LOOKUP_BUDGET_EXHAUSTED);
   const parsed = parseStockImageRef(tag);
   if (parsed === undefined) {
     return {
@@ -669,9 +719,9 @@ export const lookupTagRebuild = async (tag: string, options: LookupOptions = {})
   }
   const hub = hubTagUrl(parsed);
   if (hub !== undefined) {
-    const response = await requestWithRetry(hub, {}, fetchImpl, sleep, attempts, baseDelayMs);
+    const response = await requestWithRetry(hub, {}, fetchImpl, sleep, attempts, baseDelayMs, budget);
     if (response === undefined) {
-      return unknownLookup(tag, "hub lookup failed");
+      return unknownLookup(tag, remainingMs(budget) <= 0 ? LOOKUP_BUDGET_EXHAUSTED : "hub lookup failed");
     }
     if (!response.ok) {
       return unknownLookup(tag, `hub HTTP ${response.status}`);
@@ -694,26 +744,49 @@ export const lookupTagRebuild = async (tag: string, options: LookupOptions = {})
   }
   const manifest = await registryGet(
     parsed,
-    `manifests/${encodeURIComponent(parsed.tag)}`,
+    `manifests/${registryReferencePath(parsed.tag)}`,
     fetchImpl,
     sleep,
     attempts,
     baseDelayMs,
+    budget,
   );
   const childDigest = pickManifestDigest(manifest);
   const manifestBody =
     childDigest === undefined
       ? manifest
-      : await registryGet(parsed, `manifests/${childDigest}`, fetchImpl, sleep, attempts, baseDelayMs);
+      : await registryGet(
+          parsed,
+          `manifests/${registryReferencePath(childDigest)}`,
+          fetchImpl,
+          sleep,
+          attempts,
+          baseDelayMs,
+          budget,
+        );
   const digest = configDigest(manifestBody);
   if (digest === undefined) {
-    return unknownLookup(tag, "registry config digest missing");
+    return unknownLookup(
+      tag,
+      remainingMs(budget) <= 0 ? LOOKUP_BUDGET_EXHAUSTED : "registry config digest missing",
+    );
   }
-  const config = await registryGet(parsed, `blobs/${digest}`, fetchImpl, sleep, attempts, baseDelayMs);
+  const config = await registryGet(
+    parsed,
+    `blobs/${registryReferencePath(digest)}`,
+    fetchImpl,
+    sleep,
+    attempts,
+    baseDelayMs,
+    budget,
+  );
   const created = configCreated(config);
   const rebuiltAtMs = parseRebuildTimestamp(created);
   if (rebuiltAtMs === undefined) {
-    return unknownLookup(tag, "registry config created missing");
+    return unknownLookup(
+      tag,
+      remainingMs(budget) <= 0 ? LOOKUP_BUDGET_EXHAUSTED : "registry config created missing",
+    );
   }
   return {
     tag,
@@ -791,37 +864,92 @@ export type RunCanaryOptions = LookupOptions & {
   readonly directory?: string;
 };
 
+const errorDetail = (error: unknown): string => {
+  if (error instanceof Error) return `${error.name}: ${error.message}`.replace(/\s+/gu, " ").trim();
+  return String(error).replace(/\s+/gu, " ").trim();
+};
+
 export const runStockArtifactAgeCanary = async (options: RunCanaryOptions = {}): Promise<CanarySummary> => {
   const directory =
     options.directory ?? resolve(import.meta.dirname, "../plugins/service-lando/src/services");
   const tags = await extractStockArtifactTagsFromDirectory(directory);
+  const clock = options.now ?? Date.now;
   const nowMs = options.nowMs ?? Date.now();
+  const deadlineMs = options.deadlineMs ?? clock() + LOOKUP_DEADLINE_MS;
   const lookups: TagLookup[] = [];
   for (const tag of tags) {
-    lookups.push(await lookupTagRebuild(tag, { ...options, nowMs }));
+    if (clock() >= deadlineMs) {
+      lookups.push(unknownLookup(tag, LOOKUP_BUDGET_EXHAUSTED));
+      continue;
+    }
+    try {
+      lookups.push(await lookupTagRebuild(tag, { ...options, nowMs, now: clock, deadlineMs }));
+    } catch (error) {
+      lookups.push(unknownLookup(tag, errorDetail(error)));
+    }
   }
-  const summary = buildCanarySummary(lookups, nowMs);
-  return summary;
+  return buildCanarySummary(lookups, nowMs);
 };
 
-const writeGithubOutput = async (summary: CanarySummary): Promise<void> => {
-  process.stdout.write(summary.markdown);
+export type CanaryStdoutWrite = (chunk: string) => void;
+
+const defaultStdoutWrite: CanaryStdoutWrite = (chunk) => {
+  process.stdout.write(chunk);
+};
+
+const annotationText = (value: string): string => value.replace(/\s+/gu, " ").trim();
+
+export const writeGithubOutput = async (
+  summary: CanarySummary,
+  write: CanaryStdoutWrite = defaultStdoutWrite,
+): Promise<void> => {
+  write(summary.markdown);
   for (const entry of summary.stale) {
-    process.stdout.write(
-      `::warning title=Stale stock image::${entry.tag} last rebuilt ${entry.rebuiltAt ?? "unknown"}\n`,
+    write(
+      `::warning title=Stale stock image::${annotationText(`${entry.tag} last rebuilt ${entry.rebuiltAt ?? "unknown"}`)}\n`,
     );
   }
   for (const entry of summary.unknown) {
-    process.stdout.write(`::warning title=Unknown stock image age::${entry.tag} (${entry.detail})\n`);
+    write(`::warning title=Unknown stock image age::${annotationText(`${entry.tag} (${entry.detail})`)}\n`);
   }
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;
   if (summaryPath !== undefined && summaryPath.length > 0) {
-    await appendFile(summaryPath, summary.markdown);
+    try {
+      await appendFile(summaryPath, summary.markdown);
+    } catch (error) {
+      write(`::warning title=Stock artifact age canary summary::${annotationText(errorDetail(error))}\n`);
+    }
   }
 };
 
-if (import.meta.main) {
-  const summary = await runStockArtifactAgeCanary();
-  await writeGithubOutput(summary);
+export type RunCanaryMainOptions = RunCanaryOptions & {
+  readonly execute?: (options: RunCanaryOptions) => Promise<CanarySummary>;
+  readonly writeOutput?: (summary: CanarySummary) => Promise<void>;
+  readonly stdoutWrite?: CanaryStdoutWrite;
+};
+
+export const runCanaryMain = async (options: RunCanaryMainOptions = {}): Promise<0> => {
+  const write = options.stdoutWrite ?? defaultStdoutWrite;
+  const writeOutput = options.writeOutput ?? ((summary: CanarySummary) => writeGithubOutput(summary, write));
+  let summary: CanarySummary | undefined;
+  try {
+    summary = await (options.execute ?? runStockArtifactAgeCanary)(options);
+    await writeOutput(summary);
+  } catch (error) {
+    const detail = errorDetail(error);
+    write(`::warning title=Stock artifact age canary failed::${annotationText(detail)}\n`);
+    const fallback =
+      summary ?? buildCanarySummary([unknownLookup("(canary)", detail)], options.nowMs ?? Date.now());
+    try {
+      await writeOutput(fallback);
+    } catch {
+      write(fallback.markdown);
+    }
+  }
   process.exitCode = 0;
+  return 0;
+};
+
+if (import.meta.main) {
+  await runCanaryMain();
 }
