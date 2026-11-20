@@ -373,6 +373,33 @@ finish these steps from the repository root before you push:
    bun test landofile/test/pipeline/golden-corpus.test.ts landofile/test/provenance-invariant.test.ts sdk/test/schema/landofile-parity.test.ts core/test/guides/fixture-lint-plan-parity.test.ts
    ```
 
+## Put a feature's tests in its home guide
+
+Every feature has one home guide, and that guide owns every test that drives
+Lando through its CLI or library API for the feature. That includes edge
+cases and regressions the page never mentions. Readers see the steps that
+teach the feature; the rest run where readers don't see them:
+
+- A `<Hidden reason="...">` block adds steps to a reader scenario, such as
+  an edge case of the flow the page shows. A hidden step must not change what
+  the visible steps show: a reader who runs only the visible steps gets the
+  result the page describes.
+- A test-only scenario, `<Scenario render={false} reason="...">`, holds a
+  flow the page doesn't teach, such as a regression for a reported bug or a
+  failure path. It never renders and produces no public transcript.
+
+Other pages that teach the same feature link to its home guide instead of
+repeating these tests. When you edit a guide, treat hidden steps and
+test-only scenarios as tests, not as content to trim: deleting one removes
+coverage.
+
+Tests that call internal modules directly, such as a planner function or a
+state-store transition, stay in the owning package's `test/` tree. A test
+that drives the CLI but needs something the guide components can't express,
+such as sending a signal to a running command, goes in a compiled-CLI live
+suite under `core/test/live/`. Don't add a live suite that replays a flow a
+guide already proves.
+
 ## Register coverage
 
 A guide under `docs/guides/**` needs a `Shipped` row in

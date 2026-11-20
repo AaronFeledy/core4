@@ -102,6 +102,10 @@ Built and not listed below: the Effect runtime and SDK contracts; the service-ty
 | Durable readiness last-proof storage | §6.10 | Not started | Needs an identity and invalidation design first. |
 | Full Bun config-source isolation for child processes | §9.6 | Not started | Network and CA projection are built. |
 | Error, event, service, template-step, API-report, acceptance-index, Mutagen-client, and plugin-template generators | §17.2 | Not started | |
+| Guide case files | §19.7 | Not started | Guide discovery reads only `.mdx`. Tracked in #2523. |
+| Background scenario runs | §19.4 | Not started | `ScenarioContext` runs every invocation to completion. Tracked in #2524. |
+| Home guides own feature tests | §19.1, §19.9 | Not started | No source-to-home-guide map beyond three PRD coverage sections (#2525). Duplicate live suites: #2526. Migration of `core/test/live`: #2528. |
+| `<Run shell>` | §19.3 | Contract only | The harness fails it with `NotImplementedError`; build or remove it in #2527. |
 | Multi-provider apps | §5.9 | Not started | One provider per app. |
 | §14.2 extension constraints: OS-keychain store, persistent agent, explicit `global:` dependencies, service-type `topLevelAlias` | §14.2 | Not started | Each has its trigger condition in §14.2. |
 | Install surfaces beyond GitHub Releases and `get.lando.dev` | §17.7 | Not started | Outside the current install contract; adding one extends §17.7 and §17.8. |
