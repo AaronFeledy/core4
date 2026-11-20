@@ -40,10 +40,10 @@ describe("volume coordination fiber-local state", () => {
     const locks: string[] = [];
     const recordingStore: StateStoreShape = {
       ...store,
-      withLock: (lockKey, body) =>
+      withLock: (lockKey, body, options) =>
         Effect.suspend(() => {
           locks.push(lockKey);
-          return store.withLock(lockKey, body);
+          return store.withLock(lockKey, body, options);
         }),
     };
     // When
@@ -181,11 +181,11 @@ describe("volume coordination fiber-local state", () => {
           let attempts = 0;
           const observingStore: StateStoreShape = {
             ...store,
-            withLock: (key, body) =>
+            withLock: (key, body, options) =>
               Effect.suspend(() => {
                 attempts++;
                 return (attempts === 2 ? Deferred.succeed(secondAttempt, undefined) : Effect.void).pipe(
-                  Effect.andThen(store.withLock(key, body)),
+                  Effect.andThen(store.withLock(key, body, options)),
                 );
               }),
           };
