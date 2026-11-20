@@ -50,7 +50,7 @@ export const readScenarioCa = Effect.fnUntraced(function* (cwd: string) {
   const mkcert = join(binDir, process.platform === "win32" ? "mkcert.exe" : "mkcert");
   return yield* Effect.tryPromise({
     try: async (signal) => {
-      // Like router setup, ask the installed mkcert for CAROOT. This does not create a CA.
+      // Read the CA installed by setup rather than creating one in the test.
       const child = Bun.spawn([mkcert, "-CAROOT"], { cwd, signal, stdout: "pipe", stderr: "ignore" });
       const [code, output] = await Promise.all([child.exited, new Response(child.stdout).text()]);
       const root = output.trim();
