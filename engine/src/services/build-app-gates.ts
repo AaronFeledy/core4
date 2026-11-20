@@ -23,12 +23,7 @@ export const runAppBuildGate = (
     case "service_healthy": {
       const candidate = input.plan.services[service];
       const readiness = candidate === undefined ? undefined : effectiveReadiness(candidate);
-      if (
-        candidate === undefined ||
-        readiness === undefined ||
-        readiness.kind !== "command" ||
-        readiness.command === undefined
-      )
+      if (candidate === undefined || readiness === undefined || readiness.kind === "none")
         return Effect.succeed({ outcome: "failed" });
       return makeHealthcheckRunner({
         exec: input.provider.exec,
