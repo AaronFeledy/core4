@@ -786,6 +786,8 @@ Bundled recipes are authored as `RecipeSource` values, compiled at codegen throu
 
 The catalog also ships `node-api`, `node-postgres`, `node-ts`, `astro`, `sveltekit`, `nextjs`, `django`, `fastapi`, `jekyll`, `hugo`, `eleventy`, and `empty`, for 25 bundled recipes in total. Hoster recipes require a `RemoteSource` implementation (§10.12); Lando 3 compatibility shims remain out of scope. The bundled `rails` recipe includes `rails` and `bundle` tooling, gives every prompt a non-interactive default, and requires an executable README under `recipes/rails/`.
 
+The bundled `django` recipe MUST use the stock Python dependency environment shared automatically by `web` and the optional Celery `worker`, without authored venv mounts. It declares `lando pip` to run `python -m pip` on `web`. The worker declares `endpoints: []`, `restart: unless-stopped`, and `exec celery -A config worker --loglevel=info`, so the worker has no route and container init delivers signals directly to Celery. The bundled `fastapi` recipe MUST leave its entrypoint and dependency environment to stock Python (§6.12.1). Neither recipe runs commands at init; both inherit `requirements.txt` preparation when their consumers start (§6.5.1), not on an unchanged warm start.
+
 #### 8.8.11 Recipe authoring surface
 
 Recipes are independently versioned plain directories. `meta:recipes:validate` and `meta:recipes:describe` resolve, compile, and prepare a source read-only (§8.8.7), reporting readiness, missing answers, history eligibility, and the preview without init. Authors MAY publish through local, git, npm, archive, plugin, or reviewed-index sources (§23.3).
