@@ -83,7 +83,6 @@ verify the router certificate against the CA that `lando setup` installed.
     <Hidden reason="Start the fixture site for the request example">
       <Step name="start-static-site">
         <UseFixture name="router-page" />
-        <Run command="lando init . --recipe=./site --name=guide-router-page --yes --format=json" />
         <Run command="lando start --format=json" />
       </Step>
     </Hidden>
@@ -97,11 +96,10 @@ verify the router certificate against the CA that `lando setup` installed.
       </Step>
     </Hidden>
   </Scenario>
-  <Scenario id="prepare-router-page" render={false} reason="Check the request fixture can be initialized without a live provider">
-    <Step name="initialize-static-site">
+  <Scenario id="prepare-router-page" render={false} reason="Check the request fixture plans a routed static site without a live provider">
+    <Step name="plan-static-site">
       <UseFixture name="router-page" />
-      <Run command="lando init . --recipe=./site --name=guide-router-page --yes --format=json" />
-      <Verify file="router-page/index.html" expect={{ regex: "Hello from the router" }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
     </Step>
   </Scenario>
 </Guide>

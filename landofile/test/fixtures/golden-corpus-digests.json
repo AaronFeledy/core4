@@ -381,6 +381,10 @@
       "digest": "bed9f5e2d17248a89ef4bb97f7b3c1af43a447f3280c91990f592b1c1c1526d2"
     },
     {
+      "fixture": "docs/guides/e2e-smoke-scenarios/fixtures/router-page",
+      "digest": "2ff9cd476a312d6dc5d13b77a218132a3ba0a6520ff92f97a897224f70e443b6"
+    },
+    {
       "fixture": "docs/guides/elasticsearch/fixtures/elasticsearch-demo",
       "invalid": {
         "status": "invalid",
