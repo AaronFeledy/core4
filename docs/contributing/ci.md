@@ -62,6 +62,14 @@ Record per-PR macOS and Windows performance results as advisory. Treat nightly p
 
 Finish the report with separate conclusions for **selected CI** and **broader acceptance**, each using the outcome vocabulary above. List every outstanding mandatory or applicable conditional row and its blocker or next action. Broader acceptance is `pass` only when all required evidence is current and passing; absent evidence must remain visible even when selected CI passes.
 
+### Reproduce the problem first
+
+A fix starts from a failure you have seen on current `main`. Reproduce it in an isolated temp app with the command a user would run, and put the command, its output, and the provider in the PR description or in the issue it closes. Then the review can check the fix against the failure instead of against a description of it.
+
+Before you rework a PR that has been open for a while, rebase it onto current `main` and reproduce its premise again. `main` may already have fixed the problem, or changed the code the PR patches. If the failure no longer reproduces, close the PR with the evidence, or rework it into what is still needed.
+
+A documentation change that works around Lando behavior needs the same proof. Link an open issue that reproduces the failure, and add the hidden tripwire step described in [Pin a known limitation](../guides/authoring/e2e-smoke-scenarios.mdx#pin-a-known-limitation), so the workaround comes out of the docs when the issue is fixed. If the failure does not reproduce, drop the workaround.
+
 ## Choose the CI tier
 
 Pull requests select the highest profile needed by their changed paths:

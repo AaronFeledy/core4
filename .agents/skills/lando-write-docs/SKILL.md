@@ -43,6 +43,7 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - Harness placeholders shown as captured output: `expected exit 0`, `event "…" observed`, `command output`
 - User told to start Traefik by hand
 - Feature stubbed as unavailable when the product does the thing
+- A workaround for Lando behavior that no open issue reproduces on current `main`. Reproduce the failure in an isolated temp app first. If it reproduces, link the issue and add a hidden tripwire step; if it does not, drop the workaround
 - Default provider implied as Docker. Default is `lando` (managed Podman)
 - User page leaks CI/NDJSON/`LANDO_TEST_*`/job names
 - More than one dominant Diátaxis type on a content page (tutorial / how-to / reference / explanation). A landing page or README may route to several forms
