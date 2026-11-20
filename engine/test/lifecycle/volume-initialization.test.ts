@@ -73,7 +73,7 @@ test.each(["created", "existing", "adopted", "replaced", "identity-less", "sibli
       const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
       const store: StateStoreShape = {
         open: (spec) => live.open({ ...spec, root: { path: AbsolutePath.make(root) } }),
-        withLock: (_key, body) => body,
+        withLock: (_key, body, _options) => body,
       };
       let observations = 0;
       const provider = {
@@ -145,7 +145,7 @@ test("a rejected creation receipt fails instead of allowing service startup", as
     const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
     const store: StateStoreShape = {
       open: (spec) => live.open({ ...spec, root: { path: AbsolutePath.make(root) } }),
-      withLock: (_key, body) => body,
+      withLock: (_key, body, _options) => body,
     };
     const conflicting = await Effect.runPromise(
       volumeInitialization(store, {
@@ -245,7 +245,7 @@ test("cooperative cancellation waits for the creation receipt persist step", asy
                     ),
                 })),
               ),
-            withLock: (_key, body) => body,
+            withLock: (_key, body, _options) => body,
           };
           const provider = {
             id: "test",
