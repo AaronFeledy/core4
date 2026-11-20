@@ -23,7 +23,6 @@ export const selectCi = (input: {
   readonly head: string;
   readonly cwd: string;
 }): CiSelection => {
-  // A merge-queue group is the pull request rebased onto the current main, so it selects like one.
   if (input.event !== "pull_request" && input.event !== "merge_group")
     return { profile: "runtime", broad: true, reason: "broad event" };
   const fallback = (reason: string): CiSelection => ({ profile: "providers", broad: false, reason });
