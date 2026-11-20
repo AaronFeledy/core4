@@ -6,24 +6,23 @@ import { makeLandoPaths } from "@lando/paths";
 import { AppLockTimeoutError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { EventService, PathsService } from "@lando/sdk/services";
+import { ADVISORY_LOCK_SUFFIX, resolveOperationLockTimeoutMs } from "@lando/state-store/lock";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import {
   APP_LOCK_HOLDERS_ENV,
-  APP_LOCK_TIMEOUT_ENV,
-  APP_LOCK_WAIT_MESSAGE,
   appMutationLockIdentity,
   appMutationLockKey,
   canonicalAppRoot,
   canonicalAppRootSync,
   isSelfOrAncestorPid,
-  resolveAppLockTimeoutMs,
   withAppMutationLock,
 } from "../../src/operations/app-mutation-lock.ts";
 import { startAppForTarget } from "../../src/operations/start.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
+const APP_LOCK_TIMEOUT_ENV = "LANDO_LOCK_TIMEOUT_MS";
 const previousTimeout = process.env[APP_LOCK_TIMEOUT_ENV];
 const previousHolders = process.env[APP_LOCK_HOLDERS_ENV];
 
@@ -38,6 +37,7 @@ const isolate = async () => {
   const userDataRoot = await mkdtemp(join(tmpdir(), "lando-app-lock-"));
   const appRoot = await mkdtemp(join(tmpdir(), "lando-app-root-"));
   const events: LandoEvent[] = [];
+  const waitAnnounced = Deferred.makeUnsafe<void>();
   const layer = Layer.mergeAll(
     PrivateFileAccessService.layer,
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
@@ -46,8 +46,10 @@ const isolate = async () => {
       EventService.of({
         publish: (event) =>
           Schema.is(LandoEventSchema)(event)
-            ? Effect.sync(() => {
+            ? Effect.gen(function* () {
                 events.push(event);
+                if (event._tag === "message.warn")
+                  yield* Deferred.succeed(waitAnnounced, undefined).pipe(Effect.ignore);
               })
             : Effect.die(new TypeError(`Unexpected event in app mutation lock test: ${String(event)}`)),
         subscribe: () => Stream.die("not used"),
@@ -59,12 +61,12 @@ const isolate = async () => {
       }),
     ),
   );
-  return { userDataRoot, appRoot, events, layer };
+  return { userDataRoot, appRoot, events, layer, waitAnnounced };
 };
 
 const lockPathFor = (userDataRoot: string, appId: string, appRoot: string): string => {
   const key = appMutationLockKey(appId, canonicalAppRootSync(appRoot));
-  return join(userDataRoot, "operation-locks", `${key}.lock`);
+  return join(userDataRoot, "operation-locks", `${key}${ADVISORY_LOCK_SUFFIX}`);
 };
 
 const exists = async (path: string): Promise<boolean> =>
@@ -73,14 +75,19 @@ const exists = async (path: string): Promise<boolean> =>
     () => false,
   );
 
+const waitWarnings = (events: ReadonlyArray<LandoEvent>) =>
+  events.filter((event) => event._tag === "message.warn");
+
 describe("per-app mutation lock", () => {
-  test("reclaims a dead holder despite its inherited token without a wait event", async () => {
-    // Given a fresh app lock left by a dead command.
+  test("acquires over a stale diagnostic record with an inherited token without a wait event", async () => {
+    // Given a leftover sentinel with a dead command's diagnostic bytes and no kernel hold.
     const isolated = await isolate();
     const app = { id: "dead-holder", root: isolated.appRoot };
     const path = lockPathFor(isolated.userDataRoot, app.id, await realpath(app.root));
     await mkdir(join(isolated.userDataRoot, "operation-locks"), { recursive: true });
-    await writeFile(path, JSON.stringify({ pid: 99_999_999, token: "dead", createdAt: Date.now() }));
+    await writeFile(path, JSON.stringify({ pid: 99_999_999, token: "dead", createdAt: Date.now() }), {
+      mode: 0o600,
+    });
     process.env[APP_LOCK_HOLDERS_ENV] = `${appMutationLockKey(app.id, await realpath(app.root))}:dead`;
     try {
       // When the next mutation acquires that lock.
@@ -93,26 +100,22 @@ describe("per-app mutation lock", () => {
       // Then it proceeds without reporting live contention.
       expect(result.pid).toBe(process.pid);
       expect(result.token).not.toBe("dead");
-      expect(
-        isolated.events.filter(
-          (event) => event._tag === "message.warn" && event.body === APP_LOCK_WAIT_MESSAGE,
-        ),
-      ).toHaveLength(0);
+      expect(waitWarnings(isolated.events)).toHaveLength(0);
     } finally {
       await rm(isolated.userDataRoot, { recursive: true, force: true });
       await rm(isolated.appRoot, { recursive: true, force: true });
     }
   });
-  test("reads LANDO_APP_LOCK_TIMEOUT_MS and rejects invalid values", () => {
-    expect(resolveAppLockTimeoutMs({})).toBe(120_000);
-    expect(resolveAppLockTimeoutMs({ [APP_LOCK_TIMEOUT_ENV]: "2500" })).toBe(2500);
-    expect(resolveAppLockTimeoutMs({ [APP_LOCK_TIMEOUT_ENV]: "nope" })).toBe(120_000);
+  test("reads LANDO_LOCK_TIMEOUT_MS and rejects invalid values", () => {
+    expect(resolveOperationLockTimeoutMs({})).toBe(120_000);
+    expect(resolveOperationLockTimeoutMs({ [APP_LOCK_TIMEOUT_ENV]: "2500" })).toBe(2500);
+    expect(resolveOperationLockTimeoutMs({ [APP_LOCK_TIMEOUT_ENV]: "nope" })).toBe(120_000);
     expect(isSelfOrAncestorPid(process.pid)).toBe(true);
     expect(isSelfOrAncestorPid(process.ppid)).toBe(true);
     expect(isSelfOrAncestorPid(1)).toBe(process.ppid === 1);
   });
 
-  test("mutating start holds the lock file for the canonical app key", async () => {
+  test("mutating start holds the lock record for the canonical app key", async () => {
     const held = await Deferred.make<void>().pipe(Effect.runPromise);
     const release = await Deferred.make<void>().pipe(Effect.runPromise);
     const harness = makeHarness({
@@ -131,10 +134,14 @@ describe("per-app mutation lock", () => {
     await Effect.runPromise(Deferred.await(held));
     const path = lockPathFor(harness.userDataRoot, String(plan.id), String(plan.root));
     expect(await exists(path)).toBe(true);
+    const during = JSON.parse(await readFile(path, "utf8")) as { pid: number; token: string };
+    expect(during.pid).toBe(process.pid);
+    expect(during.token.length).toBeGreaterThan(0);
     await Effect.runPromise(Deferred.succeed(release, undefined));
     const exit = await Effect.runPromise(Fiber.await(fiber));
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(await exists(path)).toBe(false);
+    expect(await exists(path)).toBe(process.platform === "win32");
+    if (process.platform === "win32") expect(await readFile(path, "utf8")).toBe("");
   });
 
   test("info, logs, and config lint stay off the mutate lock", async () => {
@@ -252,10 +259,7 @@ describe("per-app mutation lock", () => {
       const second = Effect.runFork(
         withAppMutationLock(app, Effect.succeed("entered")).pipe(Effect.provide(isolated.layer)),
       );
-      for (let attempts = 0; attempts < 100 && isolated.events.length === 0; attempts++) {
-        await Bun.sleep(10);
-      }
-      expect(isolated.events.length).toBeGreaterThan(0);
+      await Effect.runPromise(Deferred.await(isolated.waitAnnounced).pipe(Effect.timeout("2 seconds")));
       await rm(alias);
       await symlink(otherRoot, alias, "dir");
       await Effect.runPromise(Deferred.succeed(release, undefined));
@@ -285,9 +289,9 @@ describe("per-app mutation lock", () => {
     }
   });
 
-  test.each(["inherited", "removed"] as const)(
-    "child with %s holder environment refuses borrowed ownership immediately",
-    async (marker) => {
+  test.each(["inherited", "removed", "zero budget"] as const)(
+    "child refuses borrowed ownership immediately (%s)",
+    async (scenario) => {
       const isolated = await isolate();
       try {
         const app = { id: "child-reentry", root: isolated.appRoot };
@@ -297,8 +301,11 @@ describe("per-app mutation lock", () => {
             Effect.promise(async () => {
               const path = lockPathFor(isolated.userDataRoot, app.id, isolated.appRoot);
               const before = await readFile(path, "utf8");
-              const env = { ...process.env, [APP_LOCK_TIMEOUT_ENV]: "10000" };
-              if (marker === "removed") Reflect.deleteProperty(env, APP_LOCK_HOLDERS_ENV);
+              const env = {
+                ...process.env,
+                [APP_LOCK_TIMEOUT_ENV]: scenario === "zero budget" ? "0" : "10000",
+              };
+              if (scenario === "removed") Reflect.deleteProperty(env, APP_LOCK_HOLDERS_ENV);
               const child = Bun.spawn(
                 [
                   process.execPath,
@@ -346,7 +353,12 @@ describe("per-app mutation lock", () => {
           independent: "own lease",
           result: {
             _tag: "Failure",
-            failure: { _tag: "StateStoreError", reason: "lock", operation: "nestedAppMutation" },
+            failure: {
+              _tag: "StateStoreError",
+              reason: "lock",
+              operation: "nestedAppMutation",
+              lockFailure: "refused",
+            },
           },
         });
         expect(observed.receipt.elapsed).toBeLessThan(2000);
@@ -371,16 +383,26 @@ describe("per-app mutation lock", () => {
       await Effect.runPromise(Deferred.await(acquired));
       const path = lockPathFor(isolated.userDataRoot, app.id, app.root);
       expect(await exists(path)).toBe(true);
+      const during = JSON.parse(await readFile(path, "utf8")) as { pid: number };
+      expect(during.pid).toBe(process.pid);
       const exit = await Effect.runPromise(Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber))));
       expect(Exit.hasInterrupts(exit)).toBe(true);
-      expect(await exists(path)).toBe(false);
+      // Sentinel may remain; the next acquire must succeed immediately.
+      expect(
+        await Effect.runPromise(
+          withAppMutationLock(app, Effect.succeed("reacquired")).pipe(
+            Effect.provide(isolated.layer),
+            Effect.timeout("1 second"),
+          ),
+        ),
+      ).toBe("reacquired");
     } finally {
       await rm(isolated.userDataRoot, { recursive: true, force: true });
       await rm(isolated.appRoot, { recursive: true, force: true });
     }
   });
 
-  test("a second mutate waits then fails after LANDO_APP_LOCK_TIMEOUT_MS", async () => {
+  test("a second mutate waits then fails after LANDO_LOCK_TIMEOUT_MS", async () => {
     process.env[APP_LOCK_TIMEOUT_ENV] = "400";
     const isolated = await isolate();
     try {
@@ -404,13 +426,9 @@ describe("per-app mutation lock", () => {
       expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure).toBeInstanceOf(AppLockTimeoutError);
-        expect(result.failure.message).toBe(APP_LOCK_WAIT_MESSAGE);
+        expect(result.failure.message).toContain("Timed out after 400ms waiting for app lock for timeout");
       }
-      expect(
-        isolated.events.filter(
-          (event) => event._tag === "message.warn" && event.body === APP_LOCK_WAIT_MESSAGE,
-        ),
-      ).toHaveLength(1);
+      expect(waitWarnings(isolated.events)).toHaveLength(0);
       await Effect.runPromise(Deferred.succeed(release, undefined));
       await Effect.runPromise(Fiber.await(holder));
     } finally {

@@ -4,11 +4,16 @@ import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveOwnedExecutable } from "@lando/engine/install/owned-executable";
-import { acquireAdvisoryLockAt } from "@lando/state-store/lock";
-import { Effect, Result } from "effect";
+import { ADVISORY_LOCK_SUFFIX, acquireAdvisoryLockAt } from "@lando/state-store/lock";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Deferred, Effect, Result } from "effect";
+import { EventPublicationObserver, layer as eventLayer } from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { makeUpdateHandoff } from "../../src/update/handoff.ts";
 import { runWindowsReplacement } from "../../src/update/windows.ts";
+
+const pluginMutationSentinel = (pluginsRoot: string): string =>
+  join(pluginsRoot, `.lando-plugin-mutation${ADVISORY_LOCK_SUFFIX}`);
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -231,18 +236,18 @@ test("holds the mutation lock through replacement and makes the outcome availabl
   const f = await fixture();
   expect(await Effect.runPromise(f.handoff.consumeDeferred(f.input.token))).toBeUndefined();
   let moves = 0;
-  const lock = Bun.file(join(f.input.precondition.pluginsRoot, ".lando-plugin-mutation.lock"));
+  const lockPath = pluginMutationSentinel(f.input.precondition.pluginsRoot);
   await Effect.runPromise(
     runWindowsReplacement(f.input, f.handoff, async (from, to) => {
-      expect(await lock.exists()).toBe(true);
+      expect(await Bun.file(lockPath).exists()).toBe(true);
       moves += 1;
       await rename(from, to);
     }),
   );
   expect(moves).toBe(1);
-  expect(await Bun.file(join(f.input.precondition.pluginsRoot, ".lando-plugin-mutation.lock")).exists()).toBe(
-    false,
-  );
+  const lock = Bun.file(lockPath);
+  expect(await lock.exists()).toBe(process.platform === "win32");
+  if (process.platform === "win32") expect(await lock.text()).toBe("");
   expect(await Bun.file(f.input.executablePath).text()).toBe("new");
   expect(await Bun.file(f.input.backupPath).text()).toBe("old");
   expect((await Effect.runPromise(f.handoff.consumeDeferred(f.input.token)))?.updatedCore).toBe(true);
@@ -251,36 +256,44 @@ test("holds the mutation lock through replacement and makes the outcome availabl
 
 test("a competing lock participant cannot mutate between validation and replacement", async () => {
   const f = await fixture();
-  const attempted = Promise.withResolvers<void>();
+  const waiting = Deferred.makeUnsafe<void>();
   let mutated = false;
   let competitor: Promise<void> | undefined;
-  const lockPath = join(f.input.precondition.pluginsRoot, ".lando-plugin-mutation.lock");
+  const lockPath = pluginMutationSentinel(f.input.precondition.pluginsRoot);
   await Effect.runPromise(
     runWindowsReplacement(f.input, f.handoff, async (from, to) => {
       if (from === f.input.stagedBinaryPath) {
         competitor = Effect.runPromise(
-          Effect.acquireUseRelease(
-            acquireAdvisoryLockAt(lockPath, "plugin:add", {
-              privateFileAccess: {
-                enforce: async () => undefined,
-                verify: async () => {
-                  attempted.resolve();
-                },
-              },
-            }),
-            () =>
-              Effect.promise(async () => {
-                expect(await Bun.file(f.input.executablePath).text()).toBe("new");
+          Effect.scoped(
+            Effect.gen(function* () {
+              const privateFileAccess = yield* PrivateFileAccessService;
+              yield* acquireAdvisoryLockAt(lockPath, "plugin:add", {
+                privateFileAccess,
+                wait: "operation",
+                timeoutMs: 30_000,
+              });
+              const executable = yield* Effect.promise(() => Bun.file(f.input.executablePath).text());
+              expect(executable).toBe("new");
+              yield* Effect.promise(async () => {
                 await writeFile(
                   join(f.input.precondition.pluginsRoot, "registry.json"),
                   "competing mutation",
                 );
                 mutated = true;
-              }),
-            (lock) => lock.release,
+              });
+            }),
+          ).pipe(
+            Effect.provide([eventLayer, PrivateFileAccessService.layer]),
+            Effect.provideService(EventPublicationObserver, (event) =>
+              event._tag === "message.warn" ? Deferred.succeed(waiting, undefined) : Effect.void,
+            ),
+            Effect.timeout("4 seconds"),
           ),
         );
-        await attempted.promise;
+        await Promise.race([
+          competitor,
+          Effect.runPromise(Deferred.await(waiting).pipe(Effect.timeout("3 seconds"))),
+        ]);
       }
       expect(mutated).toBe(false);
       await rename(from, to);
@@ -323,22 +336,15 @@ test.each(["^4.0.0", "<4.2.0"])(
   },
 );
 
-test("lock timeout leaves the existing binary in place and records remediation", async () => {
+test("a plugin mutation lock failure leaves the existing binary in place and records remediation", async () => {
+  // A directory at the sentinel path can never be locked, so acquisition fails at once.
   const f = await fixture();
-  await writeFile(
-    join(f.input.precondition.pluginsRoot, ".lando-plugin-mutation.lock"),
-    JSON.stringify({
-      pid: process.pid,
-      token: "another-process",
-      createdAt: Date.now() - 60_000,
-    }),
-    { mode: 0o600 },
-  );
+  await mkdir(pluginMutationSentinel(f.input.precondition.pluginsRoot));
   await Effect.runPromise(runWindowsReplacement(f.input, f.handoff));
   expect(await Bun.file(f.input.executablePath).text()).toBe("old");
   expect(await Bun.file(f.input.stagedBinaryPath).text()).toBe("new");
   const receipt = await Effect.runPromise(f.handoff.consumeDeferred(f.input.token));
   expect(receipt?.hasFailures).toBe(true);
-  expect(receipt?.coreFailure?.message).toContain("lock");
+  expect(receipt?.coreFailure?.message).toMatch(/lock|plugin mutation/i);
   expect(receipt?.updatedPlugins).toEqual(f.result.updatedPlugins);
 });
