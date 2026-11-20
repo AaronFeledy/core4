@@ -57,9 +57,11 @@ A healthy single-node Elasticsearch reports `green` or `yellow`.
 lando es-cli /_cat/indices
 ```
 
-## Pin a version
+## Upgrade an existing 8.17 app
 
-The default image moved from `8.17.0` to `8.19.25`. That is a same-major data-directory upgrade, so an existing volume typically starts on 8.19 after `lando rebuild`. If you want a rollback path, export a copy of the data volume first. You cannot start 8.17 on files 8.19 has already rewritten.
+The default image is now `8.19.25`. That is a same-major data-directory upgrade, so an existing volume typically starts on 8.19 after `lando rebuild`. If you want a rollback path, export a copy of the data volume first. You cannot start 8.17 on files 8.19 has already rewritten.
+
+## Pin a version
 
 Set `image:` when the default Elasticsearch 8 image isn't the version you want:
 
