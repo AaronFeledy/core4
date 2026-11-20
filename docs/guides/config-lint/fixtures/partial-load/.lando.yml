@@ -1,0 +1,8 @@
+name: lint-local-load
+services:
+  other:
+    type: node:22
+    environment:
+      FOO: "{{ load('./missing-payload.txt') }}"
+  web:
+    type: no-such-type

@@ -83,7 +83,7 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(27);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(28);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
@@ -1007,9 +1007,7 @@ describe("ci workflow", () => {
     const guideScenariosRunner = findIndentedBlock(jobs, "guide-scenarios-linux-x64-runner", 2);
     const guideScenarios = findIndentedBlock(jobs, "guide-scenarios-linux-x64", 2);
 
-    expect(guideScenariosRunner).toContain(
-      "    needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
-    );
+    expect(guideScenariosRunner).toContain("    needs: [selection, static-checks]");
     expect(guideScenariosRunner).toContain("        runs-on: [ubuntu-26.04]");
     expect(guideScenariosRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(guideScenarios).toContain("    needs: [selection, guide-scenarios-linux-x64-runner]");
@@ -1035,52 +1033,9 @@ describe("ci workflow", () => {
       '          GUIDE_DRIFT_PR_BODY="$(gh pr view ${{ github.event.pull_request.number }} --json body --jq .body)" bun run check:guide-drift',
     );
     expect(guideScenariosRunner).toContain(guideScenarioRunLine);
-    expect(guideScenariosRunner).toContain("      - name: Download Linux x64 binary artifact");
-    expect(guideScenariosRunner).toContain("          name: lando-linux-x64");
-    expect(guideScenariosRunner).toContain("        run: chmod +x dist/lando");
-    expect(guideScenariosRunner).toContain("      - name: Provision rootless runtime prerequisites");
-    expect(guideScenariosRunner).toContain("      - name: Prepare provider via lando setup");
-    expect(guideScenariosRunner).toContain("          dist/lando setup --yes --provider=lando");
-    expect(guideScenariosRunner).toContain("      - name: Verify managed runtime socket");
-    expect(guideScenariosRunner).not.toContain(
-      '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
-    );
-    expect(guideScenariosRunner).not.toContain("      - name: Install Podman 6 toolchain");
-    expect(guideScenariosRunner).not.toContain("      - name: Assert Podman 6 host contract");
-    expect(guideScenariosRunner).toContain("      - name: Download current-commit Linux x64 runtime bundle");
-    expect(guideScenariosRunner).toContain(
-      "    needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
-    );
-    expect(guideScenariosRunner).not.toContain("podman system service");
-    expect(guideScenariosRunner).toContain("      - name: Run e2e smoke guide scenarios");
-    expect(guideScenariosRunner).toContain('          LANDO_GUIDE_E2E: "1"');
-    expect(guideScenariosRunner).toContain(
-      `        run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"`,
-    );
     expect(guideScenariosRunner).toContain(guideScenarioStepWithLiveOutput);
-    expect(guideScenariosRunner).toContain(
-      [
-        "      - name: Run e2e smoke guide scenarios",
-        "        env:",
-        '          LANDO_GUIDE_E2E: "1"',
-        guideScenarioLiveOutputEnvLine,
-      ].join("\n"),
-    );
-    expect(guideScenariosRunner.split(guideScenarioLiveOutputEnvLine).length - 1).toBe(2);
-    expect(guideScenariosRunner).toContain("      - name: Teardown guide e2e provider");
-    expect(guideScenariosRunner).toContain("          dist/lando poweroff || true");
-    expect(guideScenariosRunner).toContain(
-      '          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"',
-    );
-    expect(guideScenariosRunner).toContain("      - name: Upload guide e2e provider diagnostics");
-    expect(guideScenariosRunner).toContain("        if: failure()");
-    expect(guideScenariosRunner).toContain("        uses: actions/upload-artifact@v7");
-    expect(guideScenariosRunner).toContain(
-      "          name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}.zip",
-    );
-    expect(guideScenariosRunner).toContain("          path: dist/transcripts/guides/**/*.json");
-    expect(guideScenariosRunner).toContain("          if-no-files-found: ignore");
-    expect(guideScenariosRunner).toContain("          retention-days: 7");
+    expect(guideScenariosRunner).not.toContain("Run e2e smoke guide scenarios");
+    expect(guideScenariosRunner).not.toContain("Download Linux x64 binary artifact");
 
     expect(guideScenariosRunner.indexOf("bun install --frozen-lockfile")).toBeLessThan(
       guideScenariosRunner.indexOf("bun run codegen"),
@@ -1097,14 +1052,71 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner.indexOf("bun run check:guide-drift")).toBeLessThan(
       guideScenariosRunner.indexOf(guideScenarioRunCommand),
     );
-    expect(guideScenariosRunner.indexOf(guideScenarioRunCommand)).toBeLessThan(
-      guideScenariosRunner.indexOf("Download Linux x64 binary artifact"),
+  });
+
+  test("splits the e2e smoke guide scenarios across shards behind one Linux x64 gate", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const guideE2eRunner = findIndentedBlock(jobs, "guide-e2e-linux-x64-runner", 2);
+    const guideE2e = findIndentedBlock(jobs, "guide-e2e-linux-x64", 2);
+
+    expect(guideE2eRunner).toContain(
+      "    needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
     );
-    expect(guideScenariosRunner.indexOf("Download Linux x64 binary artifact")).toBeLessThan(
-      guideScenariosRunner.indexOf("Run e2e smoke guide scenarios"),
+    expect(guideE2eRunner).toContain("        runs-on: [ubuntu-26.04]");
+    expect(guideE2eRunner).toContain("        shard: [1, 2]");
+    expect(guideE2eRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
+    expect(guideE2eRunner).toContain("    timeout-minutes: 30");
+    expect(guideE2e).toContain("    needs: [selection, guide-e2e-linux-x64-runner]");
+    expect(guideE2e).toContain("always() && !cancelled()");
+    expect(guideE2eRunner).toContain("        run: bun install --frozen-lockfile");
+    expect(guideE2eRunner).toContain("        run: bun run codegen");
+    expect(guideE2eRunner).not.toContain("bun run lint:guides");
+    expect(guideE2eRunner).not.toContain(guideScenarioRunLine);
+    expect(guideE2eRunner).toContain("      - name: Download Linux x64 binary artifact");
+    expect(guideE2eRunner).toContain("          name: lando-linux-x64");
+    expect(guideE2eRunner).toContain("        run: chmod +x dist/lando");
+    expect(guideE2eRunner).toContain("      - name: Provision rootless runtime prerequisites");
+    expect(guideE2eRunner).toContain("      - name: Download current-commit Linux x64 runtime bundle");
+    expect(guideE2eRunner).toContain("      - name: Prepare provider via lando setup");
+    expect(guideE2eRunner).toContain("          dist/lando setup --yes --provider=lando");
+    expect(guideE2eRunner).toContain("      - name: Verify managed runtime socket");
+    expect(guideE2eRunner).not.toContain(
+      '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
     );
-    expect(guideScenariosRunner.indexOf("Upload guide scenario transcripts")).toBeGreaterThan(
-      guideScenariosRunner.indexOf("Run e2e smoke guide scenarios"),
+    expect(guideE2eRunner).not.toContain("      - name: Install Podman 6 toolchain");
+    expect(guideE2eRunner).not.toContain("podman system service");
+    expect(guideE2eRunner).toContain(
+      [
+        "      - name: Run e2e smoke guide scenarios",
+        "        env:",
+        '          LANDO_GUIDE_E2E: "1"',
+        guideScenarioLiveOutputEnvLine,
+        '        run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts --smoke-e2e --shard=${{ matrix.shard }}/2',
+      ].join("\n"),
+    );
+    expect(guideE2eRunner).toContain("      - name: Teardown guide e2e provider");
+    expect(guideE2eRunner).toContain("          dist/lando poweroff || true");
+    expect(guideE2eRunner).toContain('          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"');
+    expect(guideE2eRunner).toContain("      - name: Upload guide e2e provider diagnostics");
+    expect(guideE2eRunner).toContain("        if: failure()");
+    expect(guideE2eRunner).toContain("        uses: actions/upload-artifact@v7");
+    expect(guideE2eRunner).toContain(
+      "          name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}-shard${{ matrix.shard }}.zip",
+    );
+    expect(guideE2eRunner).toContain(
+      "          name: guide-e2e-provider-diagnostics-${{ github.run_id }}-${{ matrix.runs-on }}-shard${{ matrix.shard }}.zip",
+    );
+    expect(guideE2eRunner).toContain("          path: dist/transcripts/guides/**/*.json");
+
+    expect(guideE2eRunner.indexOf("bun run codegen")).toBeLessThan(
+      guideE2eRunner.indexOf("Download Linux x64 binary artifact"),
+    );
+    expect(guideE2eRunner.indexOf("Download Linux x64 binary artifact")).toBeLessThan(
+      guideE2eRunner.indexOf("Run e2e smoke guide scenarios"),
+    );
+    expect(guideE2eRunner.indexOf("Upload guide scenario transcripts")).toBeGreaterThan(
+      guideE2eRunner.indexOf("Run e2e smoke guide scenarios"),
     );
   });
 
@@ -1476,7 +1488,7 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
     const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-x64-runner", 2);
-    const guideScenarios = findIndentedBlock(jobs, "guide-scenarios-linux-x64-runner", 2);
+    const guideScenarios = findIndentedBlock(jobs, "guide-e2e-linux-x64-runner", 2);
 
     for (const [hostKey, runner] of [
       ["linux-x64", "ubuntu-24.04"],

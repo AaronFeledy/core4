@@ -432,6 +432,17 @@ for (const name of [
   });
 }
 
+test("locates an invalid service key in the global overlay", async () => {
+  await withGlobalFiles(async ({ root, load }) => {
+    const file = join(root, ".lando.yml");
+    await writeFile(file, "services:\n  bad/name:\n    image: nginx\n");
+    await expect(load()).rejects.toMatchObject({
+      _tag: "LandofileValidationError",
+      issues: [{ path: ["services", "bad/name"], source: { file, path: ["services", "bad/name"] } }],
+    });
+  });
+});
+
 test("keeps dist existence as the materialization gate despite authored layers", async () => {
   // Given authored content without a generated global app.
   await withGlobalFiles(async ({ root, load }) => {

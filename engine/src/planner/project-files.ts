@@ -32,7 +32,7 @@ const landofileFailure = (
   message: string,
   remediation: string,
 ) =>
-  landofileValidationError(`${input.appRoot}/.lando.yml`, [validationIssue(path, message, remediation)], {
+  landofileValidationError(input.appRoot, [validationIssue(path, message, remediation)], {
     headline: "Landofile has invalid values",
     remediation,
   });
@@ -56,7 +56,7 @@ const packageRootError = (input: ProjectFileRequest, message: string) =>
 /** A failure in one declared project file cites that file, not the Landofile's packageRoot. */
 const projectFileError = (input: ProjectFileRequest, absolute: string, message: string) =>
   landofileValidationError(
-    `${input.appRoot}/.lando.yml`,
+    absolute,
     [
       {
         ...validationIssue(["services", input.serviceName], message),

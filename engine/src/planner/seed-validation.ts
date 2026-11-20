@@ -55,7 +55,7 @@ export const validateServiceSeed = Effect.fnUntraced(function* (
   const storage = authoredStorageScopes(appRoot, seed.name, seed.resolution.normalizedConfig);
   if (storage.invalidCacheEntry !== undefined) errors.push(storage.invalidCacheEntry);
   if (storage.globalEntry !== undefined)
-    yield* Effect.fail(rejectGlobalScope(appRoot, seed.name, storage.globalEntry));
+    yield* Effect.fail(rejectGlobalScope(seed.name, storage.globalEntry));
   const logs = mergeLogSources({
     appRoot,
     serviceName: seed.name,

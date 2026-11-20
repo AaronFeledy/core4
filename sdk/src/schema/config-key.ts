@@ -85,7 +85,7 @@ export const describeJsonSchemaPath = (
     const child = schemaChild(document, node, name) ?? true;
     const childDescription = descriptionOf(document, child);
     return {
-      key: key === "" ? name : `${key}.${name}`,
+      key: formatValidationIssuePath([...path, name]),
       summary: schemaSummary(document, child),
       ...(childDescription === undefined ? {} : { description: childDescription }),
     };

@@ -5,7 +5,8 @@ import type {
   ConfigTranslateSourceId,
   LandofileLayer,
 } from "@lando/sdk/schema";
-import { ServiceConfig } from "@lando/sdk/schema";
+import { LandofileAuthoringFragment, ServiceConfig } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 import { lowerBuildHooks } from "./build-hooks.ts";
 import { ClaimCursor } from "./claims.ts";
 import { lowerComposeFields } from "./compose-fields.ts";
@@ -47,6 +48,8 @@ export interface LoweredServices {
   readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
   readonly expectations: ReadonlyArray<ConfigTranslateExpectation>;
 }
+
+const decodeServiceKey = Schema.decodeUnknownResult(LandofileAuthoringFragment);
 
 const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringContext): LoweringPatch => {
   const overrides = lowerComposeFields(service.overrides ?? {}, ctx, { basePath: ["overrides"] });
@@ -176,6 +179,18 @@ export const lowerServiceViews = (
       };
       const cursor = new ClaimCursor(service, location);
       const ctx: ServiceLoweringContext = { ...location, cursor };
+      const key = decodeServiceKey({ services: { [serviceName]: {} } });
+      if (Result.isFailure(key)) {
+        diagnostics.push(
+          unsupportedServiceKey({
+            ctx,
+            relative: [],
+            message: key.failure.message,
+            remediation: "Rename the service and update references to it before converting.",
+          }),
+        );
+        continue;
+      }
       if (!hasPlainObjectPrototype(service) || isLegacyTagged(service)) {
         diagnostics.push(
           unsupportedServiceKey({

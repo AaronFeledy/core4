@@ -122,7 +122,10 @@ test("rejects conflicting proxy and service declarations with authored source ke
   // Then
   if (Result.isSuccess(result)) throw new Error("expected conflict");
   expect(result.failure).toBeInstanceOf(RouteInputError);
-  expect(result.failure).toMatchObject({ key: "proxy.web[0]" });
+  expect(result.failure).toMatchObject({
+    path: ["proxy", "web", 0],
+    otherPath: ["services", "web", "routes", 0],
+  });
   expect(result.failure.message).toContain("services.web.routes[0]");
   expect(result.failure).toHaveProperty("file");
 });

@@ -1,0 +1,14 @@
+name: selector-paths
+services:
+  web:
+    type: "node:22"
+    primary: true
+    environment:
+      APP_ENV: dev
+      x.dotted: dotted-value
+      "0": zero-key
+tooling:
+  test:
+    service: web
+    cmds:
+      - echo first

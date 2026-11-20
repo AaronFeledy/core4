@@ -53,6 +53,9 @@ test.each(["/host/root/setup.bun.sh", "C:\\host\\setup.bun.sh", ""])(
     // When
     const result = compileRecipeSource(source, { ...context, inputs });
     // Then
-    expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "source-invalid", path: "context" } });
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "source-invalid", path: ["context"] },
+    });
   },
 );

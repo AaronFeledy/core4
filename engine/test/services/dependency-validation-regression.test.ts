@@ -41,7 +41,7 @@ test("reports the first dependency cycle with authored conditions and its closin
     _tag: "LandofileValidationError",
     message:
       "Dependency cycle detected: db --[service_completed_successfully]--> cache --[service_started]--> db. Remove or redirect one dependency edge; required: false does not break a dependency cycle.",
-    file: "/app/.lando.yml",
+    file: "/app",
     issues: [{ path: ["services", "cache", "dependsOn"] }],
   });
 });

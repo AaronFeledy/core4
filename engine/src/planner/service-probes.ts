@@ -14,7 +14,7 @@ export const validateServiceProbes = Effect.fn("AppPlanner.validateServiceProbes
       if (probe.kind !== "command" || probe.command === undefined)
         return yield* Effect.fail(
           new LandofileValidationError({
-            file: ".lando.yml",
+            file: plan.metadata.source,
             issues: [
               validationIssue(
                 ["services", String(service.name), role, probe.kind === "command" ? "command" : "kind"],

@@ -29,7 +29,7 @@ export const normalizeNetworks = Effect.fn("AppPlanner.normalizeNetworks")(funct
           const source = getLandofileValueSource(input.provenance, path);
           return yield* Effect.fail(
             new LandofileValidationError({
-              file: source !== undefined && "file" in source ? source.file : `${input.appRoot}/.lando.yml`,
+              file: source?.file ?? input.appRoot,
               message,
               remediation,
               issues: [

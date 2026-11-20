@@ -18,10 +18,12 @@ import {
   type PluginManifest,
   type ProviderCapabilities,
   type ProviderId,
+  RouteHostname,
   type RoutePlan,
   type ServicePlan,
   type StorageScope,
   clonedServiceParent,
+  defaultRouteHostname,
   parseContainerDestination,
   routeListenerPreference,
   selectHttpEndpoint,
@@ -29,7 +31,7 @@ import {
   validationIssue,
 } from "@lando/sdk/schema";
 import type { FileSystem, ServiceTypeHostFacts } from "@lando/sdk/services";
-import { type Context, Effect, Predicate } from "effect";
+import { type Context, Effect, Predicate, Schema } from "effect";
 
 import {
   type SelectedFileSyncPolicy,
@@ -140,7 +142,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ) {
         const message = `Store ${store.name} has conflicting scope, kind, or key definitions in services ${previous.service} and ${service}.`;
         return new LandofileValidationError({
-          file: `${input.appRoot}/.lando.yml`,
+          file: input.appRoot,
           message,
           issues: [previous.service, service].map((name) => validationIssue(["services", name], message)),
           remediation:
@@ -458,7 +460,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
           routeRefs.push(
             ...(yield* routeAccumulator.add(
               plan,
-              route.source ?? { key: `services.${name}.routes[${routeIndex}]` },
+              route.source ?? { path: ["services", name, "routes", routeIndex] },
             )),
           );
         }
@@ -473,13 +475,25 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         routeListenerPreference("https", generatedCertificate),
       );
       if (selection.status !== "none") {
+        const hostname = defaultRouteHostname(name, input.appSlug, input.defaultDomain);
+        if (!Schema.is(RouteHostname)(hostname)) {
+          const message = `Default route hostname ${hostname} exceeds the 253-character limit.`;
+          const remediation =
+            "Shorten proxy.defaultDomain or author routes for this service with a shorter hostname.";
+          return yield* new LandofileValidationError({
+            file: input.appRoot,
+            message,
+            remediation,
+            issues: [{ path: ["services", name], rule: "landofile.route", message, suggestion: remediation }],
+          });
+        }
         for (const plan of stampGeneratedBackendTls(
           yield* resolveRoute(
             input.appRoot,
             name,
             servicePlanWithHome.endpoints,
             {
-              hostname: `${name}.${input.appSlug}.${input.defaultDomain}`,
+              hostname,
               scheme: "https",
               filters: [],
             },
@@ -492,7 +506,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
               selection.status === "selected"
                 ? { ...plan, endpoint: selection.endpoint.names[0] ?? selection.endpoint.port }
                 : plan,
-              { key: `services.${name}.endpoints` },
+              { path: ["services", name] },
             )),
           );
         }

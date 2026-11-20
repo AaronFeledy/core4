@@ -220,6 +220,13 @@
       "digest": "8243d238dba13dd7175234aea03cbdbc7a953c2b5568aa9618c133b83c709102"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/partial-load",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileParseError"
+      }
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/route-declared-http",
       "digest": "4d49aacd279230fe3efc6458589504641f955efae6f4f4b9465527706608d1de"
     },
@@ -273,6 +280,10 @@
     {
       "fixture": "docs/guides/config-views/fixtures/layered",
       "digest": "96db7063b2419a64caeef3043bf951d647d23d7a42f01da0fe3148bb365796f9"
+    },
+    {
+      "fixture": "docs/guides/config-views/fixtures/selector-paths",
+      "digest": "08b4707c406b345c06a13663de68e226a495aa1da38312daea47f97f667eed58"
     },
     {
       "fixture": "docs/guides/convert-from-lando-3/fixtures/lando3-blocked",
@@ -1489,6 +1500,10 @@
     {
       "fixture": "docs/guides/your-landofile/fixtures/schema-merge-rules",
       "digest": "4c084b4b9d168141c77cf669e80c2ee93bf0990725783b5d481bf6c12adfc937"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/selector-quoted-key",
+      "digest": "1887a31a9d151f844d7f465feed81ade5fd89c46449c74301f158331036719d9"
     },
     {
       "fixture": "docs/guides/your-landofile/fixtures/typescript-local-layer",

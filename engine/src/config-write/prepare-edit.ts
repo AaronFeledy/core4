@@ -7,6 +7,7 @@ import { authoredTreesEqual, canonicalRewrite } from "./yaml-verify";
 export const prepareConfigEdit = Effect.fnUntraced(function* <E, R>(
   input: YamlEdit & {
     readonly file: string;
+    readonly key: string;
     readonly tree: Record<string, unknown>;
     readonly editCommand: string;
     readonly parse: (text: string) => Record<string, unknown> | Effect.Effect<Record<string, unknown>, E, R>;

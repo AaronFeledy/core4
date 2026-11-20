@@ -66,7 +66,7 @@ describe("route normalization", () => {
         Result.succeed({
           ...route,
           filters: route.filters ?? [],
-          source: { key: "services.web.routes[0]", path: ["services", "web", "routes", 0] },
+          source: { path: ["services", "web", "routes", 0] },
         }),
       );
     },
@@ -128,7 +128,7 @@ describe("route normalization", () => {
         Result.succeed({
           hostname,
           filters: [],
-          source: { key: "services.web.routes[0]", file: ctx.file, path: ["services", "web", "routes", 0] },
+          source: { path: ["services", "web", "routes", 0], file: ctx.file },
         }),
       );
     },
@@ -202,13 +202,13 @@ describe("route normalization", () => {
           hostname: "app",
           endpoint: 1,
           filters: [],
-          source: { key: "services.web.routes[0]", path: ["services", "web", "routes", 0] },
+          source: { path: ["services", "web", "routes", 0] },
         },
         {
           hostname: "app",
           endpoint: 65535,
           filters: [],
-          source: { key: "services.web.routes[1]", path: ["services", "web", "routes", 1] },
+          source: { path: ["services", "web", "routes", 1] },
         },
       ]),
     );
