@@ -20,9 +20,9 @@ const makeStateDir = async (): Promise<string> => {
   return stateDir;
 };
 
-const doctorCheck = (): PluginDoctorCheckContribution => {
-  const check = plugin.doctorChecks?.[0];
-  if (check === undefined) throw new Error("expected provider-podman to contribute a doctor check");
+const doctorCheck = (id = "provider-conflict"): PluginDoctorCheckContribution => {
+  const check = plugin.doctorChecks?.find((entry) => entry.id === id);
+  if (check === undefined) throw new Error(`expected provider-podman to contribute a ${id} doctor check`);
   return check;
 };
 
@@ -76,8 +76,12 @@ describe("@lando/provider-podman plugin descriptor", () => {
   test("contributes a provider conflict doctor check", () => {
     // Given / When the additive descriptor is exported
     // Then
-    expect(plugin.doctorChecks).toHaveLength(1);
+    expect(plugin.doctorChecks?.map((check) => check.id)).toEqual([
+      "provider-conflict",
+      "crun-rootless-exec",
+    ]);
     expect(doctorCheck().id).toBe("provider-conflict");
+    expect(doctorCheck("crun-rootless-exec").id).toBe("crun-rootless-exec");
   });
 
   test("conflict check returns no reports when stateDir is unavailable", async () => {
