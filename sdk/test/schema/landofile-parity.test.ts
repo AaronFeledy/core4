@@ -155,9 +155,9 @@ function issueDetails(issues: readonly StandardSchemaV1.Issue[]) {
   }));
 }
 
-function decoderIssues(decoded: Result.Result<unknown, Schema.SchemaError>) {
+function decoderIssues(decoded: Result.Result<unknown, Schema.SchemaError>, input: unknown) {
   return Result.isFailure(decoded)
-    ? issueDetails(validationIssuesFromSchemaIssue(decoded.failure.issue))
+    ? issueDetails(validationIssuesFromSchemaIssue(decoded.failure.issue, { input }))
     : [];
 }
 
@@ -382,9 +382,9 @@ test("input Standard Schema and editor JSON Schema accept every classified autho
     const standard = await LandofileStandardSchema["~standard"].validate(input);
     const accepted = standard.issues === undefined;
     expect(accepted, id).toBe(Result.isSuccess(decoded));
-    expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded));
+    expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded, input));
     if (id === "bad-service-key-and-bodies") {
-      expect(decoderIssues(decoded).map(({ path }) => path)).toEqual([
+      expect(decoderIssues(decoded, input).map(({ path }) => path)).toEqual([
         ["services", "bad/name"],
         ["services", "bad/name", "image"],
         ["services", "web", "primary"],
@@ -470,6 +470,6 @@ test("compiled recipe manifests agree with RecipeManifest", async () => {
     // Then the Standard Schema view agrees on accept/reject and on every issue path and message.
     expect(Result.isSuccess(decoded), id).toBe(accepted);
     expect(standard.issues === undefined, id).toBe(accepted);
-    expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded));
+    expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded, input));
   }
 });
