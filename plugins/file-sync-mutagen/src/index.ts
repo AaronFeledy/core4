@@ -1,4 +1,4 @@
-import { mapFailures } from "@lando/sdk/command-result";
+import { mapFailures, orDieWithRole } from "@lando/sdk/command-result";
 /**
  * Mutagen-backed accelerated file sync for the managed Lando provider on
  * native Windows. The production contribution binds verified provider targets
@@ -135,7 +135,7 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
     yield* client.create({ name, spec });
 
     if (client.persistsAcrossProcesses !== true) {
-      yield* Effect.addFinalizer(() => client.terminate(name).pipe(Effect.orDie));
+      yield* Effect.addFinalizer(() => client.terminate(name).pipe(orDieWithRole("cleanup")));
     }
 
     return mutagenSessionRef(spec);
