@@ -3,14 +3,14 @@ import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { REDIS_UNUSED_CREDS, assertCredsMembersUsed, claimsCreds } from "./_creds-helpers.ts";
+import { RESERVED_LONG_PORT, type ReservedArgRule, extraArgsCommandOptions } from "./_extra-args.ts";
 import {
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-
-import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "redis:7";
@@ -27,12 +27,53 @@ export const REDIS_LISTENER = {
   launcher: { setting: (port: number) => `--port ${port}` },
 } as const;
 export const DEFAULT_PORT = REDIS_LISTENER.port;
+const selectPort = primaryPortSelector(REDIS_LISTENER);
 const DATA_TARGET = PortablePath.make("/data");
 export const REDIS_FEATURE_ID = "service-lando.redis";
 
+const redisExtraArgsRules = (service: {
+  readonly persist?: boolean | undefined;
+  readonly creds?: { readonly password?: unknown } | undefined;
+}): readonly ReservedArgRule[] => {
+  const rules: ReservedArgRule[] = [
+    RESERVED_LONG_PORT,
+    {
+      form: "long",
+      name: "appendonly",
+      remediation: "Set persist: instead of overriding appendonly in extraArgs.",
+      takesValue: true,
+    },
+  ];
+  if (service.persist === false) {
+    rules.push({
+      form: "long",
+      name: "save",
+      remediation: "Set persist: instead of overriding save in extraArgs.",
+      takesValue: true,
+    });
+  }
+  if (service.creds?.password !== undefined) {
+    rules.push(
+      {
+        form: "long",
+        name: "requirepass",
+        remediation: "Set creds.password instead of requiring a password in extraArgs.",
+        takesValue: true,
+      },
+      {
+        form: "long",
+        name: "aclfile",
+        remediation: "Lando manages Redis auth through creds.password; remove auth flags from extraArgs.",
+        takesValue: true,
+      },
+    );
+  }
+  return rules;
+};
+
 const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = plannedPort(service, REDIS_LISTENER);
+  const port = selectPort(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   const password = service.creds?.password;
@@ -45,9 +86,9 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
     ctx.setCommand(service.command);
     ctx.setListenerAuthority(launcherAuthority(REDIS_LISTENER, port));
   } else {
-    ctx.setCommand(
-      password === undefined ? command : ["sh", "-ec", AUTH_START, "redis-auth", ...command.slice(1)],
-    );
+    const launcher =
+      password === undefined ? command : ["sh", "-ec", AUTH_START, "redis-auth", ...command.slice(1)];
+    ctx.setCommand(launcher, extraArgsCommandOptions(redisExtraArgsRules(service)));
   }
   if (service.persist !== false)
     ctx.addStorage({
@@ -68,7 +109,7 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, REDIS_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "tcp",
       }),
     ),
@@ -106,6 +147,7 @@ export const redisServiceType: ServiceType = {
   id: "redis",
   name: "redis",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
@@ -131,9 +173,7 @@ export const redisServiceType: ServiceType = {
             service: input.name,
             cmd: [
               "redis-cli",
-              ...(input.service.port === undefined
-                ? []
-                : ["-p", String(plannedPort(input.service, REDIS_LISTENER))]),
+              ...(input.service.port === undefined ? [] : ["-p", String(selectPort(input.service))]),
             ],
             wrapper: true,
             ...(password === undefined ? {} : { env: auth }),

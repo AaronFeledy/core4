@@ -81,6 +81,7 @@ import { attachResolutionTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { environmentCacheInput } from "./environment-cache-input.ts";
 import { type ResolvedLandofile, resolveKnownEventSet } from "./event-set.ts";
+import { verifyComposedExtraArgs } from "./extra-args.ts";
 import { attributePlanningFailure } from "./failure-attribution.ts";
 import { fileSyncCacheInput } from "./file-sync-cache-input.ts";
 import { checkHostEventsShell } from "./host-shell-issues.ts";
@@ -116,7 +117,7 @@ export interface PlanAppInput {
 function* assemblePlan(
   input: PlanAppInput,
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
-  const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot } = input;
+  const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot, kind } = input;
   const pluginRegistry = yield* PluginRegistry;
   const contributionGraph = Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph));
   const plugins = loadedPluginImplementations(contributionGraph);
@@ -402,8 +403,7 @@ function* assemblePlan(
   });
   // Validation never touches the persisted plan; neither does a plan built from unknown plugin code.
   const planCache = input.mode !== "validate" && plugins.cacheable ? cacheService : undefined;
-  const global = input.kind === "global";
-  const routeUrlContext = { filePath: landofilePath, enabled: routerEnabled, global };
+  const routeUrlContext = { filePath: landofilePath, enabled: routerEnabled, global: kind === "global" };
   if (planCache !== undefined) {
     const cached = yield* readCachedAppPlan({
       cacheRoot,
@@ -437,6 +437,7 @@ function* assemblePlan(
   }
 
   const plannedServiceDrafts = yield* planServiceDrafts({
+    landofilePath,
     resolvedServices,
     mountContext: {
       appRoot,
@@ -569,6 +570,7 @@ function* assemblePlan(
     effectiveEventsFor(finalized.services),
   );
   yield* assertComposeKnobsSupported(capabilityContext, plan.services);
+  yield* verifyComposedExtraArgs(plannedServiceDrafts, plan.services, landofilePath);
   yield* assertServiceInitSupported(provider, providerCapabilities, plan.services);
   yield* assertAuthoredNetworksSupported(provider, providerCapabilities, plan.networking);
   yield* validateServiceProbes(plan);

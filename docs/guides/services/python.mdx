@@ -27,8 +27,8 @@ services:
     type: "python:3.12"
     primary: true
     port: 8000
-    command: [python, -m, http.server, "8000"]
-    readiness: [python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+    command: [python, -m, http.server, "{{ service.port }}"]
+    readiness: [python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:{{ service.port }}/')"]
 ```
 
 For an existing FastAPI project, save this complete service and tooling configuration in `.lando.yml`:
@@ -63,7 +63,7 @@ Gunicorn reads `PORT` and binds `0.0.0.0`; Uvicorn CLI reads `UVICORN_*`, and `f
 
 Port variables are not independent overrides. If an authored value is malformed or differs from the planned port, planning fails at `services.app.environment.<VAR>`. This includes inherited `appEnv` and env-file values. Set `port:` instead. Host variables are ordinary defaults: your authored host value wins, but a loopback address makes the server unreachable through the proxy.
 
-FastAPI CLI does not read `UVICORN_*`. `fastapi run main.py` binds all interfaces and reads `PORT`; `fastapi dev main.py --host 0.0.0.0` still needs its host argument. Django needs `runserver 0.0.0.0:8000` (or your chosen port) because it reads neither port nor host from these variables. Python's built-in `http.server` also needs its port argument.
+FastAPI CLI does not read `UVICORN_*`. `fastapi run main.py` binds all interfaces and reads `PORT`; `fastapi dev main.py --host 0.0.0.0` still needs its host argument. Django reads neither the port nor the host from these variables, and Python's built-in `http.server` also needs its port argument. In an authored launcher, use the [port expression](../landofile/expressions.mdx#your-services-own-port) for the value, as in the `http.server` example above.
 
 Python does not interpret `webroot:`. An explicit root fails planning unless
 a composed plugin feature declares and handles it. Set `workingDirectory:`
@@ -166,7 +166,7 @@ services:
     framework: fastapi
     primary: true
     port: 8000
-    command: [":python-local", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: [":python-local", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "{{ service.port }}"]
 ```
 
 ```sh
@@ -178,7 +178,7 @@ Open the URL `lando info` prints. A tiny `main.py` that returns JSON is enough t
 
 <Scenario id="python-local" render={false} reason="Check Python launcher lowering without fetching dependencies">
   <Step name="start-with-a-launcher-command">
-    <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: python-launcher\nservices:\n  app:\n    type: python:3.12\n    primary: true\n    command: [\":python-local\", \"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\ntooling:\n  pytest:\n    service: app\n    cmd: [\":python-local\", \"pytest\"]\n    wrapper: true\n"));
+    <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: python-launcher\nservices:\n  app:\n    type: python:3.12\n    framework: fastapi\n    primary: true\n    port: 8000\n    command: [\":python-local\", \"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"{{ service.port }}\"]\ntooling:\n  pytest:\n    service: app\n    cmd: [\":python-local\", \"pytest\"]\n    wrapper: true\n"));
 lastRun = yield* context.runCli("lando start --format=json");
 expect(lastRun.exitCode).toBe(0);`} displayCode={`lando start --format=json`} />
   </Step>
@@ -199,7 +199,7 @@ services:
     type: "python:3.12"
     framework: django
     primary: true
-    command: [":python-local", "python", "manage.py", "runserver", "0.0.0.0:8000"]
+    command: [":python-local", "python", "manage.py", "runserver", "0.0.0.0:{{ service.port }}"]
 ```
 
 ```yaml
@@ -211,7 +211,7 @@ services:
     command: [":python-local", "flask", "run"]
 ```
 
-The `flask` preset sets `FLASK_RUN_HOST=0.0.0.0` and `FLASK_RUN_PORT` from `port`, so `flask run` binds where Lando routes traffic. For Gunicorn, use `[":python-local", "gunicorn", "app:app", "--bind", "0.0.0.0:5000"]`.
+The `flask` preset sets `FLASK_RUN_HOST=0.0.0.0` and `FLASK_RUN_PORT` from `port:`, so `flask run` binds where Lando routes traffic. To pass the bind address explicitly to Gunicorn, use `[":python-local", "gunicorn", "--bind", "0.0.0.0:{{ service.port }}", "app:app"]`.
 
 ## Pin an image
 

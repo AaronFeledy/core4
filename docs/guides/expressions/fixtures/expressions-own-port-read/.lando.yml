@@ -1,0 +1,5 @@
+name: expressions-own-port-read
+services:
+  cache:
+    type: redis
+    command: [redis-server, --port, "{{ services.cache.port }}"]

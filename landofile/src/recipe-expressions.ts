@@ -7,7 +7,6 @@ export const PLAN_IDENTITY_EXPRESSION_SCOPES: readonly string[] = ["app", "proxy
 export const PLAN_SERVICE_EXPRESSION_SCOPES: readonly string[] = [
   ...PLAN_IDENTITY_EXPRESSION_SCOPES,
   "services",
-  "service",
 ];
 export const LOAD_DEFERRED_EXPRESSION_SCOPES: readonly string[] = [
   ...PLAN_IDENTITY_EXPRESSION_SCOPES,

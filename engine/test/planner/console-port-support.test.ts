@@ -183,7 +183,8 @@ test("a differently named MinIO child inherits executable console support", asyn
   // Then the inherited declaration controls both launch and discovery.
   const service = result.services[ServiceName.make("web")];
   expect(service?.command).toEqual([
-    "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :19001",
+    'mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :19001 "$@"',
+    "minio",
   ]);
   expect(service?.endpoints).toContainEqual(
     expect.objectContaining({
