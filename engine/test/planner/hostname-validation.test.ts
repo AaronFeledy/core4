@@ -61,11 +61,29 @@ test("plans concrete addresses from deferred list-form extra_hosts values", () =
     {
       type: "compose",
       image: "alpine:3.22",
-      extra_hosts: ["peer=192.0.2.1", "peer:{{ app.name == 'hostnames' ? '2001:db8::2' : '::1' }}"],
+      extra_hosts: [
+        "peer=192.0.2.1",
+        "{{ env.HOST }}:{{ app.name == 'hostnames' ? env.ADDRESS : '::1' }}",
+        "{{ env.HOST }}={{ app.name == 'hostnames' ? '192.0.2.3' : '::1' }}",
+      ],
     },
     async (root) => {
       const planned = await Effect.runPromise(
-        loadLandofileLayers(root, join(root, ".lando.yml")).pipe(
+        loadLandofileLayers(root, join(root, ".lando.yml"), {
+          ports: {
+            resolveUserCacheRoot: () => join(root, "cache"),
+            resolveUserIncludesDir: () => join(root, "includes"),
+            sources: {},
+          },
+          templates: {
+            modules: [],
+            context: {
+              env: { HOST: "peer", ADDRESS: "2001:db8::2" },
+              scope: "app",
+              bootstrapLevel: "plugins",
+            },
+          },
+        }).pipe(
           Effect.flatMap((landofile) =>
             planApp(
               { landofile, providerCapabilities: TestRuntimeProvider.capabilities },
@@ -75,7 +93,7 @@ test("plans concrete addresses from deferred list-form extra_hosts values", () =
         ),
       );
       expect(planned.services[ServiceName.make("web")]?.extensions).toMatchObject({
-        compose: { extra_hosts: { peer: ["192.0.2.1", "2001:db8::2"] } },
+        compose: { extra_hosts: { peer: ["192.0.2.1", "2001:db8::2", "192.0.2.3"] } },
       });
     },
   ));

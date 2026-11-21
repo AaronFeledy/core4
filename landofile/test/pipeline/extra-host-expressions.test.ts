@@ -56,11 +56,47 @@ test("rebases deferred host addresses to hostname and occurrence without losing 
   ));
 
 test("drops the pending site when a higher layer replaces its extra_hosts list", () =>
-  withHosts('      - "peer={{ app.missing }}"', async (file, root) => {
+  withHosts('      - "{{ env.MISSING_HOST }}={{ app.missing }}"', async (file, root) => {
     await Bun.write(join(root, ".lando.local.yml"), landofile('      peer: "192.0.2.31"'));
     const loaded = await Effect.runPromise(load(file, root));
     expect(loaded.pendingSites).toEqual([]);
     expect(loaded.document.services?.[web]?.extra_hosts).toEqual({ peer: "192.0.2.31" });
+  }));
+
+test("loads mixed-scope hostnames before assigning deferred addresses their repeated-host positions", () => {
+  const equalsAddress = "{{ services.db.creds.user }}";
+  const colonAddress = "2001:db8::{{ app.name == 'demo' ? '2' : env.HOST }}";
+  return withHosts(
+    `      - "{{ env.HOST }}=${equalsAddress}"
+      - "eager.test:192.0.2.31"
+      - "{{ env.HOST == 'eager.test' ? env.HOST : 'other.test' }}:${colonAddress}"`,
+    async (file, root) => {
+      const loaded = await Effect.runPromise(load(file, root));
+      expect(loaded.document.services?.[web]?.extra_hosts).toEqual({
+        "eager.test": [equalsAddress, "192.0.2.31", colonAddress],
+      });
+      expect(loaded.pendingSites.map(({ path, source }) => [path, source.path])).toEqual([
+        [
+          [...hostsPath, "eager.test", 0],
+          [...hostsPath, 0],
+        ],
+        [
+          [...hostsPath, "eager.test", 2],
+          [...hostsPath, 2],
+        ],
+      ]);
+    },
+  );
+});
+
+test("reports a missing load-owned hostname at the authored list index", () =>
+  withHosts('      - "{{ env.MISSING_HOST }}={{ app.name }}"', async (file, root) => {
+    const path = [...hostsPath, 0];
+    expect(await Effect.runPromise(Effect.flip(load(file, root)))).toMatchObject({
+      _tag: "ConfigExpressionError",
+      path,
+      source: { file, layer: "canonical", path },
+    });
   }));
 
 test.each([":", "="])("rejects a deferred hostname with an authored list location (%s)", (separator) =>

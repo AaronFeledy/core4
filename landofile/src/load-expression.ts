@@ -19,7 +19,7 @@ import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Predicate, Result } from "effect";
 import { INVOCATION_SCOPES, authoredSiteId, executableExpressionPath } from "./compiled-sites.ts";
 import { recordExpressionEnvironment } from "./environment-dependencies.ts";
-import { deferredExtraHostKey, extraHostListPath } from "./extra-host-sites.ts";
+import { deferredExtraHostKey, extraHostListPath, withExtraHostLoadTemplate } from "./extra-host-sites.ts";
 import { includeEntryPath } from "./include-condition-shape.ts";
 import { decodeImplicitFileRef, makeLandofileLoadHelperOverrides } from "./load-expression-decoders.ts";
 import { normalizeLoadExpressionFailure } from "./load-expression-failure.ts";
@@ -169,9 +169,21 @@ export const resolveLandofileLoadExpressions = (
             typeof path.at(-1) === "number" && keyValueEntryPath(path) && value.includes("=")
               ? value.slice(value.indexOf("=") + 1)
               : value;
+          const extraHost = extraHostListPath(path);
+          let hostSeparator: number | undefined;
           const parsed = parseExpressionEither(text, {
             filePath: options.source.sourcePath,
             bareShellParameters: "preserve",
+            ...(extraHost
+              ? {
+                  literalSeparator: {
+                    characters: ":=",
+                    onMatch: (offset: number) => {
+                      hostSeparator = offset;
+                    },
+                  },
+                }
+              : {}),
           });
           if (Result.isFailure(parsed))
             throw new LandofileValidationError({
@@ -186,8 +198,7 @@ export const resolveLandofileLoadExpressions = (
                 },
               ],
             });
-          if (extraHostListPath(path) && deferredExtraHostKey(parsed.success))
-            return unsupported(path, "Key expressions");
+          if (extraHost && deferredExtraHostKey(parsed.success)) return unsupported(path, "Key expressions");
           if (options.environmentRecorder !== undefined)
             recordExpressionEnvironment(options.environmentRecorder, parsed.success);
           const deferred = deferredToolingScopeError(parsed.success, path, options.source.sourcePath);
@@ -259,7 +270,12 @@ export const resolveLandofileLoadExpressions = (
                 : `${value.slice(0, value.indexOf("=") + 1)}${String(literal.success)}`;
             }
             const source = { file: options.source.sourcePath, layer: options.source.layer, path };
-            pendingSites.push({ id: authoredSiteId(source), path, source, template: parsed.success });
+            pendingSites.push({
+              id: authoredSiteId(source),
+              path,
+              source,
+              template: withExtraHostLoadTemplate(parsed.success, text, hostSeparator),
+            });
             return value;
           }
           const expression = templateExpression(parsed.success);
