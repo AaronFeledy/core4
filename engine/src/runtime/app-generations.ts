@@ -153,12 +153,16 @@ export const makeAppGenerations = Effect.fnUntraced(function* <
           if (phase === "building" || phase === "ready") yield* stepSlot(existing.state, "supersede");
           yield* closeSlotIfIdle(existing);
         }
-        yield* buildStable(key, selection, slot.scope).pipe(
+        // Session close interrupts a running build, and a closed session never starts one: either way
+        // `settle` cannot run, so the waiters are interrupted instead.
+        const build = yield* buildStable(key, selection, slot.scope).pipe(
           Effect.exit,
           Effect.flatMap((exit) => settle(key, slot, exit)),
           buildGate.withPermits(1),
+          Effect.onInterrupt(() => Deferred.interrupt(slot.built)),
           Effect.forkIn(sessionScope),
         );
+        if (build.pollUnsafe() !== undefined) yield* Deferred.interrupt(slot.built);
         return [slot, new Map(current).set(key, slot)] as const;
       }),
     );
