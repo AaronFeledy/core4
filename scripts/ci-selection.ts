@@ -80,8 +80,8 @@ const affectsProviders = (path: string): boolean =>
     path,
   );
 
-const platformBuildSelections = TEST_SELECTIONS.filter(({ jobs }) =>
-  jobs.some(({ job }) => job.startsWith("build-")),
+const platformBuildSelections = TEST_SELECTIONS.filter(
+  ({ id, jobs }) => id === "native-lock" || jobs.some(({ job }) => job.startsWith("build-")),
 );
 
 // The selector tests check the relative import graph and the preload passed by path.
