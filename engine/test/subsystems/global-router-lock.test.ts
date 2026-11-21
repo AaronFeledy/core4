@@ -3,10 +3,12 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProxySetupError } from "@lando/sdk/errors";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { EventService, GlobalAppService, PathsService, RouterService, StateStore } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
+import { ADVISORY_LOCK_SUFFIX } from "@lando/state-store/lock";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Deferred, Effect, Fiber, Layer, Semaphore, Stream } from "effect";
@@ -51,7 +53,7 @@ const fixture = async (onWait = Effect.void) => {
     Layer.succeed(
       EventService,
       EventService.of({
-        publish: (event) => (event._tag === "message.warn" ? onWait : Effect.void),
+        publish: (event) => (event._tag === "lock.wait" ? onWait : Effect.void),
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("No event subscription in router lock tests."),
         waitFor: () => Effect.never,
@@ -85,7 +87,7 @@ const fixture = async (onWait = Effect.void) => {
   const lockPath = join(
     root,
     `.lando-global-${appMutationLockKey("global", globalRoot)}`,
-    `${appMutationLockKey("global", globalRoot)}.lock`,
+    `${appMutationLockKey("global", globalRoot)}${ADVISORY_LOCK_SUFFIX}`,
   );
   return { root, dependencies, selected, lockPath };
 };
@@ -119,7 +121,7 @@ test("selected router setup takes the global lock before its route lock and nest
             }),
           ).pipe(
             Effect.provide(mutationContext),
-            Effect.mapError(
+            mapFailures(
               (cause) =>
                 new ProxySetupError({
                   proxyId: "test",
@@ -138,7 +140,7 @@ test("selected router setup takes the global lock before its route lock and nest
         Effect.gen(function* () {
           const selected = yield* RouterService;
           const setup = yield* Effect.forkScoped(selected.setup({ defaultDomain: "lndo.site" }));
-          yield* Deferred.await(routeHeld);
+          yield* Effect.raceFirst(Deferred.await(routeHeld), Fiber.join(setup));
           const mutation = yield* Effect.forkScoped(
             withGlobalMutation(
               routeLock.withPermits(1)(
@@ -154,7 +156,7 @@ test("selected router setup takes the global lock before its route lock and nest
           yield* Fiber.join(setup);
           yield* Fiber.join(mutation);
         }),
-      ).pipe(Effect.provide(isolated.selected(router)), Effect.timeout("2 seconds")),
+      ).pipe(Effect.provide(isolated.selected(router)), Effect.timeout("3 seconds")),
     );
     expect(timeline).toEqual(["setup:route", "setup:ensure", "mutation:routes"]);
     expect(nestedToken).toBe(outerToken);

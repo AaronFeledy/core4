@@ -32,6 +32,7 @@ export const withPhysicalVolumeLock = <A, E, R>(
         : stateStore.withLock(
             physicalVolumeLockKey(coordinationKey),
             Effect.provideService(body, heldVolumeLocks, new Set([...held, coordinationKey])),
+            { wait: "operation" },
           ),
     ),
   );

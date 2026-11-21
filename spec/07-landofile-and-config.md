@@ -316,6 +316,8 @@ Every global key is overridable with the fixed `LANDO` prefix: camelCase path se
 
 `appEnv`, `appLabels`, `commandAliases.disabled`, and `commandAliases.custom` are whole-document JSON setters and MUST NOT have per-entry scalar setters. `LANDO_PLUGIN_CONFIG_<NAME>` supplies plugin JSON; `LANDO_PROVIDER_<PROVIDER>_*` supplies provider extension values. Standard proxy variables are honored unless explicit `network.proxy` overrides them. `LANDO_NETWORK_CA_CERTS`, `LANDO_NETWORK_CA_INJECT_INTO_SERVICES`, and `LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES` control outbound trust and service injection. The generic `LANDO_CONFIG__<path>` overlay covers every remaining key, so `LANDO_CONFIG__DEFAULT_SECRET_STORE=env` selects the environment-backed store for bare ids for one invocation without editing `config.yml`. Aliases, root variables, and the generic overlay form one `env` layer in the §7.5 stack; an issue in a value it supplied is attributed to the longest variable whose path prefix covers the issue path, as `source: { layer: "env", variable, path }`. 1Password requires an explicit `op://` reference; selecting it as the default does not create a bare-id mapping.
 
+`LANDO_LOCK_TIMEOUT_MS` is a process-environment setting, not a `GlobalConfig` overlay. It sets the `operation` lock acquisition budget in milliseconds (§12.7.1). An unset or invalid value uses `120000`; the accepted range is `0` through `600000`, inclusive. It does not change the `brief` budget or override an explicit caller budget.
+
 Any §7.4–§7.6 key MAY carry the §18.5 `deprecated` annotation, propagated to schema, generated docs, runtime warning, and `DeprecationService`; removal is gated by §18.7.
 
 ### 7.7 Includes and fragments

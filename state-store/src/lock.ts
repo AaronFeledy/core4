@@ -1,301 +1,287 @@
-import { lstat, mkdir, open, readFile, realpath, unlink } from "node:fs/promises";
-import { dirname } from "node:path";
+import { randomUUID } from "node:crypto";
+import { ftruncateSync, lstatSync, writeSync } from "node:fs";
+import { mkdir, realpath } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
-import { Clock, DateTime, Effect, Option, Schema, Semaphore } from "effect";
+import type { StateLockOptions } from "@lando/sdk/services";
+import { Clock, Deferred, Effect, Exit, Option, Scope } from "effect";
+import { enqueueLock } from "./lock-gate.ts";
+import { LOCK_HOLDER_LABEL_MAX, LockHolder } from "./lock-holder.ts";
+import { type AdvisoryLockRecord, peekAdvisoryLockRecord } from "./lock-record.ts";
 import { makeLockReentryGuard } from "./lock-reentry.ts";
+import { describeLockHolder, holderDetails, lockWaitBudget, makeLockWait } from "./lock-wait.ts";
+import { NativeLockLoader, UnsafeSentinelError, checkSentinel } from "./native-lock.ts";
 import type { PrivateFileAccess } from "./private-file-access.ts";
 
-// Grace period before an unreadable lock record (a crashed exclusive create) is reclaimed.
-// A readable record is reclaimed only when its owner process has exited.
-const LOCK_STALE_MS = 30_000;
-const LOCK_RETRY_MS = 10;
-const LOCK_ATTEMPTS = 200;
+export { LockHolder, type LockHolderContext } from "./lock-holder.ts";
+export { type AdvisoryLockRecord, peekAdvisoryLockRecord } from "./lock-record.ts";
+export {
+  lockTimeout,
+  lockWaitBudget,
+  resolveOperationLockTimeoutMs,
+} from "./lock-wait.ts";
 
-// The file lock serializes processes, while this guard closes the release-unlink
-// race between fibers in the same process.
-const inProcessGuards = new Map<string, Semaphore.Semaphore>();
-const withLockReentryGuard = makeLockReentryGuard();
+export const ADVISORY_LOCK_SUFFIX = ".lck";
+const enter = makeLockReentryGuard();
 
-const canonicalLockTarget = (file: string): Effect.Effect<string> =>
-  Effect.promise(() => realpath(file).catch(() => file));
-
-const guardFor = (file: string): Effect.Effect<Semaphore.Semaphore> =>
-  Effect.sync(() => {
-    const existing = inProcessGuards.get(file);
-    if (existing !== undefined) return existing;
-    const created = Semaphore.makeUnsafe(1);
-    inProcessGuards.set(file, created);
-    return created;
-  });
-
-const LockRecord = Schema.Struct({
-  pid: Schema.Number.pipe(
-    Schema.check(Schema.isInt()),
-    Schema.check(Schema.isBetween({ minimum: 1, maximum: 2_147_483_647 })),
-  ),
-  token: Schema.NonEmptyString.pipe(Schema.check(Schema.isMaxLength(256))),
-  createdAt: Schema.Number.pipe(
-    Schema.check(Schema.isInt()),
-    Schema.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
-  ),
-});
-type LockRecord = typeof LockRecord.Type;
-const parseLockRecord = Schema.decodeUnknownOption(Schema.fromJsonString(LockRecord), {
-  onExcessProperty: "error",
-});
-const processIsDead = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return false;
-  } catch (cause) {
-    return isErrnoCode(cause, "ESRCH");
-  }
-};
-
-const readLockRecord = async (lockPath: string): Promise<LockRecord | null> => {
-  try {
-    return Option.getOrNull(parseLockRecord(await readFile(lockPath, "utf8")));
-  } catch (cause) {
-    if (isErrnoCode(cause, "ENOENT")) return null;
-    throw cause;
-  }
-};
-
-const lockIdentity = async (lockPath: string) => {
-  try {
-    return await lstat(lockPath);
-  } catch (cause) {
-    if (isErrnoCode(cause, "ENOENT")) return null;
-    throw cause;
-  }
-};
-
-const lockError = (operation: string, lockPath: string, cause?: unknown): StateStoreError =>
-  new StateStoreError({
-    reason: "lock",
-    operation,
-    path: lockPath,
-    ...(cause === undefined ? {} : { cause }),
-    remediation: "Another process holds the advisory state lock; retry once it releases.",
-  });
-
-/** A timed-out wait names the live owner, so the caller can tell a busy command from a leftover lock. */
-const heldLockError = (operation: string, lockPath: string, now: number): Effect.Effect<StateStoreError> =>
-  Effect.promise(async () => {
-    try {
-      const owner = await readLockRecord(lockPath);
-      if (owner === null) return lockError(operation, lockPath);
-      const heldMs = Math.max(0, now - owner.createdAt);
-      return new StateStoreError({
-        reason: "lock",
-        operation,
-        path: lockPath,
-        cause: { ownerPid: owner.pid, heldMs },
-        remediation: `Process ${owner.pid} has held this lock for ${Math.round(heldMs / 1000)}s. Wait for that Lando command to finish, then retry. If process ${owner.pid} is not a Lando command, remove ${lockPath} and retry.`,
-      });
-    } catch (cause) {
-      return lockError(operation, lockPath, cause);
-    }
-  });
-
-export const makeLockToken = (): string =>
-  `${process.pid}-${DateTime.toEpochMillis(DateTime.nowUnsafe())}-${Math.random().toString(36).slice(2)}`;
-
-export type AdvisoryLockRecord = LockRecord;
-
-/** Read the owner record at an exact lock path, or `null` when absent/invalid. */
-export const peekAdvisoryLockRecord = (lockPath: string): Promise<LockRecord | null> =>
-  readLockRecord(lockPath);
-
-export interface AdvisoryLockWaitOptions {
-  /** Overall acquire deadline. Defaults to {@link LOCK_ATTEMPTS} × {@link LOCK_RETRY_MS}. */
-  readonly timeoutMs?: number;
-  readonly retryMs?: number;
-  /** Runs once after the first contended attempt, before further retries. */
-  readonly onWait?: Effect.Effect<void>;
+interface NativeLockOptions extends StateLockOptions {
+  readonly privateFileAccess: PrivateFileAccess;
+  readonly refuseOnContention?: (record: AdvisoryLockRecord) => Effect.Effect<boolean>;
+  /** The lock stands for a whole app, so a waiter waits for its command to finish. */
+  readonly appLock?: boolean;
 }
 
-const acquire = Effect.fn("StateStore.acquireLock")(function* (
-  lockPath: string,
-  token: string,
-  options: {
-    readonly operation: string;
-    readonly timeoutMs?: number;
-    readonly retryMs?: number;
-    readonly onWait?: Effect.Effect<void>;
-    readonly privateFileAccess: PrivateFileAccess;
-  },
-): Effect.fn.Return<void, StateStoreError> {
-  const retryMs = options.retryMs ?? LOCK_RETRY_MS;
-  const timeoutMs = options.timeoutMs ?? LOCK_ATTEMPTS * LOCK_RETRY_MS;
-  const deadline = (yield* Clock.currentTimeMillis) + timeoutMs;
-  let announced = false;
-  for (;;) {
-    const now = yield* Clock.currentTimeMillis;
-    const attempt = yield* Effect.tryPromise({
-      try: async () => {
+type LockLocation = { readonly path: string; readonly kind: "sentinel" | "target" };
+
+const acquire = Effect.fnUntraced(function* (
+  location: LockLocation,
+  operation: string,
+  options: NativeLockOptions,
+) {
+  const sentinel = location.kind === "sentinel" ? location.path : `${location.path}${ADVISORY_LOCK_SUFFIX}`;
+  const resource = (
+    options.resource ?? `Lando state file ${basename(location.path, ADVISORY_LOCK_SUFFIX)}`
+  ).slice(0, 512);
+  const timeoutMs = lockWaitBudget(options);
+  const start = yield* Clock.monotonicTimeNanos;
+  const deadline = start + BigInt(timeoutMs) * 1_000_000n;
+  const mode = options.mode ?? "exclusive";
+  const error = (path: string, cause: unknown) => {
+    const defect =
+      cause instanceof UnsafeSentinelError
+        ? cause.message
+        : isErrnoCode(cause, "ELOOP")
+          ? "a symbolic link or part of a symbolic link loop"
+          : undefined;
+    return new StateStoreError({
+      reason: defect === undefined ? "lock" : "path",
+      operation,
+      path,
+      cause,
+      message:
+        defect !== undefined
+          ? `Unsafe advisory lock path ${path}: ${defect}.`
+          : `Could not lock ${resource}.`,
+      remediation:
+        defect === undefined
+          ? "Keep Lando data roots on a local disk and check that the lock directory is private and writable."
+          : `Lock path ${path} is ${defect}, so Lando cannot use it. Make sure no Lando command is running, remove ${path}, and retry.`,
+    });
+  };
+  const lockPath = yield* Effect.tryPromise({
+    try: async () => {
+      if (location.kind === "target") {
+        // Resolve the target, never the sentinel itself: symlink sentinels must still be rejected.
         try {
-          await mkdir(dirname(lockPath), { recursive: true });
-          const handle = await open(lockPath, "wx", 0o600);
-          try {
-            const identity = await handle.stat();
+          return `${await realpath(location.path)}${ADVISORY_LOCK_SUFFIX}`;
+        } catch (cause) {
+          if (!isErrnoCode(cause, "ENOENT")) throw cause;
+        }
+      }
+      const parent = dirname(sentinel);
+      await mkdir(parent, { recursive: true });
+      return join(await realpath(parent), basename(sentinel));
+    },
+    catch: (cause) => error(isErrnoCode(cause, "ELOOP") ? dirname(sentinel) : sentinel, cause),
+  });
+  yield* enter(lockPath);
+  const outer = yield* Effect.scope;
+  const holder = yield* LockHolder;
+  const wait = yield* makeLockWait(
+    {
+      path: lockPath,
+      operation,
+      resource,
+      timeoutMs,
+      wait: options.wait ?? "brief",
+      subject: options.appLock === true ? "app" : "resource",
+    },
+    deadline,
+  );
+  const pending = yield* enqueueLock(lockPath, mode);
+  if (pending !== undefined) {
+    for (;;) {
+      if ((yield* wait.remaining) <= 0) return yield* wait.timeout();
+      yield* wait.onContention();
+      const delay = yield* wait.untilNextWake;
+      if (delay <= 0) continue;
+      const granted = yield* Deferred.await(pending).pipe(Effect.timeoutOption(delay));
+      if (Option.isSome(granted)) break;
+    }
+  }
+
+  const load = yield* NativeLockLoader;
+  const openNative = yield* Effect.tryPromise({ try: load, catch: (cause) => error(lockPath, cause) });
+  if (timeoutMs > 0 && (yield* wait.remaining) <= 0) return yield* wait.timeout();
+  const token = randomUUID();
+  const attempt = Effect.fnUntraced(function* () {
+    const scope = yield* Scope.fork(outer);
+    let acquired = false;
+    let recordStarted = false;
+    let current = false;
+    const probe = Effect.gen(function* () {
+      const handle = yield* Effect.acquireRelease(
+        Effect.try({
+          try: () => {
+            const named = lstatSync(lockPath, { throwIfNoEntry: false });
+            if (named !== undefined) checkSentinel(named);
             try {
-              await handle.chmod(0o600);
-              await options.privateFileAccess.enforce(lockPath);
-              await handle.writeFile(JSON.stringify({ token, pid: process.pid, createdAt: now }));
-              await handle.sync();
+              return openNative(lockPath);
             } catch (cause) {
-              const current = await lockIdentity(lockPath);
-              if (
-                current?.dev === identity.dev &&
-                current.ino === identity.ino &&
-                !current.isSymbolicLink()
-              ) {
-                await unlink(lockPath);
-              }
+              if (isErrnoCode(cause, "ENOENT")) return undefined;
               throw cause;
             }
-          } finally {
-            await handle.close();
-          }
-          return "acquired" as const;
-        } catch (cause) {
-          if (!isErrnoCode(cause, "EEXIST")) throw cause;
-          const identity = await lockIdentity(lockPath);
-          if (identity === null) return "retry" as const;
-          // A lock path that is not a private regular file never becomes reclaimable, so waiting is pointless.
-          if (identity.isSymbolicLink()) return { _tag: "unsafe", detail: "a symbolic link" } as const;
-          if (!identity.isFile()) return { _tag: "unsafe", detail: "not a regular file" } as const;
-          if (identity.nlink !== 1) return { _tag: "unsafe", detail: "hard-linked to another file" } as const;
-          if (process.getuid !== undefined && identity.uid !== process.getuid())
-            return { _tag: "unsafe", detail: "owned by another user" } as const;
-          await options.privateFileAccess.verify(lockPath);
-          const staleByMtime = now - identity.mtimeMs > LOCK_STALE_MS;
-          const current = await readLockRecord(lockPath).catch((error: unknown) => {
-            // A crashed exclusive create can leave owner-owned mode-000 bytes unreadable.
-            if (isErrnoCode(error, "EACCES")) return null;
-            throw error;
-          });
-          const takeover = current === null ? staleByMtime : processIsDead(current.pid);
-          if (takeover) {
-            const latest = await lockIdentity(lockPath);
-            if (
-              latest?.dev === identity.dev &&
-              latest.ino === identity.ino &&
-              latest.uid === identity.uid &&
-              latest.mode === identity.mode &&
-              latest.nlink === 1 &&
-              latest.mtimeMs === identity.mtimeMs &&
-              latest.ctimeMs === identity.ctimeMs
-            ) {
-              await unlink(lockPath).catch((error: unknown) => {
-                if (!isErrnoCode(error, "ENOENT")) throw error;
-              });
-            }
-          }
-          return takeover || current === null ? ("retry" as const) : ("held" as const);
-        }
-      },
-      catch: (cause) => lockError(options.operation, lockPath, cause),
-    });
-    if (attempt === "acquired") return;
-    if (typeof attempt === "object")
-      return yield* Effect.fail(
-        new StateStoreError({
-          reason: "path",
-          operation: options.operation,
-          path: lockPath,
-          remediation: `Lock path ${lockPath} is ${attempt.detail}, so Lando cannot use it. Make sure no Lando command is running, remove ${lockPath}, and retry.`,
+          },
+          catch: (cause) => error(lockPath, cause),
         }),
+        (held) =>
+          Effect.sync(() => {
+            if (held === undefined) return;
+            try {
+              if (acquired) {
+                try {
+                  if (recordStarted) held.withRecord((fd) => ftruncateSync(fd, 0));
+                  if (current && mode === "exclusive") held.unlinkIfCurrent?.();
+                } finally {
+                  held.unlock();
+                }
+              }
+            } finally {
+              held.close();
+            }
+          }),
       );
-    const current = yield* Clock.currentTimeMillis;
-    if (current >= deadline)
-      return yield* Effect.fail(yield* heldLockError(options.operation, lockPath, current));
-    if (attempt === "held" && !announced && options.onWait !== undefined) {
-      announced = true;
-      yield* options.onWait;
+      if (handle === undefined) return "replaced" as const;
+      const enforce = Effect.tryPromise({
+        try: () => options.privateFileAccess.enforce(lockPath),
+        catch: (cause) => error(lockPath, cause),
+      });
+      if (handle.created && handle.unlinkIfCurrent === undefined) yield* enforce;
+      const createdAt = yield* Clock.currentTimeMillis;
+      const result = yield* Effect.try({
+        try: () => {
+          const outcome = handle.tryLock(mode);
+          acquired = outcome === "acquired";
+          if (acquired) current = handle.verifyIdentity();
+          return outcome;
+        },
+        catch: (cause) => error(lockPath, cause),
+      });
+      if (acquired && !current) return "replaced" as const;
+      if (handle.created && current && handle.unlinkIfCurrent !== undefined) yield* enforce;
+      yield* Effect.tryPromise({
+        try: () => options.privateFileAccess.verify(lockPath),
+        catch: (cause) => error(lockPath, cause),
+      });
+      if (acquired && mode === "exclusive")
+        yield* Effect.try({
+          try: () =>
+            handle.withRecord((fd) => {
+              recordStarted = true;
+              const bytes = Buffer.from(
+                JSON.stringify({
+                  token,
+                  pid: process.pid,
+                  createdAt,
+                  resource,
+                  ...(holder.command === undefined
+                    ? {}
+                    : { command: holder.command.slice(0, LOCK_HOLDER_LABEL_MAX) }),
+                  ...(holder.app === undefined ? {} : { app: holder.app.slice(0, LOCK_HOLDER_LABEL_MAX) }),
+                }),
+              );
+              if (writeSync(fd, bytes, 0, bytes.length, 0) !== bytes.length)
+                throw new Error("Short advisory lock record write");
+              ftruncateSync(fd, bytes.length);
+            }),
+          catch: (cause) => error(lockPath, cause),
+        });
+      return result;
+    });
+    return yield* probe.pipe(
+      Effect.provideService(Scope.Scope, scope),
+      Effect.onExit((exit) =>
+        Exit.isSuccess(exit) && exit.value === "acquired" ? Effect.void : Scope.close(scope, exit),
+      ),
+    );
+  });
+
+  // Brief holds are millisecond-scale; a 250ms sleep burns 1/8 of their budget.
+  // Operation holds can last minutes, so keep their lower steady-state poll rate.
+  const maxDelay = options.wait === "operation" ? 250 : 20;
+  let delay = 5;
+  for (;;) {
+    const outcome = yield* attempt();
+    if (outcome === "acquired") return { token };
+    if (outcome === "contended") {
+      const record = options.refuseOnContention === undefined ? null : peekAdvisoryLockRecord(lockPath);
+      if (
+        record !== null &&
+        options.refuseOnContention !== undefined &&
+        (yield* options.refuseOnContention(record))
+      ) {
+        const reprobe = yield* attempt();
+        if (reprobe === "acquired") return { token };
+        if (reprobe === "contended" && peekAdvisoryLockRecord(lockPath)?.token === record.token) {
+          const now = yield* Clock.currentTimeMillis;
+          return yield* new StateStoreError({
+            reason: "lock",
+            lockFailure: "refused",
+            operation,
+            path: lockPath,
+            resource,
+            ...holderDetails(record, now),
+            message: `${resource} is already held by ${describeLockHolder(record, now)}.`,
+            remediation: "Run the nested mutation in the parent command or retry after it finishes.",
+          });
+        }
+      }
+      yield* wait.onContention();
     }
-    yield* Effect.sleep(`${retryMs} millis`);
+    const remaining = yield* wait.remaining;
+    if (remaining <= 0) return yield* wait.timeout();
+    if (outcome === "replaced") {
+      yield* Effect.tryPromise({
+        try: () => mkdir(dirname(lockPath), { recursive: true }),
+        catch: (cause) => error(lockPath, cause),
+      });
+    }
+    yield* Effect.sleep(Math.min(delay, remaining));
+    if ((yield* wait.remaining) <= 0) return yield* wait.timeout();
+    delay = Math.min(maxDelay, delay * 2);
   }
 });
 
-const release = (
-  lockPath: string,
-  token: string,
-  privateFileAccess: PrivateFileAccess,
-): Effect.Effect<void, never> =>
-  Effect.promise(async () => {
-    const identity = await lockIdentity(lockPath);
-    if (identity === null) return;
-    await privateFileAccess.verify(lockPath);
-    const current = await readLockRecord(lockPath);
-    if (current?.token === token) {
-      await unlink(lockPath).catch((cause: unknown) => {
-        if (!isErrnoCode(cause, "ENOENT")) throw cause;
-      });
-    }
-  });
-
-/**
- * Acquire an advisory lock at an EXACT lock path (no derived `${file}.lock`
- * suffix) and return its token plus a token-checked release effect. A lock is
- * reclaimed only from a holder whose process has exited, or from an unreadable
- * record whose lock file is older than the grace period; a live owner's lock is
- * never taken. Callers that need scope-managed acquire/use/release should
- * prefer {@link withAdvisoryLockUsing}; this lower-level handle exists for
- * surfaces that hold the lock outside an `acquireUseRelease` bracket.
- */
-export const acquireAdvisoryLockAt = (
-  lockPath: string,
+const acquireScoped = Effect.fn("StateStore.acquireLock")(function* (
+  location: LockLocation,
   operation: string,
-  options: {
-    readonly timeoutMs?: number;
-    readonly retryMs?: number;
-    readonly onWait?: Effect.Effect<void>;
-    readonly privateFileAccess: PrivateFileAccess;
-  },
-): Effect.Effect<{ readonly token: string; readonly release: Effect.Effect<void> }, StateStoreError> => {
-  const token = makeLockToken();
-  return acquire(lockPath, token, { operation, ...options }).pipe(
-    Effect.as({
-      token,
-      release: release(lockPath, token, options.privateFileAccess),
-    }),
+  options: NativeLockOptions,
+) {
+  // Close immediately on failed acquisition, even if the caller catches it in a long-lived scope.
+  // In reverse finalizer order the native handle closes before the local ticket is released.
+  const scope = yield* Scope.fork(yield* Effect.scope);
+  return yield* acquire(location, operation, options).pipe(
+    Effect.provideService(Scope.Scope, scope),
+    Effect.onExit((exit) => (Exit.isSuccess(exit) ? Effect.void : Scope.close(scope, exit))),
   );
-};
+});
 
-/**
- * Run `body` while holding the advisory lock for `file`. The lock is acquired
- * before `body`, registered into the ambient `Scope` for guaranteed
- * token-checked release, and released after `body` settles (success, failure,
- * or interrupt).
- */
+/** The returned token is valid until the caller's scope closes. */
+export const acquireAdvisoryLockAt = (sentinel: string, operation: string, options: NativeLockOptions) =>
+  acquireScoped({ path: sentinel, kind: "sentinel" }, operation, options);
+
 export const withAdvisoryLockUsing =
-  (privateFileAccess: PrivateFileAccess, options: AdvisoryLockWaitOptions = {}) =>
+  (privateFileAccess: PrivateFileAccess, options: StateLockOptions = {}) =>
   <A, E, R>(
     file: string,
     operation: string,
     body: Effect.Effect<A, E, R>,
-    callOptions: AdvisoryLockWaitOptions = {},
-  ): Effect.Effect<A, E | StateStoreError, R> =>
-    canonicalLockTarget(file).pipe(
-      Effect.flatMap((canonicalFile) => {
-        const lockPath = `${canonicalFile}.lock`;
-        const token = makeLockToken();
-        return guardFor(canonicalFile).pipe(
-          Effect.flatMap((semaphore) =>
-            withLockReentryGuard(canonicalFile, body, {
-              semaphore,
-              path: lockPath,
-              acquire: acquire(lockPath, token, {
-                operation,
-                privateFileAccess,
-                ...options,
-                ...callOptions,
-              }),
-              release: release(lockPath, token, privateFileAccess),
-            }),
-          ),
-        );
-      }),
+    callOptions: StateLockOptions = {},
+  ) =>
+    Effect.scopedWith((scope) =>
+      acquireScoped({ path: file, kind: "target" }, operation, {
+        ...options,
+        ...callOptions,
+        privateFileAccess,
+      }).pipe(Effect.provideService(Scope.Scope, scope), Effect.andThen(body)),
     );

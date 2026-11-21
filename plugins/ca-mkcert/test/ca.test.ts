@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { CaError } from "@lando/sdk/errors";
 import { CertificateName } from "@lando/sdk/schema";
 import { TEST_CERTIFICATES, runCaContract } from "@lando/sdk/test";
+import { ADVISORY_LOCK_SUFFIX } from "@lando/state-store/lock";
 import { Effect, Exit, Fiber, Redacted, Schema } from "effect";
 
 import { mkcertInstallPath } from "../src/provision.ts";
@@ -107,7 +108,10 @@ describe("mkcert CertificateAuthority setup", () => {
         expect(issuingCalls(runner)[0]?.env?.CAROOT).toBe(harness.caRoot);
         expect(await exists(issuedDirectory(runner))).toBe(false);
         expect(runner.calls().filter((call) => call.args[0] === "-install")).toHaveLength(installs);
-        expect((await readdir(harness.caRoot)).sort()).toEqual(["rootCA.pem"]);
+        expect((await readdir(harness.caRoot)).sort()).toEqual([
+          ...(process.platform === "win32" ? [`lando-root${ADVISORY_LOCK_SUFFIX}`] : []),
+          "rootCA.pem",
+        ]);
       });
     },
   );
@@ -199,7 +203,10 @@ describe("mkcert CertificateAuthority issuance", () => {
         // And: its temporary directory is gone and nothing else was written beside the binary and CAROOT
         expect(await exists(issuedDirectory(runner))).toBe(false);
         expect((await readdir(harness.root)).sort()).toEqual(["bin", "caroot", "tool-downloads"]);
-        expect(await readdir(harness.caRoot)).toEqual(["rootCA.pem"]);
+        expect((await readdir(harness.caRoot)).sort()).toEqual([
+          ...(process.platform === "win32" ? [`lando-root${ADVISORY_LOCK_SUFFIX}`] : []),
+          "rootCA.pem",
+        ]);
       },
     );
   });

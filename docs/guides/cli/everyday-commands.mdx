@@ -148,15 +148,21 @@ Replace `web` with the service the error names.
 
 ## Wait for another command to finish
 
-`start`, `stop`, `restart`, `rebuild`, and `destroy` take a per-app advisory lock so two processes cannot apply provider state at the same time. A second command waits and prints that another Lando command holds the app lock. After two minutes it fails. Set `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds) to wait longer or shorter.
+`start`, `stop`, `restart`, `rebuild`, and `destroy` lock the app while they change it, so two commands can't apply provider state to the same app at the same time. A second command waits. If the wait lasts more than a second, it prints what it's waiting for, then continues as soon as that command finishes.
 
-Read-only commands (`info`, `logs`, `app:config:lint`) do not take the lock.
+Read-only commands (`info`, `logs`, `app:config:lint`) don't take the lock.
 
-Lando reclaims a lock left by a killed command without printing a wait message. You don't need to delete the lock file.
+Lando gives up after two minutes and fails with an error that names the lock, how long it waited, and, when it can tell, the process holding it. Set `LANDO_LOCK_TIMEOUT_MS` to change that limit for every Lando lock a command can wait on for a whole operation, such as the app lock, a shared volume, or the router. It takes milliseconds from `0` to `600000`; `0` fails at once instead of waiting:
+
+```sh
+LANDO_LOCK_TIMEOUT_MS=600000 lando start
+```
+
+The operating system releases a lock when the command holding it exits, even if it was killed or the machine crashed, so a killed command never leaves a lock held and there's nothing to delete. Lando needs its data directory on a local disk for this; on a filesystem that can't hold locks, it stops with an error that says so.
 
 User apps share a mutation lock by canonical (realpath) app root, so changing `name:` in the same folder does not bypass a running command's lock. Scratch apps use their id plus canonical root because they can share a user app's folder. If you move the app directory while a mutate is running, a command against the new path sees a different key and does not wait on the first lock.
 
-A mutating command that shells out to another `lando` mutate on the same app reuses the lock it already holds. It does not deadlock.
+A `lando` command that a running mutation starts for the same app, such as a child `lando` launched from an [event step](../landofile/events.mdx), fails right away instead of waiting on its parent, which can't finish until the child does. Run that mutation after the parent finishes. In-process `command:` steps and SDK calls run inside the parent command and reuse its lock.
 
 ## Tear down
 

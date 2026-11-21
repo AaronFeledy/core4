@@ -6,6 +6,7 @@ import {
   PathsService,
   type StateBucket,
   type StateBucketSpec,
+  type StateLockOptions,
   StateStore,
   type StateStoreShape,
 } from "@lando/sdk/services";
@@ -88,12 +89,16 @@ export const makeStateStore = (options: {
           ),
         ),
     ),
-    withLock: Effect.fn("StateStore.withLock")(<A, E, R>(key: string, body: Effect.Effect<A, E, R>) =>
-      resolveStatePath("userData", "operation-locks", key, "withLock", roots).pipe(
-        Effect.flatMap((resolved) =>
-          withAdvisoryLockUsing(options.privateFileAccess)(resolved.file, "withLock", body),
+    withLock: Effect.fn("StateStore.withLock")(
+      <A, E, R>(key: string, body: Effect.Effect<A, E, R>, lockOptions?: StateLockOptions) =>
+        resolveStatePath("userData", "operation-locks", key, "withLock", roots).pipe(
+          Effect.flatMap((resolved) =>
+            withAdvisoryLockUsing(options.privateFileAccess)(resolved.file, "withLock", body, {
+              resource: key,
+              ...lockOptions,
+            }),
+          ),
         ),
-      ),
     ),
   });
 };

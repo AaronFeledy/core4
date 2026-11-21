@@ -29,7 +29,7 @@ test("different user names serialize across fibers sharing a root", async () => 
   const waiting = await Effect.runPromise(Deferred.make<void>());
   const harness = makeHarness({
     onPublish: (event) =>
-      event._tag === "message.warn" && event.body.includes("app lock")
+      event._tag === "lock.wait" && event.subject === "app"
         ? Deferred.succeed(waiting, undefined).pipe(Effect.asVoid)
         : Effect.void,
   });
