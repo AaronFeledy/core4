@@ -59,6 +59,66 @@ const plan: AppPlan = {
 const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
   commonContainerLabels(app, value)[CREATE_CONFIG_LABEL];
 
+test("HTTP readiness URL and native TCP port participate in container identity", () => {
+  const timing = { intervalSeconds: 2, timeoutSeconds: 1, retries: 5 };
+  const readiness = { ...timing, kind: "http", url: "http://localhost:8080/ready" } as const;
+  const healthcheck = { ...timing, kind: "tcp", port: 8080 } as const;
+  const original = fingerprint({ ...service, readiness, healthcheck });
+  expect(
+    fingerprint({ ...service, readiness: { ...readiness, url: "http://localhost:8080/live" }, healthcheck }),
+  ).not.toBe(original);
+  expect(fingerprint({ ...service, readiness, healthcheck: { ...healthcheck, port: 8081 } })).not.toBe(
+    original,
+  );
+});
+
+test("direct create and Compose emit native HTTP healthcheck argv and timing", () => {
+  const healthcheck = {
+    kind: "http",
+    url: "http://localhost:8080/ready?token=$token",
+    intervalSeconds: 2,
+    timeoutSeconds: 0.75,
+    retries: 3,
+    startPeriodSeconds: 5,
+  } as const;
+  const desired = { ...service, healthcheck };
+  const input = { ...plan, services: { [service.name]: desired } };
+  const argv = [
+    "CMD",
+    "/run/lando/helper/engines/lando-container-helper",
+    "probe-http",
+    "--url",
+    healthcheck.url,
+    "--timeout",
+    "0.75",
+  ];
+  expect(containerCreateBodyFragment(input, desired)).toMatchObject({
+    Healthcheck: {
+      Test: argv,
+      Interval: 2_000_000_000,
+      Timeout: 750_000_000,
+      Retries: 3,
+      StartPeriod: 5_000_000_000,
+    },
+  });
+  const compose: unknown = Bun.YAML.parse(
+    renderCompose(input, { providerId: "lando", remediation: "Retry.", env: {} }),
+  );
+  expect(compose).toMatchObject({
+    services: {
+      web: {
+        healthcheck: {
+          test: argv.map((arg) => arg.replaceAll("$", "$$")),
+          interval: "2000000000ns",
+          timeout: "750000000ns",
+          retries: 3,
+          start_period: "5000000000ns",
+        },
+      },
+    },
+  });
+});
+
 test("excludes listenerAuthority from the container create identity", () => {
   // Given two plans differing only in listenerAuthority.
   const advised: ServicePlan = {

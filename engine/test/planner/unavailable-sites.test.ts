@@ -228,7 +228,7 @@ test("blocked readiness.command drops probe findings at the readiness parent", (
     services: {
       web: {
         type: "l337",
-        readiness: { kind: "http", target: "service" },
+        readiness: { kind: "http", target: "host", url: "http://localhost" },
       },
     },
   });
