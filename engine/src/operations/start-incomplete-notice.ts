@@ -1,12 +1,10 @@
 import type { AppPlan } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
-import { Cause, Context, Duration, Effect, Exit, Option, Ref } from "effect";
+import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { Cause, Context, Effect, Exit, Option, Ref } from "effect";
 
 import { CommandWarnings } from "../landofile/command-warnings.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
-
-/** Observation stops after this budget; anything still unobserved is reported as unverified. */
-export const INCOMPLETE_START_OBSERVATION_BUDGET = Duration.seconds(1);
+import { type ServiceObservation, observeServices } from "./service-observation.ts";
 
 /**
  * Set by the outermost start-like operation. Nested starts (restart and rebuild run start)
@@ -60,27 +58,11 @@ const unchangedNotice = (command: IncompleteStartCommand, remediation: string | 
 
 const inventoryNotice = Effect.fnUntraced(function* (plan: AppPlan, command: IncompleteStartCommand) {
   const services = Object.values(plan.services).map((service) => service.name);
-  // Keep each completed observation even when the shared deadline interrupts its siblings.
-  const observed = new Map<string, ServiceRuntimeInfo>();
-  yield* Effect.gen(function* () {
-    const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
-    if (Option.isNone(registry)) return;
-    const provider = yield* registry.value.select(plan);
-    yield* Effect.forEach(
-      services,
-      (service) =>
-        Effect.suspend(() => provider.inspect({ app: plan.id, service, plan })).pipe(
-          Effect.tap((runtime) => Effect.sync(() => observed.set(service, runtime))),
-          // Inventory failure, including a provider defect, is unknown rather than a command failure.
-          Effect.ignoreCause,
-        ),
-      { concurrency: "unbounded", discard: true },
-    );
-  }).pipe(
-    Effect.interruptible,
-    Effect.timeoutOption(INCOMPLETE_START_OBSERVATION_BUDGET),
-    Effect.ignoreCause,
-  );
+  // Anything unobserved within the shared budget, provider selection included, is unverified.
+  const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+  const observed: ReadonlyMap<string, ServiceObservation> = Option.isNone(registry)
+    ? new Map()
+    : yield* observeServices(registry.value.select(plan), plan, services);
   const running: string[] = [];
   const stopped: string[] = [];
   const unverified: string[] = [];
