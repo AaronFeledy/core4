@@ -192,7 +192,7 @@ export async function* streamProcess(
     const reader = stream.getReader();
     readers.add(reader);
     try {
-      for (;;) {
+      while (true) {
         waitingReaders.add(reader);
         const next = await reader.read();
         waitingReaders.delete(reader);
@@ -227,7 +227,7 @@ export async function* streamProcess(
     if (openReaders > 0) drainTimer = setTimeout(closeIdleReaders, 1000);
   });
   try {
-    for (;;) {
+    while (true) {
       if (timedOut) throw timeoutError(input, DateTime.toEpochMillis(DateTime.nowUnsafe()) - startedAt);
       input.signal?.throwIfAborted();
       const value = queue.shift();

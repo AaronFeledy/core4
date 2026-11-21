@@ -62,7 +62,7 @@ const discover = Effect.fn("WorkflowAcquisition.discover")(function* (options: L
       );
       const found: string[] = [];
       let count = 0;
-      for (;;) {
+      while (true) {
         const entry = yield* io(() => directory.read(), workflowError("unreadable-directory"));
         if (entry === null) break;
         if (++count > limits.entries) return yield* workflowError("inventory-limit");

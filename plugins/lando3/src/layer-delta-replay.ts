@@ -61,7 +61,7 @@ export const replayDecodedDeltas = Effect.fnUntraced(function* (
     );
     const expected = mergeLandofiles([expectedOverlay]);
     const replaced = new Set<string>();
-    for (;;) {
+    while (true) {
       const decoded = yield* Effect.result(decodeLandofileAuthoringLayer(prefix.layer, candidate));
       if (Result.isSuccess(decoded)) {
         const merged = mergeLandofiles([accumulated, decoded.success]);

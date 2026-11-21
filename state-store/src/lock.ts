@@ -130,7 +130,7 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
   const timeoutMs = options.timeoutMs ?? LOCK_ATTEMPTS * LOCK_RETRY_MS;
   const deadline = (yield* Clock.currentTimeMillis) + timeoutMs;
   let announced = false;
-  for (;;) {
+  while (true) {
     const now = yield* Clock.currentTimeMillis;
     const attempt = yield* Effect.tryPromise({
       try: async () => {

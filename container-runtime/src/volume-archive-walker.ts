@@ -87,7 +87,7 @@ export class VolumeArchiveWalker {
   }
 
   #drain(): void {
-    for (;;) {
+    while (true) {
       if (this.#state === "done") {
         this.#buffer = new Uint8Array();
         return;

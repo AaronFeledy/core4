@@ -225,7 +225,7 @@ const webStreamBytesCapped = async (input: CappedWebStreamBytesInput): Promise<U
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
   try {
-    for (;;) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) {
         const output = new Uint8Array(totalBytes);
