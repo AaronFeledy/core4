@@ -14,7 +14,7 @@ import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { normalizeDefect } from "@lando/sdk/command-result";
+import { annotateFailureRole, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -393,13 +393,23 @@ describe("EventCommandExecutorLayer.layer", () => {
     ).toEqual([primary, secondary]);
   });
 
-  test("keeps a nested defect a typed failure after the primary failure", async () => {
+  test("keeps a nested cleanup defect fatal without displacing the typed primary", async () => {
     // Given: a target whose operation fails and whose cleanup dies.
-    const primary = new EventCommandTestError({ message: "target failed" });
+    const primary = {
+      _tag: "EventCommandTestError",
+      message: "target failed",
+      remediation: "Repair the target.",
+    };
     const defect = new Error("cleanup crashed");
     const harness = makeHarness();
     const executor = executorFor(
-      entryFor(testSpec(() => Effect.failCause(Cause.combine(Cause.fail(primary), Cause.die(defect))))),
+      entryFor(
+        testSpec(() =>
+          Effect.fail(primary).pipe(
+            Effect.ensuring(Effect.failCause(annotateFailureRole(Cause.die(defect), "cleanup"))),
+          ),
+        ),
+      ),
       harness,
     );
     // When: the nested target executes.
@@ -412,11 +422,14 @@ describe("EventCommandExecutorLayer.layer", () => {
         cwd: "/workspace/demo",
       }),
     );
-    // Then: both values arrive as Fail reasons, so event-step error mapping still sees them.
-    expect(Exit.isFailure(exit) ? exit.cause.reasons.every(Cause.isFailReason) : false).toBe(true);
-    expect(
-      Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error) : [],
-    ).toEqual([primary, normalizeDefect(defect)]);
+    if (!Exit.isFailure(exit)) throw new Error("expected nested command failure");
+    expect(Cause.hasDies(exit.cause)).toBe(true);
+    expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
+      kind: "typed",
+      source: "elected",
+      error: primary,
+      additionalErrors: [{ role: "cleanup", error: defect }],
+    });
   });
 
   test("propagates target interruption", async () => {
