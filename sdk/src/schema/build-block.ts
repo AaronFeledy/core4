@@ -4,16 +4,29 @@ import { BuildScript } from "./artifacts.ts";
 import { executionSiteKey } from "./execution-site.ts";
 import { indexedPropertyNameCheck, propertyNameCheckedRecord } from "./property-name-check.ts";
 
-const anti = () => Schema.optionalKey(Schema.Never);
+const SCRIPT_KEYS = "Lando build-script keys (artifact, app)";
+const COMPOSE_KEYS = "Compose image-build keys (context, dockerfile, dockerfile_inline, args, target)";
+
+/** Forbid a key from the other build family, naming the key so every formatter can say why. */
+const anti = (key: string, family: "script" | "compose") =>
+  Schema.optionalKey(
+    Schema.Never.annotate({
+      message: `Landofile service "build" mixes two key families: "${key}" is one of the ${
+        family === "script" ? SCRIPT_KEYS : COMPOSE_KEYS
+      }, which cannot be combined with ${
+        family === "script" ? COMPOSE_KEYS : SCRIPT_KEYS
+      }. To use a separately built image with scripts, reference it using image:.`,
+    }),
+  );
 
 const LandoBuildBlock = Schema.Struct({
   artifact: Schema.optionalKey(BuildScript),
   app: Schema.optionalKey(BuildScript),
-  context: anti(),
-  dockerfile: anti(),
-  dockerfileInline: anti(),
-  args: anti(),
-  target: anti(),
+  context: anti("context", "compose"),
+  dockerfile: anti("dockerfile", "compose"),
+  dockerfileInline: anti("dockerfileInline", "compose"),
+  args: anti("args", "compose"),
+  target: anti("target", "compose"),
 });
 
 const ComposeBuildBlock = Schema.Struct({
@@ -22,8 +35,8 @@ const ComposeBuildBlock = Schema.Struct({
   dockerfileInline: Schema.optionalKey(Schema.String),
   args: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   target: Schema.optionalKey(Schema.String),
-  artifact: anti(),
-  app: anti(),
+  artifact: anti("artifact", "script"),
+  app: anti("app", "script"),
 });
 
 const BuildBlockCanonical = Schema.Union([LandoBuildBlock, ComposeBuildBlock]);
@@ -66,14 +79,18 @@ const presence = Schema.makeFilter(
 
 const ScriptInput = Schema.Struct({
   ...scriptFields,
-  context: anti(),
-  dockerfile: anti(),
-  dockerfile_inline: anti(),
-  args: anti(),
-  target: anti(),
+  context: anti("context", "compose"),
+  dockerfile: anti("dockerfile", "compose"),
+  dockerfile_inline: anti("dockerfile_inline", "compose"),
+  args: anti("args", "compose"),
+  target: anti("target", "compose"),
 }).check(presence);
 
-const ComposeInput = Schema.Struct({ ...composeFields, artifact: anti(), app: anti() }).check(
+const ComposeInput = Schema.Struct({
+  ...composeFields,
+  artifact: anti("artifact", "script"),
+  app: anti("app", "script"),
+}).check(
   presence,
   Schema.makeFilter(
     ({ dockerfile, dockerfile_inline }) => dockerfile === undefined || dockerfile_inline === undefined,
@@ -88,7 +105,8 @@ const ComposeInput = Schema.Struct({ ...composeFields, artifact: anti(), app: an
 
 const knownKeys = indexedPropertyNameCheck(
   new RegExp(`^(?:${Object.keys({ ...composeFields, ...scriptFields }).join("|")})(?![\\s\\S])`, "u"),
-  'Unsupported Compose build key. Use a listed build key; spell an inline Dockerfile as "dockerfile_inline".',
+  (key) =>
+    `Unsupported Compose build key "${key}". Use a listed build key; spell an inline Dockerfile as "dockerfile_inline".`,
   "build.unsupported-key",
 );
 

@@ -62,10 +62,15 @@ describe("Compose build-key totality", () => {
           .issues.map(({ message }) => message)
           .join("\n");
         expect(message).toContain(authoredKey);
-        expect(message).toContain("mixes two key families");
-        expect(message).toContain("Compose image-build keys");
-        expect(message).toContain("Lando build-script keys");
-        expect(message).toContain("image:");
+        if (disposition === "normalized") {
+          expect(message).toContain("mixes two key families");
+          expect(message).toContain("Compose image-build keys");
+          expect(message).toContain("Lando build-script keys");
+          expect(message).toContain("image:");
+        } else {
+          // A rejected key is reported as unsupported even beside a build-script key.
+          expect(message).toContain("Unsupported Compose build key");
+        }
 
         const composeOnlyResult = Schema.decodeUnknownResult(BuildBlock)(
           { [authoredKey]: buildValue(matrixKey) },
