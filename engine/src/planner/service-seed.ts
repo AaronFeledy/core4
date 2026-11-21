@@ -86,7 +86,7 @@ export const resolveSeed = Effect.fnUntraced(function* (
     ),
   );
   const { pluginRegistry, fileSystem, appRoot, appName, appDefaults, registeredServiceTypeIds } = input;
-  const serviceTypeId = serviceTypeFor(name, scopedService);
+  const serviceTypeId = serviceTypeFor(name, scopedService, registeredServiceTypeIds);
   const { image, build } = scopedService;
   if (image !== undefined && build !== undefined && isComposeBuild(build)) {
     return yield* Effect.fail(

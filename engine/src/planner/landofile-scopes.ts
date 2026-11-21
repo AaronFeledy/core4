@@ -190,6 +190,7 @@ export const orderServicesByCredsReferences = Effect.fnUntraced(function* (input
   readonly deferredSites: DeferredExpressionSites;
   readonly landofilePath: string;
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
+  readonly registeredServiceTypeIds: ReadonlyArray<string>;
 }) {
   const names = Object.keys(input.landofile.services ?? {});
   const declared = new Set(names);

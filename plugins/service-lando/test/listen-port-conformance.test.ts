@@ -86,12 +86,38 @@ const listenerVariants = (family: string): readonly Partial<Pick<ServiceConfig, 
 describe("bundled catalog listen-port conformance", () => {
   for (const [id, serviceType] of serviceTypes) {
     const family = id.split(":")[0] ?? id;
+    if (Object.hasOwn(exemptions, family)) {
+      test.each([{}, { endpoints: [] }])(
+        `${id} selects an authored self port without declaring endpoints: %j`,
+        async (endpoints) => {
+          const select = serviceType.plannedPort;
+          if (select === undefined) throw new Error(`Missing selector for ${id}`);
+          for (const port of [undefined, PORT]) {
+            const service = Schema.decodeUnknownSync(ServiceConfig)({
+              type: id,
+              image: "alpine:3",
+              ...endpoints,
+              ...(port === undefined ? {} : { port }),
+            });
+            expect(select(service)).toBe(port);
+            const plan = await composeServicePlan({
+              serviceType,
+              service,
+              serviceName: "server",
+              appName: "port-test",
+              appRoot: "/srv/apps/port-test",
+              metadata,
+            });
+            expect(plan.endpoints).toEqual([]);
+            expect(plan.listenerAuthority).toBeUndefined();
+            expect(plan.readiness).toBeUndefined();
+          }
+        },
+      );
+      continue;
+    }
     for (const variant of listenerVariants(family)) {
       test(`${id} ${variant.framework ?? variant.via ?? "default"} predicts its primary endpoint`, async () => {
-        if (Object.hasOwn(exemptions, family)) {
-          expect(serviceType.plannedPort).toBeUndefined();
-          return;
-        }
         const select = serviceType.plannedPort;
         if (select === undefined) throw new Error(`Missing selector for ${id}`);
         for (const port of [undefined, PORT]) {
@@ -135,12 +161,8 @@ describe("bundled catalog listen-port conformance", () => {
       });
     }
     test(`${id} classifies and honors an authored non-default listen port`, async () => {
-      const family = id.split(":")[0] ?? id;
       const mechanism = mechanisms[id] ?? mechanisms[family];
-      if (mechanism === undefined) {
-        expect(exemptions[family]).toBeDefined();
-        return;
-      }
+      if (mechanism === undefined) throw new Error(`Missing listen-port mechanism for ${id}`);
       const plan = await composeServicePlan({
         serviceType:
           id === "node"

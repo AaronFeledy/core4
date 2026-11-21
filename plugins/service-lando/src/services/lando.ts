@@ -41,6 +41,7 @@ export const landoServiceType: ServiceType = {
   name: "lando",
   base: "lando",
   schema: Schema.Unknown,
+  plannedPort: ({ port }) => port,
   resolve: (input) =>
     serviceTypeResolve("lando", "Failed to resolve lando service type", () => ({
       base: "lando" as const,

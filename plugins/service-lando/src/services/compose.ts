@@ -62,6 +62,7 @@ export const composeServiceType: ServiceType = {
   name: "compose",
   base: "l337",
   schema: Schema.Unknown,
+  plannedPort: ({ port }) => port,
   resolve: (input) =>
     Effect.succeed({
       base: "l337",

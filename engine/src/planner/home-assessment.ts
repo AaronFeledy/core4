@@ -2,7 +2,12 @@ import type { ServiceConfig } from "@lando/sdk/schema";
 import type { PluginRegistry } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 import { resolveHomePath, serviceHomeIntent } from "./home.ts";
-import { loadServiceTypeWithVersion, resolvePinnedArtifactTag, serviceTypeFor } from "./service-types.ts";
+import {
+  contributionId,
+  loadServiceTypeWithVersion,
+  resolvePinnedArtifactTag,
+  serviceTypeFor,
+} from "./service-types.ts";
 
 export type ServiceHomeAssessment =
   | { readonly kind: "persisted"; readonly target: string }
@@ -24,7 +29,12 @@ export const assessServiceHome = Effect.fn("ServiceHome.assess")(function* (
   }
   if (service.home === false)
     return { kind: "unresolved", reason: "home persistence is explicitly disabled" };
-  const reference = serviceTypeFor(name, service);
+  const manifests = yield* registry.list.pipe(Effect.option);
+  if (manifests._tag === "None") return { kind: "unresolved", reason: "service types could not be listed" };
+  const typeIds = manifests.value.flatMap((manifest) =>
+    (manifest.contributes?.serviceTypes ?? []).map(contributionId),
+  );
+  const reference = serviceTypeFor(name, service, typeIds);
   return yield* Effect.gen(function* () {
     const { serviceType, version } = yield* loadServiceTypeWithVersion(registry, reference);
     const pinnedArtifactTag = yield* resolvePinnedArtifactTag("", name, serviceType, version);

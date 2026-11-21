@@ -411,26 +411,52 @@ tooling:
     expect(replay.pendingSites).toEqual([]);
   }));
 
-test.each(["type: compose\n    image: alpine:3", "type: php:8.3\n    via: cli"])(
-  "locates an absent planned listener even with an authored port: %s",
-  (type) =>
-    withRoot(async (root) => {
-      await writeFile(
-        join(root, ".lando.yml"),
-        `name: missing-port
+test.each([
+  { type: "lando", config: "type: lando\n    image: alpine:3\n    port: 8080", port: "8080" },
+  { type: "compose", config: "type: compose\n    image: alpine:3\n    port: 8081", port: "8081" },
+  { type: "lando", config: "image: ghcr.io/acme/api:1.4\n    port: 8082", port: "8082" },
+])("plans $type argv from the authored port ($port)", ({ type, config, port }) =>
+  withRoot(async (root) => {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: raw-port
+services:
+  api:
+    ${config}
+    command: [api-server, --listen, "0.0.0.0:{{ service.port }}"]
+`,
+    );
+    const plan = await runPlan(root);
+    expect(plan.services[ServiceName.make("api")]).toMatchObject({
+      type,
+      command: ["api-server", "--listen", `0.0.0.0:${port}`],
+      endpoints: [],
+    });
+  }),
+);
+
+test.each([
+  "type: compose\n    image: alpine:3",
+  "type: lando\n    image: alpine:3",
+  "image: ghcr.io/acme/api:1.4",
+  "type: php:8.3\n    via: cli\n    port: 6380",
+])("locates an absent planned listen port: %s", (config) =>
+  withRoot(async (root) => {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: missing-port
 services:
   web:
-    ${type}
-    port: 6380
+    ${config}
     command: [server, "{{ service.port }}"]
 `,
-      );
-      await expect(runPlan(root)).rejects.toMatchObject({
-        _tag: "ConfigExpressionError",
-        path: ["services", "web", "command", 1],
-        source: expect.objectContaining({ file: join(root, ".lando.yml") }),
-      });
-    }),
+    );
+    await expect(runPlan(root)).rejects.toMatchObject({
+      _tag: "ConfigExpressionError",
+      path: ["services", "web", "command", 1],
+      source: expect.objectContaining({ file: join(root, ".lando.yml") }),
+    });
+  }),
 );
 
 test("matches the existing substring inventory on an unannotated representative plan", () =>

@@ -70,6 +70,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     ),
     landofilePath: input.landofilePath,
     pluginRegistry: input.pluginRegistry,
+    registeredServiceTypeIds: input.registeredServiceTypeIds,
   });
   for (const name of order.order) {
     if (unavailable.has(name)) continue;

@@ -27,6 +27,7 @@ export const ownPortReplacement = Effect.fnUntraced(function* (input: {
   readonly landofile: LandofileShape;
   readonly deferredSites: readonly ParsedPendingSite[];
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
+  readonly registeredServiceTypeIds: ReadonlyArray<string>;
   readonly name: string;
   readonly site: ParsedPendingSite;
 }) {
@@ -77,7 +78,7 @@ export const ownPortReplacement = Effect.fnUntraced(function* (input: {
     )
   )
     return false;
-  const loaded = yield* loadServiceTypeWithVersion(input.pluginRegistry, serviceTypeFor(name, service)).pipe(
+  const loaded = yield* loadServiceTypeWithVersion(input.pluginRegistry, serviceTypeFor(name, service, input.registeredServiceTypeIds)).pipe(
     Effect.result,
   );
   if (Result.isFailure(loaded)) return false;
