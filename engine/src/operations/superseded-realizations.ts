@@ -18,7 +18,7 @@ import {
 import { quoteYamlScalar } from "@lando/sdk/yaml";
 import { DateTime, Effect } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { cachePolicyForTeardown, withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { readJournal } from "./accelerated-start-journal.ts";
 import { prepareDestroyFileSync } from "./destroy-file-sync.ts";
 import { cleanupAppWorkers } from "./destroy-provider.ts";
@@ -123,6 +123,7 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
           plan: old,
           provider,
           stateStore,
+          cachePolicy: cachePolicyForTeardown(execution),
           body: Effect.fnUntraced(function* () {
             yield* disposal.quiesceRetained;
             const quiesced = yield* disposal.dispose;

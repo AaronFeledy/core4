@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AbsolutePath, appIdentityKey } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, appIdentityKey, landoCacheStoreName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { haltAppRuntime } from "../../src/operations/stop.ts";
@@ -75,6 +75,34 @@ test("idle stop uses the same status observation for coordination and provider a
   await Effect.runPromise(haltAppRuntime({}, target).pipe(Effect.provide(harness.layer)));
   expect(mutations).toEqual([]);
   expect(reads).toBe(1);
+});
+
+test("halt does not look up a retained global cache", async () => {
+  const cache = landoCacheStoreName("composer");
+  const applied: AppPlan = {
+    ...plan,
+    stores: [...plan.stores, { name: cache, scope: "global", kind: "cache" }],
+  };
+  const located: string[] = [];
+  const harness = makeHarness({
+    plannedApp: applied,
+    appliedPlans: [applied],
+    providerOverrides: {
+      locateVolume: ({ store }) =>
+        Effect.sync(() => {
+          located.push(store);
+          return { nativeName: store, coordinationKey: JSON.stringify(["endpoint:test", store]) };
+        }),
+    },
+  });
+  const target = {
+    plan: applied,
+    root: applied.root,
+    app: { kind: "user" as const, id: applied.id, root: applied.root },
+  };
+  const result = await Effect.runPromise(haltAppRuntime({}, target).pipe(Effect.provide(harness.layer)));
+  expect(result.result.outcome).toBe("stopped");
+  expect(located).not.toContain(cache);
 });
 
 test("halt asks for this app's exact applied plan", async () => {
