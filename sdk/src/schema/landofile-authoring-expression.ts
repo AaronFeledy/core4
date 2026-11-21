@@ -211,7 +211,7 @@ const analyzeTemplate = (template: ExpressionTemplate) => {
 const slots = new Map<AuthoringExpressionExpectedType, Schema.Codec<AuthoringExpression, string>>();
 
 // JSON Schema approximates syntax only; parsed scope/type checks remain authoritative.
-const wholeTemplatePattern = /^\{\{(?!#)-?(?:(?!\{\{|\}\})[\s\S])+?-?\}\}(?![\s\S])/;
+export const wholeTemplatePattern = /^\{\{(?!#)-?(?:(?!\{\{|\}\})[\s\S])+?-?\}\}(?![\s\S])/;
 const compositeTemplatePattern =
   /^(?:\{\{\{\{|\$\$\{|\{\{#(?:(?!#\}\})[\s\S])*#\}\}|(?!\{\{|\$\$\{|\$\{|\$[A-Za-z_])[\s\S])*(?:\{\{(?!#)(?:(?!\{\{|\}\})[\s\S])+\}\}|\$(?:[A-Za-z_][A-Za-z0-9_]*|\{(?:secret:[^}]+|[A-Za-z_][A-Za-z0-9_]*(?:(?::-|-|:\?|:\+)[^}]*)?)\}))/;
 

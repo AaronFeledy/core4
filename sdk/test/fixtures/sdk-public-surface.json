@@ -2126,6 +2126,7 @@
     ],
     "./schema/services": [
       "AdminerServiceConfig",
+      "wholeTemplatePattern",
       "DotnetServiceConfig",
       "LocalStackServiceConfig",
       "MAILHOG_DEPRECATION_NOTICE",

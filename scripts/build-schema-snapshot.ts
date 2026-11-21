@@ -20,6 +20,7 @@ import { HelpCatalogResult } from "../core/src/cli/compiled-help.ts";
 import { HelpTargetResult } from "../core/src/cli/help-target.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
 import { assertLayerMergeCompleteness } from "../sdk/src/landofile/layer-merge-trie.ts";
+import { assertEditorSchemaNaming } from "../sdk/src/schema/editor-naming.ts";
 import {
   IncludeEntry,
   JSON_SCHEMA_NAMES,
@@ -139,6 +140,11 @@ const main = async (): Promise<void> => {
     undefined,
     new Map(sdkSchemas.map(({ schemaName, jsonSchema }) => [schemaName, jsonSchema])),
   );
+  const editorSchemas = {
+    LandofileShape: getEditorJsonSchema("LandofileShape"),
+    GlobalConfig: getEditorJsonSchema("GlobalConfig"),
+  };
+  assertEditorSchemaNaming(editorSchemas);
   for (const { schemaName, jsonSchema } of sdkSchemas) {
     const invalidPaths = assertJsonSchemaDeprecationsValid(jsonSchema);
     if (invalidPaths.length > 0) {
@@ -160,7 +166,7 @@ const main = async (): Promise<void> => {
     ["LandofileShape", "landofile.schema.json"],
     ["GlobalConfig", "global-config.schema.json"],
   ] as const) {
-    await Bun.write(resolve(EDITOR_SCHEMA_DIR, filename), renderJson(getEditorJsonSchema(name)));
+    await Bun.write(resolve(EDITOR_SCHEMA_DIR, filename), renderJson(editorSchemas[name]));
   }
   const metadataIndexPath = resolve(SCHEMA_ARTIFACT_DIR, "index.json");
   await Bun.write(metadataIndexPath, renderJson(publicSchemaMetadataIndex));
