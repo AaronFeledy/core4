@@ -26,8 +26,9 @@ export interface ProjectedFailure {
  * turned into a `Die` because a finalizer or sibling also died. `defect`: an unexpected defect.
  * `none`: the Cause holds no `Fail` or `Die` reason, such as an interruption.
  */
-export type FailureOutcome = ProjectedFailure & { readonly _tag: "failure" } & (
-    | { readonly kind: "typed"; readonly source: "fail" | "elected" }
+export type FailureOutcome<E = unknown> = ProjectedFailure & { readonly _tag: "failure" } & (
+    | { readonly kind: "typed"; readonly source: "fail"; readonly error: E }
+    | { readonly kind: "typed"; readonly source: "elected" }
     | { readonly kind: "defect" | "none" }
   );
 
@@ -150,10 +151,10 @@ const classifyPrimary = <E>(cause: Cause.Cause<E>): ClassifiedPrimary<E> | undef
 export const primaryFailureReason = <E>(cause: Cause.Cause<E>): Cause.Reason<E> | undefined =>
   classifyPrimary(cause)?.reason;
 
-export const failureOutcomeFromCause = (
-  cause: Cause.Cause<unknown>,
+export const failureOutcomeFromCause = <E>(
+  cause: Cause.Cause<E>,
   projectDefect: (defect: unknown) => unknown = (defect) => defect,
-): FailureOutcome => {
+): FailureOutcome<E> => {
   const primary = classifyPrimary(cause);
   const additionalErrors = cause.reasons.flatMap((reason) => {
     if (reason === primary?.reason || Cause.isInterruptReason(reason)) return [];
