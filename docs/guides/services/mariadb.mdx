@@ -95,7 +95,7 @@ services:
 
 Lando mounts that file read-only at `/etc/mysql/conf.d/99-lando.cnf`. The server reads it as a drop-in on startup, after its own defaults. It has to be a regular file, not a directory.
 
-Lando's planned port, `port:` or the default, beats a port line in your config file. An authored `command:` or `entrypoint:` owns the daemon's flags instead.
+Lando's generated launcher gives the planned port, `port:` or the default, precedence over a port line in your config file. If you replace the launcher, see [Change the port](#change-the-port).
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
@@ -112,7 +112,7 @@ services:
 
 Other services now connect to `db:3307`. Lando sets `MYSQL_TCP_PORT` for the server and in-container clients, and publishes the same value as `LANDO_DB_PORT`. `lando mariadb` and `lando db:*` commands use that planned port.
 
-An authored `MYSQL_TCP_PORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.<name>.environment.MYSQL_TCP_PORT`. With `config.server`, Lando pins `port:` or the default on its command line. If you author `command:` or `entrypoint:`, you own the daemon's flags; pass `--port=3307` yourself if the option file sets another port.
+An authored `MYSQL_TCP_PORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.<name>.environment.MYSQL_TCP_PORT`. If you replace `command:` or `entrypoint:` and the option file sets another port, pass `--port={{ service.port }}` in your launcher. The [port expression](../landofile/expressions.mdx#your-services-own-port) supplies the value; you supply the flag.
 
 Apply the change with `lando rebuild`, then check the running server:
 

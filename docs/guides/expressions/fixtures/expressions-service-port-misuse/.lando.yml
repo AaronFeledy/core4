@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid service.port is not available in environment values
 name: expressions-service-port-misuse
 services:
   cache:

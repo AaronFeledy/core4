@@ -187,8 +187,9 @@ Lando starts `mongod` with `--port 27018`, including when `config.server` is mou
 
 With `config.server` and no `port:`, Lando pins the default `27017` on its command line. With neither, Lando leaves the image's default command alone.
 
-If you author `command:` or `entrypoint:`, you own the daemon's flags. Include
-`--port 27018` in your own launcher; Lando never appends it for you. When
+If you author `command:` or `entrypoint:`, include `--port "{{ service.port }}"`
+in the launcher. Lando never appends the flag; the
+[port expression](../landofile/expressions.mdx#your-services-own-port) supplies its value. When
 startup fails with this override, Lando includes a hint naming `--port 27018`.
 Check that your process binds the planned port.
 
