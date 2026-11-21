@@ -213,7 +213,8 @@ describe("@lando/service-lando registration", () => {
     ]);
     expect(objectStore.environment.MINIO_BUCKET).toBe("uploads");
     expect(objectStore.command).toEqual([
-      "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :9001",
+      'mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :9001 "$@"',
+      "minio",
     ]);
     expect(objectStore.mounts).toContainEqual({
       origin: "service",

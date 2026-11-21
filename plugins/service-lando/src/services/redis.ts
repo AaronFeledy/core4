@@ -3,13 +3,13 @@ import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { REDIS_UNUSED_CREDS, assertCredsMembersUsed, claimsCreds } from "./_creds-helpers.ts";
+import { PORT_EXTRA_ARGS_REMEDIATION, type ReservedArgRule, extraArgsCommandOptions } from "./_extra-args.ts";
 import {
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-
 import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
@@ -31,6 +31,47 @@ const selectPort = primaryPortSelector(REDIS_LISTENER);
 const DATA_TARGET = PortablePath.make("/data");
 export const REDIS_FEATURE_ID = "service-lando.redis";
 
+const redisExtraArgsRules = (service: {
+  readonly persist?: boolean | undefined;
+  readonly creds?: { readonly password?: unknown } | undefined;
+}): readonly ReservedArgRule[] => {
+  const rules: ReservedArgRule[] = [
+    { form: "long", name: "port", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
+  ];
+  // Lando always manages appendonly on its launcher.
+  rules.push({
+    form: "long",
+    name: "appendonly",
+    remediation: "Set persist: instead of overriding appendonly in extraArgs.",
+    takesValue: true,
+  });
+  if (service.persist === false) {
+    rules.push({
+      form: "long",
+      name: "save",
+      remediation: "Set persist: instead of overriding save in extraArgs.",
+      takesValue: true,
+    });
+  }
+  if (service.creds?.password !== undefined) {
+    rules.push(
+      {
+        form: "long",
+        name: "requirepass",
+        remediation: "Set creds.password instead of requiring a password in extraArgs.",
+        takesValue: true,
+      },
+      {
+        form: "long",
+        name: "aclfile",
+        remediation: "Lando manages Redis auth through creds.password; remove auth flags from extraArgs.",
+        takesValue: true,
+      },
+    );
+  }
+  return rules;
+};
+
 const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const port = selectPort(service);
@@ -46,9 +87,9 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
     ctx.setCommand(service.command);
     ctx.setListenerAuthority(launcherAuthority(REDIS_LISTENER, port));
   } else {
-    ctx.setCommand(
-      password === undefined ? command : ["sh", "-ec", AUTH_START, "redis-auth", ...command.slice(1)],
-    );
+    const launcher =
+      password === undefined ? command : ["sh", "-ec", AUTH_START, "redis-auth", ...command.slice(1)];
+    ctx.setCommand(launcher, extraArgsCommandOptions(redisExtraArgsRules(service)));
   }
   if (service.persist !== false)
     ctx.addStorage({

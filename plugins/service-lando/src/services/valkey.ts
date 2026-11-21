@@ -1,6 +1,7 @@
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { PORT_EXTRA_ARGS_REMEDIATION, extraArgsCommandOptions } from "./_extra-args.ts";
 import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -27,7 +28,18 @@ const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
     ctx.setCommand(service.command);
     ctx.setListenerAuthority(launcherAuthority(VALKEY_LISTENER, port));
   } else {
-    ctx.setCommand(["valkey-server", "--appendonly", "yes", "--port", String(port)]);
+    ctx.setCommand(
+      ["valkey-server", "--appendonly", "yes", "--port", String(port)],
+      extraArgsCommandOptions([
+        { form: "long", name: "port", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
+        {
+          form: "long",
+          name: "appendonly",
+          remediation: "Valkey always enables appendonly; remove --appendonly from extraArgs.",
+          takesValue: true,
+        },
+      ]),
+    );
   }
   ctx.addStorage({
     store: ctx.serviceStoreName("valkey-data"),

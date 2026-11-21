@@ -5,6 +5,7 @@ import { MINIO_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
+import { extraArgsCommandOptions } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   commandHealthcheck,
@@ -68,7 +69,22 @@ const assertBucketName = (bucket: string | undefined): void => {
 };
 
 const defaultServerCommand = (apiPort: number, consolePort: number): string =>
-  `mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :${apiPort} --console-address :${consolePort}`;
+  `mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :${apiPort} --console-address :${consolePort} "$@"`;
+
+const MINIO_EXTRA_ARGS = extraArgsCommandOptions([
+  {
+    form: "long",
+    name: "address",
+    remediation: "Set port: instead of --address in extraArgs.",
+    takesValue: true,
+  },
+  {
+    form: "long",
+    name: "console-address",
+    remediation: "Set consolePort: instead of --console-address in extraArgs.",
+    takesValue: true,
+  },
+]);
 
 const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -104,7 +120,8 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
 
   if (service.command === undefined && service.entrypoint === undefined) {
     ctx.setEntrypoint(["/bin/sh", "-c"]);
-    ctx.setCommand([defaultServerCommand(apiPort, consolePort)]);
+    // sh -c script $0 args... so engine-appended extraArgs land in "$@"
+    ctx.setCommand([defaultServerCommand(apiPort, consolePort), "minio"], MINIO_EXTRA_ARGS);
   } else {
     if (service.command !== undefined) {
       ctx.setCommand(service.command);
