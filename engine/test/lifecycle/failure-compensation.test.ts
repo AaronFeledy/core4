@@ -92,6 +92,8 @@ test("keeps an unannotated operation primary even after an earlier annotated typ
   );
   expect(failureOutcomeFromCause(reordered)).toEqual({
     _tag: "failure",
+    kind: "typed",
+    source: "fail",
     error: primary,
     additionalErrors: [{ role: "rollback", error: secondary }],
   });
