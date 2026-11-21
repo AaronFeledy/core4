@@ -152,6 +152,7 @@ If you are looking for a public surface or policy:
 | Schema and generated-reference publication, build and environment input parity, encoded decoding-default metadata, indexed endpoint diagnostics, resolved `kind` encoding, and shared provider-free route listener derivation | 07 | §7.8 |
 | Shared resolved-Landofile validation, open diagnostic reasons, env/build repairs, and the generated lint rule reference | 07 + 08 | §7.3.1 + §7.8 + §8.2.1 + §8.11.1 |
 | Canonical authored key spelling, cross-service defaults, and unreleased spelling removals | 06 + 07 + 16 | §6.2 + §7.4–§7.8 + §16.2 |
+| Editor naming gate, exact debt ledger, and removed-spelling repairs | 07 + 13 | §7.8 + §13.2 |
 | Authored HTTP route binding with route-declared listeners and TCP/UDP protocol conflicts, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
 | Node runtime inference versus package-manager selection, offline launchers, BYO toolchains, and project-file validation headlines | 06 + 07 + 12 + 13 | §6.11.0 + §6.12.1 + §6.13.3 + §7.8 + §12.1 + §13.1 |
 | Dependency environments: sharing, preparation, scheduling and cancellation, logs, storage and offline reuse, recipes, and scratch exclusion | 05 + 06 + 08 + 11 + 12 + 13 + 14 + 17 + 19 | §5.3 + §6.5.1 + §6.12.1 + §6.15 + §8.2 + §8.5 + §8.8.10 + §10.6 + §12.4 + §12.6 + §13.1 + §15.C + §15.E + §19.9 + §21.7 |
