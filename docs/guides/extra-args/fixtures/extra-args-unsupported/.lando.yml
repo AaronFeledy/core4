@@ -1,0 +1,7 @@
+name: extra-args-unsupported
+services:
+  web:
+    type: node:22
+    primary: true
+    extraArgs:
+      - --inspect

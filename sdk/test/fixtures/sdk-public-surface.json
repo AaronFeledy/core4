@@ -118,13 +118,14 @@
     "setListenerAuthority(authority: ListenerAuthority): void",
     "setCerts(certs: CertificatePlan): void",
     "setEntrypoint(entrypoint: CommandSpec): void",
-    "setCommand(command: CommandSpec): void",
+    "setCommand(command: CommandSpec, options?: LauncherCommandOptions): void",
     "setInit(init: boolean): void",
     "setArtifact(artifact: ArtifactRef | ArtifactBuildSpec): void",
     "setUser(user: string): void",
     "setWorkingDirectory(path: PortablePath): void"
   ],
   "featureEffectiveValidation": "readonly validateEffective?: (ctx: ServiceEndpointContext) => Effect.Effect<ServiceFeatureValidationResult, ServiceFeatureError>",
+  "serviceTypePlannedPort": "readonly plannedPort?: (service: Pick<ServiceConfig, \"port\" | \"framework\" | \"via\" | \"type\">) => PortNumber | undefined",
   "featureEndpointDeclarations": {
     "ServiceFeatureDefinition": "readonly declareEndpoints?: (ctx: ServiceEndpointContext) => Effect.Effect<readonly (typeof EndpointDeclaration.Encoded)[], ServiceFeatureError>",
     "AppFeatureDefinition": "readonly declareEndpoints?: (ctx: AppEndpointDeclarationContext) => Effect.Effect<Readonly<Record<string, readonly (typeof EndpointDeclaration.Encoded)[]>>, AppFeatureError>"
@@ -1157,7 +1158,12 @@
       "valueOriginAt",
       "withValueOrigins"
     ],
-    "./landofile/execution-sites": ["ExecutionSiteMatch", "executionSiteAt"],
+    "./landofile/execution-sites": [
+      "ExecutionSiteMatch",
+      "executionSiteAt",
+      "isServiceEnvironmentValuePath",
+      "servicePortExpression"
+    ],
     "./landofile/flow-mapping-remediation": ["GENERIC_FLOW_MAPPING_REMEDIATION", "flowMappingRemediation"],
     "./log-follow": [
       "DEFAULT_MAX_LINE_BYTES",

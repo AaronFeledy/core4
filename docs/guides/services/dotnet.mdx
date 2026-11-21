@@ -58,7 +58,7 @@ Lando uses the same port for this variable and the internal HTTP endpoint, repla
 
 An authored `environment.ASPNETCORE_HTTP_PORTS` must be one literal integer equal to the planned port. Malformed values, port lists, and unequal values fail planning at `services.appserver.environment.ASPNETCORE_HTTP_PORTS`, including inherited `appEnv` and env-file values. Set `port:` instead.
 
-Use `--no-launch-profile`: `launchSettings.json` can set `applicationUrl`, which becomes `ASPNETCORE_URLS` and overrides `ASPNETCORE_HTTP_PORTS`. An authored `ASPNETCORE_URLS`, a `--urls` argument, or application code configuring Kestrel also takes precedence. Those settings remain yours to align with `port:`; Lando does not validate their URLs or rewrite them.
+Use `--no-launch-profile`: `launchSettings.json` can set `applicationUrl`, which becomes `ASPNETCORE_URLS` and overrides `ASPNETCORE_HTTP_PORTS`. An authored `ASPNETCORE_URLS`, a `--urls` argument, or application code configuring Kestrel also takes precedence. Lando does not validate or rewrite those URLs. If you set `--urls` in a Landofile `command:`, use `"http://0.0.0.0:{{ service.port }}"` as the argument to follow the [planned port](../landofile/expressions.mdx#your-services-own-port).
 
 Projecting a port does not infer a healthcheck.
 

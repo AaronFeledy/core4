@@ -60,7 +60,8 @@ test("MinIO child feature override can reclaim the parent's default console port
   // Then final feature authority governs launch, discovery, and the API client alias.
   const service = plan.services[ServiceName.make("web")];
   expect(service?.command).toEqual([
-    "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9001 --console-address :19001",
+    'mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9001 --console-address :19001 "$@"',
+    "minio",
   ]);
   expect(service?.endpoints).toContainEqual(
     expect.objectContaining({

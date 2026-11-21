@@ -3,6 +3,7 @@ import type { ExpressionNode } from "../expressions/ast.ts";
 import { evaluateExpressionEither } from "../expressions/evaluator.ts";
 import { parseExpressionEither } from "../expressions/parser.ts";
 import { expressionInterpolationsTouchOnlyScopes, expressionScopeMembers } from "../expressions/scopes.ts";
+import { servicePortExpression } from "../landofile/execution-sites.ts";
 import type { LandofileSourceValue } from "./landofile-source.ts";
 import type { RecipeSource } from "./recipe-source.ts";
 import { type RecipeSourceCompileError, recipeSourceFailure } from "./recipe-source-error.ts";
@@ -19,6 +20,7 @@ export const validateSourceConfig = (
       bareShellParameters: "preserve",
     });
     if (Result.isFailure(parsed)) return fail();
+    const self = servicePortExpression(parsed.success, path);
     const bindingSite =
       (path[0] === "services" &&
         ((path[2] === "environment" && path.length === 4) ||
@@ -31,6 +33,7 @@ export const validateSourceConfig = (
         "env",
         "services",
         "proxy",
+        ...(self === "supported" || self === "url" ? ["service"] : []),
         ...(bindingSite ? ["secrets"] : []),
       ]) ||
       parsed.success.segments.some(

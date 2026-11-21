@@ -130,6 +130,27 @@ test("numeric routes share a listener and classify only the TCP publication", as
   ]);
 });
 
+test.each(["lando", "compose"])(
+  "%s self port leaves numeric HTTP route endpoints unchanged",
+  async (type) => {
+    const plan = await planService({
+      type,
+      image: "traefik/whoami:v1.10",
+      port: 8080,
+      command: ["/whoami", "--port", "{{ service.port }}"],
+      endpoints: [],
+      routes: [{ hostname: "web.lndo.site", endpoint: 8080, scheme: "http" }],
+    });
+
+    expect(plan.routes).toEqual([
+      expect.objectContaining({ backend: { service: "web", protocol: "http", port: 8080 } }),
+    ]);
+    expect(plan.services[ServiceName.make("web")]?.endpoints).toEqual([
+      { kind: "internal", protocol: "http", port: 8080, scan: { okCodes: [], path: "/" } },
+    ]);
+  },
+);
+
 test("retains a Node application listener and declares a numeric secondary", async () => {
   const plan = await planService({
     type: "node:22",

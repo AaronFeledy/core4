@@ -1,0 +1,8 @@
+name: extra-args-with-command
+services:
+  cache:
+    type: redis
+    command: [redis-server, --port, "6380"]
+    extraArgs:
+      - --maxmemory
+      - 10mb

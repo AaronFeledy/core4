@@ -164,6 +164,10 @@
       }
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/broken-service-ports",
+      "digest": "50cfaef061d6c024852a68862d5b81f427f16da90b7f48427c537df1e103268c"
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-demo",
       "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
     },
@@ -443,6 +447,10 @@
       "digest": "2df2c11ea20f8e6b241c35d70ab3979caedf1bf063c5a10f9c57d6588f2734ef"
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-own-port-read",
+      "digest": "babdc1923cc8b573016e9956b0077dd31231ae7350b269eb6fd1626c7f9f2d62"
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-plan-time-typed-field",
       "invalid": {
         "status": "invalid",
@@ -464,6 +472,17 @@
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-service-creds",
       "digest": "096e0c0033fd8b2ddc3fa52d5f415c469c9e733b3adb89712a3c192d37c9b8c9"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-service-port-misuse",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-service-port",
+      "digest": "584dc4b48ffc313e0c956b2bcaa7117b5363456d5f40f4a7d41ef9ca5faf0e32"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-typed-values",
@@ -490,6 +509,26 @@
     {
       "fixture": "docs/guides/external-access/fixtures/external-access-demo",
       "digest": "167f5aa0981074f86f93925c54bfc7c9c9d96654132433fd01353049d08111e0"
+    },
+    {
+      "fixture": "docs/guides/extra-args/fixtures/extra-args-unsupported",
+      "digest": "b98215e1990e2d7e81cee56c6b21e6b8c2fca30d260bf2e0ac690a6328f4b404"
+    },
+    {
+      "fixture": "docs/guides/extra-args/fixtures/extra-args-with-command",
+      "digest": "849e0b8246ac5d5776792a876362b5e5bacaee0cdcf6a35253a84aa3cd4a8941"
+    },
+    {
+      "fixture": "docs/guides/extra-args/fixtures/mysql-extra-args",
+      "digest": "6c66d2f51c6f4dfa627bf6bd5ea606820a81fe65443500016371ad4f463024ff"
+    },
+    {
+      "fixture": "docs/guides/extra-args/fixtures/postgres-extra-args",
+      "digest": "d955d358545cb42281a61013086b82abfa2c0a3df16a2dfb2a6cdbe5a3aae6ca"
+    },
+    {
+      "fixture": "docs/guides/extra-args/fixtures/redis-extra-args",
+      "digest": "934d29a7772897c6916ea975bb55b40cca3bb6db66a87630a6508a73c81037b7"
     },
     {
       "fixture": "docs/guides/fastapi-workflow/fixtures/venv-and-env",

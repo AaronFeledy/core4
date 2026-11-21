@@ -1,5 +1,6 @@
 import { isPlainRecord } from "@lando/sdk/landofile";
 import type { ParsedPendingSite, ValidationIssuePath } from "@lando/sdk/schema";
+import { type PreparedExtraHosts, extraHostDestination, extraHostListPath } from "./extra-host-sites.ts";
 
 const child = (value: unknown, key: string | number): unknown =>
   Array.isArray(value) && typeof key === "number"
@@ -11,9 +12,9 @@ const child = (value: unknown, key: string | number): unknown =>
 export const decodedPendingSites = (
   authored: unknown,
   decoded: unknown,
-  sites: readonly ParsedPendingSite[],
+  pending: { readonly sites: readonly ParsedPendingSite[]; readonly extraHosts: PreparedExtraHosts },
 ): readonly ParsedPendingSite[] =>
-  sites.flatMap((site) => {
+  pending.sites.flatMap((site) => {
     let input = authored;
     let output = decoded;
     const path: (string | number)[] = [];
@@ -28,7 +29,7 @@ export const decodedPendingSites = (
               ? "target"
               : field === "build"
                 ? "context"
-                : field === "healthcheck"
+                : field === "healthcheck" || field === "readiness"
                   ? "command"
                   : typeof field === "number" && (path.at(-2) === "configs" || path.at(-2) === "secrets")
                     ? "source"
@@ -46,6 +47,20 @@ export const decodedPendingSites = (
       }
       const key = remaining.shift();
       if (key === undefined) break;
+      if (
+        typeof key === "number" &&
+        extraHostListPath(site.path) &&
+        field === "extra_hosts" &&
+        Array.isArray(input) &&
+        isPlainRecord(output)
+      ) {
+        const entry = pending.extraHosts.get(site.id);
+        if (entry === undefined) return [];
+        const destination = extraHostDestination(input, key, { host: entry.host, decoded: output });
+        return destination === undefined
+          ? []
+          : [{ ...site, path: [...path, ...destination], template: entry.address }];
+      }
       if (field === "dependsOn" && isPlainRecord(input) && Array.isArray(output)) {
         const index = Object.keys(input).indexOf(String(key));
         if (index < 0) return [];
@@ -61,7 +76,7 @@ export const decodedPendingSites = (
       )
         destination = "ca";
       if (field === "build" && key === "dockerfile_inline") destination = "dockerfileInline";
-      if (field === "healthcheck" && key === "test") {
+      if ((field === "healthcheck" || field === "readiness") && key === "test") {
         destination = "command";
         const test = child(input, key);
         if (Array.isArray(test) && typeof remaining[0] === "number") {

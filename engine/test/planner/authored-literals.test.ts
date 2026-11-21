@@ -14,6 +14,7 @@ import { Effect, Layer, Schema } from "effect";
 import * as PlanCache from "../../src/cache/app-plan.ts";
 import * as Cache from "../../src/cache/service.ts";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
+import { materializeLandofileScopesForPlan } from "../../src/planner/landofile-scopes.ts";
 import * as Registry from "../../src/plugins/registry.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
 import * as Planner from "../../src/services/planner.ts";
@@ -265,6 +266,198 @@ test("recomputes committed digests on the cache-hit path", () =>
       lookup.mockRestore();
     }
   }));
+
+test("plans and caches the expressions guide's argv, probe and peer environment values", () =>
+  withRoot(async (root) => {
+    const fixture = await Bun.file(
+      new URL(
+        "../../../docs/guides/expressions/fixtures/expressions-service-port/.lando.yml",
+        import.meta.url,
+      ),
+    ).text();
+    const write = (port: number) =>
+      writeFile(join(root, ".lando.yml"), fixture.replace("port: 6380", `port: ${port}`));
+    const read = PlanCache.readCachedAppPlan;
+    const hits: boolean[] = [];
+    const lookup = spyOn(PlanCache, "readCachedAppPlan").mockImplementation((input) =>
+      read(input).pipe(
+        Effect.tap((plan) =>
+          Effect.sync(() => {
+            hits.push(plan !== null);
+          }),
+        ),
+      ),
+    );
+    try {
+      await write(6380);
+      const cold = await runPlan(root, { cache: true });
+      const warm = await runPlan(root, { cache: true });
+      await write(6381);
+      const changed = await runPlan(root, { cache: true });
+      expect(hits).toEqual([false, true, false]);
+      const name = ServiceName.make("cache");
+      for (const [plan, port] of [
+        [cold, "6380"],
+        [warm, "6380"],
+        [changed, "6381"],
+      ] as const) {
+        expect(plan.services[name]).toMatchObject({
+          command: ["redis-server", "--port", port],
+          healthcheck: { command: `redis-cli -p ${port} ping` },
+        });
+        expect(plan.services[ServiceName.make("web")]?.environment.DB_PORT).toBe("5432");
+      }
+    } finally {
+      lookup.mockRestore();
+    }
+  }));
+
+test("materializes the self port in a container readiness command", () =>
+  withRoot(async (root) => {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: readiness-port
+services:
+  cache:
+    type: redis
+    port: 6380
+    readiness:
+      target: service
+      command: [redis-cli, -p, "{{ service.port }}", ping]
+`,
+    );
+    const plan = await runPlan(root);
+    expect(plan.services[ServiceName.make("cache")]?.readiness?.command).toEqual([
+      "redis-cli",
+      "-p",
+      "6380",
+      "ping",
+    ]);
+  }));
+
+test("uses the container port in argv when the published host port differs", () =>
+  withRoot(async (root) => {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: published-port
+services:
+  cache:
+    type: redis
+    port: 6380
+    ports: ["16380:6380"]
+    command: [redis-server, --port, "{{ service.port }}"]
+`,
+    );
+    const plan = await runPlan(root);
+    const cache = plan.services[ServiceName.make("cache")];
+    expect(cache).toMatchObject({ command: ["redis-server", "--port", "6380"] });
+    expect(cache?.endpoints).toContainEqual(
+      expect.objectContaining({
+        kind: "published",
+        port: 6380,
+        publication: expect.objectContaining({ hostPort: 16380 }),
+      }),
+    );
+  }));
+
+test("plans default self ports even when endpoints are empty, and waits for peer facts at mixed sites", () =>
+  withRoot(async (root) => {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: port-expressions
+services:
+  cache:
+    type: redis
+    endpoints: []
+    command: [redis-server, --port, "{{ service.port }}"]
+  web:
+    type: python:3.12
+    framework: flask
+    command: [server, "--listen=:{{ service.port }}", "--db=db:{{ services.db.port }};local={{ service.port }}"]
+    entrypoint: [entry, "{{ service.port }}"]
+    environment:
+      DB_PORT: "{{ services.db.port }}"
+  db:
+    type: postgres
+tooling:
+  probe:
+    service: web
+    cmd: [echo, "{{ services.db.port }}"]
+`,
+    );
+    const plan = await runPlan(root);
+    expect(plan.services[ServiceName.make("cache")]).toMatchObject({
+      command: ["redis-server", "--port", "6379"],
+      endpoints: [],
+    });
+    expect(plan.services[ServiceName.make("web")]).toMatchObject({
+      command: ["server", "--listen=:5000", "--db=db:5432;local=5000"],
+      entrypoint: ["entry", "5000"],
+      environment: { DB_PORT: "5432" },
+    });
+    const file = join(root, ".lando.yml");
+    const replay = await Effect.runPromise(
+      loadLandofileLayers(root, file).pipe(
+        Effect.flatMap((landofile) =>
+          materializeLandofileScopesForPlan(
+            { appRoot: root, landofilePath: file, landofile, globalConfig: undefined },
+            plan,
+          ),
+        ),
+      ),
+    );
+    expect(replay.document.services).toBeUndefined();
+    expect(replay.document.tooling).toMatchObject({ probe: { cmd: ["echo", "5432"] } });
+    expect(replay.pendingSites).toEqual([]);
+  }));
+
+test.each([
+  { type: "lando", config: "type: lando\n    image: alpine:3\n    port: 8080", port: "8080" },
+  { type: "compose", config: "type: compose\n    image: alpine:3\n    port: 8081", port: "8081" },
+  { type: "lando", config: "image: ghcr.io/acme/api:1.4\n    port: 8082", port: "8082" },
+])("plans $type argv from the authored port ($port)", ({ type, config, port }) =>
+  withRoot(async (root) => {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: raw-port
+services:
+  api:
+    ${config}
+    command: [api-server, --listen, "0.0.0.0:{{ service.port }}"]
+`,
+    );
+    const plan = await runPlan(root);
+    expect(plan.services[ServiceName.make("api")]).toMatchObject({
+      type,
+      command: ["api-server", "--listen", `0.0.0.0:${port}`],
+      endpoints: [],
+    });
+  }),
+);
+
+test.each([
+  "type: compose\n    image: alpine:3",
+  "type: lando\n    image: alpine:3",
+  "image: ghcr.io/acme/api:1.4",
+  "type: php:8.3\n    via: cli\n    port: 6380",
+])("locates an absent planned listen port: %s", (config) =>
+  withRoot(async (root) => {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: missing-port
+services:
+  web:
+    ${config}
+    command: [server, "{{ service.port }}"]
+`,
+    );
+    await expect(runPlan(root)).rejects.toMatchObject({
+      _tag: "ConfigExpressionError",
+      path: ["services", "web", "command", 1],
+      source: expect.objectContaining({ file: join(root, ".lando.yml") }),
+    });
+  }),
+);
 
 test("matches the existing substring inventory on an unannotated representative plan", () =>
   withRoot(async (root) => {
