@@ -57,8 +57,8 @@ ${setup}
       - name: Select CI profile
         id: select
         env:
-          CI_BASE_SHA: \${{ github.event.pull_request.base.sha }}
-          CI_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
+          CI_BASE_SHA: \${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          CI_HEAD_SHA: \${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: bun run scripts/select-ci.ts
 ${selected}
   ci:
