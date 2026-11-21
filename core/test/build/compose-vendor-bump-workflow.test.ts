@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-
+import { pinnedAction } from "../../../scripts/action-pins.ts";
 import { renderComposeVendorBumpWorkflow } from "../../../scripts/build-compose-vendor-bump-workflow.ts";
-import { RUNTIME_BUNDLE_ACTION_PINS } from "../../../scripts/runtime-bundle-supply-chain.ts";
 import { createMaintenanceFixture } from "./support/maintenance-workflow-harness.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -54,8 +53,8 @@ describe("compose-go bump workflow", () => {
   test("uses reviewed action pins without persisting checkout credentials", () => {
     const workflow = renderComposeVendorBumpWorkflow();
 
-    expect(workflow).toContain(`uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1`);
-    expect(workflow).toContain(`uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun}`);
+    expect(workflow).toContain(`uses: ${pinnedAction("actions/checkout")}`);
+    expect(workflow).toContain(`uses: ${pinnedAction("oven-sh/setup-bun")}`);
     expect(workflow).toContain("          persist-credentials: false");
     expect(workflow).not.toContain("actions/checkout@v5");
     expect(workflow).not.toContain("oven-sh/setup-bun@v2");

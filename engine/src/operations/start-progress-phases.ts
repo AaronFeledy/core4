@@ -10,12 +10,13 @@ import { Effect } from "effect";
 
 import { applyTreeId, startGlobalTreeId, startRoutesTreeId } from "./start-progress.ts";
 
-export const withApplyProgress = <A extends { readonly name: string; readonly state: string }, E, R>(input: {
+export const withApplyProgress = <A, E, R>(input: {
   readonly events: ProgressEmitter;
   readonly plan: { readonly id: string; readonly name: string };
   readonly services: ReadonlyArray<{ readonly name: unknown }>;
-  readonly work: Effect.Effect<ReadonlyArray<A>, E, R>;
-}): Effect.Effect<ReadonlyArray<A>, E, R> => {
+  readonly work: Effect.Effect<A, E, R>;
+  readonly rows: (result: A) => ReadonlyArray<{ readonly name: string; readonly state: string }>;
+}): Effect.Effect<A, E, R> => {
   const tree = makeTaskTree(input.events, {
     parentId: applyTreeId(String(input.plan.id)),
     label: `Apply ${input.plan.name}`,
@@ -32,11 +33,11 @@ export const withApplyProgress = <A extends { readonly name: string; readonly st
         for (const service of input.services) {
           yield* active.startTask(String(service.name));
         }
-        const inspected = yield* input.work;
-        for (const service of inspected) {
+        const result = yield* input.work;
+        for (const service of input.rows(result)) {
           yield* active.completeTask(service.name, `${service.name} (${service.state})`);
         }
-        return inspected;
+        return result;
       }),
     {
       success: `${input.plan.name} applied`,

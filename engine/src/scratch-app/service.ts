@@ -11,6 +11,7 @@ import {
   AppPlacementError,
   type DebuggerHostUnavailableError,
   LandofileVersionConstraintError,
+  type RouteUrlBindingError,
   ScratchAppError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
@@ -59,6 +60,7 @@ import {
   loadUserLandofileFile,
   makeEngineUserAppResolution,
 } from "../landofile/app-resolution.ts";
+import { routeUrlRouterError } from "../lifecycle/route-url-bindings.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import {
   captureGlobalConsumerAdmission,
@@ -67,6 +69,7 @@ import {
 import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { layerUnavailable } from "../subsystems/proxy/api.ts";
 import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { makeScratchReaper } from "./destroy.ts";
 import { makeScratchGc } from "./gc.ts";
@@ -676,11 +679,12 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     const { id: scratchId, plan, planCache, landofileRouter } = request;
     const markedPlan = markScratchPlan(plan, scratchId);
     // A routed scratch start without a selectable router refuses before placement, builds, or certificates.
-    if (Option.isSome(proxy))
-      yield* requireSelectableRouter(markedPlan).pipe(
-        Effect.provideService(RouterService, proxy.value),
-        mapFailures((cause) => scratchAppError("start", cause.message, cause, cause.remediation)),
-      );
+    yield* requireSelectableRouter(markedPlan).pipe(
+      Effect.provide(Option.isSome(proxy) ? Layer.succeed(RouterService, proxy.value) : layerUnavailable),
+      mapFailures((cause) => scratchAppError("start", cause.message, cause, cause.remediation)),
+    );
+    const routeError = routeUrlRouterError(markedPlan, Option.getOrUndefined(proxy));
+    if (routeError !== undefined) return yield* routeError;
     const preparedOverlays = yield* prepareDebuggerOverlay(markedPlan);
     yield* ensureAppPlacement(
       { kind: "scratch", id: scratchId, root: markedPlan.root },
@@ -736,6 +740,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       {
         provider,
         environmentResolver,
+        stateStore,
         ...(consumerAdmission === undefined ? {} : { admissionContext: consumerAdmission }),
         ...(Option.isSome(proxy) ? { router: proxy.value } : {}),
       },
@@ -1162,6 +1167,7 @@ export const acquireScratchAppWithPlan = Effect.fn("ScratchAppService.acquireScr
 ): Effect.fn.Return<
   { readonly handle: ScratchHandle; readonly plan: AppPlan },
   | ScratchSourceUnresolvedError
+  | RouteUrlBindingError
   | ScratchIsolationConflictError
   | ScratchAppError
   | AppPlacementError

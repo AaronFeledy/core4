@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { DataTreeOwnershipCapabilityError } from "@lando/sdk/errors";
+import { PortablePath, type VolumeMountPlan } from "@lando/sdk/schema";
 
-import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "../../src/planner/data-tree.ts";
+import {
+  dataTreeOwnershipStep,
+  projectUserVolumeTrees,
+  resolveDataTreeOwnership,
+} from "../../src/planner/data-tree.ts";
 
 const solrIdentity = { defaultUser: "solr", homes: { solr: "/var/solr", root: "/root" } } as const;
 
@@ -108,4 +113,31 @@ describe("dataTreeOwnershipStep", () => {
   test("Given no resolved trees, When a step is built, Then nothing is emitted", () => {
     expect(dataTreeOwnershipStep([])).toBeUndefined();
   });
+});
+
+test("prepares writable authored stores inside the app bind, but not read-only stores or siblings", () => {
+  const store = (target: string, readOnly = false): VolumeMountPlan => ({
+    type: "volume",
+    target: PortablePath.make(target),
+    store: target,
+    origin: "authored",
+    readOnly,
+  });
+  const trees = projectUserVolumeTrees({
+    projectUser: { name: "1000", uid: 1000, gid: 1001 },
+    mounts: [
+      {
+        type: "bind",
+        target: PortablePath.make("/app"),
+        source: "/project",
+        role: "app",
+        realization: "passthrough",
+        readOnly: false,
+      },
+      store("/app/dependencies"),
+      store("/app/reference", true),
+      store("/app-data"),
+    ],
+  });
+  expect(trees).toEqual([{ target: "/app/dependencies", owner: "1000:1001" }]);
 });

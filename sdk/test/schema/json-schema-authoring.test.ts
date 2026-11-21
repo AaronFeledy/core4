@@ -103,6 +103,7 @@ describe("authoring JSON Schema publication", () => {
         { type: "string" },
         { $ref: expect.stringMatching(/^#\/\$defs\/SecretRef(?:_\d+)?$/) },
         { $ref: expect.stringMatching(/^#\/\$defs\/BoundText(?:_\d+)?$/) },
+        { $ref: expect.stringMatching(/^#\/\$defs\/RouteText(?:_\d+)?$/) },
       ]);
     }
   });

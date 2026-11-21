@@ -137,6 +137,8 @@ Acquisition wraps materialization and start; scratch start wraps the standard Ap
 
 `--mount-cwd` is sugar for `--isolate=cwd`; in fork mode it MUST warn that it overrides the safer `full` default. Combining it with an explicit incompatible isolation mode fails with `ScratchIsolationConflictError`. `--isolate=passthrough` is reserved and unsupported, raising `ScratchIsolationUnsupportedError`. Copy exclusions apply only to fork materialization.
 
+Scratch planning MUST skip dependency-environment materialization before deriving mount isolation: no generated store, activation defaults, or prepare job. This applies to all isolation modes, including passthrough (§6.5.1).
+
 ### 21.8 Storage shadowing
 
 At plan time, scratch storage obeys this rewrite:
@@ -160,7 +162,7 @@ The `scope: global` to `scope: app` rewrite is mandatory unless `--share-global-
 
 #### 21.9.2 Route auto-suffix
 
-`ScratchHostnameSuffix` is the plan-time hostname transform for scratch routes, separate from `RouteFilter` middleware. It runs after endpoint derivation and binding (§6.6). Unless overridden, it rewrites each route hostname with the scratch id before the domain, including nested and wildcard hostnames. The transform MUST be idempotent.
+`ScratchHostnameSuffix` is the plan-time hostname transform for scratch routes, separate from `RouteFilter` middleware. It runs after endpoint derivation and binding (§6.6). Unless overridden, it rewrites each route hostname with the scratch id before the domain, including nested and wildcard hostnames. The transform MUST be idempotent. Activation binds public URL descriptors against this suffixed publication table and the router's current authorities. For a scratch that bound URLs, route setup or publication failure is fatal and retains the original cause and remediation. Only successful publication can fail with `authority-changed` if its authorities disagree with the prepared proof.
 
 `--no-hostname-suffix` disables the filter. Repeated `--hostname` values preserve selected hostnames and MAY deliberately collide with another app.
 
@@ -236,6 +238,7 @@ Every error is tagged and includes remediation:
 - `ScratchRecipeAnswersError`
 - `ScratchRegistryCorruptError`
 - `ScratchRunTargetError`
+- `RouteUrlBindingError` with `no-route`, `router-unsupported`, or `authority-changed` for public URL binding failures. `retained-consumer` is specific to selected user-app relaunch. An unavailable router is still a `ProxySetupError` wrapped in `ScratchAppError`, not a binding error.
 
 `ScratchRecipeAnswersError` wraps `RecipeMissingAnswerError` or `RecipeOutputValidationError` with scratch identity. This surface also uses the shared `CommandAliasConflictError` tag (§8.1.2). Materialization failures remove partial roots. Corrupt registries are quarantined and recovery invokes label-driven GC. Finalizer failures are logged even when cleanup remains best-effort.
 

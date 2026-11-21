@@ -11,8 +11,10 @@ import { tarArchive } from "./tar-fixture.ts";
 test("two child imports under one holder serialize on the volume transaction gate", async () => {
   await withCatalog(async (f) => {
     const archive = tarArchive([{ name: "payload", data: "new-data" }]);
-    const coordinationKey = await run(
-      f.recording.locateVolume(store).pipe(Effect.map((locator) => locator.coordinationKey)),
+    const lockRequest = await run(
+      f.recording
+        .locateVolume(store)
+        .pipe(Effect.map((locator) => ({ key: locator.coordinationKey, name: locator.nativeName }))),
     );
     let active = 0;
     let peak = 0;
@@ -46,7 +48,7 @@ test("two child imports under one holder serialize on the volume transaction gat
         );
         yield* Fiber.join(first);
         yield* Fiber.join(second);
-      }).pipe((body) => withPhysicalVolumeLock(f.stateStore, coordinationKey, body)),
+      }).pipe((body) => withPhysicalVolumeLock(f.stateStore, lockRequest, body)),
     );
 
     expect(peak).toBe(1);
@@ -56,8 +58,10 @@ test("two child imports under one holder serialize on the volume transaction gat
 test("a lock holder's own transfer is not blocked by a non-holder waiting for the lock", async () => {
   await withCatalog(async (f) => {
     const archive = tarArchive([{ name: "payload", data: "new-data" }]);
-    const coordinationKey = await run(
-      f.recording.locateVolume(store).pipe(Effect.map((locator) => locator.coordinationKey)),
+    const lockRequest = await run(
+      f.recording
+        .locateVolume(store)
+        .pipe(Effect.map((locator) => ({ key: locator.coordinationKey, name: locator.nativeName }))),
     );
     const transfer = {
       from: { _tag: "volume", app: store.app, store: store.store },
@@ -90,7 +94,7 @@ test("a lock holder's own transfer is not blocked by a non-holder waiting for th
         const holder = yield* Effect.forkChild(
           withPhysicalVolumeLock(
             observingStore,
-            coordinationKey,
+            lockRequest,
             Effect.gen(function* () {
               yield* Deferred.succeed(holderLocked, undefined);
               yield* Deferred.await(outsiderWaiting);
@@ -113,7 +117,7 @@ test("snapshot observes the source only after it holds the volume lock", async (
     let observedWhileHolding: boolean | undefined;
     const countingStore: StateStoreShape = {
       ...f.stateStore,
-      withLock: <A, E, R>(key: string, body: Effect.Effect<A, E, R>) =>
+      withLock: <A, E, R>(_key: string, body: Effect.Effect<A, E, R>) =>
         Effect.sync(() => {
           holding = true;
         }).pipe(

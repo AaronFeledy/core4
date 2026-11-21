@@ -214,6 +214,8 @@ const clonePlannedDraft = (
   } satisfies CloneFieldRules<AppFeatureServiceDraft>;
   const plannedRules = {
     name: { replace: name },
+    dependencyEnvironments: "inherit",
+    extraArgsProcess: "drop",
     authoredStorage: "inherit",
     hostnames: { replace: [] },
     authoredArtifact: "inherit",

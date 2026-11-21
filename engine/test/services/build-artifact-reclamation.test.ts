@@ -257,7 +257,7 @@ test("adoption waits for a sweep's operation lock and the image named by its sou
             useArtifactBuildResult(f.bucket, { ...source, owner: "requester" }),
           ).pipe(Effect.forkChild);
           let event = yield* Queue.take(queue);
-          while (event._tag !== "message.warn") event = yield* Queue.take(queue);
+          while (event._tag !== "lock.wait") event = yield* Queue.take(queue);
           const whileLocked = yield* f.bucket.get;
           yield* Deferred.succeed(release, undefined);
           yield* Fiber.join(sweep);

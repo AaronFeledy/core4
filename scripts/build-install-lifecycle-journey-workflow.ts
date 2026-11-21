@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
 import { CONTAINER_HELPER_JOB_ID, renderContainerHelperJob } from "./_container-helper-workflow.ts";
 import { createJourneyWorkflowBuilder } from "./_journey-workflow.ts";
+import { pinnedAction } from "./action-pins.ts";
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
 import { PLATFORM_READINESS_CELLS } from "./ci-platforms.ts";
 
@@ -22,7 +23,7 @@ const renderJob = (id: "linux-x64" | "windows-x64"): string => {
     env:
       LANDO_LIFECYCLE_FRESH_RUNNER: "1"
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
         with:
           persist-credentials: false
 
@@ -41,7 +42,7 @@ ${id === "linux-x64" ? landoRootlessPrereqSteps : ""}
 
       - name: Upload lifecycle evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: install-lifecycle-${id}
           path: \${{ runner.temp }}/install-lifecycle.json

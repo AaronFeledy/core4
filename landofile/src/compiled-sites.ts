@@ -8,6 +8,7 @@ import {
 } from "@lando/sdk/expressions";
 import { type ValueOrigins, isPlainRecord } from "@lando/sdk/landofile";
 import {
+  EnvironmentValue,
   type ParsedPendingSite,
   SecretRef,
   type ValidationIssuePath,
@@ -17,6 +18,7 @@ import {
 import { Effect, Result, Schema } from "effect";
 import { type InvocationProgram, evaluateInvocationSite, siteExpression } from "./invocation-sites.ts";
 import type { AuthoredOrigin } from "./provenance.ts";
+import { ROUTE_URL_SITE_REMEDIATION, isServiceEnvironmentValuePath } from "./route-url-expression.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
 
 export * from "./invocation-sites.ts";
@@ -114,6 +116,11 @@ export const instantiateInvocation = (input: {
           }),
   });
 
+const containsRouteText = (value: unknown): boolean =>
+  Array.isArray(value)
+    ? value.some(containsRouteText)
+    : isPlainRecord(value) && (value._tag === "RouteText" || Object.values(value).some(containsRouteText));
+
 export const consumeSites = (input: {
   readonly document: unknown;
   readonly pendingSites: readonly ParsedPendingSite[];
@@ -121,10 +128,14 @@ export const consumeSites = (input: {
   readonly scopes: readonly string[];
   readonly pathPrefix?: ValidationIssuePath;
   readonly budget?: EvaluationBudget;
+  readonly renderText?: boolean;
 }) => {
   let document = input.document;
   const pendingSites: ParsedPendingSite[] = [];
   for (const site of input.pendingSites) {
+    const selfName = isServiceEnvironmentValuePath(site.path) ? site.path[1] : undefined;
+    const self = typeof selfName === "string" ? input.context.services?.[selfName] : undefined;
+    const selfUrl = isPlainRecord(self) ? { url: self.url } : undefined;
     // Lowered shell sites keep their authored text: only binding sites materialize
     // into deferred descriptors here, or an invocation would receive a SecretRef object.
     if (
@@ -134,7 +145,8 @@ export const consumeSites = (input: {
       pendingSites.push(site);
       continue;
     }
-    if (!expressionInterpolationsTouchOnlyScopes(site.template, [...input.scopes, "secrets"])) {
+    const scopes = [...input.scopes, "secrets", ...(selfUrl === undefined ? [] : ["service"])];
+    if (!expressionInterpolationsTouchOnlyScopes(site.template, scopes)) {
       pendingSites.push(site);
       continue;
     }
@@ -162,7 +174,7 @@ export const consumeSites = (input: {
     }
     const evaluated = evaluateTemplateEither(
       site.template,
-      { ...input.context, secrets },
+      { ...input.context, ...(selfUrl === undefined ? {} : { service: selfUrl }), secrets },
       {
         path: site.path,
         filePath: "file" in site.source ? site.source.file : undefined,
@@ -186,7 +198,28 @@ export const consumeSites = (input: {
           remediation: evaluated.failure.remediation,
         }),
       );
-    document = replaceSiteValue(document, site.path.slice(input.pathPrefix?.length ?? 0), evaluated.success);
+    const value = evaluated.success;
+    const rendered =
+      input.renderText && typeof value === "number" && Number.isFinite(value) ? String(value) : value;
+    // Load refuses a literal URL reference outside a service environment; a computed member
+    // access can still produce the descriptor, so the destination is checked on the value too.
+    const misplacedRoute = containsRouteText(rendered) && !isServiceEnvironmentValuePath(site.path);
+    if (misplacedRoute || (input.renderText && !Schema.is(EnvironmentValue)(rendered)))
+      return Result.fail(
+        new ConfigExpressionError({
+          message: misplacedRoute
+            ? `A public service URL is not supported at ${site.path.join(".")}.`
+            : "This field takes text; the expression must return text or a finite number.",
+          path: site.path,
+          source: site.source,
+          expression: siteExpression(site, input.document, input.pathPrefix?.length),
+          filePath: "file" in site.source ? site.source.file : "<landofile>",
+          remediation: misplacedRoute
+            ? ROUTE_URL_SITE_REMEDIATION
+            : "Return text or a finite number instead of a boolean, null, or collection.",
+        }),
+      );
+    document = replaceSiteValue(document, site.path.slice(input.pathPrefix?.length ?? 0), rendered);
   }
   return Result.succeed({ document, pendingSites });
 };

@@ -52,7 +52,7 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
         dependency.condition === "service_healthy" &&
         (effectiveReadiness(target) === undefined || effectiveReadiness(target)?.kind === "none")
       ) {
-        const remediation = `Configure an enabled command readiness for service ${targetName}, remove readiness: false to inherit its healthcheck, or use condition service_started.`;
+        const remediation = `Configure an enabled readiness probe for service ${targetName}, remove readiness: false to inherit its healthcheck, or use condition service_started.`;
         const message = `Service ${dependentName} depends on service ${targetName} with condition service_healthy, but service ${targetName} has no enabled readiness probe. ${remediation} Setting required: false only allows the dependency to be missing or fail; it does not make an unsatisfiable condition valid.`;
         return yield* Effect.fail(
           new LandofileValidationError({

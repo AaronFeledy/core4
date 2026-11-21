@@ -27,6 +27,7 @@ import type {
   HealthcheckPlan,
   HostAliasPlan,
   ListenerAuthority,
+  MountPlan,
   PortablePath,
   ProviderCapabilities,
   ServiceConfig,
@@ -154,6 +155,10 @@ export interface ServiceBuildStepIntent {
  * realization/bind decision.
  */
 export interface ServiceFeatureContext {
+  /** Declare a prepared dependency tree. The planner appends the environment owner's user[:group] to prepare argv. */
+  addDependencyEnvironment(
+    intent: import("../schema/dependency-environment.ts").DependencyEnvironmentIntent,
+  ): void;
   /** The service's name in the resolved Landofile. */
   readonly serviceName: string;
   /** The resolved service type id (e.g. `"php"`, `"compose"`). */
@@ -172,6 +177,7 @@ export interface ServiceFeatureContext {
   readonly host?: ServiceTypeHostFacts | undefined;
   /** The service type's normalized config for this service. */
   readonly normalizedConfig: ServiceConfig;
+  readonly authoredMounts: ReadonlyArray<MountPlan>;
   readonly connection?: DatabaseConnection | undefined;
   /** This feature's decoded config (from its `FeatureRef.config`, via `schema`). */
   readonly config: Readonly<Record<string, unknown>>;
@@ -213,8 +219,8 @@ export interface ServiceFeatureContext {
   setCerts(certs: CertificatePlan): void;
   /** Set the service entrypoint. */
   setEntrypoint(entrypoint: CommandSpec): void;
-  /** Set the default command. */
-  setCommand(command: CommandSpec): void;
+  /** An argv launcher can opt into appending materialized extraArgs. */
+  setCommand(command: CommandSpec, options?: LauncherCommandOptions): void;
   /** Set native container init intent. Authored init takes precedence. */
   setInit(init: boolean): void;
   /** Set the artifact (image ref or build spec). */
@@ -223,6 +229,13 @@ export interface ServiceFeatureContext {
   setUser(user: string): void;
   /** Set the working directory. */
   setWorkingDirectory(path: PortablePath): void;
+}
+
+export interface LauncherCommandOptions {
+  /** Pure validation of the authored suffix. Return the first reserved argument, if any. */
+  readonly extraArgs: (
+    args: readonly string[],
+  ) => { readonly index: number; readonly remediation: string } | undefined;
 }
 
 /**

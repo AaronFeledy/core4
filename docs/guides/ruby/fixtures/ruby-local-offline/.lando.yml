@@ -1,0 +1,18 @@
+name: ruby-local-offline
+services:
+  app:
+    type: "ruby:3.3"
+    home: false
+tooling:
+  bundle-mode:
+    service: app
+    cmd: [":ruby-local", "ruby", "-e", "puts ENV.key?(%q(BUNDLE_GEMFILE)) ? %q(bundled) : %q(bare)"]
+  bundle:
+    service: app
+    cmd: [bundle]
+    wrapper: true
+  missing-gemfile:
+    service: app
+    cmd: [":ruby-local", "ruby", "-e", "puts %q(unexpected fallback)"]
+    env:
+      BUNDLE_GEMFILE: /app/missing.rb

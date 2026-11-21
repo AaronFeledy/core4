@@ -181,3 +181,37 @@ test("keeps loader rejection of recipe defaults without recorded options", async
   if (Result.isFailure(result))
     expect(result.failure).toMatchObject({ _tag: "ConfigExpressionError", path: ["x-value"] });
 });
+
+const urlContext = {
+  ...context,
+  services: { web: { url: { _tag: "RouteText", parts: [{ service: "web", encoding: "raw" }] } } },
+};
+
+test("refuses a computed public URL read outside a service environment", async () => {
+  const compiled = await compile({ "x-url": '{{ services.web[lower("URL")] }}' });
+  const result = consumeSites({
+    document: compiled.value,
+    pendingSites: compiled.pendingSites,
+    context: urlContext,
+    scopes: PLAN_SERVICE_EXPRESSION_SCOPES,
+  });
+  expect(Result.isFailure(result) && result.failure._tag).toBe("ConfigExpressionError");
+  if (Result.isFailure(result)) expect(result.failure.path).toEqual(["x-url"]);
+});
+
+test("keeps a computed public URL read in a service environment", async () => {
+  const compiled = await compile({
+    services: { web: { environment: { APP_URL: '{{ services.web[lower("URL")] }}' } } },
+  });
+  const result = success(
+    consumeSites({
+      document: compiled.value,
+      pendingSites: compiled.pendingSites,
+      context: urlContext,
+      scopes: PLAN_SERVICE_EXPRESSION_SCOPES,
+    }),
+  );
+  expect(result.document).toEqual({
+    services: { web: { environment: { APP_URL: urlContext.services.web.url } } },
+  });
+});

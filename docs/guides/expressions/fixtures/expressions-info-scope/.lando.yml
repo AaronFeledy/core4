@@ -1,0 +1,6 @@
+name: info-scope
+services:
+  web:
+    type: "node:22"
+    environment:
+      APP_URL: "{{ info.web.url }}"

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AbsolutePath, AppId, type AppPlan } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { Effect, Exit } from "effect";
 import {
   beginOrResumeAcceleratedStart,
@@ -15,6 +15,7 @@ import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { stopApp } from "../../src/operations/stop.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { withAcceleratedBind } from "../accelerated-plan.ts";
 import {
   acceleratedPlan,
   app,
@@ -22,7 +23,7 @@ import {
   session,
   target,
 } from "./accelerated-start-recovery-support.ts";
-import { makeHarness, plan } from "./start-progress-topology-support.ts";
+import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 test("journal hashes the original persisted entries rather than reconstructing the normalized bundle", async () => {
   const original: AppPlan = {
@@ -323,4 +324,49 @@ test("pending journal follows a physical root through alias and changed app ID",
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("a wider attempt cannot replace an open selected journal", async () => {
+  const redis = ServiceName.make("redis");
+  const wider = withAcceleratedBind(
+    {
+      ...acceleratedPlan,
+      services: {
+        ...acceleratedPlan.services,
+        [redis]: {
+          ...web,
+          name: redis,
+          primary: false,
+          command: ["redis-server"],
+          endpoints: [],
+        },
+      },
+    },
+    redis,
+    {
+      type: "bind",
+      source: AbsolutePath.make(`${plan.root}/data`),
+      target: PortablePath.make("/data"),
+      readOnly: false,
+      realization: "accelerated",
+      mountKey: "data",
+      excludes: [],
+    },
+  );
+  const harness = makeHarness({ plannedApp: wider });
+  const selected = await Effect.runPromise(
+    beginOrResumeAcceleratedStart(acceleratedPlan, app, [web.name]).pipe(Effect.provide(harness.layer)),
+  );
+  const pendingForFull = await Effect.runPromise(
+    Effect.flip(readPendingAcceleratedStart(app, wider)).pipe(Effect.provide(harness.layer)),
+  );
+  expect(pendingForFull.remediation).toContain("`lando start -s web`");
+  const expanded = await Effect.runPromise(
+    Effect.flip(beginOrResumeAcceleratedStart(wider, app)).pipe(Effect.provide(harness.layer)),
+  );
+  expect(expanded._tag).toBe("FileSyncStartError");
+  const pending = await Effect.runPromise(
+    readPendingAcceleratedStart(app, acceleratedPlan, [web.name]).pipe(Effect.provide(harness.layer)),
+  );
+  expect(pending?.attemptId).toBe(selected.attemptId);
 });

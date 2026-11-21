@@ -22,6 +22,7 @@
     "./atomic": "./src/atomic.ts",
     "./codec": "./src/codec.ts",
     "./lock": "./src/lock.ts",
+    "./lock-holder": "./src/lock-holder.ts",
     "./paths": "./src/paths.ts",
     "./plugin": "./src/plugin.ts",
     "./testing": "./src/testing.ts",

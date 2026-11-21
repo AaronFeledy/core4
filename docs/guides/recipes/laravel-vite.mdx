@@ -13,20 +13,28 @@ Prerequisite: a running Laravel app from [Run the Laravel recipe](./laravel-work
 
 ## Route the node service
 
-The recipe writes `endpoints: []` on `node`, so it advertises nothing. In `.lando.yml`, replace the `node` service with this. Delete the `endpoints: []` line; a route needs an HTTP endpoint and `port: 5173` declares one:
+The recipe writes `endpoints: []` on `node`, so it advertises nothing. In `.lando.yml`, replace the `node` service with this. Delete the `endpoints: []` line; a route needs an HTTP endpoint and `port: 5173` declares one. Then add `APP_URL` under `appserver`:
 
 ```yaml
 services:
+  appserver:
+    environment:
+      APP_URL: "{{ services.appserver.url }}"
   node:
     type: node:22
     primary: false
     port: 5173
+    environment:
+      APP_URL: "{{ services.appserver.url }}"
+      VITE_DEV_SERVER_URL: "{{ services.node.url }}"
     routes:
       - hostname: "vite.{{ app.name }}.{{ proxy.defaultDomain }}"
         scheme: both
 ```
 
-Keep the recipe's `appserver`, `database`, `cache`, and `tooling` blocks as they are. If you leave `endpoints: []` in place, `lando app:config:lint` reports `Route vite.vite-demo.lndo.site for service node does not resolve to an HTTP endpoint.`
+`{{ services.<name>.url }}` is the URL the router publishes for that service, the same one `lando info` prints, port included when the router isn't on 443. Lando fills it in when it creates the container. Laravel reads `APP_URL` on `appserver`. Vite runs in `node`, so `node` gets the app URL too, plus its own URL as `VITE_DEV_SERVER_URL`.
+
+Keep the rest of the recipe's `appserver` block, including any `environment` keys it already has, and leave `database`, `cache`, and `tooling` as they are. If you leave `endpoints: []` in place, `lando app:config:lint` reports `Route vite.vite-demo.lndo.site for service node does not resolve to an HTTP endpoint.`
 
 Apply it:
 
@@ -38,14 +46,20 @@ lando info
 
 `lando info` lists `https://vite.vite-demo.lndo.site` for `node`. Nothing answers there until Vite runs. `port: 5173` is the port inside the container, not a host port.
 
-The examples assume HTTPS on 443. If `lando info` shows a different HTTPS port, such as `:8443`, use that port in `APP_URL` and every app or Vite HTTPS URL below, and set `hmr.clientPort` to that port. Keep `server.port` at `5173` and leave hostnames in `allowedHosts` and `hmr.host` port-free.
+Check what the two services received:
+
+```sh
+lando exec appserver -- printenv APP_URL
+lando exec node -- printenv VITE_DEV_SERVER_URL
+```
+
+On port 443, those print `https://vite-demo.lndo.site` and `https://vite.vite-demo.lndo.site`. If the router uses another port, both URLs include it, for example `:8443`. Use the printed URLs in the curl checks below. If the router later moves to another port, the next `lando start` recreates both services with the new URLs.
 
 ## Point Laravel at MariaDB and the proxy
 
 Set these in `.env`. The recipe creates the database named after the app, with user and password `lando`, but does not inject Laravel's `DB_*` settings into `appserver`:
 
 ```dotenv
-APP_URL=https://vite-demo.lndo.site
 DB_CONNECTION=mariadb
 DB_HOST=database
 DB_PORT=3306
@@ -61,24 +75,29 @@ lando artisan config:clear
 lando artisan migrate --no-interaction
 ```
 
-By default, `laravel-vite-plugin` allows cross-origin requests from `APP_URL`, loopback origins, and `*.test`. Setting `APP_URL` to the page's exact origin lets it load modules from the Vite hostname. An explicit `server.cors` setting replaces those plugin defaults.
+Leave the `APP_URL` line that the skeleton's `.env` ships with. Laravel never lets `.env` replace a variable the container already has, so the value from `.lando.yml` wins. Vite treats `.env` the same way.
+
+By default, `laravel-vite-plugin` allows cross-origin requests from `APP_URL`, loopback origins, and `*.test`. Because `node` receives `APP_URL` as the page's exact origin, the page can load modules from the Vite hostname. An explicit `server.cors` setting replaces those plugin defaults.
 
 ## Point Vite at the proxy
 
-In `vite.config.js`, keep the skeleton's imports and `plugins` array as they are. Replace only the `server` block with this:
+In `vite.config.js`, keep the skeleton's imports and `plugins` array as they are. Add the two `const` lines above `defineConfig` and replace only the `server` block:
 
 ```js
+const devServer = new URL(process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173');
+const secure = devServer.protocol === 'https:';
+
 export default defineConfig({
     // keep your existing plugins
     server: {
         host: '0.0.0.0',
         port: 5173,
         strictPort: true,
-        allowedHosts: ['vite.vite-demo.lndo.site'],
+        allowedHosts: [devServer.hostname],
         hmr: {
-            host: 'vite.vite-demo.lndo.site',
-            protocol: 'wss',
-            clientPort: 443,
+            host: devServer.hostname,
+            protocol: secure ? 'wss' : 'ws',
+            clientPort: Number(devServer.port) || (secure ? 443 : 80),
         },
         watch: {
             ignored: ['**/storage/framework/views/**'],
@@ -87,7 +106,7 @@ export default defineConfig({
 });
 ```
 
-Swap `vite-demo` for your app name. Lando's proxy terminates HTTPS and forwards HTTP and WebSocket traffic to Node on `5173`, so Vite listens on `0.0.0.0` without `server.https`. `allowedHosts` lets Vite answer the proxy hostname, and `strictPort` stops Vite from drifting off the declared endpoint.
+Nothing here names your app or a port. The `localhost` fallback only keeps `npm run build` working where the variable isn't set, such as a deploy pipeline. `URL.port` is empty when the router is on the scheme's default port, so `clientPort` falls back to `443` or `80`. Keep `server.port` at `5173`; that's the port inside the container. Lando's proxy terminates HTTPS and forwards HTTP and WebSocket traffic to Node on `5173`, so Vite listens on `0.0.0.0` without `server.https`. `allowedHosts` lets Vite answer the proxy hostname, and `strictPort` stops Vite from drifting off the declared endpoint.
 
 Leave `server.origin` unset. The plugin builds the URL it writes to `public/hot` from the `hmr` settings. Setting `server.origin` overrides that URL and, unless you also configure `server.cors`, replaces the entire default CORS origin list with that one origin.
 
@@ -105,14 +124,14 @@ Leave that running and wait for Vite's `ready` line and the `APP_URL` line from 
 cat public/hot
 ```
 
-With `clientPort: 443`, `public/hot` contains `https://vite.vite-demo.lndo.site:443`, including the explicit port. Laravel's `@vite` directive reads that file over the shared `/app` mount. Reading it on the host checks the advertised URL, not whether the browser can reach Vite.
+`public/hot` contains the Vite URL with an explicit port, `https://vite.vite-demo.lndo.site:443` when the router is on 443. Laravel's `@vite` directive reads that file over the shared `/app` mount. Reading it on the host checks the advertised URL, not whether the browser can reach Vite.
 
 ```sh
 curl -fsS https://vite-demo.lndo.site/ | grep -o 'https://vite\.vite-demo\.lndo\.site:[0-9][0-9]*/[^"]*'
 curl -fsS -o /dev/null https://vite.vite-demo.lndo.site/@vite/client
 ```
 
-Check that the first command lists URLs ending in `/@vite/client`, `/resources/css/app.css`, and `/resources/js/app.js`, each with `:443` or your configured HTTPS port. That proves Laravel read `public/hot` and the page asks Vite for its assets. The second command exits 0 when the proxy reaches the running Vite server.
+Check that the first command lists URLs ending in `/@vite/client`, `/resources/css/app.css`, and `/resources/js/app.js`, each with `:443` or the router's HTTPS port. That proves Laravel read `public/hot` and the page asks Vite for its assets. The second command exits 0 when the proxy reaches the running Vite server.
 
 These host requests need both hostnames to resolve locally and your curl installation to trust Lando's CA. For DNS failures, see [Resolve lndo.site on this machine](../subsystems/host-dns.mdx). For certificate failures, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx); curl may use a different CA bundle from your browser. Don't disable certificate verification to hide a trust failure.
 
@@ -151,12 +170,28 @@ lando app:config --format=json
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"port\":\\s*5173" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"vite\\.\\{\\{ app\\.name \\}\\}\\.\\{\\{ proxy\\.defaultDomain \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"VITE_DEV_SERVER_URL\":\\s*\"\\{\\{ services\\.node\\.url \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"APP_URL\":\\s*\"\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"framework\":\\s*\"laravel\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"artisan\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="runtime-urls" layer="e2e" timeout={300000} render={false} reason="Check that PHP and Node receive their published URLs">
+    <Step name="start">
+      <UseFixture name="laravel-vite" />
+      <Run command="lando start --format=json" />
+    </Step>
+    <Step name="check-urls">
+      <Verify command="lando exec appserver -- printenv APP_URL" expect={{ stdout: { regex: "^https://laravel-vite\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
+      <Verify command="lando exec node -- printenv VITE_DEV_SERVER_URL" expect={{ stdout: { regex: "^https://vite\\.laravel-vite\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes --format=json" />
     </Step>
   </Scenario>
 </Guide>

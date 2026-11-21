@@ -18,6 +18,7 @@ import { type Context, Effect } from "effect";
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "../services/base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../services/base/lando.ts";
+import { isComposeBuild } from "../services/compose-build-artifact.ts";
 import type { ApplicationConfig, PreparedServiceComposition } from "../services/feature-preparation.ts";
 import type { ServiceHomeIntent } from "./home.ts";
 import type { ServiceConfigSource } from "./service-config-files.ts";
@@ -32,7 +33,11 @@ export const contributionId = (entry: ContributionRef): string =>
 const imageIs = (image: string | undefined, name: string): boolean =>
   image === name || image?.startsWith(`${name}:`) === true;
 
-export const serviceTypeFor = (name: string, service: ServiceConfig): string => {
+export const serviceTypeFor = (
+  name: string,
+  service: ServiceConfig,
+  registeredTypeIds: readonly string[],
+): string => {
   if (service.type !== undefined) return service.type;
   const image = service.image;
   if (image?.startsWith("node:26")) return "node:26";
@@ -51,6 +56,8 @@ export const serviceTypeFor = (name: string, service: ServiceConfig): string => 
   if (image?.startsWith("ruby:3.3")) return "ruby:3.3";
   if (image?.startsWith("golang:1.22")) return "go:1.22";
   if (image?.startsWith("golang:1.23")) return "go:1.23";
+  const hasArtifact = image !== undefined || (service.build !== undefined && isComposeBuild(service.build));
+  if (hasArtifact && !registeredTypeIds.includes(name)) return "lando";
   return name;
 };
 
@@ -194,6 +201,7 @@ export const resolvedServiceCacheInput = (entry: ResolvedService) => ({
   base: entry.resolution.base,
   normalizedConfig: entry.resolution.normalizedConfig,
   tooling: entry.resolution.tooling ?? {},
+  launchers: entry.resolution.launchers ?? {},
   connectionClientNames: entry.resolution.connectionClientNames ?? [],
   ...(entry.resolution.connection === undefined ? {} : { connection: entry.resolution.connection }),
   ...(entry.resolution.nonSqlCreds === undefined ? {} : { nonSqlCreds: entry.resolution.nonSqlCreds }),
@@ -227,6 +235,8 @@ export type AuthoredStorageInfo = {
 
 export type PlannedServiceDraft = {
   readonly name: string;
+  readonly extraArgsProcess?: Pick<ServicePlan, "command" | "entrypoint">;
+  readonly dependencyEnvironments?: readonly import("@lando/sdk/schema").DependencyEnvironmentIntent[];
   readonly authoredStorage: ServiceConfig["storage"];
   readonly hostnames: ReadonlyArray<string>;
   readonly authoredArtifact: ServicePlan["artifact"];

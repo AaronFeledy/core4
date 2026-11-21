@@ -8,6 +8,8 @@ services:
     composer: "2"
     allowOverride: true
     port: 80
+    environment:
+      APP_URL: "{{ services.appserver.url }}"
     build:
       artifact:
         - run: a2enmod rewrite
@@ -31,6 +33,8 @@ services:
     via: cli
     framework: laravel
     command: "php artisan horizon"
+    environment:
+      APP_URL: "{{ services.appserver.url }}"
     restart: unless-stopped
     appMount:
       target: /app

@@ -35,6 +35,12 @@ test("environment list normalization happens after list replacement across layer
 
 test.each([
   {
+    base: "extraArgs: [--maxmemory, 10mb]",
+    local: "extraArgs: [--maxclients, '100']",
+    expected: { extraArgs: ["--maxclients", "100"] },
+  },
+  { base: "extraArgs: [--maxmemory, 10mb]", local: "extraArgs: []", expected: { extraArgs: [] } },
+  {
     base: "healthcheck:\n      test: curl -f x",
     local: "healthcheck: false",
     expected: { healthcheck: false },

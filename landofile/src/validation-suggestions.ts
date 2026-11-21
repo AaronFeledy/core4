@@ -46,7 +46,7 @@ const plannerScopeSuggestion = (value: unknown, path: ValidationIssuePath): stri
   const parsed = parseExpressionEither(site, { filePath: "<landofile>", bareShellParameters: "preserve" });
   return Result.isSuccess(parsed) &&
     !expressionInterpolationsTouchOnlyScopes(parsed.success, ["recipe", "env"])
-    ? "This value uses plan-time scopes (app, proxy, services), which resolve to text after validation. Use a literal or a recipe/env expression here."
+    ? "This value uses plan-time scopes, which resolve to text after validation. Use a literal or a recipe/env expression here."
     : undefined;
 };
 

@@ -77,7 +77,7 @@ An env var, a recipe option, or data read with `load()` or `import()` whose valu
 
 Lando parses expression sites once, when it reads your files, and keeps a record of where they were. A string an expression produced is not on that list, so later passes never scan it for `{{` or `${`. The bytes stay as produced: a loaded `{{ app.name }}` is the text `{{ app.name }}`, a loaded `$${HOME}` is the text `$${HOME}`, and `lando app:config --format=json` shows them that way. Config output can still redact sensitive values.
 
-Plan-time scopes (`app.*`, `proxy.*`, `services.<name>.creds.*`) fill text only. Put `{{ app.name }}` at a boolean, number, list, or object field and validation fails at that path, with a suggestion to use a literal or a recipe/env expression. A plan-time expression at a text field whose result is not text, like `{{ eq(app.name, 'x') }}` in `creds.database`, fails when the plan is built.
+Use plan-time scopes such as `app.*`, `proxy.*`, and `services.<name>.*` in text fields. Put `{{ app.name }}` at a boolean, number, list, or object field and validation fails at that path, with a suggestion to use a literal or a recipe/env expression. At a text field, a finite number renders as text. A standalone boolean, like `{{ eq(app.name, 'x') }}` in `creds.database`, still fails when the plan is built.
 
 ```sh
 lando app:config --format=json
@@ -162,7 +162,9 @@ lando app:config:lint --format=json
 lando app:cache:refresh
 ```
 
-A service cannot read its own `services.<name>.creds`, and two services cannot each read the other's. Both cases fail the plan as a cycle because credentials exist only after the service resolves.
+A service can't read its own published facts, such as `services.cache.creds.user` inside `cache`. Lando points to the field that reads the fact. If an allowed command, entrypoint, or container probe reads `{{ services.cache.port }}` and `cache` has a planned port, Lando suggests `{{ service.port }}` instead. Use that expression for the service's own listen port. It isn't available in fields such as `environment:` or in configurations with no planned listener.
+
+Services also can't read one another's published facts in a cycle. Lando names the services in the cycle so you can remove one of those reads.
 
 Values from `env_file:` are never interpolated. `${NAME}` stays literal, and lint warns if it appears in an unquoted or double-quoted value. Single quotes suppress that warning; they do not enable interpolation. To read a host variable, put `NAME: "{{ env.NAME }}"` under the service's `environment:` instead. See [Quote env file values](./env-overrides.mdx#quote-env-file-values) for the escaping rules.
 
@@ -182,6 +184,68 @@ lando app:cache:refresh
 ```
 
 See [Secret stores](../config/secret-stores.mdx#where-references-resolve) for which authored sites create a reference.
+
+## Your service's own port
+
+When you replace a service's launcher, use `{{ service.port }}` to pass its planned container listen port without repeating `port:`. For example, in `.lando.yml`:
+
+```yaml
+services:
+  cache:
+    type: redis
+    port: 6380
+    command: [redis-server, --port, "{{ service.port }}"]
+    healthcheck: "redis-cli -p {{ service.port }} ping"
+```
+
+The command gets `6380` as one argument, and the healthcheck uses the same port. Change `port:` to update both, or omit it to use Redis's default of `6379`. The expression supplies the value, not the flag or the server configuration.
+
+When you only need extra daemon flags and Lando already owns the launcher, use [`extraArgs:`](../services/extra-args.mdx) instead of replacing `command:`. Lando keeps its port, persistence, password, and config-file flags, then appends your argv list. A non-empty `extraArgs:` with an authored `command:` or `entrypoint:` is rejected.
+
+Use `service.port` in `command:`, `entrypoint:`, `extraArgs:` elements, or a command in a container `healthcheck:` or `readiness:` probe. It does not refer to a published host port. It is not available in host readiness, `environment:`, build steps, events, or tooling. Some modes, such as PHP in CLI mode, have no planned listen port.
+
+On raw `type: lando` and `type: compose` services, set `port:` yourself. You can omit `type:` on a custom image when neither the image nor the service name selects a registered type. For example, if your image provides `api-server`:
+
+```yaml
+services:
+  api:
+    image: ghcr.io/acme/api:1.4
+    port: 8080
+    command: [api-server, --listen, "0.0.0.0:{{ service.port }}"]
+```
+
+Lando passes `0.0.0.0:8080` as one argument. On a raw service, `port:` only supplies the expression value. It does not configure the daemon, declare an endpoint, publish a port, add a route, or create a probe. If you leave out `port:`, there is no default. Run `lando app:config:lint --format=json` from the app directory to locate the argument that reads the missing value.
+
+For a **different** service's database port, use its name. For example, `DB_PORT: "{{ services.db.port }}"` passes PostgreSQL's `5432` as text if `db` uses the default. Finite numbers from plan-time expressions render as text at text fields, whether the expression is the whole value or part of a longer string.
+
+## Set an extra host with expressions
+
+Both map and list forms of [`extra_hosts`](../subsystems/host-services.mdx#use-a-host-name-from-extra_hosts) accept plan-time expressions in the address. In list form, Lando resolves the hostname at load time, so it can come from `env` but not from a plan-time scope. For example, set `PEER_HOST` to `peer.test` in your host environment and add this to the service that needs the alias:
+
+```yaml
+extra_hosts:
+  - "{{ env.PEER_HOST }}=192.0.2.{{ app.name | length }}"
+```
+
+For an app named `demo`, this illustration maps `peer.test` to `192.0.2.4`. Use an expression that returns the address your app actually needs.
+
+## Read a service's public URL
+
+Use `{{ service.url }}` for the current service's public URL or `{{ services.<name>.url }}` for a named service in the same app. For example, add this to the `web` service in your Landofile if the app also has a routed `api` service:
+
+```yaml
+environment:
+  APP_URL: "{{ service.url }}"
+  API_URL: "{{ services.api.url }}/v1"
+```
+
+Lando uses the first route with a concrete hostname that serves HTTPS, or the first concrete HTTP route if there isn't one. The URL matches `lando info --format=json`: it includes the route's path prefix without a trailing slash and the router's actual host port, including fallback ports such as `8443`. It omits the port only for HTTP on `80` or HTTPS on `443`. This is a browser URL, not a container-to-container address.
+
+When the router moves to another port, the next `lando start` recreates only the services that read the URL.
+
+Use the expression only in a map-form service `environment`, including for `type: compose` services. Read `APP_URL` from the process environment instead of putting the expression in `command`, tooling, or another field. You can copy the URL, concatenate it with text or other public URLs, or pass it to `url.encodeComponent()`. Other helpers and conditional tests can't consume the URL. Put any secret in a separate variable.
+
+Run `lando app:config:lint` to find the Landofile path of a misplaced expression or a reference to a service without a concrete route. If the router is disabled, enable it before using a URL expression. `lando app:config` still shows the authored expression; Lando fills in the URL at activation. Global apps don't support public URL bindings.
 
 ## Use invocation values in tooling
 
@@ -238,6 +302,62 @@ lando app:config:lint --format=json
 That returns `valid: false` and a violation whose `path` walks to the bad site, for example `["tooling", "probe", "cmds", 0]`. An unescaped `${HOME}` lints the same way, with its `path` at the value, for example `["services", "app", "environment", "GREETING"]`.
 
 <Guide>
+  <Scenario id="public-service-url-live" layer="e2e" render={false} reason="Verify injected URL and warm container reuse">
+    <Step name="scaffold-public-url-live"><UseFixture name="expressions-public-url-live" /></Step>
+    <Step name="start-public-url-live"><Run command="lando start" /></Step>
+    <Step name="check-public-url-live">
+      <Verify command="lando exec web -- printenv APP_URL" expect={{ stdout: { regex: "^https://expressions-public-url\\.lndo\\.site(:[0-9]+)?\\s*$" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"url\":\\s*\"https://expressions-public-url\\.lndo\\.site(:[0-9]+)?\"" } }} />
+    </Step>
+    <Step name="check-warm-public-url-live">
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"container\":\\s*\\{\\s*\"action\":\\s*\"kept\"" } }} />
+    </Step>
+    <Step name="cleanup-public-url-live">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="public-service-url-resolves" render={false} reason="Validate public URL expressions without starting containers">
+    <Step name="scaffold-public-url"><UseFixture name="expressions-public-url" /></Step>
+    <Step name="lint-public-url">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="refresh-public-url"><Run command="lando app:cache:refresh" /></Step>
+    <Step name="cleanup-public-url"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="public-url-command-refused" render={false} reason="Check that a command cannot read a public URL expression">
+    <Step name="scaffold-url-command"><UseFixture name="expressions-url-command" /></Step>
+    <Step name="lint-url-command">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"command\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-url-command"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="info-scope-refused" render={false} reason="Check that a scope error names the scope the author used">
+    <Step name="scaffold-info-scope"><UseFixture name="expressions-info-scope" /></Step>
+    <Step name="lint-info-scope">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "`info` scope" } }} />
+    </Step>
+    <Step name="cleanup-info-scope"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="public-url-without-route-refused" render={false} reason="Check that lint and refresh both refuse a missing route">
+    <Step name="scaffold-no-route"><UseFixture name="expressions-url-no-route" /></Step>
+    <Step name="refresh-no-route">
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="ConfigExpressionError" expect={{ regex: "no route" }} />
+    </Step>
+    <Step name="lint-no-route">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"environment\",\\s*\"APP_URL\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-no-route"><Cleanup /></Step>
+  </Scenario>
   <Scenario id="plan-time-sites-resolve" render>
     <Step name="scaffold-plan-time">
       <UseFixture name="expressions-plan-time" />
@@ -286,10 +406,16 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
       <UseFixture name="expressions-plan-time-typed-field" />
     </Step>
     <Step name="lint-plan-time-typed-field">
-      <Run command="lando app:config:lint --format=json" expectExit={1} />
-      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"primary\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^\"]*plan-time scopes" } }} />
+      <Run runtime="library" displayCode="lando app:config:lint --format=json" code={`{
+const run = yield* context.runCli("lando app:config:lint --format=json");
+expect(run.exitCode).toBe(1);
+const { valid, violations } = JSON.parse(run.stdout).result;
+expect(valid).toBe(false);
+expect(violations).toContainEqual(expect.objectContaining({
+  path: ["services", "app", "primary"],
+  suggestion: expect.stringContaining("Use a literal or a recipe/env expression here."),
+}));
+}`} />
     </Step>
     <Step name="cleanup-plan-time-typed-field">
       <Cleanup />
@@ -404,6 +530,89 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
     </Step>
     <Step name="cleanup-missing-creds">
       <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="service-port-launcher-and-peer-environment" render={false} reason="Check lint and cache refresh without containers; the planner test reads this same fixture and asserts the exact argv, probe command, and peer environment value.">
+    <Step name="scaffold-service-port">
+      <UseFixture name="expressions-service-port" />
+    </Step>
+    <Step name="plan-service-port">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="own-published-port-hint" render={false} reason="Check the planned port replacement at the self-read site">
+    <Step name="report-own-port-read">
+      <UseFixture name="expressions-own-port-read" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="ConfigExpressionError" expect={{ regex: "\"path\":\\s*\\[\"services\",\"cache\",\"command\",2\\]" }} />
+      <Verify errorTag="ConfigExpressionError" expect={{ regex: "\\{\\{ service\\.port \\}\\}" }} />
+      </Step>
+    </Scenario>
+  <Scenario id="raw-service-port-launcher" render={false} reason="Assert the planned argv without pulling or running the custom image.">
+    <Step name="plan-raw-service-port">
+      <Run runtime="library" displayCode="Plan the custom-image service" code={`{
+yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), [
+  "name: raw-port-demo",
+  "services:",
+  "  api:",
+  "    image: ghcr.io/acme/api:1.4",
+  "    port: 8080",
+  '    command: [api-server, --listen, "0.0.0.0:{{ service.port }}"]',
+].join("\n")));
+const runtime = yield* LandoCore.openLandoRuntime({
+  cwd: context.testDir,
+  config: {
+    userConfRoot: join(context.testDir, "conf"),
+    userDataRoot: join(context.testDir, "data"),
+    userCacheRoot: join(context.testDir, "cache"),
+  },
+  plugins: { policy: "bundled-only" },
+});
+const app = yield* runtime.app();
+const plan = yield* app.plan;
+const api = Object.values(plan.services).find(({ name }) => name === "api");
+expect(api?.command).toEqual(["api-server", "--listen", "0.0.0.0:8080"]);
+}`} />
+    </Step>
+  </Scenario>
+  <Scenario id="raw-service-port-missing" render={false} reason="Check lint exit status and reading site when a raw service omits port.">
+    <Step name="lint-raw-service-without-port">
+      <Run runtime="library" displayCode="lando app:config:lint --format=json" code={`{
+yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), [
+  "name: raw-port-demo",
+  "services:",
+  "  api:",
+  "    image: ghcr.io/acme/api:1.4",
+  '    command: [api-server, --listen, "0.0.0.0:{{ service.port }}"]',
+].join("\n")));
+const lint = yield* context.runCli("lando app:config:lint --format=json");
+expect(lint.exitCode, lint.stdout).toBe(1);
+expect(JSON.parse(lint.stdout).result.violations).toMatchObject([
+  { rule: "landofile.expression", path: ["services", "api", "command", 2] },
+]);
+}`} />
+    </Step>
+  </Scenario>
+  <Scenario id="service-port-misuse" render={false} reason="Verify that lint and planning report the same unsupported environment field.">
+    <Step name="scaffold-service-port-misuse">
+      <UseFixture name="expressions-service-port-misuse" />
+    </Step>
+    <Step name="report-service-port-misuse">
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"cache\",\\s*\"environment\",\\s*\"PORT\"\\s*\\]" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"cache\",\\s*\"environment\",\\s*\"PORT\"\\s*\\]" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="list-extra-host-expression" render={false} reason="Check the load-time hostname and plan-time address in the same list entry.">
+    <Step name="plan-host-alias">
+      <Run runtime="library" displayCode="lando app:cache:refresh --format=json" code={`{
+yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: demo\nservices:\n  web:\n    type: node:22\n    extra_hosts:\n      - \"{{ default(env.PEER_HOST, 'peer.test') }}=192.0.2.{{ app.name | length }}\"\n"));
+const config = yield* context.runCli("lando app:config --format=json");
+expect(config.exitCode, config.stdout).toBe(0);
+expect(JSON.parse(config.stdout).result.landofile.services.web.extra_hosts).toEqual({ "peer.test": "192.0.2.{{ app.name | length }}" });
+const plan = yield* context.runCli("lando app:cache:refresh --format=json");
+expect(plan.exitCode, plan.stdout).toBe(0);
+}`} />
     </Step>
   </Scenario>
 </Guide>

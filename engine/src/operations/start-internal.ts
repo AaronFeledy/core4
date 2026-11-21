@@ -12,7 +12,7 @@ import {
   ServiceNotReadyError,
 } from "@lando/sdk/errors";
 import { PostAppStartEvent, PostStartEvent, PreAppStartEvent, PreStartEvent } from "@lando/sdk/events";
-import type { AppPlan, PreparedFileSyncTarget } from "@lando/sdk/schema";
+import type { AppPlan, PreparedFileSyncTarget, ServiceName, StartedService } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import {
   type AppPlanner,
@@ -40,6 +40,7 @@ import { resolveRouterConfigForApp, routerEnabled } from "../config/router-confi
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
+import { type PreparedRouteUrls, prepareRouteUrlBindings } from "../lifecycle/route-url-bindings.ts";
 import { type PreparedCertificates, prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
@@ -73,6 +74,7 @@ import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { publishLowPortWarnings } from "./low-port-warning.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
+import { selectRebuildPlan } from "./service-selection.ts";
 import { convergeRemovedServices } from "./start-convergence.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { retireUnusedGpgAgentWorker } from "./start-gpg-agent.ts";
@@ -116,15 +118,18 @@ export const ensureStartTransactionConsistent = (target: ResolvedAppTarget) =>
 export const preflightStartAppDrain = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
   stopPreflight?: StopAppPreflight,
+  services?: readonly ServiceName[],
 ) {
-  const bundle = yield* fileSyncBundle(target.plan);
-  yield* validateDesiredFileSyncEngine(target.plan);
+  const execution = services === undefined ? target.plan : yield* selectRebuildPlan(target.plan, services);
+  const bundle = yield* fileSyncBundle(execution);
+  yield* validateDesiredFileSyncEngine(execution);
   if (bundle.kind === "accelerated") {
     const registry = yield* RuntimeProviderRegistry;
     yield* requireFileSyncProvider(bundle, yield* registry.select(target.plan));
   }
-  const preparedTargets = yield* verifyPendingStartResume(target.app, target.plan);
+  const preparedTargets = yield* verifyPendingStartResume(target.app, execution, services);
   if (preparedTargets !== null) return preparedTargets;
+  if (services !== undefined && bundle.kind === "ordinary") return;
   const prior =
     stopPreflight?.appliedFileSync ??
     (yield* Effect.gen(function* () {
@@ -207,15 +212,25 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
 type DatabaseCredentialSession = Effect.Success<ReturnType<typeof openDatabaseCredentialSession>>;
 type PendingAcceleratedStart = Effect.Success<ReturnType<typeof prepareAcceleratedStart>>["pendingStart"];
 
-const preflightAppLaunch = Effect.fnUntraced(function* (
+export const preflightAppLaunch = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
   provider: PreparedRuntimeProvider,
+  services?: readonly ServiceName[],
 ) {
   const bundle = yield* fileSyncBundle(target.plan);
   const inspectAppliedFileSync = provider.inspectAppliedFileSync;
   const inspectPrior =
-    inspectAppliedFileSync === undefined ? undefined : () => inspectAppliedFileSync(target.plan);
-  const pending = yield* readPendingAcceleratedStart(target.app, target.plan);
+    inspectAppliedFileSync === undefined
+      ? undefined
+      : () =>
+          inspectAppliedFileSync(target.plan).pipe(
+            Effect.map((prior) => {
+              if (services === undefined || prior.status !== "accelerated") return prior;
+              if (prior.sessions.some((session) => services.includes(session.service))) return prior;
+              return { status: "ordinary" as const };
+            }),
+          );
+  const pending = yield* readPendingAcceleratedStart(target.app, target.plan, services);
   const resolvedPlan =
     pending !== null ? target.plan : yield* resolveFileSyncMountPlan(target.plan, inspectPrior);
   // Desired id capabilities before hooks/provider work (pending resumes keep journal identity).
@@ -261,12 +276,13 @@ const preflightAppLaunch = Effect.fnUntraced(function* (
   return prepared;
 });
 
-const announceAppLaunch = Effect.fnUntraced(function* (input: {
+export const announceAppLaunch = Effect.fnUntraced(function* (input: {
   readonly target: ResolvedAppTarget;
   readonly plan: AppPlan;
   readonly options: StartAppOptions;
+  readonly services?: readonly ServiceName[];
 }) {
-  const { target, plan, options } = input;
+  const { target, plan, options, services } = input;
   const events = yield* EventService;
   const proxy = yield* RouterService;
   const ref = target.app;
@@ -286,9 +302,10 @@ const announceAppLaunch = Effect.fnUntraced(function* (input: {
     app: ref,
     plan,
     triggeredBy: "app:start",
+    ...(services === undefined ? {} : { services }),
     timestamp: now(),
   });
-  yield* publishAndRunAppEvent(plan, "pre-start", preStart);
+  yield* publishAndRunAppEvent(services === undefined ? plan : target.plan, "pre-start", preStart);
 
   const neededGlobalServices = requiredGlobalServicesForPlan(plan);
   if (
@@ -326,6 +343,7 @@ const announceAppLaunch = Effect.fnUntraced(function* (input: {
 
 /** Capture the apply result separately because the progress tree returns only per-service rows. */
 const applyAppLaunch = Effect.fnUntraced(function* (input: {
+  readonly routeUrls: PreparedRouteUrls | undefined;
   readonly admitted: AdmittedApp;
   readonly plan: AppPlan;
   readonly runtimePlan: AppPlan;
@@ -349,6 +367,7 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
     events,
     plan,
     services,
+    rows: (rows) => rows,
     work: Effect.gen(function* () {
       yield* verifyActiveVolumeCoordination(provider);
       const observations = yield* provider.list({
@@ -370,6 +389,7 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
           provider,
           plan: runtimePlan,
           certificates,
+          routeUrls: input.routeUrls,
           reconcile: options.reconcile ?? false,
           complete: true,
           ...(environment === undefined ? {} : { environment }),
@@ -410,17 +430,18 @@ const completeAppLaunch = Effect.fnUntraced(function* (input: {
   readonly observedBefore: ReadonlyArray<ServiceRuntimeInfo>;
   readonly initial: ReadonlyMap<string, ServiceRuntimeInfo>;
   readonly applyOutcome: ApplyResult | undefined;
+  readonly routeUrls: PreparedRouteUrls | undefined;
   readonly forceAppBuild?: boolean;
 }) {
   const { admitted, plan, runtimePlan, options, environment, observedBefore, initial, applyOutcome } = input;
   const { target, provider } = admitted;
-  const ref = target.app;
   const events = yield* EventService;
   const builds = yield* BuildOrchestrator;
   const proxy = yield* RouterService;
   const services = Object.values(runtimePlan.services);
   const ready = yield* completeStartup({
     policy: "user-start",
+    routeUrls: input.routeUrls,
     builds,
     router: proxy,
     events,
@@ -439,23 +460,7 @@ const completeAppLaunch = Effect.fnUntraced(function* (input: {
     applyOutcome?.services,
   );
 
-  yield* events.publish(
-    PostAppStartEvent.make({
-      eventName: "post-app-start",
-      appRef: ref,
-      providerId: plan.provider,
-      timestamp: now(),
-    }),
-  );
-  const postStart = PostStartEvent.make({
-    _tag: "post-start",
-    scope: "app",
-    app: ref,
-    plan,
-    timestamp: now(),
-  });
-  yield* publishAndRunPostAppEvent(plan, "post-start", postStart);
-  const scanner = yield* Effect.serviceOption(UrlScanner);
+  yield* publishAppLaunchComplete({ target, plan });
   // A database service is checked only when this operation could change the answer: it
   // started or recreated that container, has no pre-apply applied plan entry, or its
   // connection descriptors changed. `lando doctor` is the always-on check.
@@ -478,20 +483,58 @@ const completeAppLaunch = Effect.fnUntraced(function* (input: {
           session: environment,
           ...(admitted.placement.plan === undefined ? {} : { previousPlan: admitted.placement.plan }),
         });
-  const scan = Option.isSome(scanner)
-    ? runPostStartScan({
-        scanner: scanner.value,
-        plan: runtimePlan,
-        events,
-        urls: startupScanUrls(runtimePlan, servicesStarted),
-        observeListener: (service) =>
-          observeTcpListener(service, (command) =>
-            provider.execStream({ app: runtimePlan.id, service: service.name, plan: runtimePlan }, command),
-          ),
-      })
-    : Effect.succeed(undefined);
+  const scan = scanAppLaunch(runtimePlan, provider, servicesStarted);
   const [, checks] = yield* Effect.all([credentialCheck, scan], { concurrency: 2 });
   return { servicesStarted, checks };
+});
+
+export const publishAppLaunchComplete = Effect.fnUntraced(function* (input: {
+  readonly target: ResolvedAppTarget;
+  readonly plan: AppPlan;
+  readonly services?: readonly ServiceName[];
+}) {
+  const { target, plan, services } = input;
+  const events = yield* EventService;
+  yield* events.publish(
+    PostAppStartEvent.make({
+      eventName: "post-app-start",
+      appRef: target.app,
+      providerId: plan.provider,
+      timestamp: now(),
+    }),
+  );
+  yield* publishAndRunPostAppEvent(
+    services === undefined ? plan : target.plan,
+    "post-start",
+    PostStartEvent.make({
+      _tag: "post-start",
+      scope: "app",
+      app: target.app,
+      plan,
+      timestamp: now(),
+      ...(services === undefined ? {} : { services }),
+    }),
+  );
+});
+
+export const scanAppLaunch = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  provider: PreparedRuntimeProvider,
+  services: readonly StartedService[],
+) {
+  const scanner = yield* Effect.serviceOption(UrlScanner);
+  if (Option.isNone(scanner)) return undefined;
+  const events = yield* EventService;
+  return yield* runPostStartScan({
+    scanner: scanner.value,
+    plan,
+    events,
+    urls: startupScanUrls(plan, services),
+    observeListener: (service) =>
+      observeTcpListener(service, (command) =>
+        provider.execStream({ app: plan.id, service: service.name, plan }, command),
+      ),
+  });
 });
 
 const activateAppLaunch = Effect.fnUntraced(function* (input: {
@@ -541,7 +584,13 @@ const activateAppLaunch = Effect.fnUntraced(function* (input: {
                 : { preparedTargets: execution.preparedTargets }),
             });
             if (pendingStart !== undefined) yield* pendingStart.advance("record-sessions");
+            const routeUrls = yield* prepareRouteUrlBindings({
+              plan: runtimePlan,
+              routes: runtimePlan.routes,
+              router: yield* RouterService,
+            });
             const launch = yield* applyAppLaunch({
+              routeUrls,
               admitted,
               plan,
               runtimePlan,
@@ -554,6 +603,7 @@ const activateAppLaunch = Effect.fnUntraced(function* (input: {
             if (execution.announceApplyOutcome === true)
               yield* publishApplyOutcomeNotices(events, launch.applyOutcome?.services, { created: false });
             const completed = yield* completeAppLaunch({
+              routeUrls,
               admitted,
               plan,
               runtimePlan,

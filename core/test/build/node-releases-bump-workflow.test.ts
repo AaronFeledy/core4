@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { Schema } from "effect";
+import { pinnedAction } from "../../../scripts/action-pins.ts";
 import { renderNodeReleasesBumpWorkflow } from "../../../scripts/build-node-releases-bump-workflow.ts";
-import { RUNTIME_BUNDLE_ACTION_PINS } from "../../../scripts/runtime-bundle-supply-chain.ts";
 
 const Workflow = Schema.Struct({
   on: Schema.Struct({
@@ -27,8 +27,8 @@ describe("Node releases bump workflow", () => {
     // Then
     expect(committed).toBe(workflow);
     expect(() => Schema.decodeUnknownSync(Workflow)(Bun.YAML.parse(workflow))).not.toThrow();
-    expect(workflow).toContain(`uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1`);
-    expect(workflow).toContain(`uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun}`);
+    expect(workflow).toContain(`uses: ${pinnedAction("actions/checkout")}`);
+    expect(workflow).toContain(`uses: ${pinnedAction("oven-sh/setup-bun")}`);
     expect(workflow).toContain("persist-credentials: false");
     expect(workflow).toContain("  actions: write");
     expect(workflow).toContain("bun run update:node-releases");

@@ -1,10 +1,11 @@
+import { pinnedAction } from "./action-pins.ts";
 import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
 import { CI_JOB_TIERS, jobCondition } from "./ci-selection.ts";
 
-const setup = `      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+const setup = `      - uses: ${pinnedAction("actions/checkout")}
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
+      - uses: ${pinnedAction("oven-sh/setup-bun")}
         with:
           bun-version-file: .bun-version
       - run: bun install --frozen-lockfile`;
@@ -56,8 +57,8 @@ ${setup}
       - name: Select CI profile
         id: select
         env:
-          CI_BASE_SHA: \${{ github.event.pull_request.base.sha }}
-          CI_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
+          CI_BASE_SHA: \${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          CI_HEAD_SHA: \${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: bun run scripts/select-ci.ts
 ${selected}
   ci:

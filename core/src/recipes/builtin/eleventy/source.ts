@@ -14,7 +14,7 @@ export const source = {
       builder: {
         type: "node:lts",
         primary: true,
-        command: "npx @11ty/eleventy --serve --port 8080",
+        command: [":node-install-run", "start"],
         port: 8080,
       },
       web: staticWebService("_site"),
@@ -28,6 +28,7 @@ export const source = {
       },
     },
   },
+  files: [{ src: "templates/package.json.tmpl", dest: "package.json", template: true }],
   postInit: [
     { type: "message", text: "Run 'lando start' inside the new app directory to serve the Eleventy site." },
   ],

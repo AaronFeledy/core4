@@ -7,6 +7,7 @@ import { failureOutcomeFromCause, mergeFailure } from "@lando/sdk/command-result
 import { GlobalAppError, StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { GlobalAppService, PathsService, StateStore } from "@lando/sdk/services";
+import { ADVISORY_LOCK_SUFFIX } from "@lando/state-store/lock";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect";
@@ -56,7 +57,7 @@ const fixture = async () => {
     join(
       dirname(appRoot),
       `.lando-global-${appMutationLockKey("global", appRoot)}`,
-      `${appMutationLockKey("global", appRoot)}.lock`,
+      `${appMutationLockKey("global", appRoot)}${ADVISORY_LOCK_SUFFIX}`,
     );
   return { directory, root, paths, service, layer, lockPath };
 };
@@ -77,8 +78,20 @@ test("global mutations lock the actual embedded root and nested calls reuse that
     );
     expect(tokens.first.pid).toBe(process.pid);
     expect(tokens.nested.token).toBe(tokens.first.token);
-    expect(await Bun.file(isolated.lockPath(isolated.root)).exists()).toBe(false);
-    expect(await Bun.file(isolated.lockPath(isolated.paths.globalAppRoot)).exists()).toBe(false);
+    expect(
+      (
+        await Bun.file(isolated.lockPath(isolated.root))
+          .text()
+          .catch(() => "")
+      ).trim(),
+    ).toBe("");
+    expect(
+      (
+        await Bun.file(isolated.lockPath(isolated.paths.globalAppRoot))
+          .text()
+          .catch(() => "")
+      ).trim(),
+    ).toBe("");
   } finally {
     await rm(isolated.directory, { recursive: true, force: true });
   }
@@ -104,7 +117,13 @@ test("nested embedded globals with different roots refuse before acquiring anoth
         cause: { _tag: "StateStoreError", operation: "nestedGlobalPolicyMutation" },
       },
     });
-    expect(await Bun.file(isolated.lockPath(secondRoot)).exists()).toBe(false);
+    expect(
+      (
+        await Bun.file(isolated.lockPath(secondRoot))
+          .text()
+          .catch(() => "")
+      ).trim(),
+    ).toBe("");
   } finally {
     await rm(isolated.directory, { recursive: true, force: true });
   }
@@ -122,7 +141,13 @@ test("cancellation releases the global lock before a later command acquires it",
     await Effect.runPromise(Deferred.await(acquired));
     expect(await Bun.file(isolated.lockPath(isolated.root)).exists()).toBe(true);
     await Effect.runPromise(Fiber.interrupt(fiber));
-    expect(await Bun.file(isolated.lockPath(isolated.root)).exists()).toBe(false);
+    expect(
+      (
+        await Bun.file(isolated.lockPath(isolated.root))
+          .text()
+          .catch(() => "")
+      ).trim(),
+    ).toBe("");
     expect(
       await Effect.runPromise(
         withGlobalMutation(Effect.succeed("entered")).pipe(Effect.provide(isolated.layer)),
@@ -269,7 +294,7 @@ test("shared policy excludes a separate process using different data and global 
     const result = await Effect.runPromise(
       withGlobalMutation(
         Effect.promise(async () => {
-          const env = { ...process.env, LANDO_APP_LOCK_TIMEOUT_MS: "1000" };
+          const env = { ...process.env, LANDO_LOCK_TIMEOUT_MS: "1000" };
           Reflect.deleteProperty(env, "LANDO_APP_LOCK_HOLDERS");
           const child = Bun.spawn([process.execPath, script], { env, stdout: "pipe", stderr: "pipe" });
           const [code, out, err] = await Promise.all([
@@ -327,7 +352,7 @@ test.each(["shared-policy", "shared-runtime"] as const)(
     );
     const spawn = (mode: string) =>
       Bun.spawn([process.execPath, script, mode], {
-        env: { ...process.env, LANDO_APP_LOCK_TIMEOUT_MS: "180" },
+        env: { ...process.env, LANDO_LOCK_TIMEOUT_MS: "180" },
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -457,7 +482,13 @@ test("global coordination preserves body defect identity and releases both lease
       expect(defects).toHaveLength(1);
       expect(defects[0]?.defect).toBe(defect);
     }
-    expect(await Bun.file(isolated.lockPath(isolated.root)).exists()).toBe(false);
+    expect(
+      (
+        await Bun.file(isolated.lockPath(isolated.root))
+          .text()
+          .catch(() => "")
+      ).trim(),
+    ).toBe("");
     expect(
       await Effect.runPromise(
         withGlobalMutation(Effect.succeed("released")).pipe(Effect.provide(isolated.layer)),
@@ -481,7 +512,7 @@ test("interruption retains both global leases until an admitted uncancelable ope
   const policyLock = join(
     isolated.paths.roots.userConfRoot,
     "operation-locks",
-    `${appMutationLockKey("global-policy", policyPath)}.lock`,
+    `${appMutationLockKey("global-policy", policyPath)}${ADVISORY_LOCK_SUFFIX}`,
   );
   const owner = Effect.runFork(
     withGlobalMutation(
@@ -518,8 +549,20 @@ test("interruption retains both global leases until an admitted uncancelable ope
     expect(Exit.hasInterrupts(exit)).toBe(true);
     expect(completed).toBe(true);
     expect(joined).toBe(true);
-    expect(await Bun.file(isolated.lockPath(isolated.root)).exists()).toBe(false);
-    expect(await Bun.file(policyLock).exists()).toBe(false);
+    expect(
+      (
+        await Bun.file(isolated.lockPath(isolated.root))
+          .text()
+          .catch(() => "")
+      ).trim(),
+    ).toBe("");
+    expect(
+      (
+        await Bun.file(policyLock)
+          .text()
+          .catch(() => "")
+      ).trim(),
+    ).toBe("");
   } finally {
     settle();
     await Effect.runPromise(Fiber.interrupt(owner));

@@ -1,7 +1,6 @@
 ---
 id: adminer
 provider: test
-timeout: 600000
 tags: [docs, adminer, service, database, postgres, mariadb, sqlite]
 ---
 
@@ -102,7 +101,7 @@ lando start
 `lando info` no longer lists the Adminer URL. Your database service and its data remain.
 
 <Guide>
-  <Scenario id="postgres-browse" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="postgres-browse" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-demo" /></Step>
     <Hidden reason="Check the Adminer HTTPS probe and a fresh deep link">
       <Step name="route">
@@ -122,7 +121,7 @@ lando start
     <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
   </Scenario>
 
-  <Scenario id="mariadb-browse" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="mariadb-browse" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-mariadb" /></Step>
     <Step name="start"><Run command="lando start" /></Step>
     <Hidden reason="Verify Adminer reads the MariaDB default database">
@@ -135,7 +134,7 @@ lando start
     <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
   </Scenario>
 
-  <Scenario id="mysql-browse" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="mysql-browse" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-mariadb" /></Step>
     <Hidden reason="Run the MariaDB example with MySQL in place of MariaDB">
       <Step name="switch-engine">
@@ -151,7 +150,7 @@ lando start
     <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
   </Scenario>
 
-  <Scenario id="choose-server" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="choose-server" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-multiple" /></Step>
     <Step name="start"><Run command="lando start" /></Step>
     <Hidden reason="Verify the dropdown and one sign-in deep link per database">
@@ -167,7 +166,7 @@ lando start
     <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
   </Scenario>
 
-  <Scenario id="sqlite-browse" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="sqlite-browse" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-sqlite" /></Step>
     <Step name="start"><Run command="lando start" /></Step>
     <Step name="import"><Run command="lando db:import notes.sql --yes" /></Step>
@@ -181,7 +180,7 @@ lando start
     <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
   </Scenario>
 
-  <Scenario id="remove-it" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="remove-it" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-demo" /></Step>
     <Step name="start"><Run command="lando start" /></Step>
     <Hidden reason="Seed data to check that removing Adminer preserves it">

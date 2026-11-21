@@ -1,6 +1,9 @@
+import { mergeAppliedPlan } from "@lando/container-runtime/plan";
 import { FileSyncStopError } from "@lando/sdk/errors";
 import {
+  type AppPlan,
   type FileSyncQuiesceResult,
+  type FileSyncSessionInfo,
   fileSyncDisposalCommitted,
   planFileSyncDisposal,
 } from "@lando/sdk/schema";
@@ -14,7 +17,10 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { pendingStartDisposal } from "./accelerated-start-disposal.ts";
+import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
+import { acceleratedStartStopError, pendingStartDisposal } from "./accelerated-start-disposal.ts";
+import { recordedStartCommand } from "./accelerated-start-record.ts";
+import { recordedSessionInventory } from "./accelerated-start-resume.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 import { acquireFileSyncEngine } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
@@ -31,6 +37,7 @@ type DestroyFileSync = {
 export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFileSync")(function* (
   target: ResolvedAppTarget,
   provider: RuntimeProviderShape,
+  savedPlan?: AppPlan,
 ): Effect.fn.Return<DestroyFileSync, FileSyncError | ProviderError, StateStore> {
   const { plan, app } = target;
   const bundle = yield* fileSyncBundle(plan);
@@ -44,21 +51,32 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
               : ("ordinary" as const),
         }
       : yield* provider.inspectAppliedFileSync(plan);
-  const retainedUnapplied = retained !== undefined && inspected.status !== "accelerated";
+  const retainedUnapplied =
+    retained !== undefined &&
+    (retained.record.services !== undefined ||
+      inspected.status !== "accelerated" ||
+      !retained.plan.fileSync.every(({ session }) =>
+        inspected.sessions.some((spec) => sameFileSyncSessionSpec(spec, session)),
+      ));
+  const cleanupPlan = retained === undefined ? plan : mergeAppliedPlan(savedPlan, retained.plan);
+  const cleanupBundle = retained === undefined ? bundle : yield* fileSyncBundle(cleanupPlan);
   const applied =
-    retainedUnapplied && bundle.kind === "accelerated"
+    retainedUnapplied && cleanupBundle.kind === "accelerated"
       ? {
           status: "accelerated" as const,
-          engineId: bundle.id,
-          sessions: bundle.sessions,
+          engineId: cleanupBundle.id,
+          sessions: cleanupBundle.sessions,
         }
       : inspected;
-  const failure = (message: string) =>
+  const failure = (
+    message: string,
+    remediation = "Repair the file sync sessions and provider cleanup hooks, then retry destroy.",
+  ) =>
     new FileSyncStopError({
       engineId: bundle.kind === "accelerated" ? bundle.id : "unavailable",
       sessionRef: String(app.id),
       message,
-      remediation: "Repair the file sync sessions and provider cleanup hooks, then retry destroy.",
+      remediation,
     });
   // Applied / journal identity: acquire the recorded engine, not the desired selection.
   const engine: FileSyncEngineShape | undefined =
@@ -75,7 +93,17 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
   const applicable =
     applied.status === "accelerated" &&
     (phase === "completed" || (engine !== undefined && (yield* engine.isAvailable)));
-  const sessions = applicable && engine !== undefined && !resumed ? yield* engine.listSessions({ app }) : [];
+  let sessions: readonly FileSyncSessionInfo[] = [];
+  if (applicable && engine !== undefined && !resumed) {
+    if (retained === undefined) {
+      sessions = yield* engine.listSessions({ app });
+    } else {
+      const inventory = yield* recordedSessionInventory(app, retained, { prior: inspected, engine }).pipe(
+        mapFailureErrors((cause) => acceleratedStartStopError(app, cause)),
+      );
+      sessions = inventory.sessions;
+    }
+  }
   const quiesce = provider.quiesceForFileSync;
   const quiesceRetained = provider.quiesceRetainedFileSync;
   const disposeTargets = provider.disposeFileSyncTargets;
@@ -110,21 +138,43 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
     failure(
       "An accelerated mount has no matching file sync session; destroying its volume could lose changes.",
     );
+  if (
+    retainedUnapplied &&
+    inspected.status === "accelerated" &&
+    (inspected.engineId !== applied.engineId ||
+      !inspected.sessions.every((spec) =>
+        applied.sessions.some((entry) => sameFileSyncSessionSpec(entry, spec)),
+      ))
+  )
+    return yield* Effect.fail(coverageError());
   if (!retainedUnapplied && !resumed && !hasExactFileSyncSessionCoverage(applied.sessions, sessions))
     return yield* Effect.fail(coverageError());
   const quiesceRetainedWriters = Effect.gen(function* () {
     if (!retainedUnapplied || resumed || quiesceRetained === undefined) return;
-    const { preparedVolumeNames } = yield* quiesceRetained(plan);
     if (
       !sessions.every(({ spec }) =>
         applied.sessions.some((planned) => sameFileSyncSessionSpec(planned, spec)),
       ) ||
-      (retained?.record.phase === "apply-intent" &&
-        !preparedVolumeNames.every((name) =>
-          sessions.some(({ spec }) => spec.target._tag === "volume" && spec.target.name === name),
+      (inspected.status === "accelerated" &&
+        !inspected.sessions.every((spec) =>
+          sessions.some((session) => sameFileSyncSessionSpec(spec, session.spec)),
         ))
-    ) {
+    )
       return yield* Effect.fail(coverageError());
+    const { preparedVolumeNames } = yield* quiesceRetained(cleanupPlan);
+    if (
+      retained?.record.phase === "apply-intent" &&
+      !preparedVolumeNames.every((name) =>
+        sessions.some(({ spec }) => spec.target._tag === "volume" && spec.target.name === name),
+      )
+    ) {
+      // App writers may have used a target whose session is gone; only its history can recover the writes.
+      return yield* Effect.fail(
+        failure(
+          "A prepared sync target has no session after app writers may have used it; destroying it could lose changes.",
+          `Restore the session's synchronization history in the file-sync engine, run \`${recordedStartCommand(retained.record)}\` to finish the attempt, then retry destroy.`,
+        ),
+      );
     }
   });
   const dispose = Effect.gen(function* () {
@@ -136,14 +186,14 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
       for (const operation of remaining) {
         if (operation !== "completeDisposal") yield* lifecycle[operation](app);
       }
-      if (disposeTargets !== undefined) yield* disposeTargets(plan);
+      if (disposeTargets !== undefined) yield* disposeTargets(cleanupPlan);
       if (remaining.includes("completeDisposal")) yield* lifecycle.completeDisposal(app);
     } else {
       if (engine === undefined) {
         return yield* Effect.fail(failure("An accelerated mount has no matching file sync engine."));
       }
       yield* terminateFileSyncSessions(app, sessions).pipe(Effect.provideService(FileSyncEngine, engine));
-      if (disposeTargets !== undefined) yield* disposeTargets(plan);
+      if (disposeTargets !== undefined) yield* disposeTargets(cleanupPlan);
     }
     return receipt;
   });

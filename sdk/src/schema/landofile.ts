@@ -653,6 +653,13 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     command: executionSiteKey(Schema.optionalKey(CommandSpec), "service-command").annotate({
       description: "Command executed when the service starts.",
     }),
+    extraArgs: executionSiteKey(
+      Schema.optionalKey(Schema.Array(Schema.String)),
+      "service-extra-args",
+    ).annotate({
+      description:
+        "Arguments appended to a supported service's default launcher. Each list item is one argument.",
+    }),
     entrypoint: executionSiteKey(Schema.optionalKey(CommandSpec), "service-entrypoint").annotate({
       description: "Entrypoint used to launch the service container.",
     }),
@@ -693,7 +700,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     cores: Schema.optionalKey(Schema.Array(Schema.String)),
     port: Schema.optionalKey(PortNumber).annotate({
-      description: "Primary container TCP port number (integer 1-65535) exposed by the service.",
+      description:
+        "Primary container listen port (integer 1-65535). On raw lando and compose services, only supplies the value of {{ service.port }}; it does not configure the listener, an endpoint, publication, routing, or readiness.",
     }),
     consolePort: Schema.optionalKey(PortNumber).annotate({
       description:

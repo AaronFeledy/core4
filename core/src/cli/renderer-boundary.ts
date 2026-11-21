@@ -30,6 +30,7 @@ import { CommandInputValidationError, JqExpressionError } from "@lando/sdk/error
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { CommandCompletion, StreamFrameSchema } from "@lando/sdk/schema";
 import { EventService, Renderer } from "@lando/sdk/services";
+import { LockHolder } from "@lando/state-store/lock-holder";
 import {
   Cause,
   Clock,
@@ -62,6 +63,7 @@ import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
 import { dimBugReportDetails } from "./diagnostic-text";
 import { renderFailureEvidence } from "./failure-evidence";
 import { DEFAULT_RESULT_FORMAT, type ResultFormat, isEnvelopeResultFormat } from "./format-flags";
+import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { interruptOnAbort } from "./interrupt-on-abort";
 import { resolveOutputRouting } from "./output-routing";
 import { renderDeprecationDiagnostics } from "./renderer-deprecations";
@@ -201,6 +203,13 @@ const makeStage = (name: "init" | "run" | "render", revisable = false) => {
     });
   return { start, end };
 };
+
+const commandAliases: Readonly<Record<string, { readonly aliases: ReadonlyArray<string> }>> =
+  COMMAND_REGISTRY_MANIFEST.commands;
+
+/** How a user types the command (`lando start` for `app:start`), recorded on locks it holds. */
+const holderCommandLabel = (commandId: string): string =>
+  `lando ${commandAliases[commandId]?.aliases[0] ?? commandId}`;
 
 // allow: SIZE_OK — command rendering state machine shares lifecycle, emitters, and failure policy in one closure.
 export const runWithRendererHandling = async <A, E, R, RE>(
@@ -710,7 +719,13 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
             ...(!isStdioRendererIO(realIO) && realIO.stdin !== undefined ? { stdin: realIO.stdin } : {}),
           }),
         )
-  ).pipe(Effect.provideService(RendererHost, { io: realIO, env: sourceEnv }));
+  ).pipe(
+    Effect.provideService(RendererHost, { io: realIO, env: sourceEnv }),
+    Effect.provideService(
+      LockHolder,
+      options.command === undefined ? {} : { command: holderCommandLabel(options.command) },
+    ),
+  );
   const exit = await Effect.runPromiseExit(
     options.tracer === undefined
       ? scopedProgram.pipe(Effect.provideService(References.TracerEnabled, false))

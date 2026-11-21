@@ -195,6 +195,13 @@ export const bindToolingShellSite = (
     }
     if (typeof result === "object" && result !== null && "_tag" in result && result._tag === "BoundText")
       throw secretBindingError(site, "text that mixes literal bytes with a secret reference", references);
+    if (typeof result === "object" && result !== null && "_tag" in result && result._tag === "RouteText")
+      throw new ToolingCompileError({
+        tool: "<tooling-task>",
+        message: `Public URL bindings are not supported at ${formatValidationIssuePath(site.source.path)}.`,
+        remediation:
+          "Put the expression in the service's environment map and have the command read the variable.",
+      });
     const value =
       segment.kind === "LiteralSegment" && trimNextLiteral
         ? String(result).replace(/^\s+/u, "")

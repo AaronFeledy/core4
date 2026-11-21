@@ -1,7 +1,7 @@
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
+import { RAW_BASE_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { ServiceConfigIssue, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
-
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const LANDO_FEATURE_ID = "service-lando.lando" as const;
@@ -40,7 +40,9 @@ export const landoServiceType: ServiceType = {
   id: "lando",
   name: "lando",
   base: "lando",
+  extraArgsRemediation: RAW_BASE_EXTRA_ARGS_REMEDIATION,
   schema: Schema.Unknown,
+  plannedPort: ({ port }) => port,
   resolve: (input) =>
     serviceTypeResolve("lando", "Failed to resolve lando service type", () => ({
       base: "lando" as const,

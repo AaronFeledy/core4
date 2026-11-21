@@ -240,10 +240,10 @@ describe("compileEffectiveTooling", () => {
         tooling: { vite: { cmd: [":node-local", "vite"] } },
       },
     },
-  ])(":node-local runs through the manager of $name", ({ landofile }) => {
-    // Given a pnpm-provisioned web service
+  ])("preserves launcher argv before binding $name", ({ landofile }) => {
+    // Given a web service that declares a pnpm :node-local launcher
     const services = [
-      { name: "web", serviceTypeId: "node", metadata: { node: { packageManager: { name: "pnpm" } } } },
+      { name: "web", serviceTypeId: "node", launchers: { ":node-local": ["pnpm", "exec"] as const } },
     ];
 
     // When the effective tooling is compiled
@@ -252,8 +252,8 @@ describe("compileEffectiveTooling", () => {
       services,
     });
 
-    // Then the local bin runs through pnpm exec
-    expect(tooling.vite?.cmd).toEqual(["pnpm", "exec", "vite"]);
+    // Then the authored launcher argv is left for invocation-time lowering
+    expect(tooling.vite?.cmd).toEqual([":node-local", "vite"]);
   });
 });
 

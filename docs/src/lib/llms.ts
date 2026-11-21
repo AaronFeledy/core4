@@ -43,7 +43,7 @@ export class LlmsSerializeError extends Error {
 }
 
 const KNOWN_COMPONENTS = new Set(Object.keys(guideComponentVocabulary));
-const DROPPED = new Set(["Hidden", "Skip", "Cleanup", "Inspect"]);
+const DROPPED = new Set(["Hidden", "Skip", "Cleanup", "Inspect", "Fetch"]);
 const UNWRAPPED = new Set(["Guide", "Scenario", "Step", "Tabs"]);
 
 const FRONTMATTER = /^\uFEFF?---[\t ]*\r?\n([\s\S]*?)\r?\n---[\t ]*(?:\r?\n|$)/;

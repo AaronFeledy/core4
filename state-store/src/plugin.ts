@@ -49,12 +49,11 @@ export const makePluginStateStore = (
 
     return resolveStatePath({ path: pluginStateRoot }, "locks", key, "plugin-lock").pipe(
       Effect.flatMap(({ file }) =>
-        withAdvisoryLockUsing(privateFileAccess)(
-          file,
-          "plugin-lock",
-          body,
-          options?.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs },
-        ),
+        withAdvisoryLockUsing(privateFileAccess)(file, "plugin-lock", body, {
+          ...(options?.wait === undefined ? {} : { wait: options.wait }),
+          ...(options?.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+          ...(options?.resource === undefined ? {} : { resource: options.resource }),
+        }),
       ),
     );
   };

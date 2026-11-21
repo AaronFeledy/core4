@@ -55,6 +55,16 @@ const frameForComponent = (component: GuideStepComponent, sourceFile: string): F
         resultSummary: summary,
       };
     }
+    case "Fetch": {
+      const { url, method, expect } = component.props;
+      const status = typeof expect.status === "number" ? [expect.status] : expect.status;
+      return {
+        ...base,
+        kind: "fetch",
+        commandDisplay: `${method ?? "GET"} ${url.split(/[?#]/u, 1)[0]}`,
+        resultSummary: `Expected HTTP ${status.join(" or ")}`,
+      };
+    }
     case "Inspect": {
       const props = component.props;
       const displayText =
