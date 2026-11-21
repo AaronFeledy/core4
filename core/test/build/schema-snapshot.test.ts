@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { JsonSchemaName } from "@lando/sdk/schema";
@@ -151,17 +151,16 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
   return [...unexplained.values()];
 };
 
-// Generate once because the output is deterministic, every derived family is
-// inspected below, and each invocation costs about two seconds.
-let generatorRan = false;
+// Generation can take 5–9 seconds on slower runners. Bound both the child
+// and the hook/test that owns it without raising the suite's default timeout.
+const generatorTimeoutMs = 15_000;
+const generatorTestTimeoutMs = 20_000;
 const runGenerator = (): void => {
-  if (generatorRan) {
-    return;
-  }
   const proc = Bun.spawnSync([process.execPath, generatorPath], {
     cwd: repoRoot,
     stdout: "pipe",
     stderr: "pipe",
+    timeout: generatorTimeoutMs,
   });
 
   expect({
@@ -169,13 +168,13 @@ const runGenerator = (): void => {
     stdout: proc.stdout.toString(),
     stderr: proc.stderr.toString(),
   }).toMatchObject({ exitCode: 0 });
-  generatorRan = true;
 };
 
 describe("schema snapshot artifact-set gate", () => {
+  beforeAll(runGenerator, generatorTestTimeoutMs);
+
   test("authored-input artifacts advertise null only where the encoded source accepts it", async () => {
     // Given the emitted authored-input artifact families, including registered lockfiles.
-    runGenerator();
     const names = JSON_SCHEMA_NAMES.filter(
       (name) =>
         /^(LandofileShape|LandofileAuthoring(?:Shape|Fragment)(?:Wire)?|GlobalConfig|PluginManifest|RecipeManifest|IncludeEntry|ToolingIncludeShape)$/.test(
@@ -263,7 +262,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("bundled plugin manifest fixture freezes every in-binary plugin manifest", async () => {
-    runGenerator();
     const bundledPluginManifests = JSON.parse(
       await readFile(bundledPluginManifestsPath, "utf8"),
     ) as ReadonlyArray<{ readonly name: string }>;
@@ -272,7 +270,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("command schema index freezes a result schema for every canonical command id", async () => {
-    runGenerator();
     const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
       Record<string, string>
     >;
@@ -297,8 +294,6 @@ describe("schema snapshot artifact-set gate", () => {
   test(
     "public registry drives schema names and metadata index",
     async () => {
-      runGenerator();
-
       const generated = JSON.parse(
         await readFile(metadataIndexPath, "utf8"),
       ) as typeof publicSchemaMetadataIndex;
@@ -645,8 +640,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("generator writes generated schema reference docs", async () => {
-    runGenerator();
-
     const generated = await Bun.file(deprecationNoticeReferencePath).text();
     const expected = renderPublicSchemaReferencePages().find(
       (entry) => entry.id === "DeprecationNotice",
@@ -780,8 +773,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("generator emits the deprecation notice schema artifact", async () => {
-    runGenerator();
-
     const artifact = JSON.parse(await readFile(deprecationNoticeArtifactPath, "utf8")) as Record<
       string,
       unknown
@@ -791,8 +782,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("generator emits a draft 2020-12 schema artifact for every public SDK schema", async () => {
-    runGenerator();
-
     for (const schemaName of JSON_SCHEMA_NAMES) {
       const artifact = JSON.parse(await readFile(schemaArtifactPath(schemaName), "utf8")) as Record<
         string,
@@ -804,7 +793,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("derived schema artifact paths are ignored while the generator-owned fixture remains visible", async () => {
-    runGenerator();
     const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
       Record<string, string>
     >;
@@ -867,33 +855,29 @@ describe("schema snapshot artifact-set gate", () => {
     });
   });
 
-  test("generator is deterministic and idempotent across the schema artifact set", async () => {
-    runGenerator();
-    const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
-      Record<string, string>
-    >;
-    const generatedPaths = [
-      "sdk/test/fixtures/bundled-plugin-manifests.json",
-      "dist/schemas/index.json",
-      ...JSON_SCHEMA_NAMES.map((schemaName) => `dist/schemas/${schemaArtifactFilename(schemaName)}`),
-      "dist/command-schemas/index.json",
-      ...Object.values(commandSchemaIndex),
-    ].sort();
-    const before = await Promise.all(
-      generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
-    );
+  test(
+    "generator is deterministic and idempotent across the schema artifact set",
+    async () => {
+      const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
+        Record<string, string>
+      >;
+      const generatedPaths = [
+        "sdk/test/fixtures/bundled-plugin-manifests.json",
+        "dist/schemas/index.json",
+        ...JSON_SCHEMA_NAMES.map((schemaName) => `dist/schemas/${schemaArtifactFilename(schemaName)}`),
+        "dist/command-schemas/index.json",
+        ...Object.values(commandSchemaIndex),
+      ].sort();
+      const before = await Promise.all(
+        generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
+      );
 
-    const secondRun = Bun.spawnSync([process.execPath, generatorPath], {
-      cwd: repoRoot,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    expect({ exitCode: secondRun.exitCode, stderr: secondRun.stderr.toString() }).toMatchObject({
-      exitCode: 0,
-    });
-    const after = await Promise.all(
-      generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
-    );
-    expect(after).toEqual(before);
-  });
+      runGenerator();
+      const after = await Promise.all(
+        generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
+      );
+      expect(after).toEqual(before);
+    },
+    generatorTestTimeoutMs,
+  );
 });
