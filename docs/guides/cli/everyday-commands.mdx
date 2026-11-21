@@ -168,6 +168,8 @@ Lando gives up after two minutes and fails with an error that names the lock, ho
 LANDO_LOCK_TIMEOUT_MS=600000 lando start
 ```
 
+Different apps don't wait on each other, even when they share a cache volume such as Composer's `lando-cache-composer`. Starting, stopping, restarting, and rebuilding only use a shared cache, so two apps can do that at the same time. Commands that delete a volume or replace its contents wait until nothing else is using it: `lando destroy --purge-caches` waits for any start that's using the cache. The one exception is the first start that creates a shared cache, which holds it alone until that start finishes.
+
 The operating system releases a lock when the command holding it exits, even if it was killed or the machine crashed, so a killed command never leaves a lock held and there's nothing to delete. Lando needs its data directory on a local disk for this; on a filesystem that can't hold locks, it stops with an error that says so.
 
 User apps share a mutation lock by canonical (realpath) app root, so changing `name:` in the same folder does not bypass a running command's lock. Scratch apps use their id plus canonical root because they can share a user app's folder. If you move the app directory while a mutate is running, a command against the new path sees a different key and does not wait on the first lock.
