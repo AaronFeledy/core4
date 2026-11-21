@@ -1,4 +1,4 @@
-import { JsonSchema, Schema } from "effect";
+import { Equal, JsonSchema, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 import { listLayerMergeRules } from "../landofile/layer-merge-trie.ts";
 import {
@@ -16,6 +16,8 @@ type SchemaLike = Schema.Top;
 type TupleElement = AST.AST;
 type TraversalContext = {
   readonly root: JsonObject;
+  readonly matchesBranch: (target: unknown, ast: AST.AST) => boolean;
+  readonly edits: Array<() => void>;
   /**
    * Guard against recursive schemas. A `Suspend` unrolls to the same AST node
    * every time, so a self-referential grammar would otherwise re-enter the same
@@ -102,8 +104,22 @@ const setDeprecation = (target: unknown, notice: DeprecationNotice | undefined):
   record["x-deprecation"] = notice;
 };
 
-const applyDeprecation = (target: unknown, ast: AST.AST): void =>
-  setDeprecation(target, findJsonNodeDeprecation(ast));
+const queueDeprecation = (
+  target: unknown,
+  notice: DeprecationNotice | undefined,
+  context: TraversalContext,
+): void => {
+  if (notice !== undefined) context.edits.push(() => setDeprecation(target, notice));
+};
+
+const queueMergeRule = (target: unknown, ast: AST.AST, context: TraversalContext): void => {
+  const object = jsonObject(target);
+  const rule = getLayerMergeRule(ast);
+  if (object !== undefined && rule !== undefined)
+    context.edits.push(() => {
+      object["x-lando-merge"] = rule;
+    });
+};
 
 const decodeJsonPointerSegment = (segment: string): string => {
   const decoded = segment.includes("%") ? decodeURIComponent(segment) : segment;
@@ -126,6 +142,37 @@ const localRefTarget = (target: unknown, context: Pick<TraversalContext, "root">
 const jsonSchemaTarget = (target: unknown, context: TraversalContext): unknown =>
   localRefTarget(target, context) ?? target;
 
+const sameSchemaStructure = (
+  left: unknown,
+  right: unknown,
+  roots: readonly [JsonObject, JsonObject],
+): boolean => {
+  const seen = new WeakMap<JsonObject, WeakSet<JsonObject>>();
+  const same = (a: unknown, b: unknown): boolean => {
+    if (Equal.equals(a, b)) return true;
+    if (Array.isArray(a) && Array.isArray(b))
+      return a.length === b.length && a.every((item, index) => same(item, b[index]));
+    const x = jsonObject(a);
+    const y = jsonObject(b);
+    if (x === undefined || y === undefined) return false;
+    const pairs = seen.get(x) ?? new WeakSet<JsonObject>();
+    if (pairs.has(y)) return true;
+    pairs.add(y);
+    seen.set(x, pairs);
+    const xRef = Object.keys(x).length === 1 ? localRefTarget(x, { root: roots[0] }) : undefined;
+    const yRef = Object.keys(y).length === 1 ? localRefTarget(y, { root: roots[1] }) : undefined;
+    const keys = Object.keys(x);
+    const matches =
+      xRef !== undefined || yRef !== undefined
+        ? same(xRef ?? x, yRef ?? y)
+        : keys.length === Object.keys(y).length &&
+          keys.every((key) => Object.hasOwn(y, key) && same(x[key], y[key]));
+    pairs.delete(y);
+    return matches;
+  };
+  return same(left, right);
+};
+
 const schemaProperties = (target: unknown): Record<string, unknown> | undefined => {
   const properties = jsonObject(target)?.properties;
   return properties !== null && typeof properties === "object" && !Array.isArray(properties)
@@ -146,7 +193,7 @@ const applyTupleElementDeprecations = (
   element: TupleElement,
   context: TraversalContext,
 ): void => {
-  setDeprecation(target, findTupleElementDeprecation(element));
+  queueDeprecation(target, findTupleElementDeprecation(element), context);
   applyDeprecationsFromAst(target, element, context);
 };
 
@@ -173,24 +220,39 @@ const applyTupleDeprecations = (target: unknown, ast: AST.Arrays, context: Trave
     applyTupleElementDeprecations(restSchema, rest, context);
 };
 
-const emittedUnionMember = (ast: AST.Union): AST.AST | undefined => {
-  const emittedMembers = ast.types.filter((member) => member._tag !== "Never");
-  return emittedMembers.length === 1 ? emittedMembers[0] : undefined;
-};
-
 const applyUnionDeprecations = (target: unknown, ast: AST.Union, context: TraversalContext): void => {
-  const branches = unionBranchSchemas(target);
-  if (branches !== undefined) {
-    const emittedMembers = ast.types.filter((member) => member._tag !== "Never");
-    if (branches.length === emittedMembers.length) {
-      for (const [index, member] of emittedMembers.entries())
-        applyDeprecationsFromAst(branches[index], member, context);
-      return;
-    }
+  const members = ast.types.filter((member) => !AST.isNever(member) && !AST.isUndefined(member));
+  if (members.length === 1 && members[0] !== undefined) {
+    applyDeprecationsFromAst(target, members[0], context);
+    return;
   }
 
-  const member = emittedUnionMember(ast);
-  if (member !== undefined) applyDeprecationsFromAst(target, member, context);
+  const candidates = (node: unknown): readonly unknown[] => [
+    node,
+    ...(unionBranchSchemas(node) ?? []).flatMap(candidates),
+  ];
+  const branches = (unionBranchSchemas(target) ?? []).flatMap(candidates);
+  const visit = (member: AST.AST, ancestors: ReadonlySet<AST.AST>): void => {
+    if (ancestors.has(member) || AST.isNever(member) || AST.isUndefined(member)) return;
+    const matches = branches.filter((branch) => context.matchesBranch(branch, member));
+    if (matches.length > 0) {
+      for (const branch of matches) {
+        // A flattened union's annotations belong to its alternatives, not the enclosing union.
+        for (const ancestor of ancestors) {
+          queueMergeRule(branch, ancestor, context);
+          queueDeprecation(branch, getSchemaDeprecation(ancestor), context);
+        }
+        applyDeprecationsFromAst(branch, member, context);
+      }
+      return;
+    }
+    const input = schemaReferenceAst(member);
+    if (AST.isUnion(input)) {
+      const seen = new Set(ancestors).add(member).add(input);
+      for (const child of input.types) visit(child, seen);
+    }
+  };
+  for (const member of members) visit(member, new Set());
 };
 
 const indexSignatureJsonSchema = (target: unknown, signature: AST.IndexSignature): unknown => {
@@ -236,23 +298,24 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: Traver
 
   const projection = jsonObject(ast.annotations?.jsonSchemaProjection);
   const targetObject = jsonObject(targetSchema);
-  const mergeRule = getLayerMergeRule(ast);
-  if (targetObject !== undefined && mergeRule !== undefined) targetObject["x-lando-merge"] = mergeRule;
+  queueMergeRule(targetObject, ast, context);
   if (projection !== undefined && targetObject !== undefined) {
-    for (const key of Object.keys(targetObject)) delete targetObject[key];
-    Object.assign(targetObject, cloneJson(projection));
-    const description = AST.resolveDescription(ast);
-    if (description !== undefined) targetObject.description = description;
+    context.edits.push(() => {
+      for (const key of Object.keys(targetObject)) delete targetObject[key];
+      Object.assign(targetObject, cloneJson(projection));
+      const description = AST.resolveDescription(ast);
+      if (description !== undefined) targetObject.description = description;
+    });
     return;
   }
 
   if (AST.isUnion(ast)) {
-    setDeprecation(targetSchema, getSchemaDeprecation(ast));
+    queueDeprecation(targetSchema, getSchemaDeprecation(ast), context);
     applyUnionDeprecations(targetSchema, ast, context);
     return;
   }
 
-  applyDeprecation(targetSchema, ast);
+  queueDeprecation(targetSchema, findJsonNodeDeprecation(ast), context);
 
   if (AST.isSuspend(ast)) {
     applyDeprecationsFromAst(targetSchema, ast.thunk(), context);
@@ -282,7 +345,7 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: Traver
         if (typeof property.name !== "string") continue;
         const propertySchema = properties[property.name];
         if (propertySchema === undefined) continue;
-        setDeprecation(propertySchema, getSchemaDeprecation(property));
+        queueDeprecation(propertySchema, getSchemaDeprecation(property), context);
         applyDeprecationsFromAst(propertySchema, property.type, context);
       }
     }
@@ -291,9 +354,29 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: Traver
 };
 
 export const withSchemaDeprecations = <S extends SchemaLike, T>(schema: S, jsonSchema: T): T => {
+  return annotateJsonSchema(schema, jsonSchema, { onExcessProperty: "error" });
+};
+
+const annotateJsonSchema = <S extends SchemaLike, T>(
+  schema: S,
+  jsonSchema: T,
+  options: Schema.ToJsonSchemaOptions,
+): T => {
   const copy = cloneJson(jsonSchema);
   const root = jsonObject(copy);
-  if (root !== undefined) applyDeprecationsFromAst(root, schema.ast, { root, visited: new WeakMap() });
+  if (root !== undefined) {
+    const projected = new WeakMap<AST.AST, JsonSchema.Document<"draft-2020-12">>();
+    const exportOptions = jsonSchemaOptions(jsonInputAst(schema.ast), options);
+    const matchesBranch = (target: unknown, ast: AST.AST): boolean => {
+      const branch =
+        projected.get(ast) ?? Schema.toJsonSchemaDocument(Schema.make(jsonInputAst(ast)), exportOptions);
+      projected.set(ast, branch);
+      return sameSchemaStructure(target, branch.schema, [root, { $defs: branch.definitions }]);
+    };
+    const edits: Array<() => void> = [];
+    applyDeprecationsFromAst(root, schema.ast, { root, visited: new WeakMap(), matchesBranch, edits });
+    for (const edit of edits) edit();
+  }
   return copy;
 };
 
@@ -419,12 +502,20 @@ export const jsonSchemaDocument = <S extends SchemaLike>(
   schema: S,
   options: Schema.ToJsonSchemaOptions = { onExcessProperty: "error" },
 ): JsonSchema.Document<"draft-2020-12"> => {
-  const rootIdentifier = AST.resolveIdentifier(jsonInputAst(schema.ast));
-  return Schema.toJsonSchemaDocument(Schema.make<Schema.Codec<unknown>>(jsonInputAst(schema.ast)), {
+  const input = jsonInputAst(schema.ast);
+  return Schema.toJsonSchemaDocument(Schema.make(input), jsonSchemaOptions(input, options));
+};
+
+const jsonSchemaOptions = (
+  input: AST.AST,
+  options: Schema.ToJsonSchemaOptions,
+): Schema.ToJsonSchemaOptions => {
+  const rootIdentifier = AST.resolveIdentifier(input);
+  return {
     referencePolicy: ({ identifier }) => (identifier === rootIdentifier ? undefined : identifier),
     includeAnnotationKey: (key) => key === "acceptsImportRef",
     ...options,
-  });
+  };
 };
 
 export const getJsonSchemaWithDeprecations = <S extends SchemaLike>(
@@ -433,11 +524,15 @@ export const getJsonSchemaWithDeprecations = <S extends SchemaLike>(
 ): JsonSchema.JsonSchema => {
   const document = jsonSchemaDocument(schema, options);
   return pruneUnusedDefinitions(
-    withSchemaDeprecations(schema, {
-      $schema: JsonSchema.META_SCHEMA_URI_DRAFT_2020_12,
-      ...document.schema,
-      ...(Object.keys(document.definitions).length === 0 ? {} : { $defs: document.definitions }),
-    }),
+    annotateJsonSchema(
+      schema,
+      {
+        $schema: JsonSchema.META_SCHEMA_URI_DRAFT_2020_12,
+        ...document.schema,
+        ...(Object.keys(document.definitions).length === 0 ? {} : { $defs: document.definitions }),
+      },
+      options,
+    ),
   );
 };
 
