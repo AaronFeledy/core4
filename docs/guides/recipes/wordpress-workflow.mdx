@@ -230,6 +230,30 @@ Add `node` next to `appserver`, point `lando npm` at the theme with tooling
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\"" } }} />
     </Step>
   </Scenario>
+  <Scenario id="install-path" layer="e2e" timeout={300000} render={false} reason="Install WordPress and replace an imported URL using the published site URL">
+    <Step name="start">
+      <Run command="lando init --recipe wordpress --name=wp-demo --yes" />
+      <Run command={`lando app:config:set services.appserver.environment.WP_HOME '{{ services.appserver.url }}'`} />
+      <Run command="lando start --format=json" />
+      <Verify command="lando exec appserver -- printenv WP_HOME" expect={{ stdout: { regex: "^https://wp-demo\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
+    </Step>
+    <Step name="install-wordpress">
+      <Run command="lando wp core download --locale=en_US" />
+      <Run command="lando wp config create --dbname=wp-demo --dbuser=lando --dbpass=lando --dbhost=database" />
+      <Run command={`lando wp config set WP_HOME "getenv('WP_HOME')" --raw`} />
+      <Run command={`lando wp config set WP_SITEURL "getenv('WP_HOME')" --raw`} />
+      <Verify command={`lando exec appserver -- sh -c 'wp core install --url="$WP_HOME" --title="WP Demo" --admin_user=admin --admin_email=admin@example.com --skip-email'`} expect={{ stdout: { regex: "Success: WordPress installed successfully" } }} />
+    </Step>
+    <Step name="replace-imported-url">
+      <Run command="lando wp option add imported_url https://www.example.com" />
+      <Run command={`lando exec appserver -- sh -c 'wp search-replace "https://www.example.com" "$WP_HOME" --all-tables --skip-columns=guid'`} />
+      <Verify command={`lando exec appserver -- sh -c 'test "$(wp option get imported_url)" = "$WP_HOME"'`} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes --format=json" />
+    </Step>
+  </Scenario>
 </Guide>
 
 `lando destroy -y` removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
