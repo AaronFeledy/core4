@@ -62,15 +62,15 @@ That writes `_site/`.
 
 ## Restore the server command
 
-Restore the recipe server command after the gems and site are in place:
+After the gems and site are in place, restore the server command. Use the [port expression](../landofile/expressions.mdx#your-services-own-port) so Jekyll's `--port` argument follows `builder.port`:
 
 ```sh
-lando app:config:set services.builder.command 'bundle exec jekyll serve --host 0.0.0.0 --port 4000'
+lando app:config:set services.builder.command 'bundle exec jekyll serve --host 0.0.0.0 --port {{ service.port }}'
 lando restart
 lando info
 ```
 
-Day to day, leave the recipe command on `bundle exec jekyll serve --host 0.0.0.0 --port 4000` and open the **builder** URL `lando info` prints (for example `https://builder.jekyll-demo.lndo.site` or the same host with a fallback port such as `:8443`). The server rebuilds on save. Refresh the browser to see changes.
+Day to day, leave that command in place and open the **builder** URL `lando info` prints (for example `https://builder.jekyll-demo.lndo.site` or the same host with a fallback port such as `:8443`). The server rebuilds on save. Refresh the browser to see changes.
 
 Need a one-off rebuild while the development server keeps running? Use `lando jekyll build`.
 
@@ -115,6 +115,10 @@ Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parke
     </Step>
     <Step name="info">
       <Run command="lando info" />
+    </Step>
+    <Step name="restore-server-command">
+      <Run command={`lando app:config:set services.builder.command 'bundle exec jekyll serve --host 0.0.0.0 --port {{ service.port }}' --format=json`} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -195,7 +199,7 @@ To keep drafts on the development server, add `--drafts` to the `builder` comman
 ```yaml
 services:
   builder:
-    command: "bundle exec jekyll serve --host 0.0.0.0 --port 4000 --drafts"
+    command: "bundle exec jekyll serve --host 0.0.0.0 --port {{ service.port }} --drafts"
 ```
 
 ```sh

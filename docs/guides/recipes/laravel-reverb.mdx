@@ -96,7 +96,7 @@ services:
   reverb:
     type: "php:{{ recipe.php }}"
     port: 8080
-    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    command: "php artisan reverb:start --host=0.0.0.0 --port={{ service.port }}"
     appMount:
       target: /app
       includes:
@@ -130,7 +130,7 @@ lando start
 
 This starts the new services and brings the worker back up after installing Laravel. `queue:listen` reloads code for each job. Stock PHP includes the `pcntl` extension it needs.
 
-`port: 8080` routes to Reverb, not Apache. The scanner probes `/up` because Reverb returns 404 at `/`. `includes: [vendor]` exposes the same Composer dependencies to all three PHP services; otherwise each has a separate vendor volume. Node serves nothing, so it has no endpoints.
+`port: 8080` routes to Reverb, not Apache. The [port expression](../landofile/expressions.mdx#your-services-own-port) passes that port to Reverb. The scanner probes `/up` because Reverb returns 404 at `/`. `includes: [vendor]` exposes the same Composer dependencies to all three PHP services; otherwise each has a separate vendor volume. Node serves nothing, so it has no endpoints.
 
 Both PHP processes wait for a healthy database because the queue and Reverb's restart cache use MariaDB here. The health gate prevents a cold-start connection race, but doesn't create the tables: run the migration before this start.
 
@@ -262,9 +262,10 @@ lando destroy -y
       <UseFixture name="laravel-reverb" />
     </Step>
     <Step name="check-config">
-      <Run command="lando app:config:lint" />
+      <Run command={`lando app:config:set services.reverb.command 'php artisan reverb:start --host=0.0.0.0 --port={{ service.port }}' --format=json`} />
+      <Run command="lando app:config:lint --format=json" />
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"php artisan reverb:start --host=0\\.0\\.0\\.0 --port=8080\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"php artisan reverb:start --host=0\\.0\\.0\\.0 --port=\\{\\{ service\\.port \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*8080" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"ws\\." } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"/up\"" } }} />

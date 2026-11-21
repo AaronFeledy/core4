@@ -37,6 +37,8 @@ The starter archetype sets `draft = false`, so the post publishes right away. Se
 
 For the full day-to-day path, see [Run the Hugo recipe](/guides/recipes/hugo-workflow/).
 
+To move the development server, change `port:` on `builder` in `.lando.yml` and set its `command:` to `"hugo server --bind 0.0.0.0 --port {{ service.port }}"`. The expression passes the planned port to Hugo; you still choose the flag.
+
 When you are finished, remove the app containers and networks. This keeps
 named volumes unless you also pass `--volumes` or `--purge`. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy):
 
