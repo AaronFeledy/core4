@@ -312,6 +312,54 @@ test("plans and caches the expressions guide's argv, probe and peer environment 
     }
   }));
 
+test("materializes the self port in a container readiness command", () =>
+  withRoot(async (root) => {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: readiness-port
+services:
+  cache:
+    type: redis
+    port: 6380
+    readiness:
+      target: service
+      command: [redis-cli, -p, "{{ service.port }}", ping]
+`,
+    );
+    const plan = await runPlan(root);
+    expect(plan.services[ServiceName.make("cache")]?.readiness?.command).toEqual([
+      "redis-cli",
+      "-p",
+      "6380",
+      "ping",
+    ]);
+  }));
+
+test("uses the container port in argv when the published host port differs", () =>
+  withRoot(async (root) => {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: published-port
+services:
+  cache:
+    type: redis
+    port: 6380
+    ports: ["16380:6380"]
+    command: [redis-server, --port, "{{ service.port }}"]
+`,
+    );
+    const plan = await runPlan(root);
+    const cache = plan.services[ServiceName.make("cache")];
+    expect(cache).toMatchObject({ command: ["redis-server", "--port", "6380"] });
+    expect(cache?.endpoints).toContainEqual(
+      expect.objectContaining({
+        kind: "published",
+        port: 6380,
+        publication: expect.objectContaining({ hostPort: 16380 }),
+      }),
+    );
+  }));
+
 test("plans default self ports even when endpoints are empty, and waits for peer facts at mixed sites", () =>
   withRoot(async (root) => {
     await writeFile(

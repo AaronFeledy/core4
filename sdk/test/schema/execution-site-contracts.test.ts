@@ -33,6 +33,8 @@ test.each([
   ["{{ service.name }}", ["command", 2], "unsupported-member"],
   ["{{ service }}", ["command", 2], "unsupported-member"],
   ['{{ service["port"] }}', ["command", 2], "unsupported-member"],
+  ["{{ service.port.foo }}", ["command", 2], "unsupported-member"],
+  ["{{ service[env.KEY] }}", ["command", 2], "unsupported-member"],
   ["{{ service.name }}", ["port"], "unsupported-member"],
 ] as const)("classifies %s at %j as %s", (expression, path, expected) => {
   const template = Result.getOrThrow(parseExpressionEither(expression, { filePath: ".lando.yml" }));

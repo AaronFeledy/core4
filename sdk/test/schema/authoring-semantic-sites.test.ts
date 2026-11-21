@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { override } from "@lando/sdk/landofile";
 import {
   LandofileAuthoringFragment,
   LandofileAuthoringFragmentNative,
@@ -28,6 +29,13 @@ test.each([
   ]);
   const valid = { services: { cache: { command: ["redis-server", "--port", "{{ service.port }}"] } } };
   expect(Schema.decodeUnknownResult(schema)(valid, options)._tag).toBe("Success");
+});
+
+test("enforces self-port placement inside a native override payload", () => {
+  const input = { services: { cache: { environment: override({ PORT: "{{ service.port }}" }) } } };
+  expect(diagnostics(LandofileAuthoringFragmentNative, input).map(({ path }) => path)).toEqual([
+    ["services", "cache", "environment", "PORT"],
+  ]);
 });
 
 test.each([

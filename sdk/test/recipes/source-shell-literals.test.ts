@@ -17,6 +17,21 @@ test("carries the recipe's authored service port expression to planning", () => 
   expect(compiled.pendingSites.map((site) => site.path)).toEqual([["services", "cache", "command", 2]]);
 });
 
+test.each([
+  [{ environment: { PORT: "{{ service.port }}" } }, ["environment", "PORT"]],
+  [{ command: ["redis-server", "--port", "{{ service.name }}"] }, ["command", 2]],
+] as const)("rejects a recipe self expression at %j (%j)", (service, path) => {
+  const config = { services: { cache: { type: "redis", ...service } } };
+  expect(compileRecipeSource({ ...base, config }, context)).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "RecipeSourceCompileError",
+      reason: "config-invalid",
+      path: ["services", "cache", ...path],
+    },
+  });
+});
+
 test.each(["${HOME}", "${HOME:-fallback}", "${HOME-fallback}", "${HOME:?required}", "${HOME:+alt}"])(
   "rejects active shell syntax %s before emitting an unrenderable snapshot",
   (parameter) => {
