@@ -27,7 +27,7 @@ export const pendingAfterSeeds = (
     }
     const references = referencedServices([], [site], landofilePath);
     if (Result.isFailure(references)) {
-      blocked.push(site);
+      available.push(site);
       continue;
     }
     const unavailable = [...references.success.keys()].flatMap((name) => seeds.unavailable.get(name) ?? []);
@@ -50,6 +50,7 @@ export const materializeWholeDocument = Effect.fnUntraced(function* (input: {
 }) {
   const { landofile, pendingSites, landofilePath, context } = input;
   if (pendingSites.length === 0) return { document: landofile, pendingSites };
+  yield* Effect.fromResult(referencedServices([], pendingSites, landofilePath));
   const scoped = yield* materializeServiceScopeSites({
     value: landofile,
     landofilePath,

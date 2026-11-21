@@ -241,21 +241,24 @@ test("reports independent expression failures, skips dependents once, and still 
   ]);
 });
 
-test("preserves seed findings when a later whole-document tooling expression aborts resolution", async () => {
-  const result = await lint(`${brokenSeeds}tooling:
+test.each(["services.missing.port", "services[app.name].port"])(
+  "preserves seed findings when %s aborts whole-document resolution",
+  async (reference) => {
+    const result = await lint(`${brokenSeeds}tooling:
   blocked:
     service: ":host"
     cmd: "echo {{ services.reader.port }} {{ flags.name }}"
   broken:
-    cmd: "echo {{ services.missing.port }}"
+    cmd: "echo {{ ${reference} }}"
 `);
 
-  const path = ["tooling", "broken", "cmd"];
-  expect(findings(result)).toEqual([...seedFindings, ["landofile.expression", path]]);
-  expect(result.skipped).toMatchObject([
-    { stage: "resolve", reason: "unavailable", path: ["services", "reader"] },
-    { stage: "resolve", reason: "unavailable", path: ["tooling", "blocked"] },
-    { stage: "resolve", reason: "earlier-errors", path },
-    { stage: "planning", reason: "earlier-errors" },
-  ]);
-});
+    const path = ["tooling", "broken", "cmd"];
+    expect(findings(result)).toEqual([...seedFindings, ["landofile.expression", path]]);
+    expect(result.skipped).toMatchObject([
+      { stage: "resolve", reason: "unavailable", path: ["services", "reader"] },
+      { stage: "resolve", reason: "unavailable", path: ["tooling", "blocked"] },
+      { stage: "resolve", reason: "earlier-errors", path },
+      { stage: "planning", reason: "earlier-errors" },
+    ]);
+  },
+);
