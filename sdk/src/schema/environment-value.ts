@@ -70,7 +70,11 @@ export const RouteUrlPart = Schema.Struct({
   encoding: Schema.Literals(["raw", "uri-component"]).annotate({
     description: "Encoding applied to the public URL.",
   }),
-}).annotate({ identifier: "RouteUrlPart", description: "One deferred public service URL." });
+}).annotate({
+  identifier: "RouteUrlPart",
+  description: "One deferred public service URL.",
+  [SchemaNotCredentialAnnotationId]: true,
+});
 export type RouteUrlPart = typeof RouteUrlPart.Type;
 
 export const RouteText = Schema.Struct({
@@ -80,8 +84,7 @@ export const RouteText = Schema.Struct({
     .check(Schema.isMaxLength(10_000)),
 }).annotate({
   identifier: "RouteText",
-  description: "Non-secret text containing deferred public service URLs.",
-  [SchemaNotCredentialAnnotationId]: true,
+  description: "Deferred text containing literal bytes and public service URLs.",
 });
 export type RouteText = typeof RouteText.Type;
 
