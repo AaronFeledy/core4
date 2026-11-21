@@ -3,7 +3,12 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FailureRoleAnnotation, mergeFailure } from "@lando/sdk/command-result";
+import {
+  FailureRoleAnnotation,
+  failureOutcomeFromCause,
+  mergeFailure,
+  orDieWithRole,
+} from "@lando/sdk/command-result";
 import { HttpTrustError } from "@lando/sdk/errors";
 import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import { Downloader, EventService, type LandoEvent, OnlineAcquisition } from "@lando/sdk/services";
@@ -31,6 +36,7 @@ type Step =
   | { readonly kind: "body-error"; readonly cause: unknown }
   | { readonly kind: "status-error"; readonly status: number }
   | { readonly kind: "release-defect"; readonly cause: unknown }
+  | { readonly kind: "verified-release-defect" }
   | { readonly kind: "annotated-error"; readonly compound: boolean }
   | { readonly kind: "die" };
 
@@ -91,8 +97,15 @@ const scriptedClient = (steps: ReadonlyArray<Step>, dir?: string) => {
               }),
             }),
           );
+        case "verified-release-defect":
         case "release-defect":
-          if (Option.isSome(scope)) yield* Scope.addFinalizer(scope.value, Effect.die("release failed"));
+          if (Option.isSome(scope))
+            yield* Scope.addFinalizer(
+              scope.value,
+              Effect.die("release failed").pipe(orDieWithRole("cleanup")),
+            );
+          if (step.kind === "verified-release-defect")
+            return HttpClientResponse.fromWeb(request, new Response(payload));
           return yield* Effect.fail(
             new HttpClientError.HttpClientError({
               reason: new HttpClientError.TransportError({ request, cause: step.cause }),
@@ -398,13 +411,34 @@ describe("Downloader transient retry", () => {
     async (optIn) => {
       await withTempDir(async (dir) => {
         const transport = scriptedClient([{ kind: "release-defect", cause: bunError("ECONNRESET") }]);
-        const { exit } = await runDownload(fileRequest(dir), transport, undefined, optIn);
-        expect(transport.calls.length).toBe(1);
-        expect(Exit.isFailure(exit) && Cause.hasDies(exit.cause)).toBe(true);
-        expect(Exit.isFailure(exit) && Cause.hasFails(exit.cause)).toBe(true);
+        const { exit, harness } = await runDownload(fileRequest(dir), transport, undefined, optIn);
+        expect(transport.calls).toHaveLength(1);
+        expect(harness.ofTag("message.warn")).toEqual([]);
+        if (Exit.isSuccess(exit)) throw new Error("Expected transfer failure");
+        expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
+          kind: "typed",
+          error: { _tag: "DownloadFetchError", transportCode: "ECONNRESET" },
+          additionalErrors: [{ role: "cleanup", error: "release failed" }],
+        });
       });
     },
   );
+
+  test("wraps a verification error even when the response release dies", async () => {
+    await withTempDir(async (dir) => {
+      const transport = scriptedClient([{ kind: "verified-release-defect" }]);
+      const { exit, harness } = await runDownload(fileRequest(dir, { expectedSizeBytes: 0 }), transport);
+      expect(transport.calls).toHaveLength(1);
+      expect(harness.ofTag("message.warn")).toEqual([]);
+      expect(harness.ofTag("post-download")).toMatchObject([{ attempts: 1, failureDetail: "size-mismatch" }]);
+      if (Exit.isSuccess(exit)) throw new Error("Expected verification failure");
+      expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
+        kind: "typed",
+        error: { _tag: "DownloadSizeMismatchError" },
+        additionalErrors: [{ role: "cleanup", error: "release failed" }],
+      });
+    });
+  });
 
   test("a transport defect propagates unchanged and is not retried", async () => {
     await withTempDir(async (dir) => {
