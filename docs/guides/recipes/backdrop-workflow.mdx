@@ -29,7 +29,7 @@ The appserver sets `uploadDirs: [files]` to keep PHP out of uploaded files.
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando bee`, `lando composer`, and `lando php` on `appserver`, plus `lando mariadb` from the database service |
 
-Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` or `--answer=database=mysql:8.0` when you want those instead. PHP 8.6 is accepted (`--answer=php=8.6`) but runs a release-candidate image and has no Xdebug.
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` or `--answer=database=mysql:8.0` when you want those instead. PHP 8.6 is accepted (`--answer=php=8.6`) and has no Xdebug.
 
 For the MySQL answer path, use `lando mysql` instead of `lando mariadb` for database commands.
 
