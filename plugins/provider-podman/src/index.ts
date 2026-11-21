@@ -381,6 +381,7 @@ export const podmanCapabilitiesForPlatform = (
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
+    serializesVolumeCopyUp: true,
     volumeSnapshot: "none",
     serviceFileCopy: "native",
     artifactExport: true,

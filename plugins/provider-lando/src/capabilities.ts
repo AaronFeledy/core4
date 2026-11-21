@@ -132,6 +132,7 @@ export const providerLandoCapabilitiesForPlatform = (
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: bindMountPerformanceForPlatform(family),
+    serializesVolumeCopyUp: true,
     volumeSnapshot: "native",
     serviceFileCopy: "native",
     artifactExport: true,
