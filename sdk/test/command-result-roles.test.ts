@@ -56,6 +56,8 @@ test("keeps role-based primary selection when mapped cleanup precedes an unroled
   // Then projection still selects the unroled failure, not the first reason.
   expect(failureOutcomeFromCause(mapped)).toEqual({
     _tag: "failure",
+    kind: "typed",
+    source: "fail",
     error: "primary:start",
     additionalErrors: [{ role: "cleanup", error: "cleanup:remove" }],
   });
@@ -72,6 +74,7 @@ test.each(["rollback", "cleanup", "peer"] as const)(
     );
     expect(failureOutcomeFromCause(cause)).toEqual({
       _tag: "failure",
+      kind: "defect",
       error: operation,
       additionalErrors: [{ role, error: secondary }],
     });
@@ -85,6 +88,8 @@ test("falls back to the first typed failure when every reason has a role", () =>
   );
   expect(failureOutcomeFromCause(cause)).toEqual({
     _tag: "failure",
+    kind: "typed",
+    source: "fail",
     error: "typed",
     additionalErrors: [{ role: "cleanup", error: "defect" }],
   });
@@ -196,6 +201,8 @@ test("mergeFailure keeps an unscoped primary ahead of the annotated cause", () =
   const cause = mergeFailure(Cause.fail(primary), Cause.fail(cleanup), "cleanup");
   expect(failureOutcomeFromCause(cause)).toEqual({
     _tag: "failure",
+    kind: "typed",
+    source: "fail",
     error: primary,
     additionalErrors: [{ role: "cleanup", error: cleanup }],
   });
@@ -211,6 +218,7 @@ test("failureDefectCause preserves the tagged error and cleanup role for project
   }
   expect(failureOutcomeFromCause(cause)).toEqual({
     _tag: "failure",
+    kind: "defect",
     error: cleanup,
     additionalErrors: [],
   });

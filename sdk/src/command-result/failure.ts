@@ -1,11 +1,19 @@
 import { Cause, Context, type Duration, Effect, Exit, Fiber, Stream } from "effect";
 import { dual } from "effect/Function";
 import type { FailureRole } from "../schema/failure-role.ts";
-import { normalizeDefect } from "./diagnostic.ts";
+import { isDiagnosticError, normalizeDefect } from "./diagnostic.ts";
 
 /** Reason-local metadata, never inferred from cause ordering. */
 export class FailureRoleAnnotation extends Context.Service<FailureRoleAnnotation, FailureRole>()(
   "@lando/sdk/FailureRoleAnnotation",
+) {}
+
+/**
+ * Marks a defect that Lando made from a typed failure on purpose (`failureDefectCause`), so projection
+ * never reads it as a typed failure that Effect elected into a defect.
+ */
+export class ConvertedDefectAnnotation extends Context.Service<ConvertedDefectAnnotation, true>()(
+  "@lando/sdk/ConvertedDefectAnnotation",
 ) {}
 
 export interface ProjectedFailure {
@@ -13,8 +21,22 @@ export interface ProjectedFailure {
   readonly additionalErrors: ReadonlyArray<{ readonly role: FailureRole; readonly error: unknown }>;
 }
 
+/**
+ * How the primary was classified. `fail`: a typed `Fail` reason. `elected`: a typed failure that Effect
+ * turned into a `Die` because a finalizer or sibling also died. `defect`: an unexpected defect.
+ * `none`: the Cause holds no `Fail` or `Die` reason, such as an interruption.
+ */
+export type FailureOutcome<E = unknown> = ProjectedFailure & { readonly _tag: "failure" } & (
+    | { readonly kind: "typed"; readonly source: "fail"; readonly error: E }
+    | { readonly kind: "typed"; readonly source: "elected" }
+    | { readonly kind: "defect" | "none" }
+  );
+
 const roleOf = (reason: Cause.Reason<unknown>): FailureRole | undefined =>
   Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation);
+
+const isConvertedDefect = (reason: Cause.Reason<unknown>): boolean =>
+  Context.getOrUndefined(Cause.reasonAnnotations(reason), ConvertedDefectAnnotation) === true;
 
 export const unscopedFailureReason = <E>(cause: Cause.Cause<E>): Cause.Reason<E> | undefined => {
   const [reason] = cause.reasons;
@@ -93,26 +115,49 @@ export const mapStreamFailures: {
     Stream.catchCause(self, (cause) => Stream.failCause(mapFailureCause(cause, f))),
 );
 
+interface ClassifiedPrimary<E> {
+  readonly reason: Cause.Reason<E>;
+  readonly typed?: "fail" | "elected";
+}
+
+/**
+ * Effect turns every typed `Fail` into a `Die` (keeping its error and annotations) once a Cause also holds a
+ * defect, so a typed primary can arrive as a `Die`. Such a Cause always has at least two `Die` reasons; a lone
+ * `orDie` has one. A role-less `Die` that Lando did not convert itself and that carries a diagnostic error is
+ * read back as the typed failure it was.
+ */
+const isElectedTypedFailure = <E>(cause: Cause.Cause<E>, reason: Cause.Reason<E>): boolean =>
+  Cause.isDieReason(reason) &&
+  roleOf(reason) === undefined &&
+  !isConvertedDefect(reason) &&
+  isDiagnosticError(reason.defect) &&
+  cause.reasons.filter(Cause.isDieReason).length >= 2;
+
+const classifyPrimary = <E>(cause: Cause.Cause<E>): ClassifiedPrimary<E> | undefined => {
+  const unscoped = (reason: Cause.Reason<E>) => roleOf(reason) === undefined;
+  const fail = cause.reasons.find((reason) => Cause.isFailReason(reason) && unscoped(reason));
+  if (fail !== undefined) return { reason: fail, typed: "fail" };
+  const elected = cause.reasons.find((reason) => isElectedTypedFailure(cause, reason));
+  if (elected !== undefined) return { reason: elected, typed: "elected" };
+  const defect = cause.reasons.find((reason) => Cause.isDieReason(reason) && unscoped(reason));
+  if (defect !== undefined) return { reason: defect };
+  const scopedFail = cause.reasons.find(Cause.isFailReason);
+  if (scopedFail !== undefined) return { reason: scopedFail, typed: "fail" };
+  const scopedDefect = cause.reasons.find(Cause.isDieReason);
+  return scopedDefect === undefined ? undefined : { reason: scopedDefect };
+};
+
 /** The reason the projection reports as primary, or `undefined` when the Cause has no Fail or Die. */
 export const primaryFailureReason = <E>(cause: Cause.Cause<E>): Cause.Reason<E> | undefined =>
-  cause.reasons.find((reason) => Cause.isFailReason(reason) && roleOf(reason) === undefined) ??
-  cause.reasons.find((reason) => Cause.isDieReason(reason) && roleOf(reason) === undefined) ??
-  cause.reasons.find(Cause.isFailReason) ??
-  cause.reasons.find(Cause.isDieReason);
+  classifyPrimary(cause)?.reason;
 
-export const failureOutcomeFromCause = (
-  cause: Cause.Cause<unknown>,
+export const failureOutcomeFromCause = <E>(
+  cause: Cause.Cause<E>,
   projectDefect: (defect: unknown) => unknown = (defect) => defect,
-): ProjectedFailure & { readonly _tag: "failure" } => {
-  const primary = primaryFailureReason(cause);
-  const error =
-    primary !== undefined && Cause.isFailReason(primary)
-      ? primary.error
-      : primary !== undefined && Cause.isDieReason(primary)
-        ? projectDefect(primary.defect)
-        : Cause.squash(cause);
+): FailureOutcome<E> => {
+  const primary = classifyPrimary(cause);
   const additionalErrors = cause.reasons.flatMap((reason) => {
-    if (reason === primary || Cause.isInterruptReason(reason)) return [];
+    if (reason === primary?.reason || Cause.isInterruptReason(reason)) return [];
     return [
       {
         role: roleOf(reason) ?? "peer",
@@ -120,7 +165,16 @@ export const failureOutcomeFromCause = (
       },
     ];
   });
-  return { _tag: "failure", error, additionalErrors };
+  if (primary === undefined)
+    return { _tag: "failure", kind: "none", error: Cause.squash(cause), additionalErrors };
+  const { reason, typed } = primary;
+  if (Cause.isFailReason(reason))
+    return { _tag: "failure", kind: "typed", source: "fail", error: reason.error, additionalErrors };
+  if (!Cause.isDieReason(reason))
+    return { _tag: "failure", kind: "none", error: Cause.squash(cause), additionalErrors };
+  return typed === "elected"
+    ? { _tag: "failure", kind: "typed", source: "elected", error: reason.defect, additionalErrors }
+    : { _tag: "failure", kind: "defect", error: projectDefect(reason.defect), additionalErrors };
 };
 
 /** Re-fail nested command defects without losing reason-local annotations. */
@@ -234,6 +288,16 @@ export const failureDefectCause = <E>(cause: Cause.Cause<E>): Cause.Cause<never>
   Cause.fromReasons(
     cause.reasons.map((reason) => {
       if (!Cause.isFailReason(reason)) return reason;
-      return Cause.makeDieReason(reason.error).annotate(Cause.reasonAnnotations(reason));
+      return Cause.makeDieReason(reason.error)
+        .annotate(Cause.reasonAnnotations(reason))
+        .annotate(Context.make(ConvertedDefectAnnotation, true));
     }),
   );
+
+/** `orDie` for releases and finalizers: typed failures become defects that carry `role`. */
+export const orDieWithRole =
+  (role: FailureRole) =>
+  <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, never, R> =>
+    Effect.catchCause(self, (cause) =>
+      Effect.failCause(failureDefectCause(annotateFailureRole(cause, role))),
+    );
