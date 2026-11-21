@@ -219,6 +219,7 @@ If you are looking for a public surface or policy:
 | MCP service, catalog, transport, and errors | 11 | §10.14 |
 | MCP `lando://diagnostics` resource, authorization filtering, and repair without reconnecting | 11 | §10.14 |
 | Cache catalog and encodings | 12 | §12.1 + §12.2 |
+| `CompiledEventStep`, `AppliedAppPlan`, and the no-authored-input payload gate | 05 + 12 + 13 | §5.3.1 + §5.5 + §5.5.2 + §12.1 + §12.7.1 + §13.2 |
 | Atomic cache writes and persistent artifacts | 12 | §12.3 + §12.4 |
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |
 | Durable resource-ownership manifest | 12 | §12.4.2 |

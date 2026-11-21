@@ -11,6 +11,8 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 
 ### 12.1 Cache catalog
 
+Persisted payloads embed no authored-input codec. Desired-plan caches store compiled intent, including `CompiledEventStep`; provider applied state stores `AppliedAppPlan`, which has no event hooks. Named tooling and Compose extension readers are included in this invariant even though the extension map itself is open.
+
 The public SDK `RegisteredCommand` preserves availability as a three-arm union discriminated by `_tag`: `Ready` requires `input` and may carry `runs`; `Disabled` requires `source: { path, task }`; `Unavailable` requires the index's bounded `diagnostic`. All arms share `id`, `summary`, and `hidden`, where `hidden` means internal visibility only. `CommandRegistry.list` retains all three arms. CLI routes likewise retain availability through help and dispatch; disabled commands are omitted from listings by availability policy, independently of visibility. Help JSON keeps `input`, `runs`, and `loadError` as its published field names.
 
 The app command index stores each command as one availability arm. `Ready` holds the normalized input declaration and optional service, wrapper, and run summary. `Disabled` holds the source needed for refusal and no executable metadata. `Unavailable` holds a bounded diagnostic and no executable metadata: a script content failure, or the structured tooling diagnostic of an enabled Landofile task that fails normalization (§8.7). Every arm carries the canonical `id`, `summary`, `sourceKind` (`tooling` or `bun-script`), and `visibility` (`public` or `internal`); visibility is independent of availability, and hidden is never a stand-in for disabled. Entries and script fingerprints come from one inspection snapshot. Valid script fingerprints cover paths and normalized metadata only; invalid and ambiguous script paths use `{ relativePath, invalid: sha256(content) }`. I/O failures are never persisted as unavailable scripts. Landofile tasks take precedence when ids overlap.
@@ -196,6 +198,8 @@ Automatic translation MUST use local snapshots and stored same-identity nonsecre
 `CacheService` is the process-lifetime memo and raw atomic-cache service. `StateStore` is the level-`minimal` core Effect service for durable, schema-validated, versioned, atomic, optionally cross-process-locked files (§3.4). It is host/test-overridable but MUST NOT be a plugin contribution surface (§4.2).
 
 #### 12.7.1 Buckets
+
+Bucket payloads MUST use canonical value contracts rather than authoring codecs. A legacy reader or migration may project or rewrite historical data before canonical decode; it does not define the current payload grammar.
 
 `StateStore.open` accepts `StateBucketSpec` and returns `StateBucket`. Named contracts are `StateRoot`, `StateCodec`, `StateBucketSpec`, `StateBucket`, `StateMigrator`, and tagged `StateStoreError`. A bucket maps to exactly one contained file; opening resolves and validates the path without reading.
 

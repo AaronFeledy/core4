@@ -137,6 +137,8 @@ The schema snapshot is the complete generated set: public SDK JSON Schemas and i
 
 Changes are classified as `compatible`, `breaking`, or `unknown` using explicit input/output polarity. Unaccepted `breaking` and `unknown` changes fail. Exceptions MUST name an exact surface, change kind, JSON path, and justification; wildcards and whole-schema exceptions are forbidden.
 
+The schema coverage gate checks the canonical plan import graph and follows Effect Schema links from the actual applied-state, desired-cache, registered durable bucket, and named extension codecs. It MUST detect authored-input markers across transforms and recursive schemas. Applied-state compatibility follows `AppliedAppPlan` in both revisions, not changes confined to desired event hooks.
+
 Every public schema MUST have canonical annotations, stable JSON Schema output, successful examples, and round-trip tests. Generated schema, command, API, event, service, template-step, and error references MUST build without hand edits. The Starlight site MUST build authored Markdown/MDX together with generated references and required public guide transcripts.
 
 ### 13.3 Type gates
