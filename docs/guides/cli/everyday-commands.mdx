@@ -158,7 +158,9 @@ Lando gives up after two minutes and fails with an error that names the lock, ho
 LANDO_LOCK_TIMEOUT_MS=600000 lando start
 ```
 
-Different apps don't wait on each other, even when they share a cache volume such as Composer's `lando-cache-composer`. Starting, stopping, restarting, and rebuilding only use a shared cache, so two apps can do that at the same time. Commands that delete a volume or replace its contents wait until nothing else is using it: `lando destroy --purge-caches` waits for any start that's using the cache. The one exception is the first start that creates a shared cache, which holds it alone until that start finishes.
+Different apps don't wait on each other's app locks. If they share a package cache such as Composer's `lando-cache-composer`, their hooks and image builds can run at the same time, even before the cache exists. The only start phase that locks the cache is the one that creates or starts containers. Apps take turns in that phase when the cache is new, or whenever they use Docker. With Lando's managed provider or Podman, they can share that phase once the cache exists.
+
+`lando stop` and `lando destroy` without `--purge-caches` don't lock the shared cache. `lando destroy --purge-caches` waits for that container startup phase to finish, and removes the cache only if no other container is using it.
 
 The operating system releases a lock when the command holding it exits, even if it was killed or the machine crashed, so a killed command never leaves a lock held and there's nothing to delete. Lando needs its data directory on a local disk for this; on a filesystem that can't hold locks, it stops with an error that says so.
 
