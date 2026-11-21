@@ -168,6 +168,8 @@ form (and `kind` objects). The `source.path` keeps the authored index.
 
 An unknown key gets a `suggestion` naming the closest allowed key, as long as the typo is within two edits. `imgae` suggests `image`. A key nowhere near anything valid gets a plain unknown-key message instead. Unknown keys are schema-only violations, never a `NotImplementedError`.
 
+If your service has `environment: [FOO]`, lint reports `environment.bare-entry` at `services.web.environment[0]` (for a service named `web`). To pass `FOO` from your host, use the suggested entry `"FOO={{ env.FOO }}"` and set `FOO` before running Lando. For a literal value, write `FOO=value`; `FOO=` passes an empty string. When scripting against lint JSON, match `rule` and `reason` rather than the message. The [rule reference](../../reference/config-lint-rules.mdx#reasons-within-a-rule) lists the documented reasons.
+
 ## Read rejected Compose keys
 
 A rejected Compose key keeps its full authored path, for example `["services", "web", "deploy", "replicas"]`. The `suggestion` comes from the pinned Compose disposition matrix instead of a generic unknown-key message.
@@ -279,6 +281,60 @@ A passing app-config check doesn't mean every check ran. Look for `app-config` e
 Your editor can catch the structural problems (unknown keys, wrong literal types, an expression where none belongs) before you run anything; lint still owns resolving expressions. See [Validate a Landofile in your editor](./editor-validation.mdx) for the one-line modeline.
 
 <Guide>
+  <Scenario id="environment-bare-entry" render={false} reason="Check host environment repair in lint JSON">
+    <Step name="lint">
+      <UseFixture name="environment-bare-entry" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"environment[.]bare-entry\".*\"path\":\\[\"services\",\"web\",\"environment\",0\\].*\"suggestion\":.*FOO=[{][{] env[.]FOO [}][}]", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="environment-empty-name" render={false} reason="Check the repair at the empty assignment name">
+    <Step name="lint">
+      <UseFixture name="environment-empty-name" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"environment[.]empty-name\".*\"path\":\\[\"services\",\"web\",\"environment\",0\\].*\"suggestion\":.*KEY=value", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="environment-reserved-name" render={false} reason="Check the repair at a reserved map key">
+    <Step name="lint">
+      <UseFixture name="environment-reserved-name" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"environment[.]reserved-name\".*\"path\":\\[\"services\",\"web\",\"environment\",\"__proto__\"\\].*\"suggestion\":.*KEY: value", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="environment-null-value" render={false} reason="Check the literal empty and explicit host repairs">
+    <Step name="lint">
+      <UseFixture name="environment-null-value" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"environment[.]null-value\".*\"path\":\\[\"services\",\"web\",\"environment\",\"FOO\"\\].*\"suggestion\":.*FOO: \\\\\"\\\\\".*[{][{] env[.]FOO [}][}]", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="build-unsupported-key" render={false} reason="Check the canonical inline Dockerfile spelling">
+    <Step name="lint">
+      <UseFixture name="build-unsupported-key" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"build[.]unsupported-key\".*\"path\":\\[\"services\",\"web\",\"build\",\"dockerfileInline\"\\].*\"suggestion\":.*dockerfile_inline", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="build-mixed-families" render={false} reason="Check the repair when both build families occur">
+    <Step name="lint">
+      <UseFixture name="build-mixed-families" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"build[.]mixed-families\".*\"path\":\\[\"services\",\"web\",\"build\"\\].*\"suggestion\":.*Compose.*Lando", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="build-dockerfile-conflict" render={false} reason="Check mutually exclusive Dockerfile keys">
+    <Step name="lint">
+      <UseFixture name="build-dockerfile-conflict" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"build[.]dockerfile-conflict\".*\"path\":\\[\"services\",\"web\",\"build\"\\].*\"suggestion\":.*dockerfile .*dockerfile_inline", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="build-empty" render={false} reason="Check the repair for an empty build object">
+    <Step name="lint">
+      <UseFixture name="build-empty" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"build[.]empty\".*\"path\":\\[\"services\",\"web\",\"build\"\\].*\"suggestion\":.*build", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="valid-environment-and-build-args" render={false} reason="Keep empty values, embedded equals, and typed build arguments valid">
+    <Step name="lint">
+      <UseFixture name="valid-environment-and-build-args" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":true.*\"violations\":\\[\\]" } }} />
+    </Step>
+  </Scenario>
   <Scenario id="independent-service-expression-failures" render={false} reason="Exercise two service expression failures in one lint run">
     <Step name="lint-both-service-expressions">
       <UseFixture name="broken-service-ports" />

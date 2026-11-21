@@ -168,6 +168,34 @@
       "digest": "50cfaef061d6c024852a68862d5b81f427f16da90b7f48427c537df1e103268c"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/build-dockerfile-conflict",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/build-empty",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/build-mixed-families",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/build-unsupported-key",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-demo",
       "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
     },
@@ -213,6 +241,34 @@
       }
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/environment-bare-entry",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/environment-empty-name",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/environment-null-value",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/environment-reserved-name",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/malformed-endpoint",
       "invalid": {
         "status": "invalid",
@@ -244,6 +300,10 @@
         "status": "invalid",
         "tag": "LandofileLoadError"
       }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/valid-environment-and-build-args",
+      "digest": "790598b83c4fed4ab5d8c3d024d6adff6baa6192b2c669bad1cb9d35006e0baa"
     },
     {
       "fixture": "docs/guides/config-lint/fixtures/wrong-filter-prefix",
