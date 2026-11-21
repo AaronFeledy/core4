@@ -14,6 +14,7 @@ export const executeTeardown = Effect.fn("AppOperation.executeTeardown")(functio
     const stateStore = yield* StateStore;
     return yield* withPlanVolumeCoordination({
       plan: target.plan,
+      additionalPlans: plan.applied === undefined ? [] : [plan.applied.plan],
       provider,
       stateStore,
       body: () => executeLockedTeardown(plan),

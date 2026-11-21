@@ -4,7 +4,7 @@ import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import type { FileSyncError } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
-import { openJournal, readJournal, readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
+import { openJournal, readJournal, resolvePendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { digest, journalRecovery, pendingStartTransitions } from "./accelerated-start-record.ts";
 
 export const acceleratedStartStopError = (app: AppRef, cause: FileSyncError) =>
@@ -20,10 +20,11 @@ export const readDiscardableStart = (app: AppRef) =>
   readJournal(app).pipe(mapFailures((cause) => acceleratedStartStopError(app, cause)));
 
 export const pendingStartDisposal = Effect.fnUntraced(function* (app: AppRef, plan: AppPlan) {
-  const pending = yield* readPendingAcceleratedStart(app, plan).pipe(
+  const attempt = yield* resolvePendingAcceleratedStart(app, plan).pipe(
     mapFailureErrors((cause) => acceleratedStartStopError(app, cause)),
   );
-  if (pending === null) return undefined;
+  if (attempt === null) return undefined;
+  const { record: pending } = attempt;
   const { path } = yield* readDiscardableStart(app);
   const failure = (message: string, cause?: unknown) =>
     new FileSyncStopError({
@@ -35,7 +36,7 @@ export const pendingStartDisposal = Effect.fnUntraced(function* (app: AppRef, pl
     });
   const bucket = yield* openJournal(app).pipe(mapFailures((cause) => failure(cause.message, cause)));
   return {
-    record: pending,
+    ...attempt,
     clear: bucket
       .transition({
         transitions: pendingStartTransitions,
