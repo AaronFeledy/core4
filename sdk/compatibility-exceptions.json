@@ -1606,6 +1606,18 @@
   {
     "surface": "schema:GlobalConfig",
     "changeKind": "unsupported-keyword",
+    "path": "$.appEnv.propertyNames",
+    "justification": "Publish the existing appEnv environment-name grammar and reserved-name restrictions; the decoder is unchanged."
+  },
+  {
+    "surface": "schema:GlobalConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.appLabels.propertyNames",
+    "justification": "Publish the existing appLabels label-name grammar and reserved-name restrictions; the decoder is unchanged."
+  },
+  {
+    "surface": "schema:GlobalConfig",
+    "changeKind": "unsupported-keyword",
     "path": "$.proxy.defaultDomain.pattern",
     "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
   },
