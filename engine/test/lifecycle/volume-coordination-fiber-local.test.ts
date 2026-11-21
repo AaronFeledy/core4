@@ -50,7 +50,7 @@ describe("volume coordination fiber-local state", () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         yield* verifyActiveVolumeCoordination(provider);
-        yield* withPhysicalVolumeLock(recordingStore, key("alpha"), Effect.void);
+        yield* withPhysicalVolumeLock(recordingStore, { key: key("alpha"), name: "alpha" }, Effect.void);
         const bound = yield* withPlanVolumeCoordination({
           plan: planFor("alpha"),
           provider,
@@ -60,7 +60,7 @@ describe("volume coordination fiber-local state", () => {
             const child = yield* Effect.forkChild(
               withPhysicalVolumeLock(
                 recordingStore,
-                key("alpha"),
+                { key: key("alpha"), name: "alpha" },
                 verifyActiveVolumeCoordination(provider).pipe(Effect.as("inherited")),
               ),
             );
@@ -68,7 +68,7 @@ describe("volume coordination fiber-local state", () => {
           }),
         });
         yield* verifyActiveVolumeCoordination(provider);
-        yield* withPhysicalVolumeLock(recordingStore, key("alpha"), Effect.void);
+        yield* withPhysicalVolumeLock(recordingStore, { key: key("alpha"), name: "alpha" }, Effect.void);
         return bound;
       }).pipe(Effect.timeout("2 seconds")),
     );
