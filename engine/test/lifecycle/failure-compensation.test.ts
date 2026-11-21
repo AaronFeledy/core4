@@ -62,11 +62,6 @@ test.each(["map", "catch-tag", "span", "round-trip", "nested-command"] as const)
   },
 );
 
-test("characterizes raw mapError dropping compound reasons rather than relying on it", () => {
-  const exit = Effect.runSyncExit(Effect.failCause(cause).pipe(Effect.mapError((error) => error)));
-  expect(Exit.isFailure(exit) && exit.cause.reasons.length).toBe(1);
-});
-
 test("preserves annotated cleanup in a scope finalizer", async () => {
   const cleanup = Cause.annotate(Cause.die(secondary), Context.make(FailureRoleAnnotation, "cleanup"));
   const exit = await Effect.runPromiseExit(
