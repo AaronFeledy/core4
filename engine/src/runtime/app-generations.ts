@@ -63,6 +63,13 @@ export const makeAppGenerations = Effect.fnUntraced(function* <
   // The current slot per app root; the lock serializes lookup, supersession, and slot creation.
   const slots = yield* SynchronizedRef.make<ReadonlyMap<string, Slot<Record, Failure>>>(new Map());
   const open = new Set<Slot<Record, Failure>>();
+  // Every slot scope is a child of the session, so nothing can be leased once it closes.
+  let sessionClosed = false;
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      sessionClosed = true;
+    }),
+  );
 
   const closeSlotIfIdle = (slot: Slot<Record, Failure>) =>
     Effect.flatMap(closeIfIdle(slot.state), (closed) =>
@@ -124,6 +131,7 @@ export const makeAppGenerations = Effect.fnUntraced(function* <
   const leaseSlot = Effect.fnUntraced(function* (key: string, selection: PluginSelection) {
     return yield* SynchronizedRef.modifyEffect(slots, (current) =>
       Effect.gen(function* () {
+        if (sessionClosed) return yield* Effect.interrupt;
         const existing = current.get(key);
         const state = existing === undefined ? undefined : yield* Ref.get(existing.state);
         const phase = state?.phase;

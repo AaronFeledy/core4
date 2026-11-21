@@ -289,3 +289,29 @@ test("a lease after the session closes is interrupted instead of waiting forever
     const exit = await Effect.runPromiseExit(Effect.scoped(withAppDiscovery(input.a, apps.acquire(input.a))));
     expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   }));
+
+test("a ready generation is not leased again after the session closes", () =>
+  fixture(async (input) => {
+    // Given a generation that was built and released while the session was open.
+    const session = Effect.runSync(Scope.make());
+    const apps = await Effect.runPromise(
+      makeAppGenerations({
+        policy: {
+          discovery: { bundled: false, system: false, user: false, app: false, disable: [] },
+          manifests: [],
+          externalImports: false,
+        },
+        host: Context.make(PathsService, makeLandoPaths()),
+        build: () => Layer.empty,
+        project: ({ key, context }) =>
+          Effect.succeed({ key, context: Context.makeUnsafe<unknown>(context.mapUnsafe) }),
+        refresh: (record) => Effect.succeed(record),
+      }).pipe(Scope.provide(session)),
+    );
+    const acquire = () => Effect.scoped(withAppDiscovery(input.a, apps.acquire(input.a)));
+    expect(Exit.isSuccess(await Effect.runPromiseExit(acquire()))).toBe(true);
+    await Effect.runPromise(Scope.close(session, Exit.void));
+    // When a late call asks for the same app, then it is interrupted instead of reusing a closed generation.
+    const exit = await Effect.runPromiseExit(acquire());
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+  }));

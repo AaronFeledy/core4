@@ -142,7 +142,7 @@ and runtime setup.
 - `cleanup`: releasing resources or bookkeeping.
 - `peer`: a sibling failure.
 
-Interruptions are excluded. Primary-error selection prefers the first unannotated typed failure, then the first unannotated defect, then the first typed failure or defect. A typed failure stays primary when its cleanup also fails, even though Effect then reports it as a defect.
+Interruptions are excluded. Primary-error selection prefers the first unannotated typed failure, then the first unannotated defect, then the first typed failure or defect. A typed failure stays primary when its cleanup or a concurrent sibling also fails, even though Effect then reports it as a defect.
 
 In that case the helper cannot prove from the cause alone that the value is your operation's error type. Pass `isError` to accept it:
 
