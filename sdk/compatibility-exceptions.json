@@ -7046,20 +7046,20 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.events.additionalProperties",
-    "justification": "History: Reviewed plan output: EventStepPlan provenance/status/sourceIndex and step variants are unchanged; only env adds descriptors/lists with numeric/boolean coercion and literal strings preserved. Consumers discriminate _tag; raw reserved tags require authored admission rejection. Public events remain present, never waived away. Tests: app-plan, environment-value, event-step, public-schema-contracts. Current (applied-state v9): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "History: Reviewed plan output: EventStepPlan provenance/status/sourceIndex and step variants are unchanged; only env adds descriptors/lists with numeric/boolean coercion and literal strings preserved. Consumers discriminate _tag; raw reserved tags require authored admission rejection. Public events remain present, never waived away. Tests: app-plan, environment-value, event-step, public-schema-contracts. Current (applied-state v10): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
-      "version": 9
+      "version": 10
     }
   },
   {
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "History: AppPlan.services additionalProperties tracks ServicePlan endpoint/filter kind vocabulary (#2456). applied-state version 8 rewrites the two paths data.services[service].endpoints[i]._tag\u2192kind and data.routes[r].filters[f].type\u2192kind (map-prefixed for Podman) in memory on read; ordinary successful persist writes v8. Prior additive ServicePlan fields remain valid. Current (applied-state v9): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 also records optional keepAlive intent for application-owned listeners. Both additions are additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "History: AppPlan.services additionalProperties tracks ServicePlan endpoint/filter kind vocabulary (#2456). applied-state version 8 rewrites the two paths data.services[service].endpoints[i]._tag\u2192kind and data.routes[r].filters[f].type\u2192kind (map-prefixed for Podman) in memory on read; ordinary successful persist writes v8. Prior additive ServicePlan fields remain valid. Current (applied-state v10): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 added optional keepAlive intent for application-owned listeners, and v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
-      "version": 9
+      "version": 10
     }
   },
   {
@@ -7084,20 +7084,20 @@
     "surface": "schema:DatabaseConnection",
     "changeKind": "unsupported-construct",
     "path": "$.creds.password.anyOf",
-    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
-      "version": 9
+      "version": 10
     }
   },
   {
     "surface": "schema:DatabaseConnection",
     "changeKind": "unsupported-construct",
     "path": "$.creds.rootPassword.anyOf",
-    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
-      "version": 9
+      "version": 10
     }
   },
   {
@@ -7110,40 +7110,40 @@
     "surface": "schema:Environment",
     "changeKind": "unsupported-keyword",
     "path": "$.additionalProperties",
-    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
-      "version": 9
+      "version": 10
     }
   },
   {
     "surface": "schema:EnvironmentValue",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
-      "version": 9
+      "version": 10
     }
   },
   {
     "surface": "schema:EventStepPlan",
     "changeKind": "unsupported-construct",
     "path": "$.step.anyOf",
-    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
-      "version": 9
+      "version": 10
     }
   },
   {
     "surface": "schema:EventsPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.additionalProperties",
-    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
-      "version": 9
+      "version": 10
     }
   },
   {
@@ -7318,20 +7318,20 @@
     "surface": "schema:ServiceCreds",
     "changeKind": "unsupported-construct",
     "path": "$.password.anyOf",
-    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
-      "version": 9
+      "version": 10
     }
   },
   {
     "surface": "schema:ServiceCreds",
     "changeKind": "unsupported-construct",
     "path": "$.rootPassword.anyOf",
-    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
-      "version": 9
+      "version": 10
     }
   },
   {
@@ -7350,10 +7350,10 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "History: ServicePlan anyOf evolves with endpoint kind discriminators and nested plan fields (#2456, #2109). applied-state version 8 migrates endpoint _tag\u2192kind and route filter type\u2192kind under data.services and data.routes (map: data[appId].\u2026) on read only; no write-back. Historical applied ServicePlan values remain readable after that pass; v8 never accepts old keys. Current (applied-state v9): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 also records optional keepAlive intent for application-owned listeners. Both additions are additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "History: ServicePlan anyOf evolves with endpoint kind discriminators and nested plan fields (#2456, #2109). applied-state version 8 migrates endpoint _tag\u2192kind and route filter type\u2192kind under data.services and data.routes (map: data[appId].\u2026) on read only; no write-back. Historical applied ServicePlan values remain readable after that pass; v8 never accepts old keys. Current (applied-state v10): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 added optional keepAlive intent for application-owned listeners, and v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
-      "version": 9
+      "version": 10
     }
   },
   {
