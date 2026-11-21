@@ -3,7 +3,7 @@ import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { REDIS_UNUSED_CREDS, assertCredsMembersUsed, claimsCreds } from "./_creds-helpers.ts";
-import { PORT_EXTRA_ARGS_REMEDIATION, type ReservedArgRule, extraArgsCommandOptions } from "./_extra-args.ts";
+import { RESERVED_LONG_PORT, type ReservedArgRule, extraArgsCommandOptions } from "./_extra-args.ts";
 import {
   commandHealthcheck,
   rootIdentity,
@@ -36,15 +36,14 @@ const redisExtraArgsRules = (service: {
   readonly creds?: { readonly password?: unknown } | undefined;
 }): readonly ReservedArgRule[] => {
   const rules: ReservedArgRule[] = [
-    { form: "long", name: "port", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
+    RESERVED_LONG_PORT,
+    {
+      form: "long",
+      name: "appendonly",
+      remediation: "Set persist: instead of overriding appendonly in extraArgs.",
+      takesValue: true,
+    },
   ];
-  // Lando always manages appendonly on its launcher.
-  rules.push({
-    form: "long",
-    name: "appendonly",
-    remediation: "Set persist: instead of overriding appendonly in extraArgs.",
-    takesValue: true,
-  });
   if (service.persist === false) {
     rules.push({
       form: "long",

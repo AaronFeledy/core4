@@ -99,12 +99,14 @@ const resolveMeilisearchService: ServiceType["resolve"] = (input) =>
   });
 
 const selectPort = primaryPortSelector(MEILISEARCH_LISTENER);
+const EXTRA_ARGS_REMEDIATION = IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Meilisearch environment");
+
 export const meilisearch1ServiceType: ServiceType = {
   id: "meilisearch:1",
   name: "meilisearch",
   base: "lando",
   plannedPort: selectPort,
-  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Meilisearch environment"),
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -118,7 +120,7 @@ export const meilisearchServiceType: ServiceType = {
   name: "meilisearch",
   base: "lando",
   plannedPort: selectPort,
-  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Meilisearch environment"),
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

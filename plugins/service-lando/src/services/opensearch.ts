@@ -138,12 +138,14 @@ const resolveOpenSearchServiceType: ServiceType["resolve"] = (input) =>
   });
 
 const selectPort = primaryPortSelector(OPENSEARCH_LISTENER);
+const EXTRA_ARGS_REMEDIATION = IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("OpenSearch environment and config");
+
 export const opensearch2ServiceType: ServiceType = {
   id: "opensearch:2",
   name: "opensearch",
   base: "lando",
   plannedPort: selectPort,
-  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("OpenSearch environment and config"),
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -156,7 +158,7 @@ export const opensearchServiceType: ServiceType = {
   name: "opensearch",
   base: "lando",
   plannedPort: selectPort,
-  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("OpenSearch environment and config"),
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

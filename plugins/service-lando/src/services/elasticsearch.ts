@@ -130,12 +130,14 @@ const resolveElasticsearchServiceType: ServiceType["resolve"] = (input) =>
   });
 
 const selectPort = primaryPortSelector(ELASTICSEARCH_LISTENER);
+const EXTRA_ARGS_REMEDIATION = IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Elasticsearch environment and config");
+
 export const elasticsearch8ServiceType: ServiceType = {
   id: "elasticsearch:8",
   name: "elasticsearch",
   base: "lando",
   plannedPort: selectPort,
-  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Elasticsearch environment and config"),
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -148,7 +150,7 @@ export const elasticsearchServiceType: ServiceType = {
   name: "elasticsearch",
   base: "lando",
   plannedPort: selectPort,
-  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Elasticsearch environment and config"),
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

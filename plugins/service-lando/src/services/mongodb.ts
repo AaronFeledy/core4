@@ -13,7 +13,7 @@ import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
-  PORT_EXTRA_ARGS_REMEDIATION,
+  RESERVED_LONG_PORT,
   catalogDbExtraArgsRemediation,
   extraArgsCommandOptions,
   isNonCatalogArtifact,
@@ -104,7 +104,7 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
       custom
         ? undefined
         : extraArgsCommandOptions([
-            { form: "long", name: "port", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
+            RESERVED_LONG_PORT,
             {
               form: "long",
               name: "config",

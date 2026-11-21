@@ -184,9 +184,10 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     const error = attributePlanningFailure(resolved.error, { landofile, file: snapshot.landofilePath });
     const { path, filePath } = error;
     const source = resolveSkipSource(error.source);
+    const pathUnavailable = overlapsUnavailable(path, unavailable);
     return {
       ...result,
-      file: overlapsUnavailable(path, unavailable) ? result.file : filePath,
+      file: pathUnavailable ? result.file : filePath,
       valid: false,
       skipped: [
         ...priorSkips,
@@ -205,7 +206,7 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
         ...resolved.issues
           .filter((issue) => !overlapsUnavailable(issue.path, unavailable))
           .map((issue) => attributeEffectiveLintIssue(landofile, issue)),
-        ...(overlapsUnavailable(path, unavailable)
+        ...(pathUnavailable
           ? []
           : [
               {

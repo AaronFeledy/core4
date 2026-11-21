@@ -211,15 +211,17 @@ const resolveSolr =
   };
 
 const selectPort = primaryPortSelector(SOLR_LISTENER);
+const EXTRA_ARGS_REMEDIATION = UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
+  "Solr",
+  "Core creation uses the trailing argv today; put flags in command: or remove extraArgs.",
+);
+
 export const solr9ServiceType: ServiceType = {
   id: "solr:9",
   name: "solr",
   base: "lando",
   plannedPort: selectPort,
-  extraArgsRemediation: UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
-    "Solr",
-    "Core creation uses the trailing argv today; put flags in command: or remove extraArgs.",
-  ),
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -232,10 +234,7 @@ export const solrServiceType: ServiceType = {
   name: "solr",
   base: "lando",
   plannedPort: selectPort,
-  extraArgsRemediation: UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
-    "Solr",
-    "Core creation uses the trailing argv today; put flags in command: or remove extraArgs.",
-  ),
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

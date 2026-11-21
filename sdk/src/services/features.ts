@@ -219,7 +219,7 @@ export interface ServiceFeatureContext {
   setCerts(certs: CertificatePlan): void;
   /** Set the service entrypoint. */
   setEntrypoint(entrypoint: CommandSpec): void;
-  /** Set the default command. An argv launcher can opt into appending materialized extraArgs. */
+  /** An argv launcher can opt into appending materialized extraArgs. */
   setCommand(command: CommandSpec, options?: LauncherCommandOptions): void;
   /** Set native container init intent. Authored init takes precedence. */
   setInit(init: boolean): void;

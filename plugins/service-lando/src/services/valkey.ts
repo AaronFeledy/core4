@@ -1,7 +1,7 @@
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
-import { PORT_EXTRA_ARGS_REMEDIATION, extraArgsCommandOptions } from "./_extra-args.ts";
+import { RESERVED_LONG_PORT, extraArgsCommandOptions } from "./_extra-args.ts";
 import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -31,7 +31,7 @@ const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
     ctx.setCommand(
       ["valkey-server", "--appendonly", "yes", "--port", String(port)],
       extraArgsCommandOptions([
-        { form: "long", name: "port", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
+        RESERVED_LONG_PORT,
         {
           form: "long",
           name: "appendonly",

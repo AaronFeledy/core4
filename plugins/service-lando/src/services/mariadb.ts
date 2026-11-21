@@ -16,9 +16,8 @@ import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
-  PORT_EXTRA_ARGS_REMEDIATION,
-  catalogDbExtraArgsRemediation,
-  extraArgsCommandOptions,
+  MYSQL_FAMILY_EXTRA_ARGS,
+  configFileDbExtraArgsRemediation,
   isNonCatalogArtifact,
 } from "./_extra-args.ts";
 import {
@@ -130,20 +129,7 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   const serverConfig = addServerConfigMount(ctx, MARIADB_CONFIG_TARGET);
   const hasExtraArgs = (service.extraArgs?.length ?? 0) > 0;
   if (!processOwned && (serverConfig || (!custom && hasExtraArgs))) {
-    ctx.setCommand(
-      ["mariadbd", `--port=${port}`],
-      custom
-        ? undefined
-        : extraArgsCommandOptions([
-            { form: "long", name: "port", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
-            { form: "short", name: "P", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
-            {
-              form: "long-prefix",
-              prefix: "defaults-",
-              remediation: "Set config.server instead of --defaults-* in extraArgs.",
-            },
-          ]),
-    );
+    ctx.setCommand(["mariadbd", `--port=${port}`], custom ? undefined : MYSQL_FAMILY_EXTRA_ARGS);
   }
 };
 
@@ -191,10 +177,7 @@ export const mariadbServiceType: ServiceType = {
   name: "mariadb",
   base: "lando",
   plannedPort: selectPort,
-  extraArgsRemediation: catalogDbExtraArgsRemediation(
-    Object.values(ARTIFACTS),
-    "Put MariaDB flags in command:, set config.server for a config file, or remove extraArgs.",
-  ),
+  extraArgsRemediation: configFileDbExtraArgsRemediation(Object.values(ARTIFACTS), "MariaDB"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),

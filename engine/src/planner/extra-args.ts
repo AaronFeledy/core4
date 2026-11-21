@@ -2,7 +2,7 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 import { Effect, Equal } from "effect";
-import type { ExtraArgsLauncher } from "../services/feature.ts";
+import type { ExtraArgsLauncher } from "../services/extra-args-launcher.ts";
 import type { PlannedServiceDraft } from "./service-types.ts";
 
 const replaceProcess = "Put the flags in command: instead, or remove the process override to use extraArgs.";
@@ -42,11 +42,11 @@ export const authoredExtraArgsConflict = (location: ExtraArgsLocation, config: S
 const verifyExtraArgs = (input: {
   readonly location: ExtraArgsLocation;
   readonly expected: ProcessCommand;
-  readonly actual: ProcessCommand;
+  readonly actual: ProcessCommand | undefined;
 }) => {
   if (
-    Equal.equals(input.expected.command, input.actual.command) &&
-    Equal.equals(input.expected.entrypoint, input.actual.entrypoint)
+    Equal.equals(input.expected.command, input.actual?.command) &&
+    Equal.equals(input.expected.entrypoint, input.actual?.entrypoint)
   )
     return Effect.void;
   return Effect.fail(
@@ -63,13 +63,12 @@ export const verifyComposedExtraArgs = Effect.fnUntraced(function* (
   file: string,
 ) {
   for (const { name, extraArgsProcess } of drafts) {
-    if (extraArgsProcess !== undefined) {
-      yield* verifyExtraArgs({
-        location: { name, file },
-        expected: extraArgsProcess,
-        actual: services[name] ?? {},
-      });
-    }
+    if (extraArgsProcess === undefined) continue;
+    yield* verifyExtraArgs({
+      location: { name, file },
+      expected: extraArgsProcess,
+      actual: services[name],
+    });
   }
 });
 

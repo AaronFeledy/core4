@@ -39,7 +39,6 @@ export interface ServiceSeedInput {
   readonly landofilePath: string;
   readonly appSlug: string;
   readonly defaultDomain: string;
-  /** Value sites the identity pass left for the service scope (see landofile-scopes.ts). */
   readonly deferredSites: DeferredExpressionSites;
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
   readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
@@ -92,17 +91,14 @@ export const resolveSeed = Effect.fnUntraced(function* (
   if (extraArgsConflict !== undefined) return yield* extraArgsConflict;
   const { image, build } = scopedService;
   if (image !== undefined && build !== undefined && isComposeBuild(build)) {
+    const remediation = "Remove image or replace build with a Lando build-script block.";
+    const message = `Service ${name} must declare exactly one of image or a Compose build, not both. ${remediation}`;
     return yield* Effect.fail(
       new LandofileValidationError({
-        message: `Service ${name} must declare exactly one of image or a Compose build, not both. Remove image or replace build with a Lando build-script block.`,
-        remediation: "Remove image or replace build with a Lando build-script block.",
+        message,
+        remediation,
         file: input.landofilePath,
-        issues: [
-          validationIssue(
-            ["services", name, "build"],
-            `Service ${name} must declare exactly one of image or a Compose build, not both. Remove image or replace build with a Lando build-script block.`,
-          ),
-        ],
+        issues: [validationIssue(["services", name, "build"], message)],
       }),
     );
   }

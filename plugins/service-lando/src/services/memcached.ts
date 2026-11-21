@@ -1,6 +1,6 @@
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
-import { PORT_EXTRA_ARGS_REMEDIATION, extraArgsCommandOptions } from "./_extra-args.ts";
+import { PORT_EXTRA_ARGS_REMEDIATION, RESERVED_LONG_PORT, extraArgsCommandOptions } from "./_extra-args.ts";
 import { serviceFeatureApply } from "./_feature-helpers.ts";
 import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -30,7 +30,7 @@ const applyMemcachedFeature = (ctx: ServiceFeatureContext): void => {
       ["memcached", "-p", String(port)],
       extraArgsCommandOptions([
         { form: "short", name: "p", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
-        { form: "long", name: "port", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
+        RESERVED_LONG_PORT,
       ]),
     );
   }

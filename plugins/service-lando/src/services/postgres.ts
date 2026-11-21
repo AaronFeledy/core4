@@ -7,7 +7,8 @@ import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
   PORT_EXTRA_ARGS_REMEDIATION,
-  catalogDbExtraArgsRemediation,
+  RESERVED_LONG_PORT,
+  configFileDbExtraArgsRemediation,
   extraArgsCommandOptions,
   isNonCatalogArtifact,
 } from "./_extra-args.ts";
@@ -92,13 +93,16 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   const hasExtraArgs = (service.extraArgs?.length ?? 0) > 0;
   if (!processOwned && (serverConfig || (!custom && hasExtraArgs))) {
     ctx.setCommand(
-      serverConfig
-        ? ["postgres", "-c", `config_file=${POSTGRES_CONFIG_TARGET}`, "-c", `port=${port}`]
-        : ["postgres", "-c", `port=${port}`],
+      [
+        "postgres",
+        ...(serverConfig ? ["-c", `config_file=${POSTGRES_CONFIG_TARGET}`] : []),
+        "-c",
+        `port=${port}`,
+      ],
       custom
         ? undefined
         : extraArgsCommandOptions([
-            { form: "long", name: "port", remediation: PORT_EXTRA_ARGS_REMEDIATION },
+            RESERVED_LONG_PORT,
             {
               form: "long",
               name: "config-file",
@@ -169,10 +173,7 @@ export const postgresServiceType: ServiceType = {
   name: "postgres",
   base: "lando",
   plannedPort: selectPort,
-  extraArgsRemediation: catalogDbExtraArgsRemediation(
-    Object.values(ARTIFACTS),
-    "Put Postgres flags in command:, set config.server for a config file, or remove extraArgs.",
-  ),
+  extraArgsRemediation: configFileDbExtraArgsRemediation(Object.values(ARTIFACTS), "Postgres"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
