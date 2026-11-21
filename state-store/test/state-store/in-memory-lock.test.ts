@@ -196,7 +196,6 @@ describe("in-memory advisory lock", () => {
             timeoutMs: 60,
             resource: "budget",
           });
-          expect(waited.failure.remediation).toMatch(/LANDO_LOCK_TIMEOUT_MS/);
         }
 
         yield* Deferred.succeed(release, undefined);

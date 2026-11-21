@@ -3,10 +3,10 @@ import { lstat, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { taggedErrorJson } from "@lando/sdk/command-result";
-import type { LandoEvent } from "@lando/sdk/events";
+import type { LandoEvent, LockWaitEvent } from "@lando/sdk/events";
 import { Cause, Clock, Deferred, Effect, Exit, Fiber, Result } from "effect";
 
-import { ADVISORY_LOCK_SUFFIX, acquireAdvisoryLockAt } from "../../src/lock.ts";
+import { ADVISORY_LOCK_SUFFIX, LockHolder, acquireAdvisoryLockAt } from "../../src/lock.ts";
 import { lockTestAccess } from "./lock-test-access.ts";
 import { capturingEventLayer, runWithScope, sentinelPath, withAdvisoryLock } from "./native-lock-support.ts";
 
@@ -180,10 +180,6 @@ describe("advisory state lock contract", () => {
               path,
             });
             expect(error.heldMs).toBeGreaterThanOrEqual(0);
-            expect(error.message).toContain(
-              `Timed out after 30ms waiting for app-mutation, held by process ${process.pid}`,
-            );
-            expect(error.remediation).toMatch(/LANDO_LOCK_TIMEOUT_MS/);
             expect(error.remediation).not.toMatch(/remove .*lck/i);
             const projected = taggedErrorJson(error);
             expect(projected).toMatchObject({
@@ -197,7 +193,7 @@ describe("advisory state lock contract", () => {
           }),
         ).pipe(Effect.provide(capturingEventLayer(events))),
       );
-      expect(events.filter((event) => event._tag === "message.warn")).toHaveLength(0);
+      expect(events.filter((event) => event._tag === "lock.wait")).toHaveLength(0);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -207,7 +203,7 @@ describe("advisory state lock contract", () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-state-lock-"));
     const path = sentinelPath(dir, "contended");
     const events: LandoEvent[] = [];
-    const warned = Deferred.makeUnsafe<string>();
+    const warned = Deferred.makeUnsafe<LockWaitEvent>();
     try {
       await Effect.runPromise(
         Effect.scoped(
@@ -215,7 +211,7 @@ describe("advisory state lock contract", () => {
             yield* acquireAdvisoryLockAt(path, "holder", {
               privateFileAccess: lockTestAccess,
               resource: "routes",
-            });
+            }).pipe(Effect.provideService(LockHolder, { command: "lando start", app: "alpha" }));
             const start = yield* Clock.monotonicTimeNanos;
             const waiter = yield* Effect.forkChild(
               Effect.scoped(
@@ -225,21 +221,25 @@ describe("advisory state lock contract", () => {
                 }),
               ).pipe(Effect.flip),
             );
-            const body = yield* Deferred.await(warned).pipe(Effect.timeout("3 seconds"));
+            const notice = yield* Deferred.await(warned).pipe(Effect.timeout("3 seconds"));
             expect((yield* Clock.monotonicTimeNanos) - start).toBeGreaterThanOrEqual(1_000_000_000n);
-            expect(body).toContain(`Waiting for routes, held by process ${process.pid}`);
+            expect(notice).toMatchObject({
+              resource: "routes",
+              subject: "resource",
+              reminder: false,
+              holder: { pid: process.pid, command: "lando start", app: "alpha" },
+            });
+            expect(notice.remainingMs).toBeLessThanOrEqual(1_000);
             const error = yield* Fiber.join(waiter);
-            expect(error.message).toContain("Timed out after 2s waiting for routes");
-            expect(error.timeoutMs).toBe(2_000);
+            expect(error).toMatchObject({ lockFailure: "timeout", resource: "routes", timeoutMs: 2_000 });
           }),
         ).pipe(
           Effect.provide(
-            capturingEventLayer(events, (body) => Deferred.succeed(warned, body).pipe(Effect.asVoid)),
+            capturingEventLayer(events, (event) => Deferred.succeed(warned, event).pipe(Effect.asVoid)),
           ),
         ),
       );
-      const warns = events.filter((event) => event._tag === "message.warn");
-      expect(warns.length).toBe(1);
+      expect(events.filter((event) => event._tag === "lock.wait")).toHaveLength(1);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

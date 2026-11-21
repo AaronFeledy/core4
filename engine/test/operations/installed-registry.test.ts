@@ -92,7 +92,7 @@ test.each(["direct", "alias"] as const)(
               publish: (event) =>
                 Effect.gen(function* () {
                   events.push(event as LandoEvent);
-                  if ((event as LandoEvent)._tag === "message.warn")
+                  if ((event as LandoEvent)._tag === "lock.wait")
                     yield* Deferred.succeed(waiting, undefined).pipe(Effect.ignore);
                 }),
               subscribe: () => Stream.die("not used"),

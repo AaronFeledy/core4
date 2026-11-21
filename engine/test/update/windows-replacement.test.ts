@@ -285,7 +285,7 @@ test("a competing lock participant cannot mutate between validation and replacem
           ).pipe(
             Effect.provide([eventLayer, PrivateFileAccessService.layer]),
             Effect.provideService(EventPublicationObserver, (event) =>
-              event._tag === "message.warn" ? Deferred.succeed(waiting, undefined) : Effect.void,
+              event._tag === "lock.wait" ? Deferred.succeed(waiting, undefined) : Effect.void,
             ),
             Effect.timeout("4 seconds"),
           ),

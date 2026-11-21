@@ -121,7 +121,6 @@ import {
   RuntimeProvider,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { resolveOperationLockTimeoutMs } from "@lando/state-store/lock";
 import { type Context, Effect, Layer, Schema, Semaphore, Stream } from "effect";
 import { inspectAppliedFileSync, verifiedFileSyncSessions } from "./applied-file-sync.ts";
 import {
@@ -651,7 +650,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
       );
     return stateStore
       .withLock("windows-published-lifecycle", body, {
-        timeoutMs: resolveOperationLockTimeoutMs(),
+        wait: "operation",
+        resource: "Windows port publishing",
       })
       .pipe(
         Effect.catchTag("StateStoreError", (cause) =>

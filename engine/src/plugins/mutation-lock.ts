@@ -20,7 +20,7 @@ export const withPluginMutationLock = Effect.fnUntraced(
       return realpath(pluginsRoot);
     });
     return yield* withAdvisoryLockUsing(privateFileAccess, {
-      resource: "plugin mutation",
+      resource: "installed plugins",
       wait: "operation",
     })(join(root, ".lando-plugin-mutation"), operation, Effect.provide(body, context));
   },

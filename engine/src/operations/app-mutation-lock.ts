@@ -1,16 +1,17 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { AppLockTimeoutError, StateStoreError, isErrnoCode } from "@lando/sdk/errors";
+import { formatWaitDuration } from "@lando/sdk/renderer";
 import { AbsolutePath, type AppRef } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 import {
   ADVISORY_LOCK_SUFFIX,
   type AdvisoryLockRecord,
+  LockHolder,
   acquireAdvisoryLockAt,
-  formatLockDuration,
   resolveOperationLockTimeoutMs,
 } from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
@@ -126,9 +127,7 @@ const isBorrowedOwner = (key: string, record: AdvisoryLockRecord): boolean => {
 
 const timeoutError = (appId: string, timeoutMs: number, cause: StateStoreError): AppLockTimeoutError =>
   new AppLockTimeoutError({
-    message:
-      cause.message ??
-      `Timed out after ${formatLockDuration(timeoutMs)} waiting for the app lock for ${appId}.`,
+    message: cause.message ?? `Gave up after ${formatWaitDuration(timeoutMs)} waiting for app ${appId}.`,
     app: appId,
     timeoutMs,
     remediation: cause.remediation,
@@ -160,12 +159,14 @@ const mapAppLockFailure = (
 
 export const appLockTarget = (app: {
   readonly id: unknown;
+  readonly name?: unknown;
   readonly root: unknown;
   readonly identity?: { readonly appRoot?: unknown } | undefined;
   readonly kind?: AppRef["kind"];
   readonly extensions?: Readonly<Record<string, unknown>>;
-}): { readonly id: string; readonly root: string; readonly kind: AppRef["kind"] } => ({
+}): AppLockSubject & { readonly kind: AppRef["kind"] } => ({
   id: String(app.id),
+  ...(typeof app.name === "string" ? { name: app.name } : {}),
   root: String(app.identity?.appRoot ?? app.root),
   kind:
     app.kind ??
@@ -229,6 +230,17 @@ export const appMutationLockIdentity = (app: {
     })),
   );
 
+/** The app a mutation lock serializes; `name` labels wait notices and defaults to the folder name. */
+export interface AppLockSubject {
+  readonly id: string;
+  readonly root: string;
+  readonly kind?: AppRef["kind"];
+  readonly name?: string;
+}
+
+const isGlobalLock = (app: AppLockSubject): boolean =>
+  app.kind === "global" || app.id === "global" || app.id === "global-policy";
+
 /**
  * Acquire one per-app advisory file lock around a mutating operation.
  *
@@ -240,7 +252,7 @@ export const appMutationLockIdentity = (app: {
  * phase only.
  */
 export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
-  app: { readonly id: string; readonly root: string; readonly kind?: AppRef["kind"] },
+  app: AppLockSubject,
   body: Effect.Effect<A, E, R>,
   options: { readonly lockRoot?: string } = {},
 ): Effect.fn.Return<
@@ -272,7 +284,12 @@ export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
         remediation: "Global app mutation locks must use the canonical runtime root's lock directory.",
       }),
     );
+  // Global services are shared, so their lock keeps the label of the app that needed them.
+  const outerHolder = yield* LockHolder;
+  const name = app.name ?? (app.kind === "scratch" ? String(app.id) : basename(canonicalRoot));
+  const holder = isGlobalLock(app) ? outerHolder : { ...outerHolder, app: name };
   const provided = body.pipe(
+    Effect.provideService(LockHolder, holder),
     Effect.provideService(PinnedAppRoot, { requestedRoot: app.root, canonicalRoot }),
     Effect.provideService(HeldAppLockKeys, new Set([...held, key])),
     Effect.provideService(HeldGlobalAppRoot, app.id === "global" ? canonicalRoot : heldGlobalRoot),
@@ -295,7 +312,7 @@ export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
   const lockPath = `${resolved.file}${ADVISORY_LOCK_SUFFIX}`;
   const appId = String(app.id);
   const timeoutMs = resolveOperationLockTimeoutMs();
-  const resource = `app lock for ${appId}`;
+  const resource = isGlobalLock(app) ? "Lando's global services" : `app ${name}`;
 
   return yield* Effect.scoped(
     Effect.gen(function* () {
@@ -304,8 +321,12 @@ export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
         wait: "operation",
         timeoutMs,
         resource,
+        appLock: !isGlobalLock(app),
         refuseOnContention: (record) => Effect.sync(() => isBorrowedOwner(key, record)),
-      }).pipe(mapFailures((cause) => mapAppLockFailure(appId, lockPath, timeoutMs, cause)));
+      }).pipe(
+        Effect.provideService(LockHolder, holder),
+        mapFailures((cause) => mapAppLockFailure(appId, lockPath, timeoutMs, cause)),
+      );
 
       // Install/restore the holder env under acquireRelease so interrupt cannot
       // leave a half-written process.env entry or skip cleanup.

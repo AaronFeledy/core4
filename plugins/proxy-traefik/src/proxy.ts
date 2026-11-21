@@ -24,7 +24,6 @@ import {
   type RouterServiceShape,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { resolveOperationLockTimeoutMs } from "@lando/state-store/lock";
 import { DateTime, Effect, Layer, Option, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
@@ -287,7 +286,8 @@ export const makeTraefikRouterService = (
   let defaultDomain: string | undefined;
   const guardRouterMutation = <A, E>(operation: Effect.Effect<A, E>) =>
     dependencies.stateStore.withLock(routeReloadLockKey(), operation, {
-      timeoutMs: resolveOperationLockTimeoutMs(),
+      wait: "operation",
+      resource: "the router configuration",
     });
 
   const acquire = Effect.fn("TraefikRouter.acquirePorts")(function* (config: ProxyConfig) {

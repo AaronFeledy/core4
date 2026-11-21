@@ -165,7 +165,7 @@ export const openJournal = Effect.fnUntraced(function* (
   const acquireLock = Effect.fn("ManagedFileJournal.acquireLock")(function* (phase: "prepare" | "recover") {
     yield* acquireAdvisoryLockAt(join(dir, `transaction${ADVISORY_LOCK_SUFFIX}`), "transaction", {
       wait: "operation",
-      resource: "managed-file transaction",
+      resource: "managed project files",
       privateFileAccess,
     }).pipe(mapFailures((cause) => transactionError("lock", phase, cause.path, cause.remediation)));
     return yield* Effect.acquireRelease(

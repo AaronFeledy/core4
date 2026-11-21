@@ -89,12 +89,7 @@ test("#2292 explicit destroy waits for acquisition through mark-running", async 
     {
       registration: Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(release))),
       onEvent: (event) => {
-        if (
-          event._tag === "message.warn" &&
-          typeof event.body === "string" &&
-          event.body.startsWith("Waiting for app lock for ")
-        )
-          waiting.resolve();
+        if (event._tag === "lock.wait" && event.subject === "app") waiting.resolve();
       },
     },
   );
@@ -147,12 +142,7 @@ test("#2292 gc rechecks a candidate that becomes running while waiting", async (
     },
     {
       onEvent: (event) => {
-        if (
-          event._tag === "message.warn" &&
-          typeof event.body === "string" &&
-          event.body.startsWith("Waiting for app lock for ")
-        )
-          waiting.resolve();
+        if (event._tag === "lock.wait" && event.subject === "app") waiting.resolve();
       },
     },
   );
@@ -195,12 +185,7 @@ test("#2292 scope-close cleanup reacquires the scratch instance lock", async () 
     },
     {
       onEvent: (event) => {
-        if (
-          event._tag === "message.warn" &&
-          typeof event.body === "string" &&
-          event.body.startsWith("Waiting for app lock for ")
-        )
-          waiting.resolve();
+        if (event._tag === "lock.wait" && event.subject === "app") waiting.resolve();
       },
     },
   );

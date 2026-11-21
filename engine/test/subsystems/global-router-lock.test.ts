@@ -53,7 +53,7 @@ const fixture = async (onWait = Effect.void) => {
     Layer.succeed(
       EventService,
       EventService.of({
-        publish: (event) => (event._tag === "message.warn" ? onWait : Effect.void),
+        publish: (event) => (event._tag === "lock.wait" ? onWait : Effect.void),
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("No event subscription in router lock tests."),
         waitFor: () => Effect.never,

@@ -20,7 +20,7 @@ export const withBuiltArtifactsLock = Effect.fnUntraced(function* <A, E, R>(body
       const access = yield* PrivateFileAccessService;
       yield* acquireAdvisoryLockAt(lockPath, "built-artifacts", {
         wait: "operation",
-        resource: "built image cleanup",
+        resource: "built images",
         privateFileAccess: access,
       });
       return yield* body;

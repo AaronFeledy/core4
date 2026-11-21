@@ -254,7 +254,7 @@ const scratchLayerFor = async (
     Layer.succeed(EventService, {
       ...events,
       publish: (event) =>
-        event._tag === "message.warn" && gates !== undefined
+        event._tag === "lock.wait" && gates !== undefined
           ? Deferred.succeed(gates.waiting, undefined).pipe(Effect.asVoid)
           : events.publish(event),
     }),
@@ -306,7 +306,7 @@ test("start-first admission holds policy exclusion through consumer readiness", 
         Effect.provideService(EventService, {
           ...events,
           publish: (event) =>
-            event._tag === "message.warn"
+            event._tag === "lock.wait"
               ? Deferred.succeed(waiting, undefined).pipe(Effect.asVoid)
               : events.publish(event),
         }),
