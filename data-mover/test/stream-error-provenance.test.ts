@@ -90,7 +90,8 @@ for (const archive of [false, true]) {
       expect(failure.operation).toBe("copyFromService");
       expect(failure.remediation).toBe("Start the selected provider.");
       expect(failure.cause).toBe(providerError);
-      expect(outcome.additionalErrors).toEqual([{ role: "cleanup", error: cleanup }]);
+      expect(outcome.additionalErrors.map(({ role }) => role)).toEqual(["cleanup"]);
+      expect(outcome.additionalErrors[0]?.error).toBe(cleanup);
     });
   });
 }
