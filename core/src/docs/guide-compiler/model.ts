@@ -1,5 +1,6 @@
 import type {
   CleanupProps,
+  FetchProps,
   GuideFrontmatter,
   GuidePlatform,
   InlineProps,
@@ -28,6 +29,7 @@ export type GuideStepComponent = (
       /** Shell-word argv of `props.command`; set on the resolved execution projection. */
       readonly argv?: ReadonlyArray<string>;
     }
+  | { readonly kind: "Fetch"; readonly props: FetchProps; readonly line: number }
   | { readonly kind: "Cleanup"; readonly props: CleanupProps; readonly line: number }
   | { readonly kind: "Variable"; readonly props: VariableProps; readonly line: number }
   | { readonly kind: "UseFixture"; readonly props: UseFixtureProps; readonly line: number }

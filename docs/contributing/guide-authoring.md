@@ -149,7 +149,7 @@ the test.
 | `<Step>`, `<Hidden>`, `<Skip>`, `<Tabs>` | `<Scenario>` |
 | `<Tab>` | `<Tabs>` |
 | `<Step>` | also `<Hidden>`, `<Skip>`, `<Tab>` |
-| `<Run>`, `<Verify>`, `<Cleanup>`, `<Variable>`, `<UseFixture>`, `<Inspect>`, `<Inline>` | `<Step>` |
+| `<Run>`, `<Verify>`, `<Fetch>`, `<Cleanup>`, `<Variable>`, `<UseFixture>`, `<Inspect>`, `<Inline>` | `<Step>` |
 
 Wrappers do not nest: no `<Hidden>` inside a `<Tab>`, no `<Tabs>` inside
 `<Skip>`. Write each component as block MDX, not inside a prose paragraph.
@@ -157,9 +157,35 @@ A component inside a paragraph, such as `Run <Verify command="lando start" />
 first.`, is text to MDX, not an action, and fails the same way. Markdown
 prose between components inside a wrapper is fine.
 
+### Request a URL with `<Fetch>`
+
+Put `<Fetch>` inside a `<Step>` in a `layer="e2e"` scenario, after starting
+the fixture app. Include a cleanup step that destroys the app.
+
+```mdx
+<Fetch url="{{route:appserver}}/https-check.php" expect={{ status: 200, body: { regex: "HTTPS=on" } }} />
+```
+
+| Field | What it does |
+| --- | --- |
+| `url` | Absolute HTTP(S) URL without credentials, or a URL beginning with `{{route:<service>}}`. The token uses the first assigned HTTPS host route in `lando info --format=json`, or the first assigned HTTP route if there is no HTTPS route. Its URL retains the router's bound port and path prefix. Use an absolute URL to choose a different route. |
+| `method` | `GET` by default, or `HEAD`. |
+| `headers` | Optional request header names and string values. The request's `Host` comes from the URL. |
+| `expect.status` | Required final response status, or a nonempty list of accepted statuses. |
+| `expect.headers` | Optional map from response header names (case-insensitive) to matchers. A missing header is `null`. |
+| `expect.body` | Optional matcher against the response body as text. |
+
+The request connects directly to `127.0.0.1` at the URL's port without using
+a proxy. HTTPS verifies the hostname and trusts the local CA from `lando setup`.
+Redirects are not followed, so you can assert `302` and match `Location` in
+the same step. The public transcript shows the request line without the query
+or fragment, and the expected status. It does not publish headers, matchers,
+or the response body. Do not put secrets in the URL path.
+
 ### What `expect` accepts
 
-The `expect` prop of `<Verify>` is a matcher:
+`<Verify>`'s `expect` and `<Fetch>`'s response header and body expectations use
+the same matchers:
 
 - A string, number, boolean, or `null` must equal the value exactly.
 - An array must match an array of the same length, element by element.

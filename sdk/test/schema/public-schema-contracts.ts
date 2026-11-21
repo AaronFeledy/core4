@@ -656,6 +656,7 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
     notes: "https://example.test/releases/v4.2.0",
   },
   VerifyProps: { command: "documented value" },
+  FetchProps: { url: "{{route:web}}/", expect: { status: 200 } },
   InspectProps: { file: "/tmp/lando-app/output.json" },
   HiddenProps: { reason: "documented value" },
   InlineProps: { code: "alpha", justification: "documented value" },
