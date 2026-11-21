@@ -19,7 +19,7 @@ import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Predicate, Result } from "effect";
 import { INVOCATION_SCOPES, authoredSiteId, executableExpressionPath } from "./compiled-sites.ts";
 import { recordExpressionEnvironment } from "./environment-dependencies.ts";
-import { deferredExtraHostKey, extraHostListPath, withExtraHostLoadTemplate } from "./extra-host-sites.ts";
+import { compileExtraHostParts, deferredExtraHostKey, extraHostListPath } from "./extra-host-sites.ts";
 import { includeEntryPath } from "./include-condition-shape.ts";
 import { decodeImplicitFileRef, makeLandofileLoadHelperOverrides } from "./load-expression-decoders.ts";
 import { normalizeLoadExpressionFailure } from "./load-expression-failure.ts";
@@ -273,7 +273,9 @@ export const resolveLandofileLoadExpressions = (
               id: authoredSiteId(source),
               path,
               source,
-              template: withExtraHostLoadTemplate(parsed.success, text, hostSeparator),
+              template: extraHost
+                ? compileExtraHostParts(parsed.success, text, hostSeparator)
+                : parsed.success,
             });
             return value;
           }

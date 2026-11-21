@@ -20,13 +20,13 @@ const withHosts = async (hosts: string, run: (file: string, root: string) => Pro
     await rm(root, { recursive: true, force: true });
   }
 };
-const load = (file: string, root: string) =>
+const load = (file: string, root: string, host = "eager.test") =>
   loadLandofileLayers(root, file, {
     ports: makeTestLandofilePorts(root),
     stateStore: makeTestLandofileStateStore(),
     templates: {
       modules: [],
-      context: { env: { HOST: "eager.test" }, scope: "app", bootstrapLevel: "plugins" },
+      context: { env: { HOST: host }, scope: "app", bootstrapLevel: "plugins" },
     },
   });
 
@@ -55,12 +55,44 @@ test("rebases deferred host addresses to hostname and occurrence without losing 
     },
   ));
 
-test("drops the pending site when a higher layer replaces its extra_hosts list", () =>
-  withHosts('      - "{{ env.MISSING_HOST }}={{ app.missing }}"', async (file, root) => {
+test.each([
+  "{{ env.HOST }}={{ app.missing }}",
+  "{{ app.name == 'demo' ? 'peer=192.0.2.1' : 'peer=192.0.2.2' }}",
+])("does not validate a deferred entry replaced by a higher layer: %s", (entry) =>
+  withHosts(`      - "${entry}"`, async (file, root) => {
     await Bun.write(join(root, ".lando.local.yml"), landofile('      peer: "192.0.2.31"'));
-    const loaded = await Effect.runPromise(load(file, root));
+    const loaded = await Effect.runPromise(load(file, root, "peer=ignored"));
     expect(loaded.pendingSites).toEqual([]);
     expect(loaded.document.services?.[web]?.extra_hosts).toEqual({ peer: "192.0.2.31" });
+  }),
+);
+
+test("rejects a deferred entry with separators only inside its expression", () =>
+  withHosts(
+    `      - "{{ app.name == 'demo' ? 'peer=192.0.2.1' : 'peer:192.0.2.2' }}"`,
+    async (file, root) => {
+      const path = [...hostsPath, 0];
+      expect(await Effect.runPromise(Effect.flip(load(file, root)))).toMatchObject({
+        _tag: "LandofileValidationError",
+        issues: [{ rule: "unsupported-expression", path, source: { file, layer: "canonical", path } }],
+      });
+    },
+  ));
+
+test("rejects the entire evaluated hostname before it can be split again", () =>
+  withHosts('      - "{{ env.HOST }}:{{ app.name }}"', async (file, root) => {
+    const path = [...hostsPath, 0];
+    expect(await Effect.runPromise(Effect.flip(load(file, root, "peer=ignored")))).toMatchObject({
+      _tag: "LandofileValidationError",
+      issues: [{ rule: "landofile.hostname", path, source: { file, layer: "canonical", path } }],
+    });
+  }));
+
+test("still evaluates a load-owned whole entry before decoding its separator", () =>
+  withHosts('      - "{{ env.HOST }}"', async (file, root) => {
+    const loaded = await Effect.runPromise(load(file, root, "peer=192.0.2.31"));
+    expect(loaded.document.services?.[web]?.extra_hosts).toEqual({ peer: "192.0.2.31" });
+    expect(loaded.pendingSites).toEqual([]);
   }));
 
 test("loads mixed-scope hostnames before assigning deferred addresses their repeated-host positions", () => {

@@ -7,6 +7,7 @@ import { survivingSites } from "../compiled-sites.ts";
 import { composeKeyRejectedError, firstComposeRejection } from "../compose/rejections.ts";
 import { decodedPendingSites } from "../decoded-sites.ts";
 import { unionEnvironmentDependencies } from "../environment-dependencies.ts";
+import { prepareDeferredExtraHosts } from "../extra-host-sites.ts";
 import type { LandofileRelaxedRead } from "../include-context.ts";
 import { ownVersionConstraintEntries } from "../include-fragment.ts";
 import { includeAcquisitionView } from "../include-layer-overlays.ts";
@@ -199,6 +200,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   const hostPortSite = hostReadinessPortSite(assembled.value, effectiveSites);
   if (hostPortSite !== undefined)
     recorder.record(servicePortSiteError(hostPortSite.source, "host-readiness"));
+  const extraHosts = prepareDeferredExtraHosts(assembled.value, effectiveSites, { ...scope, file });
   const load =
     context.rootDocuments === undefined
       ? finishLoadStage(file, recorder)
@@ -239,7 +241,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
         }),
       );
     }
-    const validated = yield* validateLandofile(file, assembled.value, assembled.provenance);
+    const validated = yield* validateLandofile(file, extraHosts.value, assembled.provenance);
     const defaults = applyToolingIncludeDefaults(validated, tooling.defaults, {
       included: tooling.tooling.value,
       authored: ownOrigins,
@@ -250,7 +252,10 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
       stage: "load-scoped",
       document: decoded,
       pendingSites: [
-        ...decodedPendingSites(assembled.value, decoded, effectiveSites),
+        ...decodedPendingSites(extraHosts.value, decoded, {
+          sites: effectiveSites,
+          extraHosts: extraHosts.prepared,
+        }),
         ...survivingSites(defaults.addedOrigins, scope.pendingSites ?? []),
       ],
       context: { appRoot: AbsolutePath.make(context.appRoot), env: scope.env },

@@ -1,6 +1,6 @@
 import { isPlainRecord } from "@lando/sdk/landofile";
 import type { ParsedPendingSite, ValidationIssuePath } from "@lando/sdk/schema";
-import { extraHostDestination, extraHostListPath, extraHostTemplates } from "./extra-host-sites.ts";
+import { type PreparedExtraHosts, extraHostDestination, extraHostListPath } from "./extra-host-sites.ts";
 
 const child = (value: unknown, key: string | number): unknown =>
   Array.isArray(value) && typeof key === "number"
@@ -12,9 +12,9 @@ const child = (value: unknown, key: string | number): unknown =>
 export const decodedPendingSites = (
   authored: unknown,
   decoded: unknown,
-  sites: readonly ParsedPendingSite[],
+  pending: { readonly sites: readonly ParsedPendingSite[]; readonly extraHosts: PreparedExtraHosts },
 ): readonly ParsedPendingSite[] =>
-  sites.flatMap((site) => {
+  pending.sites.flatMap((site) => {
     let input = authored;
     let output = decoded;
     const path: (string | number)[] = [];
@@ -54,11 +54,12 @@ export const decodedPendingSites = (
         Array.isArray(input) &&
         isPlainRecord(output)
       ) {
-        const destination = extraHostDestination(input, key, output);
-        const address = extraHostTemplates(site.template)?.address;
-        return destination === undefined || address === undefined
+        const entry = pending.extraHosts.get(site.id);
+        if (entry === undefined) return [];
+        const destination = extraHostDestination(input, key, { host: entry.host, decoded: output });
+        return destination === undefined
           ? []
-          : [{ ...site, path: [...path, ...destination], template: address }];
+          : [{ ...site, path: [...path, ...destination], template: entry.address }];
       }
       if (field === "dependsOn" && isPlainRecord(input) && Array.isArray(output)) {
         const index = Object.keys(input).indexOf(String(key));

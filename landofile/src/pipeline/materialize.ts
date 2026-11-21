@@ -8,7 +8,6 @@ import { isPlainRecord, mergeLandofiles } from "@lando/sdk/landofile";
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { consumeSites, survivingSites } from "../compiled-sites.ts";
-import { projectExtraHostForLoad } from "../extra-host-sites.ts";
 import { includeConditionPath } from "../include-condition-shape.ts";
 import { loadExpressionFailureKind, loadPathBlocked } from "../load-failures.ts";
 import { normalizeEnvironmentSites } from "../normalize-environment-sites.ts";
@@ -63,13 +62,11 @@ export const materializeLandofileLayer = Effect.fnUntraced(function* (
     provenance: { ...document.provenance, origins },
   });
   const surviving = survivingSites(origins, scope.pendingSites ?? []);
-  const sites = (scope.siteFilter === undefined ? surviving : surviving.filter(scope.siteFilter)).map(
-    (site) => ({ site, loadSite: projectExtraHostForLoad(site) }),
-  );
+  const sites = scope.siteFilter === undefined ? surviving : surviving.filter(scope.siteFilter);
   if (scope.recorder !== undefined) {
     let materialized: unknown = normalized.value;
     const consumed = new Set<string>();
-    for (const { site: original, loadSite: site } of sites) {
+    for (const site of sites) {
       if (loadPathBlocked(scope.recorder, site.source)) continue;
       const condition = includeConditionPath(site.path);
       if (
@@ -161,7 +158,7 @@ export const materializeLandofileLayer = Effect.fnUntraced(function* (
         }
       }
       materialized = result.success.document;
-      if (original === site && result.success.pendingSites.length === 0) consumed.add(site.id);
+      if (result.success.pendingSites.length === 0) consumed.add(site.id);
     }
     if (scope.pendingSites !== undefined)
       for (let index = scope.pendingSites.length - 1; index >= 0; index--)
@@ -170,13 +167,11 @@ export const materializeLandofileLayer = Effect.fnUntraced(function* (
   }
   const unavailable =
     scope.recipe === undefined
-      ? sites
-          .map(({ loadSite }) => loadSite)
-          .find(
-            (site) =>
-              expressionInterpolationsTouchOnlyScopes(site.template, ["recipe", "env"]) &&
-              !expressionInterpolationsTouchOnlyScopes(site.template, ["env"]),
-          )
+      ? sites.find(
+          (site) =>
+            expressionInterpolationsTouchOnlyScopes(site.template, ["recipe", "env"]) &&
+            !expressionInterpolationsTouchOnlyScopes(site.template, ["env"]),
+        )
       : undefined;
   if (unavailable !== undefined)
     return yield* Effect.fail(
@@ -192,15 +187,13 @@ export const materializeLandofileLayer = Effect.fnUntraced(function* (
   const result = yield* Effect.fromResult(
     consumeSites({
       document: normalized.value,
-      pendingSites: sites.map(({ loadSite }) => loadSite),
+      pendingSites: sites,
       context: { env: scope.env, recipe: scope.recipe },
       scopes: ["recipe", "env"],
     }),
   );
   const remaining = new Set(result.pendingSites.map((site) => site.id));
-  const consumed = new Set(
-    sites.flatMap(({ site, loadSite }) => (site === loadSite && !remaining.has(site.id) ? [site.id] : [])),
-  );
+  const consumed = new Set(sites.filter((site) => !remaining.has(site.id)).map((site) => site.id));
   if (scope.pendingSites !== undefined)
     for (let index = scope.pendingSites.length - 1; index >= 0; index--)
       if (consumed.has(scope.pendingSites[index]?.id ?? "")) scope.pendingSites.splice(index, 1);
