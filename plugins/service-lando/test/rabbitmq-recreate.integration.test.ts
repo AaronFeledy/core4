@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { basename } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { bringDown, bringUp, exec } from "@lando/provider-lando";
 import { ServiceName, appIdentityKey, normalizeAppSlug } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
@@ -79,7 +80,11 @@ describe("RabbitMQ data across container recreation", () => {
             };
             yield* bringDown(plan, { api: app.api });
             yield* Effect.acquireRelease(bringUp(renamed, { api: app.api }), () =>
-              Effect.orDie(bringDown(renamed, { api: app.api, volumes: true })),
+              Effect.orDie(
+                bringDown(renamed, { api: app.api, volumes: true }).pipe(
+                  Effect.provide(makeTestStateStore().layer),
+                ),
+              ),
             );
             const renamedApp: LiveApp = {
               plan: renamed,

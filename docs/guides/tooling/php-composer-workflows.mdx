@@ -53,6 +53,13 @@ image builds at the same time. They may wait for each other while Lando creates
 or starts their containers, not for the rest of the start. See
 [Wait for another command to finish](../cli/everyday-commands.mdx#wait-for-another-command-to-finish).
 
+Run `lando destroy --purge-caches` from any app configured to use the cache,
+even if another app created it. Lando removes the shared cache when no container
+uses it. If another container still uses it, or Lando can't confirm the volume
+is its shared cache, Lando keeps it, says why, and finishes the rest of the
+teardown. After a purge, other apps may need to download packages
+again.
+
 ## Install global tools in the image
 
 Put the tools on `composer.packages` and Lando bakes them into the image for you:

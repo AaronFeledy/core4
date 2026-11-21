@@ -273,7 +273,7 @@ monorepo.
   </Scenario>
 </Guide>
 
-When you're finished, `lando destroy -y` removes the app containers and app-owned networks. Data volumes stay unless you pass `--volumes` or `--purge`; `--purge-caches` removes cache volumes and the built images Lando otherwise keeps for reuse. None of those flags deletes your source files.
+When you're finished, `lando destroy -y` removes the app containers and app-owned networks. Data volumes stay unless you pass `--volumes` or `--purge`. Add `--purge-caches` to remove cache volumes and the built images Lando otherwise keeps for reuse. Lando reports and keeps shared caches that are still in use. None of those flags deletes your source files.
 
 ```sh
 lando destroy -y

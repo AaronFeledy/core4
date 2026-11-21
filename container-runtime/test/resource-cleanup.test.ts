@@ -1,10 +1,93 @@
 import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
+import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect } from "effect";
 import type { EngineHttpRequest } from "../src/engine-api.ts";
 import { makeOwnedResourcesCleanup } from "../src/resource-cleanup.ts";
 import { type OwnedResource, makeResourceOwnershipStore } from "../src/resource-ownership.ts";
+import { volumeCreationLabels } from "../src/volume-creation.ts";
+
+test("a busy shared cache inventory entry does not prevent app resource removal", async () => {
+  const root = AbsolutePath.make("/apps/consumer");
+  const providerId = ProviderId.make("test");
+  const appId = AppId.make("consumer");
+  const plan = { root, provider: providerId, id: appId, extensions: {} };
+  const owner = { appRoot: root, providerId, appId, ownerKey: appIdentityKey("owner", root) };
+  const cache = { name: "shared", kind: "cache", scope: "global" } as const;
+  const data = { name: "database", kind: "data", scope: "app" } as const;
+  const store = makeResourceOwnershipStore(providerId);
+  const volumes = new Map([
+    [
+      "shared",
+      volumeCreationLabels(
+        { ...plan, id: AppId.make("creator"), root: AbsolutePath.make("/apps/creator") },
+        cache,
+      ),
+    ],
+    ["database", volumeCreationLabels(plan, data)],
+  ]);
+  let networkPresent = true;
+  const cleanup = makeOwnedResourcesCleanup({
+    ctx: { providerId, remediation: "Retry.", env: {} },
+    endpointNamespace: "test-daemon",
+    store: {
+      ...store,
+      load: () =>
+        Effect.succeed({
+          ...owner,
+          appIds: [appId],
+          resources: [
+            {
+              ...owner,
+              identityDigest: "cache",
+              kind: "volume",
+              nativeName: cache.name,
+              volumeClass: cache.kind,
+              volumeScope: cache.scope,
+            },
+            {
+              ...owner,
+              identityDigest: "data",
+              kind: "volume",
+              nativeName: data.name,
+              volumeClass: data.kind,
+              volumeScope: data.scope,
+            },
+            { ...owner, identityDigest: "net", kind: "network", nativeName: "private" },
+          ],
+        }),
+      retire: () => Effect.void,
+    },
+    api: {
+      request: ({ method, path }) =>
+        Effect.sync(() => {
+          if (path === "/networks/private") {
+            if (method === "GET")
+              return { status: 200, body: JSON.stringify({ Name: "private", Id: "private" }) };
+            networkPresent = false;
+            return { status: 204, body: "" };
+          }
+          const name = path.slice("/volumes/".length);
+          if (method === "GET")
+            return { status: 200, body: JSON.stringify({ Name: name, Labels: volumes.get(name) }) };
+          if (name === "shared") return { status: 409, body: "volume is in use" };
+          volumes.delete(name);
+          return { status: 204, body: "" };
+        }),
+    },
+  });
+  const result = await Effect.runPromise(
+    cleanup(root, { volumes: true, purgeCaches: true }).pipe(Effect.provide(makeTestStateStore().layer)),
+  );
+  expect(result).toMatchObject({
+    networksRemoved: 1,
+    volumesRemoved: { data: 1, cache: 0 },
+    skipped: [{ appId, resource: "shared", reason: "in use" }],
+  });
+  expect([...volumes.keys()]).toEqual(["shared"]);
+  expect(networkPresent).toBe(false);
+});
 
 test.each([204, 404])(
   "inventory cleanup removes anonymous volumes but retains named volumes with volumes:false (HTTP %s)",
@@ -130,6 +213,7 @@ const ownershipFixture = (input: {
   let inspections = 0;
   const cleanup = makeOwnedResourcesCleanup({
     ctx: { providerId: "test", remediation: "Retry cleanup.", env: {} },
+    endpointNamespace: "test-daemon",
     store: {
       ...makeResourceOwnershipStore("test"),
       load: () =>
@@ -173,7 +257,14 @@ const ownershipFixture = (input: {
       },
     },
   });
-  return { calls, retired, run: () => Effect.runPromise(Effect.result(cleanup(root, { volumes: true }))) };
+  return {
+    calls,
+    retired,
+    run: () =>
+      Effect.runPromise(
+        cleanup(root, { volumes: true }).pipe(Effect.provide(makeTestStateStore().layer), Effect.result),
+      ),
+  };
 };
 
 for (const input of [
@@ -188,7 +279,6 @@ for (const input of [
   { kind: "network", labels: { "dev.lando.owner": "other-owner" } },
   { kind: "volume", labels: { "dev.lando.volume-owner": "/apps/other" } },
   { kind: "volume", labels: { "dev.lando.volume-selector": "test:app:wrong:data" } },
-  { kind: "volume", freshLabels: { "dev.lando.volume-instance": "two" } },
 ] as const) {
   test(`inventory retains unresolved ownership or deletion ${JSON.stringify(input)}`, async () => {
     const fixture = ownershipFixture(input);
@@ -198,6 +288,16 @@ for (const input of [
       expect(fixture.calls.some((call) => call.method === "DELETE")).toBe(false);
   });
 }
+
+test("inventory leaves a replaced app volume alone", async () => {
+  const fixture = ownershipFixture({ kind: "volume", freshLabels: { "dev.lando.volume-instance": "two" } });
+  expect(await fixture.run()).toMatchObject({
+    _tag: "Success",
+    success: { skipped: [{ resource: "data", reason: "volume changed after enumeration" }] },
+  });
+  expect(fixture.retired).toEqual([]);
+  expect(fixture.calls.some(({ method }) => method === "DELETE")).toBe(false);
+});
 
 test("an inventory container refusal names the container and the label that failed", async () => {
   // Given a recorded container whose live provider label contradicts the acting provider.

@@ -238,6 +238,8 @@ const makeLayer = (input: {
   readonly ownershipFailure?: ProviderUnavailableError;
   /** Observed services whose container survives removal; every other one is reported removed. */
   readonly survivingServices?: ReadonlyArray<string>;
+  /** The provider deletes a frozen, locked volume set itself, as every bundled provider does. */
+  readonly exactVolumeTeardown?: boolean;
 }) => {
   const destroyCalls: AppPlan[] = [];
   const mutationOrder: string[] = [];
@@ -256,6 +258,7 @@ const makeLayer = (input: {
   let appliedPlan = input.appliedPlan;
   const provider = {
     ...TestRuntimeProvider,
+    ...(input.exactVolumeTeardown === true ? { exactVolumeTeardown: true } : {}),
     id: input.providerId ?? "lando",
     list: (filter: ListFilter) =>
       Effect.sync(() => {
@@ -789,6 +792,28 @@ describe("applied-state teardown", () => {
         cacheVolumesRemoved: true,
       });
       expect(harness.evidenceRoots).toEqual([root, root, root]);
+    });
+  });
+
+  test("destroy --volumes at a missing root removes leftover data volumes through an exact provider", async () => {
+    await withTempRoot(async (parent) => {
+      // Given a missing root whose applied plan is gone and whose old data volume is still observed.
+      const root = join(parent, "gone");
+      const appliedPlan = planAt(root);
+      const harness = makeLayer({
+        appliedPlan,
+        exactVolumeTeardown: true,
+        orphans: [orphanGroup({ root, volumes: ["database", "cache"] })],
+      });
+
+      // When destroy removes volumes but does not purge caches.
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(root, { volumes: true }).pipe(Effect.provide(harness.layer)),
+      );
+
+      // Then the leftover data volume goes, and the cache stays for the provider's own purge rules.
+      expect(harness.removedVolumes).toEqual([{ store: "database", generation: "generation-database" }]);
+      expect(result).toMatchObject({ outcome: "destroyed", dataVolumesRemoved: true });
     });
   });
 

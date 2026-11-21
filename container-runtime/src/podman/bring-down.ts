@@ -5,13 +5,12 @@ import {
   type ServiceShutdownObservation,
   type VolumeRemovalCounts,
   landoOwnedNetworkNames,
-  noVolumesRemoved,
   volumesRemovedAny,
 } from "@lando/sdk/schema";
-import type { EventService } from "@lando/sdk/services";
+import type { EventService, ProviderError } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 
-import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
+import type { LifecycleDialect } from "../dialect.ts";
 import type {
   EngineHttpApi,
   EngineHttpRequest,
@@ -19,27 +18,18 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi } from "../engine-errors.ts";
-import { parseJsonOrUndefined } from "../engine-json.ts";
-import {
-  isVolumeInUse,
-  listVolumeHolders,
-  volumeInUseMessage,
-  volumeInUseRemediation,
-} from "../ephemeral-data-helpers.ts";
 import type { HelperReclaimOptions } from "../helper-owner.ts";
 import { inspectOwnedNativeId, isSharedNetwork, networkOwnershipLabels } from "../native-ownership.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
-import { removeAllStaleVolumeHolders } from "../stale-data-helpers.ts";
 import { retainShutdownObservations } from "../stop-container.ts";
-import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
-import { planVolumeFilters } from "../volume-ownership.ts";
+import { type SkippedVolume, deleteVolumeSnapshot } from "../teardown-volumes.ts";
+import { planVolumeDeletions } from "./plan-volume-deletions.ts";
 import {
   listLabeledServiceContainers,
   removeStaleServiceContainers,
   selectStaleServiceContainers,
 } from "./stale-service-containers.ts";
 import { stopService } from "./stop-service.ts";
-import { type VolumeSelectorClass, pruneVolumes, volumeMatchesFilters } from "./volume-prune.ts";
 
 type EventPublisher = Pick<Context.Service.Shape<typeof EventService>, "publish">;
 type BringDownError = ProviderUnavailableError | ProviderInternalError;
@@ -54,11 +44,13 @@ interface StopResult {
   readonly changed: boolean;
   readonly shutdownObservations: readonly ServiceShutdownObservation[];
   readonly volumesRemoved: VolumeRemovalCounts;
+  readonly skipped?: readonly SkippedVolume[];
 }
 
 export interface BringDownOptions {
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
+  readonly endpointNamespace?: string;
   readonly dialect?: LifecycleDialect;
   readonly eventService?: EventPublisher;
   readonly volumes?: boolean;
@@ -129,155 +121,10 @@ const removeNetwork = Effect.fnUntraced(function* (
   );
 });
 
-const parseVolumeLabels = (body: string): Readonly<Record<string, string>> | undefined => {
-  const parsed = parseJsonOrUndefined(body);
-  if (typeof parsed !== "object" || parsed === null) return undefined;
-  const value = Reflect.get(parsed, "Labels");
-  if (typeof value !== "object" || value === null) return undefined;
-  const labels: Record<string, string> = {};
-  for (const [key, label] of Object.entries(value)) {
-    if (typeof label === "string") labels[key] = label;
-  }
-  return labels;
-};
-
-const removeVolume = Effect.fnUntraced(function* (
-  deps: BringDownDeps,
-  plan: AppPlan,
-  store: AppPlan["stores"][number],
-): Effect.fn.Return<boolean, BringDownError> {
-  const name = store.name;
-  const inspected = yield* request(deps, {
-    method: "GET",
-    path: `/volumes/${encodeURIComponent(name)}`,
-  });
-  if (inspected.status === 404) return false;
-  if (inspected.status !== 200) {
-    return yield* Effect.fail(
-      podmanFailure(
-        deps,
-        "bringDown.volume.inspect",
-        `provider-${deps.options.ctx.providerId} volume inspect failed with HTTP ${inspected.status}.`,
-        { name, body: inspected.body },
-      ),
-    );
-  }
-  const labels = parseVolumeLabels(inspected.body);
-  const volumeClass = volumeClassForStore(store);
-  if (labels === undefined || !volumeMatchesFilters(labels, planVolumeFilters(plan, [volumeClass]))) {
-    return false;
-  }
-  const response = yield* request(deps, {
-    method: "DELETE",
-    path: `/volumes/${encodeURIComponent(name)}`,
-  });
-  if (response.status === 200 || response.status === 204) return true;
-  if (response.status === 404) return false;
-  if (isVolumeInUse(response)) {
-    const redactor = redactorFor(deps.options.ctx);
-    const holders = deps.api.request === undefined ? [] : yield* listVolumeHolders(deps.api.request, name);
-    const recovered = yield* removeAllStaleVolumeHolders(deps.api.request, {
-      providerId: deps.options.ctx.providerId,
-      holders,
-      redactor,
-      ...(deps.options.helperReclaim === undefined ? {} : { helperReclaim: deps.options.helperReclaim }),
-    });
-    if (recovered) {
-      const retry = yield* request(deps, {
-        method: "DELETE",
-        path: `/volumes/${encodeURIComponent(name)}`,
-      });
-      if (retry.status === 200 || retry.status === 204) return true;
-      if (retry.status === 404) return false;
-      if (!isVolumeInUse(retry)) {
-        return yield* Effect.fail(
-          podmanFailure(
-            deps,
-            "bringDown.volume",
-            `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${retry.status}.`,
-            { name, body: retry.body },
-          ),
-        );
-      }
-      const remaining =
-        deps.api.request === undefined ? holders : yield* listVolumeHolders(deps.api.request, name);
-      return yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId: deps.options.ctx.providerId,
-          operation: "bringDown.volume",
-          message: volumeInUseMessage(
-            `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${retry.status}.`,
-            remaining,
-            retry,
-            redactor,
-          ),
-          remediation: volumeInUseRemediation(redactor),
-          details: redactDetails({ name, body: retry.body, status: retry.status }, redactor),
-        }),
-      );
-    }
-    return yield* Effect.fail(
-      new ProviderUnavailableError({
-        providerId: deps.options.ctx.providerId,
-        operation: "bringDown.volume",
-        message: volumeInUseMessage(
-          `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${response.status}.`,
-          holders,
-          response,
-          redactor,
-        ),
-        remediation: volumeInUseRemediation(redactor),
-        details: redactDetails({ name, body: response.body, status: response.status }, redactor),
-      }),
-    );
-  }
-  return yield* Effect.fail(
-    podmanFailure(
-      deps,
-      "bringDown.volume",
-      `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${response.status}.`,
-      { name, body: response.body },
-    ),
-  );
-});
-
-const removeAppScopedVolumes = Effect.fnUntraced(function* (
-  deps: BringDownDeps,
-  plan: AppPlan,
-): Effect.fn.Return<VolumeRemovalCounts, BringDownError> {
-  const removed: { data: number; cache: number } = { ...noVolumesRemoved };
-  for (const store of plan.stores) {
-    const volumeClass = volumeClassForStore(store);
-    if (volumeClass === "cache") {
-      if (deps.options.purgeCaches !== true) continue;
-    } else if (store.scope === "global" || deps.options.volumes !== true) {
-      continue;
-    }
-    if (yield* removeVolume(deps, plan, store)) removed[volumeClass] += 1;
-  }
-  return removed;
-});
-
-const pruneAppScopedVolumes = (
-  deps: BringDownDeps,
-  plan: AppPlan,
-  volumeClass: VolumeSelectorClass,
-): Effect.Effect<{ readonly removed: number; readonly changed: boolean }, BringDownError> =>
-  pruneVolumes(deps.api, {
-    filters: planVolumeFilters(plan, [volumeClass]),
-    ctx: deps.options.ctx,
-    all: deps.options.volumes === true,
-  }).pipe(
-    Effect.map((report) => ({
-      removed: report.pruned.length,
-      changed: report.pruned.length > 0 || report.errors.length > 0,
-    })),
-  );
-
 export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
   plan: AppPlan,
   options: BringDownOptions,
-): Effect.fn.Return<StopResult, BringDownError> {
+): Effect.fn.Return<StopResult, ProviderError> {
   const api = options.api;
   if (api === undefined) {
     return yield* Effect.fail(missingApi(options.ctx, "bringDown"));
@@ -294,6 +141,8 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
   let changed = false;
   const shutdownObservations: ServiceShutdownObservation[] = [];
   const stopCtx = { ...options.ctx, remediation: deps.remediation };
+  const volumeRuntime = { ...options, ctx: stopCtx, request: api.request };
+  const snapshot = yield* planVolumeDeletions(volumeRuntime, plan, options);
   // Whole-app stop shares stale-name selection with bring-up: list once, remove owned
   // plan-service containers whose native name is not the current planned name.
   const containers = yield* listLabeledServiceContainers(api, stopCtx, plan.id).pipe(
@@ -331,28 +180,19 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
     );
     networkRemoved = networkRemoved || removed;
   }
-  let volumesRemoved = { ...noVolumesRemoved };
-  let prunedChanged = false;
-  if (options.volumes === true || options.purgeCaches === true) {
-    volumesRemoved = {
-      ...(yield* removeAppScopedVolumes(deps, plan).pipe(
-        mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
-      )),
-    };
-    if ((options.dialect ?? libpodLifecycleDialect).volumePrune !== undefined) {
-      for (const volumeClass of teardownVolumeClasses(options)) {
-        const pruned = yield* pruneAppScopedVolumes(deps, plan, volumeClass).pipe(
-          mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
-        );
-        volumesRemoved[volumeClass] += pruned.removed;
-        prunedChanged = prunedChanged || pruned.changed;
-      }
-    }
-  }
+  const { volumesRemoved, skipped } = yield* deleteVolumeSnapshot(volumeRuntime, snapshot.candidates).pipe(
+    mapFailures((error) =>
+      error._tag === "ProviderUnavailableError" || error._tag === "ProviderInternalError"
+        ? retainShutdownObservations(error, shutdownObservations)
+        : error,
+    ),
+  );
+  const retained = [...snapshot.skipped, ...skipped];
 
   return {
-    changed: changed || networkRemoved || prunedChanged || volumesRemovedAny(volumesRemoved),
+    changed: changed || networkRemoved || volumesRemovedAny(volumesRemoved),
     shutdownObservations,
     volumesRemoved,
+    ...(retained.length === 0 ? {} : { skipped: retained }),
   };
 });

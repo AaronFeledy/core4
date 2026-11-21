@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { AppPlan } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
+import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect, Result } from "effect";
 import { makeProviderDataPlane } from "../src/data-plane.ts";
 import { dockerLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest } from "../src/engine-api.ts";
 import { volumeInUseRemediation } from "../src/ephemeral-data-helpers.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
-import { volumeOwnershipLabels } from "../src/volume-ownership.ts";
+import { volumeCreationLabels } from "../src/volume-creation.ts";
 import { networkPlan } from "./authored-network-fixture.ts";
 import { FakeEngine } from "./support/fake-engine.ts";
 
@@ -31,15 +32,24 @@ const helper = (state: string, labels: Readonly<Record<string, string>>) => ({
 
 const makeApi = (plan: AppPlan, holders: ReadonlyArray<unknown> = []) => {
   const calls: EngineHttpRequest[] = [];
+  const volumeLabels = new Map(plan.stores.map((store) => [store.name, volumeCreationLabels(plan, store)]));
   const request = (input: EngineHttpRequest) =>
     Effect.sync(() => {
       calls.push(input);
       if (input.method === "GET" && input.path.startsWith("/networks/")) return { status: 404, body: "" };
       if (input.method === "GET" && input.path.startsWith("/containers/json?"))
         return { status: 200, body: JSON.stringify(holders) };
+      if (input.path === "/volumes")
+        return {
+          status: 200,
+          body: JSON.stringify({ Volumes: [...volumeLabels].map(([Name, Labels]) => ({ Name, Labels })) }),
+        };
       const store = plan.stores.find((candidate) => input.path === `/volumes/${candidate.name}`);
       if (store !== undefined && input.method === "GET")
-        return { status: 200, body: JSON.stringify({ Labels: volumeOwnershipLabels(plan, store) }) };
+        return {
+          status: 200,
+          body: JSON.stringify({ Name: store.name, Labels: volumeLabels.get(store.name) }),
+        };
       if (store !== undefined && input.method === "DELETE")
         return { status: 409, body: JSON.stringify({ message: "SENSITIVE volume in use" }) };
       return { status: 500, body: "Unexpected request" };
@@ -59,8 +69,9 @@ const down = (
       api,
       ctx: { providerId: "docker", remediation: "Retry.", env: {}, redactor },
       dialect: dockerLifecycleDialect,
+      endpointNamespace: "test-daemon",
       ...options,
-    }).pipe(Effect.result),
+    }).pipe(Effect.provide(makeTestStateStore().layer), Effect.result),
   };
 };
 
@@ -77,7 +88,9 @@ describe("volume holder preservation during teardown", () => {
       api.calls.every(
         (call) =>
           call.method === "GET" &&
-          (call.path.startsWith("/networks/") || call.path.startsWith("/containers/json?")),
+          (call.path.startsWith("/networks/") ||
+            call.path.startsWith("/containers/json?") ||
+            call.path === "/volumes"),
       ),
     ).toBe(true);
   });

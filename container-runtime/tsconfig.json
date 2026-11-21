@@ -9,5 +9,10 @@
   },
   "include": ["./src/**/*.ts"],
   "exclude": ["./dist", "./node_modules"],
-  "references": [{ "path": "../sdk" }, { "path": "../redaction" }, { "path": "../paths" }]
+  "references": [
+    { "path": "../sdk" },
+    { "path": "../redaction" },
+    { "path": "../paths" },
+    { "path": "../state-store" }
+  ]
 }
