@@ -37,7 +37,10 @@ export const withPhysicalVolumeLock = Effect.fnUntraced(function* <A, E>(
   return yield* resolvePhysicalTarget(input).pipe(
     Effect.flatMap((target) =>
       input.deps.withVolumeLock(
-        target.coordinationKey,
+        {
+          key: target.coordinationKey,
+          name: target._tag === "identified" ? target.identity.nativeName : target.volume.ref.store,
+        },
         resolvePhysicalTarget(input)
           .pipe(
             Effect.flatMap((lockedTarget) => resolveLockedPhysicalTarget(input, target, lockedTarget)),

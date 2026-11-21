@@ -294,6 +294,7 @@ export const dockerCapabilitiesForHost = (
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
+    serializesVolumeCopyUp: false,
     volumeSnapshot: "none",
     serviceFileCopy: "native",
     artifactExport: true,

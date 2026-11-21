@@ -189,7 +189,8 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
         },
         stateStore,
       },
-      withVolumeLock: (instanceId, body) => withPhysicalVolumeLock(stateStore, instanceId, body),
+      withVolumeLock: (request, body) =>
+        withPhysicalVolumeLock(stateStore, { ...request, mode: "exclusive" }, body),
       initialization: (identity) =>
         mover.volumeInitialization === undefined
           ? Effect.fail(
