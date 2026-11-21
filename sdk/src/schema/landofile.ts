@@ -746,7 +746,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         "Scheduled jobs for this service. Lando compiles them into one <service>-schedule sidecar cloned from this service image and build. Mounts, environment, user, and networks are copied onto that sidecar.",
     }),
-    db_client: Schema.optionalKey(
+    dbClient: Schema.optionalKey(
       Schema.Union([Schema.Literal("auto"), Schema.Literal(false), Schema.String]),
     ).annotate({
       description:
