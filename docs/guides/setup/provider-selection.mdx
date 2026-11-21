@@ -47,6 +47,30 @@ lando doctor
 
 Doctor should name the provider you selected. Setup fails with remediation if that system runtime is missing. It does not install Docker or Podman for you. To return to the default, run `lando setup --provider=lando`.
 
+## Use Colima, OrbStack, or Lima through a Docker context
+
+When `docker ps` works after `docker context use`, Lando's docker provider follows that same CLI context. It does not start those runtimes or change the selected context for you.
+
+1. Select the context the Docker CLI uses:
+
+```sh
+docker context ls
+docker context use colima
+```
+
+OrbStack and Lima publish a Docker context the same way. Use the name `docker context ls` prints.
+
+2. Point Lando at Docker and check the endpoint:
+
+```sh
+lando setup --provider=docker
+lando doctor --provider=docker --format=json
+```
+
+Doctor reports the resolved Docker endpoint and its source, including `context colima` when that context is active. `DOCKER_HOST` still wins when you set it. If the engine is not running, the unreachable error names the runtime to start (`colima start`, `orb start`, or `limactl start <instance>`).
+
+TLS Docker contexts are not supported. Switch to a local socket context or set `DOCKER_HOST` to a local socket, then retry.
+
 ## How setup chooses a provider
 
 `lando setup` (including `--yes`) picks the first of:
