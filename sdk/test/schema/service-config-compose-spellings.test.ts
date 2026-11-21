@@ -272,19 +272,26 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
           : undefined;
       const properties = rootProperties ?? definitionProperties ?? {};
       const build = properties.build;
-      const branches = isRecord(build) && Array.isArray(build.oneOf) ? build.oneOf : [];
+      const branches = isRecord(build) && Array.isArray(build.anyOf) ? build.anyOf : [];
       const objectBranches = branches.filter(
         (branch): branch is Readonly<Record<string, unknown>> => isRecord(branch) && branch.type === "object",
       );
       const propertySets = objectBranches
-        .map((branch) => (isRecord(branch.properties) ? Object.keys(branch.properties).sort() : []))
+        .map((branch) =>
+          isRecord(branch.properties)
+            ? Object.entries(branch.properties)
+                .filter(([, field]) => !isRecord(field) || !isRecord(field.not))
+                .map(([key]) => key)
+                .sort()
+            : [],
+        )
         .sort((left, right) => left.join(",").localeCompare(right.join(",")));
 
       expect(branches).toHaveLength(3);
       expect(objectBranches.every((branch) => branch.additionalProperties === false)).toBe(true);
       expect(propertySets).toEqual([
         ["app", "artifact"],
-        ["args", "context", "dockerfile", "dockerfileInline", "dockerfile_inline", "target"],
+        ["args", "context", "dockerfile", "dockerfile_inline", "target"],
       ]);
       expect(JSON.stringify(build)).not.toContain("no_cache");
       expect(JSON.stringify(build)).not.toContain('"^x-"');

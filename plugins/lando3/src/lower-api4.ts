@@ -91,7 +91,7 @@ export const lowerApi4Service = (
   else if (hasPlainObjectPrototype(image) && !isLegacyTagged(image)) {
     const build: Record<string, unknown> = { context: "." };
     for (const [key, target] of [
-      ["imagefile", "dockerfileInline"],
+      ["imagefile", "dockerfile_inline"],
       ["dockerfile", "dockerfile"],
     ] as const) {
       if (typeof image[key] === "string") {

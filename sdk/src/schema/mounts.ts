@@ -1,7 +1,7 @@
 import { posix } from "node:path";
-import { Effect, Schema } from "effect";
-
+import { Schema } from "effect";
 import type { AppPlan, FileSyncPlan } from "./app-plan.ts";
+import { withDefaultKey } from "./default-key.ts";
 import type { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { PortablePath } from "./primitives.ts";
 
@@ -110,7 +110,7 @@ export const DataStorePlan = Schema.Struct({
   scope: StorageScope,
   /** Storage kind; `cache` stores are cross-app shared dependency caches. */
   kind: Schema.Literals(["data", "cache"]).pipe(
-    Schema.withDecodingDefaultKey(Effect.sync(() => "data" as const)),
+    withDefaultKey("data", { description: "Data store or cross-app shared dependency cache." }),
   ),
   /** Cache identity when `kind` is `cache`. */
   key: Schema.optionalKey(Schema.String),

@@ -1,85 +1,54 @@
-import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
-
+import { Effect, Schema, SchemaTransformation } from "effect";
 import { Environment, EnvironmentValue } from "./environment-value.ts";
-import { mapInputWithPrecheck } from "./map-input.ts";
+import { indexedPropertyNameCheck, propertyNameCheckedRecord } from "./property-name-check.ts";
 
-// =============================================================================
-// Shared service, tooling and event environment input normalization.
-// =============================================================================
 const DESCRIPTION =
-  "Environment variables as a map (KEY: value) or a Compose-style KEY=value list. Bare entries and null values are rejected; host environment interpolation is unsupported.";
+  "Environment variables as a map (KEY: value) or a Compose-style KEY=value list. Names must be nonempty and cannot be __proto__. Bare entries and null values are rejected.";
 
-const reservedKeyCheck = Schema.makeFilter(
-  (input: unknown) => !(typeof input === "object" && input !== null && Object.hasOwn(input, "__proto__")),
-  {
-    message: 'The key "__proto__" is reserved and cannot be used in an environment map.',
-    toJsonSchema: () => ({ propertyNames: { not: { const: "__proto__" } } }),
-  },
+const nameCheck = indexedPropertyNameCheck(
+  /^(?!__proto__(?![\s\S]))[\s\S]/u,
+  'The key "__proto__" is reserved and cannot be used in an environment map. Environment names cannot be empty.',
 );
 
-const EnvironmentMapInput = mapInputWithPrecheck(
+export const EnvironmentAssignment = Schema.String.check(
+  Schema.isPattern(/^(?!__proto__=)[^=]+=/u, {
+    message:
+      'Expected KEY=value with a nonempty, nonreserved environment name. The name "__proto__" is reserved.',
+  }),
+);
+
+const EnvironmentMapInput = propertyNameCheckedRecord(
   Schema.Record(
     Schema.String,
-    Schema.Union([EnvironmentValue, Schema.Finite, Schema.Boolean, Schema.Null]),
+    Schema.Union([EnvironmentValue, Schema.Finite, Schema.Boolean]).annotate({
+      message: "Supply a concrete environment value; host-environment interpolation is unsupported.",
+    }),
   ).annotate({ expected: "a map or a list of KEY=VALUE strings" }),
-  reservedKeyCheck,
+  nameCheck,
 );
 
-export const ComposeEnvironmentInput = Schema.Union([EnvironmentMapInput, Schema.Array(Schema.String)])
+export const ComposeEnvironmentInput = Schema.Union([
+  EnvironmentMapInput,
+  Schema.Array(EnvironmentAssignment),
+])
   .annotate({ description: DESCRIPTION })
   .pipe(
     Schema.decodeTo(
       Environment,
       SchemaTransformation.transformEffect({
-        decode: (input) => {
-          if (!Array.isArray(input)) {
-            const entries = Object.entries(input);
-            const unresolved = entries.find(([, value]) => value === null);
-            if (unresolved !== undefined) {
-              return Effect.fail(
-                new SchemaIssue.InvalidValue(
-                  {
-                    message: `Landofile environment entry "${unresolved[0]}" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.`,
-                  },
-                  input,
-                ),
-              );
-            }
-            return Effect.succeed(
-              Object.fromEntries(
-                entries.map(([key, value]) => [
-                  key,
-                  typeof value === "object" && value !== null ? value : String(value),
-                ]),
-              ),
-            );
-          }
-          const entries: Array<readonly [string, string]> = [];
-          for (const entry of input) {
-            const separator = entry.indexOf("=");
-            if (separator < 0) {
-              return Effect.fail(
-                new SchemaIssue.InvalidValue(
-                  {
-                    message: `Landofile environment entry "${entry}" must be KEY=value; host-environment interpolation is unsupported in Landofiles — use the map form (environment: { KEY: value }).`,
-                  },
-                  input,
-                ),
-              );
-            }
-            entries.push([entry.slice(0, separator), entry.slice(separator + 1)]);
-          }
-          const record = Object.fromEntries(entries);
-          if (Object.hasOwn(record, "__proto__")) {
-            return Effect.fail(
-              new SchemaIssue.InvalidValue(
-                { message: 'The key "__proto__" is reserved and cannot be used in an environment map.' },
-                input,
-              ),
-            );
-          }
-          return Effect.succeed(record);
-        },
+        decode: (input) =>
+          Effect.succeed(
+            Object.fromEntries(
+              Array.isArray(input)
+                ? input.map((entry) => {
+                    const separator = entry.indexOf("=");
+                    return [entry.slice(0, separator), entry.slice(separator + 1)] as const;
+                  })
+                : Object.entries(input).map(
+                    ([key, value]) => [key, typeof value === "object" ? value : String(value)] as const,
+                  ),
+            ),
+          ),
         encode: (record) => Effect.succeed(record),
       }),
     ),

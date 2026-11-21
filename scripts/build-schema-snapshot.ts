@@ -128,13 +128,17 @@ const main = async (): Promise<void> => {
     IncludeEntry,
   ])
     assertLayerMergeCompleteness(root);
-  assertPublicSchemaAnnotations();
   assertPublicSchemaContractCoverage(REPO_ROOT);
 
   const sdkSchemas = JSON_SCHEMA_NAMES.map((schemaName) => ({
     schemaName,
     jsonSchema: stable(generateJsonSchema(schemaName)),
   }));
+  assertPublicSchemaAnnotations(
+    undefined,
+    undefined,
+    new Map(sdkSchemas.map(({ schemaName, jsonSchema }) => [schemaName, jsonSchema])),
+  );
   for (const { schemaName, jsonSchema } of sdkSchemas) {
     const invalidPaths = assertJsonSchemaDeprecationsValid(jsonSchema);
     if (invalidPaths.length > 0) {

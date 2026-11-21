@@ -46,9 +46,9 @@ test.each([
     { ports: [{ name: "web", target: 81, protocol: "udp" }] },
   ],
   [
-    { build: { context: "./site" } },
+    { build: { context: "./site", args: { BASE: "lower", MODE: "original" } } },
     { build: { args: { MODE: "local" } } },
-    { build: { context: "./site", args: { MODE: "local" } } },
+    { build: { context: "./site", args: { BASE: "lower", MODE: "local" } } },
   ],
   [
     { ulimits: { nofile: { soft: 30, hard: 50 } } },
@@ -71,6 +71,20 @@ test.each([
     ).toEqual(result.document);
   },
 );
+
+test.each([
+  [{ context: "./site", args: { BASE: "lower" } }, "./other", { context: "./other" }],
+  [
+    { context: "./site", args: ["BASE=lower"] },
+    { args: ["MODE=local"] },
+    { context: "./site", args: { MODE: "local" } },
+  ],
+  [{ app: ["echo lower"] }, { app: ["echo higher"] }, { app: ["echo higher"] }],
+  [{ artifact: ["echo lower"] }, { artifact: [] }, { artifact: [] }],
+])("replaces a lower build scalar or list instead of merging it (%#)", async (lower, higher, expected) => {
+  const result = await Effect.runPromise(load({ build: lower }, { build: higher }));
+  expect(result.document.services?.[ServiceName.make("web")]?.build).toEqual(expected);
+});
 
 test.each([
   [{ workingDirectory: "/lower" }, { working_dir: "/alias" }, { workingDirectory: "/alias" }],

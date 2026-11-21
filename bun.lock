@@ -418,6 +418,7 @@
       },
       "devDependencies": {
         "@types/semver": "^7.8.0",
+        "ajv": "^8.20.0",
       },
       "peerDependencies": {
         "@typescript/typescript6": "^6.0.2",

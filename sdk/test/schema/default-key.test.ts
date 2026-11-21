@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
 import {
   GlobalConfig,
+  SubscriberManifestEntry,
   getJsonSchema,
   getJsonSchemaWithDeprecations,
   renderSchemaReferenceMarkdown,
+  validatePublicSchemaAnnotations,
   withDefaultKey,
 } from "@lando/sdk/schema";
 import { Schema } from "effect";
@@ -80,4 +82,27 @@ test("renders annotation-only allOf defaults in the reference Default column", (
   expect(renderSchemaReferenceMarkdown("DefaultKeySample", sample)).toMatch(
     /\| `enabled` \| No \| `boolean` \|[^|]*\| `true` \|/,
   );
+});
+test("omitted subscriber options publish the same defaults used at decode", () => {
+  const decoded = Schema.decodeUnknownSync(SubscriberManifestEntry)({
+    id: "test",
+    selectors: [{ event: "pre-start" }],
+    module: "./subscriber.ts",
+  });
+  expect(decoded).toMatchObject({ priority: 500, abortOnError: false });
+  expect(getJsonSchema("SubscriberManifestEntry")).toMatchObject({
+    properties: {
+      priority: { allOf: [{ default: 500, description: expect.any(String) }] },
+      abortOnError: { allOf: [{ default: false, description: expect.any(String) }] },
+    },
+  });
+});
+
+test("publication gate rejects a lost description even when the decoder still has it", () => {
+  const schema = Schema.Struct({
+    enabled: Schema.Boolean.pipe(withDefaultKey(false, { description: "Enable the feature." })),
+  }).annotate({ identifier: "Demo", title: "Demo", description: "A published feature setting." });
+  const stripped = { type: "object", properties: { enabled: { type: "boolean", default: false } } };
+  const issues = validatePublicSchemaAnnotations({ Demo: schema }, {}, new Map([["Demo", stripped]]));
+  expect(issues.map(({ path }) => path)).toEqual(["Demo.enabled"]);
 });

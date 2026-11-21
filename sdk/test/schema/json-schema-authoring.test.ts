@@ -77,10 +77,16 @@ describe("authoring JSON Schema publication", () => {
     [
       "environment",
       [
-        { $ref: "#/$defs/EnvironmentValueEncoded" },
+        {
+          anyOf: [
+            { type: "string" },
+            { $ref: expect.stringMatching(/^#\/\$defs\/SecretRef(?:_\d+)?$/) },
+            { $ref: expect.stringMatching(/^#\/\$defs\/BoundText(?:_\d+)?$/) },
+            { $ref: expect.stringMatching(/^#\/\$defs\/RouteText(?:_\d+)?$/) },
+          ],
+        },
         { type: "number" },
         { type: "boolean" },
-        { type: "null" },
       ],
     ],
     ["labels", [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }]],
@@ -94,18 +100,14 @@ describe("authoring JSON Schema publication", () => {
       {
         type: "object",
         additionalProperties: { anyOf: values },
-        propertyNames: { not: { const: "__proto__" } },
+        propertyNames:
+          field === "environment" ? { pattern: expect.any(String) } : { not: { const: "__proto__" } },
       },
-      { type: "array", items: { type: "string" } },
+      {
+        type: "array",
+        items: field === "environment" ? { type: "string", pattern: expect.any(String) } : { type: "string" },
+      },
     ]);
-    if (field === "environment") {
-      expect(schema).toHaveProperty("$defs.EnvironmentValueEncoded.anyOf", [
-        { type: "string" },
-        { $ref: expect.stringMatching(/^#\/\$defs\/SecretRef(?:_\d+)?$/) },
-        { $ref: expect.stringMatching(/^#\/\$defs\/BoundText(?:_\d+)?$/) },
-        { $ref: expect.stringMatching(/^#\/\$defs\/RouteText(?:_\d+)?$/) },
-      ]);
-    }
   });
 
   test.each(["AppEnvironmentDefaults", "AppLabelDefaults"] as const)(

@@ -10,6 +10,8 @@ import {
   validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
 import { LandofileStandardSchema, RecipeManifestStandardSchema } from "@lando/sdk/schema/standard";
+import Ajv from "ajv";
+import Ajv2020 from "ajv/dist/2020.js";
 import {
   Effect,
   Exit,
@@ -23,6 +25,7 @@ import {
 import type { StandardSchemaV1 } from "effect/StandardSchema";
 import { expectInvalidReason } from "../../../scripts/guides/fixture-marker.ts";
 import { importableNode } from "./landofile-parity-json-schema-fixup.ts";
+import { publicationMutations } from "./landofile-parity-mutations.ts";
 
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
@@ -398,6 +401,28 @@ test("input Standard Schema and editor JSON Schema accept every classified autho
   }
   expect([...observedGaps].sort()).toEqual([...INPUT_INEXPRESSIBLE.keys()].sort());
   expect(paths.length).toBeGreaterThan(0);
+});
+
+const publishedValidators = () => {
+  const options = { strict: false, validateFormats: false };
+  return {
+    draft07: new Ajv(options).compile(getEditorJsonSchema("LandofileShape")),
+    draft2020: new Ajv2020(options).compile(getJsonSchema("LandofileAuthoringShape")),
+  };
+};
+let validators: ReturnType<typeof publishedValidators> | undefined;
+test.each(publicationMutations)("published Landofile verdict for $id", async ({ id, input, accepted }) => {
+  validators ??= publishedValidators();
+  const { draft07, draft2020 } = validators;
+  const standard = await LandofileStandardSchema["~standard"].validate(input);
+  expect(
+    {
+      standard: standard.issues === undefined,
+      editor: draft07(input),
+      authoring: draft2020(input),
+    },
+    id,
+  ).toEqual({ standard: accepted, editor: accepted, authoring: accepted });
 });
 
 test("skips non-Landofile fixture files only when a reason is listed", () => {

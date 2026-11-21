@@ -414,7 +414,7 @@ describe("schema deprecation annotations", () => {
     expect(markdown).toContain(
       "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
     );
-    expect(markdown).toContain("| `newField` | Yes | `string` | a string | — | — | — | — |");
+    expect(markdown).toContain("| `newField` | Yes | `string` | — | — | — | — | — |");
   });
 
   test("renders generated reference callouts from schema deprecation metadata", () => {
@@ -424,7 +424,7 @@ describe("schema deprecation annotations", () => {
       "> [!WARNING]\n> Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead.",
     );
     expect(markdown).toContain(
-      "| `oldField` | Yes | `string` | a string | — | — | — | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+      "| `oldField` | Yes | `string` | — | — | — | — | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
     );
   });
 

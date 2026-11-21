@@ -11,23 +11,23 @@ import { validationErrorFromCause } from "../src/validation.ts";
 const TOOLING_TASK_EXPECTATION = "Expected false, a non-empty command string, or a tooling task object";
 
 test.each([
-  [
-    "    - FOO",
-    'Landofile environment entry "FOO" must be KEY=value; host-environment interpolation is unsupported in Landofiles — use the map form (environment: { KEY: value }).',
-  ],
-  ["    - __proto__=x", 'The key "__proto__" is reserved and cannot be used in an environment map.'],
-  [
-    "    FOO: null",
-    'Landofile environment entry "FOO" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.',
-  ],
-] as const)("merges env transformation diagnostics for #2194: %s", async (value, message) => {
+  ["    - FOO", 0, /KEY=value/],
+  ["    - __proto__=x", 0, /nonreserved/],
+  ["    - =value", 0, /nonempty/],
+  ['    "": value', "", /cannot be empty/],
+  ["    FOO: null", "FOO", /concrete environment value/],
+] as const)("merges located environment diagnostics for #2194: %s", async (value, key, message) => {
   for (const [prefix, path] of [
     ["tooling:\n  task:\n    cmd: echo ok\n    env:", ["tooling", "task", "env"]],
     ["services:\n  web:\n    environment:", ["services", "web", "environment"]],
   ] as const) {
     const { result } = await lintLayers({ ".lando.yml": `name: lint-parity\n${prefix}\n  ${value}\n` });
     expect(result.violations).toEqual([
-      expect.objectContaining({ path, message, scopes: ["fragment", "effective"] }),
+      expect.objectContaining({
+        path: [...path, key],
+        message: expect.stringMatching(message),
+        scopes: ["fragment", "effective"],
+      }),
     ]);
   }
 });
@@ -58,7 +58,7 @@ test("keeps an independent sibling failure next to an invalid environment entry"
       'name: lint-parity\ntooling:\n  task:\n    cmd: echo ok\n    env:\n      - BROKEN\n      - "GOOD={{ env.LANDO_TEST_UNSET_VALUE }}"\n',
   });
   expect(result.violations).toEqual([
-    expect.objectContaining({ rule: "landofile.validation", path: ["tooling", "task", "env"] }),
+    expect.objectContaining({ rule: "landofile.validation", path: ["tooling", "task", "env", 0] }),
     expect.objectContaining({
       rule: "landofile.load",
       reason: "ConfigExpressionError",

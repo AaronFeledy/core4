@@ -1,5 +1,29 @@
 [
   {
+    "surface": "schema:AdminerServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Publish the actual environment map and list grammar. Null and bare entries were already rejected; empty names are now rejected in both forms (#2199)."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.build.anyOf",
+    "justification": "Publish the derived closed build families, rejecting unknown keys and the old authored camelCase Dockerfile alias (#2067)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.build.anyOf",
+    "justification": "Publish the derived closed build families, rejecting unknown keys and the old authored camelCase Dockerfile alias (#2067)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.build.oneOf",
+    "justification": "Derive the build input union from the codec and remove the old authored camelCase Dockerfile alias (#2067)."
+  },
+  {
     "surface": "command:app:info",
     "changeKind": "unsupported-construct",
     "path": "$.services.items.listenerAuthority.anyOf",
@@ -7046,10 +7070,10 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.events.additionalProperties",
-    "justification": "History: Reviewed plan output: EventStepPlan provenance/status/sourceIndex and step variants are unchanged; only env adds descriptors/lists with numeric/boolean coercion and literal strings preserved. Consumers discriminate _tag; raw reserved tags require authored admission rejection. Public events remain present, never waived away. Tests: app-plan, environment-value, event-step, public-schema-contracts. Current (applied-state v10): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "Compiled event steps inherit the corrected environment input grammar. Version 11 removes transient event intent from historical applied records before decoding (#2199).",
     "persistedState": {
       "store": "applied-state",
-      "version": 10
+      "version": 11
     }
   },
   {
@@ -7130,20 +7154,20 @@
     "surface": "schema:EventStepPlan",
     "changeKind": "unsupported-construct",
     "path": "$.step.anyOf",
-    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "Compiled event steps inherit the corrected environment input grammar. Version 11 removes transient event intent from historical applied records before decoding (#2199).",
     "persistedState": {
       "store": "applied-state",
-      "version": 10
+      "version": 11
     }
   },
   {
     "surface": "schema:EventsPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.additionalProperties",
-    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "Compiled event steps inherit the corrected environment input grammar. Version 11 removes transient event intent from historical applied records before decoding (#2199).",
     "persistedState": {
       "store": "applied-state",
-      "version": 10
+      "version": 11
     }
   },
   {

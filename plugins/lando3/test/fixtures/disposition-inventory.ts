@@ -1047,7 +1047,7 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
       golden: [
         output(
           service("api: 4, image: {imagefile: 'FROM nginx', args: {VERSION: bookworm}}"),
-          ["services", "s", "build", key === "args" ? "args" : "dockerfileInline"],
+          ["services", "s", "build", key === "imagefile" ? "dockerfile_inline" : key],
           key === "args" ? { VERSION: "bookworm" } : "FROM nginx",
         ),
       ],

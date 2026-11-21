@@ -156,7 +156,7 @@ export const lowerComposeFields = (
             case "normalized":
               if (buildKey !== "args") cursor.mapTo(path);
               build.set(
-                buildKey === "dockerfile_inline" ? "dockerfileInline" : buildKey,
+                buildKey,
                 buildKey === "args"
                   ? Object.fromEntries(
                       assignments(entry, path, "build-args").map(({ name, value }) => [name, value]),
@@ -166,10 +166,7 @@ export const lowerComposeFields = (
               break;
             case "preserved":
             case "unknown":
-              if (buildKey === "dockerfileInline") {
-                cursor.mapTo(path);
-                build.set(buildKey, entry);
-              } else drop(path);
+              drop(path);
               break;
             default:
               return buildDisposition satisfies never;

@@ -327,7 +327,11 @@ import {
 } from "./host-events.ts";
 import { HostTerminal } from "./host-terminal.ts";
 import { CertificateName, DomainName, HostAliasName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
-import { getJsonSchemaWithDeprecations, renderSchemaReferenceMarkdown } from "./json-schema-deprecations.ts";
+import {
+  getJsonSchemaWithDeprecations,
+  publishedFieldMetadata,
+  renderSchemaReferenceMarkdown,
+} from "./json-schema-deprecations.ts";
 import {
   repairLandofileExtensions,
   repairTemplateLiteralExtensionRecords,
@@ -2728,6 +2732,7 @@ const validateExamples = (
 export const validatePublicSchemaAnnotations = (
   registry: Record<string, PublicSchema> = publicSchemaRegistry,
   exemptions: PublicSchemaAnnotationExemptions = { fields: PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS },
+  artifacts?: ReadonlyMap<string, unknown>,
 ): ReadonlyArray<PublicSchemaAnnotationIssue> => {
   const issues: PublicSchemaAnnotationIssue[] = [];
   for (const [schemaName, schema] of Object.entries(registry)) {
@@ -2752,10 +2757,31 @@ export const validatePublicSchemaAnnotations = (
 
     issues.push(...validateExamples(schemaName, schemaName, schema));
 
+    const encodedFields = propertySignatures(AST.toEncoded(schema.ast));
     for (const property of propertySignatures(schema.ast)) {
       const name = fieldName(property.name);
       const fieldPath = `${schemaName}.${name}`;
       issues.push(...validateExamples(schemaName, fieldPath, schemaFromAst(property.type)));
+      const encodedField = encodedFields.find(({ name: key }) => key === property.name);
+      const encoded = encodedField?.type;
+      const declaredDefault = encoded?.context?.annotations?.default;
+      if (
+        declaredDefault !== undefined &&
+        (encoded?.context?.annotations?.description !== undefined || hasUsefulFieldDescription(property))
+      ) {
+        const published = publishedFieldMetadata(schema, name, artifacts?.get(schemaName));
+        if (
+          published.description === undefined ||
+          published.defaults.length === 0 ||
+          !published.defaults.every((value) => JSON.stringify(value) === JSON.stringify(declaredDefault))
+        ) {
+          issues.push({
+            schema: schemaName,
+            path: fieldPath,
+            message: "The published field must retain its declared default and description.",
+          });
+        }
+      }
       if (
         !hasUsefulFieldDescription(property) &&
         !inheritsLandofileFieldDescription(schemaName, property.name) &&
@@ -2784,8 +2810,9 @@ export const validatePublicSchemaAnnotations = (
 export const assertPublicSchemaAnnotations = (
   registry: Record<string, PublicSchema> = publicSchemaRegistry,
   exemptions?: PublicSchemaAnnotationExemptions,
+  artifacts?: ReadonlyMap<string, unknown>,
 ): void => {
-  const issues = validatePublicSchemaAnnotations(registry, exemptions);
+  const issues = validatePublicSchemaAnnotations(registry, exemptions, artifacts);
   if (issues.length === 0) return;
   const lines = issues.map((issue) => `- ${issue.path}: ${issue.message}`);
   throw new Error(`Public schema annotation gate failed:\n${lines.join("\n")}`);

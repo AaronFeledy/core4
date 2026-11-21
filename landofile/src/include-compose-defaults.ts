@@ -76,9 +76,7 @@ export const composeIncludeDefaults = (
       const implicitContext =
         localRoots !== undefined &&
         plain.context === undefined &&
-        ["dockerfile", "dockerfile_inline", "dockerfileInline", "args", "target"].some(
-          (key) => plain[key] !== undefined,
-        );
+        ["dockerfile", "dockerfile_inline", "args", "target"].some((key) => plain[key] !== undefined);
       return mapFields(implicitContext ? { ...plain, context: "." } : plain, { context: path });
     });
   const fileDefinitions = (value: unknown) =>

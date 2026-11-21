@@ -15,7 +15,7 @@ const structuralChecks = (checks: AST.Checks | undefined): AST.Checks | undefine
   return first === undefined ? undefined : [first, ...rest];
 };
 
-const droppedWireAnnotations = ["jsonSchemaProjection", "acceptsImportRef"] as const;
+const droppedWireAnnotations = ["acceptsImportRef"] as const;
 
 const withoutJsonSchemaProjection = (annotations: AST.AST["annotations"]): AST.AST["annotations"] => {
   if (annotations === undefined || !droppedWireAnnotations.some((key) => annotations[key] !== undefined)) {
@@ -156,6 +156,9 @@ const propertyNameChecks = (check: AST.Check<unknown>): ReadonlyArray<AST.Check<
     case "FilterGroup":
       return check.checks.flatMap(propertyNameChecks);
     case "Filter": {
+      if (check.annotations?.["lando/authoring-key-presence"] === true) {
+        return [check.annotate({ "~structural": true })];
+      }
       const output = check.annotations?.toJsonSchema?.({ type: "object", schemas: [] });
       const projection = Array.isArray(output) ? output[0] : output;
       return projection !== null &&
@@ -172,8 +175,17 @@ const propertyNameChecks = (check: AST.Check<unknown>): ReadonlyArray<AST.Check<
 
 export const authoringJsonContainer = (source: AST.AST, runtime: AST.AST): AST.AST | undefined => {
   const [first, ...rest] = (source.checks ?? []).flatMap(propertyNameChecks);
-  if (first?._tag === "Filter" && first.annotations?.["lando/indexed-property-names"] === true) {
-    return propertyNameCheckedRecord(Schema.make<Schema.Codec<unknown>>(runtime), first).ast;
+  const indexed = [first, ...rest].find(
+    (check) => check?.annotations?.["lando/indexed-property-names"] === true,
+  );
+  if (indexed?._tag === "Filter") {
+    const schema = Schema.make<Schema.Codec<unknown>>(runtime);
+    const [check, ...others] =
+      first === indexed
+        ? rest
+        : [...(first === undefined ? [] : [first]), ...rest.filter((check) => check !== indexed)];
+    return propertyNameCheckedRecord(check === undefined ? schema : schema.check(check, ...others), indexed)
+      .ast;
   }
   const keyChecks: AST.Checks | undefined = first === undefined ? undefined : [first, ...rest];
   const container =

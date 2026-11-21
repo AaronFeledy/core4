@@ -64,13 +64,17 @@ const FileLogSource = Schema.Struct({
     description: "How Lando reifies the declared source: build-time redirect or runtime follower.",
   }),
   /** When true, an unavailable source fails planning instead of degrading. */
-  required: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
-    description: "Whether an unavailable source fails planning instead of degrading.",
-  }),
+  required: Schema.Boolean.pipe(
+    withDefaultKey(false, {
+      description: "Whether an unavailable source fails planning instead of degrading.",
+    }),
+  ),
   /** When true, lines carry parseable leading timestamps, enabling `--since`. */
-  timestamps: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
-    description: "Whether lines carry parseable leading timestamps so `--since` filtering can apply.",
-  }),
+  timestamps: Schema.Boolean.pipe(
+    withDefaultKey(false, {
+      description: "Whether lines carry parseable leading timestamps so `--since` filtering can apply.",
+    }),
+  ),
 });
 /** Runtime sources include real files and pathless native console aliases. */
 export const LogSource = Schema.Union([

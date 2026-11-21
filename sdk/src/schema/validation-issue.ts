@@ -13,7 +13,12 @@ import {
 } from "./validation-issue-projection.ts";
 import { ValidationIssue, type ValidationIssuePath } from "./validation-issue-schema.ts";
 import { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
-import { diagnosticUnionCandidates, selectByKeyPresence, unionValueMessage } from "./validation-union.ts";
+import {
+  diagnosticUnionCandidates,
+  selectByContainer,
+  selectByKeyPresence,
+  unionValueMessage,
+} from "./validation-union.ts";
 
 export { ValidationIssue, ValidationIssuePath, ValidationIssueSource } from "./validation-issue-schema.ts";
 export { closestKeys, suggestionForUnknownKey } from "./validation-key-suggestion.ts";
@@ -152,15 +157,18 @@ export const schemaIssueLeaves = (
     case "Composite":
       return distinctLeaves(issue.issues.flatMap(walk));
     case "AnyOf": {
+      const input =
+        options !== undefined && Object.hasOwn(options, "input") ? valueAt(options.input, path) : issue.input;
+      const shapeCandidates = selectByContainer(issue.issues, input);
       const value = directiveValue(issue.ast);
       if (value !== undefined) {
         const directives = issue.issues.filter(directiveIssue);
         if (directives.length > 0) return directives.flatMap(directivePayloadIssues).flatMap(walk);
-        const children = issue.issues.filter((child) => !authoringNonCandidate(child));
+        const children = shapeCandidates.filter((child) => !authoringNonCandidate(child));
         return children.length === 0 ? walk(expectationIssue(value, issue)) : children.flatMap(walk);
       }
       if (authoringSource(issue.ast) !== undefined) {
-        const children = issue.issues.filter((child) => !authoringNonCandidate(child));
+        const children = shapeCandidates.filter((child) => !authoringNonCandidate(child));
         const candidates = diagnosticUnionCandidates(issue.ast, children);
         const message = unionValueMessage(issue.ast, candidates);
         if (message !== undefined) return [{ _tag: "Type", path, message, ...classification }];
@@ -179,9 +187,9 @@ export const schemaIssueLeaves = (
               ),
             );
       }
-      const message = unionValueMessage(issue.ast, issue.issues);
+      const message = unionValueMessage(issue.ast, shapeCandidates);
       if (message !== undefined) return [{ _tag: "Type", path, message, ...classification }];
-      if (issue.issues.length > 0) return unionLeaves(issue.issues);
+      if (shapeCandidates.length > 0) return unionLeaves(shapeCandidates);
       break;
     }
     case "InvalidType":

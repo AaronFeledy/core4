@@ -1,4 +1,5 @@
-import { type SchemaAST as AST, Effect, Result, Schema } from "effect";
+import { type SchemaAST as AST, Result, Schema } from "effect";
+import { withDefaultKey } from "./default-key.ts";
 import { SEMVER_CORE_PATTERN, patternString } from "./string-forms.ts";
 
 type Semver = {
@@ -117,7 +118,9 @@ const DEPRECATION_NOTICE_JSON_SCHEMA = {
 export const DeprecationNoticeJsonShape = Schema.Struct({
   since: SemverString,
   removeIn: Schema.optionalKey(SemverString),
-  severity: DeprecationSeverity.pipe(Schema.withDecodingDefaultKey(Effect.succeed("warn" as const))),
+  severity: DeprecationSeverity.pipe(
+    withDefaultKey("warn", { description: "Severity of the deprecation notice." }),
+  ),
   replacement: Schema.optionalKey(Schema.String),
   note: Schema.String,
   docsUrl: Schema.optionalKey(OptionalHttpUrl),

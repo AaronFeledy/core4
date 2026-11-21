@@ -1,6 +1,6 @@
-import { Effect, Result, Schema } from "effect";
-
+import { Result, Schema } from "effect";
 import { NotImplementedError } from "../../errors/index.ts";
+import { withDefaultKey } from "../../schema/default-key.ts";
 import { KEBAB_CASE_ID_PATTERN, patternString } from "../../schema/string-forms.ts";
 import { GuideSkip, GuideTimeout } from "../guide-execution-fields.ts";
 import { GuideFrontmatter, GuideId } from "../guide-frontmatter.ts";
@@ -118,7 +118,9 @@ export type GuideProps = typeof GuideProps.Type;
 
 export const ScenarioProps = Schema.Struct({
   id: ComponentId,
-  render: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),
+  render: Schema.Boolean.pipe(
+    withDefaultKey(true, { description: "Include the scenario in the rendered guide." }),
+  ),
   reason: Schema.optionalKey(Schema.String),
   tags: Schema.optionalKey(Schema.Array(Schema.String)),
   layer: Schema.optionalKey(Schema.Literals(["scenario", "e2e"])),
@@ -357,7 +359,7 @@ export type TabProps = typeof TabProps.Type;
 
 export const InlineProps = Schema.Struct({
   code: Schema.String,
-  lang: Schema.String.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "ts"))),
+  lang: Schema.String.pipe(withDefaultKey("ts", { description: "Language used to highlight inline code." })),
   justification: explanationText,
 }).annotate({
   identifier: "InlineProps",

@@ -189,7 +189,7 @@ describe("Compose field lowering", () => {
       build: {
         context: ".",
         dockerfile: "Dockerfile.dev",
-        dockerfileInline: "FROM scratch",
+        dockerfile_inline: "FROM scratch",
         args: { A: "1" },
         target: "dev",
       },
