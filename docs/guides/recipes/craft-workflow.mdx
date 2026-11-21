@@ -193,13 +193,14 @@ lando db:restore before-update --yes
       <Run command={`lando app:config:set tooling.craft '{"service":"appserver","cmds":["php craft"],"wrapper":true,"description":"Run the Craft CLI inside the appserver service."}' --type json`} />
       <Run command={`lando app:config:set services.appserver.environment.PRIMARY_SITE_URL '{{ service.url }}'`} />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Verify command="lando exec appserver -- printenv PRIMARY_SITE_URL" expect={{ stdout: { regex: "^https://craft-demo\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
     </Step>
     <Step name="install">
       <Run command={`lando create-project craftcms/craft "^5" --no-scripts`} />
       <Run command={`lando exec appserver -- sh -c 'mv composer.json.default composer.json && cp .env.example.dev .env'`} />
       <Run command="lando craft setup/db-creds --driver=mysql --server=database --port=3306 --user=lando --password=lando --database=craft-demo --interactive=0" />
       <Run command={`lando exec appserver -- sh -c 'php craft install --email=admin@example.com --username=admin --password="$1" --site-name=Craft --site-url="$PRIMARY_SITE_URL" --language=en --interactive=0' craft-install Aa1-craft-e2e-only`} />
-      <Verify command={`lando exec appserver -- sh -c 'test -n "$PRIMARY_SITE_URL" && grep -Fxq "PRIMARY_SITE_URL=$PRIMARY_SITE_URL" .env'`} />
+      <Verify command={`lando exec appserver -- sh -c 'test -n "$PRIMARY_SITE_URL" && grep -Fxq -e "PRIMARY_SITE_URL=$PRIMARY_SITE_URL" -e "PRIMARY_SITE_URL=\${PRIMARY_SITE_URL%/}/" .env'`} />
     </Step>
     <Step name="ownership">
       <Verify command={`lando exec appserver -- sh -c 'test "$(stat -c %u .env)" = "$(stat -c %u .lando.yml)" && test "$(stat -c %u storage/runtime)" = "$(stat -c %u .lando.yml)"'`} />
@@ -226,7 +227,7 @@ lando db:restore before-update --yes
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y --purge" />
+      <Run command="lando destroy -y --purge --format=json" />
     </Step>
   </Scenario>
 </Guide>
