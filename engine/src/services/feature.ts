@@ -1,7 +1,11 @@
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import type { EndpointPlan, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import { DependencyEnvironmentIntent, landoServiceStoreName, normalizeAppSlug } from "@lando/sdk/schema";
-import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
+import type {
+  LauncherCommandOptions,
+  ServiceFeatureContext,
+  ServiceFeatureDefinition,
+} from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { AUTHORED_BUILD_STEP_PREFIX, isAuthoredBuildStep } from "../planner/authored-build-step.ts";
 
@@ -39,11 +43,19 @@ export interface ComposeServiceInput {
   readonly features: ReadonlyArray<ComposeServiceFeature>;
 }
 
+export interface ExtraArgsLauncher extends LauncherCommandOptions {
+  readonly command: readonly string[];
+  readonly entrypoint?: NonNullable<ServicePlan["entrypoint"]>;
+}
+
 const makeContext = (
   input: PreparedServiceComposition["facts"],
   draft: DraftServicePlan,
   config: Readonly<Record<string, unknown>>,
-  dependencyEnvironments: DependencyEnvironmentIntent[],
+  contributions: {
+    readonly dependencyEnvironments: DependencyEnvironmentIntent[];
+    readonly markLauncher: (command: readonly string[], options: LauncherCommandOptions) => void;
+  },
 ): ServiceFeatureContext => ({
   serviceName: draft.name,
   serviceType: draft.type,
@@ -58,7 +70,7 @@ const makeContext = (
   connection: draft.connection,
   config,
   addDependencyEnvironment: (intent) => {
-    dependencyEnvironments.push(intent);
+    contributions.dependencyEnvironments.push(intent);
   },
   serviceStoreName: (role) =>
     landoServiceStoreName(
@@ -112,8 +124,10 @@ const makeContext = (
   setEntrypoint: (entrypoint) => {
     draft.entrypoint = Array.isArray(entrypoint) ? [...entrypoint] : entrypoint;
   },
-  setCommand: (command) => {
+  setCommand: (command, options) => {
     draft.command = Array.isArray(command) ? [...command] : command;
+    if (options !== undefined && typeof command !== "string")
+      contributions.markLauncher([...command], options);
   },
   setInit: (init) => {
     draft.init = init;
@@ -134,12 +148,14 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
   readonly endpointContributions: readonly EndpointPlan[];
   readonly applicationConfigs: ReadonlyMap<number, ApplicationConfig>;
   readonly authoredMounts?: ServiceFeatureContext["authoredMounts"];
+  readonly launcherFeatures?: ReadonlySet<string>;
 }): Effect.fn.Return<
   {
     readonly plan: ServicePlan;
     readonly endpointContributions: readonly EndpointPlan[];
     readonly featureIds: readonly string[];
     readonly dependencyEnvironments: readonly DependencyEnvironmentIntent[];
+    readonly extraArgsLauncher: ExtraArgsLauncher | undefined;
   },
   ServiceFeatureError
 > {
@@ -149,6 +165,7 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
   };
   const draft = makeDraft({ ...facts.base, defaultFeatures: [] });
   const dependencyEnvironments: DependencyEnvironmentIntent[] = [];
+  let extraArgsLauncher: ExtraArgsLauncher | undefined;
   if (facts.baseKind === "lando") draft.init = true;
   const orderedFeatures = input.prepared.features;
   draft.featureIds = orderedFeatures.map((feature) => feature.id);
@@ -165,7 +182,21 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
         );
         const firstStep = draft.buildSteps.length;
         const firstIntent = dependencyEnvironments.length;
-        yield* feature.definition.apply(makeContext(facts, draft, config, dependencyEnvironments));
+        let launcher: Omit<ExtraArgsLauncher, "entrypoint"> | undefined;
+        yield* feature.definition.apply(
+          makeContext(facts, draft, config, {
+            dependencyEnvironments,
+            markLauncher: (command, options) => {
+              if (input.launcherFeatures?.has(feature.id))
+                launcher = { command, extraArgs: options.extraArgs };
+            },
+          }),
+        );
+        if (launcher !== undefined)
+          extraArgsLauncher ??= {
+            ...launcher,
+            ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
+          };
         if (
           dependencyEnvironments
             .slice(firstIntent)
@@ -194,7 +225,13 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
   if (facts.normalizedConfig.init !== undefined) draft.init = facts.normalizedConfig.init;
   const finalized = finalizeDraft(draft);
   if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
-  return { plan: finalized, endpointContributions, featureIds: draft.featureIds, dependencyEnvironments };
+  return {
+    plan: finalized,
+    endpointContributions,
+    featureIds: draft.featureIds,
+    dependencyEnvironments,
+    extraArgsLauncher,
+  };
 });
 
 export const composeServiceWithContributions = Effect.fn("ServiceFeature.composeServiceWithContributions")(

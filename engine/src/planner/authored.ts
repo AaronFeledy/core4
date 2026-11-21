@@ -25,6 +25,7 @@ import {
   serviceFeatureExtension,
   toAppFeatureDraft,
 } from "./extensions.ts";
+import { appendExtraArgs } from "./extra-args.ts";
 import { serviceHomeIntent } from "./home.ts";
 import { servicePullPolicy } from "./pull-policy.ts";
 import { type PlannedServiceDraft, type ResolvedService, servicePlanError } from "./service-types.ts";
@@ -89,6 +90,7 @@ export const applyAuthoredSqlite = Effect.fnUntraced(function* (
 export { applyAuthoredDependencies } from "../services/authored-dependencies.ts";
 
 export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* (input: {
+  readonly landofilePath?: string;
   readonly resolvedServices: ReadonlyArray<ResolvedService>;
   readonly mountContext: Omit<MountAuthoringContext, "serviceName">;
 }): Effect.fn.Return<ReadonlyArray<PlannedServiceDraft>, LandofileValidationError> {
@@ -119,6 +121,9 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       endpointContributions,
       applicationConfigs,
       authoredMounts: mounts.mounts,
+      ...(service.extraArgs?.length
+        ? { launcherFeatures: new Set(resolution.features.map((feature) => feature.id)) }
+        : {}),
     }).pipe(
       mapFailures((error) =>
         servicePlanError({
@@ -128,8 +133,19 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
         }),
       ),
     );
+    const extraArgsProcess = yield* appendExtraArgs({
+      location: { name, file: input.landofilePath ?? appRoot },
+      config: service,
+      type: serviceType,
+      process: composition.plan,
+      launcher: composition.extraArgsLauncher,
+    });
+    const processPlan =
+      extraArgsProcess === undefined
+        ? composition.plan
+        : { ...composition.plan, command: extraArgsProcess.command };
     const authoredServicePlanWithoutLabels = applyAuthoredDependencies(
-      yield* applyAuthoredSqlite(applyAuthoredHealthcheck(composition.plan, service), service, appRoot),
+      yield* applyAuthoredSqlite(applyAuthoredHealthcheck(processPlan, service), service, appRoot),
       service,
     );
     const authoredServicePlan = mergeComposeKnobs(
@@ -173,6 +189,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
           };
     plannedServiceDrafts.push({
       name,
+      ...(extraArgsProcess === undefined ? {} : { extraArgsProcess }),
       dependencyEnvironments: composition.dependencyEnvironments,
       authoredStorage: service.storage,
       hostnames: service.hostnames ?? [],

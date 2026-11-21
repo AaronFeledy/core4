@@ -16,6 +16,7 @@ import { isComposeBuild } from "../services/compose-build-artifact.ts";
 import { normalizeConnectionClients } from "../services/connection-client-resolution.ts";
 import { type UserAppDefaults, withUserAppDefaults } from "./app-defaults.ts";
 import { loadServiceEnvFiles, type loadTopLevelEnvFiles } from "./env-files.ts";
+import { authoredExtraArgsConflict } from "./extra-args.ts";
 import { type DeferredExpressionSites, materializeServiceScopeSites } from "./landofile-scopes.ts";
 import { lowerLauncher } from "./launchers.ts";
 import { loadAuthorizedServiceProjectFiles } from "./node-authoring.ts";
@@ -87,6 +88,8 @@ export const resolveSeed = Effect.fnUntraced(function* (
   );
   const { pluginRegistry, fileSystem, appRoot, appName, appDefaults, registeredServiceTypeIds } = input;
   const serviceTypeId = serviceTypeFor(name, scopedService, registeredServiceTypeIds);
+  const extraArgsConflict = authoredExtraArgsConflict({ name, file: input.landofilePath }, scopedService);
+  if (extraArgsConflict !== undefined) return yield* extraArgsConflict;
   const { image, build } = scopedService;
   if (image !== undefined && build !== undefined && isComposeBuild(build)) {
     return yield* Effect.fail(

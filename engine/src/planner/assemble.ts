@@ -81,6 +81,7 @@ import { attachResolutionTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { environmentCacheInput } from "./environment-cache-input.ts";
 import { type ResolvedLandofile, resolveKnownEventSet } from "./event-set.ts";
+import { verifyComposedExtraArgs } from "./extra-args.ts";
 import { attributePlanningFailure } from "./failure-attribution.ts";
 import { fileSyncCacheInput } from "./file-sync-cache-input.ts";
 import { checkHostEventsShell } from "./host-shell-issues.ts";
@@ -433,6 +434,7 @@ function* assemblePlan(
   }
 
   const plannedServiceDrafts = yield* planServiceDrafts({
+    landofilePath,
     resolvedServices,
     mountContext: {
       appRoot,
@@ -565,6 +567,7 @@ function* assemblePlan(
     effectiveEventsFor(finalized.services),
   );
   yield* assertComposeKnobsSupported(capabilityContext, plan.services);
+  yield* verifyComposedExtraArgs(plannedServiceDrafts, plan.services, landofilePath);
   yield* assertServiceInitSupported(provider, providerCapabilities, plan.services);
   yield* assertAuthoredNetworksSupported(provider, providerCapabilities, plan.networking);
   yield* validateServiceProbes(plan);
