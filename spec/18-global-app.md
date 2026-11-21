@@ -292,7 +292,7 @@ Alternative `RouterService` implementations MAY avoid `GlobalAppService`. Select
 
 #### 20.11.1 `@lando/service-mailpit` (canonical reference)
 
-Bundled Mailpit and the SSH sidecar use functional startup checks. Mailpit uses its image's `/mailpit readyz` command; this is in-container readiness, not proof of cross-app SMTP or router reachability. The SSH sidecar uses the identities response check in §10.4, which proves the agent replies but does not require a particular key. Services without enabled command readiness retain process settling under §6.7.
+Bundled Mailpit and the SSH sidecar use functional startup checks. Mailpit uses its image's `/mailpit readyz` command; this is in-container readiness, not proof of cross-app SMTP or router reachability. The SSH sidecar uses the identities response check in §10.4, which proves the agent replies but does not require a particular key. Services without an enabled readiness probe retain process settling under §6.7.
 
 The bundled `@lando/service-mailpit` plugin is the reference pairing of a `ServiceType`, enabled `globalServices: mailpit` contribution, `AppFeature.requires.globalServices`, and plugin-owned tooling commands. Its feature projects Mailpit connection values into selected user services without requiring user Landofile changes. Its web route is `mailpit.{{ proxy.defaultDomain }}`, resolved during global planning; a domain change moves it when global routes are next published (§20.6.5).
 

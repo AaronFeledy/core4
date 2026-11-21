@@ -43,7 +43,6 @@ import { endpointValidationError, normalizeEndpointFacts } from "../services/end
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
 import { isAuthoredBuildStep } from "./authored-build-step.ts";
-import { missingCapability } from "./compose-capabilities.ts";
 import { dataTreeOwnershipStep, projectUserVolumeTrees, resolveDataTreeOwnership } from "./data-tree.ts";
 import { createDependencyEnvironments } from "./dependency-environments.ts";
 import { endpointsForRoutes, resolveRoute } from "./endpoint-routes.ts";
@@ -520,19 +519,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       published: servicePlanWithRoutes.endpoints.some((endpoint) => endpoint.kind === "published"),
     });
     if (publicationError !== undefined) yield* Effect.fail(publicationError);
-
-    const healthcheck = servicePlanWithRoutes.healthcheck;
-    if (healthcheck !== undefined && healthcheck.kind !== "command" && healthcheck.kind !== "none") {
-      yield* Effect.fail(
-        missingCapability(
-          input.provider,
-          name,
-          `healthcheck kind ${healthcheck.kind}`,
-          "serviceHealth",
-          `Healthcheck for service ${name} uses kind: ${healthcheck.kind}, but only kind: command is supported (executed via the provider's exec channel). Author healthcheck as kind: command or remove it.`,
-        ),
-      );
-    }
 
     serviceHostnames[name] = hostnames;
     environments.consumers.set(name, servicePlanWithRoutes);

@@ -1,0 +1,46 @@
+name: wait-http-tcp
+router:
+  enabled: false
+services:
+  web:
+    type: compose
+    image: docker.io/library/busybox:1.37
+    appMount: false
+    home: false
+    command:
+      - sh
+      - -c
+      - echo ok >/tmp/index.html && exec httpd -f -p 8080 -h /tmp
+    readiness:
+      kind: http
+      url: http://127.0.0.1:8080/
+      intervalSeconds: 1
+      timeoutSeconds: 2
+      retries: 20
+    healthcheck:
+      kind: tcp
+      port: 8080
+      intervalSeconds: 1
+      timeoutSeconds: 2
+      retries: 3
+  cache:
+    type: compose
+    image: docker.io/library/busybox:1.37
+    appMount: false
+    home: false
+    depends_on:
+      web:
+        condition: service_healthy
+    command:
+      - httpd
+      - -f
+      - -p
+      - "6379"
+      - -h
+      - /tmp
+    readiness:
+      kind: tcp
+      port: 6379
+      intervalSeconds: 1
+      timeoutSeconds: 2
+      retries: 20

@@ -1,7 +1,6 @@
 ---
 id: xhprof-xhgui
 provider: test
-timeout: 90000
 tags: [docs, php, tooling, profiling, xhprof, xhgui, postgres]
 ---
 
@@ -241,6 +240,40 @@ These checks exercise the declared services and tooling, with the large-profile 
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="profile-and-import" layer="e2e" timeout={600000} render={false} reason="Profile real requests, then prove the stock 413 and the raised limits across a restart">
+    <Step name="scaffold">
+      <UseFixture name="xhprof-demo" />
+    </Step>
+    <Step name="profile">
+      <Run command="lando app:config:unset services.xhgui.mounts" />
+      <Run command="lando start" />
+      <Verify command="lando exec app -- php -m" expect={{ stdout: { regex: "\\bcurl\\b[\\s\\S]*\\bxhprof\\b" } }} />
+      <Run command="lando composer require perftools/php-profiler:1.4.2" />
+      <Verify command="lando exec app -- curl -fsS http://localhost/" expect={{ stdout: { regex: "fib[(]25[)] = 75025" } }} />
+      <Verify command={`lando exec xhgui -- sh -c 'wget -qO- "http://127.0.0.1/$(wget -qO- http://127.0.0.1/ | grep -o "run/view?id=[0-9a-f]*" | head -n 1)"'`} expect={{ stdout: { regex: "\\bfib\\b" } }} />
+    </Step>
+    <Step name="stock-limits">
+      <Run command={`lando exec app -- curl -s "http://localhost/big.php?n=120000"`} />
+      <Verify command="lando exec xhgui -- wget -qO- http://127.0.0.1/" expect={{ stdout: { not: { regex: "big[.]php" } } }} />
+      <Verify command="lando logs -s xhgui" expect={{ stdout: { regex: "client intended to send too large body" } }} />
+      <Verify command="lando exec xhgui -- cat /etc/nginx/http.d/default.conf" expect={{ stdout: { regex: "client_max_body_size 5M;" } }} />
+      <Verify command={`lando exec app -- sh -c 'head -c 6000000 /dev/zero | curl -s -o /dev/null -w "%{http_code}" --data-binary @- http://xhgui/run/import'`} expect={{ stdout: { regex: "^413$" } }} />
+    </Step>
+    <Step name="raised-limits">
+      <Run command={`lando app:config:set services.xhgui.mounts '[{"source":"./xhgui-nginx.conf","target":"/etc/nginx/http.d/default.conf","readOnly":true},{"source":"./xhgui-php.ini","target":"/etc/php83/conf.d/zz-xhgui.ini","readOnly":true}]' --type json`} />
+      <Run command="lando restart" />
+      <Verify command="lando exec xhgui -- nginx -T" expect={{ stdout: { regex: "client_max_body_size 100M;" } }} />
+      <Verify command="lando exec xhgui -- php-fpm -i" expect={{ stdout: { regex: "zz-xhgui[.]ini[\\s\\S]*memory_limit => -1[\\s\\S]*post_max_size => 100M" } }} />
+      <Run command={`lando exec app -- curl -s "http://localhost/big.php?n=120000"`} />
+      <Verify command="lando exec xhgui -- wget -qO- http://127.0.0.1/" expect={{ stdout: { regex: "big[.]php[?]n=120000" } }} />
+      <Run command="lando logs -s xhgui" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 </Guide>

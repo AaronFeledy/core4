@@ -43,6 +43,7 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - Harness placeholders shown as captured output: `expected exit 0`, `event "…" observed`, `command output`
 - User told to start Traefik by hand
 - Feature stubbed as unavailable when the product does the thing
+- A workaround for Lando behavior that no open issue reproduces on current `main`. Reproduce the failure in an isolated temp app first. If it reproduces, link the issue and add a hidden tripwire step. If it does not, drop the workaround
 - Default provider implied as Docker. Default is `lando` (managed Podman)
 - User page leaks CI/NDJSON/`LANDO_TEST_*`/job names
 - More than one dominant Diátaxis type on a content page (tutorial / how-to / reference / explanation). A landing page or README may route to several forms
@@ -51,6 +52,7 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - On how-to and tutorial pages only: heading that does not name the action or the command
 - Install, start, or config with no verify command (how-to / tutorial)
 - A guide teaches an app install that no `layer="e2e"` scenario runs anywhere in the docs tree (`guide.install.e2e-coverage`)
+- A guide shows a container command in a prose shell fence that no e2e step on the same page runs with the same argv, and the fence has no waiver (`guide.container-command.e2e-coverage`). Do not add baseline entries
 - Copied Lando 3 product facts (recipes-as-the-product, Drupal 9 first-app, Docker-as-default, start Traefik)
 
 ## Before you write

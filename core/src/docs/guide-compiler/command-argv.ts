@@ -50,6 +50,11 @@ const SHELL_SYNTAX = new Set([
 const WORD_START_SYNTAX = new Set(["~", "#"]);
 // Inside double quotes a backslash escapes only these; it is literal before anything else.
 const DOUBLE_QUOTE_ESCAPES = new Set(["$", "`", '"', "\\", "\n"]);
+const DOLLAR_EXPANSION_START = /[A-Za-z0-9_{(*@#?$!-]/;
+// Longest first. In particular, the ampersand in 2>&1 is not a list boundary.
+const PROSE_OPERATOR = /&&|\|\||&>>|&>|<<-|<<<|<<|>>|<>|>\||[<>]&|\|&|[;\n|<>&]/y;
+const ANGLE_WORD = /<[A-Za-z][A-Za-z0-9_-]*>(?=$|[\s;|&/])/y;
+type ProseBoundary = (operator: string, start: number, end: number) => void;
 
 const describe = (
   command: string,
@@ -70,23 +75,14 @@ const describe = (
   }
 };
 
-/**
- * Splits a guide command into the argv a POSIX shell gives it, without running a shell.
- * Words are separated by unquoted spaces and tabs and may concatenate quoted and unquoted
- * parts. Single quotes are literal, double quotes honor the POSIX backslash escapes, an
- * unquoted backslash escapes the next character, a backslash-newline is removed, and quoted
- * empty strings are kept. Anything a shell would interpret (command separators, operators,
- * redirections, `$` or backtick substitution, globs, braces, `!`, and a word-initial `~` or
- * `#`) is rejected unless quoted or escaped, as are a leading `NAME=value` assignment and an
- * empty command, so the argv matches what a reader gets by pasting the command into bash, zsh,
- * or another POSIX-style shell.
- */
-export const guideCommandArgv = (
+const scanCommand = (
   command: string,
-): Result.Result<ReadonlyArray<string>, GuideCommandSyntaxError> => {
+  boundary?: ProseBoundary,
+): Result.Result<readonly string[], GuideCommandSyntaxError> => {
   const argv: string[] = [];
   let word = "";
   let inWord = false;
+  let wordStart = 0;
   let index = 0;
   const fail = (reason: GuideCommandSyntaxError["reason"], at: number) => {
     const character = command[at] ?? "";
@@ -102,7 +98,7 @@ export const guideCommandArgv = (
     );
   };
   // A leading unquoted NAME=value word is an environment assignment, not the command.
-  const assignment = /^[ \t]*[A-Za-z_][A-Za-z0-9_]*=/.exec(command);
+  const assignment = boundary === undefined ? /^[ \t]*[A-Za-z_][A-Za-z0-9_]*=/.exec(command) : null;
   if (assignment !== null) return fail("shell-syntax", assignment[0].length - 1);
   while (index < command.length) {
     const char = command.charAt(index);
@@ -116,6 +112,32 @@ export const guideCommandArgv = (
       inWord = false;
       index += 1;
       continue;
+    }
+    if (!inWord) wordStart = index;
+    if (boundary !== undefined) {
+      if (char === "#" && !inWord) {
+        const newline = command.indexOf("\n", index);
+        boundary("#", index, index + 1);
+        index = newline === -1 ? command.length : newline;
+        continue;
+      }
+      ANGLE_WORD.lastIndex = index;
+      if (char === "<" && (!inWord || /[=/]$/.test(word)) && ANGLE_WORD.test(command)) {
+        word += command.slice(index, ANGLE_WORD.lastIndex);
+        inWord = true;
+        index = ANGLE_WORD.lastIndex;
+        continue;
+      }
+      PROSE_OPERATOR.lastIndex = index;
+      const operator = PROSE_OPERATOR.exec(command)?.[0];
+      if (operator !== undefined) {
+        const fd = /^[<>]/.test(operator) && /^[0-9]+$/.test(command.slice(wordStart, index));
+        boundary(operator, fd ? wordStart : index, PROSE_OPERATOR.lastIndex);
+        index = PROSE_OPERATOR.lastIndex;
+        word = "";
+        inWord = false;
+        continue;
+      }
     }
     if (char === "'") {
       const close = command.indexOf("'", index + 1);
@@ -147,7 +169,9 @@ export const guideCommandArgv = (
             continue;
           }
         }
-        if (inner === "$" || inner === "`" || inner === "\0") return fail("shell-syntax", index);
+        const expands = inner === "$" && DOLLAR_EXPANSION_START.test(command[index + 1] ?? "");
+        if (boundary === undefined && (expands || inner === "`" || inner === "\0"))
+          return fail("shell-syntax", index);
         word += inner;
         index += 1;
       }
@@ -164,7 +188,7 @@ export const guideCommandArgv = (
       index += 2;
       continue;
     }
-    if (SHELL_SYNTAX.has(char) || (!inWord && WORD_START_SYNTAX.has(char))) {
+    if (boundary === undefined && (SHELL_SYNTAX.has(char) || (!inWord && WORD_START_SYNTAX.has(char)))) {
       return fail("shell-syntax", index);
     }
     word += char;
@@ -173,4 +197,36 @@ export const guideCommandArgv = (
   }
   if (inWord) argv.push(word);
   return argv.length === 0 ? fail("empty-command", 0) : Result.succeed(argv);
+};
+
+export const guideCommandArgv = (
+  command: string,
+): Result.Result<readonly string[], GuideCommandSyntaxError> => scanCommand(command);
+
+/** Read each list member's literal argv up to its first pipe, redirect, or comment. */
+export const guideProseCommandArgvs = (source: string): readonly (readonly string[])[] => {
+  const commands: (readonly string[])[] = [];
+  let from = 0;
+  let stop: number | undefined;
+  const collect = (end: number) => {
+    const parsed = guideCommandArgv(source.slice(from, stop ?? end));
+    if (Result.isSuccess(parsed)) commands.push(parsed.success);
+  };
+  scanCommand(source, (operator, start, end) => {
+    switch (operator) {
+      case "&&":
+      case "||":
+      case ";":
+      case "\n":
+      case "&":
+        collect(start);
+        from = end;
+        stop = undefined;
+        break;
+      default:
+        stop ??= start;
+    }
+  });
+  collect(source.length);
+  return commands;
 };

@@ -993,6 +993,30 @@
     "justification": "Reviewed #1473 shared probe input: target/user metadata is available to explicit readiness; native health rejects host or explicit-user overrides rather than changing monitoring. Disabled metadata survives role validation. Timings now require nonnegative interval/grace, positive timeout and integer retry budgets; malformed values are intentionally rejected. Valid false/string/argv/Compose forms and precedence remain, with independent health/readiness overrides covered by owner regressions."
   },
   {
+    "surface": "schema:AdminerServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "The shared healthcheck input adds HTTP and TCP probe objects. Supplied URLs and ports are validated even when disabled; omitted targets remain valid for disabled probes. The persisted HealthcheckPlan schema is unchanged by this validation."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.readiness.anyOf",
+    "justification": "Readiness adds HTTP and TCP probe objects. Supplied URLs and ports are validated even when disabled; omitted targets remain valid for disabled probes. The persisted HealthcheckPlan schema is unchanged by this validation."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.readiness.anyOf",
+    "justification": "The derived authoring schema admits HTTP and TCP readiness objects. A supplied port must be an integer from 1 to 65535, regardless of the probe kind. Disabled probes still need no target."
+  },
+  {
+    "surface": "schema:PublicTranscript",
+    "changeKind": "enum-widened",
+    "path": "$.frames.items.kind",
+    "justification": "The Fetch guide component adds a fetch frame containing the request line and expected status. Existing frame kinds remain valid; public transcript consumers must also handle fetch."
+  },
+  {
     "surface": "schema:DotnetServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.healthcheck.anyOf",

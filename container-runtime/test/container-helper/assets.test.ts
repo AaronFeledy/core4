@@ -156,6 +156,9 @@ describe("resolveContainerHelper", () => {
     }
     const shimBefore = (await stat(join(arch, "shims", CONTAINER_HELPER_COMMANDS[0]))).mtimeMs;
     await resolve(secondBytes);
+    const probeEngine = join(arch, "engines", "lando-container-helper");
+    expect(await readFile(probeEngine)).toEqual(Buffer.from(secondBytes));
+    expect((await stat(probeEngine)).mode & 0o777).toBe(0o755);
     for (const name of CONTAINER_HELPER_COMMANDS) {
       expect(sha256Hex(await readFile(join(arch, "engines", name)))).toBe(sha256Hex(secondBytes));
     }

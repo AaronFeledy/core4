@@ -98,6 +98,23 @@ export const renderStepComponent = (component: GuideStepComponent, sourcePath: s
         return renderRun(component, sourcePath);
       case "Verify":
         return renderVerify(component);
+      case "Fetch": {
+        const { expect, ...request } = component.props;
+        const status = typeof expect.status === "number" ? [expect.status] : expect.status;
+        return [
+          `    const response = yield* context.fetch(${JSON.stringify(request)});`,
+          `    expect(${JSON.stringify(status)}, "Fetch returned HTTP " + response.status).toContain(response.status);`,
+          ...Object.entries(expect.headers ?? {}).map(
+            ([name, matcher]) =>
+              `    expect(matchesExpected(response.headers[${quote(name.toLowerCase())}] ?? null, ${JSON.stringify(matcher)}), ${quote(`Fetch response header ${name}`)}).toBe(true);`,
+          ),
+          ...(expect.body === undefined
+            ? []
+            : [
+                `    expect(matchesExpected(response.body, ${JSON.stringify(expect.body)}), "Fetch response body").toBe(true);`,
+              ]),
+        ].join("\n");
+      }
       case "UseFixture":
         return `    yield* context.fixtures.use(${quote(component.props.name)});`;
       case "Inline":
