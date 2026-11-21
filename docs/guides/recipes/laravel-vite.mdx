@@ -180,6 +180,20 @@ lando app:config --format=json
       <Cleanup />
     </Step>
   </Scenario>
+  <Scenario id="runtime-urls" layer="e2e" timeout={300000} render={false} reason="Check that PHP and Node receive their published URLs">
+    <Step name="start">
+      <UseFixture name="laravel-vite" />
+      <Run command="lando start --format=json" />
+    </Step>
+    <Step name="check-urls">
+      <Verify command="lando exec appserver -- printenv APP_URL" expect={{ stdout: { regex: "^https://laravel-vite\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
+      <Verify command="lando exec node -- printenv VITE_DEV_SERVER_URL" expect={{ stdout: { regex: "^https://vite\\.laravel-vite\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes --format=json" />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## Next
