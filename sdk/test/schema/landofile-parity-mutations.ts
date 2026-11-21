@@ -2,7 +2,7 @@ const service = (fields: object) => ({ name: "demo", services: { web: { type: "n
 const environment = (value: unknown) => service({ environment: value });
 const build = (value: unknown) => service({ build: value });
 
-export const publicationMutations = [
+export const publicationCases = [
   { id: "env-list", input: environment(["FOO=", "BAR=x=y"]), accepted: true },
   { id: "env-map", input: environment({ FOO: "", BAR: "x=y" }), accepted: true },
   { id: "env-bare", input: environment(["FOO", "BAR=x=y"]), accepted: false },

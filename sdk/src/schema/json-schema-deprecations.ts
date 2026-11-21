@@ -756,7 +756,7 @@ type SchemaReferenceField = {
   readonly jsonSchemaRoot: JsonObject;
 };
 
-export const publishedFieldDescription = (
+const publishedFieldDescription = (
   schemas: ReadonlyArray<JsonObject | undefined>,
   root: JsonObject,
 ): string | undefined => {

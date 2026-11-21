@@ -277,8 +277,7 @@ export const migrateAppliedPlanWithCoordinate = (
   const transformed = fromVersion >= 4 ? initialized : migrateAppliedNames(initialized);
   const migrated = visitAppliedNetworkVocabulary(transformed, fromVersion < 8);
   if (typeof migrated === "string") return migrated;
-  if (!isPlainRecord(migrated)) return "plan";
-  // Events are invocation intent, not provider realization. Current writers already omit them.
+  // Historical events are invocation intent, not part of the realized plan.
   const { events: _events, ...applied } = migrated;
   return Option.getOrElse(decodePlan(applied), () => "plan");
 };

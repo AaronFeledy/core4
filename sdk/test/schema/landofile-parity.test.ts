@@ -25,7 +25,7 @@ import {
 import type { StandardSchemaV1 } from "effect/StandardSchema";
 import { expectInvalidReason } from "../../../scripts/guides/fixture-marker.ts";
 import { importableNode } from "./landofile-parity-json-schema-fixup.ts";
-import { publicationMutations } from "./landofile-parity-mutations.ts";
+import { publicationCases } from "./landofile-parity-mutations.ts";
 
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
@@ -411,7 +411,7 @@ const publishedValidators = () => {
   };
 };
 let validators: ReturnType<typeof publishedValidators> | undefined;
-test.each(publicationMutations)("published Landofile verdict for $id", async ({ id, input, accepted }) => {
+test.each(publicationCases)("published Landofile verdict for $id", async ({ id, input, accepted }) => {
   validators ??= publishedValidators();
   const { draft07, draft2020 } = validators;
   const standard = await LandofileStandardSchema["~standard"].validate(input);

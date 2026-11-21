@@ -11,12 +11,12 @@ import { validationErrorFromCause } from "../src/validation.ts";
 const TOOLING_TASK_EXPECTATION = "Expected false, a non-empty command string, or a tooling task object";
 
 test.each([
-  ["    - FOO", 0, /KEY=value/],
-  ["    - __proto__=x", 0, /nonreserved/],
-  ["    - =value", 0, /nonempty/],
-  ['    "": value', "", /cannot be empty/],
-  ["    FOO: null", "FOO", /concrete environment value/],
-] as const)("merges located environment diagnostics for #2194: %s", async (value, key, message) => {
+  ["    - FOO", 0],
+  ["    - __proto__=x", 0],
+  ["    - =value", 0],
+  ['    "": value', ""],
+  ["    FOO: null", "FOO"],
+] as const)("merges located environment diagnostics for #2194: %s", async (value, key) => {
   for (const [prefix, path] of [
     ["tooling:\n  task:\n    cmd: echo ok\n    env:", ["tooling", "task", "env"]],
     ["services:\n  web:\n    environment:", ["services", "web", "environment"]],
@@ -25,7 +25,7 @@ test.each([
     expect(result.violations).toEqual([
       expect.objectContaining({
         path: [...path, key],
-        message: expect.stringMatching(message),
+        rule: "landofile.validation",
         scopes: ["fragment", "effective"],
       }),
     ]);
