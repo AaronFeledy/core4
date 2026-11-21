@@ -230,6 +230,7 @@ The §5.3.1 registry evidence members (`appliedPlansFor`, `resolveAppliedPlan`, 
 | `composePreservedPaths` | Exact supported preserved descendant paths. |
 | `volumeSnapshot` | Volume snapshots are `native` or `none`. DataMover owns copy-mode volume archives. |
 | `volumeArchive` | Optional boolean: the provider implements typed whole-volume `exportVolume`/`importVolume`. Omission means unsupported, and volume transfer then fails with `DataEndpointUnsupportedError`. Container-runtime providers declare it; the bootstrap stub does not. |
+| `serializesVolumeCopyUp` | Optional boolean: the runtime copies image content into a new named volume at most once, serialized across concurrent first mounts, so two activations may apply against one fresh volume at the same time. Podman serializes copy-up under its per-volume lock and declares `true`; Docker checks for an empty volume and copies without a lock and declares `false`. Omission means not guaranteed: activation apply then holds a present global cache exclusively (§12.7.1). |
 | `serviceFileCopy` | Service copy is `native`, `exec`, or `none`. |
 | `artifactExport`, `artifactImport` | Supports streaming artifacts out and in. |
 | `ephemeralMounts` | Ephemeral `run` honors declared mounts. |

@@ -53,6 +53,7 @@ const OPTIONAL_CAPABILITY_FIELDS = new Set([
   "composeProjectFields",
   "hostProxy",
   "agentSocket",
+  "serializesVolumeCopyUp",
 ]);
 const doctorPathsLayer = Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} }));
 
