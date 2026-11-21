@@ -179,7 +179,7 @@ The `lando` manifest key has two members, both optional.
 - `recipe`: a locator or an inline `RecipeSource`, plus `options` mapping recipe option names to expressions. In a new project it produces the root Landofile through the same preparation and publication as `apps:init` (§8.8.7), so recipe provenance, `app:config:explain`, and `app:config:migrate` work unchanged. `--name`, else the destination basename, is the app name.
 - `fragment`: a Landofile fragment (§7.7.2). Lando writes it to `.lando/<instance>.yml` (§23.10) and adds one `includes:` entry to the root Landofile through the comment-preserving editor (§8.2.1).
 
-A fragment cannot carry recipe options, so template values are written into it as plain values. An expression in a fragment that reads only template scopes is evaluated when the template is applied. An expression that reads none of them is written unchanged and resolves at app load. One expression MUST NOT mix the two; that is a `TemplateManifestError`.
+A fragment cannot carry recipe options, so template values are written into it as plain values. An expression in a fragment that reads only template scopes is evaluated when the template is applied. An expression that reads none of the template scopes is written unchanged and follows the ordinary Landofile load and planning rules, including §7.3.1 deferral. One expression MUST NOT mix the two; that is a `TemplateManifestError`.
 
 Rules:
 
