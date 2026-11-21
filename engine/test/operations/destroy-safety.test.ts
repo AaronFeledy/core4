@@ -186,7 +186,7 @@ test("destroy reports unchanged when the provider returns no-op and nothing else
 });
 
 test.each([false, true])(
-  "destroy with --volumes and purgeCaches=%s coordinates with an active cache reader",
+  "destroy with --volumes and purgeCaches=%s takes a cache lock only when purging",
   async (purgeCaches) => {
     const cache = { name: "composer", scope: "global", kind: "cache", key: "composer" } as const;
     const locator = {
@@ -199,6 +199,7 @@ test.each([false, true])(
     const store = makeTestStateStore().service;
     const entered = Deferred.makeUnsafe<void>();
     let destroyed = false;
+    const cacheAttempts: string[] = [];
     const harness = makeHarness({
       destroyEffect: Effect.sync(() => {
         destroyed = true;
@@ -230,7 +231,10 @@ test.each([false, true])(
             Effect.provideService(StateStore, {
               ...store,
               withLock: (lockKey, body, options) =>
-                store.withLock(lockKey, body, { ...options, timeoutMs: 0 }),
+                Effect.suspend(() => {
+                  if (lockKey === key) cacheAttempts.push(lockKey);
+                  return store.withLock(lockKey, body, { ...options, timeoutMs: 0 });
+                }),
             }),
             Effect.result,
           );
@@ -245,6 +249,7 @@ test.each([false, true])(
         expect(result).toMatchObject({ _tag: "Success", success: { outcome: "destroyed" } });
       }
       expect(destroyed).toBe(!purgeCaches);
+      expect(cacheAttempts).toEqual(purgeCaches ? [key] : []);
     } finally {
       await rm(harness.userDataRoot, { recursive: true, force: true });
     }

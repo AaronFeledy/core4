@@ -6,7 +6,12 @@ import {
   ServiceNotReadyError,
 } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan, RouterConfig } from "@lando/sdk/schema";
-import { EnvironmentValueResolver, type FileSystem, type RouterServiceShape } from "@lando/sdk/services";
+import {
+  EnvironmentValueResolver,
+  type FileSystem,
+  type RouterServiceShape,
+  StateStore,
+} from "@lando/sdk/services";
 import { Cause, type Context, Effect, Exit } from "effect";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
 import { prepareRouteUrlBindings } from "../lifecycle/route-url-bindings.ts";
@@ -40,6 +45,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
   services: {
     readonly provider: PreparedRuntimeProvider;
     readonly environmentResolver: typeof EnvironmentValueResolver.Service;
+    readonly stateStore: typeof StateStore.Service;
     readonly router?: RouterServiceShape;
     readonly admissionContext?: Context.Context<GlobalConsumerAdmissionServices>;
   },
@@ -73,6 +79,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
       beforeApply: verifyGlobalConsumerAdmission,
     }).pipe(
       Effect.provideService(EnvironmentValueResolver, services.environmentResolver),
+      Effect.provideService(StateStore, services.stateStore),
       mapFailures(
         (cause) =>
           new ScratchAppError({
