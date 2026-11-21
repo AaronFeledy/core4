@@ -124,16 +124,14 @@ export const CONFIG_LINT_RULES = {
   "landofile.healthcheck": {
     stages: ["resolve", "planning"],
     severities: ["error"],
-    summary:
-      "An authored healthcheck `kind: http` or `kind: tcp`, or a final healthcheck execution target, which the healthcheck runner does not support.",
-    examplePaths: ["services.web.healthcheck.kind"],
+    summary: "Invalid native healthcheck policy, such as a missing HTTP URL, TCP listener port, or command.",
+    examplePaths: ["services.web.healthcheck.url", "services.web.healthcheck.port"],
   },
   "landofile.readiness": {
     stages: ["resolve", "planning"],
     severities: ["error"],
-    summary:
-      "An authored readiness `kind: http` or `kind: tcp`, or a final readiness execution target, which the healthcheck runner does not support.",
-    examplePaths: ["services.web.readiness.kind"],
+    summary: "Invalid startup readiness policy, such as a missing HTTP URL, TCP listener port, or command.",
+    examplePaths: ["services.web.readiness.url", "services.web.readiness.port"],
   },
   "landofile.event": {
     stages: ["resolve", "planning"],

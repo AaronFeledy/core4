@@ -16,28 +16,13 @@ import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 
-test.each([
-  ["vendor", "vendor/"],
-  ["vendor/", "./vendor"],
-  ["vendor/", "vendor/"],
-])("plans one canonical shadow for equivalent authored excludes %j", async (...excludes) => {
-  // Given equivalent excludes, with default excludes explicitly included instead.
+const planAppMount = async (appMount: { readonly includes: string[]; readonly excludes: string[] }) => {
   const appRoot = await mkdtemp(join(tmpdir(), "lando-planner-shadow-"));
   try {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "shadowapp",
       runtime: 4,
-      services: {
-        web: {
-          type: "node:22",
-          home: false,
-          appMount: {
-            target: "/app",
-            includes: ["node_modules", ".git", "tmp", ...(excludes.includes("vendor") ? [] : ["vendor"])],
-            excludes,
-          },
-        },
-      },
+      services: { web: { type: "node:22", home: false, appMount: { target: "/app", ...appMount } } },
     });
     const planner = AppPlannerLayer.layer.pipe(
       Layer.provide(
@@ -48,25 +33,51 @@ test.each([
         ),
       ),
     );
-
-    // When the production planner assembles the app.
-    const appPlan = await Effect.runPromise(
+    return await Effect.runPromise(
       Effect.flatMap(AppPlanner, (service) =>
         service.plan(literalTestLandofile(landofile, appRoot), TestRuntimeProvider.capabilities),
       ).pipe(Effect.provide(planner)),
     );
-
-    // Then canonical identity produces exactly one store and one mount.
-    const store = "lando-shadowapp--web--shadow--app-vendor-64784057";
-    expect(appPlan.stores).toEqual([{ name: store, scope: "service", kind: "data" }]);
-    expect(
-      appPlan.services[ServiceName.make("web")]?.mounts.filter((mount) => mount.type === "volume"),
-    ).toEqual([
-      { type: "volume", store, target: PortablePath.make("/app/vendor"), readOnly: false, origin: "derived" },
-    ]);
   } finally {
     await rm(appRoot, { recursive: true, force: true });
   }
+};
+
+test.each([
+  ["vendor", "vendor/"],
+  ["vendor/", "./vendor"],
+  ["vendor/", "vendor/"],
+])("plans one canonical shadow for equivalent authored excludes %j", async (first, second) => {
+  // Given authored spellings of the default vendor exclude, with the other defaults included instead.
+  // When the production planner assembles the app.
+  const appPlan = await planAppMount({
+    includes: ["node_modules", ".git", "tmp"],
+    excludes: [first, second],
+  });
+
+  // Then canonical identity produces exactly one store and one mount.
+  const store = "lando-shadowapp--web--shadow--app-vendor-64784057";
+  expect(appPlan.stores).toEqual([{ name: store, scope: "service", kind: "data" }]);
+  expect(
+    appPlan.services[ServiceName.make("web")]?.mounts.filter((mount) => mount.type === "volume"),
+  ).toEqual([
+    { type: "volume", store, target: PortablePath.make("/app/vendor"), readOnly: false, origin: "derived" },
+  ]);
+});
+
+test("an include cancels every spelling of the exclude it names", async () => {
+  // Given an include and an exclude that name the same directory differently.
+  // When the production planner assembles the app.
+  const appPlan = await planAppMount({
+    includes: ["node_modules", ".git", "tmp", "./vendor/"],
+    excludes: ["vendor/"],
+  });
+
+  // Then the include wins: no shadow store or volume is planned for that directory.
+  expect(appPlan.stores).toEqual([]);
+  expect(
+    appPlan.services[ServiceName.make("web")]?.mounts.filter((mount) => mount.type === "volume"),
+  ).toEqual([]);
 });
 
 test.each([

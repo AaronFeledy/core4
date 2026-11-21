@@ -65,7 +65,8 @@ export const semanticError = (
   const variantLabel = variant?.pairs.map((pair) => `${pair.axis}=${pair.value}`).join(" ") ?? "";
   const corrections: Readonly<Record<string, string>> = {
     "guide.scenario.no-behavior":
-      "Add a Run or Verify that asserts behavior on this selected path, or explicitly skip the cell. Fixtures, prose, cleanup, inspection, and inline output alone do not exercise behavior.",
+      "Add a Run, Verify, or Fetch that asserts behavior on this selected path, or explicitly skip the cell. Fixtures, prose, cleanup, inspection, and inline output alone do not exercise behavior.",
+    "guide.fetch.requires-e2e": 'Put <Fetch> in a <Step> in a scenario with layer="e2e".',
     "guide.variable.missing": "Declare this binding on the selected scenario path before referencing it.",
     "guide.variable.hidden-reference":
       "Move the binding declaration to a public step or remove the public reference; a hidden display does not make a binding public.",

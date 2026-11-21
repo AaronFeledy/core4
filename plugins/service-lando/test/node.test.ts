@@ -101,6 +101,7 @@ describe("node:lts ServiceType", () => {
       ),
     ).toEqual([]);
     expect(plan.command).toEqual(idleCommand);
+    expect(plan.listenerAuthority).toMatchObject({ owner: "application", keepAlive: true });
     expect(plan.endpoints).toEqual([
       { kind: "internal", port: 3000, protocol: "http", name: "web", primary: true },
     ]);
@@ -126,6 +127,7 @@ describe("node:lts ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "node:22" });
     expect(plan.command).toBe("npm start");
+    expect(plan.listenerAuthority).not.toHaveProperty("keepAlive");
     expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
     expect(plan.endpoints).toEqual([
       { kind: "internal", port: 3000, protocol: "http", name: "web", primary: true },

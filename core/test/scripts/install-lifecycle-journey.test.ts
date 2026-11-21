@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Schema } from "effect";
+import { pinnedActionRef } from "../../../scripts/action-pins.ts";
 import { renderInstallLifecycleWorkflow } from "../../../scripts/build-install-lifecycle-journey-workflow.ts";
 import { prepareLifecycleDistribution } from "../../../scripts/install-lifecycle-journey-install.ts";
 import {
@@ -252,7 +253,9 @@ describe("trusted install lifecycle evidence workflow", () => {
       expect(
         job.steps.some((step) => step.run?.includes("scripts/install-lifecycle-journey.ts --binary")),
       ).toBe(true);
-      expect(job.steps.find((step) => step.uses === "actions/upload-artifact@v7")).toMatchObject({
+      expect(
+        job.steps.find((step) => step.uses === pinnedActionRef("actions/upload-artifact")),
+      ).toMatchObject({
         if: "always()",
         with: { "if-no-files-found": "error" },
       });

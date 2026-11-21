@@ -1,0 +1,8 @@
+name: redis-extra-args
+services:
+  cache:
+    type: redis
+    port: 6380
+    extraArgs:
+      - --maxmemory
+      - 10mb

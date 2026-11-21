@@ -113,7 +113,11 @@ const serviceInfoMetadata = (
 export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   plan: AppPlan,
   completionPlan: AppPlan = plan,
-  options: { readonly plannedPolicy?: AppPlan | null; readonly appName?: string } = {},
+  options: {
+    readonly plannedPolicy?: AppPlan | null;
+    readonly appName?: string;
+    readonly desiredOnly?: ReadonlySet<string>;
+  } = {},
 ): Effect.fn.Return<InfoAppResult, InfoAppError, RuntimeProviderRegistry> {
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(plan);
@@ -124,12 +128,16 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     if (service === undefined) throw new TypeError(`Missing service plan for ${row.name}`);
     const observed = observations.find((candidate) => candidate.name === row.name);
     if (observed === undefined) throw new TypeError(`Missing observation for ${row.name}`);
-    const mounts = projectServiceMounts(plan, service, observed.runtime);
+    const desiredOnly = options.desiredOnly?.has(row.name) === true;
+    const mounts = desiredOnly ? undefined : projectServiceMounts(plan, service, observed.runtime);
     const appMount = serviceAppMount(service);
     return ServiceInfoConsistent.make({
       ...serviceInfoMetadata(plan, service, provider.capabilities),
       ...projectServiceObservation(service, observed),
-      connections: row.connections,
+      ...(desiredOnly && observed.state === "stopped" && observed.runtime.status !== "absent"
+        ? { status: "unknown" as const }
+        : {}),
+      connections: desiredOnly ? [] : row.connections,
       ...(mounts === undefined ? {} : { mounts }),
       ...(appMount === undefined ? {} : { appMount }),
     });
@@ -186,15 +194,26 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
   }
 
   const observedPlan = yield* observedAppPlan(plan);
-  const selectedPlan = yield* selectInfoPlan(observedPlan, options?.services);
   let desired: AppPlan | null = target?.plan ?? plan;
   if (observedTarget !== undefined && target === undefined) {
     const planned = yield* Effect.result(planDesiredApp);
     desired = Result.match(planned, { onFailure: () => null, onSuccess: ({ plan }) => plan });
   }
-  const result = yield* infoForPlan(selectedPlan, observedPlan, {
+  const desiredOnly = new Set(
+    Object.keys(desired?.services ?? {}).filter((name) => !Object.hasOwn(observedPlan.services, name)),
+  );
+  const combined =
+    desiredOnly.size === 0
+      ? observedPlan
+      : {
+          ...observedPlan,
+          services: { ...desired?.services, ...observedPlan.services },
+        };
+  const selectedPlan = yield* selectInfoPlan(combined, options?.services);
+  const result = yield* infoForPlan(selectedPlan, combined, {
     plannedPolicy: desired,
     appName: landofile?.document.name ?? plan.name,
+    desiredOnly,
   });
   if (options?.deep !== true) return result;
   const agentEnv = yield* resolveAgentEnvAudit(landofile?.document.agentEnv, process.env);

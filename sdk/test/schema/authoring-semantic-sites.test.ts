@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { override } from "@lando/sdk/landofile";
 import {
   LandofileAuthoringFragment,
   LandofileAuthoringFragmentNative,
@@ -16,6 +17,26 @@ const diagnostics = (schema: Schema.ConstraintDecoder<unknown, never>, value: un
   if (Result.isSuccess(result)) throw new TypeError("Expected invalid input");
   return validationIssuesFromSchemaIssue(result.failure.issue);
 };
+
+test.each([
+  ["shape", LandofileAuthoringShape],
+  ["fragment", LandofileAuthoringFragment],
+  ["native fragment", LandofileAuthoringFragmentNative],
+] as const)("enforces self-port admission in the %s decoder", (_name, schema) => {
+  const input = { services: { cache: { environment: { PORT: "{{ service.port }}" } } } };
+  expect(diagnostics(schema, input).map(({ path }) => path)).toEqual([
+    ["services", "cache", "environment", "PORT"],
+  ]);
+  const valid = { services: { cache: { command: ["redis-server", "--port", "{{ service.port }}"] } } };
+  expect(Schema.decodeUnknownResult(schema)(valid, options)._tag).toBe("Success");
+});
+
+test("enforces self-port placement inside a native override payload", () => {
+  const input = { services: { cache: { environment: override({ PORT: "{{ service.port }}" }) } } };
+  expect(diagnostics(LandofileAuthoringFragmentNative, input).map(({ path }) => path)).toEqual([
+    ["services", "cache", "environment", "PORT"],
+  ]);
+});
 
 test.each([
   ["missing assignment", ["FOO"]],

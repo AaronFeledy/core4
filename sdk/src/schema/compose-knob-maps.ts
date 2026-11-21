@@ -44,8 +44,8 @@ const splitMappingEntry = (
   entry: string,
   separator: "equals" | "host",
 ): readonly [string, string] | undefined => {
-  const equalsIndex = entry.indexOf("=");
-  const index = separator === "host" && equalsIndex < 0 ? entry.indexOf(":") : equalsIndex;
+  // The address can contain colons (IPv6) or equals signs (deferred expression text).
+  const index = separator === "host" ? entry.search(/[:=]/) : entry.indexOf("=");
   if (index <= 0 || index === entry.length - 1) return undefined;
   return [entry.slice(0, index), entry.slice(index + 1)];
 };

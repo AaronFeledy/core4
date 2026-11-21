@@ -117,6 +117,25 @@ What each part does:
 A scenario must exercise or assert product behavior. Keep prose outside the
 scenario, and do not add a scenario solely to hold variables or setup.
 
+### Override execution for one scenario
+
+A scenario inherits the guide's timeout, platforms, and skip. Set a prop on
+`<Scenario>` to change one of them for that scenario only.
+
+- Set `timeout={300000}` on a slow scenario instead of raising the guide's
+  timeout. The value is a positive whole number of milliseconds. A scenario
+  without one uses the guide timeout, which defaults to `60000`.
+- Set `platforms={["linux", "darwin"]}` to run only on the hosts you list.
+  The accepted values are `darwin`, `linux`, `win32`, and `wsl`. A WSL host
+  also matches `linux`. Use `platforms={[]}` to allow every host.
+- Set `skip={{ reason: "Waiting for a provider fix", until: "Next release" }}`
+  to skip the scenario's tests and omit its public transcript. `until` is
+  optional. It notes when to revisit the skip and doesn't end it.
+
+For `platforms` and `skip`, a value set on a frontmatter `variants` cell wins
+over the scenario prop. When neither sets one, the guide's top-level
+frontmatter value applies.
+
 ### Where each component goes
 
 The compiler checks placement and rejects anything out of place with the
@@ -130,7 +149,7 @@ the test.
 | `<Step>`, `<Hidden>`, `<Skip>`, `<Tabs>` | `<Scenario>` |
 | `<Tab>` | `<Tabs>` |
 | `<Step>` | also `<Hidden>`, `<Skip>`, `<Tab>` |
-| `<Run>`, `<Verify>`, `<Cleanup>`, `<Variable>`, `<UseFixture>`, `<Inspect>`, `<Inline>` | `<Step>` |
+| `<Run>`, `<Verify>`, `<Fetch>`, `<Cleanup>`, `<Variable>`, `<UseFixture>`, `<Inspect>`, `<Inline>` | `<Step>` |
 
 Wrappers do not nest: no `<Hidden>` inside a `<Tab>`, no `<Tabs>` inside
 `<Skip>`. Write each component as block MDX, not inside a prose paragraph.
@@ -138,9 +157,35 @@ A component inside a paragraph, such as `Run <Verify command="lando start" />
 first.`, is text to MDX, not an action, and fails the same way. Markdown
 prose between components inside a wrapper is fine.
 
+### Request a URL with `<Fetch>`
+
+Put `<Fetch>` inside a `<Step>` in a `layer="e2e"` scenario, after starting
+the fixture app. Include a cleanup step that destroys the app.
+
+```mdx
+<Fetch url="{{route:appserver}}/https-check.php" expect={{ status: 200, body: { regex: "HTTPS=on" } }} />
+```
+
+| Field | What it does |
+| --- | --- |
+| `url` | Absolute HTTP(S) URL without credentials, or a URL beginning with `{{route:<service>}}`. The token uses the first assigned HTTPS host route in `lando info --format=json`, or the first assigned HTTP route if there is no HTTPS route. Its URL retains the router's bound port and path prefix. Use an absolute URL to choose a different route. |
+| `method` | `GET` by default, or `HEAD`. |
+| `headers` | Optional request header names and string values. The request's `Host` comes from the URL. |
+| `expect.status` | Required final response status, or a nonempty list of accepted statuses. |
+| `expect.headers` | Optional map from response header names (case-insensitive) to matchers. A missing header is `null`. |
+| `expect.body` | Optional matcher against the response body as text. |
+
+The request connects directly to `127.0.0.1` at the URL's port without using
+a proxy. HTTPS verifies the hostname and trusts the local CA from `lando setup`.
+Redirects are not followed, so you can assert `302` and match `Location` in
+the same step. The public transcript shows the request line without the query
+or fragment, and the expected status. It does not publish headers, matchers,
+or the response body. Do not put secrets in the URL path.
+
 ### What `expect` accepts
 
-The `expect` prop of `<Verify>` is a matcher:
+`<Verify>`'s `expect` and `<Fetch>`'s response header and body expectations use
+the same matchers:
 
 - A string, number, boolean, or `null` must equal the value exactly.
 - An array must match an array of the same length, element by element.
@@ -218,7 +263,8 @@ An app-install command in a prose shell fence must also run in a live
 `layer="e2e"` scenario somewhere under `docs/guides/**` or
 `recipes/*/README.mdx`. `bun run lint:guides` checks this across files with
 `guide.install.e2e-coverage`. It checks `sh`, `bash`, `shell`, and `console`
-fences outside `<Guide>`, including commands split with backslash continuations.
+fences outside `<Guide>`, including commands split with backslash continuations
+or prefixed with a `$ ` prompt.
 
 Coverage matches `lando create-project` and `lando composer create-project`
 by package name, ignoring quotes, versions, and flags. A version written
@@ -235,6 +281,39 @@ on the default `lando` provider (managed Podman). A passing lint run proves
 coverage is declared; a passing live run proves the install works. Use the
 [e2e scenario instructions](../guides/authoring/e2e-smoke-scenarios.mdx#where-it-runs)
 to enable live execution and confirm the scenario passed rather than skipped.
+
+### Run every container command you show
+
+When you show `lando exec`, `lando ssh`, `lando logs`, or Landofile tooling
+such as `lando composer` in a prose shell fence, run it in an e2e scenario
+on the **same page**. The rule applies to a built-in under its command ID and
+its alias, so both `lando app:exec` and `lando exec` are in scope. Any name
+that isn't a built-in counts as tooling, except `lando help`.
+
+Cover the command with a `<Run command>` or `<Verify command>` that has the
+same command name and the same arguments in the same order. Quoting can differ
+as long as the argv is the same, and variables match by their execution
+`value`. A `<Hidden>` step counts. A skipped step or scenario doesn't. The
+scenario is e2e when it sets `layer="e2e"` or inherits it from the guide's
+`defaultLayer`.
+
+`bun run lint:guides` checks `sh`, `bash`, `shell`, `console`, and `zsh` fences
+outside `<Guide>`. The rule reads each command in a shell list separately and
+ignores host pipes and redirects after it. It skips a command that has a
+placeholder argument: a bare `...`, or an angle-bracket name like `<service>`
+used as an argument, option value, or path segment.
+
+If the fence can't run in CI, put `{/* lando-lint: not-e2e <reason> */}` directly
+above it with only whitespace in between. The reason needs at least eight
+characters. A waiver covers the whole fence. Remove it once the fence no
+longer shows a container command, or lint reports it as stale.
+
+`scripts/guides/container-command-baseline.json` lists the uncovered commands
+lint still allows, and it only shrinks. `check:guide-drift` compares it with
+the base revision and rejects new entries. If you move a guide, carry its
+entries to the new path once the old path is gone. When you cover, waive, or
+remove a listed command, delete its entry or run
+`bun run scripts/lint-guides.ts --prune-container-command-baseline`.
 
 ## How variables bind
 
@@ -372,6 +451,33 @@ finish these steps from the repository root before you push:
    ```sh
    bun test landofile/test/pipeline/golden-corpus.test.ts landofile/test/provenance-invariant.test.ts sdk/test/schema/landofile-parity.test.ts core/test/guides/fixture-lint-plan-parity.test.ts
    ```
+
+## Put a feature's tests in its home guide
+
+Every feature has one home guide, and that guide owns every test that drives
+Lando through its CLI or library API for the feature. That includes edge
+cases and regressions the page never mentions. Readers see the steps that
+teach the feature; the rest run where readers don't see them:
+
+- A `<Hidden reason="...">` block adds steps to a reader scenario, such as
+  an edge case of the flow the page shows. A hidden step must not change what
+  the visible steps show: a reader who runs only the visible steps gets the
+  result the page describes.
+- A test-only scenario, `<Scenario render={false} reason="...">`, holds a
+  flow the page doesn't teach, such as a regression for a reported bug or a
+  failure path. It never renders and produces no public transcript.
+
+Other pages that teach the same feature link to its home guide instead of
+repeating these tests. When you edit a guide, treat hidden steps and
+test-only scenarios as tests, not as content to trim: deleting one removes
+coverage.
+
+Tests that call internal modules directly, such as a planner function or a
+state-store transition, stay in the owning package's `test/` tree. A test
+that drives the CLI but needs something the guide components can't express,
+such as sending a signal to a running command, goes in a compiled-CLI live
+suite under `core/test/live/`. Don't add a live suite that replays a flow a
+guide already proves.
 
 ## Register coverage
 

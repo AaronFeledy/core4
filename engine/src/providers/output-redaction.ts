@@ -22,7 +22,7 @@ export const appOutputEnvironmentNames = (
       const keys = names.get(service.name) ?? new Set<string>();
       for (const [key, value] of Object.entries(service.environment)) {
         if (typeof value !== "string") {
-          keys.add(key);
+          if (value._tag === "SecretRef" || value._tag === "BoundText") keys.add(key);
           continue;
         }
         const reference = exactSecretReference(value);

@@ -32,7 +32,7 @@ lando init --recipe django --name=my-django --yes \
 | `database` | `postgres`, `sqlite` | `postgres` |
 | `celery` | `true`, `false` | `false` |
 
-The scaffold writes only `.lando.yml`. It declares a `web` service on `python:3.12` with the `django` framework on port 8000, a `database` service on `postgres`, and a `cache` service on `redis` that `web` waits on. Answer `celery=true` and you also get a `worker` service running `celery -A app worker --loglevel=info` against the same database and cache. Leave it `false` and there is no `worker` service at all.
+The scaffold writes only `.lando.yml`. It declares a `web` service on `python:3.12` with the `django` framework on port 8000, a `database` service on `postgres`, and a `cache` service on `redis` that `web` waits on. Answer `celery=true` to add a worker with `command: exec celery -A config worker --loglevel=info` and `endpoints: []`, so it gets no route. The Python services share `/app/.venv` automatically. On a fresh clone, `lando start` installs `requirements.txt` for both services. After editing it in a running app, run `lando restart`.
 
 Python has no default healthcheck; add `healthcheck:` if start should wait for your application to serve requests. The Celery worker uses `restart: unless-stopped`. If missing code or dependencies make its process exit, start succeeds with a warning and a `restarting` worker row. An exhausted healthcheck still fails start regardless of restart policy. The worker retries and starts on its own once the application is installed. Check it with:
 
@@ -44,7 +44,7 @@ Two tooling commands ship with the Landofile, both running inside the `web` serv
 
 ```sh
 lando django migrate
-lando pip install -r requirements.txt
+lando pip freeze --local > requirements.txt
 ```
 
 `lando django` wraps `python manage.py`. After creating your project and installing its dependencies, run `lando django runserver 0.0.0.0:8000` to serve it through the proxy.

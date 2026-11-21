@@ -119,6 +119,7 @@ export interface ProviderCapabilityConstants {
   readonly rootless: ProviderCapabilitiesShape["rootless"];
   readonly projectUserMapping?: ProviderCapabilitiesShape["projectUserMapping"];
   readonly bindOwnership?: ProviderCapabilitiesShape["bindOwnership"];
+  readonly serializesVolumeCopyUp?: ProviderCapabilitiesShape["serializesVolumeCopyUp"];
   readonly architectureEmulation?: ProviderCapabilitiesShape["architectureEmulation"];
   readonly composeSpec: ProviderCapabilitiesShape["composeSpec"];
   readonly composeKnobs?: ProviderCapabilitiesShape["composeKnobs"];
@@ -153,6 +154,7 @@ export const buildProviderCapabilities = (
     bindMountPerformance: constants.bindMountPerformance,
     copyMounts: false,
     copyOnWriteAppRoot: false,
+    serializesVolumeCopyUp: constants.serializesVolumeCopyUp ?? false,
     volumeSnapshot: constants.volumeSnapshot ?? "none",
     volumeArchive: constants.volumeArchive ?? true,
     serviceFileCopy: constants.serviceFileCopy ?? "exec",

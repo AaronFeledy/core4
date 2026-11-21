@@ -3,7 +3,7 @@ import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import { Effect, Result } from "effect";
-import { acquireAdvisoryLockAt } from "../../src/lock.ts";
+import { ADVISORY_LOCK_SUFFIX, acquireAdvisoryLockAt } from "../../src/lock.ts";
 import { makePrivateFileAccessWorker, privateFileAclExecutable } from "../../src/private-file-worker.ts";
 import { makeRecordingWorkerSpawn } from "../private-file-worker.ts";
 
@@ -86,7 +86,7 @@ describe("private-file ACL worker lifecycle", () => {
     "bounds a stalled %s during lock acquisition",
     async (operation) => {
       const root = await mkdtemp(join(tmpdir(), "lando-stalled-acl-"));
-      const lockPath = join(root, "mutation.lock");
+      const lockPath = join(root, `mutation${ADVISORY_LOCK_SUFFIX}`);
       const binary = join(root, "lando");
       const candidate = join(root, "candidate");
       await writeFile(binary, "old");
@@ -107,12 +107,10 @@ describe("private-file ACL worker lifecycle", () => {
       try {
         const acquisition = Effect.runPromise(
           Effect.result(
-            Effect.acquireUseRelease(
+            Effect.scoped(
               acquireAdvisoryLockAt(lockPath, "replacement", {
                 privateFileAccess: worker,
-              }),
-              () => Effect.tryPromise(() => rename(candidate, binary)),
-              (lock) => lock.release,
+              }).pipe(Effect.andThen(Effect.tryPromise(() => rename(candidate, binary)))),
             ),
           ),
         );
@@ -124,7 +122,7 @@ describe("private-file ACL worker lifecycle", () => {
         expect(spawn.killCount()).toBe(1);
         expect(await Bun.file(binary).text()).toBe("old");
         expect(await Bun.file(candidate).text()).toBe("new");
-        expect(await Bun.file(lockPath).exists()).toBe(operation === "verify");
+        expect(await Bun.file(lockPath).exists()).toBe(process.platform === "win32");
       } finally {
         await worker.close();
         await rm(root, { recursive: true, force: true });

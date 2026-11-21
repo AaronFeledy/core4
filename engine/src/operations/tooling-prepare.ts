@@ -24,10 +24,12 @@ export const prepareToolingInvocation = Effect.fnUntraced(function* (input: {
   readonly context?: ExpressionContext;
 }) {
   const planValues = yield* registerPlanRedaction(input.plan);
-  const normalizationSource =
-    input.options.source.locate === undefined
+  const normalizationSource = {
+    ...(input.options.source.locate === undefined
       ? toolingSourceResolverForPlan(input.plan)(input.options.lookupKey)
-      : input.options.source;
+      : input.options.source),
+    task: input.options.lookupKey,
+  };
   const redactionTokens: string[] = [];
   const redaction = yield* Effect.serviceOption(RedactionService);
   const register = Effect.fnUntraced(function* (name: string, value: unknown) {
@@ -47,7 +49,7 @@ export const prepareToolingInvocation = Effect.fnUntraced(function* (input: {
     ...input.options,
     name: input.options.lookupKey,
     sites: input.sites,
-    source: { ...normalizationSource, task: input.options.lookupKey },
+    source: normalizationSource,
   });
   redactionTokens.push(...admitted.redactionTokens);
   return yield* Effect.gen(function* () {
@@ -78,11 +80,15 @@ export const prepareToolingInvocation = Effect.fnUntraced(function* (input: {
       register,
       validate: (task) => validateToolingTargets(task, admitted.values, input.options.lookupKey),
     });
-    const compiled = yield* compileToolingInvocations({
-      ...input.options,
-      ...resolved,
-      admitted: preparedInput,
-    });
+    const compiled = yield* compileToolingInvocations(
+      {
+        ...input.options,
+        ...resolved,
+        source: normalizationSource,
+        admitted: preparedInput,
+      },
+      input.plan,
+    );
     return { ...compiled, admitted: preparedInput };
   }).pipe(
     Effect.catchCause((cause) =>

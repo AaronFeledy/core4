@@ -2,6 +2,7 @@ import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   commandHealthcheck,
@@ -10,12 +11,11 @@ import {
   serviceFeatureDeclareEndpoints,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
   parseWildcardBind,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -35,7 +35,7 @@ const DATA_TARGET = PortablePath.make("/var/lib/localstack");
 export const LOCALSTACK_FEATURE_ID = "service-lando.localstack" as const;
 
 const localstackListener = (service: ServiceConfig) => {
-  const port = plannedPort(service, LOCALSTACK_LISTENER);
+  const port = selectPort(service);
   const authoredDnsPort = service.environment?.DNS_PORT;
   const dnsPort =
     authoredDnsPort === undefined
@@ -133,10 +133,13 @@ export const localstackServiceFeature: ServiceFeatureDefinition = {
   ),
 };
 
+const selectPort = primaryPortSelector(LOCALSTACK_LISTENER);
 export const localstackServiceType: ServiceType = {
   id: "localstack",
   name: "localstack",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("LocalStack environment"),
   identity: rootIdentity(),
   schema: LocalStackServiceConfig,
   resolve: (input) =>

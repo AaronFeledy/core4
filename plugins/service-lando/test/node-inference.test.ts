@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceTypeProjectFileInput } from "@lando/sdk/services";
 import { Effect } from "effect";
 
@@ -147,23 +146,6 @@ describe("bare node version inference", () => {
       expect(() => resolve(nvmrc, packageJson)).toThrow(pattern);
     },
   );
-
-  test("declares project files under the configured package root", () => {
-    const service = { type: "node", packageRoot: "apps/web" } satisfies ServiceConfig;
-    expect(nodeServiceType.projectFiles?.(service)).toEqual([
-      { path: "apps/web/.nvmrc", maxBytes: 1_048_576 },
-      { path: "apps/web/package.json", maxBytes: 1_048_576 },
-      { path: "package.json", maxBytes: 1_048_576 },
-    ]);
-  });
-
-  test("declares no duplicate app-root package.json at the app root", () => {
-    const service = { type: "node" } satisfies ServiceConfig;
-    expect(nodeServiceType.projectFiles?.(service)).toEqual([
-      { path: ".nvmrc", maxBytes: 1_048_576 },
-      { path: "package.json", maxBytes: 1_048_576 },
-    ]);
-  });
 
   test.each(["apps/web", "apps\\web"])("preserves nested pins with %s paths", (root) => {
     const separator = root.includes("\\") ? "\\" : "/";

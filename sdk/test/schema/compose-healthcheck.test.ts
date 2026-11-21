@@ -48,6 +48,7 @@ const composeHealthcheckFixtures = [
     expectedErrorFragment: "user",
   },
   { name: "false disables the probe", input: false, expected: false },
+  { name: "none needs no probe target", input: { kind: "none" }, expected: false },
   {
     name: "string is a shell command",
     input: "pg_isready",
@@ -224,11 +225,23 @@ describe("HealthcheckInput", () => {
     { kind: "none", interval: "bad" },
     { kind: "none", command: [] },
     { kind: "none", command: "" },
+    { kind: "none", url: "/health" },
+    { kind: "none", url: "ftp://localhost/health" },
+    { kind: "none", url: "http:///localhost/health" },
+    { kind: "none", port: 0 },
+    { kind: "none", port: 65536 },
+    { kind: "none", port: 80.5 },
     { test: ["NONE"], retries: "bad" },
     { test: ["NONE"], timeout: "bad" },
   ])("rejects malformed siblings before disabling: %j", (input) => {
     const result = Schema.decodeUnknownResult(HealthcheckInput)(input, { onExcessProperty: "error" });
     expect(Result.isFailure(result)).toBe(true);
+  });
+  test.each([
+    { kind: "tcp", url: "/health", port: 80 },
+    { kind: "http", url: "https://localhost/health", port: 0 },
+  ])("validates supplied fields even when the probe kind does not use them: %j", (input) => {
+    expect(Schema.decodeUnknownResult(HealthcheckInput)(input)._tag).toBe("Failure");
   });
   test.each(acceptedFixtures)("normalizes and wires ServiceConfig: $name", ({ input, expected }) => {
     // Given / When

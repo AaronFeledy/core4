@@ -7,12 +7,13 @@ import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { connectionFields, unambiguousHostHttpUrls } from "./connection-summary";
 import { lifecycleLine, serviceRowsText } from "./service-summary";
-import { startOutcome, startStatusTone } from "./start-result";
+import { expectedCheckMessages, startOutcome, startStatusTone } from "./start-result";
 
 // Restart answers "which services came back, and where do I reach each one",
 // so every service keeps both of its scopes under its own row, as the plain
 // line does, instead of start's one deduplicated host list.
 export const buildRestartSummary = (result: RestartAppResult): SummaryDocument => {
+  const checks = expectedCheckMessages(result.checks);
   const rows = result.servicesStarted.map((service) => ({
     label: service.name,
     tone: startStatusTone(service.state),
@@ -28,6 +29,7 @@ export const buildRestartSummary = (result: RestartAppResult): SummaryDocument =
         rows,
         ...(rows.length === 0 ? { notes: ["No services were restarted."] } : {}),
       },
+      ...(checks.length === 0 ? [] : [{ title: "URL checks", rows: [], notes: checks }]),
     ],
   };
 };
@@ -38,7 +40,10 @@ const restartHttpUrls = (result: RestartAppResult): ReadonlyArray<string> =>
 
 export const renderRestartAppResult = (result: RestartAppResult, ctx?: RenderContext): string => {
   if (!isDecoratedContext(ctx)) {
-    return lifecycleLine("restarted", result.app, serviceRowsText(result.servicesStarted));
+    return [
+      lifecycleLine("restarted", result.app, serviceRowsText(result.servicesStarted)),
+      ...expectedCheckMessages(result.checks),
+    ].join("\n");
   }
   const rendered = `\n${formatQuietSummary(buildRestartSummary(result), summaryPaintOptions(ctx))}`;
   return contextAllowsHyperlinks(ctx) ? linkKnownHttpUrls(rendered, restartHttpUrls(result)) : rendered;

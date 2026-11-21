@@ -155,6 +155,7 @@ the PRD-owned guides above.
 | - | - | postgres service type | `docs/guides/services/postgres.mdx` | Shipped |
 | - | - | pgvector vector search on Postgres 18 | `docs/guides/services/postgres-pgvector.mdx` | Shipped |
 | - | - | redis service type | `docs/guides/services/redis.mdx` | Shipped |
+| - | - | append daemon flags with `extraArgs` | `docs/guides/services/extra-args.mdx` | Shipped |
 | - | - | nginx service type | `docs/guides/services/nginx.mdx` | Shipped |
 | - | - | apache service type | `docs/guides/services/apache.mdx` | Shipped |
 
@@ -192,7 +193,7 @@ outside `docs/guides/` so they are not gate-validated here.
 | `node-postgres` | Node + Postgres walking skeleton | `recipes/node-postgres/README.mdx` | Shipped |
 | `node-api` | Node API (Express, Fastify, or Hono; optional Postgres) | `recipes/node-api/README.mdx` | Shipped |
 | `node-ts` | Node with an environment-adaptive programmatic Landofile | `recipes/node-ts/README.mdx` | Shipped |
-| `rails` | Rails (Ruby 3.3 + PostgreSQL + Redis, rails and bundle tooling) | `recipes/rails/README.mdx` | Shipped |
+| `rails` | Rails (Ruby 3.3 + PostgreSQL + Redis; rails, bundle, and rake tooling) | `recipes/rails/README.mdx` | Shipped |
 | `symfony` | Symfony (PHP + PostgreSQL/MariaDB, Redis, console and Composer) | `recipes/symfony/README.mdx` | Shipped |
 | `astro` | Astro (Node; optional Postgres or MariaDB content source) | `recipes/astro/README.mdx` | Shipped |
 | `sveltekit` | SvelteKit (Node, adapter picker; optional Postgres or MariaDB) | `recipes/sveltekit/README.mdx` | Shipped |
@@ -334,3 +335,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | local LLM with Ollama via Compose passthrough | `docs/guides/services/ollama.mdx` | Shipped |
 | - | - | profile PHP requests with XHProf and XHGui | `docs/guides/tooling/xhprof-xhgui.mdx` | Shipped |
 | - | - | Adminer service for Postgres, MySQL, MariaDB, and SQLite | `docs/guides/services/adminer.mdx` | Shipped |
+| - | - | Keycloak OpenID Connect login server via Compose passthrough | `docs/guides/services/keycloak.mdx` | Shipped |

@@ -8,7 +8,10 @@ export const PLAN_SERVICE_EXPRESSION_SCOPES: readonly string[] = [
   ...PLAN_IDENTITY_EXPRESSION_SCOPES,
   "services",
 ];
-export const LOAD_DEFERRED_EXPRESSION_SCOPES = PLAN_SERVICE_EXPRESSION_SCOPES;
+export const LOAD_DEFERRED_EXPRESSION_SCOPES: readonly string[] = [
+  ...PLAN_IDENTITY_EXPRESSION_SCOPES,
+  "services",
+];
 export const LOAD_RESOLVABLE_EXPRESSION_SCOPES: readonly string[] = ["recipe", "env"];
 
 export interface LandofileLoadScope {

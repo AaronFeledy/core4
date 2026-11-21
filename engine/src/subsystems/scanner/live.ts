@@ -72,12 +72,14 @@ export const makeUrlScanner = (
       const candidates =
         options?.urls === undefined
           ? (yield* deps.listEndpoints(appId, options?.plan)).flatMap((endpoint) => {
-              const resolved = resolveConfig(
-                options?.plan?.services[endpoint.service] ?? endpoint.servicePlan,
-                endpoint.endpoint,
-              );
+              const service = options?.plan?.services[endpoint.service] ?? endpoint.servicePlan;
+              const resolved = resolveConfig(service, endpoint.endpoint);
               return resolved.enabled
-                ? scanTargets([endpoint], resolved.path).map((target) => ({ target, config: resolved }))
+                ? scanTargets([endpoint], resolved.path).map((target) => ({
+                    target,
+                    config: resolved,
+                    service,
+                  }))
                 : [];
             })
           : options.urls.flatMap((supplied) => {
@@ -88,8 +90,9 @@ export const makeUrlScanner = (
                 host?.includes("*")
               )
                 return [];
-              const resolved = resolveConfig(options.plan?.services[supplied.service], supplied.endpoint);
-              return resolved.enabled ? [{ target: supplied, config: resolved }] : [];
+              const service = options.plan?.services[supplied.service];
+              const resolved = resolveConfig(service, supplied.endpoint);
+              return resolved.enabled ? [{ target: supplied, config: resolved, service }] : [];
             });
       const targets = [
         ...new Map(
@@ -102,8 +105,21 @@ export const makeUrlScanner = (
       };
       const scanned = yield* Effect.forEach(
         targets,
-        ({ target, config }) =>
-          scanTarget(scanDeps, config, redactor, { service: target.service, url: target.url }),
+        ({ target, config, service }) => {
+          const authority = service?.listenerAuthority;
+          const idlePort =
+            authority?.owner === "application" &&
+            authority.keepAlive === true &&
+            target.endpoint?.transport === "tcp" &&
+            target.endpoint.port === authority.port
+              ? authority.port
+              : undefined;
+          return scanTarget(scanDeps, config, redactor, {
+            service: target.service,
+            url: target.url,
+            ...(idlePort === undefined ? {} : { idlePort }),
+          });
+        },
         { concurrency: 4 },
       );
       return { appId, endpoints: scanned };

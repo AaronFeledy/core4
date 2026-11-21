@@ -9,6 +9,7 @@ import {
   AxisToken,
   CleanupProps,
   ComponentId,
+  FetchProps,
   GuideProps,
   HiddenProps,
   InlineProps,
@@ -26,7 +27,11 @@ import {
 } from "../docs/components/props.ts";
 import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 import { PublicTranscript, Transcript } from "../docs/transcript.ts";
-import { EnvironmentValueResolutionError, PlanReplanRequiredError } from "../errors/environment-value.ts";
+import {
+  EnvironmentValueResolutionError,
+  PlanReplanRequiredError,
+  RouteUrlBindingError,
+} from "../errors/environment-value.ts";
 import {
   AppDataIdentityError,
   AppPlacementError,
@@ -54,6 +59,8 @@ import {
   DeprecationUsedEvent,
   DiffRenderEvent,
   LandoEvent,
+  LockWaitEvent,
+  LockWaitHolder,
   ManagedFileConflictDetectedEvent,
   ManagedFileSkippedEvent,
   MarkdownBlockEvent,
@@ -258,6 +265,7 @@ import {
   ServiceCredsConfig,
   ServiceCredsDisplay,
 } from "./database-connection.ts";
+import { DependencyEnvironmentIntent } from "./dependency-environment.ts";
 import {
   DeprecationNotice,
   DeprecationNoticeJsonShape,
@@ -287,6 +295,8 @@ import {
   BoundTextReference,
   Environment,
   EnvironmentValue,
+  RouteText,
+  RouteUrlPart,
   SecretRef,
   SecretReference,
 } from "./environment-value.ts";
@@ -530,6 +540,7 @@ import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceFeatureValidationResult } from "./service-feature-validation.ts";
 import { ServiceContainerChange, ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
+import { ServiceLauncherMarker, ServiceLaunchers } from "./service-launchers.ts";
 import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
 import { GeneratedCertificateEndpoint } from "./service-resolution.ts";
 import {
@@ -648,6 +659,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   SecretRef,
   BoundTextReference,
   BoundText,
+  RouteText,
+  RouteUrlPart,
   EnvironmentValue,
   Environment,
   ServiceCreds,
@@ -672,6 +685,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceScopedLandofile,
   CompiledLandofile,
   EnvironmentValueResolutionError,
+  RouteUrlBindingError,
   PlanReplanRequiredError,
   SshAgentConfig,
   GpgAgentConfig,
@@ -702,6 +716,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   StepProps,
   RunProps,
   VerifyProps,
+  FetchProps,
   CleanupProps,
   VariableProps,
   HiddenProps,
@@ -792,6 +807,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   PreparedCertificatePair,
   HostAliasPlan,
   ServiceDependencyCondition,
+  DependencyEnvironmentIntent,
   DependencyPlan,
   PerAppBridgePlan,
   SharedNetworkMembershipPlan,
@@ -970,6 +986,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   GeneratedCertificateEndpoint,
   ServiceConnection,
   ServiceState,
+  ServiceLauncherMarker,
+  ServiceLaunchers,
   RouteEvidence,
   EmbeddingPluginPolicy,
   CommandContribution,
@@ -1105,6 +1123,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   MessageInfoEvent,
   MessageWarnEvent,
   MessageErrorEvent,
+  LockWaitEvent,
+  LockWaitHolder,
   PaintBannerEvent,
   NotifyDesktopEvent,
   CommandInvocationCorrelation,
@@ -1288,6 +1308,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
     "Owned launcher HTTPS listener that can serve the service's generated certificate.",
   ServiceConnection: "Scoped service connection with explicit binding and activity evidence.",
   ServiceState: "Shared observed and supervised service lifecycle vocabulary.",
+  ServiceLauncherMarker: "Colon-prefixed kebab-case launcher marker such as :local-bin or :node-install-run.",
+  ServiceLaunchers:
+    "Service-type table from launcher marker to non-empty argv prefix; keys exclude the reserved :host site.",
   RouteEvidence: "Read-only configured ingress and live route publication evidence.",
   ServiceInfoLogSource: "Declared service log source and provider availability returned by info.",
   ServiceShutdownObservation: "Attributed daemon shutdown facts without inferred graceful or forced cleanup.",
@@ -1319,6 +1342,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ScheduleJob: "One scheduled command on a service.",
   ScheduleJobName: "Job name unique within the service.",
   ScheduleConfig: "Scheduled jobs for a service.",
+  DependencyEnvironmentIntent: "A service feature's request to prepare and share a project dependency store.",
 } satisfies Partial<Record<keyof typeof rawPublicSchemaRegistry, string>>;
 const CATALOG_SERVICE_SCHEMA_DESCRIPTIONS = {
   AdminerServiceConfig: "Landofile configuration accepted by the Adminer catalog service.",
@@ -1941,6 +1965,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "NotifyConfig.enabled",
   "NotifyConfig.thresholdMs",
   "NotifyDesktopEvent._tag",
+  "LockWaitEvent._tag",
   "CodeSnippetEvent._tag",
   "DiffRenderEvent._tag",
   "MarkdownBlockEvent._tag",

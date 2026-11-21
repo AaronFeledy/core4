@@ -1,0 +1,61 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "schedule:weekly"],
+  "timezone": "America/Chicago",
+  "semanticCommits": "disabled",
+  "labels": ["dependencies"],
+  "enabledManagers": ["bun", "bun-version", "github-actions", "custom.regex"],
+  "ignorePaths": ["**/node_modules/**", "**/fixtures/**", "**/test/**"],
+  "rangeStrategy": "bump",
+  "minimumReleaseAge": "3 days",
+  "osvVulnerabilityAlerts": true,
+  "constraints": {
+    "bun": "1.4.3"
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Renovate updates bun.lock with this Bun, so it moves with .bun-version.",
+      "managerFilePatterns": ["/^\\.github/renovate\\.json$/"],
+      "matchStrings": ["\"bun\": \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
+      "depNameTemplate": "bun",
+      "datasourceTemplate": "npm",
+      "versioningTemplate": "npm"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "One pull request a week for the minor and patch updates of each ecosystem. Major updates get their own pull requests.",
+      "matchManagers": ["bun"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Bun packages"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Generators own runner labels, job containers, and action inputs. Renovate may only move action pins, which come from .github/actions/pins.yml.",
+      "matchManagers": ["github-actions"],
+      "matchDepTypes": ["github-runner", "container", "service", "uses-with"],
+      "enabled": false
+    },
+    {
+      "description": "A Bun upgrade also moves the docs, the runtime-bundle builder image, and the pinned Bun license, so .bun-version, constraints.bun, engines.bun, and Bun's types wait together for approval on the Dependency Dashboard.",
+      "matchPackageNames": ["bun", "@types/bun"],
+      "groupName": "Bun runtime",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Effect is pinned in the root workspace catalog and guarded by core/test/build/effect-version-pin.test.ts. Upgrades need codegen and review, so they wait for approval on the Dependency Dashboard.",
+      "matchPackageNames": ["effect"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "@opentui/core 0.8.1+ native packages statically link LGPL FFmpeg. Stay on 0.8.0 until https://github.com/anomalyco/opentui/issues/2088 ships a video-free build.",
+      "matchPackageNames": ["@opentui/core"],
+      "allowedVersions": "<0.8.1"
+    }
+  ]
+}

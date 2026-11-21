@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
+import { pinnedAction } from "../../../scripts/action-pins.ts";
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -83,7 +83,7 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(27);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(28);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
@@ -132,7 +132,6 @@ describe("ci workflow", () => {
       "provider-matrix.yml",
       "rails-journey.yml",
       "release.yml",
-      "retarget-action-bump.yml",
       "runtime-bundle.yml",
       "stock-artifact-age-canary.yml",
       "tomcat-bump.yml",
@@ -308,8 +307,8 @@ describe("ci workflow", () => {
     const jobs = findIndentedBlock(workflow, "jobs");
     const providerLandoE2e = findIndentedBlock(jobs, "provider-lando-e2e-linux-x64", 2);
 
-    expect(appLifecycleGuide).toContain(
-      '<Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>',
+    expect(appLifecycleGuide).toMatch(
+      /<Scenario id="real-provider-loop" layer="e2e"[^>]* tags=\{\["@smoke"\]\}/,
     );
     expect(workflow).toContain("name: nightly");
     expect(providerLandoE2e).toContain("    runs-on: ubuntu-26.04");
@@ -459,7 +458,7 @@ describe("ci workflow", () => {
     const rehearsal = findIndentedBlock(jobs, "distribution-rehearsal-linux-x64", 2);
 
     expect(rehearsal).toContain("    runs-on: ubuntu-24.04");
-    expect(rehearsal).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(rehearsal).toContain(`        uses: ${pinnedAction("oven-sh/setup-bun")}`);
     expect(rehearsal).toContain("          bun-version-file: .bun-version");
     expect(rehearsal).toContain("        run: bun install --frozen-lockfile");
     expect(rehearsal).toContain("        run: bun run --filter='@lando/core' build:manifest");
@@ -493,7 +492,7 @@ describe("ci workflow", () => {
     expect(rehearsal).toContain("        run: bun run scripts/dist-bundle.ts --verify dist/bundle");
 
     expect(rehearsal).toContain("      - name: Upload distribution rehearsal bundle");
-    expect(rehearsal).toContain("        uses: actions/upload-artifact@v7");
+    expect(rehearsal).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(rehearsal).toContain(
       "          name: lando-dist-rehearsal-v4.0.0-nightly.${{ github.run_number }}",
     );
@@ -524,6 +523,7 @@ describe("ci workflow", () => {
     const unitTests = findIndentedBlock(jobs, "unit-tests-linux-x64", 2);
 
     expect(triggers).toContain("  pull_request:");
+    expect(triggers).toContain("  merge_group:");
     expect(triggers).toContain("    branches: [main]");
     expect(triggers).toContain("  push:");
     expect(triggers).toContain("  workflow_dispatch:");
@@ -532,12 +532,14 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("fromJSON(needs.selection.outputs.broad");
     expect(staticChecksPlatform).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(staticChecksPlatform).toContain("    timeout-minutes: 35");
-    expect(staticChecksPlatform).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(staticChecksPlatform).toContain(`        uses: ${pinnedAction("oven-sh/setup-bun")}`);
     expect(staticChecksPlatform).toContain("          bun-version-file: .bun-version");
     expect(staticChecksPlatform).toContain("        run: bun install --frozen-lockfile");
     expect(staticChecksPlatform).toContain("      - name: Native Windows private-file ACL tests");
     expect(staticChecksPlatform).toContain("        if: startsWith(matrix.platform, 'windows-')");
     expect(staticChecksPlatform).toContain("        run: bun run test:selection windows-private-file-access");
+    expect(staticChecksPlatform).toContain("        run: bun run test:selection native-lock");
+    expect(staticChecksPlatform).toContain("      - name: Native advisory lock (two-process)");
     expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform).toContain("      - name: Typecheck\n        run: bun run typecheck\n");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
@@ -598,10 +600,8 @@ describe("ci workflow", () => {
     // Then
     expect(jobs).toContain("  docs-build:");
     expect(docsBuild).toContain("    runs-on: ubuntu-26.04");
-    expect(docsBuild).toContain(
-      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
-    );
-    expect(docsBuild).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(docsBuild).toContain(`      - uses: ${pinnedAction("actions/checkout")}`);
+    expect(docsBuild).toContain(`        uses: ${pinnedAction("oven-sh/setup-bun")}`);
     expect(docsBuild).toContain("          bun-version-file: .bun-version");
     expect(docsBuild).toContain("        run: bun install --frozen-lockfile");
     expect(docsBuild).toContain("        run: bun run codegen");
@@ -609,9 +609,7 @@ describe("ci workflow", () => {
     expect(docsBuild).toContain("        run: bun run test:selection docs");
     expect(docsBuild).toContain("        run: bun run docs:build");
     expect(docsBuild).toContain("        run: test -f docs/dist/reference/schemas/app-plan/index.html");
-    expect(docsBuild).toContain(
-      "        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0",
-    );
+    expect(docsBuild).toContain(`        uses: ${pinnedAction("actions/upload-pages-artifact")}`);
     expect(docsBuild).toContain("          path: docs/dist");
     expect(docsBuild).toContain("        if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
     expect(docsBuild.indexOf("bun install --frozen-lockfile")).toBeLessThan(
@@ -644,7 +642,7 @@ describe("ci workflow", () => {
     expect(deployDocs).toContain("      pages: write");
     expect(deployDocs).toContain("      id-token: write");
     expect(deployDocs).toContain("      name: github-pages");
-    expect(deployDocs).toContain("        uses: actions/deploy-pages@v5");
+    expect(deployDocs).toContain(`        uses: ${pinnedAction("actions/deploy-pages")}`);
   });
 
   test("uses minimal read-only permissions for fork-safe pull requests", async () => {
@@ -687,9 +685,7 @@ describe("ci workflow", () => {
     expect(schemaSnapshot).not.toContain("dist/command-schemas");
     expect(schemaSnapshot).not.toContain("docs/reference/schemas");
     expect(schemaSnapshot).toContain('if [[ -n "$schema_changes" ]]; then');
-    expect(
-      schemaSnapshot,
-    ).toContain(`      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    expect(schemaSnapshot).toContain(`      - uses: ${pinnedAction("actions/checkout")}
         with:
           fetch-depth: 0`);
     expect(schemaSnapshot).toContain("      - name: Check schema compatibility");
@@ -725,6 +721,8 @@ describe("ci workflow", () => {
       expect(build).toContain("        run: bun run test:selection compiled-host-execution");
       // Native FFI calling conventions differ per platform, so every build lane round-trips them.
       expect(build).toContain("        run: bun run test:selection compiled-renderer-output");
+      expect(build).toContain("        run: bun run test:selection compiled-native-lock");
+      expect(build).toContain("      - name: Verify compiled two-process native lock");
       expect(build.indexOf(`Build ${target} binary`)).toBeLessThan(
         build.indexOf("Verify compiled host execution"),
       );
@@ -762,9 +760,7 @@ describe("ci workflow", () => {
     expect(helper).toContain("    needs: [selection, container-helper]");
     expect(helper).toContain("    runs-on: ubuntu-24.04-arm");
     expect(helper).toContain("        run: bun install --frozen-lockfile");
-    expect(helper).toContain(
-      "        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2",
-    );
+    expect(helper).toContain(`        uses: ${pinnedAction("actions/download-artifact")}`);
     expect(helper).toContain("          name: container-helper");
     expect(helper).toContain("          path: core/container-helper/dist");
     expect(helper).toContain(
@@ -802,7 +798,7 @@ describe("ci workflow", () => {
     expect(buildLinux).toContain("          ./dist/lando --version");
     expect(buildLinux).toContain("          ./dist/lando --help");
     expect(buildLinux).toContain("          ./dist/lando shellenv");
-    expect(buildLinux).toContain("        uses: actions/upload-artifact@v7");
+    expect(buildLinux).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(buildLinux).toContain("            dist/THIRD_PARTY_NOTICES.md");
     expect(buildLinux).toContain("          bun run check:compiled-binary-notices");
     expect(buildLinux).toContain("        if: always()");
@@ -817,7 +813,7 @@ describe("ci workflow", () => {
       buildLinux.indexOf("./dist/lando shellenv"),
     );
     expect(buildLinux.indexOf("./dist/lando shellenv")).toBeLessThan(
-      buildLinux.indexOf("uses: actions/upload-artifact@v7"),
+      buildLinux.indexOf(`uses: ${pinnedAction("actions/upload-artifact")}`),
     );
   });
 
@@ -839,7 +835,7 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("          ./dist/lando --version");
     expect(buildDarwin).toContain("          ./dist/lando --help");
     expect(buildDarwin).toContain("          ./dist/lando shellenv");
-    expect(buildDarwin).toContain("        uses: actions/upload-artifact@v7");
+    expect(buildDarwin).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(buildDarwin).toContain("        if: always()");
     expect(buildDarwin).toContain("          name: lando-darwin-arm64");
     expect(buildDarwin).toContain(
@@ -854,7 +850,7 @@ describe("ci workflow", () => {
       buildDarwin.indexOf("./dist/lando shellenv"),
     );
     expect(buildDarwin.indexOf("./dist/lando shellenv")).toBeLessThan(
-      buildDarwin.indexOf("uses: actions/upload-artifact@v7"),
+      buildDarwin.indexOf(`uses: ${pinnedAction("actions/upload-artifact")}`),
     );
   });
 
@@ -888,7 +884,7 @@ describe("ci workflow", () => {
     expect(buildWindows).not.toContain("[Console]::OutputEncoding");
     expect(buildWindows).not.toContain("          ./dist/lando-windows-x64.exe --version");
     expect(buildWindows).not.toContain("          ./dist/lando-windows-x64.exe shellenv");
-    expect(buildWindows).toContain("        uses: actions/upload-artifact@v7");
+    expect(buildWindows).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(buildWindows).toContain("        if: always()");
     expect(buildWindows).toContain("          name: lando-windows-x64");
     expect(buildWindows).toContain(
@@ -901,7 +897,7 @@ describe("ci workflow", () => {
       buildWindows.indexOf("bun run scripts/smoke-windows-binary.ts"),
     );
     expect(buildWindows.indexOf("bun run scripts/smoke-windows-binary.ts")).toBeLessThan(
-      buildWindows.indexOf("uses: actions/upload-artifact@v7"),
+      buildWindows.indexOf(`uses: ${pinnedAction("actions/upload-artifact")}`),
     );
   });
 
@@ -923,7 +919,7 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("          ./dist/lando --version");
     expect(buildDarwin).toContain("          ./dist/lando --help");
     expect(buildDarwin).toContain("          ./dist/lando shellenv");
-    expect(buildDarwin).toContain("        uses: actions/upload-artifact@v7");
+    expect(buildDarwin).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(buildDarwin).toContain("        if: always()");
     expect(buildDarwin).toContain("          name: lando-darwin-x64");
     expect(buildDarwin).toContain(
@@ -938,7 +934,7 @@ describe("ci workflow", () => {
       buildDarwin.indexOf("./dist/lando shellenv"),
     );
     expect(buildDarwin.indexOf("./dist/lando shellenv")).toBeLessThan(
-      buildDarwin.indexOf("uses: actions/upload-artifact@v7"),
+      buildDarwin.indexOf(`uses: ${pinnedAction("actions/upload-artifact")}`),
     );
   });
 
@@ -960,7 +956,7 @@ describe("ci workflow", () => {
     expect(buildLinuxArm).toContain("          ./dist/lando --version");
     expect(buildLinuxArm).toContain("          ./dist/lando --help");
     expect(buildLinuxArm).toContain("          ./dist/lando shellenv");
-    expect(buildLinuxArm).toContain("        uses: actions/upload-artifact@v7");
+    expect(buildLinuxArm).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(buildLinuxArm).toContain("        if: always()");
     expect(buildLinuxArm).toContain("          name: lando-linux-arm64");
     expect(buildLinuxArm).toContain(
@@ -975,7 +971,7 @@ describe("ci workflow", () => {
       buildLinuxArm.indexOf("./dist/lando shellenv"),
     );
     expect(buildLinuxArm.indexOf("./dist/lando shellenv")).toBeLessThan(
-      buildLinuxArm.indexOf("uses: actions/upload-artifact@v7"),
+      buildLinuxArm.indexOf(`uses: ${pinnedAction("actions/upload-artifact")}`),
     );
   });
 
@@ -1008,14 +1004,12 @@ describe("ci workflow", () => {
     const guideScenariosRunner = findIndentedBlock(jobs, "guide-scenarios-linux-x64-runner", 2);
     const guideScenarios = findIndentedBlock(jobs, "guide-scenarios-linux-x64", 2);
 
-    expect(guideScenariosRunner).toContain(
-      "    needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
-    );
+    expect(guideScenariosRunner).toContain("    needs: [selection, static-checks]");
     expect(guideScenariosRunner).toContain("        runs-on: [ubuntu-26.04]");
     expect(guideScenariosRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(guideScenarios).toContain("    needs: [selection, guide-scenarios-linux-x64-runner]");
     expect(guideScenarios).toContain("always() && !cancelled()");
-    expect(guideScenariosRunner).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(guideScenariosRunner).toContain(`        uses: ${pinnedAction("oven-sh/setup-bun")}`);
     expect(guideScenariosRunner).toContain("          bun-version-file: .bun-version");
     expect(guideScenariosRunner).toContain("        run: bun install --frozen-lockfile");
     expect(guideScenariosRunner).toContain("        run: bun run codegen");
@@ -1036,52 +1030,9 @@ describe("ci workflow", () => {
       '          GUIDE_DRIFT_PR_BODY="$(gh pr view ${{ github.event.pull_request.number }} --json body --jq .body)" bun run check:guide-drift',
     );
     expect(guideScenariosRunner).toContain(guideScenarioRunLine);
-    expect(guideScenariosRunner).toContain("      - name: Download Linux x64 binary artifact");
-    expect(guideScenariosRunner).toContain("          name: lando-linux-x64");
-    expect(guideScenariosRunner).toContain("        run: chmod +x dist/lando");
-    expect(guideScenariosRunner).toContain("      - name: Provision rootless runtime prerequisites");
-    expect(guideScenariosRunner).toContain("      - name: Prepare provider via lando setup");
-    expect(guideScenariosRunner).toContain("          dist/lando setup --yes --provider=lando");
-    expect(guideScenariosRunner).toContain("      - name: Verify managed runtime socket");
-    expect(guideScenariosRunner).not.toContain(
-      '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
-    );
-    expect(guideScenariosRunner).not.toContain("      - name: Install Podman 6 toolchain");
-    expect(guideScenariosRunner).not.toContain("      - name: Assert Podman 6 host contract");
-    expect(guideScenariosRunner).toContain("      - name: Download current-commit Linux x64 runtime bundle");
-    expect(guideScenariosRunner).toContain(
-      "    needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
-    );
-    expect(guideScenariosRunner).not.toContain("podman system service");
-    expect(guideScenariosRunner).toContain("      - name: Run e2e smoke guide scenarios");
-    expect(guideScenariosRunner).toContain('          LANDO_GUIDE_E2E: "1"');
-    expect(guideScenariosRunner).toContain(
-      `        run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"`,
-    );
     expect(guideScenariosRunner).toContain(guideScenarioStepWithLiveOutput);
-    expect(guideScenariosRunner).toContain(
-      [
-        "      - name: Run e2e smoke guide scenarios",
-        "        env:",
-        '          LANDO_GUIDE_E2E: "1"',
-        guideScenarioLiveOutputEnvLine,
-      ].join("\n"),
-    );
-    expect(guideScenariosRunner.split(guideScenarioLiveOutputEnvLine).length - 1).toBe(2);
-    expect(guideScenariosRunner).toContain("      - name: Teardown guide e2e provider");
-    expect(guideScenariosRunner).toContain("          dist/lando poweroff || true");
-    expect(guideScenariosRunner).toContain(
-      '          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"',
-    );
-    expect(guideScenariosRunner).toContain("      - name: Upload guide e2e provider diagnostics");
-    expect(guideScenariosRunner).toContain("        if: failure()");
-    expect(guideScenariosRunner).toContain("        uses: actions/upload-artifact@v7");
-    expect(guideScenariosRunner).toContain(
-      "          name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}.zip",
-    );
-    expect(guideScenariosRunner).toContain("          path: dist/transcripts/guides/**/*.json");
-    expect(guideScenariosRunner).toContain("          if-no-files-found: ignore");
-    expect(guideScenariosRunner).toContain("          retention-days: 7");
+    expect(guideScenariosRunner).not.toContain("Run e2e smoke guide scenarios");
+    expect(guideScenariosRunner).not.toContain("Download Linux x64 binary artifact");
 
     expect(guideScenariosRunner.indexOf("bun install --frozen-lockfile")).toBeLessThan(
       guideScenariosRunner.indexOf("bun run codegen"),
@@ -1098,14 +1049,71 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner.indexOf("bun run check:guide-drift")).toBeLessThan(
       guideScenariosRunner.indexOf(guideScenarioRunCommand),
     );
-    expect(guideScenariosRunner.indexOf(guideScenarioRunCommand)).toBeLessThan(
-      guideScenariosRunner.indexOf("Download Linux x64 binary artifact"),
+  });
+
+  test("splits the e2e smoke guide scenarios across shards behind one Linux x64 gate", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const guideE2eRunner = findIndentedBlock(jobs, "guide-e2e-linux-x64-runner", 2);
+    const guideE2e = findIndentedBlock(jobs, "guide-e2e-linux-x64", 2);
+
+    expect(guideE2eRunner).toContain(
+      "    needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
     );
-    expect(guideScenariosRunner.indexOf("Download Linux x64 binary artifact")).toBeLessThan(
-      guideScenariosRunner.indexOf("Run e2e smoke guide scenarios"),
+    expect(guideE2eRunner).toContain("        runs-on: [ubuntu-26.04]");
+    expect(guideE2eRunner).toContain("        shard: [1, 2]");
+    expect(guideE2eRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
+    expect(guideE2eRunner).toContain("    timeout-minutes: 30");
+    expect(guideE2e).toContain("    needs: [selection, guide-e2e-linux-x64-runner]");
+    expect(guideE2e).toContain("always() && !cancelled()");
+    expect(guideE2eRunner).toContain("        run: bun install --frozen-lockfile");
+    expect(guideE2eRunner).toContain("        run: bun run codegen");
+    expect(guideE2eRunner).not.toContain("bun run lint:guides");
+    expect(guideE2eRunner).not.toContain(guideScenarioRunLine);
+    expect(guideE2eRunner).toContain("      - name: Download Linux x64 binary artifact");
+    expect(guideE2eRunner).toContain("          name: lando-linux-x64");
+    expect(guideE2eRunner).toContain("        run: chmod +x dist/lando");
+    expect(guideE2eRunner).toContain("      - name: Provision rootless runtime prerequisites");
+    expect(guideE2eRunner).toContain("      - name: Download current-commit Linux x64 runtime bundle");
+    expect(guideE2eRunner).toContain("      - name: Prepare provider via lando setup");
+    expect(guideE2eRunner).toContain("          dist/lando setup --yes --provider=lando");
+    expect(guideE2eRunner).toContain("      - name: Verify managed runtime socket");
+    expect(guideE2eRunner).not.toContain(
+      '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
     );
-    expect(guideScenariosRunner.indexOf("Upload guide scenario transcripts")).toBeGreaterThan(
-      guideScenariosRunner.indexOf("Run e2e smoke guide scenarios"),
+    expect(guideE2eRunner).not.toContain("      - name: Install Podman 6 toolchain");
+    expect(guideE2eRunner).not.toContain("podman system service");
+    expect(guideE2eRunner).toContain(
+      [
+        "      - name: Run e2e smoke guide scenarios",
+        "        env:",
+        '          LANDO_GUIDE_E2E: "1"',
+        guideScenarioLiveOutputEnvLine,
+        '        run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts --smoke-e2e --shard=${{ matrix.shard }}/2',
+      ].join("\n"),
+    );
+    expect(guideE2eRunner).toContain("      - name: Teardown guide e2e provider");
+    expect(guideE2eRunner).toContain("          dist/lando poweroff || true");
+    expect(guideE2eRunner).toContain('          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"');
+    expect(guideE2eRunner).toContain("      - name: Upload guide e2e provider diagnostics");
+    expect(guideE2eRunner).toContain("        if: failure()");
+    expect(guideE2eRunner).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
+    expect(guideE2eRunner).toContain(
+      "          name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}-shard${{ matrix.shard }}.zip",
+    );
+    expect(guideE2eRunner).toContain(
+      "          name: guide-e2e-provider-diagnostics-${{ github.run_id }}-${{ matrix.runs-on }}-shard${{ matrix.shard }}.zip",
+    );
+    expect(guideE2eRunner).toContain("          path: dist/transcripts/guides/**/*.json");
+
+    expect(guideE2eRunner.indexOf("bun run codegen")).toBeLessThan(
+      guideE2eRunner.indexOf("Download Linux x64 binary artifact"),
+    );
+    expect(guideE2eRunner.indexOf("Download Linux x64 binary artifact")).toBeLessThan(
+      guideE2eRunner.indexOf("Run e2e smoke guide scenarios"),
+    );
+    expect(guideE2eRunner.indexOf("Upload guide scenario transcripts")).toBeGreaterThan(
+      guideE2eRunner.indexOf("Run e2e smoke guide scenarios"),
     );
   });
 
@@ -1316,7 +1324,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("        if: failure() || cancelled()");
     expect(providerIntegration).toContain('          journalctl --no-pager --since "-30 minutes"');
     expect(providerIntegration).toContain("      - name: Upload provider integration diagnostics");
-    expect(providerIntegration).toContain("        uses: actions/upload-artifact@v7");
+    expect(providerIntegration).toContain(`        uses: ${pinnedAction("actions/upload-artifact")}`);
     expect(providerIntegration).toContain(
       "          name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}-${{ matrix.suite }}",
     );
@@ -1477,7 +1485,7 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
     const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-x64-runner", 2);
-    const guideScenarios = findIndentedBlock(jobs, "guide-scenarios-linux-x64-runner", 2);
+    const guideScenarios = findIndentedBlock(jobs, "guide-e2e-linux-x64-runner", 2);
 
     for (const [hostKey, runner] of [
       ["linux-x64", "ubuntu-24.04"],

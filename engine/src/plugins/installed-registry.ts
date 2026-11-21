@@ -114,7 +114,6 @@ export const mutateInstalledPluginRegistry = <A, E, R>(
   input: {
     readonly pluginsRoot: string;
     readonly mutation: InstalledPluginRegistryMutation;
-    readonly onWait?: Effect.Effect<void>;
   },
   use: (commit: () => Promise<void>) => Effect.Effect<A, E, R>,
   io: typeof defaultIo = defaultIo,
@@ -190,7 +189,6 @@ export const mutateInstalledPluginRegistry = <A, E, R>(
       };
       return yield* use(commit).pipe(Effect.uninterruptible);
     }),
-    input.onWait,
   );
 
 export const recordInstalledPlugin = (

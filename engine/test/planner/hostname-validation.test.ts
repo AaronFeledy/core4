@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadLandofileLayers } from "@lando/landofile/service";
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { FileSystem, PluginRegistry } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import { emitYamlDocument } from "@lando/sdk/yaml";
 import { Effect, Result, Schema } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
@@ -13,6 +14,7 @@ import { resolveKnownEventSet } from "../../src/planner/event-set.ts";
 import { validateResolvedLandofile } from "../../src/planner/resolved-validation.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
+import { planApp } from "../plan-app.ts";
 
 const withApp = async (service: unknown, run: (root: string) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-hostname-validation-"));
@@ -53,6 +55,48 @@ const lintAndPlan = async (root: string) => {
   const planned = await Effect.runPromise(planning(root).pipe(Effect.result));
   return [lint, planned] as const;
 };
+
+test("plans concrete addresses from deferred list-form extra_hosts values", () =>
+  withApp(
+    {
+      type: "compose",
+      image: "alpine:3.22",
+      extra_hosts: [
+        "peer=192.0.2.1",
+        "{{ env.HOST }}:{{ app.name == 'hostnames' ? env.ADDRESS : '::1' }}",
+        "{{ env.HOST }}={{ app.name == 'hostnames' ? '192.0.2.3' : '::1' }}",
+      ],
+    },
+    async (root) => {
+      const planned = await Effect.runPromise(
+        loadLandofileLayers(root, join(root, ".lando.yml"), {
+          ports: {
+            resolveUserCacheRoot: () => join(root, "cache"),
+            resolveUserIncludesDir: () => join(root, "includes"),
+            sources: {},
+          },
+          templates: {
+            modules: [],
+            context: {
+              env: { HOST: "peer", ADDRESS: "2001:db8::2" },
+              scope: "app",
+              bootstrapLevel: "plugins",
+            },
+          },
+        }).pipe(
+          Effect.flatMap((landofile) =>
+            planApp(
+              { landofile, providerCapabilities: TestRuntimeProvider.capabilities },
+              PluginRegistryLayer.layer,
+            ),
+          ),
+        ),
+      );
+      expect(planned.services[ServiceName.make("web")]?.extensions).toMatchObject({
+        compose: { extra_hosts: { peer: ["192.0.2.1", "2001:db8::2", "192.0.2.3"] } },
+      });
+    },
+  ));
 
 test.each([
   { extra_hosts: { "bad host": "1.2.3.4" } },

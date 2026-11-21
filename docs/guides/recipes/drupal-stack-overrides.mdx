@@ -116,7 +116,7 @@ services:
 
 ## Set a Drush URI and move the webroot
 
-The generated `drush` task gets the current app URL from `lando open --print`, including a nondefault proxy port. Set `DRUSH_OPTIONS_URI` under `services.appserver.environment` to use a specific URL instead. Include the port when the proxy uses one. Moving the webroot to `docroot` does not require changing the generated Drush task: `vendor/bin/drush` remains at the Composer project root.
+The generated `drush` task gets the current app URL from `lando open --print`, including a nondefault proxy port. Set `DRUSH_OPTIONS_URI` under `services.appserver.environment` only to pin a different URL, such as a custom domain; Drush then uses that value instead of the live one. Moving the webroot to `docroot` does not require changing the generated Drush task: `vendor/bin/drush` remains at the Composer project root.
 
 ```yaml
 services:

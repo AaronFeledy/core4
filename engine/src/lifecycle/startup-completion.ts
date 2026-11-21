@@ -9,12 +9,14 @@ import { startFileSyncSessions } from "../operations/start-file-sync.ts";
 import { withRoutesStartProgress } from "../operations/start-progress-phases.ts";
 import { withActivationObservations } from "../services/build-app-observation.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { type PreparedRouteUrls, verifyPublishedRouteUrls } from "./route-url-bindings.ts";
 import { applyAppRoutes } from "./routes.ts";
 import { completeGlobalGroups } from "./startup-completion-groups.ts";
 import { applyScratchRoutes } from "./startup-completion-scratch.ts";
 
 type Readiness = Parameters<typeof waitForServiceReadiness>[0];
 type UserStart = Readiness & {
+  readonly routeUrls?: PreparedRouteUrls | undefined;
   readonly policy: "user-start";
   readonly builds: typeof BuildOrchestrator.Service;
   readonly router: RouterServiceShape;
@@ -23,7 +25,8 @@ type UserStart = Readiness & {
   readonly forceAppBuild?: boolean;
 };
 type Selected = Readiness & {
-  readonly policy: "selected";
+  readonly routeUrls?: PreparedRouteUrls | undefined;
+  readonly policy: "selected" | "selected-start";
   readonly selectedPlan: AppPlan;
   /** The composed table whose routes are published, including unselected applied routes. */
   readonly routePlan: AppPlan;
@@ -35,6 +38,7 @@ type Selected = Readiness & {
 };
 type EnsureGlobal = Readiness & { readonly policy: "ensure-global" };
 type Scratch = Readiness & {
+  readonly routeUrls?: PreparedRouteUrls | undefined;
   readonly policy: "scratch";
   readonly router?: RouterServiceShape;
   readonly landofileRouter?: RouterConfig;
@@ -65,14 +69,16 @@ const userStart = Effect.fn("StartupCompletion.userStart")(function* (request: U
     request.provider,
   );
   yield* verifyGlobalConsumerAdmission;
-  const routes = applyAppRoutes(request.router, request.plan, request.events, request.landofileRouter);
+  const routes = applyAppRoutes(request.router, request.plan, request.events, request.landofileRouter).pipe(
+    Effect.flatMap(({ authorities }) => verifyPublishedRouteUrls(request.routeUrls, authorities)),
+  );
   yield* request.plan.routes.length === 0
     ? routes
     : withRoutesStartProgress({ events: request.events, plan: request.plan, work: routes });
   return yield* waitForServiceReadiness(request);
 });
 const selected = Effect.fn("StartupCompletion.selected")(function* (request: Selected) {
-  yield* startFileSyncSessions(request.selectedPlan, request.events);
+  if (request.policy === "selected") yield* startFileSyncSessions(request.selectedPlan, request.events);
   yield* withBuildProvider(
     withActivationObservations(
       request.builds.buildApp(request.selectedPlan, {
@@ -84,14 +90,20 @@ const selected = Effect.fn("StartupCompletion.selected")(function* (request: Sel
     request.provider,
   );
   yield* verifyGlobalConsumerAdmission;
-  const routes = applyAppRoutes(request.router, request.routePlan, request.events, request.landofileRouter);
+  const routes = applyAppRoutes(
+    request.router,
+    request.routePlan,
+    request.events,
+    request.landofileRouter,
+  ).pipe(Effect.flatMap(({ authorities }) => verifyPublishedRouteUrls(request.routeUrls, authorities)));
   yield* request.routePlan.routes.length === 0
     ? routes
     : withRoutesStartProgress({ events: request.events, plan: request.routePlan, work: routes });
   return yield* waitForServiceReadiness(request);
 });
 const scratch = Effect.fn("StartupCompletion.scratch")(function* (request: Scratch) {
-  yield* applyScratchRoutes(request);
+  const published = yield* applyScratchRoutes(request);
+  if (published !== undefined) yield* verifyPublishedRouteUrls(request.routeUrls, published.authorities);
   return yield* waitForServiceReadiness(request);
 });
 
@@ -105,6 +117,7 @@ export function completeStartup<E>(request: UserStart | Selected | EnsureGlobal 
     case "user-start":
       return userStart(request);
     case "selected":
+    case "selected-start":
       return selected(request);
     case "ensure-global":
       return waitForServiceReadiness(request);

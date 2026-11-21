@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -161,8 +162,16 @@ describe("scratch fork app resources — live integration", () => {
       const sourcePlan = appPlan("forksrc");
       const forkPlan = rewritePlanIdentity(sourcePlan, "scratch-forksrc-abc123");
 
-      await Effect.runPromise(Effect.result(bringDown(forkPlan, { api, volumes: true })));
-      await Effect.runPromise(Effect.result(bringDown(sourcePlan, { api, volumes: true })));
+      await Effect.runPromise(
+        Effect.result(
+          bringDown(forkPlan, { api, volumes: true }).pipe(Effect.provide(makeTestStateStore().layer)),
+        ),
+      );
+      await Effect.runPromise(
+        Effect.result(
+          bringDown(sourcePlan, { api, volumes: true }).pipe(Effect.provide(makeTestStateStore().layer)),
+        ),
+      );
 
       try {
         const sourceApplied = await Effect.runPromise(bringUp(sourcePlan, { api, ...helperOptions }));
@@ -189,8 +198,16 @@ describe("scratch fork app resources — live integration", () => {
           expect(forkContainerIds).not.toContain(containerId);
         }
       } finally {
-        await Effect.runPromise(Effect.result(bringDown(forkPlan, { api, volumes: true })));
-        await Effect.runPromise(Effect.result(bringDown(sourcePlan, { api, volumes: true })));
+        await Effect.runPromise(
+          Effect.result(
+            bringDown(forkPlan, { api, volumes: true }).pipe(Effect.provide(makeTestStateStore().layer)),
+          ),
+        );
+        await Effect.runPromise(
+          Effect.result(
+            bringDown(sourcePlan, { api, volumes: true }).pipe(Effect.provide(makeTestStateStore().layer)),
+          ),
+        );
       }
     },
     240_000,

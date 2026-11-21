@@ -348,12 +348,6 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
-    id: "retarget-action-bump-workflow",
-    ownership: "committed-workflow",
-    script: "build-retarget-action-bump-workflow.ts",
-    workspace: "repo",
-  },
-  {
     id: "stock-artifact-age-canary-workflow",
     ownership: "committed-workflow",
     script: "build-stock-artifact-age-canary-workflow.ts",

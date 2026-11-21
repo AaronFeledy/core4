@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import * as Schema from "effect/Schema";
+import { pinnedActionRef } from "../../../scripts/action-pins.ts";
 import { renderStockArtifactAgeCanaryWorkflow } from "../../../scripts/build-stock-artifact-age-canary-workflow.ts";
-import { RUNTIME_BUNDLE_ACTION_PINS } from "../../../scripts/runtime-bundle-supply-chain.ts";
 
 const Workflow = Schema.Struct({
   on: Schema.Struct({
@@ -50,10 +50,10 @@ test("canary runs weekly off the PR CI path and never fails the job for stale ta
   expect(workflow.jobs.report.if).toContain("github.event_name == 'schedule'");
   expect(workflow.jobs.report.if).toContain("github.event_name == 'workflow_dispatch'");
   expect(workflow.jobs.report.steps[0]).toEqual({
-    uses: RUNTIME_BUNDLE_ACTION_PINS.checkout,
+    uses: pinnedActionRef("actions/checkout"),
     with: { "persist-credentials": false },
   });
-  expect(workflow.jobs.report.steps[1]?.uses).toBe(RUNTIME_BUNDLE_ACTION_PINS.setupBun);
+  expect(workflow.jobs.report.steps[1]?.uses).toBe(pinnedActionRef("oven-sh/setup-bun"));
   expect(
     workflow.jobs.report.steps.some((step) => step.run === "bun run scripts/stock-artifact-age-canary.ts"),
   ).toBe(true);

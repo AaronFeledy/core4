@@ -1,14 +1,33 @@
+import { posix } from "node:path";
+import { type ServiceConfig, canonicalMountEntry, sameImageReference } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { serviceFeatureApply } from "./_feature-helpers.ts";
 import { type LanguageFrameworkPreset, makeLanguageRuntime } from "./_language-runtime.ts";
+import { appMountTarget } from "./_volume-helpers.ts";
+import { PYTHON_PREPARE_SCRIPT, PYTHON_UV_PIN } from "./python-dependency-environment.ts";
+import { pythonServiceLaunchers } from "./python-local-launcher.ts";
 
 export const SUPPORTED_PYTHON_VERSIONS = ["3.12"] as const;
 export type SupportedPythonVersion = (typeof SUPPORTED_PYTHON_VERSIONS)[number];
 const PYTHON_ARTIFACTS = Object.fromEntries(
   SUPPORTED_PYTHON_VERSIONS.map((version) => [version, `python:${version}-slim`]),
 );
+
+// Debian's login profile resets PATH, so recover the shell's original value in profile.d.
+const UV_ARTIFACT_SCRIPT = `set -eu
+requirements=$(mktemp)
+trap 'rm -f "$requirements"' EXIT
+printf '%s\\n' 'uv==${PYTHON_UV_PIN.version} ${PYTHON_UV_PIN.hashes.map((hash) => `--hash=sha256:${hash}`).join(" ")}' > "$requirements"
+/usr/local/bin/python -m pip install --no-cache-dir --only-binary=:all: --require-hashes -r "$requirements"
+cat > /etc/profile.d/lando-python-venv.sh <<'EOF'
+lando_initial_path=$(/bin/grep -azm1 '^PATH=' "/proc/$$/environ" 2>/dev/null | /usr/bin/tr -d '\\000'; /usr/bin/printf '.')
+case "$lando_initial_path" in
+  PATH=*) lando_initial_path=\${lando_initial_path%.}; export PATH="\${lando_initial_path#PATH=}" ;;
+esac
+unset lando_initial_path
+EOF`;
 
 export const SUPPORTED_PYTHON_FRAMEWORKS = ["django", "fastapi", "flask", "none"] as const;
 export type SupportedPythonFramework = (typeof SUPPORTED_PYTHON_FRAMEWORKS)[number];
@@ -72,22 +91,57 @@ const runtime = makeLanguageRuntime({
   resolveFallback: (version) => `Failed to resolve python:${version}`,
 });
 
+// The planner can stamp the catalog image before resolve. An additive build
+// keeps that image; a replacement Compose build owns the toolchain instead.
+const ownsPythonToolchain = (
+  { image, build }: Pick<ServiceConfig, "image" | "build">,
+  version: SupportedPythonVersion,
+) =>
+  (build === undefined || !("context" in build)) &&
+  (image === undefined || sameImageReference(image, PYTHON_ARTIFACTS[version] ?? ""));
+
 export const pythonServiceFeature: ServiceFeatureDefinition = {
   ...runtime.serviceFeature,
   apply: serviceFeatureApply(PYTHON_FEATURE_ID, "service-lando.python failed to apply", (ctx) => {
     runtime.applyFeature(ctx);
     const { version } = configFor(ctx);
-    const { image, build } = ctx.normalizedConfig;
-    if (build !== undefined && "context" in build) return;
-    if (image === undefined || image === PYTHON_ARTIFACTS[version]) {
-      ctx.addBuildStep({
-        id: "service-lando.python:uv",
-        phase: "build",
-        command: ["python", "-m", "pip", "install", "--no-cache-dir", "uv==0.12.24"],
-        user: "root",
-      });
-    }
+    if (!ownsPythonToolchain(ctx.normalizedConfig, version)) return;
+    const { appMount } = ctx.normalizedConfig;
+    ctx.addBuildStep({
+      id: "service-lando.python:uv",
+      phase: "build",
+      command: ["sh", "-c", UV_ARTIFACT_SCRIPT],
+      user: "root",
+    });
+
+    if (appMount === false || appMount?.includes?.some((entry) => canonicalMountEntry(entry) === ".venv"))
+      return;
+    const venv = posix.join(appMountTarget(appMount), ".venv");
+    if (venv.includes(":")) return;
+    ctx.addDependencyEnvironment({
+      kind: "python",
+      target: venv,
+      identity: { python: version },
+      prepare: ["/bin/sh", "-c", PYTHON_PREPARE_SCRIPT, "lando-python-prepare", venv, PYTHON_UV_PIN.version],
+      activation: {
+        VIRTUAL_ENV: venv,
+        PATH: `${venv}/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin`,
+      },
+      cache: { name: "uv", target: "/var/lib/lando/uv-cache", variable: "UV_CACHE_DIR" },
+      inputs: "requirements.txt",
+    });
   }),
 };
-export const makePythonServiceType = runtime.makeServiceType;
+export const makePythonServiceType = (version: SupportedPythonVersion): ServiceType => {
+  const serviceType = runtime.makeServiceType(version);
+  return {
+    ...serviceType,
+    resolve: (input) =>
+      Effect.map(serviceType.resolve(input), (resolution) =>
+        ownsPythonToolchain(resolution.normalizedConfig, version)
+          ? { ...resolution, launchers: pythonServiceLaunchers }
+          : resolution,
+      ),
+  };
+};
 export const python312ServiceType: ServiceType = makePythonServiceType("3.12");

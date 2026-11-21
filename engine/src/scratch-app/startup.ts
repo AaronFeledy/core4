@@ -1,9 +1,20 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { AppPlacementError, ScratchAppError, ServiceNotReadyError } from "@lando/sdk/errors";
+import {
+  AppPlacementError,
+  RouteUrlBindingError,
+  ScratchAppError,
+  ServiceNotReadyError,
+} from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan, RouterConfig } from "@lando/sdk/schema";
-import { EnvironmentValueResolver, type FileSystem, type RouterServiceShape } from "@lando/sdk/services";
+import {
+  EnvironmentValueResolver,
+  type FileSystem,
+  type RouterServiceShape,
+  StateStore,
+} from "@lando/sdk/services";
 import { Cause, type Context, Effect, Exit } from "effect";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
+import { prepareRouteUrlBindings } from "../lifecycle/route-url-bindings.ts";
 import type { PreparedCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { HeldAppLockKeys } from "../operations/app-mutation-lock.ts";
@@ -34,6 +45,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
   services: {
     readonly provider: PreparedRuntimeProvider;
     readonly environmentResolver: typeof EnvironmentValueResolver.Service;
+    readonly stateStore: typeof StateStore.Service;
     readonly router?: RouterServiceShape;
     readonly admissionContext?: Context.Context<GlobalConsumerAdmissionServices>;
   },
@@ -42,7 +54,24 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
   const preparedOverlays = request.preparedOverlays ?? (yield* prepareDebuggerOverlay(plan));
   const runtimePlan = projectDebuggerOverlay(plan, preparedOverlays);
   const activate = Effect.gen(function* () {
+    const routeUrls = yield* prepareRouteUrlBindings({
+      plan: runtimePlan,
+      routes: runtimePlan.routes,
+      router: services.router,
+    }).pipe(
+      mapFailures((cause) =>
+        cause instanceof RouteUrlBindingError
+          ? cause
+          : new ScratchAppError({
+              operation: "start",
+              message: cause.message,
+              remediation: cause.remediation,
+              cause,
+            }),
+      ),
+    );
     yield* applyActivation({
+      routeUrls,
       provider: services.provider,
       plan: runtimePlan,
       certificates: request.certificates,
@@ -50,6 +79,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
       beforeApply: verifyGlobalConsumerAdmission,
     }).pipe(
       Effect.provideService(EnvironmentValueResolver, services.environmentResolver),
+      Effect.provideService(StateStore, services.stateStore),
       mapFailures(
         (cause) =>
           new ScratchAppError({
@@ -62,6 +92,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     );
     yield* completeStartup({
       policy: "scratch",
+      routeUrls,
       provider: services.provider,
       plan: runtimePlan,
       services: Object.values(runtimePlan.services).map((service) => service.name),
@@ -69,13 +100,14 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
       ...(request.landofileRouter === undefined ? {} : { landofileRouter: request.landofileRouter }),
     }).pipe(
       mapFailures((cause) =>
-        cause instanceof AppPlacementError
+        cause instanceof AppPlacementError || cause instanceof RouteUrlBindingError
           ? cause
           : new ScratchAppError({
               operation: "start",
               message: `Unable to ready scratch app ${id}.`,
               cause,
-              remediation: "Wait for services to become healthy, or run `lando doctor` and retry.",
+              remediation:
+                cause.remediation ?? "Wait for services to become healthy, or run `lando doctor` and retry.",
             }),
       ),
     );
@@ -99,7 +131,9 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
   ).pipe(
     Effect.provide(services.admissionContext),
     mapFailures((cause) =>
-      cause instanceof AppPlacementError || cause instanceof ScratchAppError
+      cause instanceof AppPlacementError ||
+      cause instanceof ScratchAppError ||
+      cause instanceof RouteUrlBindingError
         ? cause
         : new ScratchAppError({
             operation: "start",

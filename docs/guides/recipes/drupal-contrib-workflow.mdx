@@ -1,7 +1,6 @@
 ---
 id: drupal-contrib-workflow
 provider: test
-timeout: 900000
 tags: [docs, recipes, drupal, drupal-contrib, php, phpunit]
 ---
 
@@ -232,7 +231,7 @@ service, site sync, and tooling. They do not download Drupal:
     </Step>
   </Scenario>
 
-  <Scenario id="extension-smoke" layer="e2e" tags={["@smoke"]} render={false} reason="Prove that start builds a working site around a module checkout">
+  <Scenario id="extension-smoke" layer="e2e" timeout={900000} tags={["@smoke"]} render={false} reason="Prove that start builds a working site around a module checkout">
     <Step name="init">
       <UseFixture name="example-module" />
       <Run command="lando init . --recipe drupal-contrib --name=contrib-smoke --yes --answer=project=example" />
@@ -249,7 +248,7 @@ service, site sync, and tooling. They do not download Drupal:
     </Step>
   </Scenario>
 
-  <Scenario id="extension-journey" layer="e2e" render={false} reason="Exercise tests, linters, site install, dependency sync, and a core switch on a module checkout">
+  <Scenario id="extension-journey" layer="e2e" timeout={900000} render={false} reason="Exercise tests, linters, site install, dependency sync, and a core switch on a module checkout">
     <Step name="init">
       <UseFixture name="example-module" />
       <Run command="lando init . --recipe drupal-contrib --name=contrib-journey --yes --answer=project=example" />

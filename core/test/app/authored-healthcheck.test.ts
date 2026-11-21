@@ -10,12 +10,15 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import { Effect, Layer, Result } from "effect";
 import { withCwd } from "../_support/temp-cwd.ts";
 
-for (const kind of ["http", "tcp"] as const) {
-  test(`real ${kind} start fails with the authored source before any provider action`, async () => {
+for (const [kind, field] of [
+  ["http", "url"],
+  ["tcp", "port"],
+] as const) {
+  test(`real ${kind} start without ${field} fails with the authored source before any provider action`, async () => {
     const root = await mkdtemp(join(tmpdir(), "authored-healthcheck-"));
     await writeFile(
       join(root, ".lando.yml"),
-      "name: authored-healthcheck\nprovider: test\nservices:\n  web:\n    type: node:lts\n",
+      "name: authored-healthcheck\nprovider: test\nrouter:\n  enabled: false\nservices:\n  web:\n    type: node:lts\n",
     );
     const local = join(root, ".lando.local.yml");
     await writeFile(local, `services:\n  web:\n    healthcheck:\n      kind: ${kind}\n`);
@@ -101,8 +104,8 @@ for (const kind of ["http", "tcp"] as const) {
           file: local,
           issues: [
             {
-              path: ["services", "web", "healthcheck", "kind"],
-              source: { file: local, layer: "local", path: ["services", "web", "healthcheck", "kind"] },
+              path: ["services", "web", "healthcheck", field],
+              source: { file: local, layer: "local", path: ["services", "web", "healthcheck"] },
             },
           ],
         });

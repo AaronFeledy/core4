@@ -50,7 +50,10 @@ export const blockedLoadSkip = ({
 };
 
 export const unavailableEntrySkips = (
-  unavailable: readonly LoadUnavailableSite[],
+  unavailable: readonly {
+    readonly path: LoadUnavailableSite["path"];
+    readonly source?: ConfigLintSkip["source"];
+  }[],
   limit = CONFIG_LINT_UNAVAILABLE_SKIP_LIMIT,
 ): readonly ConfigLintSkip[] => {
   const skips = new Map<string, ConfigLintSkip>();
@@ -62,7 +65,7 @@ export const unavailableEntrySkips = (
       stage: "resolve",
       reason: "unavailable",
       path,
-      source: site.source,
+      ...(site.source === undefined ? {} : { source: site.source }),
       message: "Effective or resolve checks that depend on this entry could not run.",
     });
   }

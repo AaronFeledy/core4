@@ -66,6 +66,13 @@ export const makeTestProviderContainers = () => {
           );
         }
       }
+      const completes = new Set(
+        Object.values(plan.services).flatMap((service) =>
+          service.dependsOn
+            .filter((edge) => edge.condition === "service_completed_successfully")
+            .map((edge) => edge.service),
+        ),
+      );
       let changed = false;
       for (const service of Object.values(plan.services)) {
         if (options.signal?.aborted) return yield* Effect.interrupt;
@@ -73,6 +80,7 @@ export const makeTestProviderContainers = () => {
         const current = containers.get(key(target));
         const now = yield* Clock.currentTimeMillis;
         if (current === undefined) generation += 1;
+        const completesOnStart = completes.has(service.name);
         changed ||= current?.status !== "running";
         containers.set(key(target), {
           app: plan.id,
@@ -80,7 +88,8 @@ export const makeTestProviderContainers = () => {
           service: service.name,
           providerId: plan.provider,
           containerId: current?.containerId ?? `test-container-${generation}`,
-          status: "running",
+          status: completesOnStart ? "exited" : "running",
+          ...(completesOnStart ? { exitCode: 0 } : {}),
           lastStartedAt:
             current?.status === "running"
               ? current.lastStartedAt

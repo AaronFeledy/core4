@@ -169,6 +169,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
       sourcePath: plan.metadata.source,
       inspection,
       effectiveTooling: effectiveToolingForPlan(plan),
+      plan,
       toolingSource: toolingSourceResolverForPlan(plan),
       redact: redactor.redactString,
     }),

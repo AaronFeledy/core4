@@ -182,6 +182,10 @@ export const unsupportedSecretReference = (
           suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding} and write ${shell} in a string run. A list run executes without a shell, so the program must read ${name} from its environment. The job command is written into the scheduler image, so a secret must not be written in it.`,
         };
       }
+      case "service-extra-args":
+        return {
+          suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding} and read ${name} from the environment in your program. extraArgs passes arguments without a shell.`,
+        };
       case "service-command": {
         const compose =
           relative.length === 0

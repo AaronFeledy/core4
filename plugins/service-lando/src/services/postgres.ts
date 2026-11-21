@@ -6,13 +6,20 @@ import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
+  PORT_EXTRA_ARGS_REMEDIATION,
+  RESERVED_LONG_PORT,
+  configFileDbExtraArgsRemediation,
+  extraArgsCommandOptions,
+  isNonCatalogArtifact,
+} from "./_extra-args.ts";
+import {
   addEnvRecord,
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { assertListenerConfig, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -79,10 +86,46 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
     ),
   );
 
-  if (addServerConfigMount(ctx, POSTGRES_CONFIG_TARGET)) {
-    if (service.command === undefined && service.entrypoint === undefined) {
-      ctx.setCommand(["postgres", "-c", `config_file=${POSTGRES_CONFIG_TARGET}`, "-c", `port=${port}`]);
-    }
+  const catalogImages = Object.values(ARTIFACTS);
+  const custom = isNonCatalogArtifact(service, catalogImages);
+  const processOwned = service.command !== undefined || service.entrypoint !== undefined;
+  const serverConfig = addServerConfigMount(ctx, POSTGRES_CONFIG_TARGET);
+  const hasExtraArgs = (service.extraArgs?.length ?? 0) > 0;
+  if (!processOwned && (serverConfig || (!custom && hasExtraArgs))) {
+    ctx.setCommand(
+      [
+        "postgres",
+        ...(serverConfig ? ["-c", `config_file=${POSTGRES_CONFIG_TARGET}`] : []),
+        "-c",
+        `port=${port}`,
+      ],
+      custom
+        ? undefined
+        : extraArgsCommandOptions([
+            RESERVED_LONG_PORT,
+            {
+              form: "long",
+              name: "config-file",
+              remediation: "Set config.server instead of --config-file in extraArgs.",
+            },
+            {
+              form: "long",
+              name: "config_file",
+              remediation: "Set config.server instead of --config_file in extraArgs.",
+            },
+            { form: "short", name: "p", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
+            {
+              form: "postgres-c",
+              key: "port",
+              remediation: PORT_EXTRA_ARGS_REMEDIATION,
+            },
+            {
+              form: "postgres-c",
+              key: "config_file",
+              remediation: "Set config.server instead of -c config_file= in extraArgs.",
+            },
+          ]),
+    );
   }
 
   applyAuthoredProcessFields(ctx);
@@ -124,10 +167,13 @@ const postgresToolingForConnection: NonNullable<ServiceType["toolingForConnectio
         },
       };
 
+const selectPort = primaryPortSelector(POSTGRES_LISTENER);
 export const postgresServiceType: ServiceType = {
   id: "postgres",
   name: "postgres",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: configFileDbExtraArgsRemediation(Object.values(ARTIFACTS), "Postgres"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
@@ -136,7 +182,7 @@ export const postgresServiceType: ServiceType = {
   resolve: (input) => {
     return serviceTypeResolve("postgres", "postgres service type failed to resolve", () => {
       const creds = credsFor(input);
-      const port = plannedPort(input.service, POSTGRES_LISTENER);
+      const port = selectPort(input.service);
       assertListenerConfig(input.service, POSTGRES_LISTENER);
       return {
         base: "lando",

@@ -14,6 +14,7 @@ import type {
   LogSource,
   PlanMetadata,
   PluginManifest,
+  PortNumber,
   ProviderCapabilities,
   ProviderId,
   ServiceConfig,
@@ -115,12 +116,23 @@ export interface FeatureRef {
   readonly config?: Record<string, unknown>;
 }
 
+import type { ServiceLaunchers as ServiceLaunchersTable } from "../schema/service-launchers.ts";
+import {
+  ServiceLauncherMarker as ServiceLauncherMarkerSchema,
+  ServiceLaunchers as ServiceLaunchersSchema,
+} from "../schema/service-launchers.ts";
+
+export const ServiceLauncherMarker = ServiceLauncherMarkerSchema;
+export const ServiceLaunchers = ServiceLaunchersSchema;
+export type ServiceLaunchers = ServiceLaunchersTable;
+
 /**
  * The output of {@link ServiceType.resolve}: normalized config plus the
  * priority-ordered features core composes onto the named base.
  * A service type MUST NOT hand-build a `ServicePlan`.
  */
 export interface ServiceTypeResolution {
+  readonly launchers?: ServiceLaunchersTable;
   readonly connection?: DatabaseConnection;
   readonly nonSqlCreds?: ServiceCreds;
   readonly base: "l337" | "lando";
@@ -195,6 +207,12 @@ export interface ServiceType {
     connection: DatabaseConnection,
   ) => Readonly<Record<string, ToolingTaskShape>>;
   readonly projectFiles?: (service: ServiceConfig) => ReadonlyArray<ServiceTypeProjectFileDeclaration>;
+  /** User guidance when this configuration has no launcher that accepts extraArgs. */
+  readonly extraArgsRemediation?: string | ((config: ServiceConfig) => string);
+  /** Pure selection of the container port for service.port, independent of endpoint declarations. */
+  readonly plannedPort?: (
+    service: Pick<ServiceConfig, "port" | "framework" | "via" | "type">,
+  ) => PortNumber | undefined;
   readonly schema: Schema.Codec<unknown, unknown>;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
 }

@@ -105,10 +105,7 @@ export const invocationToolingForPlan = Effect.fnUntraced(function* (
   const resolution = resolveEffectiveTooling({
     landofile,
     provenance: provenanceOf(compiled),
-    services: Object.values(plan.services).map((service) => ({
-      name: service.name,
-      metadata: service.provenance,
-    })),
+    services: Object.values(plan.services).map((service) => ({ name: service.name })),
   });
   const authored = resolution.tasks;
   const authoredSource = toolingSourceResolverForResolution(resolution, plan.metadata.source);

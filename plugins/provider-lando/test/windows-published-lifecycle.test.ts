@@ -294,7 +294,7 @@ describe("managed Windows published lifecycle", () => {
     const restartRequestedLock = deferred();
     const matchingRequestedLock = deferred();
     const calls: string[] = [];
-    const lockCalls: Array<{ key: string; timeoutMs: number | undefined }> = [];
+    const lockCalls: Array<{ key: string; wait: string | undefined }> = [];
     const existing = new Set<string>();
     const running = new Set<string>();
     const api: PodmanApiClient = {
@@ -380,7 +380,7 @@ describe("managed Windows published lifecycle", () => {
     const stateStore: PluginStateStore = {
       ...baseState,
       withLock: (key, body, options) => {
-        lockCalls.push({ key, timeoutMs: options?.timeoutMs });
+        lockCalls.push({ key, wait: options?.wait });
         const lifecycleLocks = lockCalls.filter((call) => call.key === "windows-published-lifecycle").length;
         if (lifecycleLocks === 2) restartRequestedLock.resolve();
         if (lifecycleLocks === 3) matchingRequestedLock.resolve();
@@ -435,9 +435,9 @@ describe("managed Windows published lifecycle", () => {
       calls.filter((call) => call.includes("lando-global--traefik") && call.endsWith("/restart")),
     ).toHaveLength(1);
     expect(lockCalls.filter((call) => call.key === "windows-published-lifecycle")).toEqual([
-      { key: "windows-published-lifecycle", timeoutMs: 120_000 },
-      { key: "windows-published-lifecycle", timeoutMs: 120_000 },
-      { key: "windows-published-lifecycle", timeoutMs: 120_000 },
+      { key: "windows-published-lifecycle", wait: "operation" },
+      { key: "windows-published-lifecycle", wait: "operation" },
+      { key: "windows-published-lifecycle", wait: "operation" },
     ]);
   }, 10_000);
 });

@@ -10,6 +10,7 @@ export * from "./host-proxy.ts";
 export * from "./http-call.ts";
 export * from "./image-pull.ts";
 export * from "./lifecycle.ts";
+export * from "./lock.ts";
 export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./message.ts";

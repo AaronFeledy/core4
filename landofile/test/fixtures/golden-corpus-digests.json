@@ -34,7 +34,7 @@
     },
     {
       "fixture": "docs/guides/backdrop-workflow/fixtures/backdrop-dev",
-      "digest": "b192c1875795ea732e3326b8d774c489e75285139564caf35077591136ada1d7"
+      "digest": "31e168807f676196f4589e0b6751b2ca8234ed14d2b3bafbbe4b64b1c46888e1"
     },
     {
       "fixture": "docs/guides/build-steps/fixtures/build-steps-demo",
@@ -162,6 +162,10 @@
         "status": "invalid",
         "tag": "LandofileValidationError"
       }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/broken-service-ports",
+      "digest": "50cfaef061d6c024852a68862d5b81f427f16da90b7f48427c537df1e103268c"
     },
     {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-demo",
@@ -381,6 +385,10 @@
       "digest": "bed9f5e2d17248a89ef4bb97f7b3c1af43a447f3280c91990f592b1c1c1526d2"
     },
     {
+      "fixture": "docs/guides/e2e-smoke-scenarios/fixtures/router-page",
+      "digest": "2ff9cd476a312d6dc5d13b77a218132a3ba0a6520ff92f97a897224f70e443b6"
+    },
+    {
       "fixture": "docs/guides/elasticsearch/fixtures/elasticsearch-demo",
       "invalid": {
         "status": "invalid",
@@ -424,12 +432,23 @@
       "digest": "5b7e08fc5571540bd86652b554c130a67ffe5ac422348c0fa367dac0cdd84220"
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-info-scope",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-missing-creds",
       "digest": "35d13d408375ea22d127f106d09db098d80f3d76e1697063f3a86c02d6bf3f35"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-missing-value",
       "digest": "2df2c11ea20f8e6b241c35d70ab3979caedf1bf063c5a10f9c57d6588f2734ef"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-own-port-read",
+      "digest": "babdc1923cc8b573016e9956b0077dd31231ae7350b269eb6fd1626c7f9f2d62"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-plan-time-typed-field",
@@ -443,8 +462,27 @@
       "digest": "356b7260d10d8f13ac2a85aceb7f4ee600cba7be8b55efcac7c0713088ed6fde"
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-public-url-live",
+      "digest": "82c2a2facf3f8cb9555b8dc46208f2001c73434d55fb4ea8d5c427372f01a9e3"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-public-url",
+      "digest": "350f208855066c7942221686e103f79319abf1da51ba728d87fe1710ffdade86"
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-service-creds",
       "digest": "096e0c0033fd8b2ddc3fa52d5f415c469c9e733b3adb89712a3c192d37c9b8c9"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-service-port-misuse",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-service-port",
+      "digest": "584dc4b48ffc313e0c956b2bcaa7117b5363456d5f40f4a7d41ef9ca5faf0e32"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-typed-values",
@@ -458,12 +496,43 @@
       }
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-command",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-no-route",
+      "digest": "ae39c675777924609f85fe9470b92a30a96fe661533f254c7e164c02b72c21fd"
+    },
+    {
       "fixture": "docs/guides/external-access/fixtures/external-access-demo",
       "digest": "167f5aa0981074f86f93925c54bfc7c9c9d96654132433fd01353049d08111e0"
     },
     {
+      "fixture": "docs/guides/extra-args/fixtures/extra-args-unsupported",
+      "digest": "b98215e1990e2d7e81cee56c6b21e6b8c2fca30d260bf2e0ac690a6328f4b404"
+    },
+    {
+      "fixture": "docs/guides/extra-args/fixtures/extra-args-with-command",
+      "digest": "849e0b8246ac5d5776792a876362b5e5bacaee0cdcf6a35253a84aa3cd4a8941"
+    },
+    {
+      "fixture": "docs/guides/extra-args/fixtures/mysql-extra-args",
+      "digest": "6c66d2f51c6f4dfa627bf6bd5ea606820a81fe65443500016371ad4f463024ff"
+    },
+    {
+      "fixture": "docs/guides/extra-args/fixtures/postgres-extra-args",
+      "digest": "d955d358545cb42281a61013086b82abfa2c0a3df16a2dfb2a6cdbe5a3aae6ca"
+    },
+    {
+      "fixture": "docs/guides/extra-args/fixtures/redis-extra-args",
+      "digest": "934d29a7772897c6916ea975bb55b40cca3bb6db66a87630a6508a73c81037b7"
+    },
+    {
       "fixture": "docs/guides/fastapi-workflow/fixtures/venv-and-env",
-      "digest": "49eeae686be1ca4d5825888c69f2b0d07cb831b83a822fef884d7a82c4a0da63"
+      "digest": "bc7a0874dc96356ac8a08275646995ac255a2776f2f3cb3e4fa140814d436b32"
     },
     {
       "fixture": "docs/guides/file-sync-excludes/fixtures/excludes-demo",
@@ -527,11 +596,11 @@
     },
     {
       "fixture": "docs/guides/healthcheck-runner/fixtures/unsupported-http",
-      "digest": "0b143156fc7568cac70514a8958228ffab1cf5da6d1530def5141ffa70890a79"
+      "digest": "a6c95d797976c315fae7f6e7c7a03f40f7111b852e87f52d922eed86324d84e7"
     },
     {
       "fixture": "docs/guides/healthcheck-runner/fixtures/unsupported-tcp",
-      "digest": "7dd699823f33172d60df5fa568918c5f6d5a0e8737b72d2efe99b26f07d9c2cf"
+      "digest": "13571ed573adf3ab277519e4a34d7a9122b8a2516b1f2d3d72f7b20177da4176"
     },
     {
       "fixture": "docs/guides/home-and-host/fixtures/home-and-host-demo",
@@ -581,6 +650,10 @@
       "digest": "d3019035a74d2d67e2bd5a41888bfebcb2568f3acbcbf3d827a833001393debc"
     },
     {
+      "fixture": "docs/guides/keycloak/fixtures/keycloak-demo",
+      "digest": "0f7dedc03ec3b2c7ded4f91b8e78cf3ea59b39af6d787fe88f2fb0c66db21bd7"
+    },
+    {
       "fixture": "docs/guides/lamp-stack-variants/fixtures/bind-mounted-config",
       "digest": "dceb65a8d94e5674423067fbcd4a3e5dee47b1846dfa05cba7cdfc21850967df"
     },
@@ -606,15 +679,15 @@
     },
     {
       "fixture": "docs/guides/laravel-horizon/fixtures/laravel-horizon",
-      "digest": "201b5e88bbd42e217f7ccfe81bc44e75b4d0408229347636248e3564b5224acf"
+      "digest": "e3aa638c83a0ff8d3798b3d2615f02fbe7efa59102054a30d2a2d3cf3ae72f8f"
     },
     {
       "fixture": "docs/guides/laravel-reverb/fixtures/laravel-reverb",
-      "digest": "327f073ed97ef99d37bbbeab31398043483b11459b40b9a5f200150cf783801e"
+      "digest": "002e6962c7da72aa5433697bad246a66fdd4ab35330b9eaa7699e97bcba300b8"
     },
     {
       "fixture": "docs/guides/laravel-vite/fixtures/laravel-vite",
-      "digest": "ee3b7b4ff6975ba5b940b502dc3d29a9b8932f24b9f0d37f1b5984fb67456a2f"
+      "digest": "3151f61865ae31273c66776ca050b8e3845514fc3da7face5711525e495f2ebd"
     },
     {
       "fixture": "docs/guides/locale/fixtures/locale-demo",
@@ -1127,6 +1200,14 @@
       "digest": "ad065f85992297bd6e1568a73f9acdfa7a369a6c840acf8af21b6c4c03b473a1"
     },
     {
+      "fixture": "docs/guides/python/fixtures/project-environment-invalid-requirements",
+      "digest": "fc7ed47df5ec246f513c71afb287242f89460b13346f3fa7f672793f51a91cf5"
+    },
+    {
+      "fixture": "docs/guides/python/fixtures/project-environment",
+      "digest": "910f8156d057446a75febd397d4190ece5fc393e0d990d608c9f24f1cf4375bf"
+    },
+    {
       "fixture": "docs/guides/python/fixtures/python-demo",
       "digest": "d32812d3c08c5cab627d5b4c7416ee74a2abc3a74c44ec5e8aa615399d6b2851"
     },
@@ -1179,6 +1260,10 @@
       "digest": "851762db56b4e2562b7b4cf54f492885a85ed43fe392790552f389ef404447dc"
     },
     {
+      "fixture": "docs/guides/router-and-scanner/fixtures/redirects-and-idle-listener",
+      "digest": "2da783eeb2b1d3fa705e0fe6d208f6959afc637fb2cb5674724b08025fa6e5fc"
+    },
+    {
       "fixture": "docs/guides/router-and-scanner/fixtures/router-and-scanner-disabled",
       "digest": "41c59781220d70b0bd5059b7174676ca7ac971cd9288dfe261db13852c20e735"
     },
@@ -1196,6 +1281,10 @@
     {
       "fixture": "docs/guides/ruby/fixtures/ruby-demo",
       "digest": "77dba28dbe895de7dcb67bd7f01a3488a0602d9ae48592af386b9bddcfb94279"
+    },
+    {
+      "fixture": "docs/guides/ruby/fixtures/ruby-local-offline",
+      "digest": "d4c424e658afb04f05ba3167862a1611a3034bbcba0d250c8162c01abb738ab6"
     },
     {
       "fixture": "docs/guides/ruby/fixtures/ruby-unmounted-webroot",
@@ -1428,8 +1517,16 @@
       "digest": "a1efbc74f7ffddb808211b2e504bee96908cdd3537bf68d79154d77f2690a4f4"
     },
     {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/host-http-invalid",
+      "digest": "4fcdc7b4a224f141689901b7a3f8255678fbcb192b07f2c6b51a370abfcc0138"
+    },
+    {
       "fixture": "docs/guides/wait-for-your-app/fixtures/host-user-invalid",
       "digest": "09a9279b30167833b6df809abb52b96fe7c839873d35aa76563dbc3883bc3adc"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/http-tcp",
+      "digest": "3cefec1463169642fb318d2ae35d59e30f201681993505c2a5591f9b565b4e33"
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/mixed-timing-corrected",
@@ -1457,7 +1554,7 @@
     },
     {
       "fixture": "docs/guides/wordpress-vite/fixtures/wordpress-vite",
-      "digest": "58281f08fb007b5f35f9c4f47f6c2a611a3bbd9a87658805af3ee8df45f750ab"
+      "digest": "62a630dc94b73afb3651df6aed9047c1505f99f8c27706cacbd8a8dc840b0e75"
     },
     {
       "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-demo",

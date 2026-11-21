@@ -6,11 +6,41 @@ import type { AppliedFileSyncInspection } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { acquireFileSyncEngine, requireFileSyncPlanCapabilities } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
+import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 
 export const hasCompleteFileSyncCoverage = (
   plan: AppPlan,
   specs: readonly FileSyncSessionSpec[] = plan.fileSync.map(({ session }) => session),
 ): boolean => hasStructuralFileSyncCoverage(plan, { sessions: specs, pathEquals: sameRealpath });
+
+/**
+ * Prior accelerated sessions can stay when the desired plan is the same set or a wider set
+ * whose extra sessions belong to services that had no prior session. Extra mounts on a
+ * service that already has a session are a settings change and must rotate.
+ */
+export const fileSyncPriorIsCompatibleWithDesired = (
+  plan: AppPlan,
+  priorSessions: readonly FileSyncSessionSpec[],
+): boolean => {
+  if (priorSessions.length === 0) return false;
+  const desiredByKey = new Map<string, FileSyncSessionSpec>(
+    plan.fileSync.map((entry) => [`${entry.session.service}/${entry.session.mountKey}`, entry.session]),
+  );
+  const priorKeys = new Set<string>();
+  const priorServices = new Set<string>();
+  for (const session of priorSessions) {
+    const key = `${session.service}/${session.mountKey}`;
+    if (priorKeys.has(key)) return false;
+    priorKeys.add(key);
+    priorServices.add(String(session.service));
+    if (!sameFileSyncSessionSpec(session, desiredByKey.get(key))) return false;
+  }
+  return plan.fileSync.every(
+    (entry) =>
+      priorKeys.has(`${entry.session.service}/${entry.session.mountKey}`) ||
+      !priorServices.has(String(entry.session.service)),
+  );
+};
 
 export const guardOrdinaryFileSyncFallback = Effect.fnUntraced(function* (
   inspectPrior?: () => Effect.Effect<AppliedFileSyncInspection, unknown>,
@@ -28,6 +58,28 @@ export const guardOrdinaryFileSyncFallback = Effect.fnUntraced(function* (
       remediation: "Restore the recorded engine and reconcile its sessions before retrying start.",
     }),
   );
+});
+
+export const preflightSelectedStartFileSync = Effect.fnUntraced(function* (plan: AppPlan, applied?: AppPlan) {
+  const saved = applied?.fileSync ?? [];
+  const selected = saved.filter(({ session }) => Object.hasOwn(plan.services, session.service));
+  const priorEngine = saved[0]?.engineId;
+  if (
+    (selected.length > 0 &&
+      !fileSyncPriorIsCompatibleWithDesired(
+        plan,
+        selected.map(({ session }) => session),
+      )) ||
+    (priorEngine !== undefined && plan.fileSync.some(({ engineId }) => engineId !== priorEngine))
+  ) {
+    return yield* Effect.fail(
+      new FileSyncStartError({
+        engineId: priorEngine ?? "unknown",
+        message: "A selected start cannot change or retire existing accelerated file-sync mounts.",
+        remediation: "Run `lando start` to reconcile the app's accelerated mounts.",
+      }),
+    );
+  }
 });
 
 export const withOrdinaryMounts = (plan: AppPlan): AppPlan => ({

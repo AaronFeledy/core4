@@ -21,10 +21,19 @@ import { TunnelServiceContribution } from "./tunnel.ts";
 
 /** A finite wait for a plugin state lock; live owners are never expired. */
 export const PluginStateLockOptions = Schema.Struct({
+  wait: Schema.optionalKey(Schema.Literals(["brief", "operation"])).annotate({
+    description:
+      "Wait class: `brief` (default, 2 seconds) for a short read-modify-write, `operation` for work that can take minutes; `operation` waits up to LANDO_LOCK_TIMEOUT_MS.",
+  }),
   timeoutMs: Schema.optionalKey(
     Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 0, maximum: 600_000 }))),
   ).annotate({
-    description: "Maximum time in milliseconds to wait for an owned plugin state lock (0–600000).",
+    description:
+      "Maximum time in milliseconds to wait for an owned plugin state lock (0–600000); overrides the wait class.",
+  }),
+  resource: Schema.optionalKey(Schema.String.pipe(Schema.check(Schema.isMaxLength(512)))).annotate({
+    description:
+      "What the lock protects, as wait notices and timeout errors name it (for example `the router configuration`).",
   }),
 }).annotate({
   identifier: "PluginStateLockOptions",

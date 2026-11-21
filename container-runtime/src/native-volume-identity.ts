@@ -72,7 +72,8 @@ export const volumeObservationFailure = (
 
 export const volumeCoordinationKey = Effect.fnUntraced(
   function* (provider: VolumeObservationProvider, name: string) {
-    if (provider.endpointNamespace) return JSON.stringify([`endpoint:${provider.endpointNamespace}`, name]);
+    if (provider.endpointNamespace !== undefined)
+      return JSON.stringify([`endpoint:${provider.endpointNamespace}`, name]);
     const request = provider.api.request;
     if (request) {
       const info = yield* request({ method: "GET", path: "/info" });

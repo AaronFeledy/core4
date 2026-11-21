@@ -56,6 +56,13 @@ export const layer = Layer.effect(
                     yield* redaction.registerValues([text]);
                     break;
                   }
+                  case "RouteText":
+                    return yield* new EnvironmentValueResolutionError({
+                      variable,
+                      reason: "unresolved-binding",
+                      message: "The environment still contains a deferred public URL.",
+                      remediation: "Start the app to resolve its public service URLs.",
+                    });
                   default:
                     return value satisfies never;
                 }

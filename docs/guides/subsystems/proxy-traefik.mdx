@@ -143,7 +143,7 @@ Lando does not add DNS for your domain. Point `*.lndo.test` at `127.0.0.1` with 
 
 ## Set router ports
 
-HTTP tries `80`, then `8080`, `8000`, `8888`, `8008`, `38080`. HTTPS tries `443`, then `8443`, `4443`, `4433`, `4444`, `444`, `38443`. First free port per protocol wins. An empty fallback array means preferred-only.
+HTTP tries `80`, then `8080`, `8000`, `8888`, `8008`, `18080`, `28080`, `38080`. HTTPS tries `443`, then `8443`, `4443`, `4433`, `4444`, `444`, `18443`, `28443`, `38443`. First free port per protocol wins. An empty fallback array means preferred-only.
 
 ```yaml
 name: proxy-host-ports
