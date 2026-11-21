@@ -136,13 +136,13 @@ describe("stdio live byte progress", () => {
     });
   }
 
-  test("drains held and producer-finalizer bytes on cancellation without a tool reply", async () => {
+  test("cancels without sending held or producer-finalizer bytes or a tool reply", async () => {
     // Given a producer holding a partial output stream until interrupted.
     const observed = await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           const started = yield* Deferred.make<void>();
-          const drained = yield* Deferred.make<void>();
+          const finalized = yield* Deferred.make<void>();
           const spec = {
             id: "app:exec",
             summary: "Cancel bytes",
@@ -151,19 +151,34 @@ describe("stdio live byte progress", () => {
               Effect.gen(function* () {
                 const sink = yield* StreamFrameSink;
                 yield* Effect.addFinalizer(() =>
-                  sink.emit({ _tag: "stdout", chunk: Buffer.from(" final"), kind: "bytes" }),
+                  sink
+                    .emit({ _tag: "stdout", chunk: "cancel-finalizer-canary", kind: "bytes" })
+                    .pipe(Effect.andThen(Deferred.succeed(finalized, undefined))),
                 );
-                yield* sink.emit({ _tag: "stdout", chunk: Buffer.from("held"), kind: "bytes" });
+                yield* sink.emit({ _tag: "stdout", chunk: "before cancel", kind: "record" });
+                yield* sink.emit({ _tag: "stdout", chunk: "cancel-held-canary", kind: "bytes" });
                 yield* Deferred.succeed(started, undefined);
                 return yield* Effect.never;
               }),
           };
-          const client = yield* startServer().pipe(
-            Effect.provide(
-              serverLayer(
-                { commandEntries: [{ kind: "command" as const, spec }], defaultAllowlist: [spec.id] },
-                ["held final"],
+          const nextSpec = {
+            id: "app:info",
+            summary: "Info after cancellation",
+            resultSchema: Schema.Struct({}),
+            run: () =>
+              Effect.flatMap(StreamFrameSink, (sink) =>
+                sink.emit({ _tag: "stdout", chunk: "next call", kind: "record" }).pipe(Effect.as({})),
               ),
+          };
+          const client = yield* startServer({}, 1).pipe(
+            Effect.provide(
+              serverLayer({
+                commandEntries: [
+                  { kind: "command", spec },
+                  { kind: "command", spec: nextSpec },
+                ],
+                defaultAllowlist: [spec.id, nextSpec.id],
+              }),
             ),
           );
           yield* client.sendRequest(
@@ -172,27 +187,46 @@ describe("stdio live byte progress", () => {
             "cancel-call",
           );
           yield* Deferred.await(started);
-          // When the client cancels and observes the final progress notification.
+          let beforeCancel = yield* client.next;
+          while (beforeCancel.method !== "notifications/progress") beforeCancel = yield* client.next;
           yield* client.cancel("cancel-call");
-          yield* Effect.gen(function* () {
-            while (true) {
-              const message = yield* client.next;
-              if (message.method === "notifications/progress") {
-                yield* Deferred.succeed(drained, undefined);
-                break;
-              }
-            }
+          yield* Deferred.await(finalized);
+          const next = yield* client.request("tools/call", {
+            name: nextSpec.id,
+            _meta: { progressToken: "next" },
           });
-          yield* Deferred.await(drained);
-          yield* client.request("ping");
           yield* client.close;
           yield* Fiber.join(client.fiber);
-          return { notifications: yield* client.notifications, messages: yield* client.messages };
+          return { next, messages: yield* client.messages };
         }),
       ).pipe(Effect.timeout("5 seconds")),
     );
-    // Then the command-local scope drains exactly once without swallowing cancellation.
-    expect(observed.notifications).toEqual([{ frame: { _tag: "stdout", chunk: "[redacted]" } }]);
-    expect(observed.messages.filter((message) => message.id === "cancel-call")).toEqual([]);
+    expect(observed.next).toMatchObject({
+      result: {
+        isError: false,
+        structuredContent: {
+          output: { chunks: [{ _tag: "stdout", chunk: "next call\n" }], truncated: false },
+        },
+      },
+    });
+    expect(observed.messages.filter((message) => message.method === "notifications/progress")).toEqual([
+      {
+        jsonrpc: "2.0",
+        method: "notifications/progress",
+        params: {
+          progressToken: "cancel",
+          progress: 1,
+          message: '{"_tag":"stdout","chunk":"before cancel\\n"}',
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "notifications/progress",
+        params: { progressToken: "next", progress: 1, message: '{"_tag":"stdout","chunk":"next call\\n"}' },
+      },
+    ]);
+    expect(observed.messages.some((message) => message.id === "cancel-call")).toBe(false);
+    expect(JSON.stringify(observed.messages)).not.toContain("cancel-held-canary");
+    expect(JSON.stringify(observed.messages)).not.toContain("cancel-finalizer-canary");
   });
 });
