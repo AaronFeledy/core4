@@ -130,7 +130,7 @@ If you are looking for a public surface or policy:
 | MinIO console ports and effective Mailpit/MailHog secondary listeners | 06 | §6.12.1 |
 | Explicit MinIO BYO image/build and typed mail wildcard-bind reachability | 06 | §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, owner-scoped results and transcripts, app-step settlement, container-bound app-step reuse, and errors | 06 + 05 + 12 | §6.13 + §5.3 + §12.1 |
-| Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
+| Whole-app and selected start, convergence, failure warning, restart, and rebuild | 06 | §6.15 |
 | Early conditional non-root low-port warning without runtime probing | 06 | §6.15 |
 | User-app admission order, single admission for whole-app restart and rebuild, and the activation applier | 06 + 11 | §6.15 + §10.3 |
 | Pathless console aliases, pipe selection, file followers, and PHP Apache/FPM routing | 06 | §6.10 + §6.14 |
@@ -199,7 +199,7 @@ If you are looking for a public surface or policy:
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | Endpoint-scoped URL scan defaults, explicit override precedence and global disable policy | 06 + 11 | §6.6 + §10.5.3 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
-| Accelerated-start journal, resume, and stop/destroy from any phase | 11 | §10.6.3 + §5.3.1 |
+| Scope-aware accelerated-start journal, resume, and stop/destroy from any phase | 11 + 05 | §10.6.3 + §5.3.1 |
 | Setup and host integration | 11 | §10.8 |
 | Doctor diagnostics and resilience | 11 | §10.9 |
 | Host-proxy protocol and errors | 11 | §10.10 |

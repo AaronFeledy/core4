@@ -131,6 +131,8 @@ Execution artifacts (§22.8) use `PathsService` paths and `StateStore` manifests
 
 Python dependency environments are app-scoped provider data stores, not artifact-cache entries. The prepare job's `lando-cache-uv` volume is a distinct global `kind: cache` store at `/var/lib/lando/uv-cache`, selected by `UV_CACHE_DIR`; it follows cache purge rules, not app-data retention (§6.5.1, §6.5.2, §6.12.1).
 
+The accelerated-start journal's optional ordered `services` field is additive within version 2: a record without it retains whole-app meaning (§10.6.3). The version 1 migration is unchanged; this addition does not narrow the persisted schema.
+
 #### 12.4.1 Managed-file transaction lifecycle
 
 Conversion and migration (§7.4.1, §8.2.1), and every declared translation materialization (§7.4.2), MUST use the private `@lando/managed-file` transaction coordinator with `ManagedFileService`, `FileSystem`, and `StateStore`. This includes explicit refresh, init, automatic lifecycle refresh, and both code-sync commands; commands, lifecycle handlers, and translators MUST NOT bypass it. It locks the canonical app root, rejects source/destination symlinks, and requires targets, backups, and stage parents to remain under that root. Only the journal under the state-store root is exempt.
