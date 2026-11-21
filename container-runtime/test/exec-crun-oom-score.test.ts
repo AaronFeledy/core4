@@ -12,7 +12,7 @@ import {
 import { DateTime, Effect, Stream } from "effect";
 
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
-import { exec } from "../src/podman/exec-transport.ts";
+import { exec, execStream } from "../src/podman/exec-transport.ts";
 import {
   ATTACH_CONNECTION_RESET_SUBSTRING,
   CRUN_OOM_SCORE_ADJ_ISSUE_URL,
@@ -111,6 +111,7 @@ const makeExecApi = (options: {
   readonly frames?: readonly Uint8Array[];
   readonly error?: ProviderUnavailableError;
   readonly inspect?: "finished" | "running" | "failed";
+  readonly inspectExitCode?: number;
   readonly head?: boolean;
   readonly startError?: ProviderUnavailableError;
 }): EngineHttpApi => {
@@ -131,7 +132,7 @@ const makeExecApi = (options: {
               status: 200,
               body: JSON.stringify({
                 Running: options.inspect === "running",
-                ExitCode: 255,
+                ExitCode: options.inspectExitCode ?? 255,
               }),
             }),
     stream: (input) =>
@@ -163,7 +164,13 @@ describe("crun oom_score_adj exec classification", () => {
       ),
     ).toBe(true);
     expect(failureMentionsCrunOomScoreAdj(`wrapper ${CRUN_OOM_SCORE_ADJ_SUBSTRING} tail`)).toBe(true);
-    expect(failureMentionsCrunOomScoreAdj("connection reset by peer")).toBe(false);
+  });
+
+  test("an attach connection reset by peer alone is not a crun failure", () => {
+    expect(failureMentionsCrunOomScoreAdj(ATTACH_CONNECTION_RESET_SUBSTRING)).toBe(false);
+    expect(failureMentionsCrunOomScoreAdj(`read unixpacket: ${ATTACH_CONNECTION_RESET_SUBSTRING}`)).toBe(
+      false,
+    );
     expect(
       failureMentionsAttachConnectionReset(`read unixpacket: ${ATTACH_CONNECTION_RESET_SUBSTRING}`),
     ).toBe(true);
@@ -225,6 +232,51 @@ describe("crun oom_score_adj exec classification", () => {
     expect(error).toBeInstanceOf(ServiceExecError);
     if (!(error instanceof ServiceExecError)) throw new Error("Expected ServiceExecError");
     expect(error.remediation).toBe(CRUN_OOM_SCORE_ADJ_REMEDIATION);
+  });
+
+  test("classifies a non-zero exit whose stderr mentions oom_score_adj", async () => {
+    const api = makeExecApi({
+      frames: [attachFrame(2, "crun: write to /proc/self/oom_score_adj: Permission denied\n")],
+      inspectExitCode: 127,
+    });
+
+    const error = await Effect.runPromise(
+      exec(plan, target, { command: ["true"] }, { api, ctx }).pipe(Effect.flip),
+    );
+
+    expect(error).toBeInstanceOf(ServiceExecError);
+    if (!(error instanceof ServiceExecError)) throw new Error("Expected ServiceExecError");
+    expect(error.remediation).toBe(CRUN_OOM_SCORE_ADJ_REMEDIATION);
+  });
+
+  test("does not classify a successful exec whose stdout mentions oom_score_adj", async () => {
+    const listing = "attr\nfd\noom_score_adj\nstatus\n";
+    const api = makeExecApi({
+      frames: [attachFrame(1, listing)],
+      inspectExitCode: 0,
+    });
+
+    const result = await Effect.runPromise(
+      exec(plan, target, { command: ["ls", "/proc/self"] }, { api, ctx }),
+    );
+
+    expect(result).toEqual({ exitCode: 0, stdout: listing, stderr: "" });
+
+    const chunks = await Effect.runPromise(
+      Stream.runCollect(execStream(plan, target, { command: ["ls", "/proc/self"] }, { api, ctx })).pipe(
+        Effect.scoped,
+      ),
+    );
+    const decoder = new TextDecoder();
+    let stdout = "";
+    let observedExit: number | undefined;
+    for (const chunk of chunks) {
+      if ("exitCode" in chunk) observedExit = chunk.exitCode;
+      else if (chunk.kind === "stdout") stdout += decoder.decode(chunk.chunk);
+    }
+
+    expect(stdout).toContain(CRUN_OOM_SCORE_ADJ_SUBSTRING);
+    expect(observedExit).toBe(0);
   });
 
   test("classifies an HTTP start body that mentions the substring", async () => {

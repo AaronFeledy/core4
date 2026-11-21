@@ -605,7 +605,7 @@ export const execStream = (
                       pendingDiagnostic = undefined;
                       const output = { kind: frame.stream, chunk: frame.payload };
                       const text = textDecoder.decode(frame.payload);
-                      noteCrunOomScoreAdj(text);
+                      if (frame.stream === "stderr") noteCrunOomScoreAdj(text);
                       // Delay only the daemon's exact attach-copy frame until completion is proven.
                       if (
                         hasStdin &&
@@ -632,20 +632,23 @@ export const execStream = (
               Effect.gen(function* () {
                 const pending = pendingDiagnostic;
                 const pendingText = pending === undefined ? "" : textDecoder.decode(pending.chunk);
-                if (sawCrunOomScoreAdj || failureMentionsCrunOomScoreAdj(error, pendingText)) {
-                  pendingDiagnostic = undefined;
-                  return Stream.fail(
+                const crunFailureDetails = {
+                  execId,
+                  reason: CRUN_OOM_SCORE_ADJ_SUBSTRING,
+                  ...(failureMentionsAttachConnectionReset(error, pendingText)
+                    ? { companion: ATTACH_CONNECTION_RESET_SUBSTRING }
+                    : {}),
+                };
+                const failCrun = () =>
+                  Stream.fail(
                     crunOomScoreAdjExecFailure(session, {
                       cause: error,
-                      details: {
-                        execId,
-                        reason: CRUN_OOM_SCORE_ADJ_SUBSTRING,
-                        ...(failureMentionsAttachConnectionReset(error, pendingText)
-                          ? { companion: ATTACH_CONNECTION_RESET_SUBSTRING }
-                          : {}),
-                      },
+                      details: crunFailureDetails,
                     }),
                   );
+                if (failureMentionsCrunOomScoreAdj(error, pendingText)) {
+                  pendingDiagnostic = undefined;
+                  return failCrun();
                 }
                 const cause = error.cause;
                 if (
@@ -662,10 +665,11 @@ export const execStream = (
                   );
                   if (recoveredExitCode !== undefined) {
                     pendingDiagnostic = undefined;
-                    return Stream.empty;
+                    return sawCrunOomScoreAdj && recoveredExitCode !== 0 ? failCrun() : Stream.empty;
                   }
                 }
                 pendingDiagnostic = undefined;
+                if (sawCrunOomScoreAdj) return failCrun();
                 return pending === undefined
                   ? Stream.fail(error)
                   : Stream.make(pending).pipe(Stream.concat(Stream.fail(error)));
@@ -709,7 +713,8 @@ export const execStream = (
                     Stream.catch((error) =>
                       Stream.fromEffect(Ref.get(completedExitCode)).pipe(
                         Stream.flatMap((exitCode) =>
-                          sawCrunOomScoreAdj || failureMentionsCrunOomScoreAdj(error)
+                          failureMentionsCrunOomScoreAdj(error) ||
+                          (sawCrunOomScoreAdj && exitCode !== undefined && exitCode !== 0)
                             ? Stream.fail(
                                 crunOomScoreAdjExecFailure(session, {
                                   cause: error,
@@ -773,7 +778,7 @@ export const execStream = (
                           : inspectExec(session, execId),
                     ),
                     Effect.flatMap((exitCode) =>
-                      sawCrunOomScoreAdj
+                      sawCrunOomScoreAdj && exitCode !== 0
                         ? Effect.fail(
                             crunOomScoreAdjExecFailure(session, {
                               details: {
@@ -824,7 +829,12 @@ export const exec = Effect.fn("RuntimeProvider.exec")(function* (
   // A signal-cut stream is cancellation, not a broken exec.
   if (exitCode === undefined && command.signal?.aborted === true) return yield* Effect.interrupt;
   const service = plan.services[target.service];
-  if (service !== undefined && mentionsCrunOomScoreAdj(`${stdout}${stderr}`)) {
+  if (
+    service !== undefined &&
+    exitCode !== undefined &&
+    exitCode !== 0 &&
+    mentionsCrunOomScoreAdj(`${stdout}${stderr}`)
+  ) {
     return yield* Effect.fail(
       crunOomScoreAdjExecFailure(
         { ctx: options.ctx, service },
