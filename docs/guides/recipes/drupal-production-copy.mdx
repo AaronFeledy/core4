@@ -30,11 +30,10 @@ On your host, make a temporary directory outside your project, copy the dump int
 
 ```sh
 dump_dir=$(mktemp -d)
-scp prod.example.com:/tmp/prod.sql.gz "$dump_dir/"
-ssh prod.example.com rm /tmp/prod.sql.gz
+scp prod.example.com:/tmp/prod.sql.gz "$dump_dir/" && ssh prod.example.com rm /tmp/prod.sql.gz
 ```
 
-Replace `prod.example.com` with your server's SSH host. `mktemp -d` creates a directory only your user can open, under your system's temp directory, so the dump never lands in the checkout, in git, or in the `/app` mount the containers see.
+Replace `prod.example.com` with your server's SSH host. `mktemp -d` creates a directory only your user can open, under your system's temp directory, so the dump never lands in the checkout, in git, or in the `/app` mount the containers see. The host copy and import commands need a POSIX shell in the same terminal session so `$dump_dir` stays set.
 
 ## Catch outgoing mail first
 
@@ -53,11 +52,22 @@ Take a snapshot of your local database, then import the dump by its absolute pat
 
 ```sh
 lando db:snapshot --label before-prod
-lando db:import "$dump_dir/prod.sql.gz" --yes
-rm -rf "$dump_dir"
+lando db:import "$dump_dir/prod.sql.gz" --yes && rm -rf "$dump_dir"
 ```
 
 `db:import` reads the file from your host, gunzips it, and runs it in the recipe's `database` service. A Drush dump drops and recreates every table it contains, so your local content in those tables is replaced. `--yes` answers the confirmation prompt. Delete the directory as soon as the import succeeds. The database now holds the data, so the raw file has no further use.
+
+## Point mail and cron at local settings
+
+The copy also brings production settings that live in the database. Switch those before you run any other Drush command, including `sql:sanitize`, so Drupal does not boot while a production mailer is still configured:
+
+```sh
+lando drush config:get system.mail interface.default
+lando drush config:set system.mail interface.default php_mail --yes
+lando drush config:set automated_cron.settings interval 0 --yes
+```
+
+`config:get` shows the mail plugin production used. Anything other than `php_mail`, such as `symfony_mailer` with an SMTP server in `mailer_dsn`, can send through a real mail server. Automated Cron skips its run when `interval` is `0`. Check your own modules' settings for production API keys, endpoints, and accounts the same way, and switch them to test values or turn them off.
 
 ## Scrub user emails and passwords
 
@@ -78,16 +88,6 @@ lando drush sql:query "TRUNCATE app_leads"
 ```
 
 Replace `app_leads` with your own tables, and clear or mask every one that holds personal data.
-
-The copy also brings production settings that live in the database. Point mail back at PHP, so it goes to Mailpit, and stop page visits from running cron jobs that call production services:
-
-```sh
-lando drush config:get system.mail interface.default
-lando drush config:set system.mail interface.default php_mail --yes
-lando drush config:set automated_cron.settings interval 0 --yes
-```
-
-`config:get` shows the mail plugin production used. Anything other than `php_mail`, such as `symfony_mailer` with an SMTP server in `mailer_dsn`, can send through a real mail server. Automated Cron skips its run when `interval` is `0`. Check your own modules' settings for production API keys, endpoints, and accounts the same way, and switch them to test values or turn them off.
 
 ## Update, then log in
 
@@ -141,13 +141,13 @@ lando db:restore before-prod --yes
         <Run command="lando drush user:cancel editor --delete-content -y" />
       </Step>
     </Hidden>
-    <Hidden reason="Stand in for scp and the server rm: move the dump into an owner-only host directory outside the app root, then delete the server copy">
+    <Hidden reason="Stand in for scp && ssh rm: move the dump into an owner-only host directory outside the app root, and delete the server copy only if that copy succeeds">
       <Step name="private-copy">
-        <Run command={`lando app:config:set tooling.copy-down '{"service":":host","cmd":"rm -rf /tmp/drupal-prod-copy-e2e && mkdir /tmp/drupal-prod-copy-e2e && chmod 700 /tmp/drupal-prod-copy-e2e && mv prod.sql.gz /tmp/drupal-prod-copy-e2e/"}' --type json`} />
+        <Run command={`lando app:config:set tooling.copy-down '{"cmds":[{"service":":host","cmd":"rm -rf /tmp/drupal-prod-copy-e2e && mkdir /tmp/drupal-prod-copy-e2e && chmod 700 /tmp/drupal-prod-copy-e2e && mv prod.sql.gz /tmp/drupal-prod-copy-e2e/"},{"service":"appserver","cmd":"rm /tmp/prod.sql.gz"}]}' --type json`} />
         <Run command={`lando app:config:set tooling.dump-dir-gone '{"service":":host","cmd":"test ! -e /tmp/drupal-prod-copy-e2e"}' --type json`} />
+        <Run command={`lando app:config:set tooling.import-and-drop '{"service":":host","cmd":"case x$LANDO_SCENARIO_E2E_BINARY in x) bin=lando;; *) bin=$LANDO_SCENARIO_E2E_BINARY;; esac; $bin db:import /tmp/drupal-prod-copy-e2e/prod.sql.gz --yes && rm -rf /tmp/drupal-prod-copy-e2e"}' --type json`} />
         <Run command="lando exec appserver -- cp /tmp/prod.sql.gz /app/prod.sql.gz" />
         <Run command="lando copy-down" />
-        <Run command="lando exec appserver -- rm /tmp/prod.sql.gz" />
         <Verify command="lando exec appserver -- sh -c 'test ! -e /tmp/prod.sql.gz && test ! -e /app/prod.sql.gz'" />
       </Step>
     </Hidden>
@@ -158,16 +158,22 @@ lando db:restore before-prod --yes
     </Step>
     <Step name="import">
       <Run command="lando db:snapshot --label before-prod" />
-      <Run command="lando db:import /tmp/drupal-prod-copy-e2e/prod.sql.gz --yes" />
-      <Verify command={`lando drush sql:query "SELECT mail FROM users_field_data WHERE name='editor'"`} expect={{ stdout: { regex: "editor@example\\.com" } }} />
     </Step>
-    <Hidden reason="Stand in for rm -rf on the private directory, and check it is gone">
-      <Step name="remove-local-copy">
-        <Run command={`lando app:config:set tooling.drop-dump '{"service":":host","cmd":"rm -rf /tmp/drupal-prod-copy-e2e"}' --type json`} />
-        <Run command="lando drop-dump" />
+    <Hidden reason="Stand in for lando db:import && rm -rf on the private directory, so the delete runs only if the import succeeds">
+      <Step name="import-and-drop">
+        <Run command="lando import-and-drop" />
         <Verify command="lando dump-dir-gone" />
       </Step>
     </Hidden>
+    <Step name="isolate">
+      <Verify command="lando drush config:get system.mail interface.default" expect={{ stdout: { regex: "symfony_mailer" } }} />
+      <Run command="lando drush config:set system.mail interface.default php_mail --yes" />
+      <Run command="lando drush config:set automated_cron.settings interval 0 --yes" />
+      <Verify command="lando drush config:get automated_cron.settings interval" expect={{ stdout: { regex: "interval': 0\\s*$" } }} />
+    </Step>
+    <Step name="import-check">
+      <Verify command={`lando drush sql:query "SELECT mail FROM users_field_data WHERE name='editor'"`} expect={{ stdout: { regex: "editor@example\\.com" } }} />
+    </Step>
     <Step name="sanitize">
       <Run command="lando drush sql:sanitize --yes" />
       <Verify command={`lando drush sql:query "SELECT uid, mail FROM users_field_data"`} expect={{ stdout: { regex: "user\\+1@localhost\\.localdomain[\\s\\S]*user\\+2@localhost\\.localdomain" } }} />
@@ -178,12 +184,6 @@ lando db:restore before-prod --yes
       <Verify command={`lando drush sql:query "SELECT COUNT(*) FROM app_leads"`} expect={{ stdout: { regex: "^1\\s*$" } }} />
       <Run command={`lando drush sql:query "TRUNCATE app_leads"`} />
       <Verify command={`lando drush sql:query "SELECT COUNT(*) FROM app_leads"`} expect={{ stdout: { regex: "^0\\s*$" } }} />
-    </Step>
-    <Step name="isolate">
-      <Verify command="lando drush config:get system.mail interface.default" expect={{ stdout: { regex: "symfony_mailer" } }} />
-      <Run command="lando drush config:set system.mail interface.default php_mail --yes" />
-      <Run command="lando drush config:set automated_cron.settings interval 0 --yes" />
-      <Verify command="lando drush config:get automated_cron.settings interval" expect={{ stdout: { regex: "interval': 0\\s*$" } }} />
     </Step>
     <Hidden reason="Send a Drupal password reset mail and read it back from Mailpit to prove mail stays local">
       <Step name="mail-lands-in-inbox">
