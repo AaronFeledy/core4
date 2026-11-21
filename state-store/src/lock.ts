@@ -10,7 +10,7 @@ import { LOCK_HOLDER_LABEL_MAX, LockHolder } from "./lock-holder.ts";
 import { type AdvisoryLockRecord, peekAdvisoryLockRecord } from "./lock-record.ts";
 import { makeLockReentryGuard } from "./lock-reentry.ts";
 import { describeLockHolder, holderDetails, lockWaitBudget, makeLockWait } from "./lock-wait.ts";
-import { UnsafeSentinelError, checkSentinel, nativeLock } from "./native-lock.ts";
+import { NativeLockLoader, UnsafeSentinelError, checkSentinel } from "./native-lock.ts";
 import type { PrivateFileAccess } from "./private-file-access.ts";
 
 export { LockHolder, type LockHolderContext } from "./lock-holder.ts";
@@ -110,7 +110,8 @@ const acquire = Effect.fnUntraced(function* (
     }
   }
 
-  const openNative = yield* Effect.tryPromise({ try: nativeLock, catch: (cause) => error(lockPath, cause) });
+  const load = yield* NativeLockLoader;
+  const openNative = yield* Effect.tryPromise({ try: load, catch: (cause) => error(lockPath, cause) });
   if (timeoutMs > 0 && (yield* wait.remaining) <= 0) return yield* wait.timeout();
   const token = randomUUID();
   const attempt = Effect.fnUntraced(function* () {
