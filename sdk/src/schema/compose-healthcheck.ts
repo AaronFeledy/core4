@@ -256,6 +256,7 @@ const encodeHealthcheck = (
 
 const EMPTY_HEALTHCHECK_COMMAND =
   "Healthcheck command must not be empty; use healthcheck: false to disable the probe.";
+const healthcheckArgvLength = Schema.isMinLength(1, { message: EMPTY_HEALTHCHECK_COMMAND });
 
 const validateCommand = (command: typeof CommandSpec.Type) => {
   if ((typeof command === "string" ? command : (command[0] ?? "")).trim().length === 0)
@@ -266,7 +267,9 @@ const HealthcheckAccepted = executionSite(
   Schema.Union([
     Schema.Literal(false),
     Schema.String.check(Schema.isMinLength(1, { message: EMPTY_HEALTHCHECK_COMMAND })),
-    Schema.Array(Schema.String).check(Schema.isMinLength(1, { message: EMPTY_HEALTHCHECK_COMMAND })),
+    Schema.Array(Schema.String)
+      .annotate({ "lando/authoring-array-check": healthcheckArgvLength })
+      .check(healthcheckArgvLength),
     ComposeHealthcheckAccepted,
   ]),
   "healthcheck",

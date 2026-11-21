@@ -356,18 +356,26 @@ const jsonInputAst = (root: AST.AST): AST.AST => {
           ast.encodingChecks,
         );
         break;
-      case "Arrays":
+      case "Arrays": {
+        // Authoring replaces container checks with semantic replay. Publish opted-in
+        // cardinality checks on the literal array arm, not on the expression alternative.
+        const check = ast.annotations?.["lando/authoring-array-check"];
+        const checks =
+          check instanceof AST.Filter && !ast.checks?.includes(check)
+            ? ([check, ...(ast.checks ?? [])] satisfies AST.Checks)
+            : ast.checks;
         result = new AST.Arrays(
           ast.isMutable,
           ast.elements.map(visit),
           ast.rest.map(visit),
           ast.annotations,
-          ast.checks,
+          checks,
           undefined,
           ast.context,
           ast.encodingChecks,
         );
         break;
+      }
       case "Union":
         result = new AST.Union(
           ast.types.map(visit),

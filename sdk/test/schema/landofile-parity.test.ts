@@ -108,7 +108,6 @@ const curatedValid = [
 ] as const;
 
 const GAP_CLASS = {
-  "empty-healthcheck-argv": "empty-array:services.*.healthcheck",
   "compose-port-out-of-range": "out-of-range:services.*.ports[]",
   "invalid-semver-range": "invalid-range:lando",
   "docs/guides/schedule/fixtures/schedule-rejected-every/.lando.yml": "invalid-interval:services.*.schedule",
@@ -134,10 +133,6 @@ const gapReason = (gaps: ReadonlyMap<string, string>, id: string) => {
 
 /** Decoder rejects; every published authoring document still accepts. */
 const AUTHORING_PUBLISHED_GAPS = new Map<string, string>([
-  [
-    "empty-healthcheck-argv",
-    "Empty healthcheck argv is a decoder filter; JSON Schema permits an empty array arm.",
-  ],
   [
     "compose-port-out-of-range",
     "Compose port normalization range is a decoder transform after JSON Schema projection.",
