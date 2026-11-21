@@ -67,15 +67,19 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
     ];
   };
   const unexplained = new Map(nullNodes(document, "$"));
+  const resolveRef = (ref: string): unknown => {
+    let resolved: unknown = document;
+    for (const segment of ref.slice(2).split("/")) {
+      const key = decodeURIComponent(segment).replace(/~1/g, "/").replace(/~0/g, "~");
+      resolved = Predicate.isObject(resolved) ? resolved[key] : undefined;
+    }
+    return resolved;
+  };
   const visit = (ast: AST.AST, target: unknown, path: string): void => {
     if (!Predicate.isObject(target) || !hasNullOrRef(target)) return;
     if (typeof target.$ref === "string") {
       expect(target.$ref.startsWith("#/"), path).toBe(true);
-      let resolved: unknown = document;
-      for (const segment of target.$ref.slice(2).split("/")) {
-        const key = decodeURIComponent(segment).replace(/~1/g, "/").replace(/~0/g, "~");
-        resolved = Predicate.isObject(resolved) ? resolved[key] : undefined;
-      }
+      const resolved = resolveRef(target.$ref);
       expect(Predicate.isObject(resolved), `${path}: unresolved ${target.$ref}`).toBe(true);
       visit(ast, resolved, `${path}(${target.$ref})`);
       return;
@@ -106,17 +110,76 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
     } else if (AST.isUnion(ast)) {
       const branches = target.anyOf ?? target.oneOf;
       // Effect retains Never as { not: {} }; only optional Undefined disappears.
-      const members = ast.types.filter((member) => !(AST.isOptional(ast) && AST.isUndefined(member)));
+      const unionMembers = (union: AST.Union): readonly AST.AST[] =>
+        union.types.filter((member) => !(AST.isOptional(union) && AST.isUndefined(member)));
+      const members = unionMembers(ast);
       const onlyMember = members.length === 1 ? members[0] : undefined;
       if (onlyMember !== undefined) {
         visit(onlyMember, target, path);
         return;
       }
       if (Array.isArray(branches)) {
-        expect(branches.length, `${path}: union alignment`).toBe(members.length);
-        members.forEach((member, index) => {
+        // Effect splices a nested union's alternatives into the parent anyOf, in place, unless it
+        // emits that union as one schema: a named `$ref`, an annotated union, or a collapsed one.
+        // The encoded AST no longer carries those names, so the emitted branch picks which reading
+        // to try first, and an alignment must account for every branch exactly once.
+        const unionBehind = (member: AST.AST): AST.Union | undefined => {
+          let current = member;
+          // A JSON codec can resolve to another declaration; stop once a step makes no progress.
+          for (const passed = new Set<AST.AST>(); !passed.has(current); ) {
+            passed.add(current);
+            if (AST.isSuspend(current)) current = current.thunk();
+            else if (current.encoding !== undefined) current = AST.toEncoded(current);
+            else if (AST.isDeclaration(current) && current.annotations?.toCodecJson !== undefined)
+              current = AST.toEncoded(Schema.toCodecJson(Schema.make(current)).ast);
+            else return AST.isUnion(current) ? current : undefined;
+          }
+          return undefined;
+        };
+        const wholeUnion = (branch: unknown, refs: ReadonlySet<string> = new Set()): boolean => {
+          if (!Predicate.isObject(branch)) return false;
+          if (typeof branch.$ref === "string")
+            return (
+              !refs.has(branch.$ref) && wholeUnion(resolveRef(branch.$ref), new Set(refs).add(branch.$ref))
+            );
+          return Array.isArray(branch.anyOf) || Array.isArray(branch.enum) || "const" in branch;
+        };
+        // The queue is a shared linked list, so each (queue position, branch) pair is solved once.
+        interface Queue {
+          readonly member: AST.AST;
+          readonly rest: Queue | undefined;
+        }
+        type Alignment = ReadonlyArray<readonly [AST.AST, number]> | undefined;
+        const solved = new WeakMap<Queue, Map<number, Alignment>>();
+        const enqueue = (list: readonly AST.AST[], rest: Queue | undefined): Queue | undefined =>
+          list.reduceRight<Queue | undefined>((tail, member) => ({ member, rest: tail }), rest);
+        const align = (queue: Queue | undefined, at: number): Alignment => {
+          if (queue === undefined) return at === branches.length ? [] : undefined;
+          if (at >= branches.length) return undefined;
+          const memo = solved.get(queue) ?? new Map<number, Alignment>();
+          solved.set(queue, memo);
+          if (memo.has(at)) return memo.get(at);
+          const { member, rest } = queue;
+          const whole = (): Alignment => {
+            const tail = align(rest, at + 1);
+            return tail === undefined ? undefined : [[member, at] as const, ...tail];
+          };
+          const union = unionBehind(member);
+          const split = (): Alignment =>
+            union === undefined ? undefined : align(enqueue(unionMembers(union), rest), at);
+          const result =
+            union === undefined
+              ? whole()
+              : wholeUnion(branches[at])
+                ? (whole() ?? split())
+                : (split() ?? whole());
+          memo.set(at, result);
+          return result;
+        };
+        const aligned = align(enqueue(members, undefined), 0);
+        expect(aligned, `${path}: union alignment`).toBeDefined();
+        for (const [member, index] of aligned ?? [])
           visit(member, branches[index], `${path}.anyOf[${index}]`);
-        });
       } else {
         // Collapsed literal unions have no child schemas to inspect.
         expect(
