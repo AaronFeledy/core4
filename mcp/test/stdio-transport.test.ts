@@ -193,6 +193,7 @@ test("ignores Effect RPC control notifications and continues serving MCP request
       }),
     ).pipe(Effect.provide(layer), Effect.timeout("3 seconds")),
   );
-  expect(observed.ping).toEqual({ jsonrpc: "2.0", id: "ping-after-controls", result: {} });
-  expect(observed.messages).toEqual([observed.ping]);
+  const expectedPing = { jsonrpc: "2.0", id: "ping-after-controls", result: {} };
+  expect(observed.ping).toEqual(expectedPing);
+  expect(observed.messages).toEqual([expectedPing]);
 });

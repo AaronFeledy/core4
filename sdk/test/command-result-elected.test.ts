@@ -62,7 +62,10 @@ test("a typed failure stays primary when a concurrent sibling dies first", async
     Effect.all([settled(Effect.die(crash)), settled(Effect.fail(start))], { concurrency: 2 }),
   );
   if (!Exit.isFailure(exit)) throw new Error("expected a failure");
-  expect(exit.cause.reasons.map((reason) => reason._tag)).toEqual(["Die", "Die"]);
+  expect(exit.cause.reasons).toMatchObject([
+    { _tag: "Die", defect: crash },
+    { _tag: "Die", defect: start },
+  ]);
   // Then Cause order does not demote the typed failure.
   expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
     kind: "typed",

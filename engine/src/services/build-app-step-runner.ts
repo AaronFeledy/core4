@@ -62,13 +62,11 @@ export const runAppBuildStep = Effect.fn("BuildOrchestrator.runAppBuildStep")(fu
       ),
       Stream.catchCause((cause) =>
         Stream.failCause(
-          mapDefectCause(cause, (defect) =>
-            isProviderError(defect)
-              ? isSecretStoreError(defect)
-                ? defect
-                : redactProviderError(defect, input.redaction.redactor)
-              : input.redaction.redactor.redactValue(defect),
-          ),
+          mapDefectCause(cause, (defect) => {
+            if (!isProviderError(defect)) return input.redaction.redactor.redactValue(defect);
+            if (isSecretStoreError(defect)) return defect;
+            return redactProviderError(defect, input.redaction.redactor);
+          }),
         ),
       ),
       Stream.catchCause((cause) => {

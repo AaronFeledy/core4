@@ -3,9 +3,9 @@ import { isProviderError, redactProviderError } from "@lando/redaction/provider-
 import {
   annotateFailureRole,
   commandFailureCause,
+  failureDefectCause,
   mapFailureCause,
   mergeFailure,
-  orDieWithRole,
 } from "@lando/sdk/command-result";
 import { ProcessTimeoutError } from "@lando/sdk/errors";
 import type { FailureRole } from "@lando/sdk/schema";
@@ -138,9 +138,10 @@ export const commandOutputStream = <E, R, E2>(
               const scope = yield* Effect.acquireRelease(Scope.make(), (scope, exit) =>
                 Scope.close(scope, exit).pipe(
                   Effect.catchCause((cause) =>
-                    Effect.failCause(sanitize(annotateFailureRole(cause, "cleanup"), false)),
+                    Effect.failCause(
+                      failureDefectCause(sanitize(annotateFailureRole(cause, "cleanup"), false)),
+                    ),
                   ),
-                  orDieWithRole("cleanup"),
                 ),
               );
               const pull = yield* Stream.toPull(observed).pipe(Scope.provide(scope));

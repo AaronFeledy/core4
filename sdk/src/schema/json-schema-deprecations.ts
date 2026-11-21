@@ -353,9 +353,8 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: Traver
   }
 };
 
-export const withSchemaDeprecations = <S extends SchemaLike, T>(schema: S, jsonSchema: T): T => {
-  return annotateJsonSchema(schema, jsonSchema, { onExcessProperty: "error" });
-};
+export const withSchemaDeprecations = <S extends SchemaLike, T>(schema: S, jsonSchema: T): T =>
+  annotateJsonSchema(schema, jsonSchema, { onExcessProperty: "error" });
 
 const annotateJsonSchema = <S extends SchemaLike, T>(
   schema: S,

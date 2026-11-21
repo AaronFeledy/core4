@@ -116,8 +116,8 @@ export const mapStreamFailures: {
 );
 
 interface ClassifiedPrimary<E> {
-  readonly reason: Cause.Reason<E>;
-  readonly typed?: "fail" | "elected";
+  readonly reason: Cause.Fail<E> | Cause.Die;
+  readonly typed?: "elected";
 }
 
 /**
@@ -126,23 +126,31 @@ interface ClassifiedPrimary<E> {
  * `orDie` has one. A role-less `Die` that Lando did not convert itself and that carries a diagnostic error is
  * read back as the typed failure it was.
  */
-const isElectedTypedFailure = <E>(cause: Cause.Cause<E>, reason: Cause.Reason<E>): boolean =>
+const isElectedTypedFailure = <E>(
+  cause: Cause.Cause<E>,
+  reason: Cause.Reason<E>,
+  index: number,
+): reason is Cause.Die =>
   Cause.isDieReason(reason) &&
   roleOf(reason) === undefined &&
   !isConvertedDefect(reason) &&
   isDiagnosticError(reason.defect) &&
-  cause.reasons.filter(Cause.isDieReason).length >= 2;
+  cause.reasons.some((other, otherIndex) => otherIndex !== index && Cause.isDieReason(other));
 
 const classifyPrimary = <E>(cause: Cause.Cause<E>): ClassifiedPrimary<E> | undefined => {
   const unscoped = (reason: Cause.Reason<E>) => roleOf(reason) === undefined;
-  const fail = cause.reasons.find((reason) => Cause.isFailReason(reason) && unscoped(reason));
-  if (fail !== undefined) return { reason: fail, typed: "fail" };
-  const elected = cause.reasons.find((reason) => isElectedTypedFailure(cause, reason));
+  const fail = cause.reasons.find(
+    (reason): reason is Cause.Fail<E> => Cause.isFailReason(reason) && unscoped(reason),
+  );
+  if (fail !== undefined) return { reason: fail };
+  const elected = cause.reasons.find((reason, index) => isElectedTypedFailure(cause, reason, index));
   if (elected !== undefined) return { reason: elected, typed: "elected" };
-  const defect = cause.reasons.find((reason) => Cause.isDieReason(reason) && unscoped(reason));
+  const defect = cause.reasons.find(
+    (reason): reason is Cause.Die => Cause.isDieReason(reason) && unscoped(reason),
+  );
   if (defect !== undefined) return { reason: defect };
   const scopedFail = cause.reasons.find(Cause.isFailReason);
-  if (scopedFail !== undefined) return { reason: scopedFail, typed: "fail" };
+  if (scopedFail !== undefined) return { reason: scopedFail };
   const scopedDefect = cause.reasons.find(Cause.isDieReason);
   return scopedDefect === undefined ? undefined : { reason: scopedDefect };
 };
@@ -168,13 +176,16 @@ export const failureOutcomeFromCause = <E>(
   if (primary === undefined)
     return { _tag: "failure", kind: "none", error: Cause.squash(cause), additionalErrors };
   const { reason, typed } = primary;
-  if (Cause.isFailReason(reason))
-    return { _tag: "failure", kind: "typed", source: "fail", error: reason.error, additionalErrors };
-  if (!Cause.isDieReason(reason))
-    return { _tag: "failure", kind: "none", error: Cause.squash(cause), additionalErrors };
-  return typed === "elected"
-    ? { _tag: "failure", kind: "typed", source: "elected", error: reason.defect, additionalErrors }
-    : { _tag: "failure", kind: "defect", error: projectDefect(reason.defect), additionalErrors };
+  switch (reason._tag) {
+    case "Fail":
+      return { _tag: "failure", kind: "typed", source: "fail", error: reason.error, additionalErrors };
+    case "Die":
+      return typed === "elected"
+        ? { _tag: "failure", kind: "typed", source: "elected", error: reason.defect, additionalErrors }
+        : { _tag: "failure", kind: "defect", error: projectDefect(reason.defect), additionalErrors };
+    default:
+      return reason satisfies never;
+  }
 };
 
 /** Re-fail nested command defects without losing reason-local annotations. */
