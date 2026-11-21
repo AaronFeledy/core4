@@ -56,6 +56,7 @@ export const materializeLandofileScopes = Effect.fn("Landofile.identityScope")(f
       document: compiled.document,
       pendingSites: compiled.pendingSites,
       scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
+      renderText: true,
       context: {
         app: { name: appSlug, slug: appSlug },
         proxy: { defaultDomain },
@@ -113,6 +114,7 @@ export const materializeServiceScopeSites = Effect.fn("Landofile.serviceSites")(
       pendingSites: sites,
       context: input.context,
       scopes: PLAN_SERVICE_EXPRESSION_SCOPES,
+      renderText: true,
       pathPrefix: input.pathPrefix,
     }),
   );

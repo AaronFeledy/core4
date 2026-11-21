@@ -8,6 +8,7 @@ import {
 } from "@lando/sdk/expressions";
 import { type ValueOrigins, isPlainRecord } from "@lando/sdk/landofile";
 import {
+  EnvironmentValue,
   type ParsedPendingSite,
   SecretRef,
   type ValidationIssuePath,
@@ -121,6 +122,7 @@ export const consumeSites = (input: {
   readonly scopes: readonly string[];
   readonly pathPrefix?: ValidationIssuePath;
   readonly budget?: EvaluationBudget;
+  readonly renderText?: boolean;
 }) => {
   let document = input.document;
   const pendingSites: ParsedPendingSite[] = [];
@@ -186,7 +188,21 @@ export const consumeSites = (input: {
           remediation: evaluated.failure.remediation,
         }),
       );
-    document = replaceSiteValue(document, site.path.slice(input.pathPrefix?.length ?? 0), evaluated.success);
+    const value = evaluated.success;
+    const rendered =
+      input.renderText && typeof value === "number" && Number.isFinite(value) ? String(value) : value;
+    if (input.renderText && !Schema.is(EnvironmentValue)(rendered))
+      return Result.fail(
+        new ConfigExpressionError({
+          message: "This field takes text; the expression must return text or a finite number.",
+          path: site.path,
+          source: site.source,
+          expression: siteExpression(site, input.document, input.pathPrefix?.length),
+          filePath: "file" in site.source ? site.source.file : "<landofile>",
+          remediation: "Return text or a finite number instead of a boolean, null, or collection.",
+        }),
+      );
+    document = replaceSiteValue(document, site.path.slice(input.pathPrefix?.length ?? 0), rendered);
   }
   return Result.succeed({ document, pendingSites });
 };

@@ -41,6 +41,7 @@ test("advances recorded identity and connection sites without rescanning produce
                 web: {
                   environment: {
                     DATA: "{{ env.LANE_B_ENGINE_DATA }}",
+                    DB_PORT: "{{ services.db.port }}",
                     URL: "pg://{{ url.encodeComponent(services.db.creds.password) }}:{{ services.db.port }}",
                   },
                 },
@@ -60,7 +61,7 @@ test("advances recorded identity and connection sites without rescanning produce
       }),
     );
     expect(identity.compiled.stage).toBe("identity-scoped");
-    expect(identity.pendingSites).toHaveLength(1);
+    expect(identity.pendingSites).toHaveLength(2);
     const result = await Effect.runPromise(
       materializeServiceScopeSites({
         value: identity.landofile,
@@ -85,6 +86,7 @@ test("advances recorded identity and connection sites without rescanning produce
           web: {
             environment: {
               DATA: "{{ services.notAuthored.creds.password }}",
+              DB_PORT: "5544",
               URL: {
                 _tag: "BoundText",
                 parts: ["pg://", { reference: "DB", encoding: "uri-component" }, ":5544"],
@@ -169,6 +171,7 @@ test("locates canonical decode failures without rendering scope values into erro
   if (Result.isFailure(result)) {
     expect(result.failure.path).toEqual(["services", "web", "environment", "BAD"]);
     expect(result.failure.filePath).toBe("/app/.lando.local.yml");
+    expect(result.failure.message).toContain("takes text");
     expect(result.failure.message).not.toContain("DO_NOT_RENDER_SCOPE_BYTES");
   }
 });
