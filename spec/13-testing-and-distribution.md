@@ -143,6 +143,8 @@ The schema coverage gate checks the canonical plan import graph and follows Effe
 
 Every public schema MUST have canonical annotations, stable JSON Schema output, successful examples, and round-trip tests. Generated schema, command, API, event, service, template-step, and error references MUST build without hand edits. The Starlight site MUST build authored Markdown/MDX together with generated references and required public guide transcripts.
 
+Schema publication MUST gate field descriptions on the registered Landofile authoring and GlobalConfig inputs and their editor artifacts, not just the Effect Schema AST (§7.8). The description-debt ledger MUST equal the observed missing paths: new paths fail the gate and repaired paths must be removed. The input parity gate checks each published dialect against its stage oracle and expected verdicts, including documented semantic gaps (§7.8).
+
 ### 13.3 Type gates
 
 `bun run typecheck` (`tsc -b` over the workspace project-reference graph, including the aggregate non-docs test project and the repository scripts project) and `bun run docs:check` MUST pass on every PR. Type-only tests under `test/types/` use `expectTypeOf` to protect inferred schema types, public exports, and Effect requirement narrowing.
