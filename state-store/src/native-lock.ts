@@ -11,6 +11,7 @@ import {
 import { platform } from "node:os";
 import { toNamespacedPath } from "node:path";
 import { isErrnoCode } from "@lando/sdk/errors";
+import { Context } from "effect";
 
 type Ffi = typeof import("bun:ffi");
 type Mode = "exclusive" | "shared";
@@ -37,7 +38,7 @@ export const checkSentinel = (stat: ReturnType<typeof lstatSync>) => {
     throw new UnsafeSentinelError("owned by another user");
 };
 
-const posix = ({ dlopen, read }: Ffi, darwin: boolean) => {
+export const posix = ({ dlopen, read }: Pick<Ffi, "dlopen" | "read">, darwin: boolean) => {
   const flockSignature = { args: ["i32", "i32"], returns: "i32" } as const;
   const errnoSignature = { args: [], returns: "ptr" } as const;
   const { flock, errnoLocation } = darwin
@@ -114,7 +115,7 @@ const posix = ({ dlopen, read }: Ffi, darwin: boolean) => {
   };
 };
 
-const windows = ({ dlopen, ptr }: Ffi) => {
+export const windows = ({ dlopen, ptr }: Pick<Ffi, "dlopen" | "ptr">) => {
   if (process.arch !== "x64" && process.arch !== "arm64") throw new Error("LockFileEx requires Win64");
   const { symbols } = dlopen("kernel32.dll", {
     CreateFileW: { args: ["ptr", "u32", "u32", "ptr", "u32", "u32", "u64"], returns: "u64" },
@@ -198,3 +199,7 @@ const loadNativeLock = async (): Promise<OpenNativeLock> => {
 };
 
 export const nativeLock = (): Promise<OpenNativeLock> => (bindings ??= loadNativeLock());
+
+export const NativeLockLoader = Context.Reference<typeof nativeLock>("@lando/state-store/NativeLockLoader", {
+  defaultValue: () => nativeLock,
+});
