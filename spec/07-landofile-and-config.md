@@ -221,6 +221,8 @@ The top-level wrappers `compose:` and `recipes:` are forbidden and fail with `La
 
 ### 7.4.1 Config translation
 
+The Lando 3 translator emits the native authored `build.dockerfile_inline` key for recognized Compose `build.dockerfile_inline` and API-4 `image.imagefile` inputs. It does not emit the decoded `dockerfileInline` key (§6.3).
+
 `ConfigTranslator` remains authoring-fragment-only. Configuration-backed scratch uses the explicit input path in §21.4.3, not translation refresh; programmable execution adds no mandatory Landofile key (§22.9).
 
 The Lando 3 proxy translator MUST preserve explicit container ports as numeric route selectors, including when filters split HTTP and HTTPS into separate routes. For a portless route targeting a known effective service with no declared or catalog HTTP(S) listener, it MUST emit `endpoint: 80` and report the generated default at the owning proxy entry. It MUST leave portless selection intact when the effective service supplies an HTTP(S) listener and MUST NOT guess a port for an unresolved target. Translation MUST NOT synthesize an `endpoints:` list from proxy intent or remove existing publication intent; native route derivation and validation own listener selection and protocol conflicts (§6.6).
@@ -382,6 +384,8 @@ Local sources MUST remain contained by default. Git and npm sources MUST be pinn
 ### 7.8 Schema and documentation publication
 
 Static decoding defaults on public fields MUST publish the default and its description on the encoded schema. Reference pages take those annotations from the emitted JSON Schema. Runtime fallbacks are not decoding defaults.
+
+Build-block authoring and runtime artifacts derive their wire shapes from the same Effect Schema codec, not a replacement JSON Schema object. The authoring projection adds expression arms at eligible typed sites; the runtime artifact retains the literal wire constraints. Both publish the environment assignment and map-name constraints for their respective stages (§7.3.1).
 
 Config lint findings MUST carry a stable `rule` identifier and `severity` (`error` or `warning`), derived from schema decoding or a named semantic check; `valid` means no error-severity finding. Rule identifiers are the `ConfigLintRuleId` union defined with descriptors (stages, severities, summary, example paths) in `CONFIG_LINT_RULES` in `@lando/sdk/schema`. The [config lint rule reference](../docs/reference/config-lint-rules.mdx) is generated from that registry. Existing validation failures remain errors. Bare healthcheck argv beginning with `CMD`, `CMD-SHELL`, or `NONE` warns without reinterpreting argv. Conflicting dialect fields retained from the same file and layer MUST surface the load-time error (§6.7) as `healthcheck.mixed-dialects`. Surviving disjoint dialect fields from different sources warn under the same identifier. Shared fields alone and discarded false/reset/override/form-replacement origins MUST NOT trigger either finding. The bare-marker and mixed-dialect rules apply independently to `readiness`, with corresponding `readiness.*` identifiers. Generated Apache that serves an HTTPS route while native TLS is off because of `certs: false`, custom certificate material, or a non-root `user:` warns as `service.router-tls-termination` at the suppressing field (§6.11.4). Lint MUST use retained sources, not reload configuration to infer origins.
 

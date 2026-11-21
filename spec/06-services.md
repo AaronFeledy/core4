@@ -118,6 +118,8 @@ Content created under a mapping from before this contract is not translated by o
 
 ### 6.3 Artifact build
 
+`services.<name>.build` accepts a Compose context string or one nonempty object from exactly one family: Compose image-build keys (`context`, `dockerfile`, `dockerfile_inline`, `args`, `target`) or Lando build-script keys (`artifact`, `app`). The Compose object defaults an omitted context to `.` (local Compose includes rebase it from the fragment, §7.7). `dockerfile` and `dockerfile_inline` are mutually exclusive. Author and encode inline Dockerfiles as `dockerfile_inline` only; `dockerfileInline` is the decoded spelling, not an authored alias. Build `args` accepts a string-valued map or `KEY=value` entries, not bare names or null values; it does not inherit host values.
+
 `artifact:` accepts an existing artifact reference, an external `sourcefile:` plus context, or inline provider-neutral build intent. Inline intent includes `source`, `tag`, `context`, `args`, `secrets`, `ssh`, `platform`, `groups`, and `steps`.
 
 Build instructions use named, weighted, user-scoped groups. Final order follows group weight and step weight. Service types, features, fragments (§7.7), and Landofile input contribute steps; recipes contribute only through the Landofile they scaffold. Group overrides may select a group, relative offset, before/after placement, and user; their concrete grammar is schema-owned.

@@ -99,7 +99,7 @@ If you are looking for a public surface or policy:
 | Service bases and common service schema, including `extraArgs` | 06 | §6.1 + §6.2 |
 | Native container init: one authored `init` key, canonical `ServicePlan.init`, base default, opt-out, `serviceInit` capability, and signal guarantees | 06 | §6.2.1 |
 | Scheduled jobs: per-service `schedule`, cadence, timezone, identity, sidecar grouping and naming, scheduler acquisition, and the `schedule:list` / `schedule:run` commands | 01 + 06 + 08 + 11 | §1.4 + §6.2.2 + §8.2.8 + §10.14 |
-| Artifact build contract | 06 | §6.3 |
+| Artifact build contract and authored versus decoded inline Dockerfile spelling | 06 | §6.3 |
 | App mounts and mount realization | 06 | §6.4 |
 | File-sync eligibility, shared policy, and provider prepared-volume support | 04 + 05 | §4.3 + §4.4 + §5.4 |
 | Canonical file-sync execution bundle and retained flat session history | 06 | §6.4 |
@@ -149,7 +149,7 @@ If you are looking for a public surface or policy:
 | Includes, fragments, lockfile, cache, and security | 07 | §7.7 |
 | Project host approval for host code and host exposure | 07 | §7.9 |
 | Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
-| Schema and generated-reference publication, indexed endpoint diagnostics, resolved `kind` encoding, and shared provider-free route listener derivation | 07 | §7.8 |
+| Schema and generated-reference publication, build and environment input parity, encoded decoding-default metadata, indexed endpoint diagnostics, resolved `kind` encoding, and shared provider-free route listener derivation | 07 | §7.8 |
 | Shared resolved-Landofile validation, typed lint rule registry, generated rule reference, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
 | Authored HTTP route binding with route-declared listeners and TCP/UDP protocol conflicts, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
 | Node runtime inference versus package-manager selection, offline launchers, BYO toolchains, and project-file validation headlines | 06 + 07 + 12 + 13 | §6.11.0 + §6.12.1 + §6.13.3 + §7.8 + §12.1 + §13.1 |
@@ -235,7 +235,7 @@ If you are looking for a public surface or policy:
 | Paired Tomcat image/config maintenance, offline catalog generation, and automation failure reporting | 15 | §17.2 |
 | Signing, supply chain, update, and installation | 15 | §17.4 + §17.7 |
 | Release workflow and shipping criteria | 15 | §17.8 + §17.9 |
-| Unreleased endpoint/filter `kind` vocabulary, declaration wire form, and applied/cache bumps | 16 | §18.1 |
+| Unreleased endpoint/filter `kind` vocabulary, declaration wire form, applied/cache bumps, and inline Dockerfile alias removal | 16 | §18.1 |
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |
 | Deprecation presentation, removal, and gates | 16 | §18.6 + §18.8 |
 | Executable-guide model, components, scenario runtime, and display vs. execute bindings | 17 | §19.2 + §19.4 + §19.5 |
