@@ -15,6 +15,7 @@ const decoders: Readonly<Record<string, (input: unknown) => Result.Result<unknow
   Inspect: Components.decodeInspectPropsEither,
   Cleanup: Components.decodeCleanupPropsEither,
   Verify: Components.decodeVerifyPropsEither,
+  Fetch: Components.decodeFetchPropsEither,
   Run: Components.decodeRunPropsEither,
 };
 export const lintComponentSyntax = (

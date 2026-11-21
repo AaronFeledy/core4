@@ -1,7 +1,6 @@
 ---
 id: craft-workflow
 provider: test
-timeout: 900000
 tags: [beta, docs, recipes, craft, lamp, php, mariadb]
 ---
 
@@ -188,7 +187,7 @@ lando db:restore before-update --yes
     </Step>
   </Scenario>
 
-  <Scenario id="install-path" layer="e2e" render={false} reason="Live regression for the install, ownership, web, plugin, and database steps">
+  <Scenario id="install-path" layer="e2e" timeout={900000} render={false} reason="Live regression for the install, ownership, web, plugin, and database steps">
     <Step name="scaffold">
       <Run command="lando init --recipe lamp --name=craft-demo --answer=webroot=web --yes" />
       <Run command={`lando app:config:set tooling.craft '{"service":"appserver","cmds":["php craft"],"wrapper":true,"description":"Run the Craft CLI inside the appserver service."}' --type json`} />

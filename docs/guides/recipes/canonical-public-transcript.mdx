@@ -2,7 +2,6 @@
 id: canonical-public-transcript
 provider: test
 platforms: [linux, darwin, win32, wsl]
-timeout: 300000
 tags: [docs, recipes, transcripts]
 ---
 
@@ -88,7 +87,7 @@ console.log(landofile);`}
 
 The same recipe scaffold starts, prints lando info, then destroys. This is an e2e smoke, not a user tutorial.
 
-<Scenario id="provider-e2e-smoke" layer="e2e" tags={["@smoke"]} render>
+<Scenario id="provider-e2e-smoke" layer="e2e" timeout={300000} tags={["@smoke"]} render>
     <Step name="scaffold-real-provider-app">
       <Variable name="appName" value="canonical-guide-e2e" display="my-canonical-e2e-app" />
       <Run command="lando init --recipe node-postgres --name={{appName}} --yes" />

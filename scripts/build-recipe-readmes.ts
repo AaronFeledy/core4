@@ -69,6 +69,7 @@ const stripStep = (step: GuideStepNode, ctx: StripContext): ReadonlyArray<RootCo
         case "Inline":
           return [codeNode(component.props.lang, component.props.code)];
         case "Verify":
+        case "Fetch":
         case "Variable":
         case "UseFixture":
         case "Cleanup":

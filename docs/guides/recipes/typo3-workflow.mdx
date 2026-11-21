@@ -1,7 +1,6 @@
 ---
 id: typo3-workflow
 provider: test
-timeout: 900000
 tags: [beta, docs, recipes, typo3, lamp, php, mariadb]
 ---
 
@@ -222,7 +221,7 @@ lando db:restore before-update --yes
     </Step>
   </Scenario>
 
-  <Scenario id="install-path" layer="e2e" render={false} reason="Live regression for the install, ownership, native router TLS, upload, and database steps">
+  <Scenario id="install-path" layer="e2e" timeout={900000} render={false} reason="Live regression for the install, ownership, native router TLS, upload, and database steps">
     <Step name="scaffold">
       <Run command="lando init --recipe lamp --name=typo3-demo --answer=webroot=public --yes" />
       <Run command={`lando app:config:set services.appserver.uploadDirs '["fileadmin"]' --type json`} />

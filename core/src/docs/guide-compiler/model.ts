@@ -1,10 +1,12 @@
 import type {
   CleanupProps,
+  FetchProps,
   GuideFrontmatter,
   GuidePlatform,
   InlineProps,
   InspectProps,
   RunProps,
+  ScenarioProps,
   UseFixtureProps,
   VariableProps,
   VerifyProps,
@@ -27,6 +29,7 @@ export type GuideStepComponent = (
       /** Shell-word argv of `props.command`; set on the resolved execution projection. */
       readonly argv?: ReadonlyArray<string>;
     }
+  | { readonly kind: "Fetch"; readonly props: FetchProps; readonly line: number }
   | { readonly kind: "Cleanup"; readonly props: CleanupProps; readonly line: number }
   | { readonly kind: "Variable"; readonly props: VariableProps; readonly line: number }
   | { readonly kind: "UseFixture"; readonly props: UseFixtureProps; readonly line: number }
@@ -75,13 +78,8 @@ export type GuideScenarioBodyItem =
   | GuideTabsBlock
   | GuideHiddenBlock
   | GuideSkipBlock;
-export interface GuideScenarioNode {
+export interface GuideScenarioNode extends ScenarioProps {
   readonly source?: MdxNode;
-  readonly id: string;
-  readonly render: boolean;
-  readonly reason?: string;
-  readonly layer?: "scenario" | "e2e";
-  readonly tags?: ReadonlyArray<string>;
   readonly line: number;
   readonly steps: ReadonlyArray<GuideStepNode>;
   readonly body: ReadonlyArray<GuideScenarioBodyItem>;
@@ -107,7 +105,9 @@ export interface GuideScenarioAst extends ParsedGuide {
   readonly cells: ReadonlyArray<{ readonly scenarioId: string; readonly resolved: ResolvedScenario }>;
 }
 export interface ResolvedScenario {
+  /** A skipped cell without axes still has a variant so emitters see the skip. */
   readonly variant: GuideVariant | undefined;
+  readonly platforms: GuideFrontmatter["platforms"];
   readonly steps: ReadonlyArray<GuideStepNode>;
   readonly publicSteps: ReadonlyArray<GuideStepNode>;
   readonly variables: ReadonlyMap<string, VariableProps>;
