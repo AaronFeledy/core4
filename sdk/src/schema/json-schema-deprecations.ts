@@ -7,6 +7,7 @@ import {
   getSchemaDeprecation,
   validateDeprecationNotice,
 } from "./deprecation.ts";
+import { jsonSchemaAnnotationSites } from "./json-schema-annotation-sites.ts";
 import { pruneUnusedDefinitions } from "./json-schema-definitions.ts";
 import { getLayerMergeRule } from "./layer-merge.ts";
 import { propertyNameRecordProjection } from "./property-name-check.ts";
@@ -15,7 +16,8 @@ type JsonObject = Record<string, unknown>;
 type SchemaLike = Schema.Top;
 type TupleElement = AST.AST;
 type TraversalContext = {
-  readonly root: JsonObject;
+  readonly resolveRef: (target: unknown) => unknown;
+  readonly annotationSites: WeakSet<AST.AST>;
   readonly matchesBranch: (target: unknown, ast: AST.AST) => boolean;
   readonly edits: Array<() => void>;
   /**
@@ -126,11 +128,11 @@ const decodeJsonPointerSegment = (segment: string): string => {
   return decoded.replace(/~1/g, "/").replace(/~0/g, "~");
 };
 
-const localRefTarget = (target: unknown, context: Pick<TraversalContext, "root">): unknown => {
+const localRefTarget = (target: unknown, root: JsonObject): unknown => {
   const ref = jsonObject(target)?.$ref;
   if (typeof ref !== "string" || !ref.startsWith("#/")) return undefined;
 
-  let current: unknown = context.root;
+  let current: unknown = root;
   for (const segment of ref.slice(2).split("/").map(decodeJsonPointerSegment)) {
     const currentObject = jsonObject(current);
     if (currentObject === undefined) return undefined;
@@ -140,37 +142,79 @@ const localRefTarget = (target: unknown, context: Pick<TraversalContext, "root">
 };
 
 const jsonSchemaTarget = (target: unknown, context: TraversalContext): unknown =>
-  localRefTarget(target, context) ?? target;
+  context.resolveRef(target) ?? target;
 
-const sameSchemaStructure = (
-  left: unknown,
-  right: unknown,
-  roots: readonly [JsonObject, JsonObject],
-): boolean => {
-  const seen = new WeakMap<JsonObject, WeakSet<JsonObject>>();
-  const same = (a: unknown, b: unknown): boolean => {
-    if (Equal.equals(a, b)) return true;
-    if (Array.isArray(a) && Array.isArray(b))
-      return a.length === b.length && a.every((item, index) => same(item, b[index]));
-    const x = jsonObject(a);
-    const y = jsonObject(b);
-    if (x === undefined || y === undefined) return false;
-    const pairs = seen.get(x) ?? new WeakSet<JsonObject>();
-    if (pairs.has(y)) return true;
-    pairs.add(y);
-    seen.set(x, pairs);
-    const xRef = Object.keys(x).length === 1 ? localRefTarget(x, { root: roots[0] }) : undefined;
-    const yRef = Object.keys(y).length === 1 ? localRefTarget(y, { root: roots[1] }) : undefined;
-    const keys = Object.keys(x);
-    const matches =
-      xRef !== undefined || yRef !== undefined
-        ? same(xRef ?? x, yRef ?? y)
-        : keys.length === Object.keys(y).length &&
-          keys.every((key) => Object.hasOwn(y, key) && same(x[key], y[key]));
-    pairs.delete(y);
-    return matches;
+const memoizedRefTarget = (root: JsonObject) => {
+  const refs = new Map<string, unknown>();
+  return (target: unknown): unknown => {
+    const ref = jsonObject(target)?.$ref;
+    if (typeof ref !== "string") return undefined;
+    if (refs.has(ref)) return refs.get(ref);
+    const resolved = localRefTarget(target, root);
+    refs.set(ref, resolved);
+    return resolved;
   };
-  return same(left, right);
+};
+
+const schemaStructureMatcher = (
+  leftRef: (target: unknown) => unknown,
+  rightRef: (target: unknown) => unknown,
+): ((left: unknown, right: unknown) => boolean) => {
+  const memo = new WeakMap<JsonObject, WeakMap<JsonObject, boolean>>();
+  const remember = (x: JsonObject, y: JsonObject, result: boolean): void => {
+    let known = memo.get(x);
+    if (known === undefined) {
+      known = new WeakMap();
+      memo.set(x, known);
+    }
+    known.set(y, result);
+  };
+  return (left, right) => {
+    const seen = new Map<JsonObject, Set<JsonObject>>();
+    const same = (a: unknown, b: unknown): boolean => {
+      if (a === b) return true;
+      if (Array.isArray(a) && Array.isArray(b))
+        return a.length === b.length && a.every((item, index) => same(item, b[index]));
+      const x = jsonObject(a);
+      const y = jsonObject(b);
+      if (x === undefined || y === undefined) return Equal.equals(a, b);
+      const cached = memo.get(x)?.get(y);
+      if (cached !== undefined) return cached;
+      const keys = Object.keys(x);
+      const yKeys = Object.keys(y);
+      if (
+        keys.length === 1 &&
+        yKeys.length === 1 &&
+        typeof x.$ref === "string" &&
+        x.$ref === y.$ref &&
+        Object.hasOwn(x, "$ref") &&
+        Object.hasOwn(y, "$ref")
+      )
+        return true;
+      let pairs = seen.get(x);
+      if (pairs === undefined) {
+        pairs = new Set();
+        seen.set(x, pairs);
+      }
+      if (pairs.has(y)) return true;
+      pairs.add(y);
+      const xRef = keys.length === 1 ? leftRef(x) : undefined;
+      const yRef = yKeys.length === 1 ? rightRef(y) : undefined;
+      const matches =
+        xRef !== undefined || yRef !== undefined
+          ? same(xRef ?? x, yRef ?? y)
+          : keys.length === yKeys.length &&
+            keys.every((key) => Object.hasOwn(y, key) && same(x[key], y[key]));
+      if (!matches) remember(x, y, false);
+      return matches;
+    };
+    const result = same(left, right);
+    // A revisited pair is only provisionally equal until the whole comparison succeeds.
+    if (result) {
+      for (const [x, pairs] of seen) for (const y of pairs) remember(x, y, true);
+    }
+    return result;
+  };
 };
 
 const schemaProperties = (target: unknown): Record<string, unknown> | undefined => {
@@ -232,8 +276,10 @@ const applyUnionDeprecations = (target: unknown, ast: AST.Union, context: Traver
     ...(unionBranchSchemas(node) ?? []).flatMap(candidates),
   ];
   const branches = (unionBranchSchemas(target) ?? []).flatMap(candidates);
-  const visit = (member: AST.AST, ancestors: ReadonlySet<AST.AST>): void => {
+  if (branches.length === 0) return;
+  const visit = (member: AST.AST, ancestors: ReadonlySet<AST.AST>, inherited: boolean): void => {
     if (ancestors.has(member) || AST.isNever(member) || AST.isUndefined(member)) return;
+    if (!inherited && !context.annotationSites.has(member)) return;
     const matches = branches.filter((branch) => context.matchesBranch(branch, member));
     if (matches.length > 0) {
       for (const branch of matches) {
@@ -249,10 +295,15 @@ const applyUnionDeprecations = (target: unknown, ast: AST.Union, context: Traver
     const input = schemaReferenceAst(member);
     if (AST.isUnion(input)) {
       const seen = new Set(ancestors).add(member).add(input);
-      for (const child of input.types) visit(child, seen);
+      const inheritsAnnotations =
+        inherited ||
+        [member, input].some(
+          (node) => getLayerMergeRule(node) !== undefined || getSchemaDeprecation(node) !== undefined,
+        );
+      for (const child of input.types) visit(child, seen, inheritsAnnotations);
     }
   };
-  for (const member of members) visit(member, new Set());
+  for (const member of members) visit(member, new Set(), false);
 };
 
 const indexSignatureJsonSchema = (target: unknown, signature: AST.IndexSignature): unknown => {
@@ -293,6 +344,7 @@ const applyIndexSignatureDeprecations = (
 };
 
 const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: TraversalContext): void => {
+  if (!context.annotationSites.has(ast)) return;
   const targetSchema = jsonSchemaTarget(target, context);
   if (alreadyVisited(targetSchema, ast, context)) return;
 
@@ -354,32 +406,43 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: Traver
 };
 
 export const withSchemaDeprecations = <S extends SchemaLike, T>(schema: S, jsonSchema: T): T =>
-  annotateJsonSchema(schema, jsonSchema, { onExcessProperty: "error" });
+  annotateJsonSchema(schema, jsonSchema, branchProjector(schema.ast, defaultJsonSchemaOptions));
 
 const annotateJsonSchema = <S extends SchemaLike, T>(
   schema: S,
   jsonSchema: T,
-  options: Schema.ToJsonSchemaOptions,
+  projectBranch: (ast: AST.AST) => BranchDocument,
 ): T => {
   const copy = cloneJson(jsonSchema);
   const root = jsonObject(copy);
   if (root !== undefined) {
-    const projected = new WeakMap<AST.AST, JsonSchema.Document<"draft-2020-12">>();
-    const exportOptions = jsonSchemaOptions(jsonInputAst(schema.ast), options);
+    const annotationSites = jsonSchemaAnnotationSites(schema.ast);
+    if (!annotationSites.has(schema.ast)) return copy;
+    const resolveRef = memoizedRefTarget(root);
+    const comparators = new WeakMap<BranchDocument, ReturnType<typeof schemaStructureMatcher>>();
     const matchesBranch = (target: unknown, ast: AST.AST): boolean => {
-      const branch =
-        projected.get(ast) ?? Schema.toJsonSchemaDocument(Schema.make(jsonInputAst(ast)), exportOptions);
-      projected.set(ast, branch);
-      return sameSchemaStructure(target, branch.schema, [root, { $defs: branch.definitions }]);
+      const branch = projectBranch(ast);
+      let same = comparators.get(branch);
+      if (same === undefined) {
+        same = schemaStructureMatcher(resolveRef, memoizedRefTarget({ $defs: branch.definitions }));
+        comparators.set(branch, same);
+      }
+      return same(target, branch.schema);
     };
     const edits: Array<() => void> = [];
-    applyDeprecationsFromAst(root, schema.ast, { root, visited: new WeakMap(), matchesBranch, edits });
+    applyDeprecationsFromAst(root, schema.ast, {
+      resolveRef,
+      annotationSites,
+      visited: new WeakMap(),
+      matchesBranch,
+      edits,
+    });
     for (const edit of edits) edit();
   }
   return copy;
 };
 
-const jsonInputAst = (root: AST.AST): AST.AST => {
+const makeJsonInputAst = () => {
   const memo = new WeakMap<AST.AST, AST.AST>();
   const visit = (ast: AST.AST): AST.AST => {
     const cached = memo.get(ast);
@@ -494,22 +557,67 @@ const jsonInputAst = (root: AST.AST): AST.AST => {
     memo.set(ast, result);
     return result;
   };
-  return visit(AST.toEncoded(root));
+  return (root: AST.AST) => visit(AST.toEncoded(root));
 };
 
-export const jsonSchemaDocument = <S extends SchemaLike>(
-  schema: S,
-  options: Schema.ToJsonSchemaOptions = { onExcessProperty: "error" },
-): JsonSchema.Document<"draft-2020-12"> => {
-  const input = jsonInputAst(schema.ast);
-  return Schema.toJsonSchemaDocument(Schema.make(input), jsonSchemaOptions(input, options));
+const jsonInputAst = makeJsonInputAst();
+
+type BranchDocument = JsonSchema.Document<"draft-2020-12">;
+type BranchProjection = {
+  readonly document: BranchDocument;
+  readonly identifiers: ReadonlySet<string>;
+};
+const defaultBranchProjections = new WeakMap<AST.AST, BranchProjection>();
+const namedBranchProjections = new WeakMap<AST.AST, Map<string, BranchDocument>>();
+const defaultJsonSchemaOptions = { onExcessProperty: "error" } as const;
+
+const branchProjector = (root: AST.AST, options: Schema.ToJsonSchemaOptions) => {
+  const rootIdentifier = AST.resolveIdentifier(jsonInputAst(root));
+  const projected = new WeakMap<AST.AST, BranchDocument>();
+  return (ast: AST.AST): BranchDocument => {
+    const cached = projected.get(ast);
+    if (cached !== undefined) return cached;
+    const input = jsonInputAst(ast);
+    if (options === defaultJsonSchemaOptions) {
+      const base = defaultBranchProjections.get(input);
+      const variants = namedBranchProjections.get(input);
+      const named = rootIdentifier === undefined ? undefined : variants?.get(rootIdentifier);
+      if (named !== undefined) return named;
+      if (base !== undefined && (rootIdentifier === undefined || !base.identifiers.has(rootIdentifier))) {
+        return base.document;
+      }
+      const identifiers = new Set<string>();
+      const document = Schema.toJsonSchemaDocument(Schema.make(input), {
+        ...jsonSchemaOptions(rootIdentifier, options),
+        referencePolicy: ({ identifier }) => {
+          if (identifier !== undefined) identifiers.add(identifier);
+          return identifier === rootIdentifier ? undefined : identifier;
+        },
+      });
+      // Only the built-in options are shared across calls. If the excluded identifier
+      // wasn't encountered, this projection is also valid under other root identifiers.
+      if (rootIdentifier === undefined || !identifiers.has(rootIdentifier)) {
+        defaultBranchProjections.set(input, { document, identifiers });
+      } else if (variants === undefined) {
+        namedBranchProjections.set(input, new Map([[rootIdentifier, document]]));
+      } else {
+        variants.set(rootIdentifier, document);
+      }
+      return document;
+    }
+    const document = Schema.toJsonSchemaDocument(
+      Schema.make(input),
+      jsonSchemaOptions(rootIdentifier, options),
+    );
+    projected.set(ast, document);
+    return document;
+  };
 };
 
 const jsonSchemaOptions = (
-  input: AST.AST,
+  rootIdentifier: string | undefined,
   options: Schema.ToJsonSchemaOptions,
 ): Schema.ToJsonSchemaOptions => {
-  const rootIdentifier = AST.resolveIdentifier(input);
   return {
     referencePolicy: ({ identifier }) => (identifier === rootIdentifier ? undefined : identifier),
     includeAnnotationKey: (key) => key === "acceptsImportRef",
@@ -519,9 +627,10 @@ const jsonSchemaOptions = (
 
 export const getJsonSchemaWithDeprecations = <S extends SchemaLike>(
   schema: S,
-  options: Schema.ToJsonSchemaOptions = { onExcessProperty: "error" },
+  options: Schema.ToJsonSchemaOptions = defaultJsonSchemaOptions,
 ): JsonSchema.JsonSchema => {
-  const document = jsonSchemaDocument(schema, options);
+  const projectBranch = branchProjector(schema.ast, options);
+  const document = projectBranch(schema.ast);
   return pruneUnusedDefinitions(
     annotateJsonSchema(
       schema,
@@ -530,7 +639,7 @@ export const getJsonSchemaWithDeprecations = <S extends SchemaLike>(
         ...document.schema,
         ...(Object.keys(document.definitions).length === 0 ? {} : { $defs: document.definitions }),
       },
-      options,
+      projectBranch,
     ),
   );
 };
@@ -623,7 +732,7 @@ const markdownTextCell = (value: string): string => mdxText(value);
 const codeValue = (value: unknown): string => `\`${String(value)}\``;
 
 const resolveLocalSchemaRef = (target: JsonObject, root: JsonObject): JsonObject | undefined => {
-  const resolved = jsonObject(localRefTarget(target, { root }));
+  const resolved = jsonObject(localRefTarget(target, root));
   if (resolved === undefined) return undefined;
   const defs = jsonObject(root.definitions ?? root.$defs);
   return defs === undefined ? resolved : { ...resolved, definitions: defs, $defs: defs };

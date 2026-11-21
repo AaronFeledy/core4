@@ -2804,7 +2804,7 @@ export const renderPublicSchemaReferencePages = (): ReadonlyArray<PublicSchemaRe
   }));
 
 const landofileJsonSchema = () => {
-  const schema = getJsonSchemaWithDeprecations(LandofileShape, { onExcessProperty: "error" });
+  const schema = getJsonSchemaWithDeprecations(LandofileShape);
   repairLandofileExtensions(schema);
   return schema;
 };
@@ -2834,9 +2834,7 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
     schemaName === "LandofileAuthoringShapeWire" ||
     schemaName === "LandofileAuthoringFragmentWire"
   ) {
-    const schema = getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName], {
-      onExcessProperty: "error",
-    });
+    const schema = getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName]);
     repairTemplateLiteralExtensionRecords(schema);
     return schema;
   }
@@ -2846,5 +2844,5 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
     schemaName === "AuthoringExpression"
   )
     return expressionJsonSchema(schemaName);
-  return getJsonSchemaWithDeprecations(schemaForPublicName(schemaName), { onExcessProperty: "error" });
+  return getJsonSchemaWithDeprecations(schemaForPublicName(schemaName));
 };
