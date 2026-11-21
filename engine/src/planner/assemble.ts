@@ -117,7 +117,7 @@ export interface PlanAppInput {
 function* assemblePlan(
   input: PlanAppInput,
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
-  const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot } = input;
+  const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot, kind } = input;
   const pluginRegistry = yield* PluginRegistry;
   const contributionGraph = Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph));
   const plugins = loadedPluginImplementations(contributionGraph);
@@ -403,11 +403,7 @@ function* assemblePlan(
   });
   // Validation never touches the persisted plan; neither does a plan built from unknown plugin code.
   const planCache = input.mode !== "validate" && plugins.cacheable ? cacheService : undefined;
-  const routeUrlContext = {
-    filePath: landofilePath,
-    enabled: routerEnabled,
-    global: input.kind === "global",
-  };
+  const routeUrlContext = { filePath: landofilePath, enabled: routerEnabled, global: kind === "global" };
   if (planCache !== undefined) {
     const cached = yield* readCachedAppPlan({
       cacheRoot,
