@@ -15,7 +15,7 @@ import { migrateAppliedNames } from "./applied-names-migrate.ts";
 import { visitAppliedNetworkVocabulary } from "./applied-network-vocabulary.ts";
 
 /** Durable applied-plan frame version: v9 added keepAlive intent; v10 adds RouteText descriptors. */
-export const APPLIED_STATE_VERSION = 10;
+export const APPLIED_STATE_VERSION = 11;
 
 const APP_MOUNT_KEY = "app-mount";
 
@@ -277,7 +277,10 @@ export const migrateAppliedPlanWithCoordinate = (
   const transformed = fromVersion >= 4 ? initialized : migrateAppliedNames(initialized);
   const migrated = visitAppliedNetworkVocabulary(transformed, fromVersion < 8);
   if (typeof migrated === "string") return migrated;
-  return Option.getOrElse(decodePlan(migrated), () => "plan");
+  if (!isPlainRecord(migrated)) return "plan";
+  // Events are invocation intent, not provider realization. Current writers already omit them.
+  const { events: _events, ...applied } = migrated;
+  return Option.getOrElse(decodePlan(applied), () => "plan");
 };
 
 export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppPlanShape | null => {

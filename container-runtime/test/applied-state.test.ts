@@ -113,6 +113,20 @@ const v1PlanBase = {
 };
 
 describe("applied plan state layouts", () => {
+  test("v10 historical events cannot block recovery of the realized plan", () => {
+    const plan = legacyPlan();
+    const raw = {
+      ...Schema.encodeSync(AppPlan)(plan),
+      events: {
+        "pre-stop": [
+          { step: { cmd: "true", env: { "": "old" } }, source: "project", sourceIndex: 0, status: "active" },
+        ],
+      },
+    };
+    const migrated = migrateAppliedPlan(raw, 10);
+    expect(migrated).toMatchObject({ id: plan.id, services: plan.services });
+    expect(migrated?.events).toBeUndefined();
+  });
   test("reads v8 application listener authority without inventing keep-alive intent", () => {
     const encoded = Schema.encodeSync(AppPlan)(legacyPlan());
     const service = Object.values(encoded.services)[0];
