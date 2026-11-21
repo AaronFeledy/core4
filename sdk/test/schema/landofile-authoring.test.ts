@@ -756,7 +756,13 @@ describe("Landofile authoring schemas", () => {
     ] as const) {
       expect(document).toHaveProperty(
         ["$defs", taskDefinition, "anyOf", 0, "anyOf", 0, "properties", "deprecated", ...noticePath],
-        [{ $ref: `#/$defs/${noticeDefinition}` }, { type: "string", pattern: expect.any(String) }],
+        [
+          { $ref: `#/$defs/${noticeDefinition}` },
+          {
+            type: "string",
+            allOf: [{ pattern: expect.any(String), "x-lando-field-provenance": { role: "expression-arm" } }],
+          },
+        ],
       );
     }
     expect(shape).toHaveProperty(["properties", "tooling", "anyOf", 0, "additionalProperties"], {

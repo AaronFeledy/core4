@@ -4,6 +4,7 @@ import { type ExpressionNode, ExpressionTemplate, type PathSegment } from "../ex
 import { EXPRESSION_HELPER_NAMES } from "../expressions/evaluator.ts";
 import { parseExpressionEither } from "../expressions/parser.ts";
 import { PLAIN_TEXT_SLOT_REJECTION } from "./authoring-issue-metadata.ts";
+import { JSON_SCHEMA_FIELD_PROVENANCE_KEY } from "./json-schema-field-provenance.ts";
 
 // ==== Parsed authoring expressions retain source without resolving values.
 export const AuthoringExpressionExpectedType = Schema.Literals([
@@ -227,61 +228,63 @@ export const authoringExpressionSlot = (
         pattern: (expectedType === "string" ? compositeTemplatePattern : wholeTemplatePattern).source,
       }),
     }),
-  ).pipe(
-    Schema.decodeTo(
-      Schema.toType(AuthoringExpression),
-      SchemaTransformation.transformEffect<AuthoringExpression, string>({
-        decode: (source, options) => {
-          const fail = (message: string, plainText = false) =>
-            Effect.fail(
-              new SchemaIssue.InvalidValue(
-                {
-                  message: `${expectedType} authoring site: ${message}`,
-                  [PLAIN_TEXT_SLOT_REJECTION]: plainText,
-                },
-                source,
-                options,
-              ),
-            );
-          const parsed = parseExpressionEither(source, { filePath: "<authoring>" });
-          if (Result.isFailure(parsed)) return fail("Invalid expression syntax.");
-          const template = parsed.success;
-          if (!hasExpression(template)) return fail("Expected an expression, not plain text.", true);
-          const form = template.whole ? "whole" : "composite";
-          if (!template.whole && expectedType !== "string")
-            return fail("Composite expressions require a string site.");
-          const analysis = analyzeTemplate(template);
-          if (
-            expectedType !== "string" &&
-            expectedType !== "unknown" &&
-            analysis.scopes.some((head) => ["app", "proxy", "services", "service"].includes(head))
-          )
-            return fail("Planner scopes require a string site.");
-          if (analysis.scopes.some((head) => !allowedScopes.has(head)))
-            return fail("Expression references an unknown scope.");
-          if ([...analysis.callees].some((callee) => !EXPRESSION_HELPER_NAMES.has(callee)))
-            return fail("Expression calls an unknown helper.");
-          if (
-            template.whole &&
-            expectedType !== "unknown" &&
-            analysis.inferredType !== "unknown" &&
-            analysis.inferredType !== expectedType
-          ) {
-            return fail(`Expression has static type ${analysis.inferredType}.`);
-          }
-          return Effect.succeed({
-            _tag: "AuthoringExpression" as const,
-            form,
-            expectedType,
-            source,
-            template,
-            scopes: analysis.scopes,
-          });
-        },
-        encode: (expression) => Effect.succeed(expression.source),
-      }),
-    ),
-  );
+  )
+    .annotate({ [JSON_SCHEMA_FIELD_PROVENANCE_KEY]: { role: "expression-arm" } })
+    .pipe(
+      Schema.decodeTo(
+        Schema.toType(AuthoringExpression),
+        SchemaTransformation.transformEffect<AuthoringExpression, string>({
+          decode: (source, options) => {
+            const fail = (message: string, plainText = false) =>
+              Effect.fail(
+                new SchemaIssue.InvalidValue(
+                  {
+                    message: `${expectedType} authoring site: ${message}`,
+                    [PLAIN_TEXT_SLOT_REJECTION]: plainText,
+                  },
+                  source,
+                  options,
+                ),
+              );
+            const parsed = parseExpressionEither(source, { filePath: "<authoring>" });
+            if (Result.isFailure(parsed)) return fail("Invalid expression syntax.");
+            const template = parsed.success;
+            if (!hasExpression(template)) return fail("Expected an expression, not plain text.", true);
+            const form = template.whole ? "whole" : "composite";
+            if (!template.whole && expectedType !== "string")
+              return fail("Composite expressions require a string site.");
+            const analysis = analyzeTemplate(template);
+            if (
+              expectedType !== "string" &&
+              expectedType !== "unknown" &&
+              analysis.scopes.some((head) => ["app", "proxy", "services", "service"].includes(head))
+            )
+              return fail("Planner scopes require a string site.");
+            if (analysis.scopes.some((head) => !allowedScopes.has(head)))
+              return fail("Expression references an unknown scope.");
+            if ([...analysis.callees].some((callee) => !EXPRESSION_HELPER_NAMES.has(callee)))
+              return fail("Expression calls an unknown helper.");
+            if (
+              template.whole &&
+              expectedType !== "unknown" &&
+              analysis.inferredType !== "unknown" &&
+              analysis.inferredType !== expectedType
+            ) {
+              return fail(`Expression has static type ${analysis.inferredType}.`);
+            }
+            return Effect.succeed({
+              _tag: "AuthoringExpression" as const,
+              form,
+              expectedType,
+              source,
+              template,
+              scopes: analysis.scopes,
+            });
+          },
+          encode: (expression) => Effect.succeed(expression.source),
+        }),
+      ),
+    );
   slots.set(expectedType, slot);
   return slot;
 };

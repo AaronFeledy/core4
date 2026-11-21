@@ -339,6 +339,7 @@ import {
   repairLandofileExtensions,
   repairTemplateLiteralExtensionRecords,
 } from "./json-schema-extensions.ts";
+import { JSON_SCHEMA_FIELD_PROVENANCE_KEY } from "./json-schema-field-provenance.ts";
 import {
   KeymapConfig,
   RendererActionId,
@@ -2863,6 +2864,8 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
   ) {
     const schema = getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName], {
       onExcessProperty: "error",
+      includeAnnotationKey: (key) =>
+        schemaName.startsWith("LandofileAuthoring") && key === JSON_SCHEMA_FIELD_PROVENANCE_KEY,
     });
     repairTemplateLiteralExtensionRecords(schema);
     return schema;

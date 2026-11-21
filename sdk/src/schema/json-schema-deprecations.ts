@@ -414,8 +414,8 @@ export const jsonSchemaDocument = <S extends SchemaLike>(
   const rootIdentifier = AST.resolveIdentifier(jsonInputAst(schema.ast));
   return Schema.toJsonSchemaDocument(Schema.make<Schema.Codec<unknown>>(jsonInputAst(schema.ast)), {
     referencePolicy: ({ identifier }) => (identifier === rootIdentifier ? undefined : identifier),
-    includeAnnotationKey: (key) => key === "acceptsImportRef",
     ...options,
+    includeAnnotationKey: (key) => key === "acceptsImportRef" || options.includeAnnotationKey?.(key) === true,
   });
 };
 

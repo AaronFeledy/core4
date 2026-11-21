@@ -7,6 +7,7 @@ import {
   repairLandofileExtensions,
   repairTemplateLiteralExtensionRecords,
 } from "./json-schema-extensions.ts";
+import { JSON_SCHEMA_FIELD_PROVENANCE_KEY } from "./json-schema-field-provenance.ts";
 import { LandofileAuthoringShape } from "./landofile-authoring.ts";
 import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
 
@@ -104,6 +105,7 @@ export const getAuthoringInputJsonSchema = (name: InputSchemaName): JsonSchema.J
   const artifact = getJsonSchemaWithDeprecations(schema, {
     onExcessProperty: "error",
     generateDescriptions: true,
+    includeAnnotationKey: (key) => name === "LandofileShape" && key === JSON_SCHEMA_FIELD_PROVENANCE_KEY,
   });
   const definitions = artifact.$defs;
   if (name === "GlobalConfig") {

@@ -21,6 +21,7 @@ import { HelpTargetResult } from "../core/src/cli/help-target.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
 import { assertLayerMergeCompleteness } from "../sdk/src/landofile/layer-merge-trie.ts";
 import { assertEditorSchemaNaming } from "../sdk/src/schema/editor-naming.ts";
+import { assertEmittedFieldDescriptions } from "../sdk/src/schema/emitted-field-description-gate.ts";
 import {
   IncludeEntry,
   JSON_SCHEMA_NAMES,
@@ -37,6 +38,7 @@ import {
   renderPublicSchemaReferencePages,
   schemaArtifactFilename,
 } from "../sdk/src/schema/index.ts";
+import { EMITTED_FIELD_DESCRIPTION_DEBT } from "../sdk/test/schema/emitted-field-description-debt.ts";
 import { assertPublicSchemaContractCoverage } from "../sdk/test/schema/public-schema-contracts.ts";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
 import { mirrorSchemaArtifacts } from "./mirror-schema-artifacts.ts";
@@ -162,12 +164,27 @@ const main = async (): Promise<void> => {
   await mkdir(COMMAND_SCHEMA_ARTIFACT_DIR, { recursive: true });
   await mkdir(SCHEMA_REFERENCE_DIR, { recursive: true });
   await mkdir(EDITOR_SCHEMA_DIR, { recursive: true });
+  const editorArtifacts = new Map<string, unknown>();
   for (const [name, filename] of [
     ["LandofileShape", "landofile.schema.json"],
     ["GlobalConfig", "global-config.schema.json"],
   ] as const) {
-    await Bun.write(resolve(EDITOR_SCHEMA_DIR, filename), renderJson(editorSchemas[name]));
+    const editorSchema = editorSchemas[name];
+    editorArtifacts.set(filename, editorSchema);
+    await Bun.write(resolve(EDITOR_SCHEMA_DIR, filename), renderJson(editorSchema));
   }
+  // P3: editor-reachable field descriptions vs shrink-only debt ledger.
+  assertEmittedFieldDescriptions(
+    new Map([
+      ...sdkSchemas
+        .filter(
+          ({ schemaName }) => schemaName === "GlobalConfig" || schemaName.startsWith("LandofileAuthoring"),
+        )
+        .map(({ schemaName, jsonSchema }) => [schemaName, jsonSchema] as const),
+      ...editorArtifacts,
+    ]),
+    EMITTED_FIELD_DESCRIPTION_DEBT,
+  );
   const metadataIndexPath = resolve(SCHEMA_ARTIFACT_DIR, "index.json");
   await Bun.write(metadataIndexPath, renderJson(publicSchemaMetadataIndex));
   const artifactPaths: string[] = [metadataIndexPath];
