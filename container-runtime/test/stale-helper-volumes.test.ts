@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { AppId, type AppPlan } from "@lando/sdk/schema";
+import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect, Result } from "effect";
 import { TestClock } from "effect/testing";
 import { makeProviderDataPlane } from "../src/data-plane.ts";
@@ -7,7 +8,7 @@ import { dockerLifecycleDialect } from "../src/dialect.ts";
 import { ephemeralDataHelperLabels } from "../src/ephemeral-data-helpers.ts";
 import type { HelperOwnerIdentity } from "../src/helper-owner.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
-import { volumeOwnershipLabels } from "../src/volume-ownership.ts";
+import { volumeCreationLabels } from "../src/volume-creation.ts";
 import { networkPlan } from "./authored-network-fixture.ts";
 import {
   NOW,
@@ -156,10 +157,12 @@ test("bringDown reclaims stale holders before retrying its selected volume", asy
   const store = { name: "data", scope: "app", kind: "data" } as const;
   const plan = { ...networkPlan, services: {}, stores: [store] } satisfies AppPlan;
   const engine = helperEngine([staleHelper("stale")]);
+  engine.volumes.set(store.name, { Name: store.name, Labels: volumeCreationLabels(plan, store) });
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       yield* TestClock.setTime(NOW);
       return yield* bringDown(plan, {
+        endpointNamespace: "test-daemon",
         api: {
           request: (input) => {
             if (input.path.startsWith("/networks/")) return Effect.succeed({ status: 404, body: "" });
@@ -169,11 +172,6 @@ test("bringDown reclaims stale holders before retrying its selected volume", asy
             ) {
               return Effect.succeed({ status: 200, body: "[]" });
             }
-            if (input.method === "GET" && input.path === "/volumes/data")
-              return Effect.succeed({
-                status: 200,
-                body: JSON.stringify({ Labels: volumeOwnershipLabels(plan, store) }),
-              });
             // This scenario injects no engine failures, so any failure here is a broken fixture.
             return engine.api.request(input).pipe(Effect.orDie);
           },
@@ -182,7 +180,7 @@ test("bringDown reclaims stale holders before retrying its selected volume", asy
         dialect: dockerLifecycleDialect,
         volumes: true,
       });
-    }).pipe(Effect.provide(TestClock.layer())),
+    }).pipe(Effect.provide(TestClock.layer()), Effect.provide(makeTestStateStore().layer)),
   );
   expect(result.changed).toBe(true);
   expect([...engine.containers.keys()]).toEqual([]);
@@ -225,7 +223,9 @@ test("bringDown reclaims a dead owner's running holder before retrying", async (
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       yield* TestClock.setTime(NOW);
+      engine.volumes.set(store.name, { Name: store.name, Labels: volumeCreationLabels(plan, store) });
       return yield* bringDown(plan, {
+        endpointNamespace: "test-daemon",
         helperReclaim: deadOwnerReclaim,
         api: {
           request: (input) => {
@@ -236,11 +236,6 @@ test("bringDown reclaims a dead owner's running holder before retrying", async (
             ) {
               return Effect.succeed({ status: 200, body: "[]" });
             }
-            if (input.method === "GET" && input.path === "/volumes/data")
-              return Effect.succeed({
-                status: 200,
-                body: JSON.stringify({ Labels: volumeOwnershipLabels(plan, store) }),
-              });
             // This scenario injects no engine failures, so any failure here is a broken fixture.
             return engine.api.request(input).pipe(Effect.orDie);
           },
@@ -249,7 +244,7 @@ test("bringDown reclaims a dead owner's running holder before retrying", async (
         dialect: dockerLifecycleDialect,
         volumes: true,
       });
-    }).pipe(Effect.provide(TestClock.layer())),
+    }).pipe(Effect.provide(TestClock.layer()), Effect.provide(makeTestStateStore().layer)),
   );
   expect(result.changed).toBe(true);
   expect([...engine.containers.keys()]).toEqual([]);

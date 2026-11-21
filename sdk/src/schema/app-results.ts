@@ -3,6 +3,7 @@ import { Schema } from "effect";
 import { FileSyncInfo } from "./file-sync-policy.ts";
 import { AppLifecycleEventName } from "./landofile-events.ts";
 import { CheckResult } from "./networking.ts";
+import { OwnedResourcesCleanupResult } from "./resource-ownership.ts";
 import { ServiceInfo, StartedService } from "./service-info.ts";
 import { ServiceShutdownObservation } from "./service-shutdown.ts";
 
@@ -142,6 +143,7 @@ export const BuiltImageCleanup = Schema.Struct({
 export type BuiltImageCleanup = typeof BuiltImageCleanup.Type;
 
 export const DestroyAppResult = Schema.Struct({
+  skipped: OwnedResourcesCleanupResult.fields.skipped,
   app: Schema.String.annotate({
     description: "Name of the destroyed app; when only applied state remains, its app id or root.",
   }),

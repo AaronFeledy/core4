@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
-import { bringDown } from "@lando/provider-lando";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { bringDown as runtimeBringDown } from "@lando/provider-lando";
 import { AppId, type AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import { bringUp } from "./provider-fixture.ts";
 import { appRoot, makeFakeApi, plan, servicePlan, volumeSelector } from "./support/bring-down-fixture.ts";
+
+const bringDown: typeof runtimeBringDown = (plan, options) =>
+  runtimeBringDown(plan, { ...options, endpointNamespace: "test-daemon" }).pipe(
+    Effect.provide(makeTestStateStore().layer),
+  );
 
 describe("provider-lando bringDown", () => {
   test("stops and removes every service, removes the app network, preserves volumes, and is idempotent", async () => {
@@ -124,6 +130,7 @@ describe("provider-lando bringDown", () => {
             return {
               status: 200,
               body: JSON.stringify({
+                Name: "foreign-data",
                 Labels: { "dev.lando.volume-selector": volumeSelector("otherapp", "data") },
               }),
             };
@@ -131,8 +138,18 @@ describe("provider-lando bringDown", () => {
           if (request.method === "DELETE" && request.path === "/volumes/foreign-data") {
             return { status: 204, body: "" };
           }
-          if (request.method === "POST" && request.path.startsWith("/libpod/volumes/prune")) {
-            return { status: 200, body: "[]" };
+          if (request.method === "GET" && request.path === "/volumes") {
+            return {
+              status: 200,
+              body: JSON.stringify({
+                Volumes: [
+                  {
+                    Name: "foreign-data",
+                    Labels: { "dev.lando.volume-selector": volumeSelector("otherapp", "data") },
+                  },
+                ],
+              }),
+            };
           }
           if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
             return { status: 200, body: "[]" };
@@ -143,69 +160,23 @@ describe("provider-lando bringDown", () => {
 
     await Effect.runPromise(bringDown(foreignPlan, { api, volumes: true }));
 
-    expect(calls).toContainEqual({ method: "GET", path: "/volumes/foreign-data" });
+    expect(calls).toContainEqual({ method: "GET", path: "/volumes" });
     expect(calls).not.toContainEqual({ method: "DELETE", path: "/volumes/foreign-data" });
   });
 
-  test("purgeCaches-only prune is cache-label positive and cannot match ordinary app volumes", async () => {
-    const fake = makeFakeApi();
+  test.each([false, true])(
+    "volume cleanup preserves the cache unless purge is requested (%s)",
+    async (purgeCaches) => {
+      const fake = makeFakeApi();
 
-    await Effect.runPromise(bringUp(plan, { api: fake.api }));
-    await Effect.runPromise(bringDown(plan, { api: fake.api, purgeCaches: true }));
+      await Effect.runPromise(bringUp(plan, { api: fake.api }));
+      const result = await Effect.runPromise(bringDown(plan, { api: fake.api, volumes: true, purgeCaches }));
 
-    const prune = fake.calls.find((call) => call.path.startsWith("/libpod/volumes/prune"));
-    expect(prune).toBeDefined();
-    const filters = JSON.parse(
-      decodeURIComponent(new URL(`http://localhost${prune?.path ?? ""}`).searchParams.get("filters") ?? "{}"),
-    ) as Record<string, readonly string[]>;
-    expect(filters.label).toEqual([`dev.lando.volume-selector=${volumeSelector(plan.id, "cache")}`]);
-    expect(filters["label!"]).toBeUndefined();
-    expect(filters.all).toBeUndefined();
-  });
-
-  test("volumes cleanup prunes only current app/provider-scoped volumes with named-volume intent", async () => {
-    const fake = makeFakeApi();
-
-    await Effect.runPromise(bringUp(plan, { api: fake.api }));
-    await Effect.runPromise(bringDown(plan, { api: fake.api, volumes: true }));
-
-    const prune = fake.calls.find((call) => call.path.startsWith("/libpod/volumes/prune"));
-    expect(prune).toBeDefined();
-    const pruneUrl = new URL(`http://localhost${prune?.path ?? ""}`);
-    const filters = JSON.parse(decodeURIComponent(pruneUrl.searchParams.get("filters") ?? "{}")) as Record<
-      string,
-      readonly string[]
-    >;
-    expect(filters.label).toEqual([`dev.lando.volume-selector=${volumeSelector(plan.id, "data")}`]);
-    expect(filters.all).toBeUndefined();
-    expect(pruneUrl.searchParams.get("all")).toBe("true");
-  });
-
-  test("volumes cleanup with purgeCaches ORs only fully ownership-scoped cache and data selectors", async () => {
-    const fake = makeFakeApi();
-
-    await Effect.runPromise(bringUp(plan, { api: fake.api }));
-    await Effect.runPromise(bringDown(plan, { api: fake.api, volumes: true, purgeCaches: true }));
-
-    const prunes = fake.calls.filter((call) => call.path.startsWith("/libpod/volumes/prune"));
-    expect(prunes).toHaveLength(2);
-    const decodeFilters = Schema.decodeUnknownSync(
-      Schema.fromJsonString(Schema.Record(Schema.String, Schema.Array(Schema.String))),
-    );
-    const selectors = prunes.map((prune) => {
-      const pruneUrl = new URL(`http://localhost${prune.path}`);
-      const filters = decodeFilters(decodeURIComponent(pruneUrl.searchParams.get("filters") ?? "{}"));
-      expect(filters.all).toBeUndefined();
-      expect(pruneUrl.searchParams.get("all")).toBe("true");
-      return filters.label;
-    });
-    expect(selectors).toEqual(
-      expect.arrayContaining([
-        [`dev.lando.volume-selector=${volumeSelector(plan.id, "cache")}`],
-        [`dev.lando.volume-selector=${volumeSelector(plan.id, "data")}`],
-      ]),
-    );
-  });
+      expect(result.volumesRemoved).toEqual({ data: 1, cache: purgeCaches ? 1 : 0 });
+      expect([...fake.volumes]).toEqual(purgeCaches ? [] : ["lando-cache-npm"]);
+      expect(fake.calls.some((call) => call.path.startsWith("/libpod/volumes/prune"))).toBe(false);
+    },
+  );
 
   test("default cleanup does not prune named volumes without explicit destructive intent", async () => {
     const fake = makeFakeApi();
