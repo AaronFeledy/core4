@@ -533,7 +533,7 @@ describe("provider-docker capabilities", () => {
     expect(resolveDockerHost({ env: {}, platform: "win32" })).toBe("npipe://./pipe/docker_engine");
   });
 
-  test("Windows discovery honors precedence: explicit > LANDO_TEST_WINDOWS_DOCKER_SOCKET > LANDO_TEST_DOCKER_SOCKET > DOCKER_HOST > default", () => {
+  test("Windows discovery honors precedence: explicit > LANDO_TEST_* sockets > DOCKER_HOST > context > default", () => {
     expect(
       resolveDockerHost({
         dockerHost: "tcp://127.0.0.1:2375",
@@ -566,6 +566,20 @@ describe("provider-docker capabilities", () => {
     expect(resolveDockerHost({ env: { DOCKER_HOST: "tcp://env.example:2375" }, platform: "win32" })).toBe(
       "tcp://env.example:2375",
     );
+
+    expect(
+      resolveDockerHost({
+        env: {
+          DOCKER_CONFIG: "/tmp/lando-docker-config",
+          DOCKER_CONTEXT: "desktop-linux",
+        },
+        platform: "win32",
+        readFile: (path) =>
+          path.endsWith("meta.json")
+            ? JSON.stringify({ Endpoints: { docker: { Host: "npipe:////./pipe/custom-engine" } } })
+            : undefined,
+      }),
+    ).toBe("npipe://./pipe/custom-engine");
   });
 
   test("introspects the Windows Docker capability matrix after API discovery", async () => {

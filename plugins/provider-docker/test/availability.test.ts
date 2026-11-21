@@ -4,6 +4,7 @@ import {
   negotiateDockerApiVersion,
 } from "@lando/container-runtime/docker/api-version";
 import { layer as makeProviderLayer } from "@lando/provider-docker";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { Effect } from "effect";
 
@@ -11,7 +12,9 @@ describe("provider-docker isAvailable", () => {
   test("reports available when the Docker daemon responds to /info", async () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
-        Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: { info: Effect.succeed({}) } })),
+        Effect.provide(
+          makeProviderLayer({ platform: "linux", env: {}, dockerApi: { info: Effect.succeed({}) } }),
+        ),
       ),
     );
     expect(await Effect.runPromise(provider.isAvailable)).toBe(true);
@@ -41,6 +44,7 @@ describe("provider-docker isAvailable", () => {
         Effect.provide(
           makeProviderLayer({
             platform: "linux",
+            env: {},
             dockerApi: {
               info: Effect.suspend(() => {
                 infoCalls += 1;
@@ -58,5 +62,36 @@ describe("provider-docker isAvailable", () => {
     expect(status._tag).toBe("ProviderUnavailableError");
     expect(status.message).toContain("1.43-1.44");
     expect(status.message).toContain("1.50-1.55");
+  });
+
+  test("getStatus names the runtime to start when a Colima socket is unreachable", async () => {
+    const unreachable = new ProviderUnavailableError({
+      providerId: "docker",
+      operation: "info",
+      message: "engine unreachable",
+      remediation: "unused",
+    });
+    let infoCalls = 0;
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            dockerHost: "/home/alice/.colima/default/docker.sock",
+            env: {},
+            dockerApi: {
+              info: Effect.suspend(() => {
+                infoCalls += 1;
+                return infoCalls === 1 ? Effect.succeed({}) : Effect.fail(unreachable);
+              }),
+            },
+          }),
+        ),
+      ),
+    );
+    const status = await Effect.runPromise(provider.getStatus.pipe(Effect.flip));
+    expect(status._tag).toBe("ProviderUnavailableError");
+    expect(status.remediation).toContain("Start Colima (`colima start`)");
+    expect(status.remediation).toContain("lando doctor --provider=docker");
   });
 });

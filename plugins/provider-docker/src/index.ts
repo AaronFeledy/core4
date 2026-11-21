@@ -111,7 +111,14 @@ import {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
+import {
+  type DockerContextFileReader,
+  type UnsupportedDockerContextError,
+  resolveDockerHostDetails,
+} from "./docker-context.ts";
+import { makeDockerEndpointCheck } from "./docker-endpoint-check.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
+import { runtimeHintForEndpoint, unreachableDockerRemediation } from "./runtime-hint.ts";
 
 export type {
   DockerApiClient,
@@ -127,6 +134,29 @@ export {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
+export type {
+  DockerContextFileReader,
+  DockerHostResolution,
+  DockerHostSource,
+  ResolveDockerHostDetailsOptions,
+  ResolvedDockerHost,
+  UnsupportedDockerContextReason,
+} from "./docker-context.ts";
+export {
+  DEFAULT_UNIX_DOCKER_HOST,
+  DEFAULT_WINDOWS_DOCKER_HOST,
+  DOCKER_HOST_PRECEDENCE,
+  UnsupportedDockerContextError,
+  dockerConfigDirFromEnv,
+  dockerContextMetaPath,
+  dockerHostSourceLabel,
+  normalizeDockerContextHost,
+  readDockerContextFile,
+  resolveDockerHostDetails,
+} from "./docker-context.ts";
+export { makeDockerEndpointCheck } from "./docker-endpoint-check.ts";
+export type { DockerRuntimeHint, DockerRuntimeHintId } from "./runtime-hint.ts";
+export { runtimeHintForEndpoint, unreachableDockerRemediation } from "./runtime-hint.ts";
 
 export const PLUGIN_NAME = "@lando/provider-docker" as const;
 
@@ -138,13 +168,12 @@ const DOCKER_CTX_BASE = {
     "Run `lando doctor --provider=docker` to inspect the Docker provider, then retry `lando start`.",
 } as const;
 
-const unreachableDocker = (error: ProviderUnavailableError) =>
+const unreachableDocker = (error: ProviderUnavailableError, dockerHost: string, platform: HostPlatform) =>
   new ProviderUnavailableError({
     providerId: error.providerId,
     operation: "getStatus",
     message: error.message,
-    remediation:
-      "Start Docker Desktop or Docker Engine, verify access to the configured Docker socket, then retry the command.",
+    remediation: unreachableDockerRemediation(dockerHost, platform),
     cause: error,
   });
 
@@ -173,12 +202,14 @@ export interface ProviderLayerOptions {
   readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
   /** Lando user-data root; file-mode bind copies live beneath it. */
   readonly userDataRoot?: string;
+  readonly readFile?: DockerContextFileReader;
 }
 
 export interface ResolveDockerHostOptions {
   readonly dockerHost?: string;
   readonly platform?: HostPlatform;
   readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly readFile?: DockerContextFileReader;
 }
 
 export type EmitComposeOptions = Omit<RuntimeEmitComposeOptions, "ctx">;
@@ -247,24 +278,21 @@ const request = Effect.fn("DockerApi.request")(
     api.request === undefined ? Effect.fail(missingApi(operation)) : api.request(input),
 );
 
-const unixSocketPath = (dockerHost: string) =>
-  dockerHost.startsWith("unix://") ? dockerHost.slice("unix://".length) : dockerHost;
-
 export const isNpipeDockerHost = (dockerHost: string): boolean => dockerHost.startsWith("npipe:");
 
 export const npipeSocketPath = normalizeNamedPipePath;
 
-const isVmMediatedDockerHost = (platform: HostPlatform, dockerHost: string): boolean => {
+export const isVmMediatedDockerHost = (platform: HostPlatform, dockerHost: string): boolean => {
   const family = hostPlatformFamily(platform);
   if (family === "darwin" || family === "win32") return true;
-  const socketPath = unixSocketPath(dockerHost);
-  return (
+  if (
     dockerHost.startsWith("tcp://") ||
     dockerHost.startsWith("http://") ||
-    dockerHost.startsWith("https://") ||
-    socketPath.includes("/.docker/desktop/") ||
-    socketPath.includes("/.docker/run/")
-  );
+    dockerHost.startsWith("https://")
+  ) {
+    return true;
+  }
+  return runtimeHintForEndpoint(dockerHost)?.vmMediated === true;
 };
 
 /** Engine facts that only a live endpoint reports. Omitted facts take the conservative default. */
@@ -399,23 +427,41 @@ export const makeDockerApiClient = (
   dockerHost = process.env.DOCKER_HOST ?? "/var/run/docker.sock",
 ): DockerApiClient => makeRuntimeDockerApiClient(dockerHost, dockerContextForEnv({ ...process.env }));
 
+const hostResolutionOptions = (options: {
+  readonly platform: HostPlatform;
+  readonly dockerHost?: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly readFile?: DockerContextFileReader;
+}) => ({
+  platform: options.platform,
+  ...(options.dockerHost === undefined ? {} : { dockerHost: options.dockerHost }),
+  ...(options.env === undefined ? {} : { env: options.env }),
+  ...(options.readFile === undefined ? {} : { readFile: options.readFile }),
+});
+
+const unsupportedContextUnavailable = (error: UnsupportedDockerContextError) =>
+  new ProviderUnavailableError({
+    providerId: PROVIDER_ID,
+    operation: "select",
+    message: error.message,
+    remediation: error.remediation,
+    details: { contextName: error.contextName, reason: error.reason },
+    cause: error,
+  });
+
 export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): string => {
-  const env = options.env ?? process.env;
-  if (options.dockerHost !== undefined) return options.dockerHost;
   if (options.platform === undefined) {
     throw unavailable("select", "provider-docker host resolution requires the resolved host platform.");
   }
-  const family = hostPlatformFamily(options.platform);
-  if (family === "win32" && env.LANDO_TEST_WINDOWS_DOCKER_SOCKET !== undefined) {
-    return env.LANDO_TEST_WINDOWS_DOCKER_SOCKET;
-  }
-  if (env.LANDO_TEST_DOCKER_SOCKET !== undefined) return env.LANDO_TEST_DOCKER_SOCKET;
-  if (env.DOCKER_HOST !== undefined) return env.DOCKER_HOST;
-  if (family === "win32") return "npipe://./pipe/docker_engine";
-  if (family === "linux" && env.HOME !== undefined && env.LANDO_DOCKER_DESKTOP === "1") {
-    return `${env.HOME}/.docker/desktop/docker.sock`;
-  }
-  return "/var/run/docker.sock";
+  const result = resolveDockerHostDetails(
+    hostResolutionOptions({
+      ...options,
+      platform: options.platform,
+      env: options.env ?? process.env,
+    }),
+  );
+  if (!result.ok) throw result.error;
+  return result.host;
 };
 
 export const { renderCompose, emitCompose, composePath } = composeAdaptersFor(DOCKER_CTX);
@@ -528,11 +574,18 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
     );
   }
   const platform = options.platform;
-  const resolvedDockerHost = resolveDockerHost({
-    platform,
-    ...(options.dockerHost === undefined ? {} : { dockerHost: options.dockerHost }),
-    ...(options.env === undefined ? {} : { env: options.env }),
-  });
+  const resolvedHost = resolveDockerHostDetails(
+    hostResolutionOptions({
+      platform,
+      env: options.env ?? process.env,
+      ...(options.dockerHost === undefined ? {} : { dockerHost: options.dockerHost }),
+      ...(options.readFile === undefined ? {} : { readFile: options.readFile }),
+    }),
+  );
+  if (!resolvedHost.ok) {
+    return Effect.fail(unsupportedContextUnavailable(resolvedHost.error));
+  }
+  const resolvedDockerHost = resolvedHost.host;
   const dockerApi =
     options.dockerApi ??
     (options.dockerApiFactory === undefined
@@ -671,7 +724,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       getStatus: dockerApi.info.pipe(
         Effect.as({ state: "running" as const, message: "ready" }),
         mapFailures((error) =>
-          error instanceof ProviderUnavailableError ? unreachableDocker(error) : error,
+          error instanceof ProviderUnavailableError
+            ? unreachableDocker(error, resolvedDockerHost, platform)
+            : error,
         ),
       ),
       getVersions: dockerApi.info.pipe(
@@ -908,5 +963,5 @@ export const plugin = definePlugin({
       },
     ],
   ]),
-  doctorChecks: [makeIptablesForwardCheck()],
+  doctorChecks: [makeDockerEndpointCheck(), makeIptablesForwardCheck()],
 });
