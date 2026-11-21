@@ -78,20 +78,18 @@ export const makeAppBuildReceipts = (input: AppBuildInput) => {
     }).pipe(
       Effect.catchCause((cause) => {
         const primary = failureOutcomeFromCause(cause);
-        const mapped = mapFailureCause(cause, wrapStorageFailure);
+        let mapped = mapFailureCause(cause, wrapStorageFailure);
         if (
-          primary.kind !== "typed" ||
-          primary.source !== "elected" ||
-          !(primary.error instanceof StateStoreError)
+          primary.kind === "typed" &&
+          primary.source === "elected" &&
+          primary.error instanceof StateStoreError
         ) {
-          return Effect.failCause(mapped);
-        }
-        const storageFailure = primary.error;
-        return Effect.failCause(
-          mapDefectCause(mapped, (defect, role) =>
+          const storageFailure = primary.error;
+          mapped = mapDefectCause(mapped, (defect, role) =>
             role === undefined && defect === storageFailure ? wrapStorageFailure(storageFailure) : defect,
-          ),
-        );
+          );
+        }
+        return Effect.failCause(mapped);
       }),
     );
     switch (receipt.outcome) {
