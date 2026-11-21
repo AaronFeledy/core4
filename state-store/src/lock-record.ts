@@ -1,5 +1,6 @@
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import { Option, Schema } from "effect";
+import { LOCK_HOLDER_LABEL_MAX } from "./lock-holder.ts";
 import { checkSentinel } from "./native-lock.ts";
 
 const LockRecord = Schema.Struct({
@@ -7,6 +8,8 @@ const LockRecord = Schema.Struct({
   token: Schema.NonEmptyString.check(Schema.isMaxLength(256)),
   createdAt: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
   resource: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
+  command: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(LOCK_HOLDER_LABEL_MAX))),
+  app: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(LOCK_HOLDER_LABEL_MAX))),
 });
 export type AdvisoryLockRecord = typeof LockRecord.Type;
 const parseRecord = Schema.decodeUnknownOption(Schema.fromJsonString(LockRecord), {

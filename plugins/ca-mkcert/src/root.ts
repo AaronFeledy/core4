@@ -84,7 +84,7 @@ export const makeMkcertRoot = (
     });
     yield* withAdvisoryLockUsing(privateFileAccess, {
       wait: "operation",
-      resource: "mkcert CA root",
+      resource: "the local certificate authority",
     })(join(caroot, "lando-root"), "mkcert-root", createWhenMissing).pipe(
       mapFailures((cause) =>
         cause._tag === "CaError"

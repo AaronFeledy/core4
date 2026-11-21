@@ -48,7 +48,7 @@ const isolate = async () => {
           Schema.is(LandoEventSchema)(event)
             ? Effect.gen(function* () {
                 events.push(event);
-                if (event._tag === "message.warn")
+                if (event._tag === "lock.wait")
                   yield* Deferred.succeed(waitAnnounced, undefined).pipe(Effect.ignore);
               })
             : Effect.die(new TypeError(`Unexpected event in app mutation lock test: ${String(event)}`)),
@@ -76,7 +76,7 @@ const exists = async (path: string): Promise<boolean> =>
   );
 
 const waitWarnings = (events: ReadonlyArray<LandoEvent>) =>
-  events.filter((event) => event._tag === "message.warn");
+  events.filter((event) => event._tag === "lock.wait");
 
 describe("per-app mutation lock", () => {
   test("acquires over a stale diagnostic record with an inherited token without a wait event", async () => {
@@ -426,7 +426,7 @@ describe("per-app mutation lock", () => {
       expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure).toBeInstanceOf(AppLockTimeoutError);
-        expect(result.failure.message).toContain("Timed out after 400ms waiting for app lock for timeout");
+        expect(result.failure).toMatchObject({ app: "timeout", timeoutMs: 400 });
       }
       expect(waitWarnings(isolated.events)).toHaveLength(0);
       await Effect.runPromise(Deferred.succeed(release, undefined));

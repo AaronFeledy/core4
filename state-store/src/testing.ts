@@ -35,7 +35,22 @@ const makeMemoryLocks = () => {
         const deadline = (yield* Clock.monotonicTimeNanos) + BigInt(timeoutMs) * 1_000_000n;
         const shared = options.mode === "shared";
         const timeout = () =>
-          lockTimeout({ path: file, operation: "withLock", resource: options.resource ?? file, timeoutMs });
+          Effect.flatMap(Clock.currentTimeMillis, (now) =>
+            Effect.fail(
+              lockTimeout(
+                {
+                  path: file,
+                  operation: "withLock",
+                  resource: options.resource ?? file,
+                  timeoutMs,
+                  wait: options.wait ?? "brief",
+                  subject: "resource",
+                },
+                null,
+                now,
+              ),
+            ),
+          );
         for (;;) {
           const waiting = yield* Effect.acquireRelease(
             Effect.sync(() => {

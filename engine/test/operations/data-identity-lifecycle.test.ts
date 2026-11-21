@@ -156,9 +156,7 @@ test("a prepared plan re-reads a competing data claim after acquiring the root l
                 .publish(event)
                 .pipe(
                   Effect.andThen(
-                    event._tag === "message.warn" &&
-                      typeof event.body === "string" &&
-                      event.body.startsWith("Waiting for app lock for ")
+                    event._tag === "lock.wait" && event.subject === "app"
                       ? Deferred.succeed(waiting, undefined)
                       : Effect.void,
                   ),

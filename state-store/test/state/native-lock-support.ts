@@ -2,9 +2,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { LandoEvent } from "@lando/sdk/events";
+import { type LandoEvent, LockWaitEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 import { ADVISORY_LOCK_SUFFIX, acquireAdvisoryLockAt, withAdvisoryLockUsing } from "../../src/lock.ts";
 import { lockTestAccess } from "./lock-test-access.ts";
 
@@ -132,7 +132,7 @@ export const compileHolder = async (outfile: string, timeoutMs = 120_000): Promi
 /** EventService that records warns and can signal first contention via Deferred. */
 export const capturingEventLayer = (
   events: LandoEvent[],
-  onWarn?: (body: string) => Effect.Effect<void>,
+  onWait?: (event: LockWaitEvent) => Effect.Effect<void>,
 ): Layer.Layer<EventService> =>
   Layer.succeed(
     EventService,
@@ -140,8 +140,7 @@ export const capturingEventLayer = (
       publish: (event) =>
         Effect.gen(function* () {
           events.push(event as LandoEvent);
-          if (event._tag === "message.warn" && typeof event.body === "string" && onWarn !== undefined)
-            yield* onWarn(event.body);
+          if (onWait !== undefined && Schema.is(LockWaitEvent)(event)) yield* onWait(event);
         }),
       subscribe: () => Stream.empty,
       subscribeQueue: Effect.die("not used"),

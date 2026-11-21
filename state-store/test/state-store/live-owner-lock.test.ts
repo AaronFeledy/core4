@@ -103,7 +103,6 @@ test("the state store waits on a live kernel holder and acquires after the holde
         timeoutMs: 80,
         path: sentinel,
       });
-      expect(timedOut.failure.remediation).toMatch(/LANDO_LOCK_TIMEOUT_MS/);
       expect(timedOut.failure.remediation).not.toMatch(/delete|remove .*lck/i);
     }
 

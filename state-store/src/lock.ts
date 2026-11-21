@@ -6,15 +6,16 @@ import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import type { StateLockOptions } from "@lando/sdk/services";
 import { Clock, Deferred, Effect, Exit, Option, Scope } from "effect";
 import { enqueueLock } from "./lock-gate.ts";
+import { LOCK_HOLDER_LABEL_MAX, LockHolder } from "./lock-holder.ts";
 import { type AdvisoryLockRecord, peekAdvisoryLockRecord } from "./lock-record.ts";
 import { makeLockReentryGuard } from "./lock-reentry.ts";
-import { holderDescription, holderDetails, lockWaitBudget, makeLockWait } from "./lock-wait.ts";
+import { describeLockHolder, holderDetails, lockWaitBudget, makeLockWait } from "./lock-wait.ts";
 import { UnsafeSentinelError, checkSentinel, nativeLock } from "./native-lock.ts";
 import type { PrivateFileAccess } from "./private-file-access.ts";
 
+export { LockHolder, type LockHolderContext } from "./lock-holder.ts";
 export { type AdvisoryLockRecord, peekAdvisoryLockRecord } from "./lock-record.ts";
 export {
-  formatLockDuration,
   lockTimeout,
   lockWaitBudget,
   resolveOperationLockTimeoutMs,
@@ -26,6 +27,8 @@ const enter = makeLockReentryGuard();
 interface NativeLockOptions extends StateLockOptions {
   readonly privateFileAccess: PrivateFileAccess;
   readonly refuseOnContention?: (record: AdvisoryLockRecord) => Effect.Effect<boolean>;
+  /** The lock stands for a whole app, so a waiter waits for its command to finish. */
+  readonly appLock?: boolean;
 }
 
 type LockLocation = { readonly path: string; readonly kind: "sentinel" | "target" };
@@ -36,7 +39,9 @@ const acquire = Effect.fnUntraced(function* (
   options: NativeLockOptions,
 ) {
   const sentinel = location.kind === "sentinel" ? location.path : `${location.path}${ADVISORY_LOCK_SUFFIX}`;
-  const resource = (options.resource ?? sentinel).slice(0, 512);
+  const resource = (
+    options.resource ?? `Lando state file ${basename(location.path, ADVISORY_LOCK_SUFFIX)}`
+  ).slice(0, 512);
   const timeoutMs = lockWaitBudget(options);
   const start = yield* Clock.monotonicTimeNanos;
   const deadline = start + BigInt(timeoutMs) * 1_000_000n;
@@ -81,7 +86,18 @@ const acquire = Effect.fnUntraced(function* (
   });
   yield* enter(lockPath);
   const outer = yield* Effect.scope;
-  const wait = yield* makeLockWait({ path: lockPath, operation, resource, timeoutMs }, deadline);
+  const holder = yield* LockHolder;
+  const wait = yield* makeLockWait(
+    {
+      path: lockPath,
+      operation,
+      resource,
+      timeoutMs,
+      wait: options.wait ?? "brief",
+      subject: options.appLock === true ? "app" : "resource",
+    },
+    deadline,
+  );
   const pending = yield* enqueueLock(lockPath, mode);
   if (pending !== undefined) {
     for (;;) {
@@ -161,7 +177,18 @@ const acquire = Effect.fnUntraced(function* (
           try: () =>
             handle.withRecord((fd) => {
               recordStarted = true;
-              const bytes = Buffer.from(JSON.stringify({ token, pid: process.pid, createdAt, resource }));
+              const bytes = Buffer.from(
+                JSON.stringify({
+                  token,
+                  pid: process.pid,
+                  createdAt,
+                  resource,
+                  ...(holder.command === undefined
+                    ? {}
+                    : { command: holder.command.slice(0, LOCK_HOLDER_LABEL_MAX) }),
+                  ...(holder.app === undefined ? {} : { app: holder.app.slice(0, LOCK_HOLDER_LABEL_MAX) }),
+                }),
+              );
               if (writeSync(fd, bytes, 0, bytes.length, 0) !== bytes.length)
                 throw new Error("Short advisory lock record write");
               ftruncateSync(fd, bytes.length);
@@ -195,15 +222,15 @@ const acquire = Effect.fnUntraced(function* (
         const reprobe = yield* attempt();
         if (reprobe === "acquired") return { token };
         if (reprobe === "contended" && peekAdvisoryLockRecord(lockPath)?.token === record.token) {
-          const details = holderDetails(record, yield* Clock.currentTimeMillis);
+          const now = yield* Clock.currentTimeMillis;
           return yield* new StateStoreError({
             reason: "lock",
             lockFailure: "refused",
             operation,
             path: lockPath,
             resource,
-            ...details,
-            message: `${resource} is already held by ${holderDescription(details)}.`,
+            ...holderDetails(record, now),
+            message: `${resource} is already held by ${describeLockHolder(record, now)}.`,
             remediation: "Run the nested mutation in the parent command or retry after it finishes.",
           });
         }
