@@ -650,6 +650,10 @@
       "digest": "d3019035a74d2d67e2bd5a41888bfebcb2568f3acbcbf3d827a833001393debc"
     },
     {
+      "fixture": "docs/guides/keycloak/fixtures/keycloak-demo",
+      "digest": "0f7dedc03ec3b2c7ded4f91b8e78cf3ea59b39af6d787fe88f2fb0c66db21bd7"
+    },
+    {
       "fixture": "docs/guides/lamp-stack-variants/fixtures/bind-mounted-config",
       "digest": "dceb65a8d94e5674423067fbcd4a3e5dee47b1846dfa05cba7cdfc21850967df"
     },
