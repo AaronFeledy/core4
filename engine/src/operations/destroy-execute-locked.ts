@@ -1,3 +1,4 @@
+import { PlanfulVolumeCoverage, hasExactVolumeTeardown } from "@lando/container-runtime/provider-assembly";
 import type { DestroyAppError, DestroyAppResult } from "@lando/sdk/app";
 import { PreDestroyEvent } from "@lando/sdk/events";
 import {
@@ -6,6 +7,7 @@ import {
   addVolumeRemovalCounts,
   appIdentityKey,
   noVolumesRemoved,
+  planDataId,
   volumesRemovedAny,
 } from "@lando/sdk/schema";
 import { EventService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -141,8 +143,15 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
       ];
       let volumesRemoved: VolumeRemovalCounts = retired?.volumesRemoved ?? noVolumesRemoved;
       let changed = retired !== undefined || snapshotsRemoved > 0;
-      let skipped: NonNullable<import("@lando/sdk/schema").OwnedResourcesCleanupResult["skipped"]> = [];
+      let skipped: NonNullable<import("@lando/sdk/schema").OwnedResourcesCleanupResult["skipped"]> =
+        retired?.skipped ?? [];
       const ownedCleanup = cleanup.pipe(
+        Effect.provideService(
+          PlanfulVolumeCoverage,
+          target !== undefined && provider !== undefined && hasExactVolumeTeardown(provider) && !targetRetired
+            ? { provider: target.plan.provider, app: planDataId(target.plan) }
+            : undefined,
+        ),
         Effect.tap((removed) =>
           Effect.sync(() => {
             skipped = [...skipped, ...(removed.skipped ?? [])];
@@ -157,6 +166,7 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
             observationSources.push(outcome.shutdownObservations);
             switch (outcome.kind) {
               case "destroyed":
+                skipped = [...skipped, ...(outcome.skipped ?? [])];
                 for (const service of Object.values(target.plan.services).reverse())
                   services.add(String(service.name));
                 volumesRemoved = addVolumeRemovalCounts(volumesRemoved, outcome.volumesRemoved);
@@ -212,12 +222,15 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
       if (plan.followUpOrphans) {
         const remaining = yield* registry.resolveTeardownEvidence(plan.root);
         if (remaining.kind === "orphans") {
+          // Leftovers under another data id never match the frozen set, so their data volumes go here.
+          // Every cache-class volume is a global cache the frozen set already purged or kept as in use.
+          const exact = provider !== undefined && hasExactVolumeTeardown(provider);
           const removed = yield* tearDownOrphans({
             root: plan.root,
             groups: remaining.groups,
             options: {
               volumes: plan.options.volumes === true,
-              purgeCaches: plan.options.purgeCaches === true,
+              purgeCaches: !exact && plan.options.purgeCaches === true,
             },
           });
           observationSources.push(removed.shutdownObservations);
@@ -243,6 +256,7 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
           dataVolumesRemoved: volumesRemoved.data > 0,
           cacheVolumesRemoved: volumesRemoved.cache > 0,
           snapshotsRemoved,
+          ...(skipped.length === 0 ? {} : { skipped }),
         },
         ...observationSources,
       );

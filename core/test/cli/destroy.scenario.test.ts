@@ -222,6 +222,7 @@ const makeDestroyLayer = (
     readonly preDestroyFailure?: EventError;
     readonly leftoverOrphans?: boolean;
     readonly appliedInventory?: boolean;
+    readonly sharedCacheInUse?: boolean;
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
@@ -319,7 +320,8 @@ const makeDestroyLayer = (
         const removed: { data: number; cache: number } = { data: 0, cache: 0 };
         for (const store of plannedApp.stores) {
           if (store.kind === "cache") {
-            if (destroyOptions.purgeCaches && volumes.delete(store.name)) removed.cache += 1;
+            if (destroyOptions.purgeCaches && !options.sharedCacheInUse && volumes.delete(store.name))
+              removed.cache += 1;
           } else if (destroyOptions.volumes && store.scope !== "global" && volumes.delete(store.name)) {
             removed.data += 1;
           }
@@ -327,7 +329,13 @@ const makeDestroyLayer = (
         return removed;
       }).pipe(
         Effect.tap(() => options.providerDestroyEffect ?? Effect.void),
-        Effect.map((removed) => ({ kind: "destroyed" as const, volumesRemoved: removed })),
+        Effect.map((removed) => ({
+          kind: "destroyed" as const,
+          volumesRemoved: removed,
+          ...(options.sharedCacheInUse && destroyOptions.purgeCaches
+            ? { skipped: [{ appId: plannedApp.id, resource: "lando-cache-npm", reason: "in use" }] }
+            : {}),
+        })),
       ),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -1098,6 +1106,21 @@ describe("lando destroy", () => {
     expect(harness.volumes.has("test_destroy_database_data")).toBe(true);
     expect(harness.volumes.has("lando-cache-npm")).toBe(false);
     expect(result).toMatchObject({ dataVolumesRemoved: false, cacheVolumesRemoved: true });
+  });
+
+  test("JSON destroy reports an in-use shared cache without failing teardown", async () => {
+    const harness = makeDestroyLayer({ sharedCacheInUse: true });
+    const io = createBufferedRendererIO();
+    await runDestroyCli(["--yes", "--volumes", "--purge-caches"], harness, io, "json");
+    expect(JSON.parse(io.stdoutLines()[0] ?? "{}")).toMatchObject({
+      ok: true,
+      result: {
+        servicesDestroyed: ["database", "web"],
+        dataVolumesRemoved: true,
+        cacheVolumesRemoved: false,
+        skipped: [{ appId: plan.id, resource: "lando-cache-npm", reason: "in use" }],
+      },
+    });
   });
 
   test("--purge removes only this folder's snapshots and provider artifacts", async () => {

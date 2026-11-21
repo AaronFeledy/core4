@@ -160,8 +160,8 @@ const makeFakeApi = () => {
           networks.set(body.Name, network);
           return { status: 201, body: JSON.stringify({ Id: network.Id }) };
         }
-        if (request.method === "POST" && request.path.startsWith("/libpod/volumes/prune")) {
-          return { status: 200, body: "[]" };
+        if (request.method === "GET" && request.path === "/volumes") {
+          return { status: 200, body: '{"Volumes":[]}' };
         }
         if (
           request.path.startsWith("/networks/") &&
