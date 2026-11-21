@@ -38,7 +38,7 @@ const base = (overrides: Partial<AppPlanCacheKeyInput> = {}): AppPlanCacheKeyInp
 
 describe("deriveAppPlanCacheKey project-user facts", () => {
   test("bumps the schema version for the new plan fields", () => {
-    expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(61n);
+    expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(63n);
   });
 
   test("mapping support changes the key", () => {

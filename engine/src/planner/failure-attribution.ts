@@ -27,6 +27,9 @@ export function attributePlanningFailure(error: unknown, input: FailureLocation)
   const provenance = input.resolution?.provenance ?? provenanceOf(input.landofile);
   const authoredSourceAt = (path: ValidationIssuePath) =>
     path.length === 0 ? undefined : getExactLandofileValueSource(provenance, path);
+  // A required field the author left out belongs to the authored object that omits it.
+  const issueSourceAt = (path: ValidationIssuePath) =>
+    authoredSourceAt(path) ?? (path.length < 2 ? undefined : authoredSourceAt(path.slice(0, -1)));
   const fallback =
     input.resolution?.landofilePath ??
     input.file ??
@@ -37,7 +40,7 @@ export function attributePlanningFailure(error: unknown, input: FailureLocation)
   if (error instanceof LandofileValidationError) {
     const issues = error.issues.map((issue) => {
       if (issue.source !== undefined) return issue;
-      const source = authoredSourceAt(issue.path);
+      const source = issueSourceAt(issue.path);
       return source === undefined ? issue : { ...issue, source };
     });
     return new LandofileValidationError({

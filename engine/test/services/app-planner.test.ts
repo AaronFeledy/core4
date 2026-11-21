@@ -52,7 +52,10 @@ import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { DEFAULT_APP_MOUNT_EXCLUDES } from "../../src/services/planner.ts";
 import { HOST_INTERNAL_ALIAS, HOST_IP_ENV_KEY } from "../../src/subsystems/networking.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
-import { planLiteralTestLandofile as planTestLandofile } from "../compiled-landofile.ts";
+import {
+  planTestLandofile as planCompiledTestLandofile,
+  planLiteralTestLandofile as planTestLandofile,
+} from "../compiled-landofile.ts";
 import { fileSyncEngineLayer } from "../file-sync-engine.ts";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
@@ -161,6 +164,17 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
+    ),
+  );
+
+// Authored values reach the planner only after Landofile load has decoded them.
+const compiledPlanExit = (landofile: LandofileShape) =>
+  Effect.runPromiseExit(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planCompiledTestLandofile(appPlanner, landofile, providerLandoCapabilities),
     ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
@@ -4194,9 +4208,46 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("rejects authored tcp at the validation boundary", async () => {
+  test("keeps probe kinds and accepts healthy dependencies on HTTP readiness and TCP native health", async () => {
     await withTempCwd(async () => {
-      const exit = await planExit({
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: {
+          web: {
+            image: "node:lts",
+            readiness: { kind: "http", url: "http://localhost:9000/ready", timeoutSeconds: 0.75 },
+          },
+          db: {
+            image: "node:lts",
+            healthcheck: { kind: "tcp", port: 8080 },
+            depends_on: { web: { condition: "service_healthy" } },
+          },
+          worker: { image: "node:lts", depends_on: { db: { condition: "service_healthy" } } },
+        },
+      });
+      const result = await planExit(landofile);
+      if (Exit.isFailure(result)) throw new Error(Cause.pretty(result.cause));
+      expect(result.value.services[ServiceName.make("web")]?.readiness).toMatchObject({
+        kind: "http",
+        url: "http://localhost:9000/ready",
+        timeoutSeconds: 0.75,
+      });
+      expect(result.value.services[ServiceName.make("db")]?.healthcheck).toMatchObject({
+        kind: "tcp",
+        port: 8080,
+      });
+      expect(result.value.services[ServiceName.make("db")]?.dependsOn).toMatchObject([
+        { service: "web", condition: "service_healthy" },
+      ]);
+      expect(result.value.services[ServiceName.make("worker")]?.dependsOn).toMatchObject([
+        { service: "db", condition: "service_healthy" },
+      ]);
+    });
+  });
+
+  test.each([undefined, 0, 65536, 3.5])("rejects invalid authored TCP port %s", async (port) => {
+    await withTempCwd(async () => {
+      const exit = await compiledPlanExit({
         name: "myapp",
         runtime: 4,
         services: {
@@ -4205,7 +4256,7 @@ describe("AppPlannerLayer.layer", () => {
             home: false,
             healthcheck: {
               kind: "tcp",
-              port: 3000,
+              ...(port === undefined ? {} : { port }),
               intervalSeconds: 10,
               timeoutSeconds: 5,
               retries: 5,
@@ -4217,40 +4268,41 @@ describe("AppPlannerLayer.layer", () => {
       const failure = expectSomeFailure(exit);
       expect(failure).toBeInstanceOf(LandofileValidationError);
       if (failure instanceof LandofileValidationError) {
-        expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "kind"]);
-        expect(failure.issues[0]?.suggestion).toContain("kind: command");
+        expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "port"]);
       }
     });
   });
 
-  test("rejects authored http at the validation boundary", async () => {
-    await withTempCwd(async () => {
-      const exit = await planExit({
-        name: "myapp",
-        runtime: 4,
-        services: {
-          [ServiceName.make("web")]: {
-            image: "node:lts",
-            home: false,
-            healthcheck: {
-              kind: "http",
-              url: "http://localhost:3000/health",
-              intervalSeconds: 10,
-              timeoutSeconds: 5,
-              retries: 5,
+  test.each([undefined, "/health", "ftp://localhost/health", "http:///health"])(
+    "rejects invalid authored HTTP URL %s",
+    async (url) => {
+      await withTempCwd(async () => {
+        const exit = await compiledPlanExit({
+          name: "myapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("web")]: {
+              image: "node:lts",
+              home: false,
+              healthcheck: {
+                kind: "http",
+                ...(url === undefined ? {} : { url }),
+                intervalSeconds: 10,
+                timeoutSeconds: 5,
+                retries: 5,
+              },
             },
           },
-        },
-      });
+        });
 
-      const failure = expectSomeFailure(exit);
-      expect(failure).toBeInstanceOf(LandofileValidationError);
-      if (failure instanceof LandofileValidationError) {
-        expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "kind"]);
-        expect(failure.issues[0]?.suggestion).toContain("kind: command");
-      }
-    });
-  });
+        const failure = expectSomeFailure(exit);
+        expect(failure).toBeInstanceOf(LandofileValidationError);
+        if (failure instanceof LandofileValidationError) {
+          expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "url"]);
+        }
+      });
+    },
+  );
 
   test("rejects a partial healthcheck without a default command rather than silently dropping it", async () => {
     await withTempCwd(async () => {
@@ -5310,9 +5362,6 @@ describe("AppPlannerLayer.layer", () => {
       ]);
       expect(failure.message).toContain(
         "Service web depends on service db with condition service_healthy, but service db has no enabled readiness probe.",
-      );
-      expect(failure.message).toContain(
-        "Configure an enabled command readiness for service db, remove readiness: false to inherit its healthcheck, or use condition service_started.",
       );
     }
   });

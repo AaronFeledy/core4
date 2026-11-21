@@ -186,6 +186,7 @@ export * from "./service-info.ts";
 export * from "./service-launchers.ts";
 export * from "./service-mount.ts";
 export * from "./service-probe.ts";
+export * from "./service-probe-url.ts";
 export * from "./service-resolution.ts";
 export * from "./service-run-observation.ts";
 export * from "./service-shutdown.ts";

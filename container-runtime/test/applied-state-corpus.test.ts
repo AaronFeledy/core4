@@ -200,7 +200,7 @@ for (const fixture of v7Cases) {
     }
   });
 
-  test(`ordinary persist of v7 ${fixture.name} writes one v8 envelope with kind keys`, async () => {
+  test(`ordinary persist of v7 ${fixture.name} writes one current envelope with kind keys`, async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-state-v7-write-"));
     const target = join(root, fixture.target);
     try {
@@ -232,7 +232,7 @@ for (const fixture of v7Cases) {
   });
 }
 
-test("podman record remove migrates survivors into one v8 map", async () => {
+test("podman record remove migrates survivors into one current map", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-state-v7-survivor-"));
   const target = join(root, "applied-plans.json");
   try {
@@ -386,6 +386,13 @@ for (const fixture of v8Cases) {
       expect(Object.keys(read.plan.services)).toEqual(["web", "worker"]);
       expectMigratedNetworkVocabulary(read.plan);
       expect(Buffer.compare(await readFile(target), before)).toBe(0);
+      // v8 never carries keep-alive intent; migration must not invent it.
+      for (const service of Object.values(read.plan.services)) {
+        const authority = service.listenerAuthority;
+        if (authority?.owner === "application") {
+          expect("keepAlive" in authority).toBe(false);
+        }
+      }
 
       await Effect.runPromise(store.persistAppliedPlan(state, read.plan));
       const envelope = JSON.parse(await readFile(target, "utf8")) as {

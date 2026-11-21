@@ -1,0 +1,13 @@
+{
+  "provenance": {
+    "commit": "a192a1271a558d8ffa84061e7c4a4cadaeec18a7",
+    "sources": {
+      "sdk/src/schema/compose-healthcheck.ts": "960ee36ef3f586360409cd415be050514ba9e8ff",
+      "sdk/src/schema/primitives.ts": "ba8695550264b0e852735ba894c774cf99429c22",
+      "sdk/src/schema/service-probe-url.ts": "97130628cdf78cd93f7cc8134d29d2950348b278"
+    }
+  },
+  "pointer": "/properties/services/additionalProperties/properties/healthcheck|readiness/anyOf/object/properties/port",
+  "before": { "type": "number" },
+  "after": { "maximum": 65535, "minimum": 1, "type": "integer" }
+}

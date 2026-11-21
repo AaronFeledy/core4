@@ -146,6 +146,7 @@ const publishContainerHelperCommand = async (helper: ContainerHelperArtifact): P
     await publishContainerHelperShim(containerHelperCommandMount(helper, name), name);
     await publishContainerHelperEngine(helper, name);
   }
+  await publishContainerHelperEngine(helper, CONTAINER_HELPER_FILE);
 };
 
 /**

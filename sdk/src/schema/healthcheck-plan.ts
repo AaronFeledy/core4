@@ -19,10 +19,15 @@ export const HealthcheckPlan = Schema.Struct({
   command: Schema.optionalKey(CommandSpec),
   target: Schema.optionalKey(EndpointRef).annotate({
     description:
-      "Declared command-probe listener, identified by port and transport; supplied through LANDO_PROBE_HOST and LANDO_PROBE_PORT.",
+      "Service listener identified by port and transport. Command probes receive LANDO_PROBE_HOST and LANDO_PROBE_PORT; TCP probes dial the listener directly.",
   }),
-  url: Schema.optionalKey(Schema.String),
-  port: Schema.optionalKey(Schema.Number),
+  url: Schema.optionalKey(Schema.String).annotate({
+    description: "Required for HTTP probes. Absolute HTTP or HTTPS URL requested from inside the service.",
+  }),
+  port: Schema.optionalKey(Schema.Number).annotate({
+    description:
+      "Service-network TCP listener port (integer 1 to 65535), required for TCP probes without a listener target.",
+  }),
   intervalSeconds: ProbeIntervalSeconds,
   timeoutSeconds: ProbeTimeoutSeconds,
   retries: ProbeRetries.annotate({

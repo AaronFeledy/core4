@@ -42,7 +42,11 @@ import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { includeWhenDelta } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
-import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
+import {
+  CURRENT_SERVICE_PORT,
+  evolveHistoricalProbePort,
+  evolveHistoricalServicePort,
+} from "./x-extension-port-proof.ts";
 import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
@@ -91,13 +95,15 @@ const historicalLandofile = (): JsonSchema =>
                             evolveHistoricalServicePort(
                               evolveHistoricalTimestamps(
                                 evolveHistoricalContainerUser(
-                                  evolveHistoricalReadiness(
-                                    evolveHistoricalShorthand(
-                                      evolveHistoricalNetworks(
-                                        evolveHistoricalNativeInit(
-                                          evolveHistoricalProjectUser(repairedLandofile(), "plain"),
+                                  evolveHistoricalProbePort(
+                                    evolveHistoricalReadiness(
+                                      evolveHistoricalShorthand(
+                                        evolveHistoricalNetworks(
+                                          evolveHistoricalNativeInit(
+                                            evolveHistoricalProjectUser(repairedLandofile(), "plain"),
+                                          ),
+                                          "bare",
                                         ),
-                                        "bare",
                                       ),
                                     ),
                                   ),

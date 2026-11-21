@@ -531,7 +531,7 @@
     "UrlScanner": [
       "detectCollisions:(appIds:ReadonlyArray<AppId>) => Effect.Effect<ReadonlyArray<PortCollision>,ScannerError|PortCollisionError>",
       "id:string",
-      "scan:(appId:AppId,options?:{ plan?:AppPlan;urls?:ReadonlyArray<{ service:ServiceName;url:string;endpoint?:EndpointRef;}>;/** Observe completed attempts without affecting probe verdicts;detail is redacted. */ onAttempt?:(attempt:ScanAttempt) => Effect.Effect<void>;}) => Effect.Effect<ScanResult,ScannerError>"
+      "scan:(appId:AppId,options?:{ plan?:AppPlan;urls?:ReadonlyArray<{ service:ServiceName;url:string;endpoint?:EndpointRef;}>;/** Observe completed attempts without affecting probe verdicts;detail is redacted and expected is final. */ onAttempt?:(attempt:ScanAttempt) => Effect.Effect<void>;}) => Effect.Effect<ScanResult,ScannerError>"
     ]
   },
   "subpathExports": {
@@ -1848,6 +1848,7 @@
       "ServiceName",
       "ServiceNetworkAttachment",
       "ServicePlan",
+      "ServiceProbeHttpUrl",
       "ServiceProjectUser",
       "ServicePullPolicy",
       "ServiceRunObservation",

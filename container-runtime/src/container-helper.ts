@@ -81,6 +81,10 @@ export const CONTAINER_HELPER_COMMAND_TARGETS: ReadonlySet<string> = new Set(
 const CONTAINER_HELPER_COMMAND_SHIMS = "shims";
 const CONTAINER_HELPER_COMMAND_ENGINES = "engines";
 
+// Native healthchecks store argv at create time, before any particular helper
+// digest is known. Resolve the current binary inside the existing directory mount.
+export const CONTAINER_HELPER_PROBE_EXECUTABLE = `${CONTAINER_HELPER_TARGET}/${CONTAINER_HELPER_COMMAND_ENGINES}/${CONTAINER_HELPER_FILE}`;
+
 export const containerHelperCommandMount = (helper: ContainerHelperArtifact, name: string): string =>
   join(containerHelperDirectory(helper), CONTAINER_HELPER_COMMAND_SHIMS, name);
 

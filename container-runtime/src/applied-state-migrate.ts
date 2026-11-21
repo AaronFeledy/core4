@@ -14,7 +14,7 @@ import { migrateAppliedInit } from "./applied-init-migrate.ts";
 import { migrateAppliedNames } from "./applied-names-migrate.ts";
 import { visitAppliedNetworkVocabulary } from "./applied-network-vocabulary.ts";
 
-/** Durable applied-plan frame version; v9 environments may hold RouteText descriptors. */
+/** Durable applied-plan frame version; v9 adds RouteText descriptors and optional keepAlive intent. */
 export const APPLIED_STATE_VERSION = 9;
 
 const APP_MOUNT_KEY = "app-mount";

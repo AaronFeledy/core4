@@ -1,5 +1,78 @@
 [
   {
+    "surface": "command:app:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.listenerAuthority.anyOf",
+    "justification": "Application listener authority can report optional keepAlive intent; all existing listener authority shapes remain valid."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.listenerAuthority.anyOf",
+    "justification": "Application listener authority can report optional keepAlive intent; all existing listener authority shapes remain valid."
+  },
+  {
+    "surface": "schema:InfoAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.listenerAuthority.anyOf",
+    "justification": "Application listener authority can report optional keepAlive intent; all existing listener authority shapes remain valid."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-construct",
+    "path": "$.listenerAuthority.anyOf",
+    "justification": "Application listener authority can report optional keepAlive intent; all existing listener authority shapes remain valid."
+  },
+  {
+    "surface": "schema:ListenerAuthority",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Applied state v9 decodes v8 plans unchanged; only the application branch gains optional keepAlive intent.",
+    "persistedState": { "store": "applied-state", "version": 9 }
+  },
+  {
+    "surface": "schema:CheckResult",
+    "changeKind": "enum-widened",
+    "path": "$.verdict",
+    "justification": "Check consumers must handle the new neutral expected verdict for intentional idle listeners. Existing verdicts retain their meaning."
+  },
+  {
+    "surface": "schema:StartAppResult",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.verdict",
+    "justification": "Start can return an expected check, distinct from both readiness and a URL error."
+  },
+  {
+    "surface": "schema:RebuildAppResult",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.verdict",
+    "justification": "Rebuild can return an expected check, distinct from both readiness and a URL error."
+  },
+  {
+    "surface": "schema:RestartAppResult",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.verdict",
+    "justification": "Restart can return an expected check, distinct from both readiness and a URL error."
+  },
+  {
+    "surface": "command:app:start",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.verdict",
+    "justification": "Start can return an expected check, distinct from both readiness and a URL error."
+  },
+  {
+    "surface": "command:app:rebuild",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.verdict",
+    "justification": "Rebuild can return an expected check, distinct from both readiness and a URL error."
+  },
+  {
+    "surface": "command:app:restart",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.verdict",
+    "justification": "Restart can return an expected check, distinct from both readiness and a URL error."
+  },
+  {
     "surface": "schema:RouteInputError",
     "changeKind": "property-added",
     "path": "$.otherPath",
@@ -918,6 +991,24 @@
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
     "justification": "Reviewed #1473 shared probe input: target/user metadata is available to explicit readiness; native health rejects host or explicit-user overrides rather than changing monitoring. Disabled metadata survives role validation. Timings now require nonnegative interval/grace, positive timeout and integer retry budgets; malformed values are intentionally rejected. Valid false/string/argv/Compose forms and precedence remain, with independent health/readiness overrides covered by owner regressions."
+  },
+  {
+    "surface": "schema:AdminerServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.healthcheck.anyOf",
+    "justification": "The shared healthcheck input adds HTTP and TCP probe objects. Supplied URLs and ports are validated even when disabled; omitted targets remain valid for disabled probes. The persisted HealthcheckPlan schema is unchanged by this validation."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.readiness.anyOf",
+    "justification": "Readiness adds HTTP and TCP probe objects. Supplied URLs and ports are validated even when disabled; omitted targets remain valid for disabled probes. The persisted HealthcheckPlan schema is unchanged by this validation."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.readiness.anyOf",
+    "justification": "The derived authoring schema admits HTTP and TCP readiness objects. A supplied port must be an integer from 1 to 65535, regardless of the probe kind. Disabled probes still need no target."
   },
   {
     "surface": "schema:PublicTranscript",
@@ -6965,7 +7056,7 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "History: AppPlan.services additionalProperties tracks ServicePlan endpoint/filter kind vocabulary (#2456). applied-state version 8 rewrites the two paths data.services[service].endpoints[i]._tag\u2192kind and data.routes[r].filters[f].type\u2192kind (map-prefixed for Podman) in memory on read; ordinary successful persist writes v8. Prior additive ServicePlan fields remain valid. Current (applied-state v9): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "History: AppPlan.services additionalProperties tracks ServicePlan endpoint/filter kind vocabulary (#2456). applied-state version 8 rewrites the two paths data.services[service].endpoints[i]._tag\u2192kind and data.routes[r].filters[f].type\u2192kind (map-prefixed for Podman) in memory on read; ordinary successful persist writes v8. Prior additive ServicePlan fields remain valid. Current (applied-state v9): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 also records optional keepAlive intent for application-owned listeners. Both additions are additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
       "version": 9
@@ -7259,7 +7350,7 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "History: ServicePlan anyOf evolves with endpoint kind discriminators and nested plan fields (#2456, #2109). applied-state version 8 migrates endpoint _tag\u2192kind and route filter type\u2192kind under data.services and data.routes (map: data[appId].\u2026) on read only; no write-back. Historical applied ServicePlan values remain readable after that pass; v8 never accepts old keys. Current (applied-state v9): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 is additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "History: ServicePlan anyOf evolves with endpoint kind discriminators and nested plan fields (#2456, #2109). applied-state version 8 migrates endpoint _tag\u2192kind and route filter type\u2192kind under data.services and data.routes (map: data[appId].\u2026) on read only; no write-back. Historical applied ServicePlan values remain readable after that pass; v8 never accepts old keys. Current (applied-state v9): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 also records optional keepAlive intent for application-owned listeners. Both additions are additive: v8 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
       "version": 9
