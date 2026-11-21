@@ -107,6 +107,7 @@ const runExec = async (api: DockerApiClient, command: CommandSpec, user?: string
   const provider = await Effect.runPromise(
     makeRuntimeProvider({
       platform: "linux",
+      env: {},
       dockerApi: api,
       appliedPlanState,
       ...supervisedExecFixtureOptions(api),

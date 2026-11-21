@@ -49,6 +49,7 @@ test.skipIf(dockerHost === undefined)(
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           platform: "linux",
+          env: {},
           dockerApi: api,
           resolveContainerHelper: resolveBuiltContainerHelperForTest,
           appliedPlanState: makePluginStateStore(

@@ -63,6 +63,7 @@ const fakeApi = (failurePath?: string, containerId = "relay-id") => {
 const open = Effect.fnUntraced(function* (api: EngineApiClient, bridgeInput = input) {
   const provider = yield* makeRuntimeProvider({
     platform: "darwin",
+    env: {},
     dockerApi: api,
   });
   expect(provider.openAgentSocketBridge).toBeDefined();
@@ -168,7 +169,9 @@ test("cleans up when starting the relay fails without exposing the token", async
 test("rejects missing canonical ownership context before creating resources", async () => {
   // Given
   const fake = fakeApi();
-  const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "darwin", dockerApi: fake.api }));
+  const provider = await Effect.runPromise(
+    makeRuntimeProvider({ platform: "darwin", env: {}, dockerApi: fake.api }),
+  );
   const ownerless = { ...input };
   Reflect.deleteProperty(ownerless, "appRoot");
   // When

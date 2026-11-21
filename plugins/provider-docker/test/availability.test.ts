@@ -24,7 +24,11 @@ describe("provider-docker isAvailable", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({ platform: "linux", dockerHost: "/nonexistent/lando-docker-test.sock" }),
+          makeProviderLayer({
+            platform: "linux",
+            env: {},
+            dockerHost: "/nonexistent/lando-docker-test.sock",
+          }),
         ),
       ),
     );

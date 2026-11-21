@@ -244,6 +244,7 @@ const makeProvider = (stateDir: string, dockerApi: DockerApiClient) =>
   Effect.runPromise(
     makeRuntimeProvider({
       platform: "linux",
+      env: {},
       dockerApi,
       ...supervisedExecFixtureOptions(dockerApi),
       appliedPlanState: makePluginStateStore(

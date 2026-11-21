@@ -18,7 +18,7 @@ test.each([
     request: () => Effect.succeed({ status, body }),
   };
   const provider = await Effect.runPromise(
-    makeRuntimeProvider({ platform: "linux", dockerApi: api }).pipe(
+    makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: api }).pipe(
       Effect.provideService(RedactionService, redaction),
     ),
   );

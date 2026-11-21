@@ -305,6 +305,7 @@ test("mutating apply without a durable store fails before action", async () => {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "linux",
+        env: {},
         dockerApi: {
           info: Effect.succeed({}),
           request: (request) =>
@@ -331,6 +332,7 @@ test("durable inventory write failure prevents any app resource mutation", async
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "linux",
+        env: {},
         appliedPlanState: failingWrites(state),
         dockerApi: {
           info: Effect.succeed({}),
