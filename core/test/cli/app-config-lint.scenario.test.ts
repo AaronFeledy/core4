@@ -385,7 +385,10 @@ describe("lando app:config:lint (source dispatch)", () => {
 
   test.each(["text", "json"])("env-file warnings exit successfully in %s output", async (format) => {
     await withTempCwd(async (dir) => {
-      await writeFile(join(dir, ".lando.yml"), "name: env-warning\nserviceDefaults:\n  env_file: runtime.env\n");
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "name: env-warning\nserviceDefaults:\n  env_file: runtime.env\n",
+      );
       await writeFile(join(dir, "runtime.env"), 'PATH="C:\\new"\n');
       const result = await runCli(["app:config:lint", ...(format === "text" ? [] : ["--format=json"])], dir);
       expect(result.exitCode).toBe(0);
@@ -401,7 +404,10 @@ describe("lando app:config:lint (source dispatch)", () => {
 
   test.each(["NAME\n", undefined])("env-file errors fail the JSON lint verdict (%s)", async (content) => {
     await withTempCwd(async (dir) => {
-      await writeFile(join(dir, ".lando.yml"), "name: env-error\nserviceDefaults:\n  env_file: runtime.env\n");
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "name: env-error\nserviceDefaults:\n  env_file: runtime.env\n",
+      );
       if (content !== undefined) await writeFile(join(dir, "runtime.env"), content);
       const result = await runCli(["app:config:lint", "--format=json"], dir);
       expect(result.exitCode).toBe(1);
