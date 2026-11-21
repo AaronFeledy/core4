@@ -135,7 +135,7 @@ Environment inheritance MUST occur once for an invocation, with caller overrides
 
 ### 3.5 Lifecycle events
 
-Events are typed, schema-validated, and drawn from a closed registry. Plugin subscribers register declaratively. CLI events use canonical command ids, not aliases. `pre-restart` and `post-restart` MUST bracket the inner stop/start events, which MUST still fire: a whole-app restart's app stop and start pairs, and a selected restart's `pre-service-stop`/`post-service-stop` pair per selected service (§6.15). Resolved tooling extends the valid set with `pre-<tool>` and `post-<tool>`; nested command-event recursion MUST be bounded and report the complete valid-name set on rejection (§8.5.7).
+Events are typed, schema-validated, and drawn from a closed registry. Plugin subscribers register declaratively. CLI events use canonical command ids, not aliases. `pre-restart` and `post-restart` MUST bracket the inner stop/start events, which MUST still fire: a whole-app restart's app stop and start pairs, and a selected restart's `pre-service-stop`/`post-service-stop` pair per selected service (§6.15). Selected `stop --service` publishes only those per-service stop pairs; it MUST NOT publish `pre-stop` / `post-stop` or `pre-app-stop` / `post-app-stop`. Resolved tooling extends the valid set with `pre-<tool>` and `post-<tool>`; nested command-event recursion MUST be bounded and report the complete valid-name set on rejection (§8.5.7).
 
 | Scope | Event names |
 |---|---|

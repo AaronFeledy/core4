@@ -32,11 +32,30 @@ const filteredPlan = (plan: AppPlan, orderedNames: ReadonlyArray<string>): AppPl
   fileSync: plan.fileSync.filter((entry) => orderedNames.includes(String(entry.session.service))),
 });
 
-const validateRequested = (
+export const validateRequested = (
   plan: AppPlan,
   requested: ReadonlyArray<ServiceName> | undefined,
 ): Effect.Effect<ReadonlyArray<ServiceName>, ServiceNotFoundError> => {
   const unique = uniqueRequested(requested ?? []);
+  if (unique.some((name) => String(name).length === 0)) {
+    const available = Object.keys(plan.services);
+    return Effect.fail(
+      new ServiceNotFoundError({
+        providerId: String(plan.provider),
+        operation: "selectServices",
+        service: "",
+        message: "Service name cannot be empty.",
+        details: {
+          requested: unique.map(String),
+          available,
+        },
+        remediation:
+          available.length === 0
+            ? "Add a service to the Landofile, then retry with a defined service name."
+            : `Choose one of: ${available.join(", ")}.`,
+      }),
+    );
+  }
   const missing = unique.find((name) => !Object.hasOwn(plan.services, String(name)));
   return missing === undefined ? Effect.succeed(unique) : Effect.fail(unknownService(plan, missing, unique));
 };

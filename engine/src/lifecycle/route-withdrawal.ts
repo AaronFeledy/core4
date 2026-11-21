@@ -76,18 +76,22 @@ export const republishRetainedRoutes = Effect.fn("Lifecycle.republishRetainedRou
   routes: ReadonlyArray<RoutePlan>,
   owner: AppRouteOwner,
   stopped: ReadonlyArray<string>,
-): Effect.fn.Return<void, ProxyApplyError, RouterService | EventService> {
-  const router = yield* RouterService;
-  const unavailable = unavailableRouterReason(router);
-  if (unavailable === undefined) {
-    yield* router.applyRoutes(routes, owner);
+): Effect.fn.Return<void, ProxyApplyError, EventService> {
+  const maybeRouter = yield* Effect.serviceOption(RouterService);
+  const unavailable = Option.isNone(maybeRouter) ? undefined : unavailableRouterReason(maybeRouter.value);
+  if (Option.isSome(maybeRouter) && unavailable === undefined) {
+    yield* maybeRouter.value.applyRoutes(routes, owner);
     return;
   }
+  const reason =
+    unavailable === undefined
+      ? "No router service is available in this runtime."
+      : `${unavailable.message} ${unavailable.remediation}`;
   const events = yield* EventService;
   yield* events
     .publish(
       MessageWarnEvent.make({
-        body: `Routes for ${owner.id} were not updated after stopping ${stopped.join(", ")} because no router is available. ${unavailable.message} ${unavailable.remediation}`,
+        body: `Routes for ${owner.id} were not updated after stopping ${stopped.join(", ")} because no router is available. ${reason}`,
         timestamp: DateTime.nowUnsafe(),
       }),
     )

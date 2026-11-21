@@ -41,6 +41,7 @@ import {
 import { TeardownProvider, resolveAppPlacement } from "../providers/app-placement.ts";
 import { shellArg } from "../services/shell-quote.ts";
 import { readDiscardableStart } from "./accelerated-start-disposal.ts";
+import { type PendingStart, recordedStartCommand } from "./accelerated-start-record.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
@@ -56,11 +57,17 @@ import {
   prepareOwnedResourceCleanup,
   tearDownOwnedResources,
 } from "./owned-resource-teardown.ts";
+import { validateRequested } from "./service-selection.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
 import { stopIdleApp } from "./stop-idle.ts";
 import { preflightStopApp, stopAppWithPlanUnlocked } from "./stop-internal.ts";
 import { journalPending, stopMissingRootStart, stopOrphans } from "./stop-missing-root.ts";
 import { appRootExists, canonicalStopRoot } from "./stop-root.ts";
+import {
+  rejectSelectedStopWithoutApplied,
+  requestedStopServices,
+  stopSelectedAppServices,
+} from "./stop-selection.ts";
 import { type RetirementReceipt, retireSupersededRealizations } from "./superseded-realizations.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -118,6 +125,25 @@ const withRetirement = (result: StopAppResult, retired: RetirementReceipt | unde
 
 type StoppedRuntime = { readonly result: StopAppResult; readonly plan: AppPlan };
 
+const validateStopSelection = Effect.fnUntraced(function* (
+  target: ResolvedAppTarget,
+  selected: NonNullable<ReturnType<typeof requestedStopServices>>,
+  execution: StopExecution,
+  pending: PendingStart | null,
+) {
+  yield* validateRequested(target.plan, selected);
+  if (execution.missingRoot === true) return yield* rejectSelectedStopWithoutApplied();
+  if (pending === null || pending.phase === "completed") return;
+  return yield* Effect.fail(
+    new FileSyncStopError({
+      engineId: pending.engineId,
+      sessionRef: String(target.app.id),
+      message: "Selected stop cannot run while an accelerated start is unfinished.",
+      remediation: `Run \`${recordedStartCommand(pending)}\` to finish the attempt, or \`lando stop\` without --service.`,
+    }),
+  );
+});
+
 /** Shared stop body; callers hold the app mutation lock and decide what happens to routes. */
 const stopResolvedRuntime = Effect.fnUntraced(function* (
   options: StopAppOptions | undefined,
@@ -153,6 +179,14 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
   }
   const owningProvider = yield* registry.select(validatedTarget.plan);
   yield* registry.assertAppliedStateReadable?.(validatedTarget.plan) ?? Effect.void;
+  const selected = requestedStopServices(options);
+  if (selected !== undefined) {
+    yield* validateStopSelection(validatedTarget, selected, execution, pending);
+    return {
+      result: yield* stopSelectedAppServices(selected, validatedTarget),
+      plan: validatedTarget.plan,
+    };
+  }
   const runtimeState = (yield* owningProvider.getStatus).state;
   if (runtimeState === "running" && placement.superseded.length > 0) {
     // Preserve cross-provider ambiguity and validate inventories before retirement.
@@ -278,7 +312,11 @@ const stopAppWithResolvedPlan = (
   withAppMutationLock(
     appLockTarget(target.plan),
     stopResolvedRuntime(options, target, execution).pipe(
-      Effect.tap(({ plan }) => withdrawOwnerRoutes(routeOwnerFromPlan(plan))),
+      Effect.tap(({ plan }) =>
+        requestedStopServices(options) === undefined
+          ? withdrawOwnerRoutes(routeOwnerFromPlan(plan))
+          : Effect.void,
+      ),
     ),
   );
 
@@ -301,10 +339,11 @@ export const haltAppRuntime = Effect.fn("AppOperation.haltRuntime")(function* (
   StopAppError,
   StopAppServices
 > {
+  const { services: _services, ...haltOptions } = options;
   return yield* target === undefined
     ? resolveDesiredAppTarget.pipe(
         Effect.flatMap((resolved) =>
-          haltResolvedRuntime(options, resolved, {
+          haltResolvedRuntime(haltOptions, resolved, {
             revalidate: false,
             requireAppliedEvidence: true,
             runInitEvents: false,
@@ -312,7 +351,7 @@ export const haltAppRuntime = Effect.fn("AppOperation.haltRuntime")(function* (
           }),
         ),
       )
-    : haltResolvedRuntime(options, target, {
+    : haltResolvedRuntime(haltOptions, target, {
         revalidate: true,
         requireAppliedEvidence: target.landofile !== undefined,
         runInitEvents: false,
@@ -386,6 +425,8 @@ const stopResolution = (
         })).result;
       }
       case "orphans": {
+        if (requestedStopServices(scope.options) !== undefined)
+          return yield* rejectSelectedStopWithoutApplied();
         const app = resolution.groups[0]?.appId ?? scope.root;
         const pending = yield* journalPending(scope.root, String(app));
         if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution);
@@ -394,6 +435,8 @@ const stopResolution = (
         return result;
       }
       case "owned": {
+        if (requestedStopServices(scope.options) !== undefined)
+          return yield* rejectSelectedStopWithoutApplied();
         const app = resolution.ownership[0]?.appIds[0] ?? basename(scope.root);
         const pending = yield* journalPending(scope.root, String(app));
         if (pending !== undefined) return yield* stopRetainedStart(scope, pending, resolution);

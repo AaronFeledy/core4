@@ -20,9 +20,45 @@ export const hasExactFileSyncSessionCoverage = (
   }
   return unmatched.length === 0;
 };
+
+/** A selected stop already paused or removed this session, and its writers are gone. */
+export const isQuiescedAbsentSession = (
+  spec: FileSyncSessionSpec,
+  sessions: ReadonlyArray<FileSyncSessionInfo>,
+  absentServices: ReadonlySet<string>,
+): boolean => {
+  if (!absentServices.has(String(spec.service))) return false;
+  const match = sessions.find((session) => sameFileSyncSessionSpec(spec, session.spec));
+  return match === undefined || match.status === "paused";
+};
+
+/**
+ * Stop coverage for remaining writers. Paused or missing sessions of services whose containers
+ * are already gone were quiesced by a selected stop and do not block a later whole-app stop.
+ */
+export const hasStopFileSyncCoverage = (
+  specs: ReadonlyArray<FileSyncSessionSpec>,
+  sessions: ReadonlyArray<FileSyncSessionInfo>,
+  absentServices: ReadonlySet<string>,
+): boolean => {
+  const required = specs.filter((spec) => !isQuiescedAbsentSession(spec, sessions, absentServices));
+  if (required.length === 0) return true;
+  const requiredSessions = sessions.filter((session) =>
+    required.some((spec) => sameFileSyncSessionSpec(spec, session.spec)),
+  );
+  return hasExactFileSyncSessionCoverage(required, requiredSessions);
+};
+
+export const sessionsStillRequiringStop = (
+  sessions: ReadonlyArray<FileSyncSessionInfo>,
+  absentServices: ReadonlySet<string>,
+): ReadonlyArray<FileSyncSessionInfo> =>
+  sessions.filter((session) => !isQuiescedAbsentSession(session.spec, sessions, absentServices));
+
 export const terminateFileSyncSessions = Effect.fnUntraced(function* (
   app: AppRef,
   expected?: ReadonlyArray<FileSyncSessionInfo>,
+  absentServices: ReadonlySet<string> = new Set(),
 ) {
   const maybeEngine = yield* Effect.serviceOption(FileSyncEngine);
   if (Option.isNone(maybeEngine)) {
@@ -50,11 +86,14 @@ export const terminateFileSyncSessions = Effect.fnUntraced(function* (
     );
   }
 
-  const sessions = yield* engine.listSessions({ app });
+  const listed = yield* engine.listSessions({ app });
+  const sessions = sessionsStillRequiringStop(listed, absentServices);
+  const comparableExpected =
+    expected === undefined ? undefined : sessionsStillRequiringStop(expected, absentServices);
   if (
-    expected !== undefined &&
-    (sessions.length !== expected.length ||
-      expected.some(
+    comparableExpected !== undefined &&
+    (sessions.length !== comparableExpected.length ||
+      comparableExpected.some(
         (prior) =>
           !sessions.some(
             (current) => current.ref === prior.ref && isDeepStrictEqual(current.spec, prior.spec),
@@ -64,7 +103,7 @@ export const terminateFileSyncSessions = Effect.fnUntraced(function* (
     return yield* Effect.fail(
       new FileSyncStopError({
         engineId: engine.id,
-        sessionRef: String(expected[0]?.ref ?? app.id),
+        sessionRef: String(comparableExpected[0]?.ref ?? app.id),
         message: "File sync sessions changed while app writers were stopping.",
         remediation: "Inspect and repair the file sync sessions before retrying destroy.",
       }),

@@ -91,7 +91,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:share:stop` | none | `app` | Stop a detached tunnel session |
 | `app:ssh` | `ssh` | `app` | Login shell (`bash -l` when present, otherwise `sh -l`) or supplied command in a service; `--service`, `--user`, `--no-history`; stdin and PTY follow the command-wide host-stdin rule |
 | `app:start` | `start` | `app` | Start current app, or `--service` / `-s` (repeatable) for named services closed over prerequisites and companions; resolves an unfinished accelerated attempt in its recorded scope first (§10.6.3, §6.15). |
-| `app:stop` | `stop` | `app` | Stop current app |
+| `app:stop` | `stop` | `app` | Stop current app, or `--service` / `-s` (repeatable) for named services without dependents; refuses while an accelerated attempt is unfinished, naming the recorded start command (§6.15, §10.6.3) |
 | `app:trust` | `trust` | `plugins` | Approve project host access (§7.9); `--revoke` removes the approval |
 | `apps:init` | `init` | `plugins` | Write a Landofile and its support files from a recipe (§8.8) |
 | `apps:create` | `create` | `plugins` | Apply a template to a new project, or with `--add` to an existing one (§23) |
