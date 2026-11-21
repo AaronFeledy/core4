@@ -70,6 +70,7 @@ import type {
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
+  ServiceNotFoundError,
   ServiceNotReadyError,
   ShellExecError,
   ShellScriptOutsideRootError,
@@ -231,6 +232,11 @@ export interface StartAppOptions {
   readonly reconcile?: boolean;
   readonly signal?: AbortSignal;
   /**
+   * Start only these planned services and their prerequisites. Unknown or empty
+   * names fail with `ServiceNotFoundError` before any mutation.
+   */
+  readonly services?: ReadonlyArray<ServiceName>;
+  /**
    * App-handle start mode. Defaults to `false`. When omitted or `false`, the
    * handle keeps the started resources alive in a managed scope and tears them
    * down on `stop`/`restart`/`destroy` or runtime-scope close. When `true`, the
@@ -280,6 +286,7 @@ export type StartAppError =
   | RouterPortsExhausted
   | RouterWatcherError
   | AppLockTimeoutError
+  | ServiceNotFoundError
   | StateStoreError
   | VolumeOperationError;
 

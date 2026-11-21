@@ -60,6 +60,10 @@ export const StartAppResult = Schema.Struct({
     description:
       "Names of services whose containers were removed because the Landofile no longer defines them; omitted when a service selection removed nothing.",
   }),
+  servicesStayedDown: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+    description:
+      "Unselected planned services verified absent, exited, created, dead, or paused after a selected start. Omits running, restarting, and unverified services; omitted when empty or on a whole-app start.",
+  }),
 }).annotate({ description: "Services and optional readiness checks returned after starting an app." });
 export type StartAppResult = typeof StartAppResult.Type;
 

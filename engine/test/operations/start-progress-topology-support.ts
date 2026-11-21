@@ -238,20 +238,22 @@ export const makeHarness = (
     id: "lando",
     capabilities,
     isAvailable: Effect.succeed(true),
-    ...(appliedFileSyncState === undefined
+    ...(appliedFileSyncState === undefined && options.providerOverrides?.inspectAppliedFileSync === undefined
       ? {}
       : {
-          inspectAppliedFileSync: () =>
-            Effect.succeed(
-              appliedFileSyncState === "accelerated"
-                ? {
-                    status: "accelerated" as const,
-                    engineId: plannedApp.fileSync[0]?.engineId ?? "mutagen",
-                    sessions:
-                      options.appliedFileSyncSessions ?? plannedApp.fileSync.map(({ session }) => session),
-                  }
-                : { status: appliedFileSyncState ?? "missing" },
-            ),
+          inspectAppliedFileSync:
+            options.providerOverrides?.inspectAppliedFileSync ??
+            (() =>
+              Effect.succeed(
+                appliedFileSyncState === "accelerated"
+                  ? {
+                      status: "accelerated" as const,
+                      engineId: plannedApp.fileSync[0]?.engineId ?? "mutagen",
+                      sessions:
+                        options.appliedFileSyncSessions ?? plannedApp.fileSync.map(({ session }) => session),
+                    }
+                  : { status: appliedFileSyncState ?? "missing" },
+              )),
         }),
     ...(options.providerCanPrepareFileSync === false
       ? {}
