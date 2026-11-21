@@ -6,6 +6,7 @@ import { type ApplyOptions, type RuntimeProvider, StateStore } from "@lando/sdk/
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
 import { type Context, Effect, Option } from "effect";
+import { volumeLockTierFor } from "./volume-location.ts";
 
 // A created volume that cannot be re-verified fails the apply instead of starting services on a
 // generation that would stay ineligible for seeding with no visible cause.
@@ -40,6 +41,7 @@ export const recordCreatedVolume = Effect.fn("Lifecycle.recordCreatedVolume")(
         return yield* Effect.fail(unverifiedCreation(provider.id));
       // Shared for global caches: the creating activation already holds the key (exclusive when
       // the cache was absent), and the receipt bucket serializes its own write.
+      const tier = volumeLockTierFor(plan, plannedStore);
       const lockMode =
         plannedStore.scope === "global" && plannedStore.kind === "cache"
           ? ("shared" as const)
@@ -49,6 +51,7 @@ export const recordCreatedVolume = Effect.fn("Lifecycle.recordCreatedVolume")(
         {
           key: identity.coordinationKey,
           name: identity.nativeName,
+          ...(tier === undefined ? {} : { tier }),
           mode: lockMode,
           resource: `volume ${identity.nativeName}`,
         },
