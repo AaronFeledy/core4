@@ -263,7 +263,14 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
       app: plan.name,
       runtimeState,
       ...(runtimeState === "idle" ? { outcome: "stopped" as const } : {}),
-      servicesStopped: runtimeState === "idle" ? [] : services.map((service) => String(service.name)),
+      servicesStopped:
+        runtimeState === "idle"
+          ? []
+          : shutdownObservations === undefined
+            ? services.map((service) => String(service.name))
+            : shutdownObservations.flatMap((row) =>
+                row.status === "unknown" && row.reason === "container-absent" ? [] : [String(row.service)],
+              ),
       landofileEvents: failedPostEvent ?? landofileEvents,
       ...(shutdownObservations === undefined ? {} : { shutdownObservations }),
     },
