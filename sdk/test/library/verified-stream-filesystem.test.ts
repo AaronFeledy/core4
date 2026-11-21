@@ -128,6 +128,7 @@ test("persistence failure preserves the source cleanup defect alongside the safe
     if (Exit.isFailure(exit)) {
       expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
         kind: "typed",
+        source: "elected",
         error: {
           _tag: "VerifiedStreamError",
           reason: "persist",

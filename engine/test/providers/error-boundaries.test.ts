@@ -504,6 +504,7 @@ test.each(["effect", "stream"] as const)(
     expect(defects).toHaveLength(2);
     expect(defects[0]).toBeInstanceOf(ProviderUnavailableError);
     expect(defects[0]).not.toBe(providerDefect);
+    expect(defects[0]).toHaveProperty("message", "failed [redacted]");
     expect(JSON.stringify(defects[0])).not.toContain(canary);
     expect(defects[1]).toBe(crash);
   },

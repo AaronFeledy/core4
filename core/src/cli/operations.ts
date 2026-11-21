@@ -49,17 +49,14 @@ export const invokeOperation = <A, E, R>(
 
     const failure = failureOutcomeFromCause(exit.cause);
     if (failure.kind !== "typed") return Effect.failCause(failureDefectCause(exit.cause));
-    const error =
-      failure.source === "fail"
-        ? { value: failure.error }
-        : options.isError?.(failure.error)
-          ? { value: failure.error }
-          : undefined;
-    if (error === undefined) return Effect.failCause(failureDefectCause(exit.cause));
-    const output = options.renderError?.(error.value);
+    let error: E;
+    if (failure.source === "fail") error = failure.error;
+    else if (options.isError?.(failure.error)) error = failure.error;
+    else return Effect.failCause(failureDefectCause(exit.cause));
+    const output = options.renderError?.(error);
     return Effect.succeed({
       ok: false as const,
-      error: error.value,
+      error,
       additionalErrors: failure.additionalErrors,
       ...(output === undefined ? {} : { output }),
     });

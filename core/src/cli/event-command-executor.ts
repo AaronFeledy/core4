@@ -229,12 +229,12 @@ export const makeEventCommandExecutor = (
         }
         if (Cause.hasInterruptsOnly(exit.cause)) return yield* Effect.interrupt;
         const failure = failureOutcomeFromCause(exit.cause);
-        const [reason, ...rest] = exit.cause.reasons;
+        const [reason] = exit.cause.reasons;
         // Only a lone, unscoped defect is converted for event-step mapping; mixed Causes stay fatal.
         return yield* Effect.failCause(
           failure.kind === "defect" &&
             reason !== undefined &&
-            rest.length === 0 &&
+            exit.cause.reasons.length === 1 &&
             Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) === undefined
             ? commandFailureCause(exit.cause)
             : exit.cause,

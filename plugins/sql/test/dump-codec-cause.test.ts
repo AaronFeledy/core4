@@ -66,9 +66,8 @@ for (const compression of ["gzip", "zstd"] as const) {
     const outcome = failureOutcomeFromCause(exit.cause);
     expect(outcome.kind).toBe("typed");
     expect(outcome.error).toBe(failure);
-    expect(outcome.additionalErrors).toEqual([
-      { role: "cleanup", error: sourceCleanup },
-      { role: "cleanup", error: outerCleanup },
-    ]);
+    expect(outcome.additionalErrors.map(({ role }) => role)).toEqual(["cleanup", "cleanup"]);
+    expect(outcome.additionalErrors[0]?.error).toBe(sourceCleanup);
+    expect(outcome.additionalErrors[1]?.error).toBe(outerCleanup);
   });
 }

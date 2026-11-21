@@ -382,11 +382,9 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       });
       yield* recordCliDefect(cause, defectRedactor, io);
       const { kind, error: primaryError, additionalErrors } = commandFailureOutcome(cause, options.signal);
-      const failureExitCode = Cause.hasInterruptsOnly(cause)
-        ? commandInterruptionExitCode(options.signal)
-        : kind === "typed"
-          ? errorExitCode(primaryError)
-          : 1;
+      let failureExitCode = 1;
+      if (Cause.hasInterruptsOnly(cause)) failureExitCode = commandInterruptionExitCode(options.signal);
+      else if (kind === "typed") failureExitCode = errorExitCode(primaryError);
       const error = yield* renderFailureEvidence(primaryError);
       if (envelopeFormat) {
         const outcome = {

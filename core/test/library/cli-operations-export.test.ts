@@ -217,6 +217,9 @@ describe("@lando/core/cli/operations package export", () => {
     );
     if (!Exit.isFailure(exit)) throw new Error("expected an unwitnessed failure");
     expect(Cause.squash(exit.cause)).toBe("typed-error");
-    expect(exit.cause.reasons).toHaveLength(2);
+    expect(exit.cause.reasons).toMatchObject([
+      { _tag: "Die", defect: "typed-error" },
+      { _tag: "Die", defect: diagnostic },
+    ]);
   });
 });

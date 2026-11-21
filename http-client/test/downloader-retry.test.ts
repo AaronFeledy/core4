@@ -430,7 +430,9 @@ describe("Downloader transient retry", () => {
       const { exit, harness } = await runDownload(fileRequest(dir, { expectedSizeBytes: 0 }), transport);
       expect(transport.calls).toHaveLength(1);
       expect(harness.ofTag("message.warn")).toEqual([]);
-      expect(harness.ofTag("post-download")).toMatchObject([{ attempts: 1, failureDetail: "size-mismatch" }]);
+      expect(harness.ofTag("post-download")).toMatchObject([
+        { outcome: "failure", attempts: 1, failureDetail: "size-mismatch" },
+      ]);
       if (Exit.isSuccess(exit)) throw new Error("Expected verification failure");
       expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
         kind: "typed",
