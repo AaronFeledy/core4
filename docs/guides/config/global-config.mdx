@@ -80,6 +80,8 @@ Lando reads global config from ordered layers. A later layer wins:
 
 Maps deep-merge across layers. Arrays and scalars replace. `serviceDefaults.environment` and `serviceDefaults.labels` replace as whole maps. A `LANDO_CONFIG__*` env var maps its SCREAMING_SNAKE_CASE path to the matching camelCase key, for example `LANDO_CONFIG__LOG_LEVEL=debug` or `LANDO_CONFIG__ROUTER__HTTP_PORT=8080`.
 
+Set `LANDO_SERVICE_DEFAULTS_ENVIRONMENT` or `LANDO_SERVICE_DEFAULTS_LABELS` to a JSON object to replace the corresponding map for one invocation. Set `serviceDefaults.env_file` in the Landofile, not in `config.yml`.
+
 The installation config lives at `config.yml` under the resolved user config root, for example `/home/user/.config/lando/config.yml` on Linux. That root is fixed before any file is read, so a `userConfRoot` key inside `config.yml` or a drop-in is ignored. The other roots resolve as runtime option, then root env var, then config files, then the platform default.
 
 Each command resolves config once, at startup, and keeps that snapshot. Long-lived runtimes such as `lando mcp serve` or an embedding host keep the config they started with until you restart them.
