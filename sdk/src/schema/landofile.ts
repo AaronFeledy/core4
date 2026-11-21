@@ -693,7 +693,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     cores: Schema.optionalKey(Schema.Array(Schema.String)),
     port: Schema.optionalKey(PortNumber).annotate({
-      description: "Primary container TCP port number (integer 1-65535) exposed by the service.",
+      description:
+        "Primary container listen port (integer 1-65535). On raw lando and compose services, only supplies the value of {{ service.port }}; it does not configure the listener, an endpoint, publication, routing, or readiness.",
     }),
     consolePort: Schema.optionalKey(PortNumber).annotate({
       description:
