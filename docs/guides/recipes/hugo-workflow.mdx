@@ -48,7 +48,7 @@ Init writes `.lando.yml` and a small starter site: a Hugo config, a content arch
 
 `builder` is the day-to-day browse target while Hugo serves. `web` is the nginx sidecar on the app hostname. Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS.
 
-To move the development server, set `port:` on `builder` and use `command: "hugo server --bind 0.0.0.0 --port {{ service.port }}"` in `.lando.yml`. After that, changing `port:` also changes the argument Hugo receives. See [Your service's own port](../landofile/expressions.mdx#your-services-own-port).
+To move the development server, change `port:` on `builder` in `.lando.yml`. The generated `command: "hugo server --bind 0.0.0.0 --port {{ service.port }}"` passes that value to Hugo. See [Your service's own port](../landofile/expressions.mdx#your-services-own-port).
 
 <Guide>
   <Scenario id="reader-path" render={false} reason="Test provider validates the recipe defaults and first start without claiming live Hugo output">
@@ -60,7 +60,7 @@ To move the development server, set `port:` on `builder` and use `command: "hugo
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"builder\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*1313" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"hugo server --bind 0.0.0.0 --port 1313\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"hugo server --bind 0\\.0\\.0\\.0 --port \\{\\{ service\\.port \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"static:nginx\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hugo\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
