@@ -38,7 +38,7 @@ export const routeUrl = (route: RoutePlan, protocol: "http" | "https", port: num
     host: route.hostname,
     protocol,
     port,
-    pathPrefix: (route.pathPrefix ?? "").replace(/\/+$/u, ""),
+    ...(route.pathPrefix === undefined ? {} : { pathPrefix: route.pathPrefix }),
   });
 
 export const connectionHost = (address: string): string => {
