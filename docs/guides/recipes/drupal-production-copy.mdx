@@ -145,7 +145,6 @@ lando db:restore before-prod --yes
       <Step name="private-copy">
         <Run command={`lando app:config:set tooling.copy-down '{"cmds":[{"service":":host","cmd":"rm -rf /tmp/drupal-prod-copy-e2e && mkdir /tmp/drupal-prod-copy-e2e && chmod 700 /tmp/drupal-prod-copy-e2e && mv prod.sql.gz /tmp/drupal-prod-copy-e2e/"},{"service":"appserver","cmd":"rm /tmp/prod.sql.gz"}]}' --type json`} />
         <Run command={`lando app:config:set tooling.dump-dir-gone '{"service":":host","cmd":"test ! -e /tmp/drupal-prod-copy-e2e"}' --type json`} />
-        <Run command={`lando app:config:set tooling.import-and-drop '{"service":":host","cmd":"case x$LANDO_SCENARIO_E2E_BINARY in x) bin=lando;; *) bin=$LANDO_SCENARIO_E2E_BINARY;; esac; $bin db:import /tmp/drupal-prod-copy-e2e/prod.sql.gz --yes && rm -rf /tmp/drupal-prod-copy-e2e"}' --type json`} />
         <Run command="lando exec appserver -- cp /tmp/prod.sql.gz /app/prod.sql.gz" />
         <Run command="lando copy-down" />
         <Verify command="lando exec appserver -- sh -c 'test ! -e /tmp/prod.sql.gz && test ! -e /app/prod.sql.gz'" />
@@ -158,10 +157,12 @@ lando db:restore before-prod --yes
     </Step>
     <Step name="import">
       <Run command="lando db:snapshot --label before-prod" />
+      <Run command="lando db:import /tmp/drupal-prod-copy-e2e/prod.sql.gz --yes" />
     </Step>
-    <Hidden reason="Stand in for lando db:import && rm -rf on the private directory, so the delete runs only if the import succeeds">
-      <Step name="import-and-drop">
-        <Run command="lando import-and-drop" />
+    <Hidden reason="Stand in for rm -rf after the import. The scenario stops on a failed import, so this delete runs only if the import succeeds">
+      <Step name="remove-local-copy">
+        <Run command={`lando app:config:set tooling.drop-dump '{"service":":host","cmd":"rm -rf /tmp/drupal-prod-copy-e2e"}' --type json`} />
+        <Run command="lando drop-dump" />
         <Verify command="lando dump-dir-gone" />
       </Step>
     </Hidden>
