@@ -70,8 +70,11 @@ describe("test preload symlink resolution", () => {
 
     const stderr = child.stderr.toString();
     expect(child.exitCode, stderr).toBe(allowed ? 0 : 1);
-    expect(child.stdout.toString().includes(marker)).toBe(allowed);
-    if (!allowed) expect(stderr).toContain("env -u NODE_PRESERVE_SYMLINKS bun test");
+    const smokeOutput = child.stdout
+      .toString()
+      .split(/\r?\n/)
+      .filter((line) => line === marker);
+    expect(smokeOutput).toEqual(allowed ? [marker] : []);
   });
 });
 

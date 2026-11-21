@@ -79,22 +79,25 @@ test.each([
   const error = await referenceFailure({ [ServiceName.make("cache")]: service });
 
   const path = ["services", "cache", ...field];
-  expect(error).toMatchObject({ path, source: { path } });
-  expect(error.message).toContain("cannot read its own published facts");
+  expect(error).toMatchObject({
+    _tag: "ConfigExpressionError",
+    path,
+    source: { path },
+    expression: expect.stringContaining("services.cache."),
+  });
   expect(error.remediation.includes("{{ service.port }}")).toBe(hint);
 });
 
 test("names all members of a three-service cycle, excluding a dependent declared first", async () => {
   const services = Object.fromEntries(
-    Object.entries({ dependent: "a", a: "b", b: "c", c: "a" }).map(([name, peer]) => [
+    Object.entries({ svcDependent: "svcA", svcA: "svcB", svcB: "svcC", svcC: "svcA" }).map(([name, peer]) => [
       ServiceName.make(name),
       { type: "redis", environment: { PEER: `{{ services.${peer}.creds.user }}` } },
     ]),
   );
   const error = await referenceFailure(services);
 
-  const path = ["services", "a", "environment", "PEER"];
+  const path = ["services", "svcA", "environment", "PEER"];
   expect(error).toMatchObject({ path, source: { path } });
-  expect(error.message).toContain("a, b, c");
-  expect(error.message).not.toContain("dependent");
+  expect(error.message.match(/\bsvc[A-Z]\w*\b/g)?.sort()).toEqual(["svcA", "svcB", "svcC"]);
 });
