@@ -319,6 +319,28 @@ lando destroy -y
       <Run command="lando destroy -y" />
     </Step>
   </Scenario>
+  <Scenario id="runtime-reverb-url" layer="e2e" timeout={600000} render={false} reason="Check that the Node container receives the published Reverb URL">
+    <Step name="install-reverb">
+      <UseFixture name="laravel-reverb" />
+      <Run command="lando app:config:unset services.worker.command" />
+      <Run command="lando app:config:unset services.reverb.command" />
+      <Run command="lando start --format=json" />
+      <Run command={`lando exec appserver -- lando-create-project laravel/laravel '^13'`} />
+      <Run command={`lando exec appserver -- sh -c 'printf "\nDB_CONNECTION=mariadb\nDB_HOST=database\nDB_PORT=3306\nDB_DATABASE=laravel-reverb\nDB_USERNAME=lando\nDB_PASSWORD=lando\n" >> .env'`} />
+      <Run command="lando exec appserver -- php artisan migrate --no-interaction" />
+      <Run command="lando exec appserver -- php artisan install:broadcasting --reverb --without-node --no-interaction" />
+      <Run command="lando app:config:set services.worker.command 'php artisan queue:listen'" />
+      <Run command="lando app:config:set services.reverb.command 'php artisan reverb:start --host=0.0.0.0 --port=8080'" />
+    </Step>
+    <Step name="check-reverb-url">
+      <Run command="lando start --format=json" />
+      <Verify command="lando exec node -- printenv VITE_REVERB_URL" expect={{ stdout: { regex: "^https://ws\\.laravel-reverb\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes --format=json" />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## Next
