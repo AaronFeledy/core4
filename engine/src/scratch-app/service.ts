@@ -740,6 +740,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       {
         provider,
         environmentResolver,
+        stateStore,
         ...(consumerAdmission === undefined ? {} : { admissionContext: consumerAdmission }),
         ...(Option.isSome(proxy) ? { router: proxy.value } : {}),
       },

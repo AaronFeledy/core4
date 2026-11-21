@@ -1,15 +1,21 @@
-import { type StateStoreError, VolumeOperationError } from "@lando/sdk/errors";
+import { StateStoreError, VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, DataStorePlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
 import { planDataId } from "@lando/sdk/schema";
-import type { ProviderError, RuntimeProviderShape, StateStoreShape } from "@lando/sdk/services";
+import {
+  type ProviderError,
+  type RuntimeProviderShape,
+  type StateStoreShape,
+  physicalVolumeLockKey,
+} from "@lando/sdk/services";
 import {
   type VolumeLockMode,
   type VolumeLockRequest,
   heldVolumeLocks,
   holdsVolumeLock,
+  physicalVolumeLockDeadline,
   withPhysicalVolumeLocks,
 } from "@lando/state-store/volume-lock";
-import { Context, Effect } from "effect";
+import { Clock, Context, Effect } from "effect";
 
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import { shellArg } from "../services/shell-quote.ts";
@@ -70,38 +76,37 @@ const uniqueByCoordinationKey = (
 const locatorIsPresent = (locator: VolumeLocator): boolean =>
   locator.presence === "present" || (locator.presence !== "absent" && locator.identity !== undefined);
 
-/**
- * Present global caches take shared so concurrent apps can start together.
- * An absent global cache (cold create) and every other store stay exclusive.
- * Callers that delete global caches force exclusive via `exclusive: true`
- * ({@link forceExclusiveForTeardown}); volumes-only teardown does not.
- */
-export const volumeLockModeFor = (
+const isGlobalCache = (store: Pick<DataStorePlan, "scope" | "kind">): boolean =>
+  store.scope === "global" && store.kind === "cache";
+
+type CachePolicy = "apply" | "purge";
+type VolumeProvider = Pick<RuntimeProviderShape, "id" | "locateVolume"> & {
+  readonly capabilities?: Pick<RuntimeProviderShape["capabilities"], "serializesVolumeCopyUp">;
+};
+
+const volumeLockModeFor = (
   store: Pick<DataStorePlan, "scope" | "kind">,
   locator: VolumeLocator,
-  exclusive: boolean,
+  sharedCaches: boolean,
 ): VolumeLockMode => {
-  if (exclusive) return "exclusive";
-  if (store.scope === "global" && store.kind === "cache" && locatorIsPresent(locator)) return "shared";
+  if (sharedCaches && isGlobalCache(store) && locatorIsPresent(locator)) return "shared";
   return "exclusive";
 };
 
 /**
- * Destroy and superseded retirement force exclusive volume locks only when
- * purging caches. Volumes-only teardown leaves present global caches shared so
- * concurrent activations that hold those caches stay compatible; app data still
- * takes exclusive through {@link volumeLockModeFor}.
+ * Destroy and superseded retirement only coordinate global caches when deleting them.
  */
-export const forceExclusiveForTeardown = (options: { readonly purgeCaches?: boolean }): boolean =>
-  options.purgeCaches === true;
+export const cachePolicyForTeardown = (options: { readonly purgeCaches?: boolean }): "purge" | undefined =>
+  options.purgeCaches === true ? "purge" : undefined;
 
 const lockRequestsFor = (
   volumes: ReadonlyArray<LocatedPlanVolume>,
-  exclusive: boolean,
+  sharedCaches: boolean,
 ): ReadonlyArray<VolumeLockRequest> =>
   volumes.map((volume) => ({
     key: volume.locator.coordinationKey,
-    mode: volumeLockModeFor(volume.store, volume.locator, exclusive),
+    name: volume.locator.nativeName,
+    mode: volumeLockModeFor(volume.store, volume.locator, sharedCaches),
     resource: `volume ${volume.locator.nativeName}`,
   }));
 
@@ -139,17 +144,21 @@ const ownerRootMismatch = (
 const locatePlanVolumes = (
   plan: AppPlan,
   provider: Pick<RuntimeProviderShape, "id" | "locateVolume">,
+  includeCaches: boolean,
 ): Effect.Effect<ReadonlyArray<LocatedPlanVolume>, ProviderError> =>
-  Effect.forEach(plan.stores, (store) => {
-    const ref: VolumeRef = { app: planDataId(plan), store: store.name, scope: store.scope };
-    return provider.locateVolume(ref).pipe(
-      Effect.flatMap((locator) => {
-        const mismatch = ownerRootMismatch(plan, provider.id, store, locator);
-        if (mismatch !== undefined) return Effect.fail(mismatch);
-        return Effect.succeed({ ref, store, locator });
-      }),
-    );
-  });
+  Effect.forEach(
+    plan.stores.filter((store) => includeCaches || !isGlobalCache(store)),
+    (store) => {
+      const ref: VolumeRef = { app: planDataId(plan), store: store.name, scope: store.scope };
+      return provider.locateVolume(ref).pipe(
+        Effect.flatMap((locator) => {
+          const mismatch = ownerRootMismatch(plan, provider.id, store, locator);
+          if (mismatch !== undefined) return Effect.fail(mismatch);
+          return Effect.succeed({ ref, store, locator });
+        }),
+      );
+    },
+  );
 
 /**
  * Locate every plan's volumes with that plan's own refs. Callers pass the desired plan plus the
@@ -160,11 +169,12 @@ const locateCoordinatedVolumes = (
   input: {
     readonly plan: AppPlan;
     readonly additionalPlans?: ReadonlyArray<AppPlan>;
+    readonly cachePolicy?: CachePolicy | undefined;
   },
   provider: Pick<RuntimeProviderShape, "id" | "locateVolume">,
 ): Effect.Effect<ReadonlyArray<LocatedPlanVolume>, ProviderError> =>
   Effect.forEach([input.plan, ...(input.additionalPlans ?? [])], (plan) =>
-    locatePlanVolumes(plan, provider),
+    locatePlanVolumes(plan, provider, input.cachePolicy !== undefined),
   ).pipe(Effect.map((volumes) => volumes.flat()));
 
 const verifyLocatedVolumes = (
@@ -205,13 +215,21 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
 >(input: {
   readonly plan: AppPlan;
   readonly additionalPlans?: ReadonlyArray<AppPlan>;
-  readonly provider: Pick<RuntimeProviderShape, "id" | "locateVolume">;
+  readonly provider: VolumeProvider;
   readonly stateStore: StateStoreShape;
-  /** Force exclusive holds (cache purge and SQL-style writers that remove shared volumes). */
-  readonly exclusive?: boolean;
+  readonly cachePolicy?: CachePolicy | undefined;
   readonly body: (coordination: VolumeCoordination) => Effect.Effect<A, E, R>;
 }): Effect.fn.Return<A, E | ProviderError | StateStoreError, R> {
-  const exclusive = input.exclusive === true;
+  const sharedCaches =
+    input.cachePolicy === "apply" && input.provider.capabilities?.serializesVolumeCopyUp === true;
+  const deadline = yield* physicalVolumeLockDeadline;
+  const held = yield* heldVolumeLocks;
+  const active = yield* ActiveLocatedVolumes;
+  const boundAtAdmission = (volume: LocatedPlanVolume) =>
+    active.find(
+      ({ ref }) =>
+        ref.app === volume.ref.app && ref.store === volume.ref.store && ref.scope === volume.ref.scope,
+    );
   const runBody = (
     volumes: ReadonlyArray<LocatedPlanVolume>,
     body: Effect.Effect<A, E, R>,
@@ -220,15 +238,27 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
   // Re-observe after acquire; if the locked key set changed, release and retry.
   for (;;) {
     const located = yield* locateCoordinatedVolumes(input, input.provider);
-    const requests = lockRequestsFor(located, exclusive);
-    const held = yield* heldVolumeLocks;
-    const active = yield* ActiveLocatedVolumes;
+    if (input.cachePolicy === "apply") {
+      for (const volume of located) {
+        const expected = boundAtAdmission(volume);
+        if (expected !== undefined && expected.locator.coordinationKey !== volume.locator.coordinationKey) {
+          return yield* failure(
+            input.provider.id,
+            `Volume ${expected.locator.nativeName} changed during lifecycle coordination.`,
+          );
+        }
+      }
+    }
+    const requests = lockRequestsFor(located, sharedCaches);
     const coordination = (volumes: ReadonlyArray<LocatedPlanVolume>): VolumeCoordination => ({
       locators: volumes.map((volume) => volume.locator),
-      verify: verifyLocatedVolumes(volumes, input.provider),
+      verify: verifyLocatedVolumes(
+        input.cachePolicy === "apply" ? volumes.map((volume) => boundAtAdmission(volume) ?? volume) : volumes,
+        input.provider,
+      ),
     });
 
-    if (requests.every((request) => holdsVolumeLock(held, request))) {
+    if (input.cachePolicy !== "apply" && requests.every((request) => holdsVolumeLock(held, request))) {
       const bound = uniqueByCoordinationKey([...active, ...located]);
       return yield* runBody(
         bound,
@@ -252,7 +282,13 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
         const currentHolds = yield* heldVolumeLocks;
         if (
           !sameKeySet(keySetOf(located), keySetOf(fresh)) ||
-          !lockRequestsFor(fresh, exclusive).every((request) => holdsVolumeLock(currentHolds, request))
+          !lockRequestsFor(fresh, sharedCaches).every(
+            (request) =>
+              holdsVolumeLock(currentHolds, request) &&
+              (held.has(request.key) ||
+                request.mode === "exclusive" ||
+                currentHolds.get(request.key)?.mode === "shared"),
+          )
         ) {
           return { _tag: "retry" as const };
         }
@@ -260,9 +296,23 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
         const result = yield* runBody(bound, input.body(coordination(uniqueByCoordinationKey(fresh))));
         return { _tag: "done" as const, result };
       }),
+      deadline,
     );
 
     if (outcome._tag === "done") return outcome.result;
+    if ((yield* Clock.monotonicTimeNanos) >= deadline.expiresAt) {
+      const resource = `volumes for ${input.plan.id}`;
+      return yield* new StateStoreError({
+        reason: "lock",
+        lockFailure: "timeout",
+        operation: "coordinateVolume",
+        path: physicalVolumeLockKey(requests[0]?.key ?? input.plan.id),
+        resource,
+        timeoutMs: deadline.timeoutMs,
+        message: `Timed out coordinating ${resource} after ${deadline.timeoutMs} ms.`,
+        remediation: "Wait for the concurrent volume operation to finish, then retry.",
+      });
+    }
   }
 });
 
@@ -272,6 +322,5 @@ export const withLaunchVolumeCoordination = <A, E, R>(input: {
   readonly additionalPlans?: ReadonlyArray<AppPlan>;
   readonly provider: PreparedRuntimeProvider;
   readonly stateStore: StateStoreShape;
-  readonly exclusive?: boolean;
   readonly body: (coordination: VolumeCoordination) => Effect.Effect<A, E, R>;
 }) => withPlanVolumeCoordination(input);

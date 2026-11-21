@@ -1,6 +1,6 @@
 import { RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { forceExclusiveForTeardown, withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { cachePolicyForTeardown, withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
 import { executeLockedTeardown } from "./destroy-execute-locked.ts";
 import type { TeardownPlan } from "./destroy-plan.ts";
@@ -17,7 +17,7 @@ export const executeTeardown = Effect.fn("AppOperation.executeTeardown")(functio
       additionalPlans: plan.applied === undefined ? [] : [plan.applied.plan],
       provider,
       stateStore,
-      exclusive: forceExclusiveForTeardown(plan.options),
+      cachePolicy: cachePolicyForTeardown(plan.options),
       body: () => executeLockedTeardown(plan),
     });
   });

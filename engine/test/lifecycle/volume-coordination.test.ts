@@ -4,15 +4,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, type VolumeRef } from "@lando/sdk/schema";
-import { StateStore, type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
+import {
+  EnvironmentValueResolver,
+  StateStore,
+  type StateStoreShape,
+  physicalVolumeLockKey,
+} from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Result } from "effect";
-
+import { applyActivation } from "../../src/lifecycle/activation-apply.ts";
+import { prepareServiceCertificates } from "../../src/lifecycle/service-certificates.ts";
 import {
   verifyActiveVolumeCoordination,
-  volumeLockModeFor,
   withPlanVolumeCoordination,
 } from "../../src/lifecycle/volume-coordination.ts";
+import { prepareProvider } from "../../src/providers/prepared.ts";
+import { session, unusedResolver } from "./activation-apply-support.ts";
 
 const coordinationKey = (name: string) => JSON.stringify(["endpoint:test", name]);
 const metadata = {
@@ -58,7 +66,101 @@ const liveStore = (): Promise<StateStoreShape> =>
   Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
 
 describe("physical volume lifecycle coordination", () => {
-  test("coordinates renamed plan stores through their data id", async () => {
+  test("cold-cache launches overlap before apply and serialize only their applies", async () => {
+    const store = await liveStore();
+    const nativeName = "lando-cache-composer";
+    const key = coordinationKey(nativeName);
+    const cache = { name: nativeName, kind: "cache", scope: "global" } as const;
+    const first = { ...plan, stores: [cache] };
+    const second = { ...first, id: AppId.make("second"), root: AbsolutePath.make("/apps/second") };
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const firstPrepared = yield* Deferred.make<void>();
+        const secondPrepared = yield* Deferred.make<void>();
+        const firstApplying = yield* Deferred.make<void>();
+        const secondApplying = yield* Deferred.make<void>();
+        const secondWaiting = yield* Deferred.make<void>();
+        const finishFirstApply = yield* Deferred.make<void>();
+        const finishFirstLaunch = yield* Deferred.make<void>();
+        let presence: "absent" | "present" = "absent";
+        const modes: Array<string | undefined> = [];
+        const stateStore: StateStoreShape = {
+          ...store,
+          withLock: (lockKey, body, options) =>
+            Effect.gen(function* () {
+              if (lockKey === physicalVolumeLockKey(key)) {
+                modes.push(options?.mode);
+                if (modes.length === 2) yield* Deferred.succeed(secondWaiting, undefined);
+              }
+              return yield* store.withLock(lockKey, body, options);
+            }),
+        };
+        const provider = yield* prepareProvider({
+          ...TestRuntimeProvider,
+          capabilities: { ...TestRuntimeProvider.capabilities, serializesVolumeCopyUp: true },
+          locateVolume: ({ store }) =>
+            Effect.sync(() => ({
+              nativeName: store,
+              coordinationKey: coordinationKey(store),
+              presence,
+            })),
+          apply: (applied) =>
+            Effect.gen(function* () {
+              if (applied.id === first.id) {
+                yield* Deferred.succeed(firstApplying, undefined);
+                yield* Deferred.await(finishFirstApply);
+                presence = "present";
+              } else {
+                yield* Deferred.succeed(secondApplying, undefined);
+              }
+              return { changed: true };
+            }),
+        });
+        const launch = (
+          plan: AppPlan,
+          prepared: Deferred.Deferred<void>,
+          otherPrepared: Deferred.Deferred<void>,
+          gate: Effect.Effect<void>,
+        ) =>
+          withPlanVolumeCoordination({
+            plan,
+            provider,
+            stateStore,
+            body: () =>
+              Effect.gen(function* () {
+                yield* Deferred.succeed(prepared, undefined);
+                yield* Deferred.await(otherPrepared);
+                yield* gate;
+                const { certificates } = yield* prepareServiceCertificates(plan);
+                yield* applyActivation({
+                  plan,
+                  provider,
+                  certificates,
+                  reconcile: false,
+                  environment: session,
+                });
+                if (plan.id === first.id) yield* Deferred.await(finishFirstLaunch);
+              }),
+          }).pipe(
+            Effect.provideService(StateStore, stateStore),
+            Effect.provideService(EnvironmentValueResolver, unusedResolver),
+          );
+        const left = yield* Effect.forkChild(launch(first, firstPrepared, secondPrepared, Effect.void));
+        const right = yield* Effect.forkChild(
+          launch(second, secondPrepared, firstPrepared, Deferred.await(firstApplying)),
+        );
+        yield* Deferred.await(secondWaiting);
+        expect((yield* Deferred.poll(secondApplying))._tag).toBe("None");
+        yield* Deferred.succeed(finishFirstApply, undefined);
+        yield* Fiber.join(right);
+        expect(modes).toEqual(["exclusive", "exclusive", "shared"]);
+        yield* Deferred.succeed(finishFirstLaunch, undefined);
+        yield* Fiber.join(left);
+      }).pipe(Effect.timeout("3 seconds")),
+    );
+  });
+
+  test("admission coordinates renamed data stores but does not locate global caches", async () => {
     const refs: VolumeRef[] = [];
     const renamed = { ...plan, identity: { ...plan.identity, dataName: "original" } };
     await Effect.runPromise(
@@ -77,7 +179,7 @@ describe("physical volume lifecycle coordination", () => {
       }),
     );
     expect([...new Set(refs.map((ref) => ref.app))]).toEqual([AppId.make("original")]);
-    expect([...new Set(refs.map((ref) => ref.store))].sort()).toEqual(["alias", "alpha", "zeta"]);
+    expect([...new Set(refs.map((ref) => ref.store))].sort()).toEqual(["alpha", "zeta"]);
   });
   test.each([0, 1, 2])("preserves provider failure on observation %i", async (failureAt) => {
     // Given a provider that becomes unavailable during locate, lock verification, or body verification.
@@ -583,6 +685,7 @@ describe("physical volume lifecycle coordination", () => {
     const provider = {
       id: "test",
       locateVolume: () => Effect.succeed(locator),
+      capabilities: { serializesVolumeCopyUp: true },
     };
     const leftReady = await Effect.runPromise(Deferred.make<void>());
     const rightReady = await Effect.runPromise(Deferred.make<void>());
@@ -592,6 +695,7 @@ describe("physical volume lifecycle coordination", () => {
     const left = Effect.runFork(
       withPlanVolumeCoordination({
         plan: cachePlan,
+        cachePolicy: "apply",
         provider,
         stateStore: recordingStore,
         body: () =>
@@ -604,6 +708,7 @@ describe("physical volume lifecycle coordination", () => {
     const right = Effect.runFork(
       withPlanVolumeCoordination({
         plan: otherPlan,
+        cachePolicy: "apply",
         provider,
         stateStore: recordingStore,
         body: () =>
@@ -629,12 +734,15 @@ describe("physical volume lifecycle coordination", () => {
     // Given cold-create observation (absent) while another writer holds the physical key.
     const store = await liveStore();
     const modes: Array<string | undefined> = [];
+    const attempted = await Effect.runPromise(Deferred.make<void>());
     const recordingStore: StateStoreShape = {
       ...store,
       withLock: (key, body, options) =>
         Effect.suspend(() => {
           modes.push(options?.mode);
-          return store.withLock(key, body, options);
+          return Deferred.succeed(attempted, undefined).pipe(
+            Effect.andThen(store.withLock(key, body, options)),
+          );
         }),
     };
     const cache = { name: "composer", scope: "global" as const, kind: "cache" as const, key: "composer" };
@@ -643,6 +751,7 @@ describe("physical volume lifecycle coordination", () => {
     let presence: "absent" | "present" = "absent";
     const provider = {
       id: "test",
+      capabilities: { serializesVolumeCopyUp: true },
       locateVolume: () =>
         Effect.succeed(
           presence === "absent"
@@ -682,6 +791,7 @@ describe("physical volume lifecycle coordination", () => {
     const lifecycle = Effect.runFork(
       withPlanVolumeCoordination({
         plan: cachePlan,
+        cachePolicy: "apply",
         provider,
         stateStore: recordingStore,
         body: (coordination) =>
@@ -691,13 +801,14 @@ describe("physical volume lifecycle coordination", () => {
           }),
       }),
     );
+    await Effect.runPromise(Deferred.await(attempted).pipe(Effect.timeout("2 seconds")));
     presence = "present";
     await Effect.runPromise(Deferred.succeed(releaseLock, undefined));
     await Effect.runPromise(Fiber.join(blocker));
     await Effect.runPromise(Fiber.join(lifecycle).pipe(Effect.timeout("2 seconds")));
 
     // Then acquisition was exclusive for the absent observation and the body sees the post-lock volume.
-    expect(modes).toContain("exclusive");
+    expect(modes).toEqual(["exclusive", "shared"]);
     expect(boundPresence).toBe("present");
     expect(boundGeneration).toBe("created-1");
   });
@@ -722,6 +833,7 @@ describe("physical volume lifecycle coordination", () => {
     const provider = {
       id: "test",
       locateVolume: () => Effect.succeed(locator),
+      capabilities: { serializesVolumeCopyUp: true },
     };
     const sharedEntered = await Effect.runPromise(Deferred.make<void>());
     const releaseShared = await Effect.runPromise(Deferred.make<void>());
@@ -729,6 +841,7 @@ describe("physical volume lifecycle coordination", () => {
     const shared = Effect.runFork(
       withPlanVolumeCoordination({
         plan: cachePlan,
+        cachePolicy: "apply",
         provider,
         stateStore: store,
         body: () =>
@@ -743,7 +856,7 @@ describe("physical volume lifecycle coordination", () => {
         plan: cachePlan,
         provider,
         stateStore: store,
-        exclusive: true,
+        cachePolicy: "purge",
         body: () => Deferred.succeed(exclusiveEntered, undefined),
       }),
     );
@@ -757,22 +870,37 @@ describe("physical volume lifecycle coordination", () => {
     expect((await Effect.runPromise(Deferred.poll(exclusiveEntered)))._tag).toBe("Some");
   });
 
-  test("volumeLockModeFor is shared only for present global caches unless exclusive is forced", () => {
-    const present = {
-      coordinationKey: "k",
-      nativeName: "n",
-      presence: "present" as const,
-    };
-    const absent = {
-      coordinationKey: "k",
-      nativeName: "n",
-      presence: "absent" as const,
-    };
-    const globalCache = { scope: "global" as const, kind: "cache" as const };
-    const appData = { scope: "app" as const, kind: "data" as const };
-    expect(volumeLockModeFor(globalCache, present, false)).toBe("shared");
-    expect(volumeLockModeFor(globalCache, absent, false)).toBe("exclusive");
-    expect(volumeLockModeFor(globalCache, present, true)).toBe("exclusive");
-    expect(volumeLockModeFor(appData, present, false)).toBe("exclusive");
-  });
+  test.each([undefined, false])(
+    "warm apply takes exclusive when copy-up serialization is %s",
+    async (capability) => {
+      const store = await liveStore();
+      const modes: Array<string | undefined> = [];
+      await Effect.runPromise(
+        withPlanVolumeCoordination({
+          plan: { ...plan, stores: [{ name: "lando-cache-composer", kind: "cache", scope: "global" }] },
+          provider: {
+            id: "docker",
+            ...(capability === undefined ? {} : { capabilities: { serializesVolumeCopyUp: capability } }),
+            locateVolume: ({ store }) =>
+              Effect.succeed({
+                nativeName: store,
+                coordinationKey: coordinationKey(store),
+                presence: "present",
+              }),
+          },
+          stateStore: {
+            ...store,
+            withLock: (key, body, options) =>
+              Effect.suspend(() => {
+                modes.push(options?.mode);
+                return store.withLock(key, body, options);
+              }),
+          },
+          cachePolicy: "apply",
+          body: () => Effect.void,
+        }),
+      );
+      expect(modes).toEqual(["exclusive"]);
+    },
+  );
 });
