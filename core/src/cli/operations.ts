@@ -8,14 +8,16 @@
 
 import {
   type ProjectedFailure,
+  failureDefectCause,
   failureOutcomeFromCause,
-  primaryFailureReason,
 } from "@lando/sdk/command-result";
-import { Cause, Effect, Exit } from "effect";
+import { Effect, Exit } from "effect";
 
 export interface InvokeOperationOptions<A, E> {
   readonly render?: (result: A) => string | undefined;
   readonly renderError?: (error: E) => string | undefined;
+  /** Witness an elected error before exposing it as E. Without a witness it stays on the failure channel. */
+  readonly isError?: (error: unknown) => error is E;
 }
 
 export type InvokeOperationResult<A, E> =
@@ -45,19 +47,22 @@ export const invokeOperation = <A, E, R>(
       });
     }
 
-    // Typed failures use the shared primary/additional projection; only untyped causes propagate as defects.
-    const primary = primaryFailureReason(exit.cause);
-    if (primary !== undefined && Cause.isFailReason(primary)) {
-      const output = options.renderError?.(primary.error);
-      return Effect.succeed({
-        ok: false as const,
-        error: primary.error,
-        additionalErrors: failureOutcomeFromCause(exit.cause).additionalErrors,
-        ...(output === undefined ? {} : { output }),
-      });
-    }
-
-    return Effect.orDie(Effect.failCause(exit.cause));
+    const failure = failureOutcomeFromCause(exit.cause);
+    if (failure.kind !== "typed") return Effect.failCause(failureDefectCause(exit.cause));
+    const error =
+      failure.source === "fail"
+        ? { value: failure.error }
+        : options.isError?.(failure.error)
+          ? { value: failure.error }
+          : undefined;
+    if (error === undefined) return Effect.failCause(failureDefectCause(exit.cause));
+    const output = options.renderError?.(error.value);
+    return Effect.succeed({
+      ok: false as const,
+      error: error.value,
+      additionalErrors: failure.additionalErrors,
+      ...(output === undefined ? {} : { output }),
+    });
   });
 
 export * from "@lando/engine/operations/app-config-lint";
