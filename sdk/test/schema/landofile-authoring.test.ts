@@ -760,7 +760,7 @@ describe("Landofile authoring schemas", () => {
           { $ref: `#/$defs/${noticeDefinition}` },
           {
             type: "string",
-            allOf: [{ pattern: expect.any(String), "x-lando-field-provenance": { role: "expression-arm" } }],
+            pattern: expect.any(String),
           },
         ],
       );

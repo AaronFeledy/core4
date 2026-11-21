@@ -334,12 +334,11 @@ import {
   publishedFieldMetadata,
   renderSchemaReferenceMarkdown,
 } from "./json-schema-deprecations.ts";
-import { getAuthoringInputJsonSchema } from "./json-schema-editor.ts";
+import { getAuthoringInputJsonSchema, projectAuthoringVariant } from "./json-schema-editor.ts";
 import {
   repairLandofileExtensions,
   repairTemplateLiteralExtensionRecords,
 } from "./json-schema-extensions.ts";
-import { JSON_SCHEMA_FIELD_PROVENANCE_KEY } from "./json-schema-field-provenance.ts";
 import {
   KeymapConfig,
   RendererActionId,
@@ -2855,20 +2854,19 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
   if (schemaName === "GlobalConfig") return getAuthoringInputJsonSchema("GlobalConfig");
   if (schemaName === "DeprecationNotice") return getJsonSchemaWithDeprecations(DeprecationNoticeJsonShape);
   if (schemaName === "LandofileShape") return landofileJsonSchema();
+  if (schemaName === "ServiceConfig" || schemaName === "ServiceConfigInput") {
+    const schema = getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName], {
+      onExcessProperty: "error",
+    });
+    repairTemplateLiteralExtensionRecords(schema);
+    return schema;
+  }
   if (
-    schemaName === "ServiceConfig" ||
-    schemaName === "ServiceConfigInput" ||
     schemaName === "LandofileAuthoringFragment" ||
     schemaName === "LandofileAuthoringShapeWire" ||
     schemaName === "LandofileAuthoringFragmentWire"
   ) {
-    const schema = getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName], {
-      onExcessProperty: "error",
-      includeAnnotationKey: (key) =>
-        schemaName.startsWith("LandofileAuthoring") && key === JSON_SCHEMA_FIELD_PROVENANCE_KEY,
-    });
-    repairTemplateLiteralExtensionRecords(schema);
-    return schema;
+    return projectAuthoringVariant(schemaName, false);
   }
   if (
     schemaName === "ExpressionNode" ||

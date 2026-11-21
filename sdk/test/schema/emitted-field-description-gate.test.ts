@@ -1,11 +1,29 @@
 import { expect, test } from "bun:test";
-import { getEditorJsonSchema } from "@lando/sdk/schema";
+import { getEditorJsonSchema, getJsonSchema } from "@lando/sdk/schema";
+import { LandofileStandardJSONSchema } from "@lando/sdk/schema/standard";
 import { Predicate } from "effect";
 import {
   assertEmittedFieldDescriptions,
   collectMissingFieldDescriptions,
 } from "../../src/schema/emitted-field-description-gate.ts";
 import { JSON_SCHEMA_FIELD_PROVENANCE_KEY } from "../../src/schema/json-schema-field-provenance.ts";
+
+test("published Landofile inputs omit description-gate provenance", () => {
+  const { input } = LandofileStandardJSONSchema["~standard"].jsonSchema;
+  const documents = {
+    editor: getEditorJsonSchema("LandofileShape"),
+    standard07: input({ target: "draft-07" }),
+    standard2020: input({ target: "draft-2020-12" }),
+    authoring: getJsonSchema("LandofileAuthoringShape"),
+    fragment: getJsonSchema("LandofileAuthoringFragment"),
+    wire: getJsonSchema("LandofileAuthoringShapeWire"),
+    fragmentWire: getJsonSchema("LandofileAuthoringFragmentWire"),
+  };
+  const marked = Object.entries(documents)
+    .filter(([, document]) => JSON.stringify(document).includes(`"${JSON_SCHEMA_FIELD_PROVENANCE_KEY}":`))
+    .map(([surface]) => surface);
+  expect(marked).toEqual([]);
+});
 
 test("reports a dropped description from a non-defaulted emitted GlobalConfig field", () => {
   const artifact = getEditorJsonSchema("GlobalConfig");

@@ -1,4 +1,4 @@
-import { JsonSchema, Predicate } from "effect";
+import { JsonSchema, Predicate, type Schema } from "effect";
 
 import { GlobalConfig } from "./config.ts";
 import { globalConfigMapInputs } from "./global-config-map-limits.ts";
@@ -8,7 +8,12 @@ import {
   repairTemplateLiteralExtensionRecords,
 } from "./json-schema-extensions.ts";
 import { JSON_SCHEMA_FIELD_PROVENANCE_KEY } from "./json-schema-field-provenance.ts";
-import { LandofileAuthoringShape } from "./landofile-authoring.ts";
+import {
+  LandofileAuthoringFragment,
+  LandofileAuthoringFragmentWire,
+  LandofileAuthoringShape,
+  LandofileAuthoringShapeWire,
+} from "./landofile-authoring.ts";
 import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
 
 const YAML_KINDS = ["scalar", "sequence", "mapping"] as const;
@@ -100,12 +105,15 @@ const LANDOFILE_YAML_TAGS = {
 
 type InputSchemaName = "LandofileShape" | "GlobalConfig";
 
-export const getAuthoringInputJsonSchema = (name: InputSchemaName): JsonSchema.JsonSchema => {
+export const projectAuthoringInput = (
+  name: InputSchemaName,
+  includeProvenance: boolean,
+): JsonSchema.JsonSchema => {
   const schema = { LandofileShape: LandofileAuthoringShape, GlobalConfig }[name];
   const artifact = getJsonSchemaWithDeprecations(schema, {
     onExcessProperty: "error",
     generateDescriptions: true,
-    includeAnnotationKey: (key) => name === "LandofileShape" && key === JSON_SCHEMA_FIELD_PROVENANCE_KEY,
+    includeAnnotationKey: (key) => includeProvenance && key === JSON_SCHEMA_FIELD_PROVENANCE_KEY,
   });
   const definitions = artifact.$defs;
   if (name === "GlobalConfig") {
@@ -126,16 +134,40 @@ export const getAuthoringInputJsonSchema = (name: InputSchemaName): JsonSchema.J
   return artifact;
 };
 
-export const getDraft07InputJsonSchema = (name: InputSchemaName): JsonSchema.JsonSchema => {
-  const document = JsonSchema.toDocumentDraft07(
-    JsonSchema.fromSchemaDraft2020_12(getAuthoringInputJsonSchema(name)),
-  );
+type AuthoringVariantName =
+  | "LandofileAuthoringFragment"
+  | "LandofileAuthoringFragmentWire"
+  | "LandofileAuthoringShapeWire";
+
+const authoringVariants: Readonly<Record<AuthoringVariantName, Schema.Top>> = {
+  LandofileAuthoringFragment,
+  LandofileAuthoringFragmentWire,
+  LandofileAuthoringShapeWire,
+};
+
+export const projectAuthoringVariant = (name: AuthoringVariantName, includeProvenance: boolean) => {
+  const artifact = getJsonSchemaWithDeprecations(authoringVariants[name], {
+    onExcessProperty: "error",
+    includeAnnotationKey: (key) => includeProvenance && key === JSON_SCHEMA_FIELD_PROVENANCE_KEY,
+  });
+  repairTemplateLiteralExtensionRecords(artifact);
+  return artifact;
+};
+
+export const getAuthoringInputJsonSchema = (name: InputSchemaName): JsonSchema.JsonSchema =>
+  projectAuthoringInput(name, false);
+
+export const authoringDraft07 = (artifact: JsonSchema.JsonSchema): JsonSchema.JsonSchema => {
+  const document = JsonSchema.toDocumentDraft07(JsonSchema.fromSchemaDraft2020_12(artifact));
   return {
     $schema: JsonSchema.META_SCHEMA_URI_DRAFT_07,
     ...document.schema,
     ...(Object.keys(document.definitions).length === 0 ? {} : { definitions: document.definitions }),
   };
 };
+
+export const getDraft07InputJsonSchema = (name: InputSchemaName): JsonSchema.JsonSchema =>
+  authoringDraft07(getAuthoringInputJsonSchema(name));
 
 /** Draft-07 projection for YAML editors, derived from the public contracts. */
 export const getEditorJsonSchema = (name: InputSchemaName): JsonSchema.JsonSchema => {

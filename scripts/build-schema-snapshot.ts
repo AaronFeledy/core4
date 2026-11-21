@@ -38,6 +38,11 @@ import {
   renderPublicSchemaReferencePages,
   schemaArtifactFilename,
 } from "../sdk/src/schema/index.ts";
+import {
+  authoringDraft07,
+  projectAuthoringInput,
+  projectAuthoringVariant,
+} from "../sdk/src/schema/json-schema-editor.ts";
 import { EMITTED_FIELD_DESCRIPTION_DEBT } from "../sdk/test/schema/emitted-field-description-debt.ts";
 import { assertPublicSchemaContractCoverage } from "../sdk/test/schema/public-schema-contracts.ts";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
@@ -153,6 +158,20 @@ const main = async (): Promise<void> => {
       throw new Error(`${schemaName} emits invalid x-deprecation payloads at ${invalidPaths.join(", ")}`);
     }
   }
+  const landofileInput = projectAuthoringInput("LandofileShape", true);
+  const globalConfigInput = projectAuthoringInput("GlobalConfig", false);
+  assertEmittedFieldDescriptions(
+    new Map([
+      ["LandofileAuthoringShape", landofileInput],
+      ["LandofileAuthoringFragment", projectAuthoringVariant("LandofileAuthoringFragment", true)],
+      ["LandofileAuthoringFragmentWire", projectAuthoringVariant("LandofileAuthoringFragmentWire", true)],
+      ["LandofileAuthoringShapeWire", projectAuthoringVariant("LandofileAuthoringShapeWire", true)],
+      ["GlobalConfig", globalConfigInput],
+      ["landofile.schema.json", authoringDraft07(landofileInput)],
+      ["global-config.schema.json", authoringDraft07(globalConfigInput)],
+    ]),
+    EMITTED_FIELD_DESCRIPTION_DEBT,
+  );
   const commandResultSchemas = generateCommandResultSchemas();
   const bundledPluginManifests = BUNDLED_PLUGIN_MODULES.map((plugin) => ({
     name: plugin.name,
@@ -164,27 +183,13 @@ const main = async (): Promise<void> => {
   await mkdir(COMMAND_SCHEMA_ARTIFACT_DIR, { recursive: true });
   await mkdir(SCHEMA_REFERENCE_DIR, { recursive: true });
   await mkdir(EDITOR_SCHEMA_DIR, { recursive: true });
-  const editorArtifacts = new Map<string, unknown>();
   for (const [name, filename] of [
     ["LandofileShape", "landofile.schema.json"],
     ["GlobalConfig", "global-config.schema.json"],
   ] as const) {
     const editorSchema = editorSchemas[name];
-    editorArtifacts.set(filename, editorSchema);
     await Bun.write(resolve(EDITOR_SCHEMA_DIR, filename), renderJson(editorSchema));
   }
-  // P3: editor-reachable field descriptions vs shrink-only debt ledger.
-  assertEmittedFieldDescriptions(
-    new Map([
-      ...sdkSchemas
-        .filter(
-          ({ schemaName }) => schemaName === "GlobalConfig" || schemaName.startsWith("LandofileAuthoring"),
-        )
-        .map(({ schemaName, jsonSchema }) => [schemaName, jsonSchema] as const),
-      ...editorArtifacts,
-    ]),
-    EMITTED_FIELD_DESCRIPTION_DEBT,
-  );
   const metadataIndexPath = resolve(SCHEMA_ARTIFACT_DIR, "index.json");
   await Bun.write(metadataIndexPath, renderJson(publicSchemaMetadataIndex));
   const artifactPaths: string[] = [metadataIndexPath];
