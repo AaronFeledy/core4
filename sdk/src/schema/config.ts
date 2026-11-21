@@ -142,6 +142,12 @@ export const NetworkConfig = Schema.Struct({
 });
 export type NetworkConfig = typeof NetworkConfig.Type;
 
+export const FileSyncSetupOptions = Schema.Struct({
+  force: Schema.Boolean,
+  network: Schema.optionalKey(NetworkConfig),
+});
+export type FileSyncSetupOptions = typeof FileSyncSetupOptions.Type;
+
 export const McpConfig = Schema.Struct({
   allow: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
     description:
@@ -387,5 +393,5 @@ export const GlobalConfig = Schema.Struct({
   tracing: Schema.optionalKey(TracingConfig).annotate({
     description: "Global tracing export policy (global tracing).",
   }),
-});
+}).pipe(Schema.annotateEncoded({ landoAuthoredInput: "GlobalConfig" }));
 export type GlobalConfig = typeof GlobalConfig.Type;
