@@ -1,5 +1,5 @@
 import type { ToolingNormalizationSource } from "@lando/landofile/tooling-normalize";
-import { type AppPlan, ServiceName, ToolingTaskShape, type ValidationIssuePath } from "@lando/sdk/schema";
+import { type AppPlan, CompiledToolingTask, ServiceName, type ValidationIssuePath } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { LauncherServiceFacts } from "./launchers.ts";
 import type { EffectiveTooling } from "./tooling-composition.ts";
@@ -26,7 +26,7 @@ export {
 const TOOLING_PLAN_KEY = "@lando/core/effective-tooling";
 const ToolingPlan = Schema.Struct({
   version: Schema.Literal(2),
-  tasks: Schema.Record(Schema.String, ToolingTaskShape),
+  tasks: Schema.Record(Schema.String, CompiledToolingTask),
   internalNames: Schema.Array(Schema.String),
   connectionClients: Schema.Record(Schema.String, ServiceName),
   provenance: ToolingProvenance,
@@ -41,12 +41,13 @@ const ToolingPlan = Schema.Struct({
 // Derived plan caches reject the previous revision before reaching this decoder.
 const LegacyAppliedToolingPlan = Schema.Struct({
   version: Schema.optionalKey(Schema.Never),
-  tasks: Schema.Record(Schema.String, ToolingTaskShape),
+  tasks: Schema.Record(Schema.String, CompiledToolingTask),
   internalNames: Schema.Array(Schema.String),
   connectionClients: Schema.optionalKey(Schema.Record(Schema.String, ServiceName)),
   disabledSources: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
-const decodeToolingPlan = Schema.decodeUnknownSync(Schema.Union([ToolingPlan, LegacyAppliedToolingPlan]));
+export const EffectiveToolingPlan = Schema.Union([ToolingPlan, LegacyAppliedToolingPlan]);
+const decodeToolingPlan = Schema.decodeUnknownSync(EffectiveToolingPlan);
 const toolingPlanFor = (plan: AppPlan) => {
   const value = plan.extensions[TOOLING_PLAN_KEY];
   return value === undefined ? undefined : decodeToolingPlan(value);

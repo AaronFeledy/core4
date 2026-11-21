@@ -12,6 +12,7 @@ export * from "./build-plan.ts";
 export * from "./certificate-authority-contribution.ts";
 export * from "./command-trace.ts";
 export * from "./compiled-landofile.ts";
+export * from "./compiled-tooling-task.ts";
 export {
   ComposeDevice,
   ComposeDevicesField,
