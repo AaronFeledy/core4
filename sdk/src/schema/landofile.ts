@@ -15,7 +15,7 @@ import { ComposeVolumesField } from "./compose-volumes.ts";
 import { ServiceCredsConfig } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
-import { ComposeEnvironmentInput } from "./environment-input.ts";
+import { ComposeEnvironmentInput, ToolingEnvironment } from "./environment-input.ts";
 import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { executionSite, executionSiteKey } from "./execution-site.ts";
 import { HOST_ALIAS_NAME_PATTERN } from "./hostname.ts";
@@ -39,7 +39,6 @@ import {
   ProviderExtensionConfig,
   ProviderId,
   ServiceName,
-  ToolingEnvironment,
   ToolingVarLiteral,
 } from "./primitives.ts";
 import { indexedPropertyNameCheck, propertyNameCheckedRecord } from "./property-name-check.ts";
@@ -1034,7 +1033,7 @@ export const ToolingTaskShape = Schema.Struct({
     description: "Task-local variables, overriding include and app-wide tooling variables.",
   }),
   deprecated: Schema.optionalKey(DeprecationNotice),
-});
+}).pipe(Schema.annotateEncoded({ landoAuthoredInput: "ToolingTaskShape" }));
 export type ToolingTaskShape = typeof ToolingTaskShape.Type;
 
 const TOOLING_TASK_FORMS = {
@@ -1267,7 +1266,7 @@ const LandofileShapeBase = Schema.Struct({
 
 export const LandofileShape = LandofileShapeBase.pipe((self) =>
   Schema.StructWithRest(self, [Schema.Record(Schema.TemplateLiteral(["x-", Schema.String]), Schema.Unknown)]),
-);
+).pipe(Schema.annotateEncoded({ landoAuthoredInput: "LandofileShape" }));
 export type LandofileShape = typeof LandofileShape.Type;
 
 export const defineLandofile = <T extends import("./landofile-overlay.ts").LandofileOverlayInput>(

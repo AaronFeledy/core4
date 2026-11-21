@@ -1355,6 +1355,7 @@
       "CommandTraceSpan",
       "CommandWarning",
       "CompilationContext",
+      "CompiledEventStep",
       "CompiledLandofile",
       "ComponentId",
       "ComposeBooleanOrStringField",

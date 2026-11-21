@@ -62,4 +62,10 @@ export const ComposeEnvironmentInput = Schema.Union([
       }),
     ),
   )
-  .annotate({ description: DESCRIPTION });
+  .annotate({ description: DESCRIPTION })
+  .pipe(Schema.annotateEncoded({ landoAuthoredInput: "ComposeEnvironmentInput" }));
+
+export const ToolingEnvironment = ComposeEnvironmentInput.annotate({
+  description: "Environment variables supplied to a tooling task as scalar values.",
+});
+export type ToolingEnvironment = typeof ToolingEnvironment.Type;

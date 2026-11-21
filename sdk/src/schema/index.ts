@@ -110,7 +110,9 @@ export {
   PublishedEndpointInput,
 } from "./endpoint.ts";
 export * from "./endpoint-selection.ts";
+export { ToolingEnvironment } from "./environment-input.ts";
 export * from "./environment-value.ts";
+export * from "./event-plan.ts";
 export * from "./execution-site.ts";
 export * from "./file-sync.ts";
 export * from "./file-sync-engine.ts";

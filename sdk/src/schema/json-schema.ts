@@ -300,6 +300,7 @@ import {
   SecretRef,
   SecretReference,
 } from "./environment-value.ts";
+import { EventStepPlan, EventStepSource, EventStepStatus, EventsPlan } from "./event-plan.ts";
 import { ExecutionSite } from "./execution-site.ts";
 import { FailureRole } from "./failure-role.ts";
 import {
@@ -376,7 +377,6 @@ import {
   LandofileAuthoringShapeWire,
 } from "./landofile-authoring.ts";
 import { AuthoringExpression, AuthoringExpressionExpectedType } from "./landofile-authoring-expression.ts";
-import { EventStepPlan, EventStepSource, EventStepStatus, EventsPlan } from "./landofile-events.ts";
 import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
   LandofileSourceDocument,
