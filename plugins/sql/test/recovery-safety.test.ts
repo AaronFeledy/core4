@@ -173,7 +173,10 @@ test("rejects a replaced volume when replacement occurs while waiting for its lo
               },
         ),
       ),
-    withVolumeLock: <A, E>(_instance: string, body: Effect.Effect<A, E>) =>
+    withVolumeLock: <A, E>(
+      _request: { readonly key: string; readonly name: string },
+      body: Effect.Effect<A, E>,
+    ) =>
       Effect.sync(() => {
         replaced = true;
       }).pipe(Effect.andThen(body)),

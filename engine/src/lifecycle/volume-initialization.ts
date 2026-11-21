@@ -48,6 +48,7 @@ export const recordCreatedVolume = Effect.fn("Lifecycle.recordCreatedVolume")(
         store.value,
         {
           key: identity.coordinationKey,
+          name: identity.nativeName,
           mode: lockMode,
           resource: `volume ${identity.nativeName}`,
         },
