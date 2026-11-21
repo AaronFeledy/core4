@@ -451,6 +451,17 @@
       "digest": "096e0c0033fd8b2ddc3fa52d5f415c469c9e733b3adb89712a3c192d37c9b8c9"
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-service-port-misuse",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-service-port",
+      "digest": "584dc4b48ffc313e0c956b2bcaa7117b5363456d5f40f4a7d41ef9ca5faf0e32"
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-typed-values",
       "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470"
     },

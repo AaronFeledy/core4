@@ -183,6 +183,25 @@ lando app:cache:refresh
 
 See [Secret stores](../config/secret-stores.mdx#where-references-resolve) for which authored sites create a reference.
 
+## Your service's own port
+
+When you replace a service's launcher, use `{{ service.port }}` to pass its planned container listen port without repeating `port:`. For example, in `.lando.yml`:
+
+```yaml
+services:
+  cache:
+    type: redis
+    port: 6380
+    command: [redis-server, --port, "{{ service.port }}"]
+    healthcheck: "redis-cli -p {{ service.port }} ping"
+```
+
+The command gets `6380` as one argument, and the healthcheck uses the same port. Change `port:` to update both, or omit it to use Redis's default of `6379`. The expression supplies the value, not the flag or the server configuration.
+
+Use `service.port` in `command:`, `entrypoint:`, or a command in a container `healthcheck:` or `readiness:` probe. It does not refer to a published host port. It is not available in host readiness, `environment:`, build steps, events, or tooling, or on types or modes without a declared primary listener, such as raw Compose and PHP in CLI mode. Run `lando app:config:lint --format=json` to locate an unsupported use.
+
+For a **different** service's database port, use its name. For example, `DB_PORT: "{{ services.db.port }}"` passes PostgreSQL's `5432` as text if `db` uses the default. Finite numbers from plan-time expressions render as text at text fields, whether the expression is the whole value or part of a longer string.
+
 ## Use invocation values in tooling
 
 Tooling command text, var definitions, and step overrides can read `flags`, `args`, `raw`, and `task` when the task runs. Lando binds declared inputs first, so `{{ flags.name }}` reads the validated value and `{{ default(args.label, 'latest') }}` handles an omitted optional argument. `task` has `name`, `subnamespace`, `commandNamespace`, and `canonicalId`; for `app:db:dump` these are `db:dump`, `db`, `app`, and `app:db:dump`. `raw` is the passthrough argument array for tasks with no declared flags or args.
@@ -404,6 +423,24 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
     </Step>
     <Step name="cleanup-missing-creds">
       <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="service-port-launcher-and-peer-environment" render={false} reason="Check standalone argv, probe interpolation, and a numeric peer environment value without containers.">
+    <Step name="scaffold-service-port">
+      <UseFixture name="expressions-service-port" />
+    </Step>
+    <Step name="plan-service-port">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="service-port-misuse" render={false} reason="Verify that lint and planning report the same unsupported environment field.">
+    <Step name="scaffold-service-port-misuse">
+      <UseFixture name="expressions-service-port-misuse" />
+    </Step>
+    <Step name="report-service-port-misuse">
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"cache\",\\s*\"environment\",\\s*\"PORT\"\\s*\\]" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"cache\",\\s*\"environment\",\\s*\"PORT\"\\s*\\]" } }} />
     </Step>
   </Scenario>
 </Guide>

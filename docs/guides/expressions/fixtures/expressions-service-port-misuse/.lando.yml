@@ -1,0 +1,6 @@
+name: expressions-service-port-misuse
+services:
+  cache:
+    type: redis
+    environment:
+      PORT: "{{ service.port }}"

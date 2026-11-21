@@ -404,6 +404,8 @@ Each snapshot carries `mode: ordinary | accelerated | unknown`, one optional app
 
 ### 6.11 Service type and feature contracts
 
+A `ServiceType` MAY opt into `plannedPort`. This pure, deterministic selector receives only the decoded `port`, `type`, `framework`, and `via` fields before launcher expressions run, and returns a `PortNumber` or `undefined`. It MUST use the same selection as the type's primary listener, decide whether an authored `port:` applies, and return `undefined` when the configuration has no primary listener. Inheritance does not implicitly opt a child type in. Core MUST NOT insert the result into `ServiceConfig.port` or infer it from final endpoints, which authors may override or remove. Bundled types with a planned listener share the selector with their listener implementation.
+
 #### 6.11.0 Planning and conformance
 
 Core performs one deterministic pipeline:
@@ -534,6 +536,8 @@ A generated companion service is a service the planner derives from a parent ser
 ### 6.12 Canonical service-type catalog
 
 #### 6.12.1 Catalog
+
+An authored launcher can reference the planned primary listen port with `{{ service.port }}` (§7.3.1). The expression supplies a value, not the daemon's port flag or configuration. Modes with no listener, such as PHP `via: cli`, have no planned port even if `port:` is authored.
 
 The catalog is bundled from `@lando/service-lando` and focused `@lando/service-*` packages. Supported releases per type are not listed here: each `ServiceType` publishes its version matrix in its service-type metadata and pin manifests, which are the only source of truth, and aliases resolve during planning.
 
