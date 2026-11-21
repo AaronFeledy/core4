@@ -49,3 +49,33 @@ lando setup --provider=podman
 If you already have Docker and the managed runtime is not what you want, the supported Linux fallback is `lando setup --provider=docker`.
 
 See [Pick a container provider](./provider-selection.mdx).
+
+## Recover when every exec fails under crun 1.31
+
+Rootless system Podman through 6.2.0, run by the systemd user manager, cannot exec when the host OCI runtime is crun 1.31 or newer. The failure looks like `crun: write to /proc/self/oom_score_adj: Permission denied`, often with a companion `connection reset by peer` on the attach socket. Fedora 45 stable ships this pair as `crun-1.31-1.fc45` with Podman 6.1.3. Upstream tracking is [containers/crun#2466](https://github.com/containers/crun/issues/2466). A Podman exec clamp is merged after 6.2.0 and is not in a release yet.
+
+Lando does not refuse start. `lando doctor` and `lando start` warn. `lando exec` then maps the failure to the same recovery.
+
+Use your package manager to downgrade or pin crun below 1.31, then retry:
+
+```sh
+lando doctor --format=json
+```
+
+Or switch to the managed provider, which pins crun 1.28:
+
+```sh
+lando setup
+```
+
+An advanced workaround is a checksum-verified crun 1.28 binary plus a user drop-in at `~/.config/containers/containers.conf.d/99-crun-pin.conf`:
+
+```ini
+[engine]
+runtime = "crun"
+
+[engine.runtimes]
+crun = ["/home/you/bin/crun-1.28"]
+```
+
+Replace the path with the verified binary. Lando does not download crun or edit `containers.conf` for you.
