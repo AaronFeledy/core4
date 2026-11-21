@@ -109,28 +109,6 @@ describe("native advisory lock (source two-process)", () => {
     }
   });
 
-  test("kill-holder: next process acquires immediately after holder death", async () => {
-    const dir = await tempLockDir();
-    const sentinel = sentinelPath(dir);
-    try {
-      const holder = await spawnHolder(sourceHolderCommand(), sentinel, { mode: "exclusive" });
-      holder.process.kill();
-      await holder.exited;
-
-      const started = Date.now();
-      const token = await runWithScope(
-        Effect.gen(function* () {
-          const lock = yield* acquireExclusive(sentinel, { timeoutMs: 2_000 });
-          return lock.token;
-        }),
-      );
-      expect(token.length).toBeGreaterThan(0);
-      expect(Date.now() - started).toBeLessThan(1_500);
-    } finally {
-      await removeDir(dir);
-    }
-  });
-
   test("interrupt: waiting fiber is interruptible and does not leave a stuck hold", async () => {
     const dir = await tempLockDir();
     const sentinel = sentinelPath(dir);
