@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { lstat, open, opendir, realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { orDieWithRole } from "@lando/sdk/command-result";
 import { Context, Effect, Layer, type Scope } from "effect";
 import { type BoundedReader, readBounded } from "./bounded-read.ts";
 import { diagnostic, limits, location } from "./diagnostics.ts";
@@ -19,7 +20,9 @@ const missing = (error: unknown) => error instanceof Error && "code" in error &&
 const io = <A>(run: () => Promise<A>, error: GithubActionsWorkflowError) =>
   Effect.tryPromise({ try: run, catch: () => error });
 const close = (run: () => Promise<unknown>) =>
-  Effect.tryPromise({ try: run, catch: () => workflowError("unreadable-directory") }).pipe(Effect.orDie);
+  Effect.tryPromise({ try: run, catch: () => workflowError("unreadable-directory") }).pipe(
+    orDieWithRole("cleanup"),
+  );
 
 const checkDirectories = Effect.fn("WorkflowAcquisition.checkDirectories")(function* (root: string) {
   for (const path of [join(root, ".github"), join(root, ".github/workflows")]) {

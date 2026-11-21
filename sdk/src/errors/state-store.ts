@@ -13,4 +13,6 @@ export class StateStoreError extends Schema.TaggedError<StateStoreError>()("Stat
   path: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-}) {}
+}) {
+  override readonly message = `State store ${this.operation} failed (${this.reason}).`;
+}

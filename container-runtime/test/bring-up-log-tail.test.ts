@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { FailureRoleAnnotation } from "@lando/sdk/command-result";
+import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { ProviderInternalError, ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -570,7 +570,13 @@ describe("bringUp start-failure log tail", () => {
     const web = serviceContainerName(plan, "web");
     const { api, requests } = makeApi({ failedStarts: [web], dieLogs: true });
 
-    const error = await flipBringUp(plan, api);
+    const exit = await Effect.runPromiseExit(
+      bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }),
+    );
+    if (Exit.isSuccess(exit)) throw new Error("Expected start failure");
+    const { error, kind, additionalErrors } = failureOutcomeFromCause(exit.cause);
+    expect(kind).toBe("typed");
+    expect(additionalErrors).toEqual([{ role: "cleanup", error: "Start log capture defect." }]);
 
     expect(error).toBeInstanceOf(ServiceStartError);
     expect(error).toMatchObject({
@@ -578,7 +584,7 @@ describe("bringUp start-failure log tail", () => {
       service: "web",
       operation: "bringUp.start",
     });
-    expect(error.message).toContain("container start failed");
+    expect(expectServiceStartError(error).message).toContain("container start failed");
     expect(expectServiceStartError(error).logTail).toBeUndefined();
     expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   });
@@ -630,12 +636,15 @@ describe("bringUp start-failure log tail", () => {
       },
     };
 
-    const error = await Effect.runPromise(
+    const exit = await Effect.runPromiseExit(
       bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }).pipe(
         Effect.provideService(StartFailureLogRedactor, redactor),
-        Effect.flip,
       ),
     );
+    if (Exit.isSuccess(exit)) throw new Error("Expected start failure");
+    const { error, kind, additionalErrors } = failureOutcomeFromCause(exit.cause);
+    expect(kind).toBe("typed");
+    expect(additionalErrors).toEqual([{ role: "cleanup", error: "Start log capture defect." }]);
 
     expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web", operation: "bringUp.start" });
     expect(expectServiceStartError(error).logTail).toBeUndefined();
