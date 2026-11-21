@@ -16,7 +16,7 @@ import {
   requireFileSyncProvider,
 } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
-import { hasCompleteFileSyncCoverage } from "./file-sync-plan.ts";
+import { fileSyncPriorIsCompatibleWithDesired, hasCompleteFileSyncCoverage } from "./file-sync-plan.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 
 /** Called under the app lock, before drain invalidation, hooks, or replacement intent. */
@@ -39,10 +39,11 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
   }
 
   // Matching specs alone must not skip an engine switch; zero desired sessions always rotate.
+  // Extra desired sessions on services that had no prior session are expansion, not a settings change.
   const desiredMatchesPrior =
     desired.kind === "accelerated" &&
     desired.id === prior.engineId &&
-    hasCompleteFileSyncCoverage(target.plan, prior.sessions);
+    fileSyncPriorIsCompatibleWithDesired(target.plan, prior.sessions);
 
   // Drain/dispose always use the recorded applied engine, never the desired selection.
   const oldEngine = yield* acquireFileSyncEngine(prior.engineId).pipe(
