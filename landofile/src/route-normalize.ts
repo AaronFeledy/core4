@@ -1,5 +1,6 @@
 import { parseRouteHostname, parseRoutePathPrefix, parseRouteShorthand } from "@lando/sdk/landofile";
 import {
+  PortNumber,
   type RouteFilter,
   type RouteInput,
   type RouteObjectInput,
@@ -8,15 +9,14 @@ import {
   type ValidationIssueSource,
   formatValidationIssuePath,
 } from "@lando/sdk/schema";
-import { Result } from "effect";
+import { Result, Schema } from "effect";
 
 export { parseRouteShorthand } from "@lando/sdk/landofile";
 
 export interface NormalizedRoute {
   readonly source?: {
-    readonly key: string;
+    readonly path: ValidationIssuePath;
     readonly file?: string;
-    readonly path?: ValidationIssuePath;
     readonly provenance?: ValidationIssueSource;
   };
   readonly hostname: string;
@@ -33,7 +33,6 @@ type RouteContext = {
 };
 
 const routeSource = (ctx: RouteContext) => ({
-  key: formatValidationIssuePath(ctx.path),
   path: ctx.path,
   ...(ctx.file === undefined ? {} : { file: ctx.file }),
   ...(ctx.provenance === undefined ? {} : { provenance: ctx.provenance }),
@@ -62,6 +61,15 @@ const objectFieldErrors = (route: RouteObjectInput, ctx: RouteContext): Readonly
           },
         ]
       : []),
+    ...(typeof route.endpoint === "number" && !Schema.is(PortNumber)(route.endpoint)
+      ? [
+          {
+            path: [...ctx.path, "endpoint"],
+            message: "A numeric route endpoint must be an integer from 1 to 65535.",
+            suggestion: `Set ${keyPath}.endpoint to a valid container port or an endpoint name.`,
+          },
+        ]
+      : []),
   ];
 };
 
@@ -82,14 +90,15 @@ export const normalizeRoute = (
       filters: route.filters ?? [],
     });
   }
-  return Result.mapError(
-    Result.map(parseRouteShorthand(route), (normalized) => ({ ...normalized, filters: [], source })),
-    (message) => [
-      {
-        path: ctx.path,
-        message,
-        suggestion: `Correct ${source.key} using hostname[:port][/pathPrefix]. ${message}`,
-      },
-    ],
-  );
+  return Result.match(parseRouteShorthand(route), {
+    onSuccess: (normalized) => Result.succeed({ ...normalized, filters: [], source }),
+    onFailure: (message) =>
+      Result.fail([
+        {
+          path: ctx.path,
+          message,
+          suggestion: `Correct ${formatValidationIssuePath(ctx.path)} using hostname[:port][/pathPrefix]. ${message}`,
+        },
+      ]),
+  });
 };

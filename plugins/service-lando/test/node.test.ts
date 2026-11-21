@@ -101,8 +101,9 @@ describe("node:lts ServiceType", () => {
       ),
     ).toEqual([]);
     expect(plan.command).toEqual(idleCommand);
+    expect(plan.listenerAuthority).toMatchObject({ owner: "application", keepAlive: true });
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 3000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.environment).toMatchObject({
@@ -126,11 +127,12 @@ describe("node:lts ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "node:22" });
     expect(plan.command).toBe("npm start");
+    expect(plan.listenerAuthority).not.toHaveProperty("keepAlive");
     expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 3000, protocol: "http", name: "web", primary: true },
       {
-        _tag: "published",
+        kind: "published",
         port: 3000,
         protocol: "http",
         name: "web",
@@ -150,7 +152,7 @@ describe("node:lts ServiceType", () => {
 
     // Then
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 5173, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 5173, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.environment.PORT).toBe("5173");
     expect(plan.command).toEqual(["npm", "run", "dev"]);
@@ -237,7 +239,7 @@ describe("node:22 ServiceType", () => {
     ).toEqual([]);
     expect(plan.command).toEqual(idleCommand);
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 3000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.environment).toMatchObject({
@@ -264,9 +266,9 @@ describe("node:22 ServiceType", () => {
     expect(plan.command).toBe("npm run dev");
     expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+      { kind: "internal", port: 3000, protocol: "http", name: "web", primary: true },
       {
-        _tag: "published",
+        kind: "published",
         port: 3000,
         protocol: "http",
         name: "web",

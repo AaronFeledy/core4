@@ -210,6 +210,7 @@ const expectedCatalogRows = [
   ["opentui-native-stubs", "derived", "build-opentui-native-stubs.ts", "repo"],
   ["php-base-images", "derived", "build-php-base-images.ts", "repo", ["core-service-env-catalog"]],
   ["ci-workflow", "committed-workflow", "build-ci-workflow.ts", "repo"],
+  ["ci-rerun-workflow", "committed-workflow", "build-ci-rerun-workflow.ts", "repo", ["ci-workflow"]],
   ["nightly-workflow", "committed-workflow", "build-nightly-workflow.ts", "repo"],
   ["dependency-audit-workflow", "committed-workflow", "build-dependency-audit-workflow.ts", "repo"],
   ["install-lifecycle-workflow", "committed-workflow", "build-install-lifecycle-journey-workflow.ts", "repo"],
@@ -223,7 +224,6 @@ const expectedCatalogRows = [
   ["drupal-journey-workflow", "committed-workflow", "build-drupal-journey-workflow.ts", "repo"],
   ["rails-journey-workflow", "committed-workflow", "build-rails-journey-workflow.ts", "repo"],
   ["workflow-performance-workflow", "committed-workflow", "build-workflow-performance-workflow.ts", "repo"],
-  ["retarget-action-bump-workflow", "committed-workflow", "build-retarget-action-bump-workflow.ts", "repo"],
 ] as const;
 
 describe("codegen catalog", () => {
@@ -381,6 +381,7 @@ describe("codegen catalog", () => {
     ];
     const expectedCommittedWorkflows = [
       "ci-workflow",
+      "ci-rerun-workflow",
       "nightly-workflow",
       "dependency-audit-workflow",
       "install-lifecycle-workflow",
@@ -394,7 +395,6 @@ describe("codegen catalog", () => {
       "drupal-journey-workflow",
       "rails-journey-workflow",
       "workflow-performance-workflow",
-      "retarget-action-bump-workflow",
     ];
 
     // When

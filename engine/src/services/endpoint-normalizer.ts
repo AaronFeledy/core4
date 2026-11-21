@@ -1,3 +1,4 @@
+import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import { canonicalJson } from "@lando/sdk/digest";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
@@ -9,12 +10,18 @@ import {
   validationIssue,
 } from "@lando/sdk/schema";
 import { endpointScanPolicies } from "./endpoint-scan.ts";
+import { routeEndpointDeclarations } from "./route-endpoint-declarations.ts";
 
 /** Replay original declarations, never a previous normalization's synthesized facets. */
-export const normalizeEndpoints = (
+export const normalizeEndpointFacts = (
   contributions: readonly EndpointPlan[],
   config: ServiceConfig,
-): EndpointPlan[] => {
+  authored?: {
+    readonly service: string;
+    readonly routes: readonly NormalizedRoute[];
+    readonly allowImplication?: boolean;
+  },
+) => {
   const endpoints: EndpointPlan[] =
     config.endpoints === undefined
       ? contributions.map((endpoint) => ({ ...endpoint }))
@@ -23,12 +30,31 @@ export const normalizeEndpoints = (
             ? { ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) }
             : { ...endpoint },
         );
+  const routeDeclarations =
+    authored === undefined
+      ? undefined
+      : routeEndpointDeclarations({
+          ...authored,
+          effective: endpoints,
+          replaced: config.endpoints === undefined ? [] : contributions,
+          allowImplication: authored.allowImplication ?? true,
+        });
+  if (routeDeclarations !== undefined) endpoints.push(...routeDeclarations.implied);
 
   if (config.endpoints === undefined) {
+    const declarationsByIdentity = new Map<string, EndpointPlan[]>();
+    if (config.ports?.length) {
+      for (const endpoint of endpoints) {
+        const identity = logicalEndpointIdentity(endpoint);
+        const declarations = declarationsByIdentity.get(identity);
+        if (declarations === undefined) declarationsByIdentity.set(identity, [endpoint]);
+        else declarations.push(endpoint);
+      }
+    }
     const scans = endpointScanPolicies(contributions);
     for (const entry of config.ports ?? []) {
       const identity = `${entry.target}/${entry.protocol}`;
-      const declarations = contributions.filter((endpoint) => logicalEndpointIdentity(endpoint) === identity);
+      const declarations = declarationsByIdentity.get(identity) ?? [];
       const protocols = [...new Set(declarations.map((endpoint) => endpoint.protocol))];
       const declaredProtocol = protocols.length === 1 ? protocols[0] : undefined;
       const protocol =
@@ -47,7 +73,7 @@ export const normalizeEndpoints = (
       const appProtocol = entry.appProtocol ?? (hints.length === 1 ? hints[0] : undefined);
       const scan = scans.get(identity);
       endpoints.push({
-        _tag: "published",
+        kind: "published",
         port: entry.target,
         protocol,
         ...(declarations.some((endpoint) => endpoint.protocol !== "unix" && endpoint.primary === true)
@@ -64,19 +90,25 @@ export const normalizeEndpoints = (
     }
     for (const port of config.expose ?? []) {
       if (!endpoints.some((endpoint) => logicalEndpointIdentity(endpoint) === `${port}/tcp`)) {
-        endpoints.push({ _tag: "internal", port, protocol: "tcp" });
+        endpoints.push({ kind: "internal", port, protocol: "tcp" });
       }
     }
   }
 
   const seen = new Set<string>();
-  return endpoints.filter((endpoint) => {
+  const unique = endpoints.filter((endpoint) => {
     const key = canonicalJson(endpoint);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+  return { endpoints: unique, conflicts: routeDeclarations?.conflicts };
 };
+
+export const normalizeEndpoints = (
+  contributions: readonly EndpointPlan[],
+  config: ServiceConfig,
+): EndpointPlan[] => normalizeEndpointFacts(contributions, config).endpoints;
 
 export const endpointValidationError = (
   endpoints: readonly EndpointPlan[],
@@ -102,7 +134,7 @@ export const endpointValidationError = (
     message: `Invalid endpoints for service ${location.serviceName}: ${messages.join(" ")}`,
     remediation:
       "Use aliases for only one logical listener, agree on its protocol and scan defaults, and mark at most one listener primary: true.",
-    file: `${location.appRoot}/.lando.yml`,
+    file: location.appRoot,
     issues: messages.map((message) =>
       validationIssue(["services", location.serviceName, "endpoints"], message),
     ),

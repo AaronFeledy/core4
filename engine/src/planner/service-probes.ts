@@ -1,5 +1,6 @@
+import { serviceProbeInputIssue, serviceProbeListener } from "@lando/container-runtime/service-probe";
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { type AppPlan, probeTargetError, serviceListenerTarget, validationIssue } from "@lando/sdk/schema";
+import { type AppPlan, probeTargetError, serviceListenerTarget } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { bunShellDialectIssues, describeBunShellIssue } from "../services/bun-shell-dialect.ts";
 
@@ -11,18 +12,20 @@ export const validateServiceProbes = Effect.fn("AppPlanner.validateServiceProbes
       const invalidTarget = probeTargetError(probe, service.name, role);
       if (invalidTarget !== undefined) return yield* Effect.fail(invalidTarget);
       if (probe.kind === "none") continue;
-      if (probe.kind !== "command" || probe.command === undefined)
+      const issue = serviceProbeInputIssue(probe);
+      if (issue !== undefined)
         return yield* Effect.fail(
           new LandofileValidationError({
-            file: ".lando.yml",
+            file: plan.metadata.source,
             issues: [
-              validationIssue(
-                ["services", String(service.name), role, probe.kind === "command" ? "command" : "kind"],
-                "Configure an enabled command probe.",
-              ),
+              {
+                path: ["services", String(service.name), role, issue.field],
+                rule: `landofile.${role}`,
+                message: issue.message,
+              },
             ],
-            message: `Service ${service.name} requires a command probe.`,
-            remediation: `Supply a command for ${role}, or explicitly disable it with false.`,
+            message: `Service ${service.name} has an invalid ${role} probe.`,
+            remediation: issue.message,
           }),
         );
       if (role === "readiness" && probe.executionTarget === "host" && typeof probe.command === "string") {
@@ -43,10 +46,11 @@ export const validateServiceProbes = Effect.fn("AppPlanner.validateServiceProbes
             }),
           );
       }
-      if (probe.target === undefined) continue;
+      const listener = serviceProbeListener(probe);
+      if (listener === undefined || probe.kind === "http") continue;
       // Contributed probes name their own service listener; an `endpoints:` override
       // changes exposure, not the port the daemon still listens on.
-      const target = serviceListenerTarget(plan, service, probe.target, { requireDeclared: false });
+      const target = serviceListenerTarget(plan, service, listener, { requireDeclared: false });
       if (Result.isFailure(target)) return yield* Effect.fail(target.failure);
     }
   }

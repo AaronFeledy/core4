@@ -428,7 +428,9 @@ lando doctor --format=json | jq '.result.checks[] | select(.section == "subsyste
 lando doctor --format=json | jq '.result.summary'
 ```
 
-With `--app`, the `app-config` section holds one check per Landofile lint violation. The check's `name` is the rule id and its `details` is the violation. A clean Landofile yields a single passing `app-config-lint` check.
+With `--app`, the `app-config` section holds one check per Landofile lint violation. The check's `name` is the rule id and its `details` is the violation. Doctor reuses `lando app:config:lint`, including the path that keeps resolve-stage findings next to isolable local load failures, so the same Landofile never disagrees between the two commands. A clean Landofile yields a single passing `app-config-lint` check.
+
+Lint omissions appear in `result.skipped` under `section: app-config`, not as failed checks. The `check` names the stage and, when known, the effective path. Run `lando app:config:lint --format=json` for the structured omission reason and authored source.
 
 Doctor exits `1` when `summary.failed` is above zero. A failing check is a diagnosis, so the envelope stays `ok: true`. The exception is a check named `doctor-self`, which records that doctor could not finish one of its own checks. Its `context.reason` is `failure`, `defect`, or `timeout`, `context.message` says what happened, and `context.probe` names the unit when it is narrower than the section. Any `doctor-self` check makes the envelope `ok: false`.
 

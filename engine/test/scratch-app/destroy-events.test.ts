@@ -5,6 +5,7 @@ import { AbsolutePath, AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
 import { ScratchAppService } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
+import { SCRATCH_DESIRED_PLAN_VERSION } from "../../src/scratch-app/plan.ts";
 import {
   openArtifactBuildResults,
   recordArtifactBuildResult,
@@ -225,7 +226,7 @@ test("explicit scratch destroy carries a historical cached plan without retired 
           root: { path: AbsolutePath.make(f.instanceRoot) },
           key: "plan.bin",
           schema: Schema.Unknown,
-          version: 1,
+          version: SCRATCH_DESIRED_PLAN_VERSION,
           codec: "binary",
           mode: 0o600,
         });
@@ -279,5 +280,58 @@ test.each([false, true])("GC brackets scratch reaps without a task tree, orphan=
       retainedArtifacts: { snapshots: orphan ? "unknown-owner" : "none" },
     });
     expect(f.removed).toEqual(orphan ? [] : [`${f.id}-snapshot`]);
+  });
+});
+
+test("destroy recovers the applied plan when the desired cache misses an old frame", async () => {
+  // Given a v1 desired plan.bin (discarded) and a matching applied scratch plan with snapshots.
+  await withDestroyFixture({ desiredPlanVersion: 1, appliedPlan: true }, async (f) => {
+    // When explicit destroy completes.
+    await runDestroy(f);
+    // Then teardown owns the applied plan: snapshots go and events carry it.
+    expect(f.removed).toEqual([`${f.id}-snapshot`]);
+    expect(f.calls).toContain("destroy:true");
+    for (const _tag of ["pre-scratch-destroy", "post-scratch-destroy"])
+      expect(f.events.find((event) => event._tag === _tag)).toMatchObject({ plan: f.plan });
+    expect(f.events.find((event) => event._tag === "post-destroy")).toMatchObject({
+      evidence: "applied",
+      outcome: "destroyed",
+    });
+    expect(f.events.at(-1)).toMatchObject({
+      retainedArtifacts: { volumes: false, snapshots: "none" },
+    });
+  });
+});
+
+test("GC recovers the applied plan when the desired cache misses an old frame", async () => {
+  // Given a dead owner, discarded v1 desired cache, and applied plan receipts/snapshots.
+  await withDestroyFixture({ desiredPlanVersion: 1, appliedPlan: true }, async (f) => {
+    const result = await Effect.runPromise(
+      Effect.flatMap(ScratchAppService, (s) => s.gc({ prune: true })).pipe(Effect.provide(f.layer)),
+    );
+    expect(result).toMatchObject({ reaped: [f.id], errors: [] });
+    expect(f.removed).toEqual([`${f.id}-snapshot`]);
+    expect(f.events.at(-1)).toMatchObject({
+      reason: "gc",
+      plan: f.plan,
+      retainedArtifacts: { snapshots: "none" },
+    });
+  });
+});
+
+test("destroy falls back to orphan cleanup when desired and applied plans both miss", async () => {
+  // Given no desired cache and no applied plan.
+  await withDestroyFixture({ skipDesiredPlan: true, orphan: false }, async (f) => {
+    await runDestroy(f);
+    // Then planless orphan path keeps snapshot ownership unknown and still cleans the registry.
+    expect(f.removed).toEqual([]);
+    expect(f.calls).not.toContain("destroy:true");
+    expect(f.events.find((event) => event._tag === "post-destroy")).toMatchObject({
+      evidence: "orphans",
+    });
+    expect(f.events.at(-1)).toMatchObject({
+      retainedArtifacts: { snapshots: "unknown-owner" },
+    });
+    expect(f.entries.size).toBe(0);
   });
 });

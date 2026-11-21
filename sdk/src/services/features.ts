@@ -22,11 +22,12 @@ import type {
   CommandSpec,
   DatabaseConnection,
   DependencyPlan,
-  EndpointPlan,
+  EndpointDeclaration,
   EnvironmentValue,
   HealthcheckPlan,
   HostAliasPlan,
   ListenerAuthority,
+  MountPlan,
   PortablePath,
   ProviderCapabilities,
   ServiceConfig,
@@ -154,6 +155,10 @@ export interface ServiceBuildStepIntent {
  * realization/bind decision.
  */
 export interface ServiceFeatureContext {
+  /** Declare a prepared dependency tree. The planner appends the environment owner's user[:group] to prepare argv. */
+  addDependencyEnvironment(
+    intent: import("../schema/dependency-environment.ts").DependencyEnvironmentIntent,
+  ): void;
   /** The service's name in the resolved Landofile. */
   readonly serviceName: string;
   /** The resolved service type id (e.g. `"php"`, `"compose"`). */
@@ -172,6 +177,7 @@ export interface ServiceFeatureContext {
   readonly host?: ServiceTypeHostFacts | undefined;
   /** The service type's normalized config for this service. */
   readonly normalizedConfig: ServiceConfig;
+  readonly authoredMounts: ReadonlyArray<MountPlan>;
   readonly connection?: DatabaseConnection | undefined;
   /** This feature's decoded config (from its `FeatureRef.config`, via `schema`). */
   readonly config: Readonly<Record<string, unknown>>;
@@ -244,7 +250,7 @@ export interface ServiceFeatureDefinition {
   /** Declare listeners without applying features or acquiring runtime resources. */
   readonly declareEndpoints?: (
     ctx: ServiceEndpointContext,
-  ) => Effect.Effect<readonly EndpointPlan[], ServiceFeatureError>;
+  ) => Effect.Effect<readonly (typeof EndpointDeclaration.Encoded)[], ServiceFeatureError>;
   readonly apply: (ctx: ServiceFeatureContext) => Effect.Effect<void, ServiceFeatureError>;
 }
 

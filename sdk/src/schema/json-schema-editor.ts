@@ -43,6 +43,11 @@ export const getEditorJsonSchema = (name: "LandofileShape" | "GlobalConfig"): Js
   if (name !== "LandofileShape") return artifact;
   repairLandofileExtensions(artifact);
   const definitions = artifact.definitions;
+  if (Predicate.isObject(definitions)) {
+    for (const key of Object.keys(definitions)) {
+      if (/^(?:SecretRef|BoundText|RouteText)Authoring(?:_\d+)?$/u.test(key)) definitions[key] = { not: {} };
+    }
+  }
   if (Predicate.isObject(definitions) && Predicate.isObject(definitions.ToolingTaskInputAuthoring)) {
     constrainTaskStrings(definitions.ToolingTaskInputAuthoring);
   }

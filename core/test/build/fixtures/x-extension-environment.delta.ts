@@ -43,7 +43,7 @@ const toolingEnvironment = Schema.Record(
   Schema.Union([Schema.String, Schema.Number, Schema.Boolean]),
 );
 
-const fields = (password: Schema.Top, env: Schema.Top, serviceEnvironment: Schema.Top) =>
+export const environmentFields = (password: Schema.Top, env: Schema.Top, serviceEnvironment: Schema.Top) =>
   [
     Schema.Struct({ password, rootPassword: password, env, environment: serviceEnvironment }),
     Schema.Struct({
@@ -54,7 +54,11 @@ const fields = (password: Schema.Top, env: Schema.Top, serviceEnvironment: Schem
     }),
   ] as const;
 
-const environmentProjection = (schema: Schema.Top, mode: "bare" | "authoring" | "fragment") => {
+export const environmentProjection = (
+  schema: Schema.Top,
+  mode: "bare" | "authoring" | "fragment",
+  expressionSlot = historicalExpressionSlot,
+) => {
   const projected =
     mode === "bare"
       ? schema
@@ -63,7 +67,7 @@ const environmentProjection = (schema: Schema.Top, mode: "bare" | "authoring" | 
             partial: mode === "fragment",
             directives: mode === "fragment",
             // Separate memoization key for each projection, as in the production owners.
-            slotFor: (kind) => historicalExpressionSlot(kind).ast,
+            slotFor: (kind) => expressionSlot(kind).ast,
             rootExpression: false,
           }),
         );
@@ -72,8 +76,8 @@ const environmentProjection = (schema: Schema.Top, mode: "bare" | "authoring" | 
   );
 };
 
-const previous = fields(Schema.String, toolingEnvironment, oldEnvironment);
-const next = fields(value, newEnvironment, newEnvironment);
+const previous = environmentFields(Schema.String, toolingEnvironment, oldEnvironment);
+const next = environmentFields(value, newEnvironment, newEnvironment);
 export const environmentDeltas = (["bare", "authoring", "fragment"] as const).flatMap((mode) =>
   ([0, 1] as const).map((index) => ({
     mode,

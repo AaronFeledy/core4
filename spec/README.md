@@ -5,7 +5,7 @@
 
 This is an architecture-level specification: every public contract (services, schemas, errors, events, commands, manifest keys, and invariants) is named and its rules stated; shapes, bodies, and mechanics live in code and generated reference docs.
 
-The specification lives in twenty focused parts. Files are canonical; **cross-references use stable `§N` section numbers independent of file numbers**, so a reference such as §4.2 remains valid when parts move. Use the topic lookup to map a section to its part.
+The specification lives in twenty-one focused parts. Files are canonical; **cross-references use stable `§N` section numbers independent of file numbers**, so a reference such as §4.2 remains valid when parts move. Use the topic lookup to map a section to its part.
 
 The split is almost one section per file, with these principled merges and additions:
 
@@ -18,6 +18,7 @@ The split is almost one section per file, with these principled merges and addit
 - **§20** is filed as part 18 because the global app is a cross-cutting host-level app used by routing and shared services.
 - **§21** is filed as part 19 because scratch apps are scope-bounded peers to user and global apps with distinct identity and persistence rules.
 - **§22** is filed as part 20 because programmable execution composes existing environments, operations, and scopes without changing Lando's local-development focus.
+- **§23** is filed as part 21 because templates compose recipes, the template engine, source acquisition, scratch apps, and execution sessions into project generation.
 
 ---
 
@@ -45,6 +46,7 @@ The split is almost one section per file, with these principled merges and addit
 | 18 | [`18-global-app.md`](./18-global-app.md) | §20 | Defines global-app identity and Landofile, plugin contributions, lifecycle and CLI, networking, storage, proxy realization, errors, and non-goals. |
 | 19 | [`19-scratch-apps.md`](./19-scratch-apps.md) | §21 | Defines scratch identity and sources, scoped lifecycle, isolation, storage rewriting, routing, CLI and library access, cleanup, errors, and non-goals. |
 | 20 | [`20-programmable-execution.md`](./20-programmable-execution.md) | §22 | Defines opt-in execution sessions, borrowed/owned environments, programmatic configuration, admission, process handles, private artifacts, and local-development compatibility. |
+| 21 | [`21-templates-and-create.md`](./21-templates-and-create.md) | §23 | Defines templates, `lando create`, the shared source locator and reviewed index, questions, file rendering and merges, steps and step environments, composition, consent, run snapshots and rollback, and plugin extension points. |
 
 ---
 
@@ -78,7 +80,7 @@ If you are looking for a public surface or policy:
 | Event payload schema family | 03 | §11.2 |
 | Subscriber priority, selectors, and factories | 03 | §11.3 |
 | Standard lifecycle sequence, hot-path events, and subscriber failures | 03 | §11.4 + §11.5 + §11.6 |
-| Replaceable abstraction catalog | 04 | §4.2 |
+| Replaceable abstractions, including endpoint declaration and route filter contributions | 04 | §4.2 |
 | Implementation selection precedence | 04 | §4.3 |
 | Plugin manifest contribution registration | 04 | §4.4 |
 | Mandatory abstraction guarantees | 04 | §4.5 |
@@ -89,7 +91,7 @@ If you are looking for a public surface or policy:
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
 | Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
-| `AppPlan` and `ServicePlan` schema families | 05 | §5.5 |
+| `AppPlan` and `ServicePlan` schema families; applied-state v1–v10 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, and strict applied-map writers | 05 | §5.5 + §5.5.2 |
 | Runtime-owned helper creation mount, logical/applied-plan exclusion, non-root cache permissions, and file-log delivery | 05 + 06 + 12 | §5.5 + §6.2.1 + §6.4 + §6.14.3 + §12.1 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
@@ -103,7 +105,7 @@ If you are looking for a public surface or policy:
 | Canonical file-sync execution bundle and retained flat session history | 06 | §6.4 |
 | Current/recorded app names, retained data name, and planned/applied project-file policy in info | 06 | §6.10 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
-| Logical endpoint identity, mandatory endpoint normalization, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
+| Logical endpoint identity, authored endpoint shorthand and `kind` objects, plan and applied `kind` discriminators, mandatory endpoint normalization with route-declared numeric HTTP listeners, hostnames, routes, `RouteFilter.kind`, and cross-app priority | 06 | §6.6 |
 | Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, terminal dependency evidence, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
 | Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
 | Native-health observations and readiness configuration metadata, without last-proof inference | 06 | §6.10 |
@@ -111,7 +113,7 @@ If you are looking for a public surface or policy:
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
-| Provider-independent service/app endpoint declarations, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
+| Provider-independent service/app endpoint declarations (`EndpointDeclaration.Encoded`, strict decode once, tagged feature failures), effective numeric route declarations before application, finalization replay from original inputs, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
 | Read-only service-type resolution metadata in app-feature declaration and application | 06 | §6.11.4 |
 | Generated companion services: `addClonedService`, `AppFeatureCloneError`, shared and non-inherited parent facts, naming, provenance, selection, and removal | 06 | §6.11.4 + §6.11.5 |
 | In-build acquisition of pinned third-party artifacts by Lando-contributed build steps | 06 + 11 | §6.13.3 + §10.3.3 |
@@ -121,6 +123,7 @@ If you are looking for a public surface or policy:
 | Authored versus resolved service credentials and explicit credential claims | 06 | §6.11 + §6.12.4 |
 | Post-readiness database credential observation, the `LANDO_DATABASE_CREDENTIALS_REJECTED` and `LANDO_DATABASE_MISSING` warnings, and the `database-credentials` doctor section | 06 + 11 | §6.12.4 + §10.9.1 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
+| Stock Python project environment, mount precedence, and Django and FastAPI recipe contracts | 06 + 08 | §6.4 + §6.5 + §6.12.1 + §8.8.10 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
 | PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, and Mailpit sender diagnostics | 06 | §6.12.5 |
 | Primary listen-port authority, native-variable validation, reserved ports, and Lando-owned clients | 06 | §6.2 + §6.12.1 |
@@ -133,20 +136,22 @@ If you are looking for a public surface or policy:
 | Pathless console aliases, pipe selection, file followers, and PHP Apache/FPM routing | 06 | §6.10 + §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
 | Host-owned SDK and Effect modules for author code | 07 | §7.1.1 |
-| Six-layer Landofile merge | 07 | §7.2 |
+| Six-layer Landofile merge, endpoint alias and filter-kind identities, form and kind replacement, empty-list clearing, and effective-only route listener derivation | 07 | §7.2 |
 | Compilation carrier and evaluation stages | 07 | §7.2.1 |
 | External file loading, expressions, and templates | 07 | §7.3 |
 | Top-level Landofile and Compose-subset keys, per-folder data identity, and rename reconciliation | 07 | §7.4 |
-| Config translation contracts and diagnostics | 07 | §7.4.1 |
+| Config translation contracts, diagnostics, and Lando 3 proxy selector lowering | 07 | §7.4.1 |
 | Translation sources, `translate:` refresh, and drift | 07 | §7.4.2 |
 | Global config keys, root defaults, and pure path resolution | 07 | §7.5 + §7.5.1 |
 | Environment override naming | 07 | §7.6 |
 | Includes, fragments, lockfile, cache, and security | 07 | §7.7 |
+| Project host approval for host code and host exposure | 07 | §7.9 |
 | Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
-| Schema and generated-reference publication | 07 | §7.8 |
+| Schema and generated-reference publication, indexed endpoint diagnostics, resolved `kind` encoding, and shared provider-free route listener derivation | 07 | §7.8 |
 | Shared resolved-Landofile validation, typed lint rule registry, generated rule reference, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
-| Authored HTTP route binding, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
+| Authored HTTP route binding with route-declared listeners and TCP/UDP protocol conflicts, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
 | Node runtime inference versus package-manager selection, offline launchers, BYO toolchains, and project-file validation headlines | 06 + 07 + 12 + 13 | §6.11.0 + §6.12.1 + §6.13.3 + §7.8 + §12.1 + §13.1 |
+| Dependency environments: sharing, preparation, scheduling and cancellation, logs, storage and offline reuse, recipes, and scratch exclusion | 05 + 06 + 08 + 11 + 12 + 13 + 14 + 17 + 19 | §5.3 + §6.5.1 + §6.12.1 + §6.15 + §8.2 + §8.5 + §8.8.10 + §10.6 + §12.4 + §12.6 + §13.1 + §15.C + §15.E + §19.9 + §21.7 |
 | Canonical Landofile parser and serializer | 07 | §7.8.1 |
 | Command kinds and namespaces | 08 | §8.1 |
 | Top-level aliases and collision errors | 08 | §8.1.2 |
@@ -165,7 +170,7 @@ If you are looking for a public surface or policy:
 | Shared CLI cancellation tag, signal status, and cleanup failure preservation | 08 | §8.4.1 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
-| Bounded recipe post-init, prepared-script integrity, and public failure context | 08 | §8.8.8 |
+| Recipe messages and the removal of recipe-run actions | 08 | §8.8.8 |
 | Single preparation, immutable pre-publication review, and unattended init paths | 08 | §8.8.7 + §8.8.9 |
 | Init sources, source auth, and hoster init | 08 | §8.8.13 |
 | Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |
@@ -219,18 +224,20 @@ If you are looking for a public surface or policy:
 | `StateStore`, buckets, app/worker locks, consumers, and plugin access | 12 | §12.7 |
 | Source store: layout, integrity, publication and leases, offline reuse, and `meta:sources:gc` | 12 | §12.8 |
 | Test and contract-suite layers | 13 | §13.1 |
-| Schema, documentation, type, and PR gates | 13 | §13.2 + §13.4 |
+| Schema, documentation, type, and PR gates, including merge-gate job results and automatic reruns after runner loss | 13 | §13.2 + §13.4 |
 | Distribution forms, CI matrix, and release channels | 13 | §13.5 + §13.7 |
 | Startup and TTY renderer process-exit overhead gates | 13 | §13.6 |
 | Boundary gate policy | 13 | §13.8 |
 | Provider-neutral vocabulary, forbidden dependencies, acceptance, glossary | 14 | §15 |
 | Release pipeline, codegen ownership, and embedded assets | 15 | §17.1 + §17.3 |
-| Paired Tomcat image/config maintenance and offline catalog generation | 15 | §17.2 |
+| Paired Tomcat image/config maintenance, offline catalog generation, and automation failure reporting | 15 | §17.2 |
 | Signing, supply chain, update, and installation | 15 | §17.4 + §17.7 |
 | Release workflow and shipping criteria | 15 | §17.8 + §17.9 |
+| Unreleased endpoint/filter `kind` vocabulary, declaration wire form, and applied/cache bumps | 16 | §18.1 |
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |
 | Deprecation presentation, removal, and gates | 16 | §18.6 + §18.8 |
 | Executable-guide model, components, scenario runtime, and display vs. execute bindings | 17 | §19.2 + §19.4 + §19.5 |
+| Feature home guides, test placement, case files, and background scenario runs | 13 + 17 | §13.1 + §19.1 + §19.4 + §19.7 + §19.9 |
 | Transcripts, shared scenario compiler, source maps, and binding diagnostics | 17 | §19.6 + §19.7 + §19.10 |
 | Recipe scaffold README cells, skips, and single-mode library scenarios | 17 | §19.13 + §19.14 |
 | Guide acceptance and tabbed variants | 17 | §19.15 + §19.16 |
@@ -239,7 +246,7 @@ If you are looking for a public surface or policy:
 | Global restart/rebuild and router startup revalidation | 18 | §20.6.5 |
 | Selected global stop and its orphan fail-closed rule | 18 | §20.7 |
 | Global proxy realization, error family, and non-goals | 18 | §20.10 + §20.14 |
-| Scratch identity, roots, sources, and service | 19 | §21.2 + §21.5 |
+| Scratch identity, roots, sources, service, and applied-plan fallback at teardown | 19 | §21.2 + §21.5 |
 | Scratch lifecycle, isolation, storage, and routes | 19 | §21.6 + §21.9 |
 | Scratch CLI, registry, library mode, and errors | 19 | §21.10 + §21.14 |
 | Scratch non-goals | 19 | §21.15 |
@@ -253,6 +260,18 @@ If you are looking for a public surface or policy:
 | Effect composition and future integration boundary | 20 | §22.9 |
 | Local-development UX/performance and execution acceptance | 20 | §22.10 + §22.12 |
 | Execution tagged errors | 20 | §22.11 |
+| Templates versus recipes, and the `@lando/scaffold` seam | 21 | §23.1 |
+| `apps:create`, `--add`, and the `meta:templates:*` commands | 21 | §23.2 |
+| `SourceLocator` grammar and the reviewed source index | 21 | §23.3 |
+| Template manifest, questions, per-question flags, and secret answers | 21 | §23.4 + §23.5 |
+| Suffix rendering, never-overwrite rule, and declared merges | 21 | §23.6 |
+| Step kinds, the `command` step allowlist, and step environments | 21 | §23.7 + §23.8 |
+| Template Lando part: wrapped recipe, fragments, and include edits | 21 | §23.9 |
+| Template inheritance, nested templates, requirements, and instances | 21 | §23.10 |
+| Template consent, runnable digest, and trust reasons | 21 | §23.11 |
+| Run lifecycle, snapshots, resume, and rollback | 21 | §23.12 |
+| Template plugin contributions and persistence | 21 | §23.14 + §23.15 |
+| Template tagged errors and non-goals | 21 | §23.16 + §23.17 |
 
 ---
 
@@ -275,13 +294,13 @@ Public surfaces MUST have one canonical registry. Narrative sections may explain
 
 Canonical owners:
 
-- Built-in commands, aliases, flags, args, bootstrap levels, completion policies, recipe post-init eligibility, and command docs metadata: the `LandoCommandSpec` registry (§8.2, §8.3).
+- Built-in commands, aliases, flags, args, bootstrap levels, completion policies, template-step eligibility, and command docs metadata: the `LandoCommandSpec` registry (§8.2, §8.3).
 - Plugin command identity, aliases, listing metadata, and MCP eligibility: manifest command descriptors (§9.4); plugin command inputs and execution: the command module's `ExecutableCommandSpec` (§8.3, §9.7).
 - Public schemas, event payload schemas, tagged errors, and plugin-facing contract metadata: the `@lando/sdk` schema, error, and event registries (§7.8, §13.2).
 - Core service tags and public service exports: §3.4 plus `@lando/core/services` (§16.2).
 - Secret and PII redaction: `@lando/sdk/secrets` owns the value layer, pattern-class catalog, `secrets`/`telemetry`/`transcript` profiles, and `[redacted]` sentinel, surfaced through `RedactionService` (§3.7, §3.4). This invariant is non-replaceable, has no `redactors:` plugin surface (§4.2), composes into every sensitive emitter, and is protected by the §13.4 boundary gate.
 - Package entry points and public library exports: `package.json#exports` plus the API report gate (§2.7, §16.2, §13.4).
-- Recipe action types and the `postInit.command` allowlist: generated from command metadata (§8.8.8).
+- Template step kinds and the `command` step allowlist: generated from command metadata (§23.7).
 - Acceptance checklist items: stable ids mapped to tests and public surfaces (§15, §17.9).
 - Deprecation notices: schema annotations, contract fields, manifest fields, or TSDoc tags per §18.5, merged by `DeprecationService` (§18.3) and published as `dist/schemas/deprecation-notice.json` (§18.2).
 - Executable-guide vocabulary: prop schemas, `GuideFrontmatter`, `ScenarioProps`, `MatcherSchema`, `Transcript`/`TranscriptFrame`, `TabAxis`/`TabAxisValue`, `TabsProps`/`TabProps`, and redactions belong to `@lando/sdk/docs/components` and `@lando/sdk/docs/redactions` (§19.3, §19.6, §19.16). JSX/Astro runtime implementations and Starlight integration belong to `@lando/core/docs/components`; `ScenarioContext` belongs to `@lando/core/testing` (§19.4, §16.8).

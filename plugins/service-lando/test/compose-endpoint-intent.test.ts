@@ -44,7 +44,7 @@ describe("compose endpoint intent", () => {
     // Then
     expect(plan.endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         protocol: "tcp",
         port: 8080,
         name: "web",
@@ -94,7 +94,7 @@ describe("compose endpoint intent", () => {
 
     expect(plan.endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         protocol: "tcp",
         port: 80,
         publication: { bindAddress: "127.0.0.1", hostPort: 38080 },
@@ -107,16 +107,16 @@ describe("compose endpoint intent", () => {
       type: "compose",
       image: "alpine:3",
       ports: ["38080:80"],
-      endpoints: [{ _tag: "internal", name: "web", protocol: "http", port: 80 }],
+      endpoints: [{ kind: "internal", name: "web", protocol: "http", port: 80 }],
     });
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", name: "web", protocol: "http", port: 80 }]);
+    expect(plan.endpoints).toEqual([{ kind: "internal", name: "web", protocol: "http", port: 80 }]);
   });
 
   test("leaves the host port unset for a container-only port", async () => {
     const plan = await planService({ type: "compose", image: "alpine:3", ports: ["8080"] });
 
-    expect(plan.endpoints).toEqual([{ _tag: "published", protocol: "tcp", port: 8080, publication: {} }]);
+    expect(plan.endpoints).toEqual([{ kind: "published", protocol: "tcp", port: 8080, publication: {} }]);
     expect(plan.endpoints[0]).not.toHaveProperty("name");
   });
 
@@ -125,7 +125,7 @@ describe("compose endpoint intent", () => {
 
     expect(plan.endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         protocol: "tcp",
         port: 80,
         publication: { bindAddress: "127.0.0.1" },
@@ -138,7 +138,7 @@ describe("compose endpoint intent", () => {
 
     expect(plan.endpoints).toEqual([
       {
-        _tag: "published",
+        kind: "published",
         protocol: "tcp",
         port: 80,
         publication: { bindAddress: "::1" },

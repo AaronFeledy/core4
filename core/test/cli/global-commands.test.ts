@@ -235,7 +235,7 @@ const fakeServiceType = makeLegacyServiceTypeFake({
         },
       ],
       endpoints: [
-        { _tag: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
+        { kind: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
       ],
       routes: [],
       dependsOn:
@@ -2108,7 +2108,8 @@ describe("meta:global command effects", () => {
       );
       await Effect.runPromise(globalConfig({ subcommand: "validate" }).pipe(Effect.provide(harness.layer)));
       const result = await Effect.runPromise(globalConfig().pipe(Effect.provide(harness.layer)));
-      expect(result.landofile?.services).not.toHaveProperty("mail");
+      if (!("landofile" in result)) throw new Error("expected full global config view");
+      expect(result.landofile.services).not.toHaveProperty("mail");
       expect(result.landofile?.services?.[ServiceName.make("proxy")]?.environment?.KEPT).toBe("yes");
       expect(await readFile(join(harness.dataRoot, "global", ".lando.yml"), "utf8")).toContain(
         "NOT_SET_FOR_DISABLED_SERVICE",
@@ -3371,11 +3372,11 @@ describe("meta:global command effects", () => {
 
       const result = await Effect.runPromise(globalConfig().pipe(Effect.provide(harness.layer)));
 
+      if (!("landofile" in result)) throw new Error("expected full global config view");
       expect(result.materialized).toBe(true);
       expect(result.app).toBe("global");
       expect(result.distLandofile).toBe(distPath(harness.dataRoot));
       expect(result.userLandofile).toBe(join(harness.dataRoot, "global", ".lando.yml"));
-      if (result.landofile === undefined) throw new Error("expected landofile");
       expect(result.landofile.services).toHaveProperty("proxy");
     });
   });
@@ -3389,7 +3390,7 @@ describe("meta:global command effects", () => {
 
       const result = await Effect.runPromise(globalConfig().pipe(Effect.provide(harness.layer)));
 
-      expect(result.userLandofile).toBe(join(root, ".lando.ts"));
+      expect(result).toMatchObject({ userLandofile: join(root, ".lando.ts") });
     });
   });
 
@@ -3410,7 +3411,8 @@ describe("meta:global command effects", () => {
       const result = await Effect.runPromise(globalConfig().pipe(Effect.provide(harness.layer)));
       const loaded = await Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(harness.layer)));
       // Then display and planning both preserve the generated map and authored marker.
-      expect(result.landofile?.services?.[ServiceName.make("proxy")]?.environment).toEqual({
+      if (!("landofile" in result)) throw new Error("expected full global config view");
+      expect(result.landofile.services?.[ServiceName.make("proxy")]?.environment).toEqual({
         KEEP: "generated",
         ISSUE1250: "authored",
       });
@@ -3438,7 +3440,7 @@ describe("meta:global command effects", () => {
       kind: "arg",
       reason: "option",
       remediation:
-        'Did you mean "validate"? subcommand takes one of: view, set, unset, edit, validate, describe.',
+        'Did you mean "validate"? subcommand takes one of: view, get, set, unset, edit, validate, describe.',
     });
   });
 

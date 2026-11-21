@@ -20,15 +20,17 @@ import {
 import { evolveHistoricalComposeKnobValues } from "./x-extension-compose-knob-values-proof.ts";
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
+import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
-import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
-import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
+import { evolveHistoricalProbePort, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
+import { SERVICE_KEY_PATTERN, evolveHistoricalServiceKeys } from "./x-extension-service-keys-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
 import { evolveHistoricalSwarmReservations } from "./x-extension-swarm-reservations-proof.ts";
@@ -158,7 +160,7 @@ test.each([
   const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
   const repaired = repairClosedExtension(withIntentionalChangesSinceCapture(captured.landofile));
   if (!isJsonObject(repaired)) throw new TypeError("Missing repaired Landofile");
-  const expected = evolveHistoricalConsolePort(
+  const repairedUser = evolveHistoricalConsolePort(
     evolveHistoricalToolingSensitivity(
       evolveHistoricalAppMountAcceleration(
         evolveHistoricalToolingShorthand(
@@ -168,13 +170,15 @@ test.each([
                 evolveHistoricalTimestamps(
                   evolveHistoricalContainerUser(
                     evolveHistoricalProjectUser(
-                      evolveHistoricalReadiness(
-                        evolveHistoricalShorthand(
-                          evolveHistoricalNetworks(
-                            evolveHistoricalNativeInit(
-                              evolveHistoricalSqliteTarget(normalizeJsonSchema(repaired)),
+                      evolveHistoricalProbePort(
+                        evolveHistoricalReadiness(
+                          evolveHistoricalShorthand(
+                            evolveHistoricalNetworks(
+                              evolveHistoricalNativeInit(
+                                evolveHistoricalSqliteTarget(normalizeJsonSchema(repaired)),
+                              ),
+                              "bare",
                             ),
-                            "bare",
                           ),
                         ),
                       ),
@@ -192,28 +196,29 @@ test.each([
       "bare",
     ),
   );
-  const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
-  expect(
-    jsonEquals(
-      evolveHistoricalSchedule(
-        evolveHistoricalServiceCreds(
-          evolveHistoricalComposeKnobValues(
-            evolveHistoricalSwarmReservations(
-              evolveHistoricalToolingVars(
-                evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected)),
-              ),
-            ),
+  const historical = evolveHistoricalSchedule(
+    evolveHistoricalServiceCreds(
+      evolveHistoricalComposeKnobValues(
+        evolveHistoricalSwarmReservations(
+          evolveHistoricalToolingVars(
+            evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(repairedUser)),
           ),
         ),
       ),
-      current,
     ),
-  ).toBe(true);
+  );
+  const expected = evolveHistoricalRouteText(
+    evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historical, "bare")),
+  );
+  const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
+  expect(jsonEquals(expected, current)).toBe(true);
   const properties = current.properties;
   if (!isJsonObject(properties)) throw new TypeError("Missing properties");
   const services = properties.services;
   if (!isJsonObject(services)) throw new TypeError("Missing services");
-  const service = services.additionalProperties;
+  const patterns = services.patternProperties;
+  if (!isJsonObject(patterns)) throw new TypeError("Missing service name patterns");
+  const service = patterns[SERVICE_KEY_PATTERN];
   if (!isJsonObject(service)) throw new TypeError("Missing service");
   const fields = service.properties;
   if (!isJsonObject(fields)) throw new TypeError("Missing fields");
@@ -224,7 +229,10 @@ test.each([
       ...properties,
       services: {
         ...services,
-        additionalProperties: { ...service, properties: { ...fields, user } },
+        patternProperties: {
+          ...patterns,
+          [SERVICE_KEY_PATTERN]: { ...service, properties: { ...fields, user } },
+        },
       },
     },
   };

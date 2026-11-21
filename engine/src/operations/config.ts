@@ -15,7 +15,7 @@ import { Effect, Result, Schema } from "effect";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { configSourceStack, decodeConfigStack, validateConfigCandidate } from "../config/config-repair.ts";
 import { recordConfigWarning } from "../config/config-warnings.ts";
-import { getAtPath, parsePathSegments } from "../config-write/dot-path";
+import { getAtPath } from "../config-write/dot-path";
 import type { EditorRunner } from "../config-write/editor.ts";
 import {
   ConfigDescribeResultSchema,
@@ -25,6 +25,7 @@ import {
 import { runEditVerb, runSetVerb, runUnsetVerb } from "../config-write/verbs";
 import type { ValueType } from "../config-write/write-core";
 import { GlobalConfigSources } from "../services/config.ts";
+import { shellArg } from "../services/shell-quote.ts";
 
 // allow: SIZE_OK — this behavior-preserving extraction keeps one config operation on one engine seam.
 
@@ -186,11 +187,6 @@ const installationDocument = (path: string) => ({
 const HOST_EVENTS_HAND_EDIT =
   "hostEvents can only be changed by editing config.yml. Use `lando config edit` or edit the file itself.";
 
-const isHostEventsConfigPath = (key: string): boolean => {
-  const segments = parsePathSegments(key);
-  return segments?.[0]?.kind === "key" && segments[0].key === "hostEvents";
-};
-
 const hostEventsWriteError = (key: string, file: string): LandofileWriteValidationError =>
   new LandofileWriteValidationError({
     message: `Cannot change ${key} through \`lando config\`. ${HOST_EVENTS_HAND_EDIT}`,
@@ -209,9 +205,7 @@ const metaConfigSet = Effect.fnUntraced(function* (
 > {
   const key = options.key ?? options.path;
   const raw = options.value;
-  if (key !== undefined && isHostEventsConfigPath(key)) {
-    return yield* Effect.fail(hostEventsWriteError(key, resolveConfigWritePath(options)));
-  }
+  const path = resolveConfigWritePath(options);
   if (key === undefined || raw === undefined) {
     return yield* Effect.fail(
       new LandofileWriteValidationError({
@@ -222,23 +216,20 @@ const metaConfigSet = Effect.fnUntraced(function* (
       }),
     );
   }
-  const path = resolveConfigWritePath(options);
-  if (isAppOnlyConfigKey(key)) {
-    const first = parsePathSegments(key)?.[0];
-    const root = first?.kind === "key" ? first.key : key;
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
+  const outcome = yield* runSetVerb({
+    ...installationDocument(path),
+    key,
+    checkPath: ([root]) => {
+      if (root === "hostEvents") return hostEventsWriteError(key, path);
+      if (typeof root !== "string" || !isAppOnlyConfigKey(root)) return undefined;
+      return new LandofileWriteValidationError({
         message: `Cannot set ${key} in config.yml.`,
         file: path,
         path: key,
         issues: [validationIssue([root], `\`${root}\` is a Landofile key, not a config.yml key.`)],
-        remediation: `Run \`lando app:config set ${key} <value>\` to change this app's Landofile.`,
-      }),
-    );
-  }
-  const outcome = yield* runSetVerb({
-    ...installationDocument(path),
-    key,
+        remediation: `Run \`lando app:config set ${shellArg(key)} <value>\` to change this app's Landofile.`,
+      });
+    },
     raw,
     type: options.type,
     dryRun: options.dryRun === true,
@@ -262,9 +253,6 @@ const metaConfigUnset = Effect.fnUntraced(function* (
   GlobalConfigSources
 > {
   const key = options.key ?? options.path;
-  if (key !== undefined && isHostEventsConfigPath(key)) {
-    return yield* Effect.fail(hostEventsWriteError(key, resolveConfigWritePath(options)));
-  }
   if (key === undefined) {
     return yield* Effect.fail(
       new LandofileWriteValidationError({
@@ -279,6 +267,7 @@ const metaConfigUnset = Effect.fnUntraced(function* (
   const outcome = yield* runUnsetVerb({
     ...installationDocument(path),
     key,
+    checkPath: ([root]) => (root === "hostEvents" ? hostEventsWriteError(key, path) : undefined),
     dryRun: options.dryRun === true,
   });
   return {

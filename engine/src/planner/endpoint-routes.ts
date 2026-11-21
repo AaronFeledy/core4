@@ -2,6 +2,7 @@ import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
+  type EndpointPlan,
   type HttpSchemePreference,
   type RoutePlan,
   ServiceName,
@@ -12,6 +13,28 @@ import {
   validationIssue,
 } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
+
+export const endpointsForRoutes = (endpoints: readonly EndpointPlan[]) => {
+  let byPort: Map<number, EndpointPlan[]> | undefined;
+  return ({ endpoint }: NormalizedRoute): readonly EndpointPlan[] | undefined => {
+    if (typeof endpoint !== "number") return undefined;
+    if (byPort === undefined) {
+      byPort = new Map();
+      for (const facet of endpoints) {
+        if (facet.protocol === "unix") continue;
+        const existing = byPort.get(facet.port);
+        if (existing === undefined) byPort.set(facet.port, [facet]);
+        else existing.push(facet);
+      }
+    }
+    return byPort.get(endpoint) ?? [];
+  };
+};
+
+type RouteBindingEvidence = {
+  readonly conflict: ValidationIssue | undefined;
+  readonly numericFacets: readonly EndpointPlan[] | undefined;
+};
 
 /**
  * The schemes one authored route publishes. `both` is an authoring shortcut for
@@ -65,11 +88,13 @@ export const bindRoute = (
   endpoints: ServicePlan["endpoints"],
   route: NormalizedRoute,
   generatedCertificate: boolean,
+  evidence?: RouteBindingEvidence,
 ): Result.Result<readonly RoutePlan[], ValidationIssue> => {
+  if (evidence?.conflict !== undefined) return Result.fail(evidence.conflict);
   const plans: RoutePlan[] = [];
   for (const scheme of routeSchemes(route.scheme)) {
     const selection = selectHttpEndpoint(
-      endpoints,
+      evidence?.numericFacets ?? endpoints,
       route.endpoint,
       routeListenerPreference(scheme, generatedCertificate),
     );
@@ -106,14 +131,17 @@ export const resolveRoute = Effect.fnUntraced(function* (
   endpoints: ServicePlan["endpoints"],
   route: NormalizedRoute,
   generatedCertificate: boolean,
+  evidence?: RouteBindingEvidence,
 ): Effect.fn.Return<readonly RoutePlan[], LandofileValidationError> {
-  return yield* Effect.fromResult(bindRoute(serviceName, endpoints, route, generatedCertificate)).pipe(
+  return yield* Effect.fromResult(
+    bindRoute(serviceName, endpoints, route, generatedCertificate, evidence),
+  ).pipe(
     mapFailures(
       (issue) =>
         new LandofileValidationError({
           message: issue.message,
           remediation: issue.suggestion ?? "Declare or select an HTTP endpoint.",
-          file: route.source?.file ?? `${appRoot}/.lando.yml`,
+          file: route.source?.file ?? appRoot,
           issues: [issue],
         }),
     ),

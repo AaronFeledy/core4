@@ -96,7 +96,7 @@ test.each([
     resolution: resolution({
       normalizedConfig: {
         type: "php:8.3",
-        endpoints: [{ _tag: "internal", protocol: "http", port: 80, primary: true }],
+        endpoints: [{ kind: "internal", protocol: "http", port: 80, primary: true }],
       },
     }),
   },
@@ -145,8 +145,8 @@ test("demands the certificate for a route naming an authored HTTPS endpoint on t
     normalizedConfig: {
       type: "php:8.3",
       endpoints: [
-        { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
-        { _tag: "internal", protocol: "https", port: 443, name: "secure" },
+        { kind: "internal", protocol: "http", port: 80, name: "web", primary: true },
+        { kind: "internal", protocol: "https", port: 443, name: "secure" },
       ],
     },
   });
@@ -163,8 +163,8 @@ test("keeps the generated association for an authored endpoint that names its li
     normalizedConfig: {
       type: "php:8.3",
       endpoints: [
-        { _tag: "internal", protocol: "https", port: 443, name: "web" },
-        { _tag: "internal", protocol: "http", port: 80, primary: true },
+        { kind: "internal", protocol: "https", port: 443, name: "web" },
+        { kind: "internal", protocol: "http", port: 80, primary: true },
       ],
     },
   });
@@ -231,13 +231,13 @@ test("an HTTP route to an HTTPS listener still verifies the backend", () => {
 test("routes differing only in backend TLS intent conflict instead of deduping", async () => {
   // Given
   const accumulator = makeRouteAccumulator();
-  await Effect.runPromise(accumulator.add(plan(), { key: "routes[0]" }));
+  await Effect.runPromise(accumulator.add(plan(), { path: ["routes", 0] }));
   // When
   const result = await Effect.runPromise(
     Effect.result(
       accumulator.add(
         plan({ backend: { ...plan().backend, tls: { caId: "other", serverName: "web.app.internal" } } }),
-        { key: "routes[1]" },
+        { path: ["routes", 1] },
       ),
     ),
   );

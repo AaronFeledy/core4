@@ -20,7 +20,7 @@ const plan = planWith(
     web: {
       healthcheck: { ...native, target: listener },
       readiness: { ...native, command: ["strong"], target: listener },
-      endpoints: [{ _tag: "internal", port: 80, protocol: "tcp" }],
+      endpoints: [{ kind: "internal", port: 80, protocol: "tcp" }],
     },
   },
 );

@@ -94,13 +94,31 @@ const appConfigSuccessValues = new Map<string, AppConfigResult>([
   ],
   ["app:config:validate", { subcommand: "validate", filePath: "/demo/.lando.yml", valid: true, issues: [] }],
 ]);
-// GlobalConfigResultSchema still has only optional fields, so {} remains valid.
-const globalConfigResultCommandIds = new Set<string>([
-  "meta:global:config",
-  "meta:global:config:edit",
-  "meta:global:config:set",
-  "meta:global:config:unset",
-  "meta:global:config:validate",
+const globalConfigSuccessValues = new Map<string, unknown>([
+  ["meta:global:config", { source: "global", path: "name", value: "global" }],
+  [
+    "meta:global:config:edit",
+    { subcommand: "edit", valid: true, changed: false, dryRun: false, filePath: "/global/.lando.yml" },
+  ],
+  [
+    "meta:global:config:set",
+    {
+      subcommand: "set",
+      key: "name",
+      value: "global",
+      changed: true,
+      dryRun: false,
+      filePath: "/global/.lando.yml",
+    },
+  ],
+  [
+    "meta:global:config:unset",
+    { subcommand: "unset", key: "x-note", changed: true, dryRun: false, filePath: "/global/.lando.yml" },
+  ],
+  [
+    "meta:global:config:validate",
+    { subcommand: "validate", valid: true, issues: [], filePath: "/global/.lando.yml" },
+  ],
 ]);
 
 // Large nested policy results exhaust the YAML-safe arbitrary filter; use valid no-op previews.
@@ -147,7 +165,8 @@ const isWellFormedDeep = (value: unknown): boolean => {
 const successValueFor = (spec: LandoCommandSpec): unknown => {
   const appConfigValue = appConfigSuccessValues.get(spec.id);
   if (appConfigValue !== undefined) return appConfigValue;
-  if (globalConfigResultCommandIds.has(spec.id)) return {};
+  const globalConfigValue = globalConfigSuccessValues.get(spec.id);
+  if (globalConfigValue !== undefined) return globalConfigValue;
   const globalPolicyValue = globalPolicySuccessValues.get(spec.id);
   if (globalPolicyValue !== undefined) return globalPolicyValue;
   if (spec.id === "app:share") return tunnelSessionSample;

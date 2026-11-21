@@ -1,6 +1,6 @@
 # Lando v4: Scratch Apps
 
-> **Part 19 of 20** · [Index](./README.md)
+> **Part 19 of 21** · [Index](./README.md)
 > **Read next:** [20 Programmable Execution](./20-programmable-execution.md)
 
 **Scratch apps** are short-lived Lando apps whose resources and materialized state are owned by an Effect `Scope`. They support isolated forks of existing apps, recipe-backed temporary stacks, and library-hosted test environments.
@@ -64,7 +64,7 @@ The entire scratch tree MUST be excluded from cwd discovery. After resource dest
 
 #### 21.4.2 Scratch mode
 
-`apps:scratch:start --from <recipe-ref>` materializes through the standard recipe pipeline (§8.8). Recipe `postInit:` actions MUST NOT run unless `--run-post-init` is set.
+`apps:scratch:start --from <recipe-ref>` materializes through the standard recipe pipeline (§8.8). `<recipe-ref>` is a `SourceLocator` (§23.3).
 
 Recipe resolution, prompt precedence, validation, fragments, and assets follow §8.8. Missing non-interactive answers fail through the recipe error contract and remove partial state. The generated Landofile uses the scratch id. Scratch mode defaults to `baked` isolation (§21.7).
 
@@ -76,6 +76,8 @@ Copy the workspace under fork containment/exclusion rules; default isolation is 
 
 Retain the `LoadScopedLandofile` and managed-root provenance with the handle/plan for later operations and cleanup; never rediscover copied configuration. Registry/listing summaries contain kind, root identity, and digest, not authored input or resolved secrets. Existing applied-plan persistence and orphan recovery remain authoritative.
 
+A `config` acquisition MAY name a `workspace` mount: one authorized host directory bound read-write at the primary service's working directory in place of a copy. Template step environments use it for the destination (§23.8). Inside a session it requires `policy.mountRoots` admission (§22.6.1).
+
 ### 21.5 `ScratchAppService` core service
 
 `ScratchAppService` owns scope-bound acquisition, lookup, listing, lifecycle operations, and garbage collection. `ScratchAcquireInput` names the source, isolation mode, optional cwd mount, global-storage policy, name, recipe answers, copy excludes, and foreground or detached lifetime. `ScratchHandle` carries the scratch `AppRef`, plan, source, isolation mode, and creation time.
@@ -86,6 +88,7 @@ Required behavior:
 - `acquire` binds the root, caches, host-proxy socket, routes, containers, and volumes to the caller's `Scope`. Finalization MUST destroy resources before unlinking state.
 - CLI foreground acquisition uses the command scope so interruption reaches finalization.
 - Destroy is idempotent after success; an unresolved id raises `ScratchUnknownIdError`.
+- On a desired-plan cache miss, destroy and garbage collection MUST resolve the matching applied scratch plan before falling back to planless orphan cleanup (§12.1). Unreadable ownership evidence MUST NOT be treated as absence (§5.3.1).
 - Operations for one id are serialized across callers and processes by one lifecycle lock: the app mutation lock of kind `scratch` keyed by the id and its canonical instance root `<userDataRoot>/scratch/<id>/`, also for passthrough forks whose plan root is the source app. Acquisition holds it from the registry `acquire` write through `mark-running`, covering its own failure cleanup; explicit destroy and stop, `apps:poweroff`, foreground scope-close cleanup, and each GC reap acquire it. Scope-close cleanup reacquires the lock instead of inheriting the acquisition's hold. The lock is taken before any global or app mutation lock.
 - Failures are tagged as listed in §21.14.
 
@@ -134,6 +137,8 @@ Acquisition wraps materialization and start; scratch start wraps the standard Ap
 
 `--mount-cwd` is sugar for `--isolate=cwd`; in fork mode it MUST warn that it overrides the safer `full` default. Combining it with an explicit incompatible isolation mode fails with `ScratchIsolationConflictError`. `--isolate=passthrough` is reserved and unsupported, raising `ScratchIsolationUnsupportedError`. Copy exclusions apply only to fork materialization.
 
+Scratch planning MUST skip dependency-environment materialization before deriving mount isolation: no generated store, activation defaults, or prepare job. This applies to all isolation modes, including passthrough (§6.5.1).
+
 ### 21.8 Storage shadowing
 
 At plan time, scratch storage obeys this rewrite:
@@ -157,7 +162,7 @@ The `scope: global` to `scope: app` rewrite is mandatory unless `--share-global-
 
 #### 21.9.2 Route auto-suffix
 
-`ScratchHostnameSuffix` is the plan-time `RoutePlan` filter for scratch routes (§6.6). Unless overridden, it rewrites each route hostname with the scratch id before the domain, including nested and wildcard hostnames. The filter MUST be idempotent.
+`ScratchHostnameSuffix` is the plan-time hostname transform for scratch routes, separate from `RouteFilter` middleware. It runs after endpoint derivation and binding (§6.6). Unless overridden, it rewrites each route hostname with the scratch id before the domain, including nested and wildcard hostnames. The transform MUST be idempotent. Activation binds public URL descriptors against this suffixed publication table and the router's current authorities. For a scratch that bound URLs, route setup or publication failure is fatal and retains the original cause and remediation. Only successful publication can fail with `authority-changed` if its authorities disagree with the prepared proof.
 
 `--no-hostname-suffix` disables the filter. Repeated `--hostname` values preserve selected hostnames and MAY deliberately collide with another app.
 
@@ -184,7 +189,7 @@ Every command uses `scratch` bootstrap. `apps:list --include-scratch` adds runni
 
 #### 21.10.1 `apps:scratch:start` flags
 
-Behavior-defining flags are `--fork`, `--from`, `--source`, `--isolate=full|baked|cwd`, `--mount-cwd`, `--share-global-storage`, `--no-hostname-suffix`, `--hostname`, `--name`, `--exclude`, `--no-local-overrides`, recipe-answer and interaction flags, `--run-post-init`, `--detach`, `--keep-volumes`, and `--keep-on-failure`.
+Behavior-defining flags are `--fork`, `--from`, `--source`, `--isolate=full|baked|cwd`, `--mount-cwd`, `--share-global-storage`, `--no-hostname-suffix`, `--hostname`, `--name`, `--exclude`, `--no-local-overrides`, recipe-answer and interaction flags, `--detach`, `--keep-volumes`, and `--keep-on-failure`.
 
 Foreground mode owns the scratch in the command scope and blocks until exit or interruption. Detached mode records the identity, source, isolation, policy, owner, and start state in `<userDataRoot>/scratch/registry.bin` and returns. `--keep-volumes` applies to foreground and explicit stop cleanup but MUST NOT prevent `apps:poweroff` cleanup. `--keep-on-failure` retains failed state for explicit inspection and destruction.
 
@@ -233,6 +238,7 @@ Every error is tagged and includes remediation:
 - `ScratchRecipeAnswersError`
 - `ScratchRegistryCorruptError`
 - `ScratchRunTargetError`
+- `RouteUrlBindingError` with `no-route`, `router-unsupported`, or `authority-changed` for public URL binding failures. `retained-consumer` is specific to selected user-app relaunch. An unavailable router is still a `ProxySetupError` wrapped in `ScratchAppError`, not a binding error.
 
 `ScratchRecipeAnswersError` wraps `RecipeMissingAnswerError` or `RecipeOutputValidationError` with scratch identity. This surface also uses the shared `CommandAliasConflictError` tag (§8.1.2). Materialization failures remove partial roots. Corrupt registries are quarantined and recovery invokes label-driven GC. Finalizer failures are logged even when cleanup remains best-effort.
 

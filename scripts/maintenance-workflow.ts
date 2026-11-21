@@ -1,5 +1,5 @@
-import { NEEDS_FAILED_OR_TIMED_OUT, renderFailureIssueStep } from "./_failure-issue-workflow.ts";
-import { RUNTIME_BUNDLE_ACTION_PINS } from "./runtime-bundle-supply-chain.ts";
+import { renderFailureIssueStep } from "./_failure-issue-workflow.ts";
+import { pinnedAction } from "./action-pins.ts";
 
 type MaintenanceWorkflow = {
   readonly name: string;
@@ -39,7 +39,6 @@ concurrency:
 permissions:
   actions: write
   contents: write
-  issues: write
   pull-requests: write
 jobs:
   bump:
@@ -47,11 +46,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun}
+      - uses: ${pinnedAction("oven-sh/setup-bun")}
         with:
           bun-version-file: .bun-version
       - run: bun install --frozen-lockfile
@@ -113,13 +112,16 @@ ${indentScript(policy.proposal.checkAndReport)}
           gh workflow run ci.yml --ref "$BRANCH"
   report-failure:
     needs: [bump]
-    if: \${{ !cancelled() && ${NEEDS_FAILED_OR_TIMED_OUT} }}
+    if: \${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      issues: write
     env:
       GH_TOKEN: \${{ github.token }}
       GH_REPO: \${{ github.repository }}
       RUN_URL: \${{ github.server_url }}/\${{ github.repository }}/actions/runs/\${{ github.run_id }}
+      NEEDS_JSON: \${{ toJSON(needs) }}
     steps:
 ${renderFailureIssueStep({ title: `${policy.name} automation failure` })}
 `;

@@ -113,7 +113,7 @@ const servicePlan = (name: "node" | "postgres" | "memcached" | "valkey"): Servic
     name === "node"
       ? [
           {
-            _tag: "published",
+            kind: "published",
             port: 3000,
             protocol: "http",
             name: "http",
@@ -123,7 +123,7 @@ const servicePlan = (name: "node" | "postgres" | "memcached" | "valkey"): Servic
       : name === "postgres"
         ? [
             {
-              _tag: "published",
+              kind: "published",
               port: 5432,
               protocol: "tcp",
               name: "database",
@@ -133,7 +133,7 @@ const servicePlan = (name: "node" | "postgres" | "memcached" | "valkey"): Servic
         : name === "memcached"
           ? [
               {
-                _tag: "published",
+                kind: "published",
                 port: 11211,
                 protocol: "tcp",
                 name: "cache",
@@ -142,7 +142,7 @@ const servicePlan = (name: "node" | "postgres" | "memcached" | "valkey"): Servic
             ]
           : [
               {
-                _tag: "published",
+                kind: "published",
                 port: 6379,
                 protocol: "tcp",
                 name: "valkey",
@@ -286,7 +286,7 @@ const makeInfoLayer = (
             bindings:
               state === "running"
                 ? (plannedApp.services[target.service]?.endpoints ?? []).flatMap((endpoint) =>
-                    endpoint._tag === "published" && endpoint.publication.hostPort !== undefined
+                    endpoint.kind === "published" && endpoint.publication.hostPort !== undefined
                       ? [
                           {
                             port: endpoint.port,
@@ -534,7 +534,7 @@ describe("lando info", () => {
         ...plan.services,
         [node.name]: {
           ...node,
-          endpoints: [{ _tag: "internal", port: 3000, protocol: "http", name: "http" }],
+          endpoints: [{ kind: "internal", port: 3000, protocol: "http", name: "http" }],
         },
       },
       routes: [

@@ -1,6 +1,6 @@
 # Lando v4: Mission, Tenets, and Non-Goals
 
-> **Part 1 of 20** · [Index](./README.md)
+> **Part 1 of 21** · [Index](./README.md)
 > **Read next:** [02 Toolchain](./02-toolchain.md)
 
 This part states the mission, non-negotiable tenets, core boundaries, default distribution, non-goals, and open decisions. Implementation status and release bars live only in the [ROADMAP](./ROADMAP.md); release stages never put specified work out of scope.
@@ -58,7 +58,7 @@ Core owns:
 - Opt-in composition of environments, operations, and explicit lifetime ownership (§22).
 - Global-app identity, lifecycle, CLI, plugin enablement, and required-service integration; plugins own contributed services (§20).
 - Scratch-app identity, scoped lifecycle, isolation transforms, registry, and orphan cleanup; plugins MAY contribute inputs, not scratch ownership (§21).
-- The embedded Bun user surface, its allowed verbs, redaction, recursion, and host-proxy policy (§2.1, §8.2.4, §8.8.8, §10.10).
+- The embedded Bun user surface, its allowed verbs, redaction, recursion, and host-proxy policy (§2.1, §8.2.4, §10.10).
 - The canonical service-type catalog and recipe set. Recipes MUST decompose into ordinary Landofile data with inert provenance (§6.12, §8.8).
 
 Core does not own:

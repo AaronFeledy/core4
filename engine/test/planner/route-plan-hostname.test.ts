@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from "bun:test";
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { CurrentExecutableAppPlan, LandofileShape } from "@lando/sdk/schema";
+import { CurrentExecutableAppPlan, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Result, Schema } from "effect";
@@ -9,34 +9,49 @@ import * as Cache from "../../src/cache/service.ts";
 import { decodeAppPlan } from "../../src/planner/plan-decode.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { planTestLandofile } from "../compiled-landofile.ts";
 
-test("rejects an invalid generated route at the final AppPlan boundary", async () => {
-  // Given
+const planService = (service: string, certs: boolean) => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "route-plan",
-    services: { ["a".repeat(64)]: { type: "nginx" } },
+    services: { [service]: { type: "nginx", certs, healthcheck: { kind: "none" } } },
   });
-  // When
-  const result = await Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) =>
-      planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
-    ).pipe(
-      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))),
-      Effect.result,
-    ),
-  );
-  // Then
-  expect(Result.isFailure(result)).toBe(true);
-  if (Result.isFailure(result)) {
-    expect(result.failure).toBeInstanceOf(LandofileValidationError);
-    if (result.failure instanceof LandofileValidationError)
-      expect(result.failure.issues.map(({ path, suggestion }) => [path, suggestion !== undefined])).toEqual([
-        [["routes", 0, "hostname"], true],
-      ]);
-  }
+  return Effect.flatMap(AppPlanner, (planner) =>
+    planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
+  ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))));
+};
+
+test.each([
+  ["a".repeat(63), false, "a".repeat(63)],
+  ["pma_theme", true, "pma-theme"],
+  ["8.3", false, "8.3"],
+] as const)("plans the default hostname for %s", async (service, certs, label) => {
+  const plan = await Effect.runPromise(planService(service, certs));
+
+  const hostname = `${label}.route-plan.lndo.site`;
+  expect(plan.routes.map((route) => [route.service, route.hostname])).toEqual([[service, hostname]]);
+  const certificate = plan.services[Schema.decodeUnknownSync(ServiceName)(service)]?.certs;
+  if (certs) expect(certificate?.sans).toContain(hostname);
+  else expect(certificate).toBeUndefined();
 });
 
-import { planTestLandofile } from "../compiled-landofile.ts";
+test.each([false, true])(
+  "rejects a valid key whose derived internal DNS name is too long (certs: %s)",
+  async (certs) => {
+    const service = Array.from({ length: 4 }, () => "a".repeat(60)).join(".");
+    const result = await Effect.runPromise(planService(service, certs).pipe(Effect.result));
+
+    if (Result.isSuccess(result) || !(result.failure instanceof LandofileValidationError))
+      throw new Error("Expected service DNS validation to fail");
+    expect(result.failure.issues).toMatchObject([
+      {
+        rule: "landofile.dns-name",
+        path: ["services", service],
+        message: expect.stringContaining("internal DNS name exceed 253"),
+      },
+    ]);
+  },
+);
 
 test("final plan validation rejects an HTTPS route no certificate can cover, from any producer", async () => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({

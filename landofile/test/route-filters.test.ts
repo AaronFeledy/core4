@@ -7,17 +7,17 @@ describe("attachRouteFilter", () => {
     const route = {
       hostname: "app.lndo.site",
       filters: [
-        { name: "strip", type: "stripPrefix", prefix: "/old" },
-        { type: "addPrefix", prefix: "/api" },
+        { name: "strip", kind: "stripPrefix", prefix: "/old" },
+        { kind: "addPrefix", prefix: "/api" },
       ],
     };
-    const named = { name: "strip", type: "stripPrefix", prefix: "/new" };
-    const unnamed = { type: "addPrefix", prefix: "/v2" };
+    const named = { name: "strip", kind: "stripPrefix", prefix: "/new" };
+    const unnamed = { kind: "addPrefix", prefix: "/v2" };
 
     const afterName = attachRouteFilter(route, named);
     expect(afterName).toEqual({
       hostname: "app.lndo.site",
-      filters: [named, { type: "addPrefix", prefix: "/api" }],
+      filters: [named, { kind: "addPrefix", prefix: "/api" }],
     });
 
     const afterType = attachRouteFilter(afterName, unnamed);

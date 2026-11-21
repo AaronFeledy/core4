@@ -122,6 +122,30 @@ describe("component prop schemas", () => {
     if (Result.isFailure(invalidLayer)) expect(invalidLayer.failure).toBeInstanceOf(Schema.SchemaError);
   });
 
+  test("decodes scenario execution overrides without applying guide defaults", () => {
+    const input = {
+      id: "reader",
+      timeout: 900000,
+      platforms: ["darwin", "linux", "win32", "wsl"] as const,
+      skip: { reason: "waiting for CI", until: "next release" },
+    };
+    expect(expectRight(decodeScenarioPropsEither(input))).toEqual({ ...input, render: true });
+  });
+
+  test.each([
+    ["timeout", 0],
+    ["timeout", -1],
+    ["timeout", 1.5],
+    ["timeout", "60000"],
+    ["platforms", ["freebsd"]],
+    ["skip", { until: "next release" }],
+    ["skip", { reason: "waiting for CI", until: 1 }],
+  ])("rejects invalid scenario %s: %j", (prop, value) => {
+    const error = expectParseError(decodeScenarioPropsEither({ id: "reader", [prop]: value }));
+    const { issues } = SchemaIssue.makeFormatterStandardSchemaV1()(error.issue);
+    expect(issues.some((issue) => issue.path?.[0] === prop)).toBe(true);
+  });
+
   test("accepts Run command, shell, and library forms while rejecting invalid variants", () => {
     expect(
       expectRight(decodeRunPropsEither({ command: "lando start", answers: { name: "node-postgres" } })),

@@ -35,6 +35,8 @@ import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Effect, Layer, Predicate, Schema, Stream } from "effect";
+import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
+import { SCRATCH_DESIRED_PLAN_VERSION } from "../../src/scratch-app/plan.ts";
 import {
   ScratchRegistry,
   type ScratchRegistryEntry,
@@ -45,7 +47,11 @@ import * as Scratch from "../../src/scratch-app/service.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
-export const seedScratchPlan = (instanceRoot: string, plan: AppPlan): Promise<void> =>
+export const seedScratchPlan = (
+  instanceRoot: string,
+  plan: AppPlan,
+  version: number = SCRATCH_DESIRED_PLAN_VERSION,
+): Promise<void> =>
   Effect.runPromise(
     Effect.gen(function* () {
       const store = makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
@@ -53,7 +59,7 @@ export const seedScratchPlan = (instanceRoot: string, plan: AppPlan): Promise<vo
         root: { path: AbsolutePath.make(instanceRoot) },
         key: "plan.bin",
         schema: AppPlan,
-        version: 1,
+        version,
         codec: "binary",
         mode: 0o600,
         onCorrupt: "quarantine",
@@ -71,6 +77,12 @@ interface DestroyFixtureOptions {
   readonly copyFail?: boolean;
   readonly registryFail?: boolean;
   readonly postScratchDestroyFail?: boolean;
+  /** When set, desired plan.bin is not seeded (cache miss). */
+  readonly skipDesiredPlan?: boolean;
+  /** Old desired-plan frame written instead of the current version. */
+  readonly desiredPlanVersion?: number;
+  /** Return the scratch app's applied plan from resolveAppliedPlan; defaults to none. */
+  readonly appliedPlan?: boolean;
 }
 
 export const withDestroyFixture = async (
@@ -145,7 +157,8 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
   };
   if (!options.orphan) entries.set(id, entry);
   await mkdir(join(instanceRoot, "root"), { recursive: true });
-  if (!options.orphan) await seedScratchPlan(instanceRoot, plan);
+  if (!options.orphan && options.skipDesiredPlan !== true)
+    await seedScratchPlan(instanceRoot, plan, options.desiredPlanVersion ?? SCRATCH_DESIRED_PLAN_VERSION);
   const stateStore = makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
   const provider = {
     ...TestRuntimeProvider,
@@ -168,12 +181,17 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
         ),
       ),
   };
+  const applied =
+    options.appliedPlan === true ? { ...plan, extensions: { [SCRATCH_EXTENSION_KEY]: { id } } } : undefined;
   const providers = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed(applied === undefined ? [] : [applied]),
+      resolveAppliedPlan: () => Effect.succeed(applied),
+      resolveTeardownEvidence: () =>
+        Effect.succeed(
+          applied === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan: applied },
+        ),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),

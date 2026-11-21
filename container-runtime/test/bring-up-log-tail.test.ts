@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
 import { ProviderInternalError, ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -660,6 +661,64 @@ describe("bringUp start-failure log tail", () => {
     expect(requests.some((request) => request.includes("/logs?"))).toBe(false);
     expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   });
+
+  test.each([500, 204])(
+    "keeps interruption primary when stop HTTP %i leaves the completion job running",
+    async (status) => {
+      const base = dependentPlan();
+      const plan = {
+        ...base,
+        services: {
+          [dbName]: servicePlan(dbName, false),
+          [webName]: servicePlan(webName, true, {
+            dependsOn: [
+              { service: dbName, condition: "service_completed_successfully" as const, required: true },
+            ],
+          }),
+        },
+      };
+      const { api, requests } = makeApi({});
+      const controller = new AbortController();
+      const exit = await Effect.runPromise(
+        Effect.gen(function* () {
+          const waiting = yield* Deferred.make<void>();
+          const runtime = {
+            ...api,
+            request: (request: EngineHttpRequest) => {
+              if (request.path.endsWith("/wait"))
+                return Deferred.succeed(waiting, undefined).pipe(Effect.andThen(Effect.never));
+              if (request.path === `/containers/id-${serviceContainerName(plan, dbName)}/stop`)
+                return Effect.succeed({ status, body: "" });
+              return api.request?.(request) ?? Effect.die("Fixture has no request handler");
+            },
+          };
+          const fiber = yield* Effect.forkChild(
+            bringUp(plan, {
+              api: runtime,
+              ctx,
+              ...supervisedExecFixtureOptions(api),
+              signal: controller.signal,
+            }),
+          );
+          yield* Deferred.await(waiting);
+          controller.abort();
+          return yield* Fiber.await(fiber);
+        }),
+      );
+      if (!Exit.isFailure(exit)) throw new Error("Expected interrupted bring-up");
+      expect(
+        exit.cause.reasons.map((reason) => [
+          reason._tag,
+          Cause.reasonAnnotations(reason).mapUnsafe.get(FailureRoleAnnotation.key),
+        ]),
+      ).toEqual([
+        ["Interrupt", undefined],
+        ["Fail", "cleanup"],
+      ]);
+      expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
+    },
+    2000,
+  );
 
   test("retains containers when interrupted during a blocked-gate log capture", async () => {
     const plan = dependentPlan();

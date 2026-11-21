@@ -7,7 +7,9 @@ export const attributeEffectiveLintIssue = (
   issue: ValidationIssue & { readonly rule: ConfigLintRuleId; readonly severity?: "error" | "warning" },
   provenance: LandofileProvenance | undefined = provenanceOf(value),
 ): ConfigLintViolation => {
-  const source = issue.source ?? getLandofileValueSource(provenance, issue.path);
+  const source =
+    issue.source ??
+    (issue.path[0] === "pluginEndpoints" ? undefined : getLandofileValueSource(provenance, issue.path));
   return attributeLintIssue(
     { ...issue, severity: issue.severity ?? "error", ...(source === undefined ? {} : { source }) },
     "effective",

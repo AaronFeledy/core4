@@ -38,7 +38,7 @@ const web: ServicePlan = {
   command: ["nginx"],
   environment: {},
   mounts: [],
-  endpoints: [{ _tag: "internal", port: 80, protocol: "http", name: "http" }],
+  endpoints: [{ kind: "internal", port: 80, protocol: "http", name: "http" }],
   routes: [],
   dependsOn: [],
   hostAliases: [],

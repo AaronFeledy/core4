@@ -87,6 +87,7 @@ describe("dotnet ServiceType", () => {
     const plan = await planDotnetService(dotnetServiceType, { type: "dotnet" });
 
     expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
+    expect(plan.listenerAuthority).toMatchObject({ owner: "application", keepAlive: true });
     expect(plan.environment.ASPNETCORE_HTTP_PORTS).toBe("5000");
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
@@ -103,7 +104,7 @@ describe("dotnet ServiceType", () => {
     expect(volumes[0]).toMatchObject({ store: "lando-cache-nuget", readOnly: false });
     expect(String(volumes[0]?.target)).toBe("/root/.nuget/packages");
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 5000, protocol: "http", name: "api", primary: true },
+      { kind: "internal", port: 5000, protocol: "http", name: "api", primary: true },
     ]);
   });
 
@@ -131,9 +132,10 @@ describe("dotnet ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.test/dotnet-sdk:custom" });
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 8123, protocol: "http", name: "api", primary: true },
+      { kind: "internal", port: 8123, protocol: "http", name: "api", primary: true },
     ]);
     expect(plan.command).toEqual(["dotnet", "watch"]);
+    expect(plan.listenerAuthority).not.toHaveProperty("keepAlive");
     expect(plan.environment.ASPNETCORE_HTTP_PORTS).toBe("8123");
     expect(plan.user).toBe("1000:1000");
   });

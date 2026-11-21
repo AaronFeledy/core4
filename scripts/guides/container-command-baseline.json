@@ -1,0 +1,762 @@
+{
+  "docs/guides/cli/everyday-commands.mdx": [
+    "lando exec -- node --version",
+    "lando exec db -- psql --version",
+    "lando logs --service app --follow",
+    "lando strat"
+  ],
+  "docs/guides/cli/exec.mdx": [
+    "lando exec -- echo hello world",
+    "lando exec --cwd /srv/app -- pwd",
+    "lando exec --user www-data -- whoami",
+    "lando exec -i -- cat",
+    "lando exec -s db -- psql",
+    "lando exec appserver -- echo hello world",
+    "lando exec appserver -- tar -c -I zstd -f - -C /app/web/sites/default/files .",
+    "lando exec appserver -- tar -czf - -C /app/web/sites/default/files .",
+    "lando exec appserver -- tar -czf - -C /app/wp-content/uploads .",
+    "lando exec appserver -- tar -x -I zstd -f - -C /app/web/sites/default/files",
+    "lando exec appserver -- tar -xzf - -C /app/web/sites/default/files",
+    "lando exec appserver -- tar -xzf - -C /app/wp-content/uploads",
+    "lando exec db -- mysql -u lando -plando myapp",
+    "lando exec db -- psql"
+  ],
+  "docs/guides/cli/service-logs.mdx": [
+    "lando logs --build --tail 3",
+    "lando logs --service appserver",
+    "lando logs --service appserver --since 15m",
+    "lando logs --service appserver --source access --tail 50",
+    "lando logs --service appserver --source console",
+    "lando logs --service appserver --source error --follow",
+    "lando logs --service appserver --source myapp-error",
+    "lando logs --service appserver --source myapp-error --follow",
+    "lando logs --service appserver --tail 50",
+    "lando logs -s appserver --tail 50"
+  ],
+  "docs/guides/cli/ssh.mdx": [
+    "lando ssh",
+    "lando ssh -- ls -la",
+    "lando ssh --service db",
+    "lando ssh --service db -- sh -c 'echo $HOSTNAME'",
+    "lando ssh --user www-data"
+  ],
+  "docs/guides/config/compose-service-block.mdx": ["lando exec worker -- cat /sys/fs/cgroup/memory.max"],
+  "docs/guides/config/networks.mdx": [
+    "lando exec web -- getent hosts cache",
+    "lando exec web -- getent hosts mail"
+  ],
+  "docs/guides/config/secret-stores.mdx": ["lando deploy"],
+  "docs/guides/events/task-events.mdx": ["lando build"],
+  "docs/guides/install/wsl.mdx": ["lando xdebug status"],
+  "docs/guides/plugins/github-actions-inspection.mdx": [
+    "lando github-actions:list",
+    "lando github-actions:list --format=json",
+    "lando github-actions:list --help",
+    "lando github-actions:list --root /path/to/other/repo --format=json",
+    "lando github-actions:list --workflow .github/workflows/ci.yml"
+  ],
+  "docs/guides/recipes/astro-workflow.mdx": [
+    "lando astro --help",
+    "lando astro --version",
+    "lando astro dev --host 0.0.0.0 --port 4321 --allowed-hosts astro-demo.lndo.site",
+    "lando exec web -- npx --yes create-astro@4.13.2 webapp -- --template minimal --install --no-git --typescript strict --yes --skip-houston --no-ai",
+    "lando npm --version",
+    "lando npm install",
+    "lando psql -c 'SELECT version();'"
+  ],
+  "docs/guides/recipes/authoring-fetch-allowlist.mdx": ["lando meta recipes validate ./ --format=json"],
+  "docs/guides/recipes/authoring-runs-allowlist.mdx": ["lando meta recipes validate ./ --format=json"],
+  "docs/guides/recipes/backdrop-workflow.mdx": [
+    "lando bee cc all",
+    "lando bee status",
+    "lando bee version",
+    "lando db:export backdrop.sql.gz",
+    "lando db:import backdrop.sql.gz --yes",
+    "lando db:import site.sql.gz --yes",
+    "lando db:restore before-update --yes",
+    "lando db:snapshot --label before-update",
+    "lando exec appserver -- mysqldump --version",
+    "lando exec appserver -- php -r 'mail(\"you@example.test\", \"Mailpit check\", \"Hello from Backdrop\");'",
+    "lando exec appserver -- sh -c 'set -eu; cd /tmp; rm -rf backdrop\n  curl -fsSL -o backdrop.zip https://github.com/backdrop/backdrop/releases/download/1.35.1/backdrop.zip\n  echo \"7add8d49fdbfee6819cfb4866cd3501f5e06df8000e39652ecf896a2fa7a729c  backdrop.zip\" | sha256sum -c -\n  unzip -q backdrop.zip && cp -a backdrop/. /app/ && rm -rf backdrop backdrop.zip'",
+    "lando mariadb -e 'SHOW TABLES;'",
+    "lando xdebug off",
+    "lando xdebug on",
+    "lando xdebug status"
+  ],
+  "docs/guides/recipes/craft-workflow.mdx": [
+    "lando db:export craft.sql.gz",
+    "lando db:import craft.sql.gz --yes",
+    "lando db:restore before-update --yes",
+    "lando db:snapshot --label before-update",
+    "lando mariadb -e 'SELECT username, email FROM users;'"
+  ],
+  "docs/guides/recipes/django-workflow.mdx": [
+    "lando db:export backup.sql.gz",
+    "lando db:import backup.sql.gz --yes",
+    "lando db:snapshot",
+    "lando django --version",
+    "lando django check",
+    "lando django migrate --noinput",
+    "lando django runserver 0.0.0.0:8000",
+    "lando exec web -- django-admin startproject config .",
+    "lando pip --version",
+    "lando pip freeze --local",
+    "lando pip install 'Django>=5,<6' 'psycopg[binary]>=3'",
+    "lando pip install dj-database-url",
+    "lando psql -c 'SELECT 1'",
+    "lando redis-cli ping"
+  ],
+  "docs/guides/recipes/drupal-cms-workflow.mdx": [
+    "lando composer --version",
+    "lando db:export dump.sql.gz",
+    "lando db:import dump.sql.gz --yes",
+    "lando db:restore before-update --yes",
+    "lando db:snapshot --label before-update",
+    "lando drupal-cms-install",
+    "lando drupal-cms-scaffold",
+    "lando drush --version",
+    "lando drush cache:rebuild",
+    "lando drush config:export -y",
+    "lando drush status",
+    "lando drush status --format=json",
+    "lando drush updatedb -y",
+    "lando drush user:login --no-browser",
+    "lando exec --user www-data appserver -- test -w /app/web/sites/default/files",
+    "lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/",
+    "lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/user/login",
+    "lando exec appserver -- php -r 'echo ini_get(\"memory_limit\"), PHP_EOL;'",
+    "lando exec appserver -- php -r 'mail(\"you@example.test\", \"Mailpit check\", \"Hello from Drupal CMS\");'",
+    "lando exec appserver -- php -v",
+    "lando logs -s appserver -f",
+    "lando logs -s database --tail 50",
+    "lando mariadb -e 'SELECT 1 AS ok;'",
+    "lando xdebug status"
+  ],
+  "docs/guides/recipes/drupal-contrib-workflow.mdx": [
+    "lando composer show drupal/core-recommended",
+    "lando composer show psr/clock",
+    "lando drush site:install standard --db-url=mysql://lando:lando@database/example --site-name=Example --account-name=admin --account-mail=admin@example.com -y",
+    "lando drush status",
+    "lando phpstan analyse"
+  ],
+  "docs/guides/recipes/drupal-multisite.mdx": [
+    "lando drush-site1 site-install standard --db-url=mysql://drupal:drupal@database/site1 -y",
+    "lando drush-site1 status",
+    "lando drush-site2 site-install standard --db-url=mysql://drupal:drupal@database/site2 -y",
+    "lando drush-site2 status"
+  ],
+  "docs/guides/recipes/drupal-testing.mdx": [
+    "lando composer require --dev drupal/core-dev -W",
+    "lando exec appserver -- mkdir -p web/sites/simpletest/browser_output web/sites/default/files/simpletest",
+    "lando exec appserver -- vendor/bin/phpunit --version",
+    "lando exec appserver -- vendor/bin/phpunit -c web/core web/core/tests/Drupal/Tests/Component/Utility/HtmlTest.php",
+    "lando exec appserver --user=root -- rm -rf web/sites/simpletest web/sites/default/files/simpletest",
+    "lando exec appserver --user=www-data -- test -w web/sites/default/files/simpletest",
+    "lando exec appserver --user=www-data -- test -w web/sites/simpletest/browser_output",
+    "lando phpunit --filter testLoginPageInChrome web/modules/custom/hello",
+    "lando phpunit web/core/modules/user/tests/src/Kernel/UserEntityLabelTest.php",
+    "lando phpunit web/modules/custom/hello"
+  ],
+  "docs/guides/recipes/drupal-workflow.mdx": [
+    "lando composer --version",
+    "lando db:export dump.sql.gz",
+    "lando db:import dump.sql.gz --yes",
+    "lando db:import site.sql.gz --yes",
+    "lando db:restore before-update --yes",
+    "lando db:snapshot --label before-update",
+    "lando drupal-scaffold",
+    "lando drush --version",
+    "lando drush cache:rebuild",
+    "lando drush site:install standard --db-url=mysql://lando:lando@database/drupal-demo '--site-name=Drupal Demo' --account-name=admin --account-mail=admin@example.com -y",
+    "lando drush site:install standard --db-url=pgsql://lando:drupal-local@database:5432/drupal-demo '--site-name=Drupal Demo' --account-name=admin --account-mail=admin@example.com -y",
+    "lando drush status",
+    "lando drush status --format=json",
+    "lando drush updatedb -y",
+    "lando drush user:login --no-browser",
+    "lando exec appserver -- php -r 'mail(\"you@example.test\", \"Mailpit check\", \"Hello from Drupal\");'",
+    "lando exec appserver -- php -v",
+    "lando logs -s appserver -f",
+    "lando logs -s database --tail 50",
+    "lando mariadb -e 'SELECT 1 AS ok;'",
+    "lando xdebug status"
+  ],
+  "docs/guides/recipes/eleventy-workflow.mdx": [
+    "lando eleventy",
+    "lando eleventy --help",
+    "lando eleventy --version",
+    "lando npm --version"
+  ],
+  "docs/guides/recipes/extending-recipes.mdx": [
+    "lando meta recipes describe ./ --format=json",
+    "lando meta recipes validate ./ --format=json"
+  ],
+  "docs/guides/recipes/fastapi-workflow.mdx": [
+    "lando db:export dump.sql.gz",
+    "lando db:import dump.sql.gz --yes",
+    "lando db:restore before-migrate --yes",
+    "lando db:snapshot --label before-migrate",
+    "lando exec web -- alembic init migrations",
+    "lando exec web -- alembic upgrade head",
+    "lando exec web -- printenv DATABASE_URL REDIS_URL",
+    "lando logs --service web --follow",
+    "lando pip --version",
+    "lando pip freeze --local",
+    "lando pip install 'fastapi>=0.115' 'uvicorn[standard]>=0.30' 'psycopg[binary]>=3' 'redis>=5'",
+    "lando pip install alembic",
+    "lando psql -c 'SELECT 1'",
+    "lando redis-cli ping",
+    "lando ssh --service web",
+    "lando uvicorn --version",
+    "lando uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level debug",
+    "lando uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+  ],
+  "docs/guides/recipes/hugo-workflow.mdx": [
+    "lando hugo build",
+    "lando hugo new content posts/hello.md",
+    "lando hugo version",
+    "lando npm --version"
+  ],
+  "docs/guides/recipes/jekyll-workflow.mdx": [
+    "lando build-prod",
+    "lando bundle add jekyll-sitemap --group jekyll_plugins",
+    "lando bundle install",
+    "lando bundle update",
+    "lando jekyll --version",
+    "lando jekyll build",
+    "lando jekyll build --drafts",
+    "lando jekyll new . --force --skip-bundle"
+  ],
+  "docs/guides/recipes/joomla-workflow.mdx": [
+    "lando composer --version",
+    "lando db:export joomla.sql.gz",
+    "lando db:import joomla.sql.gz --yes",
+    "lando db:restore before-update --yes",
+    "lando db:snapshot --label before-update",
+    "lando exec appserver -- sh -lc '\n  set -eu\n  curl -fsSL -o /tmp/joomla.tgz \\\n    https://github.com/joomla/joomla-cms/releases/download/5.4.8/Joomla_5.4.8-Stable-Full_Package.tar.gz\n  echo \"bdb3752f735cf19a498bf3c8bcfc7535a65acdf7  /tmp/joomla.tgz\" | sha1sum -c -\n  tar -xzf /tmp/joomla.tgz -C /app\n  rm -f /tmp/joomla.tgz\n'",
+    "lando joomla --version",
+    "lando mariadb -e 'SHOW TABLES FROM `joomla-demo`;'",
+    "lando mariadb -e 'SHOW TABLES;'",
+    "lando php -r 'mail(\"you@example.test\", \"Mailpit check\", \"Hello from Joomla\");'",
+    "lando xdebug status"
+  ],
+  "docs/guides/recipes/lamp-workflow.mdx": [
+    "lando composer --version",
+    "lando db:export dump.sql.gz",
+    "lando db:import dump.sql.gz --yes",
+    "lando mariadb -e 'SELECT 1 AS ok;'",
+    "lando php -v"
+  ],
+  "docs/guides/recipes/laravel-horizon.mdx": [
+    "lando artisan --version",
+    "lando artisan horizon:forget JOB_UUID",
+    "lando artisan horizon:install",
+    "lando artisan horizon:status",
+    "lando artisan make:job SendPing",
+    "lando artisan migrate --no-interaction",
+    "lando artisan queue:failed",
+    "lando artisan tinker --execute 'App\\Jobs\\SendPing::dispatch('\\''boom'\\'')'",
+    "lando artisan tinker --execute 'App\\Jobs\\SendPing::dispatch('\\''hello from tinker'\\'')'",
+    "lando composer require laravel/horizon predis/predis --no-interaction",
+    "lando create-project laravel/laravel",
+    "lando exec worker -- php artisan horizon:terminate",
+    "lando logs -s worker --follow"
+  ],
+  "docs/guides/recipes/laravel-reverb.mdx": [
+    "lando artisan --version",
+    "lando artisan install:broadcasting --reverb --without-node --no-interaction",
+    "lando artisan make:event PingSent",
+    "lando artisan migrate --no-interaction",
+    "lando artisan tinker --execute 'event(new App\\Events\\PingSent('\\''hello from tinker'\\''))'",
+    "lando create-project laravel/laravel",
+    "lando exec node -- node --env-file=.env echo-listen.mjs",
+    "lando logs -s worker",
+    "lando npm install --save-dev laravel-echo pusher-js",
+    "lando npm run build"
+  ],
+  "docs/guides/recipes/laravel-vite.mdx": [
+    "lando artisan config:clear",
+    "lando artisan migrate --no-interaction",
+    "lando npm run build",
+    "lando npm run dev"
+  ],
+  "docs/guides/recipes/laravel-workflow.mdx": [
+    "lando artisan --version",
+    "lando composer --version",
+    "lando create-project laravel/laravel",
+    "lando db:export backup.sql.gz",
+    "lando db:import backup.sql.gz --yes",
+    "lando db:snapshot",
+    "lando exec appserver -- curl -fsS http://localhost/up",
+    "lando logs --service=worker",
+    "lando mariadb",
+    "lando npm --version",
+    "lando npm install",
+    "lando npm run build",
+    "lando redis-cli ping",
+    "lando schedule:list",
+    "lando schedule:run laravel-scheduler"
+  ],
+  "docs/guides/recipes/lemp-workflow.mdx": [
+    "lando composer --version",
+    "lando db:export dump.sql.gz",
+    "lando db:import dump.sql.gz --yes",
+    "lando mariadb -e 'SELECT 1 AS ok;'",
+    "lando php -v"
+  ],
+  "docs/guides/recipes/mean-workflow.mdx": [
+    "lando exec database -- mongosh --quiet -u lando -p lando --authenticationDatabase admin --eval 'db.runCommand({ ping: 1 })'",
+    "lando node --version",
+    "lando npm --version",
+    "lando npm install mongodb"
+  ],
+  "docs/guides/recipes/nextjs-workflow.mdx": [
+    "lando next --version",
+    "lando next dev",
+    "lando nextjs-scaffold",
+    "lando npm --version",
+    "lando npm install",
+    "lando pnpm --version",
+    "lando pnpm install",
+    "lando psql -c 'SELECT version();'"
+  ],
+  "docs/guides/recipes/node-api-workflow.mdx": [
+    "lando node server.mjs",
+    "lando npm init -y",
+    "lando npm install express",
+    "lando npm install hono @hono/node-server",
+    "lando npm install pg",
+    "lando psql -c 'SELECT 1'"
+  ],
+  "docs/guides/recipes/programmatic-recipe.mdx": [
+    "lando meta recipes validate ./tool-runner-ts --format=json"
+  ],
+  "docs/guides/recipes/rails-workflow.mdx": [
+    "lando bundle --version",
+    "lando db:export backup.sql.gz",
+    "lando db:import backup.sql.gz --yes",
+    "lando db:snapshot",
+    "lando psql",
+    "lando psql -c 'SELECT 1'",
+    "lando rails --version",
+    "lando rails db:prepare",
+    "lando rails new . --database=postgresql --force",
+    "lando rails new . --database=sqlite3 --force",
+    "lando rails server -b 0.0.0.0",
+    "lando rake --version",
+    "lando redis-cli ping"
+  ],
+  "docs/guides/recipes/remote-sources.mdx": ["lando meta recipes validate ./tool-runner --format=json"],
+  "docs/guides/recipes/sveltekit-workflow.mdx": [
+    "lando exec web -- npx --yes sv@0.17.0 create webapp --template minimal --types ts --no-add-ons --install npm",
+    "lando npm --version",
+    "lando npm install -D @sveltejs/adapter-node",
+    "lando npm run build",
+    "lando npm run check",
+    "lando npm run dev",
+    "lando psql -c 'SELECT version();'",
+    "lando svelte --help",
+    "lando svelte sync"
+  ],
+  "docs/guides/recipes/symfony-messenger.mdx": [
+    "lando composer require symfony/messenger symfony/doctrine-messenger symfony/orm-pack --no-interaction",
+    "lando console app:ping 'hello from console'",
+    "lando console app:ping boom",
+    "lando console messenger:failed:remove MESSAGE_ID --force",
+    "lando console messenger:failed:show",
+    "lando console messenger:setup-transports",
+    "lando console messenger:stats",
+    "lando console messenger:stop-workers",
+    "lando logs -s worker --follow"
+  ],
+  "docs/guides/recipes/symfony-workflow.mdx": [
+    "lando composer --version",
+    "lando composer require symfony/orm-pack",
+    "lando console --version",
+    "lando console about",
+    "lando create-project symfony/skeleton",
+    "lando psql",
+    "lando redis-cli ping"
+  ],
+  "docs/guides/recipes/typo3-workflow.mdx": [
+    "lando composer --version",
+    "lando composer require typo3/cms-redirects:^14.3",
+    "lando db:export typo3.sql.gz",
+    "lando db:import typo3.sql.gz --yes",
+    "lando db:restore before-update --yes",
+    "lando db:snapshot --label before-update",
+    "lando typo3 extension:setup"
+  ],
+  "docs/guides/recipes/wordpress-multisite.mdx": [
+    "lando exec appserver -- cat .htaccess",
+    "lando exec appserver -- sh -c 'cat > .htaccess <<'\\''EOF'\\''\nRewriteEngine On\nRewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]\nRewriteBase /\nRewriteRule ^index\\.php$ - [L]\n\n# add a trailing slash to /wp-admin\nRewriteRule ^wp-admin$ wp-admin/ [R=301,L]\n\nRewriteCond %{REQUEST_FILENAME} -f [OR]\nRewriteCond %{REQUEST_FILENAME} -d\nRewriteRule ^ - [L]\nRewriteRule ^(wp-(content|admin|includes).*) $1 [L]\nRewriteRule ^(.*\\.php)$ $1 [L]\nRewriteRule . index.php [L]\nEOF'",
+    "lando wp --url=blog.wp-network.lndo.site option update home https://blog.wp-network.lndo.site",
+    "lando wp --url=blog.wp-network.lndo.site option update siteurl https://blog.wp-network.lndo.site",
+    "lando wp config create --dbname=wp-network --dbuser=lando --dbpass=lando --dbhost=database --skip-check",
+    "lando wp core download",
+    "lando wp core multisite-install --subdomains --url=https://wp-network.lndo.site '--title=WP Network' --admin_user=admin --admin_email=admin@example.com --skip-email",
+    "lando wp site create --slug=blog '--title=Team Blog'",
+    "lando wp site list --fields=blog_id,url"
+  ],
+  "docs/guides/recipes/wordpress-vite.mdx": [
+    "lando exec node -- node --version",
+    "lando npm --prefix wp-content/themes/vite-theme --version",
+    "lando npm --prefix wp-content/themes/vite-theme install",
+    "lando npm --prefix wp-content/themes/vite-theme run build",
+    "lando npm --prefix wp-content/themes/vite-theme run dev",
+    "lando wp theme activate vite-theme"
+  ],
+  "docs/guides/recipes/wordpress-workflow.mdx": [
+    "lando composer --version",
+    "lando db:import prod.sql.gz --yes",
+    "lando db:snapshot --label before-import",
+    "lando mariadb -e 'SELECT 1 AS ok;'",
+    "lando mariadb -e 'SHOW TABLES;'",
+    "lando wp --info",
+    "lando wp cache flush",
+    "lando wp config create --dbname=wp-demo --dbuser=lando --dbpass=lando --dbhost=database --skip-check",
+    "lando wp config set DB_HOST database",
+    "lando wp config set DB_NAME my-site",
+    "lando wp config set DB_PASSWORD lando",
+    "lando wp config set DB_USER lando",
+    "lando wp core download",
+    "lando wp core is-installed",
+    "lando wp eval 'var_dump( wp_mail( \"you@example.test\", \"Mailpit check\", \"Hello\" ) );'",
+    "lando wp option get home",
+    "lando xdebug status"
+  ],
+  "docs/guides/scripting-with-json.mdx": ["lando stamp abc1234 --format=json"],
+  "docs/guides/services/build-steps.mdx": ["lando logs --build"],
+  "docs/guides/services/file-ownership.mdx": [
+    "lando exec appserver -- id",
+    "lando exec appserver -- printenv HOME",
+    "lando exec appserver --user root -- id"
+  ],
+  "docs/guides/services/frankenphp.mdx": [
+    "lando composer --version",
+    "lando frankenphp version",
+    "lando php -v"
+  ],
+  "docs/guides/services/home-and-host.mdx": [
+    "lando ssh -s app -- curl -sf http://host.lando.internal:5000/",
+    "lando ssh -s app -- sh -c 'echo $LANDO_HOST_IP'"
+  ],
+  "docs/guides/services/locale.mdx": [
+    "lando exec -- date -d 2025-01-01 '+%A, %d. %B %Y'",
+    "lando exec -- locale -a",
+    "lando exec -- php -r '$f = new IntlDateFormatter(null, IntlDateFormatter::FULL, IntlDateFormatter::NONE, \"UTC\"); echo $f->format(new DateTime(\"2025-01-01\")), PHP_EOL;'",
+    "lando exec -- php -r 'setlocale(LC_ALL, \"\"); echo setlocale(LC_ALL, 0), PHP_EOL;'",
+    "lando exec -- php -r 'var_dump(setlocale(LC_ALL, \"fr_FR.UTF-8\"));'",
+    "lando exec node -- locale -a",
+    "lando exec node -- node -e 'console.log(new Date(Date.UTC(2025, 0, 1)).toLocaleDateString(undefined, { dateStyle: \"full\", timeZone: \"UTC\" }))'"
+  ],
+  "docs/guides/services/magento.mdx": [
+    "lando composer --version",
+    "lando composer check-platform-reqs",
+    "lando composer install",
+    "lando composer show mage-os/magento-coding-standard",
+    "lando composer show mage-os/product-community-edition",
+    "lando exec appserver -- curl -fsS 'http://search:9200/_cat/indices?h=index'",
+    "lando exec appserver -- curl -fsS http://search:9200/",
+    "lando exec appserver -- php -v",
+    "lando exec appserver -- sh -eu -c '\n  project=$(mktemp -d /tmp/mageos.XXXXXX)\n  COMPOSER_ALLOW_SUPERUSER=1 composer create-project --no-install --repository-url=https://repo.mage-os.org/ mage-os/project-community-edition \"$project\" 3.6.0\n  cp -R \"$project/.\" /app/\n'",
+    "lando exec appserver -- test -f /app/bin/magento",
+    "lando exec appserver -- vendor/bin/phpcs --standard=Magento2 --extensions=php app/code/Acme/Hello",
+    "lando exec appserver -- vendor/bin/phpcs -i",
+    "lando exec appserver --user www-data -- sh -eu -c '\n  cd /app\n  for path in . app/etc generated pub/media pub/static var vendor; do\n    test -r \"$path\"\n    test -w \"$path\"\n    test -x \"$path\"\n  done\n  test -r bin/magento\n  test -r vendor/autoload.php\n'",
+    "lando magento cache:clean",
+    "lando magento deploy:mode:set developer",
+    "lando magento deploy:mode:show",
+    "lando magento indexer:reindex",
+    "lando magento indexer:status",
+    "lando magento module:disable Magento_TwoFactorAuth",
+    "lando magento module:enable Acme_Hello",
+    "lando magento module:status Acme_Hello",
+    "lando magento module:status Magento_TwoFactorAuth",
+    "lando magento setup:db:status",
+    "lando magento setup:upgrade",
+    "lando mariadb -e 'SELECT VERSION()'",
+    "lando mariadb -e 'SELECT code FROM store'",
+    "lando mariadb -e 'SELECT status, COUNT(*) AS jobs FROM cron_schedule GROUP BY status'",
+    "lando schedule:list",
+    "lando schedule:run magento-cron"
+  ],
+  "docs/guides/services/mailpit.mdx": ["lando exec inbox -- /mailpit readyz"],
+  "docs/guides/services/meilisearch.mdx": [
+    "lando exec app -- curl -fsS -H 'Authorization: Bearer lando' http://search:7700/indexes",
+    "lando exec app -- curl -fsS http://search:7700/health",
+    "lando exec search -- curl -sS -i http://localhost:7700/indexes",
+    "lando meili -H 'Authorization: Bearer lando' http://localhost:7700/indexes",
+    "lando meili -H 'Authorization: Bearer lando' http://localhost:7700/indexes/movies",
+    "lando meili -H 'Authorization: Bearer lando' http://localhost:7700/version",
+    "lando meili -X POST -H 'Authorization: Bearer lando' -H 'Content-Type: application/json' --data '[{\"id\":1,\"title\":\"Casablanca\",\"genres\":[\"Drama\",\"Romance\"]},{\"id\":2,\"title\":\"Cloud City\",\"genres\":[\"Sci-Fi\"]},{\"id\":3,\"title\":\"The Empire Strikes Back\",\"genres\":[\"Sci-Fi\",\"Adventure\"]}]' http://localhost:7700/indexes/movies/documents",
+    "lando meili -X POST -H 'Authorization: Bearer lando' -H 'Content-Type: application/json' --data '{\"q\":\"casa\"}' http://localhost:7700/indexes/movies/search",
+    "lando meili -X POST -H 'Authorization: Bearer lando' -H 'Content-Type: application/json' --data '{\"uid\":\"movies\",\"primaryKey\":\"id\"}' http://localhost:7700/indexes",
+    "lando meili http://localhost:7700/health",
+    "lando node search.mjs",
+    "lando npm install"
+  ],
+  "docs/guides/services/minio.mdx": ["lando mc ready local"],
+  "docs/guides/services/mssql.mdx": [
+    "lando exec database -- /opt/mssql-tools18/bin/sqlcmd -S localhost,1433 -U sa -C -P",
+    "lando logs --service database",
+    "lando sqlcmd -Q 'SELECT @@VERSION'",
+    "lando sqlcmd -d master -Q 'SELECT name, state_desc FROM sys.databases'"
+  ],
+  "docs/guides/services/node-playwright.mdx": [
+    "lando exec e2e -- curl -fsS http://web:3000",
+    "lando exec e2e -- npm install",
+    "lando exec e2e -- npm run test:e2e",
+    "lando exec e2e -- npx playwright test --trace on",
+    "lando exec e2e -- sh -c 'rm -rf /app/playwright-report /app/test-results'",
+    "lando playwright --version",
+    "lando playwright install --with-deps chromium",
+    "lando playwright test",
+    "lando playwright test --project=chromium",
+    "lando playwright test e2e/home.spec.ts"
+  ],
+  "docs/guides/services/node-tanstack-start.mdx": [
+    "lando exec web -- ls dist/client dist/server",
+    "lando exec web -- node --version",
+    "lando npm ci",
+    "lando npm ls --depth=0",
+    "lando npm run build",
+    "lando npm run db:generate",
+    "lando npm run db:migrate",
+    "lando npm run db:push",
+    "lando npm run generate-routes",
+    "lando npx --yes @tanstack/cli@0.72.0 create tanstack-start-demo --target-dir . --force --blank --add-ons drizzle --package-manager npm --no-git --no-intent -y",
+    "lando npx tsc --noEmit",
+    "lando psql -c 'INSERT INTO todos (title) VALUES ('\\''Ship the guide'\\'');'",
+    "lando psql -c 'SELECT id, title FROM todos;'",
+    "lando psql -c 'SELECT version();'"
+  ],
+  "docs/guides/services/node-theme-assets.mdx": [
+    "lando exec node -- test -s /app/web/themes/contrib/bootstrap5/css/style.css",
+    "lando npm install",
+    "lando npm run build:sass"
+  ],
+  "docs/guides/services/node-typescript.mdx": [
+    "lando node -v",
+    "lando npm install",
+    "lando npm run typecheck",
+    "lando npm test",
+    "lando npx tsx -e 'import { greet } from \"./src/greet.ts\"; console.log(greet(\"tsx\"))'",
+    "lando pnpm --version",
+    "lando pnpm install",
+    "lando pnpm test"
+  ],
+  "docs/guides/services/ollama.mdx": [
+    "lando logs --service ollama --tail 100",
+    "lando node chat.mjs",
+    "lando ollama --version",
+    "lando ollama list",
+    "lando ollama ps",
+    "lando ollama pull smollm2:135m",
+    "lando ollama run smollm2:135m 'Name one planet.'",
+    "lando ollama stop smollm2:135m"
+  ],
+  "docs/guides/services/php-build-failures.mdx": [
+    "lando logs --build",
+    "lando logs --build --format=json --tail 2",
+    "lando logs --build --tail 2 --service app"
+  ],
+  "docs/guides/services/php-customization.mdx": [
+    "lando exec app -- php --ri imagick",
+    "lando exec app -- php --ri pcntl",
+    "lando exec app -- php --ri pdo_mysql",
+    "lando exec app -- php -r 'echo ini_get('\\''session.upload_progress.enabled'\\''), PHP_EOL;'"
+  ],
+  "docs/guides/services/php-security-updates.mdx": [
+    "lando exec appserver -- curl -fsS localhost/version.php",
+    "lando exec appserver -- php -v",
+    "lando exec web -- curl -fsS localhost/version.php"
+  ],
+  "docs/guides/services/postgres-pgvector.mdx": [
+    "lando db:export vectors.sql",
+    "lando db:import vectors.sql --yes",
+    "lando exec app -- python search.py",
+    "lando psql -Atc 'SELECT extversion FROM pg_extension WHERE extname = '\\''vector'\\'';'",
+    "lando psql -c 'CREATE EXTENSION IF NOT EXISTS vector;'",
+    "lando psql -c 'SELECT body, embedding <=> '\\''[1,0,0]'\\'' AS distance FROM items ORDER BY embedding <=> '\\''[1,0,0]'\\'' LIMIT 2;'",
+    "lando psql -c 'SELECT count(*) FROM items;'",
+    "lando psql -c 'SELECT version();'",
+    "lando psql -c 'SET enable_seqscan = off;' -c 'EXPLAIN (COSTS OFF) SELECT body FROM items ORDER BY embedding <=> '\\''[1,0,0]'\\'' LIMIT 2;'",
+    "lando psql -v ON_ERROR_STOP=1"
+  ],
+  "docs/guides/services/solr10.mdx": [
+    "lando exec search -- solr version",
+    "lando solr create -c gettingstarted",
+    "lando solr post -c gettingstarted example/exampledocs/books.json",
+    "lando solr-cli 'http://localhost:8983/solr/admin/collections?action=LIST&wt=json'",
+    "lando solr-cli 'http://localhost:8983/solr/admin/cores?action=STATUS&wt=json'",
+    "lando solr-cli 'http://localhost:8983/solr/gettingstarted/select?q=cat:hardcover&wt=json&rows=1'"
+  ],
+  "docs/guides/services/wait-for-your-app.mdx": ["lando logs -s app"],
+  "docs/guides/setup/file-sync-excludes.mdx": [
+    "lando exec app -- git -C /app status --short",
+    "lando exec app -- ls -A /app/node_modules"
+  ],
+  "docs/guides/subsystems/gpg-agent.mdx": [
+    "lando ssh -- git commit -S -m 'Sign this'",
+    "lando ssh -- git config --global commit.gpgsign true",
+    "lando ssh -- git config --global user.signingkey YOUR_KEY"
+  ],
+  "docs/guides/subsystems/host-open.mdx": [
+    "lando exec web -- lando open --print",
+    "lando exec web -- open https://example.com/x",
+    "lando exec web -- xdg-open https://example.com/x"
+  ],
+  "docs/guides/subsystems/host-services.mdx": [
+    "lando exec web -- getent hosts api.test host.lando.internal",
+    "lando exec web -- sh -c 'echo \"$LANDO_HOST_IP\"'",
+    "lando exec web -- wget -qO- http://api.test:8000/",
+    "lando exec web -- wget -qO- http://host.lando.internal:8000/"
+  ],
+  "docs/guides/subsystems/ssh-host-agent.mdx": ["lando ssh -- ssh-add -l"],
+  "docs/guides/tooling/bun-shell-scripts.mdx": [
+    "lando app:env:init",
+    "lando bad",
+    "lando build",
+    "lando count",
+    "lando curl version.txt",
+    "lando exec web -- cat /app/dist/version.txt",
+    "lando greet",
+    "lando greet --help",
+    "lando greet dev",
+    "lando greet prod release -n team --loud",
+    "lando peek",
+    "lando report --format=csv",
+    "lando show-note --note=guide-canary-note --format=json",
+    "lando smoke https://web.scripts-demo.lndo.site/version.txt",
+    "lando stamp -- --format=json",
+    "lando stamp abc1234",
+    "lando stamp abc1234 --format=json",
+    "lando stamp abc1234 --format=yaml"
+  ],
+  "docs/guides/tooling/composer-php.mdx": ["lando app:composer --version", "lando composer --version"],
+  "docs/guides/tooling/db-import-export.mdx": [
+    "lando db:export -",
+    "lando db:export - --compression=zstd",
+    "lando db:export - --format=json",
+    "lando db:export backups/app.bak --service database",
+    "lando db:export backups/app.sql.gz --service database",
+    "lando db:export backups/app.sql.gz --service database --format=json",
+    "lando db:export backups/app.sql.zst --service database",
+    "lando db:export dump.sql.gz",
+    "lando db:export dump.sql.zst",
+    "lando db:import - --yes",
+    "lando db:import backups/app.bak --service database --yes",
+    "lando db:import backups/app.sql.gz --service database --yes",
+    "lando db:import backups/app.sql.zst --service database --yes",
+    "lando db:import dump.sql.gz --yes",
+    "lando db:import dump.sql.zst --yes",
+    "lando db:reset --yes",
+    "lando db:restore before-change --yes",
+    "lando db:seed --from-app shop",
+    "lando db:seed --from-path ../shop --from-service database",
+    "lando db:seed --snapshot before-change",
+    "lando db:seed ../shared/baseline.sql.gz",
+    "lando db:snapshot --label before-change",
+    "lando db:snapshots"
+  ],
+  "docs/guides/tooling/flags-and-args.mdx": [
+    "lando broken",
+    "lando broken --help",
+    "lando broken --version",
+    "lando greet dev -n team",
+    "lando greet prod --loud"
+  ],
+  "docs/guides/tooling/git-worktrees.mdx": [
+    "lando db:restore before-migration --yes",
+    "lando db:seed --from-app shop",
+    "lando db:seed --snapshot seeded",
+    "lando db:snapshot --label before-migration",
+    "lando db:snapshot --label seeded",
+    "lando db:snapshots",
+    "lando db:snapshots --from-app shop",
+    "lando exec web -- printenv DB_NAME",
+    "lando psql -tAc 'SELECT count(*) FROM products;'"
+  ],
+  "docs/guides/tooling/import-a-database.mdx": [
+    "lando db:import - --yes",
+    "lando db:import dump.sql.gz --yes",
+    "lando exec db -- mysql -u lando -plando myapp",
+    "lando exec db -- psql -U lando -d myapp",
+    "lando mariadb",
+    "lando mysql",
+    "lando psql"
+  ],
+  "docs/guides/tooling/lando-shell.mdx": ["lando ssh --service appserver --no-history"],
+  "docs/guides/tooling/output-streaming.mdx": ["lando composer install"],
+  "docs/guides/tooling/php-composer-workflows.mdx": ["lando composer check-platform-reqs --no-dev"],
+  "docs/guides/tooling/planetscale.mdx": [
+    "lando exec app -- printenv DATABASE_URL",
+    "lando exec db -- mysql -u lando -plando planetscale_demo -e 'SELECT 1'",
+    "lando node -e 'import('\\''mysql2/promise'\\'').then(async m => { const c = await m.createConnection(process.env.DATABASE_URL); console.log(await c.query('\\''SELECT 1 AS ok'\\'')); await c.end(); })'",
+    "lando npm install mysql2"
+  ],
+  "docs/guides/tooling/sqlite-database.mdx": [
+    "lando db:export - --service appserver",
+    "lando db:export backup.sql.gz --service appserver",
+    "lando db:export copy.db.zst --service appserver",
+    "lando db:export copy.sqlite --service appserver",
+    "lando db:import backup.sql.gz --service appserver --yes",
+    "lando db:import copy.sqlite --service appserver --yes",
+    "lando db:reset --service appserver --yes",
+    "lando db:snapshot --service appserver",
+    "lando db:snapshots --service appserver",
+    "lando db:snapshots:prune --service appserver --keep-latest=3 --preview"
+  ],
+  "docs/guides/tooling/xdebug-phpstorm.mdx": ["lando xdebug off", "lando xdebug on", "lando xdebug status"],
+  "recipes/astro/README.mdx": ["lando astro --version", "lando npm install"],
+  "recipes/django/README.mdx": [
+    "lando django migrate",
+    "lando logs --service=worker",
+    "lando pip freeze --local"
+  ],
+  "recipes/drupal-cms/README.mdx": [
+    "lando drush user:login --no-browser",
+    "lando exec appserver -- env COMPOSER_PROCESS_TIMEOUT=900 composer install --no-interaction"
+  ],
+  "recipes/drupal-contrib/README.mdx": [
+    "lando drush status",
+    "lando phpcs --standard=Drupal,DrupalPractice .",
+    "lando phpunit tests/src/Unit"
+  ],
+  "recipes/fastapi/README.mdx": ["lando uvicorn app.main:app --reload"],
+  "recipes/hugo/README.mdx": [
+    "lando hugo build",
+    "lando hugo new content posts/hello.md",
+    "lando hugo version"
+  ],
+  "recipes/laravel/README.mdx": [
+    "lando logs --service=worker",
+    "lando npm --version",
+    "lando npm install",
+    "lando npm run build"
+  ],
+  "recipes/mean/README.mdx": ["lando node --version", "lando npm --version"],
+  "recipes/nextjs/README.mdx": [
+    "lando next dev",
+    "lando npm install",
+    "lando pnpm --version",
+    "lando pnpm install"
+  ],
+  "recipes/node-api/README.mdx": ["lando node --version", "lando npm install"],
+  "recipes/node-postgres/README.mdx": ["lando pnpm --version", "lando pnpm install"],
+  "recipes/node-ts/README.mdx": ["lando pnpm --version", "lando pnpm install"],
+  "recipes/rails/README.mdx": [
+    "lando bundle",
+    "lando rails",
+    "lando rails db:prepare",
+    "lando rails new . --database=postgresql --force",
+    "lando rails server -b 0.0.0.0",
+    "lando rake"
+  ],
+  "recipes/sveltekit/README.mdx": ["lando npm install", "lando svelte --help"],
+  "recipes/toolbox/README.mdx": [
+    "lando exec toolbox -- apt-get update",
+    "lando exec toolbox -- cat /etc/os-release"
+  ],
+  "recipes/wordpress/README.mdx": ["lando wp --info"]
+}

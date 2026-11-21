@@ -14,6 +14,18 @@ import {
 } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 
+test.each([
+  { parts: ["a", "", "b"], normalized: "ab" },
+  {
+    parts: ["a", "", "b", { service: "web", encoding: "raw" }],
+    normalized: { _tag: "RouteText", parts: ["ab", { service: "web", encoding: "raw" }] },
+  },
+])("normalizes public route text on decode and encode: $parts", ({ parts, normalized }) => {
+  const decoded = Schema.decodeUnknownSync(EnvironmentValue)({ _tag: "RouteText", parts });
+  expect(decoded).toEqual(normalized);
+  expect(Schema.encodeSync(EnvironmentValue)(decoded)).toEqual(normalized);
+});
+
 describe("environment values", () => {
   test("normalizes event and tooling environments through the same descriptor codec", () => {
     // Given

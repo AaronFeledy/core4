@@ -44,7 +44,7 @@ config:
     web:
       type: node:22
       endpoints:
-        - _tag: internal
+        - kind: internal
           protocol: http
           port: 3000
       routes:

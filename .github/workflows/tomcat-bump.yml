@@ -10,7 +10,6 @@ concurrency:
 permissions:
   actions: write
   contents: write
-  issues: write
   pull-requests: write
 jobs:
   bump:
@@ -22,7 +21,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
       - run: bun install --frozen-lockfile
@@ -93,19 +92,33 @@ jobs:
           gh workflow run ci.yml --ref "$BRANCH"
   report-failure:
     needs: [bump]
-    if: ${{ !cancelled() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      NEEDS_JSON: ${{ toJSON(needs) }}
     steps:
       - name: Report automation failure
         run: |
           set -euo pipefail
+          FAILED_JOBS="$(jq -r '
+            [to_entries[] | .value.result as $result
+              | select($result != "success" and $result != "skipped")
+              | .key + (if $result == "failure" then ""
+                        elif $result == "cancelled" then " (timed out or cancelled)"
+                        else " (\($result))" end)] | join(", ")
+          ' <<< "$NEEDS_JSON")"
+          if [ -z "$FAILED_JOBS" ]; then
+            echo "No unsuccessful jobs."
+            exit 0
+          fi
           TITLE='tomcat-bump automation failure'
-          BODY="Workflow run failed: $RUN_URL"
+          printf -v BODY 'Workflow run failed: %s\n\nFailed jobs: %s' "$RUN_URL" "$FAILED_JOBS"
           ISSUE_NUMBER="$(gh issue list --state open --search 'in:title "tomcat-bump automation failure" sort:created-asc' --limit 100 --json number,title --jq '[.[] | select(.title == "tomcat-bump automation failure")] | .[0].number // ""')"
           if [ -n "$ISSUE_NUMBER" ]; then
             gh issue comment "$ISSUE_NUMBER" --body "$BODY"

@@ -62,6 +62,14 @@ Record per-PR macOS and Windows performance results as advisory. Treat nightly p
 
 Finish the report with separate conclusions for **selected CI** and **broader acceptance**, each using the outcome vocabulary above. List every outstanding mandatory or applicable conditional row and its blocker or next action. Broader acceptance is `pass` only when all required evidence is current and passing; absent evidence must remain visible even when selected CI passes.
 
+### Reproduce the problem first
+
+A fix starts from a failure you've seen on current `main`. Reproduce it in an isolated temp app with the command a user would run, and put the command, its output, and the provider in the PR description or in the issue it closes. Reviewers can then check the fix against the failure, not a description of it.
+
+Before you rework a PR that has been open for a while, rebase it onto current `main` and reproduce the failure again. `main` may already have fixed the problem or changed the code the PR patches. If the failure no longer reproduces, close the PR with the evidence or rework it into what is still needed.
+
+A documentation change that works around Lando behavior needs the same proof. Link an open issue that reproduces the failure, and add the hidden tripwire step described in [Pin a known limitation](../guides/authoring/e2e-smoke-scenarios.mdx#pin-a-known-limitation), so the fix fails the scenario and the workaround gets removed. If the failure does not reproduce, drop the workaround.
+
 ## Choose the CI tier
 
 Pull requests select the highest profile needed by their changed paths:
@@ -75,7 +83,9 @@ Pull requests select the highest profile needed by their changed paths:
 
 Mixed changes select the highest profile: `docs`, `guides`, `runtime`, then `providers`. An empty comparison selects `runtime`; unavailable comparison history selects `providers`. A Git command failure fails selection. Deleted and renamed paths count too. The path rules live in `scripts/ci-selection.ts`. `bun test --changed` is a local convenience, not the merge gate.
 
-Pushes to `main`, manual `ci` dispatches, and pull requests changing the root `.bun-version` or a platform build path run broad hosted coverage, including all six binary artifacts required by the release workflow. Platform build paths are `core/test/build/**`, the compiled-binary build and smoke scripts, and the native libc binding module `engine/src/runtime/libc.ts`, whose calling conventions differ per platform. Each POSIX build lane round-trips those bindings natively and checks that the binary hands a shared pipe back in blocking mode; Windows has no such flag, so those checks skip there. The toolchain rule applies even when the PR also changes other paths. Nightly and the scheduled evidence workflows own deep live suites and platform journeys. Use manual `ci` dispatch when another PR needs the broad hosted checks before merge.
+The merge queue's `merge_group` event uses the same path selection as `pull_request`, comparing the merge group's base and head SHAs.
+
+Pushes to `main`, manual `ci` dispatches, and pull requests changing the root `.bun-version` or a platform build path run broad hosted coverage, including all six binary artifacts required by the release workflow. Platform build paths include the tests assigned to `build-*` jobs in `scripts/test-selections.ts`, their local support modules and fixtures, the platform build and smoke scripts, and the native libc binding module `engine/src/runtime/libc.ts`. Other unit tests under `core/test/build/` use the normal `runtime` profile. Each POSIX build lane round-trips those bindings natively and checks that the binary hands a shared pipe back in blocking mode; Windows has no such flag, so those checks skip there. The toolchain rule applies even when the PR also changes other paths. Nightly and the scheduled evidence workflows own deep live suites and platform journeys. Use manual `ci` dispatch when another PR needs the broad hosted checks before merge.
 
 General Linux tests run on Ubuntu 26.04. Portable Linux x64 binaries still build on Ubuntu 24.04 for their older glibc baseline. The focused install/use/uninstall lifecycle also keeps Ubuntu 24.04 coverage without duplicating the broad test suite.
 
@@ -187,9 +197,20 @@ Heavy meta-suites that re-run generators or other test files (`core/test/scripts
 
 ## Dependency maintenance
 
-Dependabot checks Bun dependencies and GitHub Actions weekly. Minor and patch updates are grouped per ecosystem; major updates get separate pull requests. Actions workflows are generated, so an Actions update PR must also update its owning generator or action-pin source and regenerate YAML before merge.
+Renovate keeps Bun packages and GitHub Actions current through the Mend Renovate GitHub App. Its configuration is `.github/renovate.json`, and its Dependency Dashboard issue lists every open, approval-gated, and errored update. Renovate pushes branches as an app, so pull-request CI runs on its PRs like any other.
 
-The daily `dependency-audit` workflow runs `bun run scripts/dependency-audit.ts` from the trusted default branch. It can also be dispatched there manually. It is not a pull-request check. Bun version-update PRs do not replace Bun vulnerability detection; Dependabot does not currently support Bun security-update PRs.
+Renovate proposes updates early on Mondays, Central time, and waits until a release is three days old:
+
+- Minor and patch updates arrive as one `Bun packages` PR and one `GitHub Actions` PR. Each major update gets its own PR.
+- Security fixes for direct Bun dependencies and `overrides` arrive outside the weekly schedule, from the OSV advisory database.
+- Bun and Effect upgrades wait until you approve them on the Dependency Dashboard. A Bun PR moves `.bun-version`, `constraints.bun` in the Renovate configuration, every `engines.bun`, and `@types/bun` together. Finish it by updating the [runtime-bundle builder pins](#update-the-builder-pins), `BUN_LICENSE_PIN` in `scripts/compiled-binary-notices.ts`, and the Bun version the contributor docs name. Effect stays pinned in the root workspace catalog, which `core/test/build/effect-version-pin.test.ts` guards.
+- `@opentui/core` stays on 0.8.0 until upstream ships a native build without FFmpeg.
+
+Every action a generated workflow uses is pinned once in `.github/actions/pins.yml`, as a full commit labeled with its release: `owner/repo@<commit> # vX.Y.Z`. Generators read that file through `scripts/action-pins.ts`, and `core/test/build/action-pins.test.ts` fails when a committed workflow uses an action any other way. Renovate moves a pin in that file and in every committed workflow in one PR, writing the same text the generators write, so `codegen:check` passes without a regeneration step. It also proposes a fix when a pin's commit stops matching its release tag. Renovate never edits runner labels, job containers, or action inputs. To add an action or move a pin yourself, edit its line in `pins.yml` and run `bun run codegen`.
+
+If a dependency update changes a committed generated file, `codegen:check` fails on the Renovate PR. Run `bun run codegen` on that branch and push the result.
+
+The daily `dependency-audit` workflow runs `bun run scripts/dependency-audit.ts` from the trusted default branch. It can also be dispatched there manually. It is not a pull-request check. It reads the whole lockfile, so it also reports transitive packages that Renovate's security PRs do not cover.
 
 The audit maintains one bot-owned issue titled `Dependency audit findings`. New findings create it, changed findings update it, a clean audit closes it, and recurring findings reopen the same issue. Unchanged findings do not rewrite the issue. Ignore policy comes from the existing `audit` command in `package.json`. Registry errors, malformed output, and inconsistent audit exits fail the scheduled job without marking the issue resolved.
 
@@ -256,9 +277,9 @@ Normal codegen is offline: it checks local hashes and template invariants and de
 
 ## Extend the internal maintenance workflows
 
-`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts` and `build-compose-vendor-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts`, `build-compose-vendor-bump-workflow.ts`, and `build-node-releases-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
 
-When a run fails, the failure job searches open issues in `GH_REPO` for the title `<workflow name> automation failure` and keeps only exact title matches. It comments on the oldest match and files a new issue only when none is open.
+The `report-failure` job runs after every run that was not cancelled as a whole, and it is the only job with `issues: write`. It reports every job whose result is not `success` or `skipped`, so a timeout (reported as `cancelled`), a lost runner (`abandoned`), and any result GitHub adds later all count. When nothing failed, it exits without touching issues. Otherwise it searches open issues in `GH_REPO` for the title `<workflow name> automation failure`, keeps only exact title matches, comments on the oldest match, and files a new issue only when none is open. The issue or comment links the run and lists the failed jobs, marking them `(timed out or cancelled)` or with their result name, such as `(abandoned)`.
 
 The automation owns the PR title and the body text between `<!-- maintenance-report:start -->` and `<!-- maintenance-report:end -->`. A marker counts only when it starts a line, so a sentence can quote one. Text outside the markers survives every run, so put review notes and `Closes #N` lines there. The section ends at the first end marker and starts at the nearest start marker above it. If no start marker comes before the first end marker, the next run replaces the whole body with the marked report.
 
@@ -613,6 +634,8 @@ Provider integration also runs as platform-specific jobs (`provider-integration-
 ## Lint guide YAML and negative fixtures
 
 Run `bun run lint:guides` to validate identifiable Landofile fences and fixture files.
+It also checks [app install coverage](./guide-authoring.md#exercise-every-app-install-you-teach)
+and [same-page container command coverage](./guide-authoring.md#run-every-container-command-you-show).
 Full `.lando.yml` documents keep full authoring requirements, including native
 `!reset` and `!override` placement checks. `.lando.*.yml` files are fragments.
 Unrelated YAML, such as Actions workflows, Kubernetes resources, recipe manifests,
@@ -647,16 +670,18 @@ The live region exists so a hung job leaves evidence of where it stopped; see th
 
 `bun run check:public-transcripts` is also a standalone clean-tree gate. When `dist/transcripts/public/guides` is empty after `bun run clean` or on a fresh clone, the command deterministically emits the public transcript corpus before checking its inventory. Existing or partially populated corpora are checked without regeneration, so missing-artifact diagnostics remain actionable. The generated corpus is gitignored and must not be committed.
 
-Only `guide-scenarios-linux-x64` runs the e2e `@smoke` second pass. It downloads the Linux x64 compiled binary, provisions the same Podman socket used by provider integration, sets `LANDO_GUIDE_E2E=1`, and runs only generated tests whose names contain `@smoke` and `[e2e]`. E2e guide scenarios without the `@smoke` tag are not part of the PR gate; the nightly job below runs every `[e2e]` scenario:
+The e2e `@smoke` scenarios run in their own job, `guide-e2e-linux-x64`, so the generated-scenario job above no longer waits for the binary or spends its time limit on them. The job runs as two shards. Each one downloads the Linux x64 compiled binary, provisions the same managed Podman socket that provider integration uses, sets `LANDO_GUIDE_E2E=1`, and runs half of the generated scenarios tagged `@smoke` on the `e2e` layer, one at a time. The wrapper's `--smoke-e2e` flag selects those files from the header that the scenario generator writes into each one, and Bun's `--shard=<i>/<n>` splits them by sorted path. E2e guide scenarios without the `@smoke` tag are not part of the PR gate; the nightly job below runs every `[e2e]` scenario.
+
+Run the whole subset locally, or add `--shard=1/2` to run the first CI shard:
 
 ```bash
 LANDO_GUIDE_E2E=1 \
 LANDO_SCENARIO_E2E_BINARY="$PWD/dist/lando" \
 LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock \
-bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\\[e2e\\]"
+bun run scripts/test-reporters/run-guide-scenarios.ts --smoke-e2e
 ```
 
-Failures still upload guide internal transcripts, plus `guide-e2e-provider-diagnostics-<run-id>` with the Podman service log and recent journal output.
+A failing shard uploads its guide internal transcripts and `guide-e2e-provider-diagnostics-<run-id>-<runner>-shard<n>` with the Podman service log and recent journal output.
 
 ## Nightly provider-lando e2e
 
@@ -673,7 +698,7 @@ LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun run test:selection nightly-provide
 
 Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. The job has a 90-minute timeout, including room for six additional Composer install scenarios at about three minutes each.
 
-On scheduled nightly runs on `main`, `report-failure` waits for every other job and reports any failed jobs, even when other dependencies were skipped. GitHub reports a job stopped by its `timeout-minutes` as cancelled, so the reporter also lists cancelled jobs, marked as timed out or cancelled. A run cancelled as a whole files nothing. It searches open issues for the exact title `nightly automation failure`, comments on the oldest match, and creates an issue assigned to `AaronFeledy` only when none is open. The issue or comment names the failed jobs and links the workflow run. Only the reporter receives `issues: write`; the workflow keeps `contents: read`. Manual dispatches and runs on other branches do not file reports.
+On scheduled nightly runs on `main`, `report-failure` waits for every other job and reports every job whose result is not `success` or `skipped`, even when other dependencies were skipped. It uses the same shared step as the maintenance workflows, so a timeout is listed as `(timed out or cancelled)` and a lost runner as `(abandoned)`. A run with no failed job and a run cancelled as a whole file nothing. It searches open issues for the exact title `nightly automation failure`, comments on the oldest match, and creates an issue assigned to `AaronFeledy` only when none is open. The issue or comment names the failed jobs and links the workflow run. Only the reporter receives `issues: write`; the workflow keeps `contents: read`. Manual dispatches and runs on other branches do not file reports.
 
 ## Nightly source-store acceptance
 
@@ -835,7 +860,9 @@ Protect `main` in GitHub with required status checks enabled. Require this singl
 
 When adopting this workflow, replace the previous per-job required status checks with `ci` in the repository's branch protection or ruleset. Workflow edits do not change GitHub settings. Legacy job names remain visible, but an intentionally skipped legacy check is not proof that the selection passed.
 
-The final `ci` job always runs. It requires successful selection and every selected gate; a selected job that fails, is cancelled, or is unexpectedly skipped fails `ci`. Only policy-excluded jobs may be skipped. The dependency-audit workflow and scheduled self-hosted evidence workflows are not PR merge gates.
+The final `ci` job always runs. It requires successful selection and every selected gate. Any other result fails `ci`, including a failure, a cancellation, an unexpected skip, or GitHub's undocumented `abandoned` result for a job whose runner was lost. The gate prints one `<job>: <result>` line per unsuccessful job. Only policy-excluded jobs may be skipped. The dependency-audit workflow and scheduled self-hosted evidence workflows are not PR merge gates.
+
+If GitHub loses a runner before it starts any steps and the only other failures are summaries or gates failing because of that loss, CI automatically reruns the failed jobs once. An independent failure, a timeout after a step starts, or a later attempt does not trigger another automatic rerun. This behavior only takes effect once the retry workflow is on `main`, because GitHub runs `workflow_run` workflows from the default branch.
 
 ## Bun upgrade smoke checks
 

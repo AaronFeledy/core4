@@ -448,6 +448,7 @@ describe("SDK plan-carrying error channels", () => {
       Equal<
         StartAppError,
         | LegacyStartAppError
+        | import("@lando/sdk/errors").RouteUrlBindingError
         | import("@lando/sdk/errors").CaError
         | import("@lando/sdk/services").FileSystemError
         | ServiceNotReadyError

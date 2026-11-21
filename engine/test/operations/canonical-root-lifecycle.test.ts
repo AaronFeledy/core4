@@ -42,7 +42,7 @@ const web: ServicePlan = {
   mounts: [],
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: 3000,
       protocol: "http",
       name: "http",

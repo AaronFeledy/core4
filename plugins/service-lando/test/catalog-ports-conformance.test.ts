@@ -47,9 +47,9 @@ test.each([...serviceTypes].filter(([type]) => type !== "node"))(
       }),
     );
     // Then
-    expect(plan.endpoints.filter((endpoint) => endpoint._tag === "internal")).toEqual([
-      ...baseline.endpoints.filter((endpoint) => endpoint._tag === "internal"),
-      { _tag: "internal", port: 19091, protocol: "tcp" },
+    expect(plan.endpoints.filter((endpoint) => endpoint.kind === "internal")).toEqual([
+      ...baseline.endpoints.filter((endpoint) => endpoint.kind === "internal"),
+      { kind: "internal", port: 19091, protocol: "tcp" },
     ]);
     for (const listener of listeners) {
       const declaration = baseline.endpoints.find(
@@ -59,7 +59,7 @@ test.each([...serviceTypes].filter(([type]) => type !== "node"))(
         throw new Error("Catalog network listener declaration missing");
       }
       expect(plan.endpoints).toContainEqual({
-        _tag: "published",
+        kind: "published",
         port: listener.port,
         protocol: declaration.protocol,
         ...(listener.primary ? { primary: true } : {}),
@@ -70,13 +70,13 @@ test.each([...serviceTypes].filter(([type]) => type !== "node"))(
       });
     }
     expect(plan.endpoints).toContainEqual({
-      _tag: "published",
+      kind: "published",
       port: 19090,
       protocol: "tcp",
       publication: { hostPort: 19090 },
     });
     expect(plan.endpoints).toContainEqual({
-      _tag: "published",
+      kind: "published",
       port: 19090,
       protocol: "udp",
       publication: { hostPort: 19090 },

@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { primaryIssueFile } from "@lando/landofile/validation";
 import {
   LandofileValidationError,
   PluginLoadError,
@@ -8,6 +9,7 @@ import {
 } from "@lando/sdk/errors";
 import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import type { ServiceTypeProjectFileInput } from "@lando/sdk/services";
+import { endpointDeclarationValidationError } from "../services/endpoint-declaration.ts";
 
 export const serviceTypeCollision = (
   appRoot: string,
@@ -17,7 +19,7 @@ export const serviceTypeCollision = (
   new LandofileValidationError({
     message: error.remediation === undefined ? error.message : `${error.message} ${error.remediation}`,
     remediation: error.remediation ?? "Remove or rename the conflicting service type registration.",
-    file: `${appRoot}/.lando.yml`,
+    file: appRoot,
     issues: [
       validationIssue(
         ["services", serviceName, "type"],
@@ -58,6 +60,8 @@ export interface ServicePlanErrorInput {
 
 export const servicePlanError = ({ appRoot, serviceName, cause, projectFiles }: ServicePlanErrorInput) => {
   if (cause instanceof LandofileValidationError) return cause;
+  const declaration = endpointDeclarationValidationError(appRoot, cause);
+  if (declaration !== undefined) return declaration;
   const remediation =
     cause instanceof ServiceTypeError ||
     cause instanceof ServiceFeatureError ||
@@ -83,11 +87,10 @@ export const servicePlanError = ({ appRoot, serviceName, cause, projectFiles }: 
             remediation,
           ),
         ];
-  const projectFile = issues.find((issue) => issue.source?.layer === "project-file")?.source;
   return new LandofileValidationError({
     message: cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
     remediation: remediation ?? `Correct the configuration of service ${serviceName}.`,
-    file: projectFile !== undefined && "file" in projectFile ? projectFile.file : `${appRoot}/.lando.yml`,
+    file: primaryIssueFile(issues, appRoot),
     issues,
   });
 };

@@ -118,7 +118,7 @@ describe("makeHealthcheckRunner", () => {
           hostAliases: [],
           extensions: {},
           metadata,
-          endpoints: [{ _tag: "internal", port: 27017, protocol: "tcp" }],
+          endpoints: [{ kind: "internal", port: 27017, protocol: "tcp" }],
         },
       },
     });

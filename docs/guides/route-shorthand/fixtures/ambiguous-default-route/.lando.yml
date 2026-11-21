@@ -3,11 +3,5 @@ services:
   web:
     type: nginx
     endpoints:
-      - _tag: internal
-        name: site
-        protocol: http
-        port: 80
-      - _tag: internal
-        name: admin
-        protocol: http
-        port: 8081
+      - site=http:80
+      - admin=http:8081

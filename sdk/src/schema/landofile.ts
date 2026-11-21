@@ -18,6 +18,7 @@ import { EndpointInput } from "./endpoint.ts";
 import { ComposeEnvironmentInput } from "./environment-input.ts";
 import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { executionSite, executionSiteKey } from "./execution-site.ts";
+import { HOST_ALIAS_NAME_PATTERN } from "./hostname.ts";
 import { LandofileEvents } from "./landofile-events.ts";
 import { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
 
@@ -41,6 +42,7 @@ import {
   ToolingEnvironment,
   ToolingVarLiteral,
 } from "./primitives.ts";
+import { indexedPropertyNameCheck, propertyNameCheckedRecord } from "./property-name-check.ts";
 import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
@@ -87,7 +89,8 @@ export const RouteObjectInput = Schema.Struct({
     description: "HTTP or HTTPS schemes served by this route.",
   }),
   endpoint: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])).annotate({
-    description: "Target service endpoint name or port.",
+    description:
+      "Target endpoint name or container port (1 to 65535). An unused numeric port declares internal HTTP unless a known TCP or UDP listener conflicts. A string selects by name.",
   }),
   pathPrefix: Schema.optionalKey(Schema.String).annotate({
     description: "Request path prefix to match, beginning with / and without a query string or fragment.",
@@ -95,9 +98,9 @@ export const RouteObjectInput = Schema.Struct({
   filters: Schema.optionalKey(
     layerMerge(Schema.Array(RouteFilter), {
       kind: "keyed",
-      identity: "filter-name-or-type",
+      identity: "filter-name-or-kind",
       whenUnkeyed: "replace",
-      onMatch: "replace-on-type-change",
+      onMatch: "replace-on-kind-change",
     }),
   ).annotate({
     description: "Ordered provider-neutral route filters; names identify filters across layers.",
@@ -794,13 +797,19 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description: "How the post-start URL scan probes this service, or false to skip it.",
     }),
     endpoints: Schema.optionalKey(
-      layerMerge(Schema.Array(EndpointInput), keyedMerge("endpoint-name")),
+      layerMerge(Schema.Array(EndpointInput), {
+        kind: "keyed",
+        identity: "endpoint-name",
+        whenUnkeyed: "replace",
+        onMatch: "replace-on-kind-change",
+      }),
     ).annotate({
-      description: "Internal or published network endpoints exposed by the service.",
+      description:
+        "Internal or published network endpoints. This list replaces type and feature declarations and Compose port synthesis; numeric routes can still declare HTTP listeners.",
     }),
     routes: Schema.optionalKey(layerMerge(Schema.Array(RouteInput), ROUTE_MERGE)).annotate({
       description:
-        "Hostnames routed to service endpoints. An empty list disables the generated default route.",
+        "Hostnames routed to service endpoints. A numeric selector can declare an internal HTTP listener. An empty list disables the generated default route.",
     }),
 
     healthcheck: executionSiteKey(Schema.optionalKey(HealthcheckInput), "healthcheck"),
@@ -1223,7 +1232,15 @@ const LandofileShapeBase = Schema.Struct({
   gpgAgent: Schema.optionalKey(GpgAgentConfig).annotate({
     description: "App GPG-agent forwarding policy, overriding global settings per field.",
   }),
-  services: Schema.optionalKey(Schema.Record(ServiceName, ServiceConfigDecode)),
+  services: Schema.optionalKey(
+    propertyNameCheckedRecord(
+      Schema.Record(ServiceName, ServiceConfigDecode),
+      indexedPropertyNameCheck(
+        HOST_ALIAS_NAME_PATTERN,
+        "Expected a service key with dot-separated labels of letters, digits, hyphens, or underscores, without leading or trailing hyphens (at most 63 characters per label and 253 total).",
+      ),
+    ),
+  ),
   proxy: Schema.optionalKey(Schema.Record(ServiceName, layerMerge(Schema.Array(RouteInput), ROUTE_MERGE))),
   router: Schema.optionalKey(RouterConfig).annotate({
     description: "App-authored shared-router bind address and port policy.",

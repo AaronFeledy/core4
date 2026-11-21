@@ -10,7 +10,6 @@ import { emitYamlDocument } from "@lando/sdk/yaml";
 import { Effect, Result, Schema } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import { resolveKnownEventSet } from "../../src/planner/event-set.ts";
-import { deferredSiteKey } from "../../src/planner/landofile-scopes.ts";
 import { validateResolvedLandofile } from "../../src/planner/resolved-validation.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
@@ -111,6 +110,25 @@ test.each(["*-app.lndo.site", { hostname: "wild.*.app.lndo.site", scheme: "http"
   },
 );
 
+test("a certificate-rejected route cannot supply the listener for a portless sibling", async () => {
+  await withApp(
+    {
+      type: "compose",
+      image: "nginx:alpine",
+      routes: [{ hostname: "wild.*.app.lndo.site", scheme: "both", endpoint: 8080 }, "web.lndo.site"],
+    },
+    async (root) => {
+      const lint = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+      );
+      expect(lint.violations.map(({ rule, path }) => ({ rule, path }))).toEqual([
+        { rule: "landofile.route", path: ["services", "web", "routes", 0, "hostname"] },
+        { rule: "landofile.route", path: ["services", "web", "routes", 1] },
+      ]);
+    },
+  );
+});
+
 test("host alias validation skips blocked and pending expression sites", () => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     services: { web: { extra_hosts: { "bad host": "{{ services.db.creds.user }}" } } },
@@ -119,7 +137,7 @@ test("host alias validation skips blocked and pending expression sites", () => {
   const result = validateResolvedLandofile({
     landofile,
     landofilePath: "/app/.lando.yml",
-    blocked: new Set([deferredSiteKey(path)]),
+    blocked: [path],
   });
   expect(result.issues).toEqual([]);
 });
@@ -138,7 +156,7 @@ test("HTTPS coverage is reported alongside other route field failures and unreso
   const result = validateResolvedLandofile({
     landofile,
     landofilePath: "/app/.lando.yml",
-    blocked: new Set([deferredSiteKey(["services", "web", "routes", 1, "endpoint"])]),
+    blocked: [["services", "web", "routes", 1, "endpoint"]],
   });
   expect(result.issues.map((issue) => [issue.rule, issue.path.join(".")]).toSorted()).toEqual([
     ["landofile.route", "services.web.routes.0.hostname"],

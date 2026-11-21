@@ -79,7 +79,7 @@ const bindMount = (source: string, target: string, readOnly: boolean): ServicePl
 });
 
 const publishedHttp = (name: string, port: number, hostPort: number): ServicePlan["endpoints"][number] => ({
-  _tag: "published",
+  kind: "published",
   port: PortNumber.make(port),
   protocol: "http",
   name,

@@ -1,5 +1,5 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { ProxyApplyError, type ProxyError, ProxySetupError } from "@lando/sdk/errors";
+import { ProxyApplyError, ProxyError, ProxySetupError } from "@lando/sdk/errors";
 import { RouterService, type RouterServiceShape } from "@lando/sdk/services";
 import { Effect, Ref, Semaphore } from "effect";
 
@@ -35,6 +35,19 @@ export const deferredRouter = Effect.fnUntraced(function* (
     prepare: (config) => Effect.flatMap(forSetup, (router) => router.prepare?.(config) ?? Effect.void),
     setup: (config, options) => Effect.flatMap(forSetup, (router) => router.setup(config, options)),
     revalidateStartup: Effect.flatMap(resolve, (router) => router.revalidateStartup),
+    routeAuthorities: (routes) =>
+      Effect.flatMap(
+        resolve,
+        (router) =>
+          router.routeAuthorities?.(routes) ??
+          Effect.fail(
+            new ProxyError({
+              proxyId: identity.id,
+              message: "The router cannot report its route authorities.",
+              remediation: "Select a router that reports its public authorities.",
+            }),
+          ),
+      ),
     applyRoutes: (routes, app) =>
       resolve.pipe(
         mapFailures(

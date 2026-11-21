@@ -144,8 +144,8 @@ test("diagnoses an atomic l337 volume mapping rather than silently omitting it",
 });
 
 test.each([
-  ["ssl: 4444", { _tag: "published", protocol: "https", port: 4444, publication: {} }],
-  ["ssl: 4444, sslExpose: false", { _tag: "internal", protocol: "https", port: 4444 }],
+  ["ssl: 4444", { kind: "published", protocol: "https", port: 4444, publication: {} }],
+  ["ssl: 4444, sslExpose: false", { kind: "internal", protocol: "https", port: 4444 }],
 ])("treats a numeric node %s as the port its app serves HTTPS on", async (fields, endpoint) => {
   // Given
   const text = `services: {web: {type: "node:22", ${fields}}}`;

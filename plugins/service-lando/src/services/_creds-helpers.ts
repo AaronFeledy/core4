@@ -112,6 +112,10 @@ export const credentialValuesAgree = (left: EnvironmentValue, right: Environment
           "text",
           normalized.parts.map((part) => (typeof part === "string" ? part : [part.reference, part.encoding])),
         ]);
+      case "RouteText":
+        return JSON.stringify(normalized);
+      default:
+        return normalized satisfies never;
     }
   };
   return descriptor(left) === descriptor(right);

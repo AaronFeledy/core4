@@ -235,7 +235,7 @@ test("rejects legacy structured host endpoints when decoding service info", () =
   const { connections: _, ...metadata } = service;
   const legacy = {
     ...metadata,
-    endpoints: [{ _tag: "internal", protocol: "tcp", port: 15432 }],
+    endpoints: [{ kind: "internal", protocol: "tcp", port: 15432 }],
     internal: [],
   };
   // When / Then

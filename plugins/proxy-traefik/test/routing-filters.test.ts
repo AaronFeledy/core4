@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 import { type RoutePlan, ServiceName } from "@lando/sdk/schema";
 
+import { routeReloadDigest } from "../src/route-reload-state.ts";
 import { DEFAULT_AUTHORITY_PORTS, persistedAuthorities, renderTraefikDynamicConfig } from "../src/routing.ts";
 import { routeMetadataLine, routeObjectName, routeOwner } from "./route-owner-fixture.ts";
 
+// SHA-256 of the pre-Track-V rendered owner YAML for the both-scheme filtered route below
+// (captured at /tmp/opencode/v-old-router.yml before the kind rename). Pinned so the
+// discriminator conversion cannot change routers, middleware IDs, backend, TLS or priority bytes.
+const OLD_BOTH_SCHEME_FILTERED_SHA256 = "834550eebf6764bcc70442d3422234760e22cd658aa8dfe66604f9838de6801c";
 const app = routeOwner("demo");
 const base: RoutePlan = {
   hostname: "api.demo.lndo.site",
@@ -26,11 +32,11 @@ const services = {
   [svc0]: { loadBalancer: { passHostHeader: true, servers: [{ url: "http://api.demo.internal:8080" }] } },
 } as const;
 const filters = [
-  { type: "stripPrefix", prefix: "/old" },
-  { type: "addPrefix", prefix: "/new" },
-  { type: "requestHeader", name: "merge-request", header: "X-Request", value: 'yes: "quoted"\nnext' },
-  { type: "responseHeader", name: "merge-response", header: "X-Response", value: "false" },
-  { type: "redirect", to: "https://example.com/new?q=one#two", permanent: true },
+  { kind: "stripPrefix", prefix: "/old" },
+  { kind: "addPrefix", prefix: "/new" },
+  { kind: "requestHeader", name: "merge-request", header: "X-Request", value: 'yes: "quoted"\nnext' },
+  { kind: "responseHeader", name: "merge-response", header: "X-Response", value: "false" },
+  { kind: "redirect", to: "https://example.com/new?q=one#two", permanent: true },
 ] as const;
 const names = [
   `${svc0}-f0-stripPrefix`,
@@ -68,7 +74,8 @@ describe("Traefik route filter YAML", () => {
     // Given
     const route: RoutePlan = { ...base, scheme: "both", filters };
     // When
-    const parsed = Bun.YAML.parse(renderTraefikDynamicConfig([route], app));
+    const rendered = renderTraefikDynamicConfig([route], app);
+    const parsed = Bun.YAML.parse(rendered);
     // Then
     expect(parsed).toEqual({
       http: {
@@ -80,6 +87,10 @@ describe("Traefik route filter YAML", () => {
         middlewares,
       },
     });
+    expect(createHash("sha256").update(rendered).digest("hex")).toBe(OLD_BOTH_SCHEME_FILTERED_SHA256);
+    expect(routeReloadDigest([rendered])).toBe(
+      "78f313ba03544b06f9869d2c377d084d74660616846dcafc7d982d2e91318a4b",
+    );
   });
 
   test.each(["demo", "team@app/other"])(
@@ -168,7 +179,7 @@ describe("Traefik route filter YAML", () => {
       ...base,
       filters: [
         {
-          type: "redirect",
+          kind: "redirect",
           to: '/new: "quoted"\n#fragment',
           ...(permanent === undefined ? {} : { permanent }),
         },

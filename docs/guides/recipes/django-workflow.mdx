@@ -28,11 +28,13 @@ lando pip install 'Django>=5,<6' 'psycopg[binary]>=3'
 lando exec web -- django-admin startproject config .
 ```
 
-Pin what you installed for the next rebuild:
+`lando pip` installs into `/app/.venv`, the [dependency environment](../services/python.mdx) shared by `web` and the optional `worker`. Save the project-installed versions so Lando can install them on another checkout:
 
 ```sh
-lando pip freeze > requirements.txt
+lando pip freeze --local > requirements.txt
 ```
+
+On a fresh clone, run `lando start`. If you edit `requirements.txt` while the app is running, run `lando restart`.
 
 Check that Django and the database clients are available:
 
@@ -44,13 +46,43 @@ lando redis-cli ping
 lando psql -c 'SELECT 1'
 ```
 
+## Run Celery against Redis
+
 Add a Celery worker at init with `--answer=celery=true`:
 
 ```sh
 lando init --recipe django --name=django-celery --yes --answer=celery=true
 ```
 
-That service runs `celery -A app worker --loglevel=info` with `restart: unless-stopped`. Point Celery at your real app module. If the application or dependencies are missing, start warns about the worker and reports it as `restarting`; the worker retries and starts on its own after installation. Use `lando logs --service=worker` to check it. Python has no default healthcheck; author `healthcheck:` when your web service needs an application readiness gate.
+From the generated app directory, run `lando start`. It succeeds and warns that the worker is restarting if you haven't installed Celery or configured `config.celery` yet. The `web` service is available for the install.
+
+Add `celery[redis]` to `requirements.txt` alongside Django (and `psycopg[binary]` for Postgres), then run `lando restart` to install them. If this is a new project, create `config` with `lando exec web -- django-admin startproject config .`.
+
+Create `config/celery.py`:
+
+```python
+from celery import Celery
+
+app = Celery("config")
+app.config_from_object("django.conf:settings", namespace="CELERY")
+app.autodiscover_tasks()
+```
+
+Add this to `config/__init__.py`:
+
+```python
+from .celery import app as celery_app
+```
+
+In `config/settings.py`, use the recipe's Redis URL as the broker:
+
+```python
+import os
+
+CELERY_BROKER_URL = os.environ["REDIS_URL"]
+```
+
+The worker runs `celery -A config worker --loglevel=info` and retries on its own until the app and packages are ready. Check `lando logs --service=worker` for `ready`. After changing code or dependencies, run `lando restart -s worker` to reload the worker without restarting the database or web service.
 
 ## Connect Django to Postgres and Redis
 
@@ -126,8 +158,8 @@ backups and restore behavior.
 | `web` | `python:3.12`, `framework: django`, port `8000`, depends on `database` and `cache`, gets `DATABASE_URL` and `REDIS_URL` |
 | `database` | `type: postgres` |
 | `cache` | `type: redis` |
-| `worker` (optional) | `python:3.12`, `framework: django`, `command: celery -A app worker --loglevel=info` with `--answer=celery=true`; same `DATABASE_URL` and `REDIS_URL` |
-| Tooling | `lando django` (`python manage.py`) and `lando pip` on `web` |
+| `worker` (optional) | `python:3.12`, `framework: django`, `command: exec celery -A config worker --loglevel=info` and `endpoints: []` (no route) with `--answer=celery=true`; shares `python-env`, `DATABASE_URL`, and `REDIS_URL` with `web` |
+| Tooling | `lando django` (`python manage.py`) and `lando pip` (`python -m pip`) on `web` |
 
 The Landofile writes `DJANGO_SETTINGS_MODULE: config.settings` into `environment` on `web` and the optional `worker`. Edit those fields if your project uses a different settings module. Port `8000` is also editable on `web`; keep your server bind in sync.
 
@@ -163,6 +195,33 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. They re
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+  <Scenario id="celery-config" render={false} reason="Check the Celery command and the one app-scoped environment store">
+    <Step name="plan-shared-environment">
+      <Run command="lando init --recipe django --name=django-celery-plan --answer=celery=true --answer=database=sqlite --yes" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"exec celery -A config worker --loglevel=info\"" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "python-env[\\s\\S]*python-env" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="shared-python-environment" layer="e2e" render={false} reason="Prove a package installed only on web is importable on both services after rebuild">
+    <Step name="install-on-web">
+      <UseFixture name="celery-project" />
+      <Run command="lando init . --recipe django --name=django-shared-env --answer=celery=true --answer=database=sqlite --yes" />
+      <Run command="lando start --format=json" />
+      <Run command={`lando exec web -- python -c 'from config.celery import add; assert add.delay(20, 22).get(timeout=30) == 42'`} />
+      <Verify command={`lando exec worker --format=json -- python -c 'import django, sys; assert sys.prefix == "/app/.venv"; print(django.__file__)'`} expect={{ stdout: { regex: "/app/\\.venv/[^\"]*/django/__init__\\.py" } }} />
+    </Step>
+    <Step name="rebuild-and-import">
+      <Run command="lando rebuild -y --format=json" />
+      <Run command={`lando exec web -- python -c 'from config.celery import add; assert add.delay(20, 22).get(timeout=30) == 42'`} />
+      <Verify command={`lando exec web --format=json -- python -c 'import django; print(django.__file__)'`} expect={{ stdout: { regex: "/app/\\.venv/[^\"]*/django/__init__\\.py" } }} />
+      <Verify command={`lando exec worker --format=json -- python -c 'import django; print(django.__file__)'`} expect={{ stdout: { regex: "/app/\\.venv/[^\"]*/django/__init__\\.py" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 </Guide>

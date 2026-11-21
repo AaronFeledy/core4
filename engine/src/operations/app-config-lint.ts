@@ -3,10 +3,11 @@ import {
   type LintLandofileOptions,
   attributeEffectiveLintIssue,
   mergeLintFindings,
+  overlapsUnavailable,
+  unavailableEntrySkips,
 } from "@lando/landofile/lint";
-import { provenanceOf } from "@lando/landofile/provenance";
-import { getLandofileValueSource } from "@lando/landofile/validation";
 import { normalizeHostPlatform } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import type {
   AppDataIdentityError,
   LandofileFormConflictError,
@@ -14,21 +15,26 @@ import type {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import type {
-  AppPlan,
-  ConfigLintResult,
-  ConfigLintViolation,
-  ProviderId,
-  ValidationIssue,
+import {
+  type AppPlan,
+  CONFIG_LINT_UNAVAILABLE_SKIP_LIMIT,
+  type ConfigLintResult,
+  type ConfigLintSkip,
+  type ConfigLintViolation,
+  LandofileLayer,
+  type ProviderId,
+  type ValidationIssue,
 } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
-import { Effect, Option, Result } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import { routerEnabledFrom } from "../config/router-config.ts";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 import { planApp } from "../planner/assemble.ts";
 import { providerAlternatives } from "../planner/compose-capabilities.ts";
 import { readAppDataIdentity } from "../planner/data-identity.ts";
+import { invalidServiceDnsNameReason } from "../planner/dns-name-validation.ts";
 import { invocationSitesOf, resolveLandofileForPlanning } from "../planner/event-set.ts";
+import { attributePlanningFailure } from "../planner/failure-attribution.ts";
 import { hostShellIssues } from "../planner/host-shell-issues.ts";
 import { configExpressionIssuePath } from "../planner/landofile-scopes.ts";
 import { lintCapabilityIssues } from "../planner/lint-capabilities.ts";
@@ -72,6 +78,19 @@ export type AppConfigLintOptions = LintLandofileOptions;
 const sourceFile = (source: ValidationIssue["source"]): string | undefined =>
   source !== undefined && "file" in source ? source.file : undefined;
 
+const planningSkip = (
+  reason: "diagnostic-document" | "earlier-errors" | "capabilities-undeclared",
+): ConfigLintSkip => ({
+  stage: "planning",
+  reason,
+  message: {
+    "diagnostic-document": "Final planning did not run on a diagnostic Landofile.",
+    "earlier-errors": "Final planning did not run because earlier checks reported errors.",
+    "capabilities-undeclared":
+      "Final planning did not run because the provider has no offline capability declaration.",
+  }[reason],
+});
+
 /**
  * Config lint shared by `app:config:lint` and doctor: the load snapshot's
  * findings, resolved checks, and final planning using declared capabilities.
@@ -89,15 +108,21 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   PluginRegistry
 > {
   const snapshot = yield* lintLandofileSnapshot(options);
-  const scriptFindings = yield* lintBunShellScripts(snapshot.landofilePath, snapshot.resolved);
+  const diagnostic = snapshot.diagnostic;
+  const landofile = snapshot.resolved ?? diagnostic?.landofile;
+  const scriptFindings = yield* lintBunShellScripts(snapshot.landofilePath, landofile);
   const violations = mergeLintFindings([...snapshot.result.violations, ...scriptFindings]);
   const result = {
     ...snapshot.result,
     violations,
     valid: !violations.some((issue) => issue.severity === "error"),
   };
-  if (snapshot.resolved === undefined) return result;
-  const landofile = snapshot.resolved;
+  if (landofile === undefined) {
+    return result.skipped?.some((skip) => skip.reason === "load-failure")
+      ? result
+      : { ...result, skipped: [...(result.skipped ?? []), planningSkip("earlier-errors")] };
+  }
+  const unavailable = diagnostic?.unavailable ?? [];
   const pluginRegistry = yield* PluginRegistry;
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
   const fileSystem = yield* snapshotLintFileSystem(
@@ -125,31 +150,59 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
         }),
     file: snapshot.landofilePath,
     appRoot: dirname(snapshot.landofilePath),
-  }).pipe(Effect.result);
+    unavailableSites: unavailable,
+  }).pipe(
+    mapFailures((error) => attributePlanningFailure(error, { landofile, file: snapshot.landofilePath })),
+    Effect.result,
+  );
   const envFindings = yield* lintEnvFiles(
     Result.isSuccess(resolved) ? resolved.success.resolution.compiled : landofile,
     snapshot.landofilePath,
     fileSystem,
     landofile.document,
+    unavailable,
   );
   if (Result.isFailure(resolved)) {
     if (resolved.failure._tag === "ConfigExpressionError") {
       const path = configExpressionIssuePath(resolved.failure);
-      const source = getLandofileValueSource(provenanceOf(landofile), path);
+      const { source, filePath } = resolved.failure;
+      const skipSource =
+        source !== undefined && "file" in source && Schema.is(LandofileLayer)(source.layer)
+          ? { file: source.file, layer: source.layer, path: source.path }
+          : undefined;
+      const priorSkips = result.skipped ?? [];
       return {
         ...result,
+        file: overlapsUnavailable(path, unavailable) ? result.file : filePath,
         valid: false,
+        skipped: [
+          ...(priorSkips.length >= CONFIG_LINT_UNAVAILABLE_SKIP_LIMIT
+            ? unavailableEntrySkips(unavailable, CONFIG_LINT_UNAVAILABLE_SKIP_LIMIT - 1)
+            : priorSkips),
+          {
+            stage: "resolve",
+            reason: "earlier-errors",
+            path,
+            ...(skipSource === undefined ? {} : { source: skipSource }),
+            message: "Remaining resolve checks did not run because a configuration expression failed.",
+          },
+          planningSkip(diagnostic === undefined ? "earlier-errors" : "diagnostic-document"),
+        ],
         violations: mergeLintFindings([
           ...result.violations,
           ...envFindings,
-          {
-            rule: "landofile.expression",
-            severity: "error",
-            path,
-            message: resolved.failure.message,
-            scopes: ["effective"],
-            ...(source === undefined ? {} : { source }),
-          },
+          ...(overlapsUnavailable(path, unavailable)
+            ? []
+            : [
+                {
+                  rule: "landofile.expression",
+                  severity: "error",
+                  path,
+                  message: resolved.failure.message,
+                  scopes: ["effective"],
+                  ...(source === undefined ? {} : { source }),
+                } satisfies ConfigLintViolation,
+              ]),
         ]),
       };
     }
@@ -183,6 +236,8 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   const evaluated = issues
     .filter(
       (issue) =>
+        ((issue.rule === "landofile.dns-name" && issue.reason === invalidServiceDnsNameReason) ||
+          !overlapsUnavailable(issue.path, unavailable)) &&
         !envFindings.some(
           (finding) =>
             finding.severity === "error" && JSON.stringify(finding.path) === JSON.stringify(issue.path),
@@ -191,7 +246,12 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     .map((issue) => attributeEffectiveLintIssue(landofile, issue));
   const earlier = [...result.violations, ...envFindings, ...evaluated];
   const planningFindings: ConfigLintViolation[] = [];
-  if (!earlier.some((issue) => issue.severity === "error") && resolution.capabilities !== undefined) {
+  let skip: ConfigLintSkip | undefined;
+  if (
+    diagnostic === undefined &&
+    !earlier.some((issue) => issue.severity === "error") &&
+    resolution.capabilities !== undefined
+  ) {
     const policy = makeFileSyncPolicy({
       candidates: fileSyncMetadata(resolution.manifests),
       platform: pathsService?.platform ?? normalizeHostPlatform(),
@@ -212,6 +272,14 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     if (Result.isFailure(planned))
       planningFindings.push(...planningLintFindings(resolution, planned.failure));
     else planningFindings.push(...projectUserLintFindings(planned.success));
+  } else {
+    skip = planningSkip(
+      diagnostic !== undefined
+        ? "diagnostic-document"
+        : earlier.some((issue) => issue.severity === "error")
+          ? "earlier-errors"
+          : "capabilities-undeclared",
+    );
   }
   const finalViolations = mergeLintFindings([...earlier, ...planningFindings]);
   return {
@@ -220,5 +288,6 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
       sourceFile(finalViolations.find((issue) => issue.source?.layer !== "script")?.source) ?? result.file,
     valid: !finalViolations.some((issue) => issue.severity === "error"),
     violations: finalViolations,
+    ...(skip === undefined ? {} : { skipped: [...(result.skipped ?? []), skip] }),
   };
 });

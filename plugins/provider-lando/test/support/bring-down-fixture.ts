@@ -63,14 +63,14 @@ export const servicePlan = (name: "node" | "database"): ServicePlan => ({
     name === "node"
       ? [
           {
-            _tag: "published",
+            kind: "published",
             port: 31081,
             protocol: "http",
             name: "http",
             publication: { bindAddress: "127.0.0.1", hostPort: 31081 },
           },
         ]
-      : [{ _tag: "internal", port: 55433, protocol: "tcp", name: "database" }],
+      : [{ kind: "internal", port: 55433, protocol: "tcp", name: "database" }],
   routes: [],
   dependsOn:
     name === "node"

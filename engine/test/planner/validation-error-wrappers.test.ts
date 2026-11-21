@@ -130,7 +130,7 @@ test.each(wrappers)("$name wraps an unstructured Error", ({ wrap, path, remediat
   const result = wrap(cause);
   // Then
   expect(result).toBeInstanceOf(LandofileValidationError);
-  expect(result.file).toBe("/app/.lando.yml");
+  expect(result.file).toBe("/app");
   expect(result.message).toBe(cause.message);
   expect(result.remediation).toBe(remediation);
   expect(result.issues).toEqual([{ path, message: cause.message }]);
@@ -143,7 +143,7 @@ test.each(wrappers)("$name wraps a non-Error cause", ({ wrap, path, fallback, re
   const result = wrap(cause);
   // Then
   expect(result).toBeInstanceOf(LandofileValidationError);
-  expect(result.file).toBe("/app/.lando.yml");
+  expect(result.file).toBe("/app");
   expect(result.message).toBe(fallback);
   expect(result.remediation).toBe(remediation);
   expect(result.issues).toEqual([{ path, message: fallback }]);
@@ -204,7 +204,7 @@ test("resolves a nested packageRoot project file under the app root", () => {
   });
 });
 
-test("keeps .lando.yml for an authored service issue", () => {
+test("leaves an authored service issue for planner attribution when only the app root is known", () => {
   const cause = new ServiceTypeError({
     serviceType: "synthetic",
     message: "Bad listener",
@@ -212,7 +212,7 @@ test("keeps .lando.yml for an authored service issue", () => {
     remediation: "Set port: 5433",
   });
   const result = servicePlanError({ appRoot: "/app", serviceName: "db", cause });
-  expect(result.file).toBe("/app/.lando.yml");
+  expect(result.file).toBe("/app");
   expect(result.issues[0]?.source).toBeUndefined();
 });
 
@@ -223,6 +223,6 @@ test("does not name a project file the planner did not read", () => {
     cause: projectFileError("secrets.txt"),
     projectFiles: [{ path: ".nvmrc", present: false }],
   });
-  expect(result.file).toBe("/app/.lando.yml");
+  expect(result.file).toBe("/app");
   expect(result.issues[0]?.source).toBeUndefined();
 });

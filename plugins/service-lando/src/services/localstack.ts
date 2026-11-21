@@ -119,7 +119,7 @@ export const localstackServiceFeature: ServiceFeatureDefinition = {
       ...binds
         .filter((bind) => bind.port !== port)
         .map((bind) => ({
-          _tag: "internal" as const,
+          kind: "internal" as const,
           port: bind.port,
           protocol: "http" as const,
           name: `gateway-${bind.port}`,

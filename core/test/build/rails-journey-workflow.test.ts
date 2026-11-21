@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
+import { pinnedAction } from "../../../scripts/action-pins.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const workflowPath = resolve(repoRoot, ".github/workflows/rails-journey.yml");
@@ -206,7 +207,7 @@ describe("rails-journey workflow", () => {
     // never via job-level env interpolating the runner context.
     for (const id of PLATFORM_IDS) {
       const job = jobBlock(workflow, id);
-      const checkout = job.indexOf("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1");
+      const checkout = job.indexOf(pinnedAction("actions/checkout"));
       const isolate = job.indexOf("Isolate Lando roots");
       const setupBun = job.indexOf("Setup Bun");
       expect(checkout).toBeGreaterThan(-1);

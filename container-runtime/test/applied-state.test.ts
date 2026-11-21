@@ -5,7 +5,6 @@ import {
   appliedPlansDir,
   makeAppliedPlanStore,
   migrateAppliedPlan,
-  migrateAppliedPlansRecord,
 } from "@lando/container-runtime/applied-state";
 import type { StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
@@ -21,6 +20,10 @@ import {
 import type { StateBucket } from "@lando/sdk/services";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
+import {
+  migrateAppliedPlanWithCoordinate,
+  migrateAppliedPlansRecordWithCoordinate,
+} from "../src/applied-state-migrate.ts";
 import { legacyPlan, service } from "./fixtures/environment-values.ts";
 
 interface OpenCall {
@@ -110,6 +113,21 @@ const v1PlanBase = {
 };
 
 describe("applied plan state layouts", () => {
+  test("reads v8 application listener authority without inventing keep-alive intent", () => {
+    const encoded = Schema.encodeSync(AppPlan)(legacyPlan());
+    const service = Object.values(encoded.services)[0];
+    if (service === undefined) throw new Error("The historical plan fixture must contain a service.");
+    const listenerAuthority = {
+      owner: "application",
+      daemon: "Node.js",
+      port: 3000,
+      variables: ["PORT"],
+    } as const;
+    const raw = { ...encoded, services: { [service.name]: { ...service, listenerAuthority } } };
+    expect(migrateAppliedPlan(raw, 8)?.services[ServiceName.make(service.name)]?.listenerAuthority).toEqual(
+      listenerAuthority,
+    );
+  });
   for (const layout of ["per-app", "record"] as const) {
     test.each([true, false, undefined, "off"])(
       `${layout} migrates v2 init %s without changing ownership`,
@@ -172,9 +190,11 @@ describe("applied plan state layouts", () => {
       const before = JSON.stringify(raw);
       // When
       const result =
-        layout === "per-app" ? migrateAppliedPlan(raw, 2) : migrateAppliedPlansRecord({ values: raw }, 2);
+        layout === "per-app"
+          ? migrateAppliedPlanWithCoordinate(raw, 2)
+          : migrateAppliedPlansRecordWithCoordinate({ values: raw }, 2);
       // Then
-      expect(result).toBeNull();
+      expect(result).toBeTypeOf("string");
       expect(JSON.stringify(raw)).toBe(before);
     });
   }
@@ -447,7 +467,7 @@ describe("applied plan v1 -> v2 mount migration", () => {
   });
 
   test("record migration refuses the whole record when one plan cannot convert", () => {
-    const migrated = migrateAppliedPlansRecord(
+    const migrated = migrateAppliedPlansRecordWithCoordinate(
       {
         values: v1PlanBase,
         bad: {
@@ -465,8 +485,9 @@ describe("applied plan v1 -> v2 mount migration", () => {
       },
       1,
     );
-    expect(migrated).toBeNull();
-    expect(migrateAppliedPlansRecord({ values: v1PlanBase }, 1)?.values?.id).toBe(AppId.make("values"));
+    expect(migrated).toBeTypeOf("string");
+    const values = migrateAppliedPlansRecordWithCoordinate({ values: v1PlanBase }, 1);
+    expect(typeof values === "string" ? values : values.values?.id).toBe(AppId.make("values"));
   });
 
   test("moves legacy Compose config grants into read-only bind mounts", () => {

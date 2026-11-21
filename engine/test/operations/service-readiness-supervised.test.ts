@@ -28,7 +28,8 @@ const logs = () =>
 
 test.each([
   { phase: "warning", changed: { containerId: "replacement" } },
-  { phase: "final settlement", changed: { lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(1)) } },
+  { phase: "final settlement", changed: { containerId: "replacement" } },
+  { phase: "final settlement", changed: { lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-1)) } },
 ])("supervision rejects a different incarnation at $phase", async ({ phase, changed }) => {
   const warnings = makeCommandWarnings(true);
   const initial = {
@@ -246,33 +247,36 @@ test.each(["failed", "timeout"] as const)("supervised exhausted healthcheck (%s)
   expect(byTag(harness.events, "message.warn")).toEqual([]);
 });
 
-test("a supervised restart while a sibling waits is downgraded once", async () => {
-  const slow = ServiceName.make("slow");
-  const plannedApp = {
-    ...supervised("always"),
-    services: { ...supervised("always").services, [slow]: { ...web, name: slow } },
-  };
-  const harness = makeHarness();
-  const provider = {
-    ...TestRuntimeProvider,
-    logs,
-    inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) =>
-      Effect.map(Clock.currentTimeMillis, (now) => ({
-        app: plan.id,
-        service: target.service,
-        providerId: plan.provider,
-        status: target.service === web.name && now >= 250 ? ("restarting" as const) : ("running" as const),
-        publications: { status: "unknown" as const },
-        containerId: "container",
-        lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
-      })),
-  };
-  const timed = await runExitUnderClock(
-    waitForServiceReadiness({ provider, plan: plannedApp, services: [web.name, slow] }).pipe(
-      Effect.provide(harness.layer),
-    ),
-    "2 seconds",
-  );
-  expect(successOf(timed.exit).map((row) => row.state)).toEqual(["restarting", "running"]);
-  expect(byTag(harness.events, "message.warn")).toHaveLength(1);
-});
+test.each(["running", "restarting"] as const)(
+  "a supervised restart observed as %s while a sibling waits warns once",
+  async (status) => {
+    const slow = ServiceName.make("slow");
+    const plannedApp = {
+      ...supervised("always"),
+      services: { ...supervised("always").services, [slow]: { ...web, name: slow } },
+    };
+    const harness = makeHarness();
+    const provider = {
+      ...TestRuntimeProvider,
+      logs,
+      inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) =>
+        Effect.map(Clock.currentTimeMillis, (now) => ({
+          app: plan.id,
+          service: target.service,
+          providerId: plan.provider,
+          status: target.service === web.name && now >= 250 ? status : ("running" as const),
+          publications: { status: "unknown" as const },
+          containerId: "container",
+          lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(target.service === web.name ? now : 0)),
+        })),
+    };
+    const timed = await runExitUnderClock(
+      waitForServiceReadiness({ provider, plan: plannedApp, services: [web.name, slow] }).pipe(
+        Effect.provide(harness.layer),
+      ),
+      "2 seconds",
+    );
+    expect(successOf(timed.exit).map((row) => row.state)).toEqual(["restarting", "running"]);
+    expect(byTag(harness.events, "message.warn")).toHaveLength(1);
+  },
+);

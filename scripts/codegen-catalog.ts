@@ -263,6 +263,13 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    id: "ci-rerun-workflow",
+    ownership: "committed-workflow",
+    script: "build-ci-rerun-workflow.ts",
+    workspace: "repo",
+    dependsOn: ["ci-workflow"],
+  },
+  {
     id: "nightly-workflow",
     ownership: "committed-workflow",
     script: "build-nightly-workflow.ts",
@@ -338,12 +345,6 @@ export const CODEGEN_CATALOG = [
     id: "workflow-performance-workflow",
     ownership: "committed-workflow",
     script: "build-workflow-performance-workflow.ts",
-    workspace: "repo",
-  },
-  {
-    id: "retarget-action-bump-workflow",
-    ownership: "committed-workflow",
-    script: "build-retarget-action-bump-workflow.ts",
     workspace: "repo",
   },
 ] as const satisfies readonly CodegenCatalogEntry[];

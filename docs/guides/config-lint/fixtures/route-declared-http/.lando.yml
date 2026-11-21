@@ -3,9 +3,5 @@ services:
   web:
     type: compose
     image: nginx:alpine
-    endpoints:
-      - _tag: internal
-        protocol: http
-        port: 80
     routes:
-      - web.lndo.site
+      - web.lndo.site:80

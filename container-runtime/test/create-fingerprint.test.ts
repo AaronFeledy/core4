@@ -59,6 +59,76 @@ const plan: AppPlan = {
 const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
   commonContainerLabels(app, value)[CREATE_CONFIG_LABEL];
 
+test("only a change to the realized router port changes the create fingerprint", () => {
+  const fromPort = (port: number) => ({
+    ...service,
+    environment: { APP_URL: `https://web.test:${port}/app` },
+  });
+  const first = fingerprint(fromPort(8443));
+  expect(fingerprint(fromPort(8443))).toBe(first);
+  expect(fingerprint(fromPort(9443))).not.toBe(first);
+});
+
+test("HTTP readiness URL and native TCP port participate in container identity", () => {
+  const timing = { intervalSeconds: 2, timeoutSeconds: 1, retries: 5 };
+  const readiness = { ...timing, kind: "http", url: "http://localhost:8080/ready" } as const;
+  const healthcheck = { ...timing, kind: "tcp", port: 8080 } as const;
+  const original = fingerprint({ ...service, readiness, healthcheck });
+  expect(
+    fingerprint({ ...service, readiness: { ...readiness, url: "http://localhost:8080/live" }, healthcheck }),
+  ).not.toBe(original);
+  expect(fingerprint({ ...service, readiness, healthcheck: { ...healthcheck, port: 8081 } })).not.toBe(
+    original,
+  );
+});
+
+test("direct create and Compose emit native HTTP healthcheck argv and timing", () => {
+  const healthcheck = {
+    kind: "http",
+    url: "http://localhost:8080/ready?token=$token",
+    intervalSeconds: 2,
+    timeoutSeconds: 0.75,
+    retries: 3,
+    startPeriodSeconds: 5,
+  } as const;
+  const desired = { ...service, healthcheck };
+  const input = { ...plan, services: { [service.name]: desired } };
+  const argv = [
+    "CMD",
+    "/run/lando/helper/engines/lando-container-helper",
+    "probe-http",
+    "--url",
+    healthcheck.url,
+    "--timeout",
+    "0.75",
+  ];
+  expect(containerCreateBodyFragment(input, desired)).toMatchObject({
+    Healthcheck: {
+      Test: argv,
+      Interval: 2_000_000_000,
+      Timeout: 750_000_000,
+      Retries: 3,
+      StartPeriod: 5_000_000_000,
+    },
+  });
+  const compose: unknown = Bun.YAML.parse(
+    renderCompose(input, { providerId: "lando", remediation: "Retry.", env: {} }),
+  );
+  expect(compose).toMatchObject({
+    services: {
+      web: {
+        healthcheck: {
+          test: argv.map((arg) => arg.replaceAll("$", "$$")),
+          interval: "2000000000ns",
+          timeout: "750000000ns",
+          retries: 3,
+          start_period: "5000000000ns",
+        },
+      },
+    },
+  });
+});
+
 test("excludes listenerAuthority from the container create identity", () => {
   // Given two plans differing only in listenerAuthority.
   const advised: ServicePlan = {
@@ -296,7 +366,7 @@ describe("desired immutable create config", () => {
       },
     ],
     ["healthcheck", { healthcheck: { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 3 } }],
-    ["exposed port", { endpoints: [{ _tag: "internal", port: 8080, protocol: "tcp" }] }],
+    ["exposed port", { endpoints: [{ kind: "internal", port: 8080, protocol: "tcp" }] }],
     ["host alias", { hostAliases: [{ hostname: "gateway", ip: "192.0.2.1" }] }],
     ["user labels", { extensions: { compose: { labels: { role: "web" } } } }],
     ["host config knob", { extensions: { compose: { privileged: true } } }],
@@ -374,7 +444,7 @@ describe("desired immutable create config", () => {
       ...service,
       endpoints: [
         {
-          _tag: "published",
+          kind: "published",
           port: 80,
           protocol: "http",
           publication: { bindAddress, hostPort: 8080 },
@@ -391,7 +461,7 @@ describe("desired immutable create config", () => {
 
   test("ignores map order, metadata, runtime host ports, and unrelated extensions", () => {
     // Given identical desired create config with different runtime observations.
-    const endpoint = { _tag: "published" as const, port: 8080, protocol: "http" as const, publication: {} };
+    const endpoint = { kind: "published" as const, port: 8080, protocol: "http" as const, publication: {} };
     const observedBefore = { ...endpoint, materialization: { hostPort: 32001, bindAddress: "127.0.0.1" } };
     const observedAfter = { ...endpoint, materialization: { hostPort: 32002, bindAddress: "127.0.0.1" } };
     const before: ServicePlan = { ...service, endpoints: [observedBefore] };

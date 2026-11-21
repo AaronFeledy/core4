@@ -78,7 +78,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   InternalEndpoint: "sdk/test/schema/endpoint-intent.test.ts",
   PublishedEndpoint: "sdk/test/schema/endpoint-intent.test.ts",
   ProxyCapabilities: "sdk/test/contract/router-service.test.ts",
-  RouteFilterType: "sdk/test/schema/route-filter.test.ts",
+  RouteFilterKind: "sdk/test/schema/route-filter.test.ts",
   RouteFilter: "sdk/test/schema/route-filter.test.ts",
   RouteInputError: "sdk/test/schema/route-filter.test.ts",
   RouteProviderMismatchError: "sdk/test/schema/route-provider.test.ts",
@@ -288,6 +288,8 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   ScheduleConfig: "sdk/test/schema/schedule.test.ts",
   ScheduleJob: "sdk/test/schema/schedule.test.ts",
   ScheduleJobName: "sdk/test/schema/schedule.test.ts",
+  ServiceLauncherMarker: "sdk/test/schema/service-launchers.test.ts",
+  ServiceLaunchers: "sdk/test/schema/service-launchers.test.ts",
 } satisfies Partial<Record<JsonSchemaName, PublicSchemaContractFixture["testFile"]>>;
 
 export const publicSchemaContractTestFile = (
@@ -456,7 +458,7 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
   },
   GuideProps: {},
   CleanupProps: {},
-  RouteFilter: { type: "stripPrefix", prefix: "/api" },
+  RouteFilter: { kind: "stripPrefix", prefix: "/api" },
   AppRouteOwner: { id: "myapp", ownerKey: "a".repeat(64) },
   RecipeSourceKind: "bundled",
   RecipeContentDigest: `sha256:${"a".repeat(64)}`,
@@ -654,6 +656,7 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
     notes: "https://example.test/releases/v4.2.0",
   },
   VerifyProps: { command: "documented value" },
+  FetchProps: { url: "{{route:web}}/", expect: { status: 200 } },
   InspectProps: { file: "/tmp/lando-app/output.json" },
   HiddenProps: { reason: "documented value" },
   InlineProps: { code: "alpha", justification: "documented value" },
@@ -690,7 +693,7 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
   CertsInput: true,
   CaInput: "./certs/corp-ca.pem",
   ContainerUser: "www-data",
-  EndpointInput: { _tag: "internal", protocol: "http", port: 8080 },
+  EndpointInput: { kind: "internal", protocol: "http", port: 8080 },
   RouteInput: "appserver.lndo.site",
   HealthcheckInput: "pg_isready",
   CommandSpec: "npm start",
@@ -703,8 +706,8 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
   RouteHostname: "*.app.lndo.site",
   RoutePathPrefix: "/api",
   DomainName: "lando.test",
-  InternalEndpoint: { _tag: "internal", protocol: "http", port: 8080 },
-  PublishedEndpoint: { _tag: "published", protocol: "http", port: 8080, publication: {} },
+  InternalEndpoint: { kind: "internal", protocol: "http", port: 8080 },
+  PublishedEndpoint: { kind: "published", protocol: "http", port: 8080, publication: {} },
   CommandTraceSpan: {
     id: "root",
     name: "lando meta:config",
@@ -742,6 +745,8 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
     root: "root PEM",
   },
   ScheduleJobName: "tick",
+  ServiceLauncherMarker: ":local-bin",
+  ServiceLaunchers: { ":local-bin2": ["env", "NAME=value"] },
   ScheduleJob: { name: "tick", every: "@hourly", run: "true" },
   ScheduleConfig: [{ name: "tick", every: "@hourly", run: "true" }],
 };

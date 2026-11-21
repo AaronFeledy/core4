@@ -59,9 +59,29 @@ test.each([false, true])("applies ordered variants when enabled is %s", (enabled
 test("orders inherited base and variants before child base and variants", () => {
   // Given
   const layers: readonly RecipeConfigLayer[] = [
-    { config: { services: { app: { type: "nginx", webroot: "parent" } }, "x-parent": true } },
-    { when: "options.enabled", config: { services: { app: { webroot: "parent-variant" } } } },
-    { config: { services: { app: { webroot: "child" } } } },
+    {
+      config: {
+        services: {
+          app: { type: "nginx", webroot: "parent", endpoints: ["ui=http:80", "metrics=tcp:9000"] },
+        },
+        "x-parent": true,
+      },
+    },
+    {
+      when: "options.enabled",
+      config: {
+        services: {
+          app: {
+            webroot: "parent-variant",
+            endpoints: [
+              { kind: "internal", name: "ui", protocol: "http", port: 8080, primary: true },
+              "admin=http:8888",
+            ],
+          },
+        },
+      },
+    },
+    { config: { services: { app: { webroot: "child", endpoints: ["ui=http:8081"] } } } },
     { when: "options.enabled", config: { "x-child": true } },
   ];
   const source = { ...base, options: { enabled: { type: { kind: "boolean" }, default: true } } };
@@ -70,7 +90,13 @@ test("orders inherited base and variants before child base and variants", () => 
   const output = Result.getOrThrow(renderRecipeSnapshot(manifest.snapshot, {}));
   // Then
   expect(output).toEqual({
-    services: { app: { type: "nginx", webroot: "child" } },
+    services: {
+      app: {
+        type: "nginx",
+        webroot: "child",
+        endpoints: ["ui=http:8081", "metrics=tcp:9000", "admin=http:8888"],
+      },
+    },
     "x-parent": true,
     "x-child": true,
   });
@@ -135,7 +161,7 @@ test("returns the exact variant budget diagnostic before exponential expansion",
   // Then
   expect(result).toMatchObject({
     _tag: "Failure",
-    failure: { _tag: "RecipeSourceCompileError", reason: "variant-budget", path: "variants" },
+    failure: { _tag: "RecipeSourceCompileError", reason: "variant-budget", path: ["variants"] },
   });
 });
 

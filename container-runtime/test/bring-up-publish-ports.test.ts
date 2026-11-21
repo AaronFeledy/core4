@@ -37,7 +37,7 @@ const planWithPublication = (publication: EndpointPublication): AppPlan => {
     mounts: [],
     endpoints: [
       {
-        _tag: "published",
+        kind: "published",
         port: 8080,
         protocol: "http",
         name: "http",
@@ -354,7 +354,7 @@ describe("create-body service publish ports", () => {
       services: {
         [serviceName]: {
           ...service,
-          endpoints: [{ _tag: "published", port: 8080, protocol: "udp", publication: {} }],
+          endpoints: [{ kind: "published", port: 8080, protocol: "udp", publication: {} }],
         },
       },
     };

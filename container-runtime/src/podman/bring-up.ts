@@ -1,6 +1,7 @@
 import { redactProviderError } from "@lando/redaction/provider-error";
 import {
   FailureRoleAnnotation,
+  annotateFailureRole,
   mapDefectCause,
   mapFailures,
   mergeFailure,
@@ -20,6 +21,8 @@ import type { ListenerObservation, VolumeCreationFact } from "@lando/sdk/schema"
 import {
   type AppPlan,
   type AppRef,
+  DEPENDENCY_ENVIRONMENT_EXTENSION_KEY,
+  DependencyEnvironmentJob,
   type EndpointPlan,
   type HostPlatform,
   ProviderId,
@@ -32,7 +35,7 @@ import {
   landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
 import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
-import { Cause, Context, DateTime, Duration, Effect, Exit, Option, Stream } from "effect";
+import { Cause, Context, DateTime, Duration, Effect, Exit, Option, Schema, Stream } from "effect";
 import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import { removeRuntimeContainer } from "../container-removal.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
@@ -90,6 +93,7 @@ import {
   type HostProbeObservation,
   runServiceStartSchedule,
 } from "../service-start-schedule.ts";
+import { type ShutdownIdentity, observeShutdown } from "../shutdown-observation.ts";
 import { restartVerdict } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitNativeContainer } from "../wait-for-exit.ts";
@@ -143,6 +147,9 @@ const applyRemediationFor = (plan: AppPlan): string =>
       : APPLY_REMEDIATION;
 
 export const dependencyGateRemediation = (plan: AppPlan, dependency: string): string => {
+  const job = plan.services[ServiceName.make(dependency)]?.extensions[DEPENDENCY_ENVIRONMENT_EXTENSION_KEY];
+  if (Schema.is(DependencyEnvironmentJob)(job) && job.inputs !== undefined)
+    return `Run \`lando logs -s ${dependency}\`, fix ${job.inputs}, then run \`lando start\` again.`;
   if (plan.id === "global")
     return `Run \`lando global:logs -s ${dependency}\` to diagnose dependency ${dependency}, fix it, then run \`lando global:start\`.`;
   if (isScratchPlan(plan))
@@ -827,6 +834,40 @@ const stopContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<voi
     Effect.catch(() => Effect.void),
   );
 
+const stopCompletionJob = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  identity: ShutdownIdentity & { readonly containerId: string },
+) {
+  const failure = (message: string, details?: unknown) =>
+    new ProviderUnavailableError({
+      providerId: identity.providerId,
+      operation: "bringUp.completion.stop",
+      message: `Could not confirm ${identity.service} stopped after interruption: ${message}`,
+      remediation: `Check the runtime and stop service ${identity.service} before retrying.`,
+      ...(details === undefined ? {} : { details: redactDetails(details, deps.redactor) }),
+    });
+  const stopped = yield* withDeadline(
+    Effect.interruptible(
+      request(deps, {
+        method: "POST",
+        path: `/containers/${encodeURIComponent(identity.containerId)}/stop`,
+      }),
+    ),
+    Duration.seconds(30),
+  ).pipe(mapFailures((cause) => failure(deps.redactor.redactString(cause.message))));
+  if (stopped._tag === "TimedOut") return yield* failure("the stop request timed out.");
+  const { status } = stopped.value;
+  if (status !== 204 && status !== 304 && status !== 404)
+    return yield* failure(`the stop request returned HTTP ${status}.`);
+  const observed = yield* Effect.interruptible(
+    observeShutdown(identity, { api: deps.api, ctx: deps.options.ctx }),
+  );
+  if (observed.status === "exited" || observed.reason === "container-absent") return;
+  return yield* failure(`shutdown inspection reported ${observed.reason}.`, {
+    shutdownObservations: [observed],
+  });
+});
+
 const removeContainer = (deps: BringUpDeps, service: ServicePlan, name: string) =>
   removeRuntimeContainer(deps.api, name, { ...deps.options.ctx, operation: "bringUp.remove" }).pipe(
     mapFailures((cause) =>
@@ -883,6 +924,7 @@ const startService = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
   service: ServicePlan,
+  inspectedBeforeSchedule?: InspectResult,
 ): Effect.fn.Return<StartResult, BringUpError> {
   const name = containerName(plan, service);
   const providerId = ProviderId.make(deps.options.ctx.providerId);
@@ -909,7 +951,7 @@ const startService = Effect.fnUntraced(function* (
     }),
   );
 
-  const inspected = yield* inspectContainer(deps, name);
+  const inspected = inspectedBeforeSchedule ?? (yield* inspectContainer(deps, name));
   const existingId = inspected.exists
     ? yield* verifiedNativeId(
         JSON.stringify(inspected.body),
@@ -918,7 +960,7 @@ const startService = Effect.fnUntraced(function* (
       )
     : undefined;
   const published = service.endpoints.flatMap((endpoint) =>
-    endpoint._tag === "published" ? [endpoint] : [],
+    endpoint.kind === "published" ? [endpoint] : [],
   );
   const plannedFingerprint = fingerprintPlannedPublishPorts(published);
   const portMismatch =
@@ -994,7 +1036,7 @@ const startService = Effect.fnUntraced(function* (
       const assigned = createAssignedHostPorts(
         createEndpoints.filter((_endpoint, index) => {
           const desired = service.endpoints[index];
-          return desired?._tag === "published" && desired.publication.hostPort === undefined;
+          return desired?.kind === "published" && desired.publication.hostPort === undefined;
         }),
       );
       let retry: EngineHttpResponse | undefined;
@@ -1412,7 +1454,45 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     }
   }
   const startedIds = new Map<ServiceName, string>();
-  const result = yield* runServiceStartSchedule(plan, {
+  const inspectedConsumers = new Map<ServiceName, InspectResult>();
+  const idleJobs = new Set<ServiceName>();
+  for (const service of Object.values(plan.services)) {
+    const job = service.extensions[DEPENDENCY_ENVIRONMENT_EXTENSION_KEY];
+    if (!Schema.is(DependencyEnvironmentJob)(job)) continue;
+    let needed = false;
+    for (const name of job.consumers) {
+      const consumer = plan.services[ServiceName.make(name)];
+      if (consumer === undefined) continue;
+      if (options.reconcile === true) {
+        needed = true;
+        break;
+      }
+      const inspected =
+        inspectedConsumers.get(consumer.name) ??
+        (yield* inspectContainer(deps, containerName(plan, consumer)));
+      inspectedConsumers.set(consumer.name, inspected);
+      if (!inspected.running || bringUpRecreateReasons(plan, consumer, inspected).length > 0) {
+        needed = true;
+        break;
+      }
+    }
+    if (!needed) idleJobs.add(service.name);
+  }
+  const scheduledPlan =
+    idleJobs.size === 0
+      ? plan
+      : {
+          ...plan,
+          services: Object.fromEntries(
+            Object.values(plan.services)
+              .filter((service) => !idleJobs.has(service.name))
+              .map((service) => [
+                service.name,
+                { ...service, dependsOn: service.dependsOn.filter((edge) => !idleJobs.has(edge.service)) },
+              ]),
+          ),
+        };
+  const result = yield* runServiceStartSchedule(scheduledPlan, {
     redactor: deps.redactor,
     redactProbeError: (error) =>
       deps.redactor.redactString(
@@ -1429,7 +1509,12 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       if (options.signal?.aborted === true) {
         return yield* Effect.interrupt;
       }
-      const started = yield* startService(deps, plan, service).pipe(
+      const started = yield* startService(
+        deps,
+        plan,
+        plan.services[service.name] ?? service,
+        inspectedConsumers.get(service.name),
+      ).pipe(
         Effect.catch((error) => (options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
       );
       if (started.startedIdentity !== undefined) startedIds.set(service.name, started.startedIdentity);
@@ -1536,7 +1621,16 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         ctx: options.ctx,
         dialect: (options.dialect ?? libpodLifecycleDialect).wait,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
-      });
+      }).pipe(
+        Effect.onInterrupt(() =>
+          stopCompletionJob(deps, {
+            appId: plan.id,
+            providerId: plan.provider,
+            service: service.name,
+            containerId: nativeId,
+          }).pipe(Effect.catchCause((cause) => Effect.failCause(annotateFailureRole(cause, "cleanup")))),
+        ),
+      );
       if (waited._tag === "Missing") return { dependencyUnavailable: { reason: "missing" } };
       // The completion verdict is final, so a slow engine gets the whole inspect rather than a sampling bound.
       const inspected = yield* sanitizeDependencyInspect(

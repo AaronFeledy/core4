@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { ValidationIssue } from "../schema/validation-issue.ts";
+import { ValidationIssue, ValidationIssuePath } from "../schema/validation-issue.ts";
 
 const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
 
@@ -25,6 +25,19 @@ export class ServiceTypeError extends Schema.TaggedError<ServiceTypeError>()("Se
 export class ServiceFeatureError extends Schema.TaggedError<ServiceFeatureError>()("ServiceFeatureError", {
   message: Schema.String,
   feature: Schema.String,
+  endpointDeclaration: Schema.optionalKey(
+    Schema.Struct({
+      pluginId: Schema.String.annotate({ description: "Plugin that contributed the feature." }),
+      service: Schema.optionalKey(Schema.String).annotate({
+        description: "Service that received the declaration, when known.",
+      }),
+      index: Schema.optionalKey(Schema.Number).annotate({
+        description: "Zero-based declaration index, when known.",
+      }),
+    }),
+  ).annotate({
+    description: "Identifies invalid plugin endpoint output rather than authored configuration.",
+  }),
   cause: Schema.optional(Schema.Unknown),
   issues: Schema.optional(Schema.Array(ValidationIssue)).annotate({
     description:
@@ -123,12 +136,19 @@ export class AppFeatureCloneError extends Schema.TaggedError<AppFeatureCloneErro
   feature: Schema.String,
   service: Schema.String,
   from: Schema.optionalKey(Schema.String),
-  reason: Schema.Literals(["name-collision", "missing-parent", "duplicate-clone", "unsupported-image"]),
+  reason: Schema.Literals([
+    "name-collision",
+    "missing-parent",
+    "duplicate-clone",
+    "unsupported-image",
+    "invalid-name",
+  ]),
   image: Schema.optionalKey(Schema.String),
   remediation: Remediation,
 }) {}
 
 export type AppFeatureError =
+  | ServiceFeatureError
   | AppFeatureSelectorMatchedNothingError
   | AppFeatureMutationConflictError
   | AppFeatureCycleError
@@ -149,8 +169,8 @@ export class DataTreeOwnershipCapabilityError extends Schema.TaggedError<DataTre
     serviceType: Schema.String,
     /** Container path of the data tree that cannot be owned. */
     target: Schema.String,
-    /** Fully qualified Landofile key the author has to change. */
-    option: Schema.String,
+    /** Authored Landofile path the author has to change. */
+    path: ValidationIssuePath,
     user: Schema.optional(Schema.String),
     remediation: Remediation,
   },

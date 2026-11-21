@@ -276,8 +276,8 @@ describe("mergeResolutionOverParent", () => {
       base: "lando",
       normalizedConfig: {
         endpoints: [
-          { _tag: "internal", name: "web", port: 80, protocol: "http" },
-          { _tag: "internal", name: "metrics", port: 9090, protocol: "http" },
+          { kind: "internal", name: "web", port: 80, protocol: "http" },
+          { kind: "internal", name: "metrics", port: 9090, protocol: "http" },
         ],
       } as ServiceConfig,
       features: [],
@@ -285,7 +285,7 @@ describe("mergeResolutionOverParent", () => {
     const child: ServiceTypeResolution = {
       base: "lando",
       normalizedConfig: {
-        endpoints: [{ _tag: "internal", name: "web", port: 8080, protocol: "http" }],
+        endpoints: [{ kind: "internal", name: "web", port: 8080, protocol: "http" }],
       } as ServiceConfig,
       features: [],
     };
@@ -343,6 +343,43 @@ describe("mergeResolutionOverParent", () => {
     };
     const merged = mergeResolutionOverParent(parent, { base: "lando", features: [], ...child });
     expect(merged.generatedCertificateEndpoint).toEqual(expected);
+  });
+
+  test("revokes inherited TLS listener ownership when an unchanged command gets a different prefix", () => {
+    const parent: ServiceTypeResolution = {
+      base: "lando",
+      normalizedConfig: { command: [":serve", "listener"] },
+      features: [],
+      launchers: { ":serve": ["parent"] },
+      generatedCertificateEndpoint: { port: 443 },
+    };
+    const child = { ...parent, launchers: { ":serve": ["child"] as const } };
+    const { generatedCertificateEndpoint, ...override } = child;
+    expect(mergeResolutionOverParent(parent, override).generatedCertificateEndpoint).toBeUndefined();
+    expect(mergeResolutionOverParent(parent, child).generatedCertificateEndpoint).toEqual(
+      generatedCertificateEndpoint,
+    );
+  });
+
+  test("inherits parent launchers a child omits and lets a child replace one marker", () => {
+    const parent: ServiceTypeResolution = {
+      base: "lando",
+      normalizedConfig: { command: [":serve", "listener"] },
+      features: [],
+      launchers: { ":serve": ["parent"], ":local": ["parent-local"] },
+      generatedCertificateEndpoint: { port: 443 },
+    };
+    const omitted = mergeResolutionOverParent(parent, { base: "lando", normalizedConfig: {}, features: [] });
+    expect(omitted.launchers).toEqual(parent.launchers);
+    expect(omitted.generatedCertificateEndpoint).toEqual({ port: 443 });
+    const replaced = mergeResolutionOverParent(parent, {
+      base: "lando",
+      normalizedConfig: {},
+      features: [],
+      launchers: { ":local": ["child-local"] },
+    });
+    expect(replaced.launchers).toEqual({ ":serve": ["parent"], ":local": ["child-local"] });
+    expect(replaced.generatedCertificateEndpoint).toEqual({ port: 443 });
   });
 
   test("deep-merges a same-id feature's config rather than replacing it wholesale", () => {

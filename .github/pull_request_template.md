@@ -2,6 +2,10 @@
 
 Describe the problem and resulting behavior.
 
+Closes #
+
+For a fix, show the failure on current `main` first: the command, its output, and the provider, or link the issue that records them. See [Reproduce the problem first](https://aaronfeledy.github.io/core4/contributing/ci/#reproduce-the-problem-first).
+
 ## PR evidence
 
 Complete [Record PR evidence](https://aaronfeledy.github.io/core4/contributing/ci/#record-pr-evidence) here or link a report containing its revision fields, per-command/platform rows, and mandatory and conditional checklists. The [runbook source](https://github.com/AaronFeledy/core4/blob/main/docs/contributing/ci.md#record-pr-evidence) is also available on GitHub.

@@ -106,11 +106,37 @@ its probe runs and shows the attempt number and reason while retrying. Settled
 rows show the HTTP status or failure reason. A `•` row is your app's own answer,
 not a Lando warning. A `!` row with `unreachable` identifies a Lando-side problem;
 a web-server error row says what the web server returned without adding a command warning.
-The tree finishes with the number of URLs that answered, or counts of errors and unreachable URLs.
+The tree finishes with the number of URLs that answered, or counts of errors,
+unreachable URLs, and `expected` checks. `expected` is neither a success nor an
+error. If a Node, Python, Ruby, Go, or .NET service is running its default idle
+command and has nothing listening on its planned port, Lando reports `expected`
+on the first attempt. Start your server (for example, `lando npm start` for Node)
+or set `command:` in the Landofile. A server configured with `command:` still
+gets the normal retries if it hasn't started listening.
 Full `lando restart` and `lando rebuild` show the same scan progress. Services with
 `scanner: false` get no scan row, and an app with no scan targets gets no empty tree.
 
-The scanner skips `tcp://`, `udp://`, and database connections; `lando info` still lists them. A Compose port mapping such as `9080:9080` describes the transport, not the application protocol, so Lando reports it as `tcp` rather than guessing HTTP. If you know that port serves HTTP, declare it with `protocol: http` in an explicit `endpoints:` entry so the scanner and `lando open` pick it up, or check it directly:
+Lando doesn't follow redirects. A redirect such as `302 → /admin/` counts as
+`ready` because it stays on the same origin (scheme, host, and port). If the app
+redirects to the same host but changes the scheme or drops a fallback port such
+as `:8443`, set its base URL to the URL Lando lists. If the redirect names
+another host, check the app's configured domain. For example, an imported
+WordPress database may still redirect to the production domain. These redirects
+are `app-error` unless you explicitly accept their status in `okCodes`.
+Use `lando start --format=json` to read each verdict in `checks`.
+
+The scanner skips `tcp://`, `udp://`, and database connections; `lando info` still lists them. A Compose port mapping such as `9080:9080` describes the transport, not the application protocol, so Lando reports it as `tcp` rather than guessing HTTP. If you know that port serves HTTP and you want it routed and scanned, declare an authoritative listener list:
+
+```yaml
+services:
+  web:
+    type: compose
+    image: example/app
+    endpoints:
+      - http:9080
+```
+
+`endpoints: [http:9080]` is the HTTP listener the scanner and `lando open` use. An explicit list replaces anything inferred from `ports:` or `expose:`. To check a direct published TCP mapping on the host instead, keep the mapping and probe it yourself:
 
 ```sh
 curl --fail http://localhost:9080/
@@ -189,6 +215,26 @@ for individual exceptions. This keeps an app's configuration from silently
 re-enabling requests you disabled for the whole machine.
 
 <Guide>
+  <Scenario id="redirects-and-idle-listener" layer="e2e" render={false} reason="Real routed responses distinguish same-origin redirects, other hosts, and the idle Node listener">
+    <Step name="classify-checks">
+      <UseFixture name="redirects-and-idle-listener" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "^(?=[\\s\\S]*\"url\":\"https://redirects[.]scan-verdicts[.]lndo[.]site(?::[0-9]+)?/local/\",\"verdict\":\"ready\",\"statusCode\":302)(?=[\\s\\S]*\"url\":\"https://redirects[.]scan-verdicts[.]lndo[.]site(?::[0-9]+)?/external/\",\"verdict\":\"app-error\",\"statusCode\":302)(?=[\\s\\S]*\"verdict\":\"expected\")[\\s\\S]+$" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="redirects-and-idle-plan" render={false} reason="The test provider verifies the cached listener intent and retained route without simulating HTTP responses">
+    <Step name="plan-idle-route">
+      <UseFixture name="redirects-and-idle-listener" />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Run command="lando start --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"owner\":\\s*\"application\"[^}]*\"keepAlive\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+
   <Scenario id="router-disabled" render>
     <Step name="scaffold-disabled">
       <UseFixture name="router-and-scanner-disabled" />

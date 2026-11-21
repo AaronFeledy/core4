@@ -19,12 +19,12 @@ export const LayerMergeRule = Schema.Union([
       "log-id",
       "endpoint-name",
       "port-name",
-      "filter-name-or-type",
+      "filter-name-or-kind",
     ]).annotate({ description: "Named authored-value projection and atomic key implementation." }),
     whenUnkeyed: Schema.Literal("replace").annotate({
       description: "Replace when either collection has an unkeyed entry.",
     }),
-    onMatch: Schema.Literals(["merge", "replace-on-type-change"]).annotate({
+    onMatch: Schema.Literals(["merge", "replace-on-kind-change"]).annotate({
       description: "How a matched entry overlays its inherited value.",
     }),
   }),

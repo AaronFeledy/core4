@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Result } from "effect";
 
-import { guideCommandArgv } from "../../src/docs/guide-compiler/command-argv.ts";
+import { guideCommandArgv, guideProseCommandArgvs } from "../../src/docs/guide-compiler/command-argv.ts";
 
 const argv = (command: string) => Result.getOrThrow(guideCommandArgv(command));
 const issue = (command: string) => {
@@ -76,5 +76,46 @@ describe("guideCommandArgv", () => {
       reason: "shell-syntax",
     });
     expect(result.failure.remediation).toContain("single quotes");
+  });
+});
+
+describe("guideProseCommandArgvs", () => {
+  test.each([
+    [
+      "lando x 'a; b' \"c||d\" e\\|f&&lando y||lando z;lando w",
+      [
+        ["lando", "x", "a; b", "c||d", "e|f"],
+        ["lando", "y"],
+        ["lando", "z"],
+        ["lando", "w"],
+      ],
+    ],
+    [
+      "lando x 2>&1 | lando y; lando z<in >>out",
+      [
+        ["lando", "x"],
+        ["lando", "z"],
+      ],
+    ],
+    [
+      "lando x '2'>out; lando y a2>out; lando z 2 >out",
+      [
+        ["lando", "x", "2"],
+        ["lando", "y", "a2"],
+        ["lando", "z", "2"],
+      ],
+    ],
+    ["lando x <name> && lando y <input>output; lando z --arg=<path>/file", [["lando", "y"]]],
+    [
+      "lando x a\\\nb # not a command; lando y\nlando z",
+      [
+        ["lando", "x", "ab"],
+        ["lando", "z"],
+      ],
+    ],
+    ['lando x "line$\nnext"', [["lando", "x", "line$\nnext"]]],
+    ["lando x $VARIABLE; lando y", [["lando", "y"]]],
+  ] as const)("reads prefixes from %j", (source, expected) => {
+    expect(guideProseCommandArgvs(source)).toEqual(expected);
   });
 });

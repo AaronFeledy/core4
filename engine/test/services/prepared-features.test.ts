@@ -54,7 +54,7 @@ test("direct composition reuses declaration-decoded configuration per occurrence
     declareEndpoints: (ctx) =>
       Effect.sync(() => {
         declarations.push(ctx.config);
-        return [{ _tag: "internal", protocol: "http", port: Number(ctx.config.port) }];
+        return [{ kind: "internal", protocol: "http", port: Number(ctx.config.port) }];
       }),
     apply: (ctx) =>
       Effect.sync(() => {

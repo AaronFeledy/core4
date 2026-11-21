@@ -8,6 +8,8 @@ services:
     composer: "2"
     allowOverride: true
     port: 80
+    environment:
+      APP_URL: "{{ services.appserver.url }}"
     appMount:
       target: /app
       includes:
@@ -26,6 +28,8 @@ services:
     type: "php:8.4"
     via: cli
     command: php artisan queue:listen
+    environment:
+      APP_URL: "{{ services.appserver.url }}"
     appMount:
       target: /app
       includes:
@@ -51,6 +55,8 @@ services:
   node:
     type: "node:22"
     endpoints: []
+    environment:
+      VITE_REVERB_URL: "{{ services.reverb.url }}"
 tooling:
   artisan:
     service: appserver

@@ -1,9 +1,13 @@
 import { join } from "node:path";
-import { APPLIED_STATE_VERSION, migrateAppliedPlansRecord } from "@lando/container-runtime/applied-state";
+import {
+  APPLIED_STATE_VERSION,
+  appliedPlansPruneError,
+  openAppliedPlansRecord,
+} from "@lando/container-runtime/applied-state";
 import { mapFailures } from "@lando/sdk/command-result";
 
 import { StateStoreError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, AppPlan } from "@lando/sdk/schema";
+import { AbsolutePath, AppId } from "@lando/sdk/schema";
 import type { LandoPaths, StateStoreShape } from "@lando/sdk/services";
 import { FileSystem } from "@lando/sdk/services";
 import { Effect, Option, Schema } from "effect";
@@ -15,7 +19,6 @@ const AppliedPlanIdentity = Schema.Struct({
   id: AppId,
   root: AbsolutePath,
 });
-const AppliedPlans = Schema.Record(AppId, AppPlan);
 const LegacyAppliedPlan = Schema.Struct({
   version: Schema.Literal(1),
   providerId: Schema.optionalKey(Schema.String),
@@ -49,37 +52,16 @@ export const pruneAppliedPlanState = Effect.fnUntraced(function* (
   const id = AppId.make(appId);
 
   if (providerId === "podman") {
-    return yield* stateStore
-      .open({
-        root,
-        key: "applied-plans.json",
-        schema: AppliedPlans,
-        version: APPLIED_STATE_VERSION,
-        codec: "json",
-        mode: 0o600,
-        lock: "advisory",
-        onCorrupt: "discard",
-        onVersionMismatch: (raw, fromVersion) => migrateAppliedPlansRecord(raw, fromVersion) ?? {},
-        default: {},
+    const bucket = yield* openAppliedPlansRecord({ open: (spec) => stateStore.open({ ...spec, root }) });
+    return yield* bucket
+      .mutate<boolean>((current) => {
+        if (current === null || !Object.hasOwn(current, id) || current[id]?.root !== entry.appRoot) {
+          return Effect.succeed({ _tag: "Keep", result: false });
+        }
+        const { [id]: _removed, ...remaining } = current;
+        return Effect.succeed({ _tag: "Set", value: remaining, result: true });
       })
-      .pipe(
-        Effect.flatMap((bucket) =>
-          bucket.get.pipe(
-            Effect.flatMap((current) => {
-              const plans = current ?? {};
-              const plan = plans[id];
-              if (plan === undefined || plan.root !== entry.appRoot) return Effect.succeed(false);
-              return bucket.modify((latest) => {
-                const next = latest ?? {};
-                const currentPlan = next[id];
-                if (currentPlan === undefined || currentPlan.root !== entry.appRoot) return [false, next];
-                const { [id]: _removed, ...remaining } = next;
-                return [true, remaining];
-              });
-            }),
-          ),
-        ),
-      );
+      .pipe(mapFailures(appliedPlansPruneError));
   }
 
   const fs = yield* FileSystem;

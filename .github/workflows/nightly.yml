@@ -25,7 +25,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -45,7 +45,7 @@ jobs:
           bun run test:selection container-helper
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: container-helper
           path: core/container-helper/dist/
@@ -61,7 +61,7 @@ jobs:
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -86,7 +86,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
 
       - name: Upload current-commit Linux x64 runtime bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: runtime-bundle-linux-x64-current
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
@@ -108,7 +108,7 @@ jobs:
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -133,7 +133,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
 
       - name: Upload current-commit Linux arm64 runtime bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: runtime-bundle-linux-arm64-current
           path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
@@ -154,7 +154,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -181,7 +181,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -214,7 +214,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -225,8 +225,6 @@ jobs:
 
       - name: Run file-sync contract matrix (linux-x64)
         run: bun run test:selection nightly-file-sync
-        env:
-          LANDO_TEST_FILE_SYNC_LIVE: "1"
 
   file-sync-contract-darwin-arm64:
     runs-on: macos-15
@@ -242,7 +240,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -253,8 +251,6 @@ jobs:
 
       - name: Run file-sync contract matrix (darwin-arm64)
         run: bun run test:selection nightly-file-sync
-        env:
-          LANDO_TEST_FILE_SYNC_LIVE: "1"
 
   file-sync-contract-darwin-x64:
     runs-on: macos-15-intel
@@ -270,7 +266,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -281,8 +277,6 @@ jobs:
 
       - name: Run file-sync contract matrix (darwin-x64)
         run: bun run test:selection nightly-file-sync
-        env:
-          LANDO_TEST_FILE_SYNC_LIVE: "1"
 
   file-sync-contract-windows-x64:
     runs-on: windows-2022
@@ -298,7 +292,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -309,8 +303,6 @@ jobs:
 
       - name: Run file-sync contract matrix (windows-x64)
         run: bun run test:selection nightly-file-sync
-        env:
-          LANDO_TEST_FILE_SYNC_LIVE: "1"
 
   provider-lando-e2e-linux-x64:
     needs: [container-helper, runtime-bundle-linux-x64]
@@ -327,7 +319,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -472,6 +464,7 @@ jobs:
           pull_image docker.io/library/node:26
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/adminer:6
+          pull_image quay.io/keycloak/keycloak:26.8
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -540,7 +533,7 @@ jobs:
 
       - name: Upload provider-lando e2e diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: provider-lando-e2e-diagnostics-linux-x64
           path: provider-lando-e2e-diagnostics
@@ -567,7 +560,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -713,6 +706,7 @@ jobs:
           pull_image docker.io/library/node:26
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/adminer:6
+          pull_image quay.io/keycloak/keycloak:26.8
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -776,7 +770,7 @@ jobs:
 
       - name: Upload listener diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: service-listener-acceptance-linux-x64
           path: |
@@ -805,7 +799,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -951,6 +945,7 @@ jobs:
           pull_image docker.io/library/node:26
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/adminer:6
+          pull_image quay.io/keycloak/keycloak:26.8
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -1005,7 +1000,7 @@ jobs:
 
       - name: Upload listener matrix diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: service-listener-matrix-linux-x64
           path: |
@@ -1033,7 +1028,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1155,7 +1150,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1320,7 +1315,7 @@ jobs:
 
       - name: Upload ARM MySQL client diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mysql-arm-client-diagnostics-linux-arm64
           path: mysql-arm-client-diagnostics
@@ -1342,7 +1337,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1397,7 +1392,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1452,7 +1447,7 @@ jobs:
           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1503,7 +1498,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1534,7 +1529,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1559,7 +1554,7 @@ jobs:
 
       - name: Upload refreshed timings
         if: success()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bun-test-timings
           path: .bun-test-timings.json
@@ -1574,7 +1569,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1595,7 +1590,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -1644,7 +1639,7 @@ jobs:
         run: bun run scripts/dist-bundle.ts --verify dist/bundle
 
       - name: Upload distribution rehearsal bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lando-dist-rehearsal-v4.0.0-nightly.${{ github.run_number }}
           path: dist/bundle
@@ -1653,7 +1648,7 @@ jobs:
 
   report-failure:
     needs: [container-helper, runtime-bundle-linux-x64, runtime-bundle-linux-arm64, runtime-bundle-reproducibility-linux-x64, runtime-bundle-reproducibility-linux-arm64, file-sync-contract-linux-x64, file-sync-contract-darwin-arm64, file-sync-contract-darwin-x64, file-sync-contract-windows-x64, provider-lando-e2e-linux-x64, service-listeners-linux-x64, service-listener-matrix-linux-x64, published-manifest-setup-linux-x64, mysql-arm-client-linux-arm64, source-store-acceptance-linux-x64, source-store-acceptance-darwin-arm64, source-store-acceptance-windows-x64, nightly-tier-unit-tests-linux-x64, refresh-test-timings-linux-x64, runtime-bundle-manifest-live, distribution-rehearsal-linux-x64]
-    if: ${{ !cancelled() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    if: ${{ !cancelled() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -1667,8 +1662,18 @@ jobs:
       - name: Report automation failure
         run: |
           set -euo pipefail
+          FAILED_JOBS="$(jq -r '
+            [to_entries[] | .value.result as $result
+              | select($result != "success" and $result != "skipped")
+              | .key + (if $result == "failure" then ""
+                        elif $result == "cancelled" then " (timed out or cancelled)"
+                        else " (\($result))" end)] | join(", ")
+          ' <<< "$NEEDS_JSON")"
+          if [ -z "$FAILED_JOBS" ]; then
+            echo "No unsuccessful jobs."
+            exit 0
+          fi
           TITLE='nightly automation failure'
-          FAILED_JOBS="$(jq -r '[to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key + (if .value.result == "cancelled" then " (timed out or cancelled)" else "" end)] | join(", ")' <<< "$NEEDS_JSON")"
           printf -v BODY 'Workflow run failed: %s\n\nFailed jobs: %s' "$RUN_URL" "$FAILED_JOBS"
           ISSUE_NUMBER="$(gh issue list --state open --search 'in:title "nightly automation failure" sort:created-asc' --limit 100 --json number,title --jq '[.[] | select(.title == "nightly automation failure")] | .[0].number // ""')"
           if [ -n "$ISSUE_NUMBER" ]; then

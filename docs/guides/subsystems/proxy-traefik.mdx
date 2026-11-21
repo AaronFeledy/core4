@@ -108,7 +108,7 @@ Renewal happens when routes are published, not in the background, and applies on
 
 The default domain is `lndo.site`. Public DNS answers every `*.lndo.site` name with `127.0.0.1`, so most hosts need no DNS setup. Offline hosts, and resolvers that drop loopback answers as DNS-rebinding protection, need a local rule; see [Resolve lndo.site on this machine](./host-dns.mdx). Other devices on the LAN get that same loopback answer, which points them at themselves. See [Reach an app from another device](./external-access.mdx).
 
-Most apps skip `routes:`. A service with no `routes:` and no `proxy.<name>` entry gets the default hostname. Author routes and Lando serves exactly those instead, so list every name you want. Set `routes: []` (or `proxy.<name>: []`) to give a service no hostname at all; its published host ports still work.
+Most apps skip `routes:`. When Lando finds an HTTP(S) listener and the service has no `routes:` or `proxy.<name>` entry, it joins the [DNS-compatible service part and app slug](../landofile/app-name-edge-cases.mdx) with `proxy.defaultDomain`. For example, `pma_theme` in `demo` gets `pma-theme.demo.lndo.site`. Author routes and Lando serves exactly those instead, so list every name you want. Set `routes: []` (or `proxy.<name>: []`) to give a service no hostname at all; its published host ports still work.
 
 Interactive `lando init` shows configured URL candidates after you answer the
 recipe questions. These come from explicit authored routes, which can omit the
@@ -133,6 +133,8 @@ Use a plain DNS domain like `lndo.test`, with no scheme, port, path, or wildcard
 lando config set proxy.defaultDomain lndo.site:8080 --dry-run --format=json
 ```
 
+The full generated hostname also has a 253-character limit. If adding the service part and app slug exceeds it, lint reports `landofile.route` on the service. Shorten `proxy.defaultDomain` or set a shorter hostname in that service's `routes:`.
+
 Default hostnames move to the new domain, like `web.myapp.lndo.test`, and so do recipe routes written as `{{ app.name }}.{{ proxy.defaultDomain }}`. Hostnames you spelled out in full under `routes:` stay as written. Restart each app to publish its new routes and issue certificates for the new names.
 
 Restarting an app with routing enabled also moves the Traefik dashboard to `traefik.lndo.test/dashboard/`. Traefik picks up the change without recreating its container. Global services publish their routes when the global app starts, so run `lando global:restart` to move global Mailpit to `https://mailpit.lndo.test`.
@@ -141,7 +143,7 @@ Lando does not add DNS for your domain. Point `*.lndo.test` at `127.0.0.1` with 
 
 ## Set router ports
 
-HTTP tries `80`, then `8080`, `8000`, `8888`, `8008`, `38080`. HTTPS tries `443`, then `8443`, `4443`, `4433`, `4444`, `444`, `38443`. First free port per protocol wins. An empty fallback array means preferred-only.
+HTTP tries `80`, then `8080`, `8000`, `8888`, `8008`, `18080`, `28080`, `38080`. HTTPS tries `443`, then `8443`, `4443`, `4433`, `4444`, `444`, `18443`, `28443`, `38443`. First free port per protocol wins. An empty fallback array means preferred-only.
 
 ```yaml
 name: proxy-host-ports

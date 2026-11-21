@@ -83,7 +83,10 @@ export const normalizeJsonSchema = (root: JsonSchema): JsonSchema => {
         result[key] =
           key === "items" || key === "prefixItems"
             ? children
-            : children.sort((a, b) => jsonValueKey(a).localeCompare(jsonValueKey(b)));
+            : children
+                .map((child) => ({ child, key: jsonValueKey(child) }))
+                .sort((a, b) => a.key.localeCompare(b.key))
+                .map(({ child }) => child);
       } else if (schemaValues.has(key) && isJsonObject(value)) {
         result[key] = visit(value, stack);
       } else if ((key === "enum" || key === "required" || key === "type") && Array.isArray(value)) {

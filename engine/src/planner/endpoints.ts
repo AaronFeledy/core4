@@ -18,18 +18,19 @@ import {
   type PluginManifest,
   type ProviderCapabilities,
   type ProviderId,
+  RouteHostname,
   type RoutePlan,
   type ServicePlan,
   type StorageScope,
   clonedServiceParent,
+  defaultRouteHostname,
   parseContainerDestination,
   routeListenerPreference,
   selectHttpEndpoint,
   serviceAppMount,
-  validationIssue,
 } from "@lando/sdk/schema";
 import type { FileSystem, ServiceTypeHostFacts } from "@lando/sdk/services";
-import { type Context, Effect, Predicate } from "effect";
+import { type Context, Effect, Predicate, Schema } from "effect";
 
 import {
   type SelectedFileSyncPolicy,
@@ -38,12 +39,13 @@ import {
 } from "../plugins/file-sync-policy.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { sortRecord } from "../services/draft.ts";
-import { endpointValidationError, normalizeEndpoints } from "../services/endpoint-normalizer.ts";
+import { endpointValidationError, normalizeEndpointFacts } from "../services/endpoint-normalizer.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
-import { missingCapability } from "./compose-capabilities.ts";
+import { isAuthoredBuildStep } from "./authored-build-step.ts";
 import { dataTreeOwnershipStep, projectUserVolumeTrees, resolveDataTreeOwnership } from "./data-tree.ts";
-import { resolveRoute } from "./endpoint-routes.ts";
+import { createDependencyEnvironments } from "./dependency-environments.ts";
+import { endpointsForRoutes, resolveRoute } from "./endpoint-routes.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-host-checks.ts";
@@ -66,6 +68,7 @@ import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import { resolveServiceArtifact } from "./service-artifact.ts";
 import { type AuthoredStorageInfo, type PlannedServiceDraft, servicePlanError } from "./service-types.ts";
 import type { ShadowHostCheck } from "./shadow-host-checks.ts";
+import { collectPlannedStores } from "./storage.ts";
 
 export { resolveRoute } from "./endpoint-routes.ts";
 
@@ -116,43 +119,13 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   const shadowHostChecks: ShadowHostCheck[] = [];
   const gitHostChecks: GitHostCheck[] = [];
   const serviceHostnames: Record<string, ReadonlyArray<string>> = {};
-  const stores: Array<FinalizedServices["stores"][number]> = [];
+  const stores = collectPlannedStores(input.appRoot);
   const fileSync: Array<FileSyncPlan> = [];
   const servicePolicies: Record<string, FileSyncPolicy["services"][string]> = {};
   let selectedEngine: SelectedFileSyncPolicy | undefined;
   const routeAccumulator = makeRouteAccumulator();
   const projectUsers = new Map<string, ResolvedProjectUser>();
-  const storeOwners = new Map<
-    string,
-    { readonly store: FinalizedServices["stores"][number]; readonly service: string }
-  >();
-
-  const pushStore = (
-    store: FinalizedServices["stores"][number],
-    service: string,
-  ): LandofileValidationError | undefined => {
-    const previous = storeOwners.get(store.name);
-    if (previous !== undefined) {
-      if (
-        previous.store.scope !== store.scope ||
-        previous.store.kind !== store.kind ||
-        previous.store.key !== store.key
-      ) {
-        const message = `Store ${store.name} has conflicting scope, kind, or key definitions in services ${previous.service} and ${service}.`;
-        return new LandofileValidationError({
-          file: `${input.appRoot}/.lando.yml`,
-          message,
-          issues: [previous.service, service].map((name) => validationIssue(["services", name], message)),
-          remediation:
-            "Use the same scope, kind, and key for a shared store, or choose distinct store names.",
-        });
-      }
-      return;
-    }
-    storeOwners.set(store.name, { store, service });
-    stores.push(store);
-  };
-
+  const environments = createDependencyEnvironments(input);
   for (const entry of input.plannedServiceDrafts) {
     const {
       name,
@@ -219,14 +192,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     );
     const storageOwnership = (draft.storageOwnership ?? []).filter((tree) => volumeTargets.has(tree.target));
     const redirectSteps = redirectLogSourceBuildSteps({ logSources, base: draft.base });
-    const shadowResult = yield* deriveMountOverlays({
-      context,
-      servicePlan: preparedMounts.servicePlan,
-      fileSystem: input.fileSystem,
-    });
-    shadowHostChecks.push(...shadowResult.shadowHostChecks);
-    const planWithShadows = shadowResult.servicePlan;
-    const appMount = serviceAppMount(planWithShadows);
+    const appMount = serviceAppMount(preparedMounts.servicePlan);
     // A clone is a companion of its parent and shares its namespace mapping:
     // the mapping is independent of the clone's own process user and home
     // decision, so reuse the parent's resolution instead of re-deriving one
@@ -261,6 +227,31 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         ? {}
         : { projectUserExplanation: projectUserResolution.explanation }),
     };
+    const artifactIntent = resolveServiceArtifact(preparedMounts.servicePlan, entry, input.manifests);
+    if (artifactIntent instanceof ServiceTypeError)
+      return yield* servicePlanError({ appRoot: input.appRoot, serviceName: name, cause: artifactIntent });
+    const withEnvironment = environments.prepare(
+      {
+        ...artifactIntent,
+        ...projectUserFields,
+        extensions: {
+          ...artifactIntent.extensions,
+          ...(projectUserResolution.projectUser !== undefined &&
+          input.providerCapabilities.projectUserMapping === "image-renumber"
+            ? { [PROJECT_USER_MAPPING_EXTENSION_KEY]: "image-renumber" }
+            : {}),
+        },
+      },
+      entry,
+    );
+    if (withEnvironment instanceof LandofileValidationError) return yield* withEnvironment;
+    const shadowResult = yield* deriveMountOverlays({
+      context,
+      servicePlan: withEnvironment,
+      fileSystem: input.fileSystem,
+    });
+    shadowHostChecks.push(...shadowResult.shadowHostChecks);
+    const planWithShadows = shadowResult.servicePlan;
     const planWithProjectUser = {
       ...planWithShadows,
       ...projectUserFields,
@@ -370,6 +361,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         ...projectUserVolumeTrees({
           mounts: homePlan.mounts,
           cacheStores,
+          dependencyEnvironmentStores: environments.stores,
           ...(projectUserResolution.projectUser === undefined
             ? {}
             : { projectUser: projectUserResolution.projectUser }),
@@ -378,6 +370,9 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       );
     }
     const ownershipStep = dataTreeOwnershipStep(ownershipTrees);
+    // Features seed the image trees before ownership is prepared for authored build steps.
+    const firstAuthoredStep = draft.buildSteps.findIndex(isAuthoredBuildStep);
+    const ownershipIndex = firstAuthoredStep === -1 ? draft.buildSteps.length : firstAuthoredStep;
     // Renumber before anything gives a tree to the account by name, so a
     // prepared home and every owned data tree resolve to the host ids.
     const renumberStep = projectUserRenumberStep({
@@ -391,18 +386,24 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       storageOwnership,
       buildSteps: [
         ...(renumberStep === undefined ? [] : [renumberStep]),
+        ...draft.buildSteps.slice(0, ownershipIndex),
         ...(ownershipStep === undefined ? [] : [ownershipStep]),
-        ...draft.buildSteps,
+        ...draft.buildSteps.slice(ownershipIndex),
         ...redirectSteps,
       ],
     };
-    const endpoints = normalizeEndpoints(draft.endpoints, draft.normalizedConfig);
+    const { endpoints, conflicts } = normalizeEndpointFacts(
+      draft.endpoints,
+      draft.normalizedConfig,
+      authoredRoutes === undefined ? undefined : { service: name, routes: authoredRoutes },
+    );
     const endpointError = endpointValidationError(endpoints, { appRoot: input.appRoot, serviceName: name });
     if (endpointError !== undefined) return yield* Effect.fail(endpointError);
     const planned = applyHostReachability(
       {
         ...servicePlanFromDraft({ ...draftForPlan, endpoints }, [], input.metadata, extensionsForService),
         mounts: homePlan.mounts,
+        environment: withEnvironment.environment,
         home: homePlan.home,
         ...projectUserFields,
       },
@@ -438,6 +439,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     const tls = { certificate: draft.certs, generated: generatedCertificate };
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
     if (authoredRoutes !== undefined) {
+      const facetsFor = endpointsForRoutes(servicePlanWithHome.endpoints);
       for (const [routeIndex, route] of authoredRoutes.entries()) {
         for (const plan of stampGeneratedBackendTls(
           yield* resolveRoute(
@@ -446,13 +448,14 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
             servicePlanWithHome.endpoints,
             route,
             generatedCertificate,
+            { conflict: conflicts?.get(route), numericFacets: facetsFor(route) },
           ),
           tls,
         )) {
           routeRefs.push(
             ...(yield* routeAccumulator.add(
               plan,
-              route.source ?? { key: `services.${name}.routes[${routeIndex}]` },
+              route.source ?? { path: ["services", name, "routes", routeIndex] },
             )),
           );
         }
@@ -467,13 +470,25 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         routeListenerPreference("https", generatedCertificate),
       );
       if (selection.status !== "none") {
+        const hostname = defaultRouteHostname(name, input.appSlug, input.defaultDomain);
+        if (!Schema.is(RouteHostname)(hostname)) {
+          const message = `Default route hostname ${hostname} exceeds the 253-character limit.`;
+          const remediation =
+            "Shorten proxy.defaultDomain or author routes for this service with a shorter hostname.";
+          return yield* new LandofileValidationError({
+            file: input.appRoot,
+            message,
+            remediation,
+            issues: [{ path: ["services", name], rule: "landofile.route", message, suggestion: remediation }],
+          });
+        }
         for (const plan of stampGeneratedBackendTls(
           yield* resolveRoute(
             input.appRoot,
             name,
             servicePlanWithHome.endpoints,
             {
-              hostname: `${name}.${input.appSlug}.${input.defaultDomain}`,
+              hostname,
               scheme: "https",
               filters: [],
             },
@@ -486,7 +501,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
               selection.status === "selected"
                 ? { ...plan, endpoint: selection.endpoint.names[0] ?? selection.endpoint.port }
                 : plan,
-              { key: `services.${name}.endpoints` },
+              { path: ["services", name] },
             )),
           );
         }
@@ -501,30 +516,18 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
 
     const publicationError = publicationCapabilityError(input.provider, input.providerCapabilities, {
       name,
-      published: servicePlanWithRoutes.endpoints.some((endpoint) => endpoint._tag === "published"),
+      published: servicePlanWithRoutes.endpoints.some((endpoint) => endpoint.kind === "published"),
     });
     if (publicationError !== undefined) yield* Effect.fail(publicationError);
 
-    const healthcheck = servicePlanWithRoutes.healthcheck;
-    if (healthcheck !== undefined && healthcheck.kind !== "command" && healthcheck.kind !== "none") {
-      yield* Effect.fail(
-        missingCapability(
-          input.provider,
-          name,
-          `healthcheck kind ${healthcheck.kind}`,
-          "serviceHealth",
-          `Healthcheck for service ${name} uses kind: ${healthcheck.kind}, but only kind: command is supported (executed via the provider's exec channel). Author healthcheck as kind: command or remove it.`,
-        ),
-      );
-    }
-
     serviceHostnames[name] = hostnames;
+    environments.consumers.set(name, servicePlanWithRoutes);
     services[name] = yield* encodeServicePlan(input.appRoot, name, servicePlanWithRoutes);
     for (const mount of servicePlanWithRoutes.mounts) {
       if (mount.type !== "volume") continue;
       const storageInfo = storageByTarget.get(mount.target);
-      const error = pushStore(
-        {
+      const error = stores.add(
+        (mount.origin === "service" ? environments.stores.get(mount.store) : undefined) ?? {
           name: mount.store,
           scope: storageInfo?.scope ?? "service",
           kind: storageInfo?.kind ?? "data",
@@ -548,13 +551,22 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     }
   }
 
+  const dependencyServices = environments.finish();
+  if (dependencyServices instanceof LandofileValidationError) return yield* dependencyServices;
+  for (const [name, service] of dependencyServices) {
+    services[name] = yield* encodeServicePlan(input.appRoot, name, service);
+  }
+  for (const store of environments.stores.values()) {
+    const error = stores.add(store, "dependency environments");
+    if (error !== undefined) return yield* error;
+  }
   yield* validateServiceDependencies(input.appRoot, services);
   return {
     gitHostChecks,
     shadowHostChecks,
     services,
     serviceHostnames,
-    stores,
+    stores: stores.values(),
     fileSync,
     fileSyncPolicy: recordFileSyncPolicy({
       selected: selectedEngine,

@@ -5,9 +5,10 @@ import {
   PLAN_SERVICE_EXPRESSION_SCOPES,
   recipeOptionScope,
 } from "@lando/landofile/recipe-expressions";
+import { pathHasPrefix, pathsOverlap } from "@lando/landofile/validation";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigExpressionError } from "@lando/sdk/errors";
-import { type ExpressionContext, expressionScopeMembers } from "@lando/sdk/expressions";
+import { type ExpressionContext, expressionScopeMemberPaths } from "@lando/sdk/expressions";
 import {
   type AppPlan,
   type CompilationContext,
@@ -33,7 +34,10 @@ export interface MaterializeLandofileScopesInput {
 
 export type DeferredExpressionSites = readonly ParsedPendingSite[];
 export type ServiceCredsScope = Readonly<Record<string, ServiceExpressionFacts>>;
-export const deferredSiteKey = (path: ValidationIssuePath): string => JSON.stringify(path);
+export const pathIsBlocked = (
+  blocked: readonly ValidationIssuePath[] | undefined,
+  path: ValidationIssuePath,
+): boolean => blocked?.some((site) => pathsOverlap(site, path)) ?? false;
 export const configExpressionIssuePath = (error: ConfigExpressionError): ValidationIssuePath => error.path;
 
 const decodeDocument = (document: unknown, filePath: string, pendingSites: readonly ParsedPendingSite[]) =>
@@ -102,9 +106,7 @@ export const materializeServiceScopeSites = Effect.fn("Landofile.serviceSites")(
   readonly deferredSites: DeferredExpressionSites;
   readonly context: ExpressionContext;
 }) {
-  const sites = input.deferredSites.filter((site) =>
-    input.pathPrefix.every((key, index) => site.path[index] === key),
-  );
+  const sites = input.deferredSites.filter((site) => pathHasPrefix(site.path, input.pathPrefix));
   const result = yield* Effect.fromResult(
     consumeSites({
       document: input.value,
@@ -119,10 +121,10 @@ export const materializeServiceScopeSites = Effect.fn("Landofile.serviceSites")(
 
 export const serviceCredsScopeForPlan = (plan: AppPlan): ServiceCredsScope =>
   Object.fromEntries(
-    Object.values(plan.services).flatMap((service) => {
-      const facts = serviceExpressionFacts(service);
-      return facts === undefined ? [] : [[service.name, facts]];
-    }),
+    Object.values(plan.services).map((service) => [
+      service.name,
+      serviceExpressionFacts(service.name, service),
+    ]),
   );
 
 export const materializeLandofileScopesForPlan = Effect.fn("Landofile.planScopes")(function* (
@@ -154,8 +156,8 @@ export const referencedServices = (
 ): Result.Result<ReadonlySet<string>, ConfigExpressionError> => {
   const references = new Set<string>();
   for (const site of sites) {
-    if (!pathPrefix.every((key, index) => site.path[index] === key)) continue;
-    const members = expressionScopeMembers(site.template, "services");
+    if (!pathHasPrefix(site.path, pathPrefix)) continue;
+    const members = expressionScopeMemberPaths(site.template, "services");
     if (!members.analyzable)
       return Result.fail(
         new ConfigExpressionError({
@@ -166,7 +168,7 @@ export const referencedServices = (
           remediation: "Write the service name directly, for example services.database.creds.user.",
         }),
       );
-    for (const member of members.members) references.add(member);
+    for (const [name, member] of members.paths) if (member !== "url") references.add(name);
   }
   return Result.succeed(references);
 };

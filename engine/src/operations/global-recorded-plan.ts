@@ -128,7 +128,7 @@ export const composeGlobalRecordedPlan = Effect.fn("GlobalApp.composeRecordedPla
   for (const [index, route] of desired.routes.entries()) {
     if (!Object.hasOwn(desired.services, route.service) || retained.has(String(route.service))) continue;
     const refs = yield* accumulator
-      .add(route, { key: `selected global route ${route.hostname}` })
+      .add(route, { path: ["routes", route.hostname] })
       .pipe(mapFailures((cause) => conflict(cause.message)));
     routeRefs[index] = refs;
   }
@@ -136,7 +136,7 @@ export const composeGlobalRecordedPlan = Effect.fn("GlobalApp.composeRecordedPla
     const id = String(route.service);
     if (!retained.has(id) || !active.has(id) || disabled.has(id)) continue;
     const refs = yield* accumulator
-      .add(route, { key: `retained global route for ${id}` })
+      .add(route, { path: ["services", id, "routes", route.hostname] })
       .pipe(mapFailures((cause) => conflict(cause.message)));
     priorIndexes.set(
       index,

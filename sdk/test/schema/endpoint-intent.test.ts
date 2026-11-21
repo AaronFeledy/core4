@@ -15,7 +15,7 @@ const decodePlan = Schema.decodeUnknownResult(EndpointPlan, { onExcessProperty: 
 describe("endpoint publication intent", () => {
   test("represents publish-with-defaults explicitly", () => {
     const result = decodeInput({
-      _tag: "published",
+      kind: "published",
       protocol: "http",
       port: 8080,
       publication: {},
@@ -26,7 +26,7 @@ describe("endpoint publication intent", () => {
 
   test.each(["tcp", "udp"] as const)("accepts published %s endpoints", (protocol) => {
     const result = decodePlan({
-      _tag: "published",
+      kind: "published",
       protocol,
       port: 53,
       publication: { bindAddress: "127.0.0.1", hostPort: 5353 },
@@ -38,7 +38,7 @@ describe("endpoint publication intent", () => {
   test("preserves optional application protocol metadata", () => {
     // Given / When
     const result = decodePlan({
-      _tag: "published",
+      kind: "published",
       protocol: "tcp",
       port: 8080,
       appProtocol: "http/1.1",
@@ -48,15 +48,15 @@ describe("endpoint publication intent", () => {
     // Then
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isSuccess(result)) {
-      expect(result.success._tag).toBe("published");
-      if (result.success._tag === "published") expect(result.success.appProtocol).toBe("http/1.1");
+      expect(result.success.kind).toBe("published");
+      if (result.success.kind === "published") expect(result.success.appProtocol).toBe("http/1.1");
     }
   });
 
   test("preserves application protocol metadata on internal endpoints", () => {
     // Given / When
     const result = Schema.decodeUnknownResult(EndpointInput)(
-      { _tag: "internal", protocol: "tcp", port: 8080, appProtocol: "http/1.1" },
+      { kind: "internal", protocol: "tcp", port: 8080, appProtocol: "http/1.1" },
       { onExcessProperty: "error" },
     );
 
@@ -66,7 +66,7 @@ describe("endpoint publication intent", () => {
 
   test("accepts internal unix endpoints", () => {
     const result = decodeInput({
-      _tag: "internal",
+      kind: "internal",
       protocol: "unix",
       socketPath: "/run/app.sock",
     });
@@ -76,7 +76,7 @@ describe("endpoint publication intent", () => {
 
   test("rejects publication on unix endpoints", () => {
     const result = decodeInput({
-      _tag: "published",
+      kind: "published",
       protocol: "unix",
       socketPath: "/run/app.sock",
       publication: {},

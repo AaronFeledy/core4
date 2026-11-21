@@ -18,7 +18,7 @@ export const encodeServicePlan = (appRoot: string, name: string, plan: ServicePl
         new LandofileValidationError({
           message: `Planned service ${name} is invalid: ${cause.message}`,
           remediation: "Correct the reported plan fields or the plugin that produced them.",
-          file: `${appRoot}/.lando.yml`,
+          file: appRoot,
           issues: validationIssuesFromCause(cause).map((issue) => ({
             ...issue,
             path: ["services", name, ...issue.path],
@@ -70,7 +70,7 @@ const invalidPlan = (appRoot: string, issues: ReadonlyArray<ValidationIssue>) =>
       ".",
     ),
     remediation: "Correct the reported plan fields or the plugin that produced them.",
-    file: `${appRoot}/.lando.yml`,
+    file: appRoot,
     issues,
   });
 
@@ -98,7 +98,7 @@ export const decodeAppPlan = (
           ...(issue.suggestion === undefined && issue.path[2] === "hostname"
             ? {
                 suggestion:
-                  "Default routes are built from the service and app names, and plugins can add routes. Keep those names valid DNS labels (letters, digits, and hyphens, at most 63 characters each), or declare the service's routes yourself.",
+                  "Correct the authored route hostname, or update the plugin or feature that generated it.",
               }
             : {}),
         };

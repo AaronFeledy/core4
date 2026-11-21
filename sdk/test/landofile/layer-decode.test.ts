@@ -41,11 +41,13 @@ test("stable list-item members retain operations", () => {
 
 test.each([
   { services: { web: { environmnt: reset() } } },
+  { services: { web: { endpoints: [override("ui=http:80")] } } },
+  { services: { web: { endpoints: [{ kind: "internal", name: override("ui") }] } } },
   { services: { web: { routes: [{ hostname: override("web.test") }] } } },
   { services: { web: { dependsOn: { db: { condition: reset() } } } } },
   {
     services: {
-      web: { routes: [{ hostname: "web.test", filters: [{ type: "stripPrefix", prefix: reset() }] }] },
+      web: { routes: [{ hostname: "web.test", filters: [{ kind: "stripPrefix", prefix: reset() }] }] },
     },
   },
   { services: { web: { security: { cas: override(["ca.pem"]) } } } },
@@ -84,7 +86,7 @@ test.each([
   {
     services: {
       web: {
-        routes: [{ hostname: "web.test", filters: [{ name: override("f"), type: "redirect", to: "/" }] }],
+        routes: [{ hostname: "web.test", filters: [{ name: override("f"), kind: "redirect", to: "/" }] }],
       },
     },
   },

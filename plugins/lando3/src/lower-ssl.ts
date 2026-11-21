@@ -31,8 +31,8 @@ export const lowerLegacySsl = (service: V4Wire, ctx: ServiceLoweringContext, id:
           certs: true,
           endpoints: [
             published
-              ? { _tag: "published", protocol: "https", port: appPort, publication: {} }
-              : { _tag: "internal", protocol: "https", port: appPort },
+              ? { kind: "published", protocol: "https", port: appPort, publication: {} }
+              : { kind: "internal", protocol: "https", port: appPort },
           ],
         },
         diagnostics,

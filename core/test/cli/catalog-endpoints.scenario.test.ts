@@ -11,8 +11,14 @@ import { stringify } from "yaml";
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
 const name = "catalog-endpoint-intent";
-const endpoint = (protocol: "http" | "tcp", port: number, name: string) => ({
-  _tag: "internal" as const,
+const wireEndpoint = (protocol: "http" | "tcp", port: number, name: string) => ({
+  kind: "internal" as const,
+  protocol,
+  port,
+  name,
+});
+const planEndpoint = (protocol: "http" | "tcp", port: number, name: string) => ({
+  kind: "internal" as const,
   protocol,
   port,
   name,
@@ -70,15 +76,20 @@ test("source cache refresh preserves authored catalog endpoints, layer merging, 
   // Given
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-catalog-endpoints-")));
   const cacheRoot = join(root, "cache");
-  const cache = endpoint("tcp", 6380, "cache");
-  const fpm = endpoint("tcp", 9070, "fpm");
-  const http = endpoint("http", 8080, "browser");
-  const metrics = endpoint("tcp", 9090, "metrics");
+  const cache = planEndpoint("tcp", 6380, "cache");
+  const cacheWire = wireEndpoint("tcp", 6380, "cache");
+  const fpm = planEndpoint("tcp", 9070, "fpm");
+  const fpmWire = wireEndpoint("tcp", 9070, "fpm");
+  const http = planEndpoint("http", 8080, "browser");
+  const httpWire = wireEndpoint("http", 8080, "browser");
+  const metrics = planEndpoint("tcp", 9090, "metrics");
   try {
     await Bun.write(
       join(root, ".lando.dist.yml"),
       stringify({
-        services: { web: { endpoints: [endpoint("http", 80, "browser"), metrics] } },
+        services: {
+          web: { endpoints: [wireEndpoint("http", 80, "browser"), wireEndpoint("tcp", 9090, "metrics")] },
+        },
       }),
     );
     await Bun.write(
@@ -86,12 +97,12 @@ test("source cache refresh preserves authored catalog endpoints, layer merging, 
       stringify({
         name,
         services: {
-          cache: { type: "redis", port: 6380, endpoints: [cache] },
-          php: { type: "php:8.3", via: "fpm", port: 9070, endpoints: [fpm] },
-          web: { type: "nginx", backend: "php", port: 8080, endpoints: [http] },
+          cache: { type: "redis", port: 6380, endpoints: [cacheWire] },
+          php: { type: "php:8.3", via: "fpm", port: 9070, endpoints: [fpmWire] },
+          web: { type: "nginx", backend: "php", port: 8080, endpoints: [httpWire] },
           hidden: { type: "nginx", endpoints: [] },
           inbox: { type: "mailpit", endpoints: [], mailFrom: false },
-          queue: { type: "rabbitmq", endpoints: [endpoint("http", 15672, "dashboard")] },
+          queue: { type: "rabbitmq", endpoints: [wireEndpoint("http", 15672, "dashboard")] },
         },
         proxy: { web: [{ hostname: "authored.lndo.site", endpoint: "browser" }] },
       }),
@@ -118,7 +129,7 @@ test("source cache refresh preserves authored catalog endpoints, layer merging, 
     expect(plan.services[ServiceName.make("inbox")]?.endpoints).toEqual([]);
     expect(plan.services[ServiceName.make("inbox")]?.healthcheck?.command).toEqual(["/mailpit", "readyz"]);
     expect(plan.services[ServiceName.make("queue")]?.endpoints).toEqual([
-      { ...endpoint("http", 15672, "dashboard"), scan: { path: "/", okCodes: [] } },
+      { ...planEndpoint("http", 15672, "dashboard"), scan: { path: "/", okCodes: [] } },
     ]);
     expect(plan.routes.find((route) => route.hostname === "authored.lndo.site")?.backend).toEqual({
       service: ServiceName.make("web"),
@@ -134,7 +145,7 @@ test("source cache refresh preserves authored catalog endpoints, layer merging, 
   }
 }, 30_000);
 
-test("source cache refresh rejects routes to explicitly removed catalog endpoints", async () => {
+test("source cache refresh rejects portless routes to explicitly removed catalog endpoints", async () => {
   // Given
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-catalog-endpoints-error-")));
   try {
@@ -143,7 +154,7 @@ test("source cache refresh rejects routes to explicitly removed catalog endpoint
       stringify({
         name,
         services: { web: { type: "nginx", endpoints: [] } },
-        proxy: { web: [{ hostname: "removed.lndo.site", endpoint: 80 }] },
+        proxy: { web: [{ hostname: "removed.lndo.site" }] },
       }),
     );
     // When

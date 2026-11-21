@@ -94,6 +94,11 @@ class OverlayMerge<Source> {
         const baseKeys = base.map((node) => rule.key(node.value));
         const overlayKeys = overlay.map((node) => rule.key(node.value));
         if (baseKeys.includes(undefined) || overlayKeys.includes(undefined)) return this.materialize(right);
+        if (
+          rule.requiresUniqueKeys &&
+          (new Set(baseKeys).size !== baseKeys.length || new Set(overlayKeys).size !== overlayKeys.length)
+        )
+          return this.materialize(right);
         const mergeEntry = (
           item: ValueWithOrigins<Source>,
           higher: ValueWithOrigins<Source>,
@@ -101,12 +106,12 @@ class OverlayMerge<Source> {
         ) => {
           if (
             rule.descriptor.kind === "keyed" &&
-            rule.descriptor.onMatch === "replace-on-type-change" &&
+            rule.descriptor.onMatch === "replace-on-kind-change" &&
             isPlainRecord(item.value) &&
             isPlainRecord(higher.value) &&
-            typeof item.value.type === "string" &&
-            typeof higher.value.type === "string" &&
-            item.value.type !== higher.value.type
+            typeof item.value.kind === "string" &&
+            typeof higher.value.kind === "string" &&
+            item.value.kind !== higher.value.kind
           )
             return this.materialize(higher);
           return this.merge(

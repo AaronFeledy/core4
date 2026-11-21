@@ -11,7 +11,7 @@ export type Availability<T> =
 
 export interface ServiceEndpointProjection {
   readonly preparation: Availability<PreparedServiceComposition>;
-  readonly contributions: Availability<readonly EndpointPlan[]>;
+  readonly contributions: Availability<readonly EndpointPlan[]> & { readonly value: readonly EndpointPlan[] };
   readonly endpoints: Availability<readonly EndpointPlan[]>;
 }
 
@@ -37,7 +37,7 @@ export const requireServiceProjection = (
       new LandofileValidationError({
         message: `Service ${name} has no successful prepared endpoint contribution.`,
         remediation: "Resolve endpoint preparation failures before assembling the plan.",
-        file: `${appRoot}/.lando.yml`,
+        file: appRoot,
         issues: [validationIssue(["services", name], "Endpoint preparation invariant failed.")],
       }),
     );
@@ -54,10 +54,13 @@ export const blockContributions = (
     if (row === undefined) continue;
     rows.set(name, {
       ...row,
-      contributions: unavailable([
-        ...(row.contributions._tag === "Unavailable" ? row.contributions.reasons : []),
-        ...reasons,
-      ]),
+      contributions: {
+        ...unavailable([
+          ...(row.contributions._tag === "Unavailable" ? row.contributions.reasons : []),
+          ...reasons,
+        ]),
+        value: row.contributions.value,
+      },
     });
   }
 };

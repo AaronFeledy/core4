@@ -115,7 +115,10 @@ export const resolveEntries = Effect.fnUntraced(function* (
         { depth: depth + 1, stack: [...stack, identity] },
       );
       sources.push(...nested.sources, ...fragment.document.provenance.documents);
-      if ((ctx.recorder?.failures.length ?? 0) > initialFailures) return;
+      if (ctx.recorder !== undefined && ctx.recorder.failures.length > initialFailures) {
+        ctx.recorder.diagnostic = false;
+        return;
+      }
 
       const excluded = new Set(entry.excludes);
       const overlay = isMergeDirective(fragment.tooling)
@@ -171,7 +174,7 @@ export const resolveEntries = Effect.fnUntraced(function* (
     if (Result.isFailure(result)) {
       if (ctx.recorder === undefined || !Schema.is(LandofileLoadFailure)(result.failure))
         return yield* Effect.fail(result.failure);
-      ctx.recorder.record(result.failure);
+      ctx.recorder.record(result.failure, { kind: "missing-content" });
       continue;
     }
     for (const [id, task] of localTasks) tasks.set(id, task);

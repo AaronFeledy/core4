@@ -1,12 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import * as Schema from "effect/Schema";
 import { renderCiWorkflow } from "../../../scripts/build-ci-workflow.ts";
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms.ts";
 import { CI_JOB_TIERS, jobSelected, resultFailures, selectPaths } from "../../../scripts/ci-selection.ts";
 import { CiGitError, selectCi } from "../../../scripts/select-ci.ts";
+import {
+  TEST_ROOT,
+  collectTestFiles,
+  normalizeTestPath,
+  resolveTestSelection,
+} from "../../../scripts/test-selection-files.ts";
+import { TEST_SELECTIONS } from "../../../scripts/test-selections.ts";
 
 describe("CI selection", () => {
   test.each([
@@ -51,6 +58,9 @@ describe("CI selection", () => {
     ["plugins/proxy-traefik/test/router-certificate-publication.integration.test.ts", "providers"],
     ["plugins/proxy-traefik/test/live-traefik-fixture.ts", "providers"],
     ["plugins/proxy-traefik/test/router-certificate-fixtures.json", "providers"],
+    ["plugins/file-sync-mutagen/src/mutagen-process-client.ts", "providers"],
+    ["plugins/file-sync-mutagen/test/process-client-live.integration.test.ts", "providers"],
+    ["plugins/file-sync-mutagen/src/windows-app-client.ts", "runtime"],
     ["plugins/proxy-traefik/src/doctor.ts", "runtime"],
     ["plugins/proxy-traefik/src/socket-proxy-install.ts", "runtime"],
     ["plugins/proxy-traefik/test/doctor-watcher.test.ts", "runtime"],
@@ -118,6 +128,7 @@ describe("CI selection", () => {
       "build-linux-x64",
       "runtime-bundle-linux-x64",
       "guide-scenarios-linux-x64-runner",
+      "guide-e2e-linux-x64-runner",
       "guide-scenarios-windows-x64",
     ]) {
       const tier = CI_JOB_TIERS[id];
@@ -244,9 +255,8 @@ describe("CI selection", () => {
       await writeFile(join(cwd, "docs", filename), "docs");
       git("add", ".");
       git("commit", "-m", "docs");
-      expect(selectCi({ event: "pull_request", base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe(
-        "docs",
-      );
+      for (const event of ["pull_request", "merge_group"])
+        expect(selectCi({ event, base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe("docs");
       git("mv", "runtime.ts", "docs/moved.md");
       git("commit", "-m", "move runtime to docs");
       expect(selectCi({ event: "pull_request", base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe(
@@ -343,6 +353,8 @@ describe("CI selection", () => {
         "runtime-bundle-linux-x64",
         "guide-scenarios-linux-x64-runner",
         "guide-scenarios-linux-x64",
+        "guide-e2e-linux-x64-runner",
+        "guide-e2e-linux-x64",
         "guide-scenarios-windows-x64",
       ];
       const runtime = [
@@ -424,12 +436,43 @@ describe("CI selection", () => {
 });
 
 describe("platform build path selection", () => {
+  test("selects broad CI for build job tests and their transitive relative imports", async () => {
+    const files = await collectTestFiles();
+    const buildSelections = TEST_SELECTIONS.filter(({ jobs }) =>
+      jobs.some(({ job }) => job.startsWith("build-")),
+    );
+    const paths = new Set(buildSelections.flatMap((selection) => resolveTestSelection(selection, files)));
+    expect(paths.size).toBeGreaterThan(0);
+    const ts = new Bun.Transpiler({ loader: "ts" });
+    const tsx = new Bun.Transpiler({ loader: "tsx" });
+
+    // Insertion order visits newly discovered imports, and the set breaks cycles.
+    for (const path of paths) {
+      if (!/\.[cm]?[jt]sx?$/u.test(path)) continue;
+      const source = resolve(TEST_ROOT, path);
+      const transpiler = path.endsWith("x") ? tsx : ts;
+      for (const { path: specifier } of transpiler.scanImports(await Bun.file(source).text())) {
+        if (!/^\.\.?\//u.test(specifier)) continue;
+        const dependency = normalizeTestPath(
+          relative(TEST_ROOT, Bun.resolveSync(specifier, dirname(source))),
+        );
+        if (!dependency.startsWith("../")) paths.add(dependency);
+      }
+    }
+
+    const uncovered = [...paths].filter((path) => {
+      const { broad, reason } = selectPaths([path]);
+      return !broad || reason !== "platform build path";
+    });
+    expect(uncovered).toEqual([]);
+  });
+
   test.each([
     "engine/src/runtime/libc.ts",
     "core/test/build/host-execution-compiled.integration.test.ts",
     "core/test/build/opentui-compiled-acceptance.integration.test.ts",
-    "core/test/build/opentui-source-acceptance.test.ts",
-    "core/test/build/support/fixture.ts",
+    "core/test/build/renderer-output-compiled.integration.test.ts",
+    "core/test/build/fixtures/opentui-loader-probe-preload.ts",
     "scripts/codegen.ts",
     "scripts/build-command-registry-manifest.ts",
     "scripts/build-compiled-binary.ts",
@@ -454,13 +497,18 @@ describe("platform build path selection", () => {
   test.each([
     ["docs/page.md", "docs"],
     ["plugins/provider-lando/src/provider.ts", "providers"],
+    ["core/test/build/nightly-workflow.test.ts", "runtime"],
+    ["core/test/build/maintenance-workflow-renderer.test.ts", "runtime"],
   ])("keeps %s non-broad", (path, profile) => {
     expect(selectPaths([path])).toMatchObject({ profile, broad: false });
   });
 
   test("platform build selection precedes provider selection in a mixed diff", () => {
     expect(
-      selectPaths(["plugins/provider-lando/src/provider.ts", "core/test/build/fixture.test.ts"]),
+      selectPaths([
+        "plugins/provider-lando/src/provider.ts",
+        "core/test/build/host-execution-compiled.integration.test.ts",
+      ]),
     ).toEqual({ profile: "runtime", broad: true, reason: "platform build path" });
   });
 });

@@ -134,13 +134,19 @@ export const TEST_SELECTIONS = [
   },
   {
     id: "providers-lando",
-    paths: ["plugins/provider-lando/test/*.integration.test.ts"],
+    paths: [
+      "plugins/provider-lando/test/*.integration.test.ts",
+      "container-runtime/test/dependency-environments.integration.test.ts",
+    ],
     jobs: live,
     needs: "Live managed Podman runtime; some cases require native opt-ins",
   },
   {
     id: "providers-docker",
-    paths: ["plugins/provider-docker/test/*.integration.test.ts"],
+    paths: [
+      "plugins/provider-docker/test/*.integration.test.ts",
+      "container-runtime/test/dependency-environments.integration.test.ts",
+    ],
     jobs: live,
     needs: "LANDO_TEST_DOCKER_SOCKET",
   },
@@ -185,6 +191,12 @@ export const TEST_SELECTIONS = [
     ],
     jobs: live,
     needs: "LANDO_TEST_PODMAN_SOCKET",
+  },
+  {
+    id: "file-sync-mutagen-live",
+    paths: ["plugins/file-sync-mutagen/test/process-client-live.integration.test.ts"],
+    jobs: live,
+    needs: "LANDO_TEST_PODMAN_SOCKET and a docker CLI",
   },
   {
     id: "providers-sqlite-integrity",
@@ -258,7 +270,7 @@ export const TEST_SELECTIONS = [
       workflow: "nightly.yml",
       job: `file-sync-contract-${id}`,
     })),
-    needs: "LANDO_TEST_FILE_SYNC_LIVE=1",
+    needs: "Native OS runner; fake Mutagen client",
   },
   {
     id: "nightly-provider-e2e",

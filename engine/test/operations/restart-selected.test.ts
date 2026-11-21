@@ -13,12 +13,13 @@ import {
 } from "@lando/sdk/schema";
 import type { ApplyOptions, ServiceRuntimeFields, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { RouterService } from "@lando/sdk/services";
-import { TestFileSyncEngine, TestRouterService } from "@lando/sdk/test";
+import { TestFileSyncEngine } from "@lando/sdk/test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { withAcceleratedBind } from "../accelerated-plan.ts";
+import { publicUrlRouter } from "../lifecycle/route-url-fixture.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const redis: ServicePlan = {
@@ -29,7 +30,7 @@ const redis: ServicePlan = {
   command: ["redis-server"],
   endpoints: [
     {
-      _tag: "published",
+      kind: "published",
       port: 6379,
       protocol: "tcp",
       name: "redis",
@@ -142,6 +143,7 @@ const runSelected = (
       Effect.succeed(runtimes.get(String(target.service)) ?? runtimeFor(plannedApp, target.service)),
     ...options,
   });
+  const router = publicUrlRouter();
   const operation = (options.operation === "rebuild" ? rebuildApp : restartApp)(
     {
       ...(options.services === undefined ? {} : { services: options.services }),
@@ -154,12 +156,12 @@ const runSelected = (
     },
   ).pipe(
     Effect.provideService(RouterService, {
-      ...TestRouterService,
+      ...router,
       applyRoutes: (routes, owner) =>
         Effect.sync(() => {
           calls.push("routes");
           applyRoutes.push(...routes.map((applied) => applied.hostname));
-        }).pipe(Effect.andThen(TestRouterService.applyRoutes(routes, owner))),
+        }).pipe(Effect.andThen(router.applyRoutes(routes, owner))),
       removeRoutes: (owner) => Effect.sync(() => void removeRoutes.push(owner.ownerKey)),
     }),
     Effect.provide(harness.layer),
@@ -541,6 +543,88 @@ describe("selected service restart", () => {
     ]);
     expect(selected.applyCalls[0]?.options.recordedPlan?.services[web.name]?.routes).toEqual([{ index: 0 }]);
   });
+
+  test("binds selected consumers against the retained route, not the pending desired route", async () => {
+    const previous = twoServicePlan();
+    const consumer = {
+      ...redis,
+      environment: { PUBLIC_URL: { _tag: "RouteText", parts: [{ service: web.name, encoding: "raw" }] } },
+    } satisfies typeof redis;
+    const selected = runSelected(
+      {
+        ...previous,
+        services: { ...previous.services, [redis.name]: consumer },
+        routes: [{ ...route, hostname: "web-new.test" }],
+      },
+      {
+        services: [redis.name],
+        appliedPlans: [previous],
+        resolveAppliedPlan: () => Effect.succeed(previous),
+      },
+    );
+    await Effect.runPromise(selected.operation);
+    expect(selected.applyRoutes).toEqual([route.hostname]);
+    expect(selected.applyCalls[0]?.plan.services[redis.name]?.environment.PUBLIC_URL).toBe(
+      "http://web.test:8080",
+    );
+  });
+
+  test.each([
+    { operation: "restart", hostname: "web-new.test", prior: "http://web.test:8080", refuses: true },
+    { operation: "rebuild", hostname: "web.test", prior: "http://web.test:9080", refuses: true },
+    { operation: "restart", hostname: "web.test", prior: undefined, refuses: true },
+    { operation: "restart", hostname: "web.test", prior: "http://web.test:8080", refuses: false },
+    {
+      operation: "restart",
+      hostname: "web.test",
+      prior: "http://web.test:8080",
+      refuses: true,
+      routerDisabled: true,
+    },
+  ] as const)(
+    "checks retained URL evidence before stopping ($operation, $hostname, $prior)",
+    async ({ operation, hostname, prior, refuses, ...row }) => {
+      const previous = twoServicePlan();
+      const consumer = {
+        ...redis,
+        extensions:
+          prior === undefined
+            ? redis.extensions
+            : { ...redis.extensions, "@lando/engine/realized-route-urls": { web: prior } },
+        environment: { PUBLIC_URL: { _tag: "RouteText", parts: [{ service: web.name, encoding: "raw" }] } },
+      } satisfies typeof redis;
+      const applied = { ...previous, services: { ...previous.services, [redis.name]: consumer } };
+      const selected = runSelected(
+        {
+          ...previous,
+          routes: [{ ...route, hostname }],
+          ...("routerDisabled" in row ? { router: { enabled: false } } : {}),
+        },
+        {
+          operation,
+          services: [web.name],
+          appliedPlans: [applied],
+          resolveAppliedPlan: () => Effect.succeed(applied),
+        },
+      );
+      const result = await Effect.runPromise(selected.operation.pipe(Effect.result));
+      if (!refuses) {
+        expect(result).toMatchObject({ _tag: "Success" });
+        expect(selected.stopCalls).toEqual([web.name]);
+        return;
+      }
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "RouteUrlBindingError",
+          reason: "retained-consumer",
+          service: web.name,
+          consumers: [redis.name],
+        },
+      });
+      expect(selected.stopCalls).toEqual([]);
+    },
+  );
 
   test("publishes pre-restart and post-restart with selected services and per-service stop events only for them", async () => {
     const plannedApp = twoServicePlan();

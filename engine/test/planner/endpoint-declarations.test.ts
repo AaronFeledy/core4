@@ -22,8 +22,12 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { planApp } from "../plan-app.ts";
 
-const listener = (port: number): EndpointPlan => ({ _tag: "internal", protocol: "http", port });
-const buildPlugin = (calls: string[], endpoint: number): ReturnType<typeof definePlugin> => {
+const listener = (port: number): EndpointPlan => ({ kind: "internal", protocol: "http", port });
+const buildPlugin = (
+  calls: string[],
+  endpoint: number,
+  invalid?: "app" | "service",
+): ReturnType<typeof definePlugin> => {
   const metadata = Object.freeze({ "@test/resolution": Object.freeze({ listener: endpoint }) });
   const feature: ServiceFeatureDefinition = {
     id: "test.listener",
@@ -35,7 +39,7 @@ const buildPlugin = (calls: string[], endpoint: number): ReturnType<typeof defin
         expect("addEndpoint" in ctx).toBe(false);
         expect("addEnv" in ctx).toBe(false);
         expect(ctx.config.port).toBe(endpoint);
-        return [listener(endpoint)];
+        return invalid === "service" ? [{ ...listener(endpoint), port: 65536 }] : [`http:${endpoint}`];
       }),
     apply: () =>
       Effect.sync(() => {
@@ -53,7 +57,7 @@ const buildPlugin = (calls: string[], endpoint: number): ReturnType<typeof defin
         expect("forEachSelected" in ctx).toBe(false);
         expect(ctx.selected.map((view) => view.serviceName)).toEqual(["web"]);
         expect(ctx.selected[0]?.resolutionMetadata).toEqual(metadata);
-        return { web: [{ ...listener(9000), name: "late" }] };
+        return { web: invalid === "app" ? [{ ...listener(9000), port: 65536 }] : ["late=http:9000"] };
       }),
     apply: (ctx) =>
       Effect.sync(() => {
@@ -89,6 +93,38 @@ const buildPlugin = (calls: string[], endpoint: number): ReturnType<typeof defin
     appFeatures: new Map([[late.id, late]]),
   });
 };
+
+test.each(["service", "app"] as const)(
+  "lint attributes invalid %s declarations to the plugin",
+  async (kind) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-bad-plugin-endpoint-"));
+    const registry = PluginRegistryLayer.layerWith({ app: false, user: false }, [
+      ...bundledPluginModules(),
+      buildPlugin([], 8080, kind),
+    ]);
+    try {
+      await writeFile(
+        join(root, ".lando.yml"),
+        emitYamlDocument({
+          name: "declarations",
+          services: { web: { type: "declaration", endpoints: ["http:80"] } },
+        }),
+      );
+      const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registry)));
+      const issue = result.violations.find(({ path }) => path[0] === "pluginEndpoints");
+      expect(issue?.path).toEqual(["pluginEndpoints", "web", 0, "port"]);
+      expect(issue?.message).toContain(
+        kind === "service"
+          ? "@test/declarations feature test.listener"
+          : "@test/declarations feature test.late-listener",
+      );
+      expect(issue?.message).not.toContain("65536");
+      expect(issue?.source).toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("lint plans declared listeners without certificates, provider or cache", async () => {
   // Given

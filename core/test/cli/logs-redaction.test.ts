@@ -78,7 +78,7 @@ const database: ServicePlan = {
   command: ["postgres"],
   environment: {},
   mounts: [],
-  endpoints: [{ _tag: "internal", port: 5432, protocol: "tcp", name: "database" }],
+  endpoints: [{ kind: "internal", port: 5432, protocol: "tcp", name: "database" }],
   routes: [],
   dependsOn: [],
   hostAliases: [],
