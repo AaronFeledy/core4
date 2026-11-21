@@ -241,6 +241,7 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     "AppPlanner.finalizeServices",
     "AppPlanner.normalizeNetworks",
     "AppPlanner.validateServiceProbes",
+    "AppPlanner.validateRouteUrls",
   ]);
   const discover = spans.find((span) => span.name === "AppPlanner.discover");
   const resolvedLandofile = spans.find((span) => span.name === "AppPlanner.resolve");

@@ -61,7 +61,19 @@ export const executionSiteAt = (path: ReadonlyArray<string | number>): Execution
   return { site: match.site, relativePath: path.slice(match.index + 1) };
 };
 
+export const isServiceEnvironmentValuePath = (path: readonly (string | number)[]): boolean =>
+  path.length === 4 &&
+  path[0] === "services" &&
+  typeof path[1] === "string" &&
+  path[2] === "environment" &&
+  typeof path[3] === "string";
+
 export const servicePortExpression = (template: ExpressionTemplate, path: ReadonlyArray<string | number>) => {
+  if (isServiceEnvironmentValuePath(path)) {
+    const self = expressionScopeMembers(template, "service");
+    if ((self.members.has("url") && self.members.size === 1) || (!self.analyzable && self.members.size === 0))
+      return "url";
+  }
   const self = expressionScopeMembers(template, "service", "direct-property");
   if (!self.analyzable) return "unsupported-member";
   if (self.members.size === 0) return "absent";

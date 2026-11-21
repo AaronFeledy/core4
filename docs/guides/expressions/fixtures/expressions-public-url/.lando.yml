@@ -1,0 +1,11 @@
+name: public-url
+services:
+  web:
+    type: "node:22"
+    primary: true
+    port: 3000
+    environment:
+      APP_URL: "{{ services.web.url }}"
+proxy:
+  web:
+    - public-url.lndo.site:3000

@@ -23,6 +23,14 @@ lando app:config:set tooling.craft '{"service":"appserver","cmds":["php craft"],
 
 `app:config:set` checks the new Landofile before it writes `.lando.yml`. `wrapper: true` hands every argument to Craft, as the recipe's `lando php` and `lando composer` do, so Lando doesn't keep flags such as `--verbose` for itself.
 
+## Give Craft its site URL
+
+```sh
+lando app:config:set services.appserver.environment.PRIMARY_SITE_URL '{{ service.url }}'
+```
+
+`{{ service.url }}` is the URL the router publishes for `appserver`, the same one `lando info` prints. Lando fills it in when it creates the container.
+
 Check the file, then start the app:
 
 ```sh
@@ -30,7 +38,11 @@ lando app:config:lint
 lando start
 ```
 
-If something else owns 80 or 443, `lando info` shows the fallback port it picked, usually `:8080` / `:8443`.
+If something else owns 80 or 443, `lando info` shows the fallback port it picked, usually `:8080` / `:8443`. `PRIMARY_SITE_URL` carries that port too, and when the router moves to another port, the next `lando start` recreates `appserver` with the new URL. Check it with:
+
+```sh
+lando exec appserver -- printenv PRIMARY_SITE_URL
+```
 
 ## Install Craft
 
@@ -58,21 +70,21 @@ lando craft setup/db-creds \
 
 `--database` matches the app name (here `craft-demo`). Use the service key `database`, not `127.0.0.1` or `localhost`.
 
-`--site-url` in the next command takes the full HTTPS URL `lando info` prints. On a fallback port the URL includes the port, for example `https://craft-demo.lndo.site:8443/`. Install saves it to `.env` as `PRIMARY_SITE_URL`, so you can change it there later.
+Run the installer inside `appserver` so `--site-url` gets the current value of `PRIMARY_SITE_URL`. Craft saves the URL it was given in `.env`.
 
 Generate the admin password, then install. Run this from a POSIX shell (WSL on Windows) with `openssl` on your path. The password stays out of shell history, but it's on the command line, so process lists can see it while install runs.
 
 ```sh
 CRAFT_ADMIN_PASSWORD="$(openssl rand -base64 18)"
 printf 'Save this Craft admin password: %s\n' "$CRAFT_ADMIN_PASSWORD"
-lando craft install \
+lando exec appserver -- sh -c 'php craft install \
   --email=admin@example.com \
   --username=admin \
-  --password="$CRAFT_ADMIN_PASSWORD" \
-  --site-name='Craft Demo' \
-  --site-url=https://craft-demo.lndo.site/ \
+  --password="$1" \
+  --site-name="Craft Demo" \
+  --site-url="$PRIMARY_SITE_URL" \
   --language=en \
-  --interactive=0
+  --interactive=0' craft-install "$CRAFT_ADMIN_PASSWORD"
 unset CRAFT_ADMIN_PASSWORD
 ```
 
@@ -155,6 +167,7 @@ lando db:restore before-update --yes
       <Variable name="appName" value="craft-demo" display="craft-demo" />
       <Run command="lando init --recipe lamp --name={{appName}} --answer=webroot=web --yes" />
       <Run command={`lando app:config:set tooling.craft '{"service":"appserver","cmds":["php craft"],"wrapper":true,"description":"Run the Craft CLI inside the appserver service."}' --type json`} />
+      <Run command={`lando app:config:set services.appserver.environment.PRIMARY_SITE_URL '{{ service.url }}'`} />
     </Step>
     <Step name="confirm-config">
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
@@ -165,6 +178,7 @@ lando db:restore before-update --yes
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"craft\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"craft\":\\s*\\{[^}]*\"wrapper\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"PRIMARY_SITE_URL\":\\s*\"\\{\\{ service\\.url \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"create-project\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
     </Step>
     <Step name="cleanup">
@@ -177,14 +191,16 @@ lando db:restore before-update --yes
     <Step name="scaffold">
       <Run command="lando init --recipe lamp --name=craft-demo --answer=webroot=web --yes" />
       <Run command={`lando app:config:set tooling.craft '{"service":"appserver","cmds":["php craft"],"wrapper":true,"description":"Run the Craft CLI inside the appserver service."}' --type json`} />
+      <Run command={`lando app:config:set services.appserver.environment.PRIMARY_SITE_URL '{{ service.url }}'`} />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Verify command="lando exec appserver -- printenv PRIMARY_SITE_URL" expect={{ stdout: { regex: "^https://craft-demo\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
     </Step>
     <Step name="install">
       <Run command={`lando create-project craftcms/craft "^5" --no-scripts`} />
       <Run command={`lando exec appserver -- sh -c 'mv composer.json.default composer.json && cp .env.example.dev .env'`} />
       <Run command="lando craft setup/db-creds --driver=mysql --server=database --port=3306 --user=lando --password=lando --database=craft-demo --interactive=0" />
-      <Run command="lando craft install --email=admin@example.com --username=admin --password=Aa1-craft-e2e-only --site-name=Craft --site-url=https://craft-demo.lndo.site/ --language=en --interactive=0" />
-      <Verify command="lando exec appserver -- grep -q PRIMARY_SITE_URL=https://craft-demo.lndo.site/ .env" />
+      <Run command={`lando exec appserver -- sh -c 'php craft install --email=admin@example.com --username=admin --password="$1" --site-name=Craft --site-url="$PRIMARY_SITE_URL" --language=en --interactive=0' craft-install Aa1-craft-e2e-only`} />
+      <Verify command={`lando exec appserver -- sh -c 'test -n "$PRIMARY_SITE_URL" && grep -Fxq -e "PRIMARY_SITE_URL=$PRIMARY_SITE_URL" -e "PRIMARY_SITE_URL=\${PRIMARY_SITE_URL%/}/" .env'`} />
     </Step>
     <Step name="ownership">
       <Verify command={`lando exec appserver -- sh -c 'test "$(stat -c %u .env)" = "$(stat -c %u .lando.yml)" && test "$(stat -c %u storage/runtime)" = "$(stat -c %u .lando.yml)"'`} />
@@ -211,7 +227,7 @@ lando db:restore before-update --yes
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y --purge" />
+      <Run command="lando destroy -y --purge --format=json" />
     </Step>
   </Scenario>
 </Guide>

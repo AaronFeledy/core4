@@ -42,7 +42,10 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   const topLevelEnvFiles = Result.isSuccess(loadedTopLevelEnvFiles)
     ? loadedTopLevelEnvFiles.success
     : { environment: {}, inputs: [] };
-  const serviceCredsScope: Record<string, ServiceCredsScope[string]> = {};
+  // URL descriptors exist independently of service resolution; credentials do not.
+  const serviceCredsScope: Record<string, ServiceCredsScope[string]> = Object.fromEntries(
+    Object.keys(landofile.services ?? {}).map((name) => [name, serviceExpressionFacts(name)]),
+  );
   let pendingSites = input.deferredSites;
   const documents = { ...landofile.services };
   const resolvedByName = new Map<
@@ -125,8 +128,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     for (const error of checked.errors) record(error);
     documents[key] = seed.authoredService;
     pendingSites = pendingSites.filter(({ path }) => path[0] !== "services" || path[1] !== name);
-    const facts = serviceExpressionFacts(seed.resolution);
-    if (facts !== undefined) serviceCredsScope[name] = facts;
+    serviceCredsScope[name] = serviceExpressionFacts(name, seed.resolution);
     resolvedByName.set(name, { ...seed, logSources: checked.logSources });
   }
   const services = Object.keys(landofile.services ?? {}).flatMap((name) => {

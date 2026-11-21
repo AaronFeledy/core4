@@ -4,13 +4,15 @@ import {
   BoundText,
   type BoundTextReference,
   EnvironmentValue,
+  RouteText,
+  type RouteUrlPart,
   SecretRef,
   encodeUriComponent,
   normalizeEnvironmentValue,
 } from "../schema/environment-value.ts";
 
-export const isEnvironmentBinding = (value: unknown): value is SecretRef | BoundText =>
-  Schema.is(SecretRef)(value) || Schema.is(BoundText)(value);
+export const isEnvironmentBinding = (value: unknown): value is SecretRef | BoundText | RouteText =>
+  Schema.is(SecretRef)(value) || Schema.is(BoundText)(value) || Schema.is(RouteText)(value);
 
 export const containsReservedBinding = (value: unknown): boolean => {
   const pending = [value];
@@ -19,31 +21,55 @@ export const containsReservedBinding = (value: unknown): boolean => {
     const item = pending.pop();
     if (!Predicate.isObjectOrArray(item) || seen.has(item)) continue;
     seen.add(item);
-    if (!Array.isArray(item) && (item._tag === "SecretRef" || item._tag === "BoundText")) return true;
+    if (
+      !Array.isArray(item) &&
+      (item._tag === "SecretRef" || item._tag === "BoundText" || item._tag === "RouteText")
+    )
+      return true;
     pending.push(...Object.values(item));
   }
   return false;
 };
 
 export const concatenateEnvironmentValues = (values: readonly EnvironmentValue[]): EnvironmentValue => {
-  const parts: Array<string | BoundTextReference> = [];
+  const secretParts: (string | BoundTextReference)[] = [];
+  const routeParts: (string | RouteUrlPart)[] = [];
+  let hasSecret = false;
+  let hasRoute = false;
   for (const value of values) {
     if (typeof value === "string") {
-      parts.push(value);
+      secretParts.push(value);
+      routeParts.push(value);
       continue;
     }
     switch (value._tag) {
       case "SecretRef":
-        parts.push({ reference: value.reference, encoding: "raw" });
+        hasSecret = true;
+        secretParts.push({ reference: value.reference, encoding: "raw" });
         break;
       case "BoundText":
-        parts.push(...value.parts);
+        hasSecret = true;
+        secretParts.push(...value.parts);
+        break;
+      case "RouteText":
+        hasRoute = true;
+        routeParts.push(...value.parts);
         break;
       default:
         assertNever(value);
     }
   }
-  return Schema.decodeUnknownSync(EnvironmentValue)(normalizeEnvironmentValue({ _tag: "BoundText", parts }));
+  if (hasRoute && hasSecret)
+    throw new ConfigExpressionError({
+      path: [],
+      filePath: "",
+      expression: "",
+      message: "A public URL and a secret cannot share one environment value; split them into two variables.",
+      remediation: "Split the public URL and secret into two environment variables.",
+    });
+  return Schema.decodeUnknownSync(EnvironmentValue)(
+    hasRoute ? { _tag: "RouteText", parts: routeParts } : { _tag: "BoundText", parts: secretParts },
+  );
 };
 
 export const encodeEnvironmentComponent = (value: EnvironmentValue): EnvironmentValue => {
@@ -60,6 +86,16 @@ export const encodeEnvironmentComponent = (value: EnvironmentValue): Environment
           return { _tag: "BoundText", parts: [{ ...part, encoding: "uri-component" }] };
         }),
       );
+    case "RouteText":
+      return normalizeEnvironmentValue({
+        _tag: "RouteText",
+        parts: value.parts.map((part) => {
+          if (typeof part === "string") return encodeUriComponent(part);
+          if (part.encoding === "uri-component")
+            throw bindingExpressionError("Repeated binding encoding is unsupported.", {});
+          return { ...part, encoding: "uri-component" };
+        }),
+      });
     default:
       return assertNever(value);
   }

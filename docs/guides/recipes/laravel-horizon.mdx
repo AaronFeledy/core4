@@ -25,17 +25,23 @@ services:
   worker:
     command: "php artisan horizon"
     restart: unless-stopped
+    environment:
+      APP_URL: "{{ services.appserver.url }}"
     dependsOn:
       database:
         condition: service_healthy
       cache:
         condition: service_healthy
   appserver:
+    environment:
+      APP_URL: "{{ services.appserver.url }}"
     build:
       artifact:
         - run: a2enmod rewrite
           user: root
 ```
+
+Keep any `environment` keys those services already have. `{{ services.appserver.url }}` is the URL the router publishes for `appserver`, the same one `lando info` prints, port included when the router isn't on 443. Lando fills it in when it creates the container, so `APP_URL` never needs editing by hand.
 
 Horizon supervises its own queue workers; don't run a second `queue:work` process. `unless-stopped` restarts it after `horizon:terminate`, and the health gates wait for Redis and MariaDB on cold starts. Apache needs `mod_rewrite` for Laravel's front controller, including `/horizon`.
 
@@ -68,7 +74,6 @@ On Linux with the default managed provider, Composer, Artisan tooling, and PHP w
 Set these in `.env`:
 
 ```dotenv
-APP_URL=https://horizon-demo.lndo.site
 APP_ENV=local
 LOG_CHANNEL=stderr
 DB_CONNECTION=mariadb
@@ -83,7 +88,7 @@ REDIS_HOST=cache
 REDIS_PORT=6379
 ```
 
-Use the service keys `database` and `cache`, not `127.0.0.1`. Horizon only drives the `redis` queue connection, so `QUEUE_CONNECTION=redis` is the switch that matters. `LOG_CHANNEL=stderr` puts job logs in `lando logs`. Create the tables and check that the supervised worker has started Horizon:
+Leave the `APP_URL` line `.env` ships with. Laravel never lets `.env` replace a variable the container already has, so the value from `.lando.yml` wins. Use the service keys `database` and `cache`, not `127.0.0.1`. Horizon only drives the `redis` queue connection, so `QUEUE_CONNECTION=redis` is the switch that matters. `LOG_CHANNEL=stderr` puts job logs in `lando logs`. Create the tables and check that the supervised worker has started Horizon:
 
 ```sh
 lando artisan migrate --no-interaction
@@ -212,6 +217,7 @@ lando destroy -y
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"php artisan horizon\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"restart\":\\s*\"unless-stopped\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"APP_URL\":\\s*\"\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"run\":\\s*\"a2enmod rewrite\",\\s*\"user\":\\s*\"root\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{(?:(?!\"worker\":)[\\s\\S])*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />

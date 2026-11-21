@@ -25,6 +25,7 @@ import type { LandofileLoadPolicy, LandofileLoadSource } from "./load-expression
 import { createLoadFailureRecorder, finishLoadStage, loadPathBlocked } from "./load-failures.ts";
 import { type LandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
 import { type AuthoredDocument, type AuthoredOrigin, normalizeReferencedFiles } from "./provenance.ts";
+import { routeUrlSiteError } from "./route-url-expression.ts";
 import { unsupportedSecretReferenceError } from "./unsupported-secret-reference.ts";
 
 export interface IncludeMaterializationContext {
@@ -124,6 +125,11 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
           }),
           { kind: "missing-content", source },
         );
+        continue;
+      }
+      const routeError = routeUrlSiteError(parsed.success, source);
+      if (routeError !== undefined) {
+        recorder.record(routeError, { kind: "missing-content", source });
         continue;
       }
       if (scope.environmentRecorder !== undefined)

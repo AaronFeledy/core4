@@ -66,6 +66,7 @@ export const GlobalStartResultSchema = Schema.Struct({
 export type GlobalStartResult = typeof GlobalStartResultSchema.Type;
 
 export type GlobalStartError =
+  | import("@lando/sdk/errors").RouteUrlBindingError
   | import("@lando/sdk/errors").CaError
   | import("@lando/sdk/services").FileSystemError
   | Effect.Error<ReturnType<typeof installAndLoadGlobalPlan>>

@@ -59,6 +59,16 @@ const plan: AppPlan = {
 const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
   commonContainerLabels(app, value)[CREATE_CONFIG_LABEL];
 
+test("only a change to the realized router port changes the create fingerprint", () => {
+  const fromPort = (port: number) => ({
+    ...service,
+    environment: { APP_URL: `https://web.test:${port}/app` },
+  });
+  const first = fingerprint(fromPort(8443));
+  expect(fingerprint(fromPort(8443))).toBe(first);
+  expect(fingerprint(fromPort(9443))).not.toBe(first);
+});
+
 test("HTTP readiness URL and native TCP port participate in container identity", () => {
   const timing = { intervalSeconds: 2, timeoutSeconds: 1, retries: 5 };
   const readiness = { ...timing, kind: "http", url: "http://localhost:8080/ready" } as const;

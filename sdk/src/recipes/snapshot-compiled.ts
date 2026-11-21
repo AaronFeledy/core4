@@ -73,7 +73,7 @@ export const renderCompiledRecipeSnapshot = (
             "recipe",
             "env",
             "services",
-            ...(self === "supported" ? ["service"] : []),
+            ...(self === "supported" || self === "url" ? ["service"] : []),
             ...(bindingSite ? ["secrets"] : []),
           ]) ||
           parsed.success.segments.some(

@@ -72,6 +72,7 @@ test("advances recorded identity and connection sites without rescanning produce
           ...identity,
           services: {
             db: {
+              url: { _tag: "RouteText", parts: [{ service: "db", encoding: "raw" }] },
               creds: { user: "lando", database: "app", password: { _tag: "SecretRef", reference: "DB" } },
               port: 5544,
             },
@@ -137,6 +138,7 @@ test("reconstructs trusted scope only from persisted connection facts including 
   });
   const scope = serviceCredsScopeForPlan(plan);
   expect(scope.db).toEqual({
+    url: { _tag: "RouteText", parts: [{ service: "db", encoding: "raw" }] },
     creds: { user: "lando", database: "app", password: { _tag: "SecretRef", reference: "DB" } },
     port: 5544,
   });
@@ -208,6 +210,7 @@ test("locates forbidden binding helpers at the canonical destination", async () 
           ...identity,
           services: {
             db: {
+              url: { _tag: "RouteText", parts: [{ service: "db", encoding: "raw" }] },
               creds: { user: "lando", database: "app", password: { _tag: "SecretRef", reference: "DB" } },
               port: 5432,
             },

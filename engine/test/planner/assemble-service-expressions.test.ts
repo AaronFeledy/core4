@@ -86,13 +86,14 @@ const credentialFeature: ServiceFeatureDefinition = {
 };
 
 const plan = Effect.fnUntraced(
-  function* (landofile: LandofileShape, withFileSystem = false) {
+  function* (landofile: LandofileShape, withFileSystem = false, kind: "user" | "global" = "user") {
     const registry = yield* PluginRegistry;
     const fileSystem = withFileSystem ? yield* FileSystem : undefined;
     return yield* planApp(
       {
         landofile: yield* compileTestLandofile(landofile, appRootOf(landofile) ?? process.cwd()),
         providerCapabilities: TestRuntimeProvider.capabilities,
+        kind,
       },
       Layer.mergeAll(
         Layer.succeed(PluginRegistry, {
@@ -114,6 +115,70 @@ const plan = Effect.fnUntraced(
 
 const DATABASE_URL =
   "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}";
+
+const urlApp = (root: string, hostname?: string, enabled = true) =>
+  withAppRootProvenance(
+    {
+      name: "Public URLs",
+      router: { enabled },
+      services: {
+        [ServiceName.make("web")]: {
+          type: "compose",
+          image: "nginx:alpine",
+          home: false as const,
+          environment: { APP_URL: "{{ service.url }}", PEER: "{{ services.peer.url }}" },
+        },
+        [ServiceName.make("peer")]: {
+          type: "compose",
+          image: "nginx:alpine",
+          home: false as const,
+          environment: { PEER: "{{ services.web.url }}" },
+        },
+      },
+      proxy: {
+        [ServiceName.make("web")]: hostname === undefined ? [] : [`${hostname}:80`],
+        [ServiceName.make("peer")]: ["peer.test:80"],
+      },
+    },
+    root,
+  );
+
+test("plans mutually referencing and self-referencing service URLs without credential cycles", () =>
+  withAppRoot(async (root) => {
+    const app = await Effect.runPromise(plan(urlApp(root, "web.test")));
+    expect(app.services[ServiceName.make("web")]?.environment).toMatchObject({
+      APP_URL: { _tag: "RouteText", parts: [{ service: "web", encoding: "raw" }] },
+      PEER: { _tag: "RouteText", parts: [{ service: "peer", encoding: "raw" }] },
+    });
+    expect(app.services[ServiceName.make("peer")]?.environment.PEER).toEqual({
+      _tag: "RouteText",
+      parts: [{ service: "web", encoding: "raw" }],
+    });
+  }));
+
+test.each([
+  { kind: "user", enabled: true, reason: /no route/ },
+  { kind: "user", hostname: "*.test", enabled: true, reason: /wildcard/ },
+  { kind: "user", hostname: "web.test", enabled: false, reason: /disabled/ },
+  { kind: "global", hostname: "web.test", enabled: true, reason: /global/ },
+] as const)("locates unavailable public URL bindings ($reason)", (row) =>
+  withAppRoot(async (root) => {
+    const result = await Effect.runPromise(
+      plan(urlApp(root, "hostname" in row ? row.hostname : undefined, row.enabled), false, row.kind).pipe(
+        Effect.result,
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ConfigExpressionError",
+        path: ["services", "web", "environment", "APP_URL"],
+        filePath: expect.stringContaining(".lando.yml"),
+        message: expect.stringMatching(row.reason),
+      },
+    });
+  }),
+);
 const RESOLVED_URL = "postgresql://lando:s3cret-pw@database:5432/appdb";
 
 const withAppRoot = async (run: (root: string) => Promise<void>) => {
@@ -207,7 +272,9 @@ test("resolves services.<name>.creds.* before the reading service's type runs, w
     // The interpolated password stays redactable through the plan's secret-shaped env values.
     expect(planRedactionValues(app).substring).toContain("s3cret-pw");
     expect(serviceCredsScopeForPlan(app)).toEqual({
+      web: { url: { _tag: "RouteText", parts: [{ service: "web", encoding: "raw" }] } },
       database: {
+        url: { _tag: "RouteText", parts: [{ service: "database", encoding: "raw" }] },
         port: PortNumber.make(5432),
         creds: { user: "lando", password: "s3cret-pw", database: "appdb" },
       },

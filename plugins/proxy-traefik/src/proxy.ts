@@ -64,7 +64,7 @@ import { isOwnerRouteFileName } from "./route-file-metadata.ts";
 import { requireOwnedRouteFile } from "./route-file-ownership.ts";
 import { invalidateAcknowledgement, routeReloadLockKey } from "./route-reload-state.ts";
 import { advertisedRouterBindAddress, normalizeRouterBindAddress } from "./router-bind-address.ts";
-import { type AuthorityPorts, DEFAULT_AUTHORITY_PORTS } from "./routing.ts";
+import { type AuthorityPorts, DEFAULT_AUTHORITY_PORTS, authoritiesFor } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
 import { isSocketProxyInstalled, stopSockets } from "./socket-proxy-install.ts";
 import { liveSocketProxy } from "./socket-proxy-setup.ts";
@@ -305,6 +305,18 @@ export const makeTraefikRouterService = (
     ...RouterService.of({
       ...ROUTER_IDENTITY,
       observeRoutes: makeRouteObserver(dependencies, pendingReload),
+      routeAuthorities: Effect.fn("RouterService.routeAuthorities")(function* (routes) {
+        const acquisition = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+        return authoritiesFor(
+          routes,
+          acquisition === undefined
+            ? DEFAULT_AUTHORITY_PORTS
+            : {
+                http: acquisition.httpPort,
+                https: acquisition.httpsPort,
+              },
+        );
+      }),
       prepare: Effect.fn("RouterService.prepare")(
         (config) =>
           guardRouterMutation(

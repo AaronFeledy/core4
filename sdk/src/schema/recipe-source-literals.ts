@@ -33,7 +33,7 @@ export const validateSourceConfig = (
         "env",
         "services",
         "proxy",
-        ...(self === "supported" ? ["service"] : []),
+        ...(self === "supported" || self === "url" ? ["service"] : []),
         ...(bindingSite ? ["secrets"] : []),
       ]) ||
       parsed.success.segments.some(
