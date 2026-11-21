@@ -164,6 +164,10 @@
       }
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/broken-service-ports",
+      "digest": "50cfaef061d6c024852a68862d5b81f427f16da90b7f48427c537df1e103268c"
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-demo",
       "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
     },

@@ -199,3 +199,63 @@ test("does not resolve effective checks without an established app name", async 
   expect(result.valid).toBe(false);
   expect(findings(result)).toEqual([["landofile.load", ["name"]]]);
 });
+
+const brokenSeeds = `name: demo
+services:
+  raw:
+    type: lando
+    image: busybox:1.37
+    command: [sleep, "{{ service.port }}"]
+  php:
+    type: php:8.4
+    via: cli
+    command: [php, -S, "0.0.0.0:{{ service.port }}"]
+  reader:
+    type: lando
+    image: busybox:1.37
+    environment:
+      FIRST: "{{ services.raw.port }}"
+      SECOND: "{{ services.php.port }}"
+`;
+const rawCommand = ["services", "raw", "command", 1];
+const seedFindings: readonly Finding[] = [
+  ["landofile.expression", rawCommand],
+  ["landofile.expression", ["services", "php", "command", 2]],
+];
+
+test("reports independent expression failures, skips dependents once, and still checks a route sibling", async () => {
+  const result = await lint(`${brokenSeeds}proxy:
+  reader:
+    - hostname: "{{ services.reader.port }}.lndo.site"
+      pathPrefix: no-slash
+`);
+
+  expect(findings(result)).toEqual([
+    ...seedFindings,
+    ["landofile.route", ["proxy", "reader", 0, "pathPrefix"]],
+  ]);
+  expect(result.skipped).toMatchObject([
+    { stage: "resolve", reason: "unavailable", path: ["services", "reader"], source: { path: rawCommand } },
+    { stage: "resolve", reason: "unavailable", path: ["proxy", "reader"], source: { path: rawCommand } },
+    { stage: "planning", reason: "earlier-errors" },
+  ]);
+});
+
+test("preserves seed findings when a later whole-document tooling expression aborts resolution", async () => {
+  const result = await lint(`${brokenSeeds}tooling:
+  blocked:
+    service: ":host"
+    cmd: "echo {{ services.reader.port }} {{ flags.name }}"
+  broken:
+    cmd: "echo {{ services.missing.port }}"
+`);
+
+  const path = ["tooling", "broken", "cmd"];
+  expect(findings(result)).toEqual([...seedFindings, ["landofile.expression", path]]);
+  expect(result.skipped).toMatchObject([
+    { stage: "resolve", reason: "unavailable", path: ["services", "reader"] },
+    { stage: "resolve", reason: "unavailable", path: ["tooling", "blocked"] },
+    { stage: "resolve", reason: "earlier-errors", path },
+    { stage: "planning", reason: "earlier-errors" },
+  ]);
+});

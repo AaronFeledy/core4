@@ -33,12 +33,12 @@ import { planApp } from "../planner/assemble.ts";
 import { providerAlternatives } from "../planner/compose-capabilities.ts";
 import { readAppDataIdentity } from "../planner/data-identity.ts";
 import { invalidServiceDnsNameReason } from "../planner/dns-name-validation.ts";
-import { invocationSitesOf, resolveLandofileForPlanning } from "../planner/event-set.ts";
+import { invocationSitesOf, resolveLandofileForLint } from "../planner/event-set.ts";
 import { attributePlanningFailure } from "../planner/failure-attribution.ts";
 import { hostShellIssues } from "../planner/host-shell-issues.ts";
-import { configExpressionIssuePath } from "../planner/landofile-scopes.ts";
 import { lintCapabilityIssues } from "../planner/lint-capabilities.ts";
 import { planningLintFindings } from "../planner/lint-planning.ts";
+import { expressionPlannerIssue } from "../planner/resolved-validation.ts";
 import { routerTlsTerminationIssues } from "../planner/router-tls-lint.ts";
 import { toolingDeclarationIssues } from "../planner/tooling-declaration-issues.ts";
 import { toolingDynamicIssues } from "../planner/tooling-dynamic-issues.ts";
@@ -77,6 +77,11 @@ export type AppConfigLintOptions = LintLandofileOptions;
 
 const sourceFile = (source: ValidationIssue["source"]): string | undefined =>
   source !== undefined && "file" in source ? source.file : undefined;
+
+const resolveSkipSource = (source: ValidationIssue["source"]): ConfigLintSkip["source"] =>
+  source !== undefined && "file" in source && Schema.is(LandofileLayer)(source.layer)
+    ? { file: source.file, layer: source.layer, path: source.path }
+    : undefined;
 
 const planningSkip = (
   reason: "diagnostic-document" | "earlier-errors" | "capabilities-undeclared",
@@ -132,7 +137,7 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   const identity = yield* resolveAppIdentity(dirname(snapshot.landofilePath));
   const record = yield* readAppDataIdentity(identity);
   const dataName = record?.name ?? landofile.document.name ?? "app";
-  const resolved = yield* resolveLandofileForPlanning({
+  const resolved = yield* resolveLandofileForLint({
     dataName,
     landofile,
     pluginRegistry,
@@ -153,69 +158,72 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     unavailableSites: unavailable,
   }).pipe(
     mapFailures((error) => attributePlanningFailure(error, { landofile, file: snapshot.landofilePath })),
-    Effect.result,
+    Effect.catchTag("ConfigExpressionError", (error) =>
+      Effect.succeed({ _tag: "ExpressionAborted" as const, error, issues: [], dependentSkips: [] }),
+    ),
   );
   const envFindings = yield* lintEnvFiles(
-    Result.isSuccess(resolved) ? resolved.success.resolution.compiled : landofile,
+    resolved._tag === "ExpressionAborted" ? landofile : resolved.resolution.compiled,
     snapshot.landofilePath,
     fileSystem,
     landofile.document,
     unavailable,
   );
-  if (Result.isFailure(resolved)) {
-    if (resolved.failure._tag === "ConfigExpressionError") {
-      const path = configExpressionIssuePath(resolved.failure);
-      const { source, filePath } = resolved.failure;
-      const skipSource =
-        source !== undefined && "file" in source && Schema.is(LandofileLayer)(source.layer)
-          ? { file: source.file, layer: source.layer, path: source.path }
-          : undefined;
-      const priorSkips = result.skipped ?? [];
-      return {
-        ...result,
-        file: overlapsUnavailable(path, unavailable) ? result.file : filePath,
-        valid: false,
-        skipped: [
-          ...(priorSkips.length >= CONFIG_LINT_UNAVAILABLE_SKIP_LIMIT
-            ? unavailableEntrySkips(unavailable, CONFIG_LINT_UNAVAILABLE_SKIP_LIMIT - 1)
-            : priorSkips),
-          {
-            stage: "resolve",
-            reason: "earlier-errors",
-            path,
-            ...(skipSource === undefined ? {} : { source: skipSource }),
-            message: "Remaining resolve checks did not run because a configuration expression failed.",
-          },
-          planningSkip(diagnostic === undefined ? "earlier-errors" : "diagnostic-document"),
-        ],
-        violations: mergeLintFindings([
-          ...result.violations,
-          ...envFindings,
-          ...(overlapsUnavailable(path, unavailable)
-            ? []
-            : [
-                {
-                  rule: "landofile.expression",
-                  severity: "error",
-                  path,
-                  message: resolved.failure.message,
-                  suggestion: resolved.failure.remediation,
-                  scopes: ["effective"],
-                  ...(source === undefined ? {} : { source }),
-                } satisfies ConfigLintViolation,
-              ]),
-        ]),
-      };
-    }
-    return yield* Effect.fail(resolved.failure);
+  const unavailableSkips = unavailableEntrySkips(
+    [
+      ...unavailable,
+      ...resolved.dependentSkips.map(({ path, cause }) => ({
+        path,
+        source: resolveSkipSource(cause.source),
+      })),
+    ],
+    CONFIG_LINT_UNAVAILABLE_SKIP_LIMIT - (resolved._tag === "ExpressionAborted" ? 1 : 0),
+  );
+  const priorSkips = unavailableSkips.length === 0 ? (result.skipped ?? []) : unavailableSkips;
+  if (resolved._tag === "ExpressionAborted") {
+    const error = attributePlanningFailure(resolved.error, { landofile, file: snapshot.landofilePath });
+    const { path, filePath } = error;
+    const source = resolveSkipSource(error.source);
+    return {
+      ...result,
+      file: overlapsUnavailable(path, unavailable) ? result.file : filePath,
+      valid: false,
+      skipped: [
+        ...priorSkips,
+        {
+          stage: "resolve",
+          reason: "earlier-errors",
+          path,
+          ...(source === undefined ? {} : { source }),
+          message: "Remaining resolve checks did not run because a configuration expression failed.",
+        },
+        planningSkip(diagnostic === undefined ? "earlier-errors" : "diagnostic-document"),
+      ],
+      violations: mergeLintFindings([
+        ...result.violations,
+        ...envFindings,
+        ...resolved.issues
+          .filter((issue) => !overlapsUnavailable(issue.path, unavailable))
+          .map((issue) => attributeEffectiveLintIssue(landofile, issue)),
+        ...(overlapsUnavailable(path, unavailable)
+          ? []
+          : [
+              {
+                ...expressionPlannerIssue(error),
+                severity: "error",
+                scopes: ["effective"],
+              } satisfies ConfigLintViolation,
+            ]),
+      ]),
+    };
   }
-  const resolution = resolved.success.resolution;
+  const resolution = resolved.resolution;
   // If invocation sites fail to compile, treat every pending site as unresolved so its command is not scanned.
   const invocationSites = yield* invocationSitesOf(resolution).pipe(
     Effect.orElseSucceed(() => resolution.pendingSites),
   );
   const issues = [
-    ...(resolved.success._tag === "Invalid" ? resolved.success.issues : []),
+    ...(resolved._tag === "Invalid" ? resolved.issues : []),
     ...toolingAndEventIssues(resolution),
     ...toolingDeclarationIssues(resolution),
     ...toolingDynamicIssues(resolution, invocationSites),
@@ -289,6 +297,6 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
       sourceFile(finalViolations.find((issue) => issue.source?.layer !== "script")?.source) ?? result.file,
     valid: !finalViolations.some((issue) => issue.severity === "error"),
     violations: finalViolations,
-    ...(skip === undefined ? {} : { skipped: [...(result.skipped ?? []), skip] }),
+    ...(skip === undefined ? {} : { skipped: [...priorSkips, skip] }),
   };
 });

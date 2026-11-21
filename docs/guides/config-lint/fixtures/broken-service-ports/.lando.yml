@@ -1,0 +1,11 @@
+# lando-lint: expect-invalid two services without planned ports read service.port
+name: broken-service-ports
+services:
+  raw:
+    type: lando
+    image: busybox:1.37
+    command: [sleep, "{{ service.port }}"]
+  php:
+    type: php:8.4
+    via: cli
+    command: [php, -S, "0.0.0.0:{{ service.port }}"]

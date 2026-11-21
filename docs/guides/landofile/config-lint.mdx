@@ -36,6 +36,8 @@ Lint reports every independent load failure in one run: broken layers, load expr
 
 When the only load failures are local and isolable, effective configuration and service checks still run. A failed `{{ load('./missing-payload.txt') }}` under `services.other.environment.FOO` and `type: no-such-type` under `services.web` produce both findings in one JSON report: a `landofile.load` finding at the FOO path and a `landofile.service` finding at `services.web.type`. Lint reports nothing else about the blocked `other` service. A missing include still stops effective checks, so restore the fragment and lint again.
 
+Lint also reports the first planning-time expression failure in each independently failing service. For example, if a BusyBox service with no planned port and a PHP service using `via: cli` both read `{{ service.port }}`, one lint run reports two `landofile.expression` findings and exits `1`. Lint skips checks that need facts from those services and reports those omissions as `resolve` / `unavailable`. An expression failure outside the service checks can still stop the remaining resolve checks, but it won't hide findings already collected. Operational planning, including `lando start` and `lando app:cache:refresh`, stops at the first expression failure.
+
 Every finding carries a stable `rule` id. The full list of registered ids, the stages that emit them, their severities, and example paths lives in the [config lint rule reference](../../reference/config-lint-rules.mdx). Use that page when you need the complete inventory or a deep link such as [`landofile.hostname`](../../reference/config-lint-rules.mdx#landofile-hostname) or [`env-file.read`](../../reference/config-lint-rules.mdx#env-file-read).
 
 A service-type finding is reported at the field that is wrong, with the remediation in `suggestion`. A postgres service with `environment.PGPORT: "5433"` gets `PGPORT is 5433, but the service listens on 5432.` at `["services", "db", "environment", "PGPORT"]` and the suggestion `Set port: 5433 instead; Lando sets PGPORT from port:.` When a service's type fails to resolve, lint still reports every other service. Services that read its `creds.*` are skipped until you fix it, so you don't get a cascade of follow-on errors.
@@ -277,6 +279,16 @@ A passing app-config check doesn't mean every check ran. Look for `app-config` e
 Your editor can catch the structural problems (unknown keys, wrong literal types, an expression where none belongs) before you run anything; lint still owns resolving expressions. See [Validate a Landofile in your editor](./editor-validation.mdx) for the one-line modeline.
 
 <Guide>
+  <Scenario id="independent-service-expression-failures" render={false} reason="Exercise two service expression failures in one lint run">
+    <Step name="lint-both-service-expressions">
+      <UseFixture name="broken-service-ports" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.expression\"[^}]*\"path\":\\s*\\[\"services\",\"raw\",\"command\",1\\][\\s\\S]*\"rule\":\\s*\"landofile\\.expression\"[^}]*\"path\":\\s*\\[\"services\",\"php\",\"command\",2\\]" } }} />
+    </Step>
+    <Step name="refresh-fails-on-first-expression">
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="ConfigExpressionError" expect={{ regex: "\"path\":\\s*\\[\"services\",\"raw\",\"command\",1\\]" }} />
+    </Step>
+  </Scenario>
   <Scenario id="two-layers-two-load-failures" render>
     <Step name="lint-both-layers">
       <UseFixture name="two-broken-includes" />
