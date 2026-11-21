@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LandoEvent, LockWaitEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
-import { Effect, Layer, Schema, Stream } from "effect";
+import { Effect, Layer, Queue, Schema, Stream } from "effect";
 import { ADVISORY_LOCK_SUFFIX, acquireAdvisoryLockAt, withAdvisoryLockUsing } from "../../src/lock.ts";
+import type { HolderPhase } from "./fixtures/advisory-lock-holder.ts";
 import { lockTestAccess } from "./lock-test-access.ts";
 
 const holderFixturePath = fileURLToPath(new URL("./fixtures/advisory-lock-holder.ts", import.meta.url));
@@ -37,33 +38,34 @@ export type HolderChild = {
 const readReadyLine = async (
   stdout: ReadableStream<Uint8Array>,
   label: string,
-  timeoutMs = 15_000,
+  phase: HolderPhase | undefined,
 ): Promise<{ pid: number; token: string }> => {
   const reader = stdout.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  const deadline = Date.now() + timeoutMs;
+  const signal = AbortSignal.timeout(phase === undefined ? 15_000 : 4_000);
+  const timedOut = new Promise<never>((_, reject) => {
+    signal.addEventListener("abort", () => reject(new Error(`${label}: timed out waiting for ready`)), {
+      once: true,
+    });
+  });
   try {
-    while (Date.now() < deadline) {
-      const remaining = Math.max(1, deadline - Date.now());
-      const chunk = await Promise.race([
-        reader.read(),
-        Bun.sleep(remaining).then(() => ({ done: true as const, value: undefined })),
-      ]);
+    for (;;) {
+      const chunk = await Promise.race([reader.read(), timedOut]);
       if (chunk.done) break;
-      if (chunk.value === undefined) continue;
       buffer += decoder.decode(chunk.value, { stream: true });
       const lineEnd = buffer.indexOf("\n");
       if (lineEnd === -1) continue;
       const line = buffer.slice(0, lineEnd).trim();
-      const match = /^ready (\d+) (\S+)$/u.exec(line);
-      if (match === null) throw new Error(`${label}: unexpected ready line ${JSON.stringify(line)}`);
+      const match = /^ready (\d+) (\S+)(?: (opened|locked|recorded))?$/u.exec(line);
+      if (match === null || match[3] !== phase)
+        throw new Error(`${label}: unexpected ready line ${JSON.stringify(line)} (phase=${phase})`);
       return { pid: Number(match[1]), token: match[2] ?? "" };
     }
   } finally {
     reader.releaseLock();
   }
-  throw new Error(`${label}: timed out waiting for ready (buffer=${JSON.stringify(buffer)})`);
+  throw new Error(`${label}: stdout closed before ready (buffer=${JSON.stringify(buffer)})`);
 };
 
 export const spawnHolder = async (
@@ -73,6 +75,7 @@ export const spawnHolder = async (
     readonly mode?: "exclusive" | "shared";
     readonly resource?: string;
     readonly env?: NodeJS.ProcessEnv;
+    readonly pauseAt?: HolderPhase;
   } = {},
 ): Promise<HolderChild> => {
   const mode = options.mode ?? "exclusive";
@@ -81,12 +84,12 @@ export const spawnHolder = async (
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
-    env: options.env === undefined ? process.env : { ...process.env, ...options.env },
+    env: { ...process.env, ...options.env, LANDO_TEST_LOCK_PAUSE_AT: options.pauseAt ?? "" },
     windowsHide: true,
   });
   const stderr = new Response(child.stderr).text();
   try {
-    const ready = await readReadyLine(child.stdout, `holder ${sentinel}`);
+    const ready = await readReadyLine(child.stdout, `holder ${sentinel}`, options.pauseAt);
     return {
       process: child,
       pid: ready.pid,
@@ -134,20 +137,29 @@ export const capturingEventLayer = (
   events: LandoEvent[],
   onWait?: (event: LockWaitEvent) => Effect.Effect<void>,
 ): Layer.Layer<EventService> =>
-  Layer.succeed(
+  Layer.effect(
     EventService,
-    EventService.of({
-      publish: (event) =>
-        Effect.gen(function* () {
-          events.push(event as LandoEvent);
-          if (onWait !== undefined && Schema.is(LockWaitEvent)(event)) yield* onWait(event);
-        }),
-      subscribe: () => Stream.empty,
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.never,
-      subscribeWithHistory: () => Effect.never,
-      waitForAny: () => Effect.never,
-      query: () => Effect.succeed([]),
+    Effect.gen(function* () {
+      const subscribers = new Set<Queue.Queue<LandoEvent>>();
+      return EventService.of({
+        publish: (event) =>
+          Effect.gen(function* () {
+            events.push(event as LandoEvent);
+            for (const queue of subscribers) yield* Queue.offer(queue, event as LandoEvent);
+            if (onWait !== undefined && Schema.is(LockWaitEvent)(event)) yield* onWait(event);
+          }),
+        subscribe: () => Stream.empty,
+        subscribeQueue: Effect.acquireRelease(
+          Queue.unbounded<LandoEvent>().pipe(
+            Effect.tap((queue) => Effect.sync(() => subscribers.add(queue))),
+          ),
+          (queue) => Effect.sync(() => subscribers.delete(queue)),
+        ),
+        waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
+        waitForAny: () => Effect.never,
+        query: () => Effect.succeed([]),
+      });
     }),
   );
 
