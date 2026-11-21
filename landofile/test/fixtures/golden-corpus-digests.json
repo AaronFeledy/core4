@@ -519,6 +519,14 @@
       "digest": "849e0b8246ac5d5776792a876362b5e5bacaee0cdcf6a35253a84aa3cd4a8941"
     },
     {
+      "fixture": "docs/guides/extra-args/fixtures/mysql-extra-args",
+      "digest": "6c66d2f51c6f4dfa627bf6bd5ea606820a81fe65443500016371ad4f463024ff"
+    },
+    {
+      "fixture": "docs/guides/extra-args/fixtures/postgres-extra-args",
+      "digest": "d955d358545cb42281a61013086b82abfa2c0a3df16a2dfb2a6cdbe5a3aae6ca"
+    },
+    {
       "fixture": "docs/guides/extra-args/fixtures/redis-extra-args",
       "digest": "934d29a7772897c6916ea975bb55b40cca3bb6db66a87630a6508a73c81037b7"
     },

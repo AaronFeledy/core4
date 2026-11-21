@@ -181,6 +181,49 @@ expect(body.result?.valid ?? body.ok).toBe(false);
       <Cleanup />
     </Step>
   </Scenario>
+  <Scenario id="postgres-config-and-extra-args" layer="e2e" timeout={300000} render={false} reason="Check PostgreSQL login, listener, settings, and data across stop and start">
+    <Step name="start">
+      <UseFixture name="postgres-extra-args" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
+    </Step>
+    <Step name="check-and-write">
+      <Verify command={`lando psql -h db -At -c "SELECT concat_ws(':', inet_server_port(), current_setting('work_mem'), current_setting('max_connections'))"`} expect={{ stdout: { regex: "\\b5433:12MB:77\\b" } }} />
+      <Run command={`lando psql -h db -v ON_ERROR_STOP=1 -c "CREATE TABLE marker (id integer PRIMARY KEY); INSERT INTO marker VALUES (1979);"`} />
+    </Step>
+    <Step name="stop-and-start">
+      <Run command="lando stop" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
+    </Step>
+    <Step name="check-persisted">
+      <Verify command={`lando psql -h db -At -c "SELECT concat_ws(':', inet_server_port(), current_setting('work_mem'), current_setting('max_connections'), id) FROM marker"`} expect={{ stdout: { regex: "\\b5433:12MB:77:1979\\b" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="mysql-config-and-extra-args" layer="e2e" timeout={300000} render={false} reason="Check MySQL login, listener, settings, and data across stop and start">
+    <Step name="start">
+      <UseFixture name="mysql-extra-args" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
+    </Step>
+    <Step name="check-and-write">
+      <Verify command={`lando mysql -NB -e "SELECT CONCAT_WS(':', @@port, @@global.wait_timeout, @@global.max_connections)"`} expect={{ stdout: { regex: "\\b3307:1234:77\\b" } }} />
+      <Run command={`lando mysql -e "CREATE TABLE marker (id integer PRIMARY KEY); INSERT INTO marker VALUES (1979);"`} />
+    </Step>
+    <Step name="stop-and-start">
+      <Run command="lando stop" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
+    </Step>
+    <Step name="check-persisted">
+      <Verify command={`lando mysql -NB -e "SELECT CONCAT_WS(':', @@port, @@global.wait_timeout, @@global.max_connections, id) FROM marker"`} expect={{ stdout: { regex: "\\b3307:1234:77:1979\\b" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## Per-type guides
