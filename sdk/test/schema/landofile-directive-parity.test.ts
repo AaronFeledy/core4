@@ -2,30 +2,28 @@ import { expect, test } from "bun:test";
 import { LandofileAuthoringFragment, getJsonSchema } from "@lando/sdk/schema";
 import Ajv2020 from "ajv/dist/2020.js";
 import { Result, Schema } from "effect";
+import { ajvOptions, parseOptions } from "./landofile-parity-harness.ts";
 
-const artifact = await Bun.file(
+const artifact = getJsonSchema("LandofileAuthoringFragment");
+const snapshot = await Bun.file(
   new URL("../../../dist/schemas/landofile-authoring-fragment.json", import.meta.url),
 ).json();
-expect(artifact).toEqual(getJsonSchema("LandofileAuthoringFragment"));
-const validate = new Ajv2020({ strict: false, validateFormats: false }).compile(artifact);
+expect(snapshot).toEqual(artifact);
 
-test.each([
-  { ports: [80, "8080:80"], decoder: true, published: true },
-  {
-    ports: [{ target: 80, published: "8080", host_ip: "127.0.0.1", protocol: "tcp" }],
-    decoder: true,
-    published: true,
-  },
-  {
-    ports: [{ target: 80, published: 8080, hostIp: "127.0.0.1", protocol: "tcp" }],
-    decoder: false,
-    published: false,
-  },
-  { ports: null, decoder: false, published: false },
-  { ports: [null], decoder: false, published: false },
-  { ports: [{ target: null }], decoder: false, published: false },
-  { ports: [{ target: -1 }], decoder: false, published: false },
-])("published override ports agree with the decoder (%#)", ({ ports, decoder, published }) => {
+const validate = new Ajv2020(ajvOptions).compile(artifact);
+const decode = Schema.decodeUnknownResult(LandofileAuthoringFragment);
+
+const cases = [
+  { ports: [80, "8080:80"], accepted: true },
+  { ports: [{ target: 80, published: "8080", host_ip: "127.0.0.1", protocol: "tcp" }], accepted: true },
+  { ports: [{ target: 80, published: 8080, hostIp: "127.0.0.1", protocol: "tcp" }], accepted: false },
+  { ports: null, accepted: false },
+  { ports: [null], accepted: false },
+  { ports: [{ target: null }], accepted: false },
+  { ports: [{ target: -1 }], accepted: false },
+] as const;
+
+test.each(cases)("published override ports agree with the decoder (%#)", ({ ports, accepted }) => {
   const input = {
     services: {
       _tag: "LandofileOverride",
@@ -37,9 +35,10 @@ test.each([
       },
     },
   };
-  const decoded = Schema.decodeUnknownResult(LandofileAuthoringFragment)(input, {
-    onExcessProperty: "error",
+  const decoded = Result.isSuccess(decode(input, parseOptions));
+  const published = !!validate(input);
+  expect({ decode: decoded, published }, JSON.stringify(ports)).toEqual({
+    decode: accepted,
+    published: accepted,
   });
-  expect(Result.isSuccess(decoded)).toBe(decoder);
-  expect(validate(input)).toBe(published);
 });
