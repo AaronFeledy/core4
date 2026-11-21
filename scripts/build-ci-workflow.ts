@@ -509,6 +509,7 @@ ${landoManagedPodmanRuntimeDirCommands}
 ${nodeImagePullLines}
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/adminer:6
+          pull_image quay.io/keycloak/keycloak:26.8
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -979,6 +980,7 @@ name: ci
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:

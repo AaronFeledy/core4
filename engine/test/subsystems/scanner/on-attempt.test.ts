@@ -39,6 +39,7 @@ describe("UrlScanner onAttempt", () => {
     [503, undefined, [503], "ready", 1],
     [200, "no-route", [], "lando-error", 3],
     [200, "", [], "lando-error", 3],
+    [503, "upstream-unreachable", [], "lando-error", 3],
     [503, "upstream-unreachable", [503], "lando-error", 3],
   ] as const)(
     "classifies status %i marker %s before stopping or retrying",

@@ -60,6 +60,7 @@ import type {
   RemoteProtectedEnvError,
   RemoteProviderUnavailableError,
   RouteInputError,
+  RouteUrlBindingError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
   RouterWatcherError,
@@ -272,6 +273,7 @@ export type StartAppError =
   | HostProxyTransportUnavailableError
   | LandoCommandError
   | ProxyApplyError
+  | RouteUrlBindingError
   | ProxyError
   | ProxySetupError
   | RouterPortPinMismatch
@@ -613,6 +615,7 @@ export interface App {
 
 /** Resolution union for `runtime.scratch`. */
 export type ScratchAcquireError =
+  | RouteUrlBindingError
   | DebuggerHostUnavailableError
   | ScratchAppError
   | AppPlacementError

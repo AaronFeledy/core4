@@ -1,7 +1,6 @@
 ---
 id: mongodb
 provider: test
-timeout: 300000
 tags: [docs, mongodb, service]
 ---
 
@@ -65,7 +64,7 @@ lando start
 lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"
 ```
 
-  <Scenario id="fresh-default-port" layer="e2e" render>
+  <Scenario id="fresh-default-port" layer="e2e" timeout={300000} render>
     <Step name="start">
       <UseFixture name="mongodb-e2e-default" />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
@@ -203,7 +202,7 @@ lando mongosh --eval "db.serverCmdLineOpts().parsed.net.port"
 
 That prints `27018`, through a client that found the server on the planned port without any extra flags.
 
-  <Scenario id="fresh-custom-port" layer="e2e" render>
+  <Scenario id="fresh-custom-port" layer="e2e" timeout={300000} render>
     <Step name="start">
       <UseFixture name="mongodb-e2e-port" />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />

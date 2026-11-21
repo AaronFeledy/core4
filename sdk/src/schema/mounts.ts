@@ -1,3 +1,4 @@
+import { posix } from "node:path";
 import { Effect, Schema } from "effect";
 
 import type { AppPlan, FileSyncPlan } from "./app-plan.ts";
@@ -155,6 +156,11 @@ export const duplicateMountTarget = (mounts: ReadonlyArray<MountPlan>): string |
   }
   return undefined;
 };
+
+export const canonicalMountEntry = (entry: string): string =>
+  entry === "" || entry.split("/").includes("..")
+    ? entry
+    : posix.normalize(entry).replace(/\/+$/u, "") || "/";
 
 /** Excludes left after exact `includes` entries cancel them. */
 export const effectiveExcludes = (bind: Pick<BindMountPlan, "excludes" | "includes">): readonly string[] => {

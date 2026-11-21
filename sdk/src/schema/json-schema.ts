@@ -9,6 +9,7 @@ import {
   AxisToken,
   CleanupProps,
   ComponentId,
+  FetchProps,
   GuideProps,
   HiddenProps,
   InlineProps,
@@ -26,7 +27,11 @@ import {
 } from "../docs/components/props.ts";
 import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 import { PublicTranscript, Transcript } from "../docs/transcript.ts";
-import { EnvironmentValueResolutionError, PlanReplanRequiredError } from "../errors/environment-value.ts";
+import {
+  EnvironmentValueResolutionError,
+  PlanReplanRequiredError,
+  RouteUrlBindingError,
+} from "../errors/environment-value.ts";
 import {
   AppDataIdentityError,
   AppPlacementError,
@@ -258,6 +263,7 @@ import {
   ServiceCredsConfig,
   ServiceCredsDisplay,
 } from "./database-connection.ts";
+import { DependencyEnvironmentIntent } from "./dependency-environment.ts";
 import {
   DeprecationNotice,
   DeprecationNoticeJsonShape,
@@ -287,6 +293,8 @@ import {
   BoundTextReference,
   Environment,
   EnvironmentValue,
+  RouteText,
+  RouteUrlPart,
   SecretRef,
   SecretReference,
 } from "./environment-value.ts";
@@ -649,6 +657,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   SecretRef,
   BoundTextReference,
   BoundText,
+  RouteText,
+  RouteUrlPart,
   EnvironmentValue,
   Environment,
   ServiceCreds,
@@ -673,6 +683,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceScopedLandofile,
   CompiledLandofile,
   EnvironmentValueResolutionError,
+  RouteUrlBindingError,
   PlanReplanRequiredError,
   SshAgentConfig,
   GpgAgentConfig,
@@ -703,6 +714,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   StepProps,
   RunProps,
   VerifyProps,
+  FetchProps,
   CleanupProps,
   VariableProps,
   HiddenProps,
@@ -793,6 +805,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   PreparedCertificatePair,
   HostAliasPlan,
   ServiceDependencyCondition,
+  DependencyEnvironmentIntent,
   DependencyPlan,
   PerAppBridgePlan,
   SharedNetworkMembershipPlan,
@@ -1325,6 +1338,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ScheduleJob: "One scheduled command on a service.",
   ScheduleJobName: "Job name unique within the service.",
   ScheduleConfig: "Scheduled jobs for a service.",
+  DependencyEnvironmentIntent: "A service feature's request to prepare and share a project dependency store.",
 } satisfies Partial<Record<keyof typeof rawPublicSchemaRegistry, string>>;
 const CATALOG_SERVICE_SCHEMA_DESCRIPTIONS = {
   AdminerServiceConfig: "Landofile configuration accepted by the Adminer catalog service.",

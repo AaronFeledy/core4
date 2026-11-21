@@ -9,6 +9,7 @@ import { Effect } from "effect";
 import { applyActivation } from "../../src/lifecycle/activation-apply.ts";
 import { HostMountPoints } from "../../src/lifecycle/host-mount-points.ts";
 import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
+import { prepareRouteUrlBindings } from "../../src/lifecycle/route-url-bindings.ts";
 import { serviceCertificatePaths } from "../../src/lifecycle/service-certificate-paths.ts";
 import {
   prepareServiceCertificates,
@@ -16,7 +17,9 @@ import {
 } from "../../src/lifecycle/service-certificates.ts";
 import { prepareProvider } from "../../src/providers/prepared.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { web } from "../operations/start-progress-topology-support.ts";
 import { refusalCases, resolvingProvider, session, unusedResolver } from "./activation-apply-support.ts";
+import { publicUrlRouter, urlReadingPlan } from "./route-url-fixture.ts";
 import {
   basePlan,
   leafBind,
@@ -218,6 +221,98 @@ test("activation uses a supplied environment session without opening another", a
   );
 
   expect(environment).toEqual({ TOKEN: "resolved" });
+});
+
+test.each([true, false])("requires a route proof before apply (prepared: %j)", async (prepared) => {
+  const plan = urlReadingPlan;
+  const publicationRouter = publicUrlRouter();
+  const applied: { environment: unknown; recorded: unknown }[] = [];
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const provider = yield* prepareProvider({
+        ...TestRuntimeProvider,
+        apply: (concrete, options) =>
+          Effect.sync(() => {
+            applied.push({
+              environment: concrete.services[web.name]?.environment,
+              recorded: options.recordedPlan,
+            });
+            return { changed: true };
+          }),
+      });
+      const { certificates } = yield* prepareServiceCertificates(plan);
+      const routeUrls = prepared
+        ? yield* prepareRouteUrlBindings({
+            plan,
+            routes: plan.routes,
+            router: {
+              ...publicationRouter,
+              routeAuthorities: (routes) =>
+                routes.some((route) => route.hostname === "earlier.test")
+                  ? publicationRouter.applyRoutes(routes, routeOwnerFromPlan(plan)).pipe(
+                      Effect.map(({ authorities }) => authorities),
+                      Effect.orDie,
+                    )
+                  : Effect.succeed([]),
+            },
+          })
+        : undefined;
+      return yield* applyActivation({
+        plan,
+        provider,
+        certificates,
+        routeUrls,
+        environment: session,
+        reconcile: false,
+      });
+    }).pipe(
+      Effect.provideService(EnvironmentValueResolver, unusedResolver),
+      Effect.provide(HostMountPoints.layer),
+      Effect.result,
+    ),
+  );
+  if (prepared) {
+    expect(result).toMatchObject({ _tag: "Success" });
+    expect(applied).toEqual([
+      {
+        environment: { APP_URL: "https://web.test:8443/app" },
+        recorded: {
+          ...plan,
+          services: {
+            ...plan.services,
+            [web.name]: {
+              ...plan.services[web.name],
+              extensions: {
+                ...plan.services[web.name]?.extensions,
+                "@lando/engine/realized-route-urls": { web: "https://web.test:8443/app" },
+              },
+            },
+          },
+        },
+      },
+    ]);
+  } else {
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "RouteUrlBindingError", reason: "router-unsupported", service: web.name },
+    });
+    expect(applied).toEqual([]);
+  }
+});
+
+test("route URL preparation rejects a selectable router without authority support", async () => {
+  const { routeAuthorities: _routeAuthorities, ...routerWithoutAuthorities } = publicUrlRouter();
+  const result = await Effect.runPromise(
+    prepareRouteUrlBindings({
+      plan: urlReadingPlan,
+      routes: urlReadingPlan.routes,
+      router: routerWithoutAuthorities,
+    }).pipe(Effect.result),
+  );
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "RouteUrlBindingError", reason: "router-unsupported", service: web.name },
+  });
 });
 
 test("activation records a provider-created volume as eligible for initialization", async () => {

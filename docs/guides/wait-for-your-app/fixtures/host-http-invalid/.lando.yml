@@ -1,0 +1,8 @@
+name: wait-host-http-invalid
+services:
+  app:
+    type: "node:22"
+    readiness:
+      kind: http
+      target: host
+      url: http://127.0.0.1:3000/

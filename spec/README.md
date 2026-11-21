@@ -91,7 +91,7 @@ If you are looking for a public surface or policy:
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
 | Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
-| `AppPlan` and `ServicePlan` schema families, applied-state v7-to-v8 `kind` migration, and strict applied-map writers | 05 | §5.5 + §5.5.2 |
+| `AppPlan` and `ServicePlan` schema families; applied-state v1–v10 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, and strict applied-map writers | 05 | §5.5 + §5.5.2 |
 | Runtime-owned helper creation mount, logical/applied-plan exclusion, non-root cache permissions, and file-log delivery | 05 + 06 + 12 | §5.5 + §6.2.1 + §6.4 + §6.14.3 + §12.1 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
@@ -123,6 +123,7 @@ If you are looking for a public surface or policy:
 | Authored versus resolved service credentials and explicit credential claims | 06 | §6.11 + §6.12.4 |
 | Post-readiness database credential observation, the `LANDO_DATABASE_CREDENTIALS_REJECTED` and `LANDO_DATABASE_MISSING` warnings, and the `database-credentials` doctor section | 06 + 11 | §6.12.4 + §10.9.1 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
+| Stock Python project environment, mount precedence, and Django and FastAPI recipe contracts | 06 + 08 | §6.4 + §6.5 + §6.12.1 + §8.8.10 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
 | PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, and Mailpit sender diagnostics | 06 | §6.12.5 |
 | Primary listen-port authority, native-variable validation, reserved ports, and Lando-owned clients | 06 | §6.2 + §6.12.1 |
@@ -150,6 +151,7 @@ If you are looking for a public surface or policy:
 | Shared resolved-Landofile validation, typed lint rule registry, generated rule reference, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
 | Authored HTTP route binding with route-declared listeners and TCP/UDP protocol conflicts, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
 | Node runtime inference versus package-manager selection, offline launchers, BYO toolchains, and project-file validation headlines | 06 + 07 + 12 + 13 | §6.11.0 + §6.12.1 + §6.13.3 + §7.8 + §12.1 + §13.1 |
+| Dependency environments: sharing, preparation, scheduling and cancellation, logs, storage and offline reuse, recipes, and scratch exclusion | 05 + 06 + 08 + 11 + 12 + 13 + 14 + 17 + 19 | §5.3 + §6.5.1 + §6.12.1 + §6.15 + §8.2 + §8.5 + §8.8.10 + §10.6 + §12.4 + §12.6 + §13.1 + §15.C + §15.E + §19.9 + §21.7 |
 | Canonical Landofile parser and serializer | 07 | §7.8.1 |
 | Command kinds and namespaces | 08 | §8.1 |
 | Top-level aliases and collision errors | 08 | §8.1.2 |

@@ -62,6 +62,14 @@ Record per-PR macOS and Windows performance results as advisory. Treat nightly p
 
 Finish the report with separate conclusions for **selected CI** and **broader acceptance**, each using the outcome vocabulary above. List every outstanding mandatory or applicable conditional row and its blocker or next action. Broader acceptance is `pass` only when all required evidence is current and passing; absent evidence must remain visible even when selected CI passes.
 
+### Reproduce the problem first
+
+A fix starts from a failure you've seen on current `main`. Reproduce it in an isolated temp app with the command a user would run, and put the command, its output, and the provider in the PR description or in the issue it closes. Reviewers can then check the fix against the failure, not a description of it.
+
+Before you rework a PR that has been open for a while, rebase it onto current `main` and reproduce the failure again. `main` may already have fixed the problem or changed the code the PR patches. If the failure no longer reproduces, close the PR with the evidence or rework it into what is still needed.
+
+A documentation change that works around Lando behavior needs the same proof. Link an open issue that reproduces the failure, and add the hidden tripwire step described in [Pin a known limitation](../guides/authoring/e2e-smoke-scenarios.mdx#pin-a-known-limitation), so the fix fails the scenario and the workaround gets removed. If the failure does not reproduce, drop the workaround.
+
 ## Choose the CI tier
 
 Pull requests select the highest profile needed by their changed paths:
@@ -74,6 +82,8 @@ Pull requests select the highest profile needed by their changed paths:
 | `providers` | Provider and container-runtime paths, service-lando, provider contracts, or the CI selection and generation files | Runtime work plus live Linux x64 provider integration |
 
 Mixed changes select the highest profile: `docs`, `guides`, `runtime`, then `providers`. An empty comparison selects `runtime`; unavailable comparison history selects `providers`. A Git command failure fails selection. Deleted and renamed paths count too. The path rules live in `scripts/ci-selection.ts`. `bun test --changed` is a local convenience, not the merge gate.
+
+The merge queue's `merge_group` event uses the same path selection as `pull_request`, comparing the merge group's base and head SHAs.
 
 Pushes to `main`, manual `ci` dispatches, and pull requests changing the root `.bun-version` or a platform build path run broad hosted coverage, including all six binary artifacts required by the release workflow. Platform build paths include the tests assigned to `build-*` jobs in `scripts/test-selections.ts`, their local support modules and fixtures, the platform build and smoke scripts, and the native libc binding module `engine/src/runtime/libc.ts`. Other unit tests under `core/test/build/` use the normal `runtime` profile. Each POSIX build lane round-trips those bindings natively and checks that the binary hands a shared pipe back in blocking mode; Windows has no such flag, so those checks skip there. The toolchain rule applies even when the PR also changes other paths. Nightly and the scheduled evidence workflows own deep live suites and platform journeys. Use manual `ci` dispatch when another PR needs the broad hosted checks before merge.
 
@@ -624,6 +634,8 @@ Provider integration also runs as platform-specific jobs (`provider-integration-
 ## Lint guide YAML and negative fixtures
 
 Run `bun run lint:guides` to validate identifiable Landofile fences and fixture files.
+It also checks [app install coverage](./guide-authoring.md#exercise-every-app-install-you-teach)
+and [same-page container command coverage](./guide-authoring.md#run-every-container-command-you-show).
 Full `.lando.yml` documents keep full authoring requirements, including native
 `!reset` and `!override` placement checks. `.lando.*.yml` files are fragments.
 Unrelated YAML, such as Actions workflows, Kubernetes resources, recipe manifests,

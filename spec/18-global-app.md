@@ -136,7 +136,7 @@ Required behavior:
 - Strict preparation and previews use read-only, pinned-cache-only Landofile acquisition. Ordinary execution retains normal remote-include acquisition: missing pinned content and new requests may populate immutable include cache, while the compiled candidate retains selected pin proposals. Candidate validation precedes root, canonical, and bind-source creation, including for a not-yet-created global root. Include pins publish only after finalization and successful generated/user configuration publication; intentional pin publication advances only its lockfile witness. Publication verifies captured source bytes and path identities, preserves generated-file ownership checks, and writes the validated content verbatim; inconsistent content or changed source/capability evidence requires explicit fresh preparation. An identical generated file is not rewritten. These checks do not replace the later startup admission or live readiness checks.
 - Bind sources written as `~` or `~/...` MUST resolve against the user's home, not the global root, and MUST NOT be created by generated-layer reconciliation.
 - `providerId` resolves the provider holding the applied global plan for the canonical global root, else the host provider (§5). It reads applied state only and MUST NOT construct, initialize, or contact a runtime.
-- Failures are tagged as listed in §20.13.
+- Failures are tagged as listed in §20.13. Public service URL bindings in a global Landofile fail planning, before provider mutation, with a `ConfigExpressionError` located at the consuming environment value.
 
 ### 20.6 Lifecycle
 
@@ -268,7 +268,7 @@ Ordinary global destroy MUST retain service- and app-scoped data (§5.3.1); that
 
 #### 20.10.1 Default `RouterService` layer
 
-The default `RouterService` layer (`@lando/proxy-traefik`) realizes routes through the `traefik` service in the global app. `@lando/proxy-traefik` contributes both `globalServices: traefik` and `routerServices: traefik`; an unpaired contribution fails with `ProxyContributionPairError`. `RouterService.setup` ensures the service is running, and route application uses the service's standard managed mounts. The §10.2 interface is unchanged.
+The default `RouterService` layer (`@lando/proxy-traefik`) realizes routes through the `traefik` service in the global app. `@lando/proxy-traefik` contributes both `globalServices: traefik` and `routerServices: traefik`; an unpaired contribution fails with `ProxyContributionPairError`. `RouterService.setup` ensures the service is running, and route application uses the service's standard managed mounts (§10.2).
 
 Routed user and scratch apps MUST use the host provider. Nonempty routes with an enabled router on another provider MUST fail planning with `RouteProviderMismatchError` (§10.2), never route through host-published ports.
 
@@ -292,7 +292,7 @@ Alternative `RouterService` implementations MAY avoid `GlobalAppService`. Select
 
 #### 20.11.1 `@lando/service-mailpit` (canonical reference)
 
-Bundled Mailpit and the SSH sidecar use functional startup checks. Mailpit uses its image's `/mailpit readyz` command; this is in-container readiness, not proof of cross-app SMTP or router reachability. The SSH sidecar uses the identities response check in §10.4, which proves the agent replies but does not require a particular key. Services without enabled command readiness retain process settling under §6.7.
+Bundled Mailpit and the SSH sidecar use functional startup checks. Mailpit uses its image's `/mailpit readyz` command; this is in-container readiness, not proof of cross-app SMTP or router reachability. The SSH sidecar uses the identities response check in §10.4, which proves the agent replies but does not require a particular key. Services without an enabled readiness probe retain process settling under §6.7.
 
 The bundled `@lando/service-mailpit` plugin is the reference pairing of a `ServiceType`, enabled `globalServices: mailpit` contribution, `AppFeature.requires.globalServices`, and plugin-owned tooling commands. Its feature projects Mailpit connection values into selected user services without requiring user Landofile changes. Its web route is `mailpit.{{ proxy.defaultDomain }}`, resolved during global planning; a domain change moves it when global routes are next published (§20.6.5).
 
@@ -305,6 +305,8 @@ The bundled `@lando/service-mailpit` plugin is the reference pairing of a `Servi
 All errors are tagged and include remediation where applicable:
 
 - `AppIdReservedError`
+- `ConfigExpressionError`, located at the consuming environment value when a global Landofile binds a public service URL.
+- `RouteUrlBindingError`, a defensive activation refusal shared with user apps (§7.3.1). Global planning rejects every public URL binding, so a global start, rebuild, or ensure reaches it only if an unplanned `RouteText` descriptor reaches activation; it never replaces the planning `ConfigExpressionError`.
 - `GlobalServiceCollisionError`
 - `GlobalServiceCapabilityError`
 - `GlobalServiceConfigError`

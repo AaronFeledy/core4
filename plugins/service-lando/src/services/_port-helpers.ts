@@ -54,11 +54,13 @@ export const plannedPort = (service: ServiceConfig, listener: ListenerContract):
 export const applicationAuthority = (
   contract: ListenerContract & Pick<Required<ListenerContract>, "variables">,
   port: number,
+  service: Pick<ServiceConfig, "command" | "entrypoint">,
 ): AuthorityOf<"application"> => ({
   owner: "application",
   daemon: contract.daemon,
   port: PortNumber.make(port),
   variables: [...contract.variables],
+  ...(service.command === undefined && service.entrypoint === undefined ? { keepAlive: true } : {}),
 });
 
 /** An authored command or entrypoint replaced the launcher that set the listener. */

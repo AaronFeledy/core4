@@ -15,6 +15,7 @@ const featureContext = (config: Readonly<Record<string, unknown>> = {}) => {
     appName: "myapp",
     appRoot: "/srv/apps/myapp",
     normalizedConfig: {},
+    authoredMounts: [],
     config,
     serviceStoreName: (role) => landoServiceStoreName("myapp", "web", role),
     addEnv(name, value) {
@@ -25,6 +26,7 @@ const featureContext = (config: Readonly<Record<string, unknown>> = {}) => {
     addBuildStep() {},
     addExtension() {},
     addStorage() {},
+    addDependencyEnvironment() {},
     addDependency() {},
     addHostAlias() {},
     setHealthcheck() {},

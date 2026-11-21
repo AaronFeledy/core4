@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   type AppPlan,
   type BindMountPlan,
+  DEPENDENCY_ENVIRONMENT_EXTENSION_KEY,
   type DataStorePlan,
   type MountPlan,
   PortablePath,
@@ -23,6 +24,52 @@ const dataPlan = (mounts: readonly MountPlan[], stores: readonly DataStorePlan[]
   stores,
   services: { [web.name]: { ...web, serviceTypeId: "node", mounts } },
 });
+
+test.each(["replacement", "host include", "authored mount"] as const)(
+  "dependency environment notice distinguishes %s without offering reattachment",
+  async (change) => {
+    const target = PortablePath.make("/app/.venv");
+    const managed = (store: string): AppPlan => {
+      const jobName = ServiceName.make("python-env");
+      const mount = { ...volume(store, "service"), target };
+      return {
+        ...dataPlan([], [{ name: store, kind: "data", scope: "app" }]),
+        services: {
+          [web.name]: {
+            ...web,
+            mounts: [mount],
+            dependsOn: [{ service: jobName, condition: "service_completed_successfully", required: true }],
+          },
+          [jobName]: {
+            ...web,
+            name: jobName,
+            mounts: [mount],
+            extensions: { [DEPENDENCY_ENVIRONMENT_EXTENSION_KEY]: { kind: "python", consumers: [web.name] } },
+          },
+        },
+      };
+    };
+    const desired =
+      change === "replacement"
+        ? managed("new-env")
+        : change === "authored mount"
+          ? dataPlan(
+              [{ ...volume("old-env", "authored"), target }],
+              [{ name: "old-env", kind: "data", scope: "app" }],
+            )
+          : dataPlan([]);
+    const [notice] = await runNotice(managed("old-env"), desired);
+    expect(notice?.body).toContain("Lando leaves old-env untouched");
+    expect(notice?.body).not.toContain("storage:");
+    if (change === "replacement") {
+      expect(notice?.body).toContain("new-env");
+      expect(notice?.body).toContain("prepares a fresh dependency environment");
+    } else {
+      expect(notice?.body).toContain("will no longer use its managed dependency environment");
+      expect(notice?.body).not.toContain("fresh dependency environment");
+    }
+  },
+);
 
 for (const path of paths) {
   test.each(["service", "authored", undefined] as const)(

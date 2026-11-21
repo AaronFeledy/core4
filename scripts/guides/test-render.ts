@@ -17,6 +17,7 @@ export const renderScenarioTest = (
   const resolved = resolveScenario(guide, scenario, requestedVariant);
   const variant = resolved.variant;
   const scenarioLayer = scenario.layer ?? guide.frontmatter.defaultLayer ?? "scenario";
+  const timeout = scenario.timeout ?? guide.frontmatter.timeout;
   const usesLibraryRuntime = resolved.runMode === "library";
   const usesE2eRuntime = scenarioLayer === "e2e";
   const variableSetup = renderVariableSetup(resolved.variables);
@@ -52,7 +53,7 @@ export const renderScenarioTest = (
   const effectiveTags = [
     ...new Set([...(variant?.tags ?? guide.frontmatter.tags ?? []), ...(scenario.tags ?? [])]),
   ];
-  const effectivePlatforms = variant?.platforms ?? guide.frontmatter.platforms;
+  const effectivePlatforms = resolved.platforms;
   const hostPlatforms = hostPlatform === "wsl" ? ["wsl", "linux"] : [hostPlatform];
   const platformSkip =
     effectivePlatforms !== undefined &&
@@ -152,17 +153,33 @@ const matchesExpected = (actual: unknown, expected: unknown): boolean => {
   }
   if (expected !== null && typeof expected === "object" && !Array.isArray(expected)) {
     const record = expected as Record<string, unknown>;
-    if (typeof record.regex === "string") return new RegExp(record.regex).test(String(actual));
-    if (typeof record.schema === "string") {
-      const schema = Object.hasOwn(schemas, record.schema) ? schemas[record.schema] : undefined;
-      return schema !== undefined && Schema.is(Schema.toEncoded(schema))(actual);
+    const keys = Object.keys(record);
+    const operators = keys.filter((key) => MATCHER_OPERATORS.has(key));
+    if (operators.length > 0) {
+      if (operators.length !== keys.length) throw new Error(\`A matcher mixes operators (\${operators.join(", ")}) with object keys.\`);
+      return operators.every((operator) => matchesOperator(actual, operator, record[operator]));
     }
-    if (Array.isArray(record.anyOf)) return record.anyOf.some((item) => matchesExpected(actual, item));
-    if (Object.hasOwn(record, "not")) return !matchesExpected(actual, record.not);
     if (actual === null || typeof actual !== "object") return false;
     return Object.entries(record).every(([key, value]) => matchesExpected((actual as Record<string, unknown>)[key], value));
   }
   return Object.is(actual, expected);
+};
+
+// An object of operators is their conjunction: { regex, not } needs both to hold.
+const MATCHER_OPERATORS = new Set(["regex", "schema", "anyOf", "not"]);
+const matchesOperator = (actual: unknown, operator: string, value: unknown): boolean => {
+  switch (operator) {
+    case "regex":
+      return typeof value === "string" && new RegExp(value).test(String(actual));
+    case "schema": {
+      const schema = typeof value === "string" && Object.hasOwn(schemas, value) ? schemas[value] : undefined;
+      return schema !== undefined && Schema.is(Schema.toEncoded(schema))(actual);
+    }
+    case "anyOf":
+      return Array.isArray(value) && value.some((item) => matchesExpected(actual, item));
+    default:
+      return !matchesExpected(actual, value);
+  }
 };
 
 ${testFnExpression}(${testNameExpression}, async () => {
@@ -189,7 +206,7 @@ ${
   const deadline = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, ${guide.frontmatter.timeout - Math.min(120_000, Math.floor(guide.frontmatter.timeout / 4))});
+  }, ${timeout - Math.min(120_000, Math.floor(timeout / 4))});
   try {
 `
 }  const exit = await Effect.runPromiseExit(
@@ -218,6 +235,6 @@ ${
     process.off("SIGTERM", interrupt);
   }`
   }
-}, ${guide.frontmatter.timeout});
+}, ${timeout});
 ${skips === "" ? "" : `\n${skips}\n`}`;
 };

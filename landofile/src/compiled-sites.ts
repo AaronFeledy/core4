@@ -17,6 +17,7 @@ import {
 import { Effect, Result, Schema } from "effect";
 import { type InvocationProgram, evaluateInvocationSite, siteExpression } from "./invocation-sites.ts";
 import type { AuthoredOrigin } from "./provenance.ts";
+import { ROUTE_URL_SITE_REMEDIATION, isServiceEnvironmentValuePath } from "./route-url-expression.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
 
 export * from "./invocation-sites.ts";
@@ -114,6 +115,11 @@ export const instantiateInvocation = (input: {
           }),
   });
 
+const containsRouteText = (value: unknown): boolean =>
+  Array.isArray(value)
+    ? value.some(containsRouteText)
+    : isPlainRecord(value) && (value._tag === "RouteText" || Object.values(value).some(containsRouteText));
+
 export const consumeSites = (input: {
   readonly document: unknown;
   readonly pendingSites: readonly ParsedPendingSite[];
@@ -160,9 +166,12 @@ export const consumeSites = (input: {
         );
       secrets[name] = reference.success;
     }
+    const selfName =
+      site.path[0] === "services" && typeof site.path[1] === "string" ? site.path[1] : undefined;
+    const self = selfName === undefined ? undefined : input.context.services?.[selfName];
     const evaluated = evaluateTemplateEither(
       site.template,
-      { ...input.context, secrets },
+      { ...input.context, ...(isPlainRecord(self) ? { service: { url: self.url } } : {}), secrets },
       {
         path: site.path,
         filePath: "file" in site.source ? site.source.file : undefined,
@@ -184,6 +193,19 @@ export const consumeSites = (input: {
           expression: siteExpression(site, input.document, input.pathPrefix?.length),
           filePath: "file" in site.source ? site.source.file : "<landofile>",
           remediation: evaluated.failure.remediation,
+        }),
+      );
+    // Load refuses a literal URL reference outside a service environment; a computed member
+    // access can still produce the descriptor, so the destination is checked on the value too.
+    if (containsRouteText(evaluated.success) && !isServiceEnvironmentValuePath(site.path))
+      return Result.fail(
+        new ConfigExpressionError({
+          message: `A public service URL is not supported at ${site.path.join(".")}.`,
+          path: site.path,
+          source: site.source,
+          expression: siteExpression(site, input.document, input.pathPrefix?.length),
+          filePath: "file" in site.source ? site.source.file : "<landofile>",
+          remediation: ROUTE_URL_SITE_REMEDIATION,
         }),
       );
     document = replaceSiteValue(document, site.path.slice(input.pathPrefix?.length ?? 0), evaluated.success);

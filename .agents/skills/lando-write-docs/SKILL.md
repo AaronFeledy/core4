@@ -43,6 +43,7 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - Harness placeholders shown as captured output: `expected exit 0`, `event "…" observed`, `command output`
 - User told to start Traefik by hand
 - Feature stubbed as unavailable when the product does the thing
+- A workaround for Lando behavior that no open issue reproduces on current `main`. Reproduce the failure in an isolated temp app first. If it reproduces, link the issue and add a hidden tripwire step. If it does not, drop the workaround
 - Default provider implied as Docker. Default is `lando` (managed Podman)
 - User page leaks CI/NDJSON/`LANDO_TEST_*`/job names
 - More than one dominant Diátaxis type on a content page (tutorial / how-to / reference / explanation). A landing page or README may route to several forms
@@ -51,6 +52,7 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - On how-to and tutorial pages only: heading that does not name the action or the command
 - Install, start, or config with no verify command (how-to / tutorial)
 - A guide teaches an app install that no `layer="e2e"` scenario runs anywhere in the docs tree (`guide.install.e2e-coverage`)
+- A guide shows a container command in a prose shell fence that no e2e step on the same page runs with the same argv, and the fence has no waiver (`guide.container-command.e2e-coverage`). Do not add baseline entries
 - Copied Lando 3 product facts (recipes-as-the-product, Drupal 9 first-app, Docker-as-default, start Traefik)
 
 ## Before you write
@@ -207,6 +209,7 @@ A guide has to document and demonstrate. Every step and claim on the page must r
 A feature's home guide owns every test that drives Lando through its CLI or library API for that feature, including edge cases and regressions the page never mentions. Put an edge case of a flow the page shows in a `<Hidden>` step of that scenario, and a flow the page does not teach, such as a regression for a reported bug, in a `render={false}` scenario. A hidden step must not change what the visible steps show: a reader who runs only the visible steps gets the result the page describes. Each feature has one home guide; other pages that teach it link there instead of repeating its tests. Hidden steps and test-only scenarios are tests, not content: never trim them to tighten a page. Tests that call internal modules directly stay in the owning package's `test/` tree.
 
 Fixtures: `docs/guides/<guide-id>/fixtures/<name>/`. Every dir must be referenced by `<UseFixture>`.
+Do not override the recipe or service configuration under test in a fixture, including disabling routes, unless the override is the subject of the scenario.
 New fixture dir: record it in the golden corpus with `UPDATE_GOLDEN=1 bun test landofile/test/pipeline/golden-corpus.test.ts` and commit the digest change; guide gates do not run that test. A deliberately invalid fixture also carries `# lando-lint: expect-invalid <reason>` on line 1; no test keeps a hand-edited list. Steps: `docs/contributing/guide-authoring.md#register-a-new-fixture`.
 
 Test provider does not boot real containers. Prefer `app:config`, lint, init, modeled events. `exec` needs stubbed exec or e2e. Zero-scenario guides are valid for host-bound topics.

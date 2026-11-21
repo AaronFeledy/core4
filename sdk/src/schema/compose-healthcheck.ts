@@ -2,14 +2,23 @@ import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 import { parseComposeDuration } from "./compose-duration.ts";
 import { executionSite } from "./execution-site.ts";
-import { CommandSpec, ContainerUser } from "./primitives.ts";
+import { CommandSpec, ContainerUser, PortNumber } from "./primitives.ts";
 import { ProbeIntervalSeconds, ProbeRetries, ProbeTimeoutSeconds } from "./probe-timing.ts";
+import { ServiceProbeHttpUrl } from "./service-probe-url.ts";
 
 const ComposeTest = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
 
 // JSON Schema publishes the encoded side, so both sides carry the description.
 const HEALTHCHECK_FIELD_DESCRIPTION =
-  "Probe accepts false, a non-empty command string, a non-empty argv array, or an object with command, execution target, identity, and timing settings.";
+  "Probe accepts false, a non-empty command string or argv array, or a command, HTTP, or TCP probe object with timing settings.";
+const ProbeUrl = Schema.optionalKey(ServiceProbeHttpUrl).annotate({
+  description:
+    "Required for kind: http. Absolute HTTP or HTTPS URL requested from inside the service container.",
+});
+const ProbePort = Schema.optionalKey(PortNumber).annotate({
+  description:
+    "TCP listener port (integer 1 to 65535), required for kind: tcp unless a service type supplies a listener target. Lando connects using the service network name.",
+});
 
 const IntervalSeconds = ProbeIntervalSeconds;
 const TimeoutSeconds = ProbeTimeoutSeconds;
@@ -23,8 +32,8 @@ const ComposeHealthcheckAccepted = Schema.Struct({
   }),
   kind: Schema.optionalKey(Schema.Literals(["command", "http", "tcp", "none"])),
   command: Schema.optionalKey(CommandSpec),
-  url: Schema.optionalKey(Schema.String),
-  port: Schema.optionalKey(Schema.Number),
+  url: ProbeUrl,
+  port: ProbePort,
   intervalSeconds: Schema.optionalKey(IntervalSeconds),
   timeoutSeconds: Schema.optionalKey(TimeoutSeconds),
   retries: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])),
@@ -43,8 +52,8 @@ const HealthcheckCanonicalBase = Schema.Struct({
   user: Schema.optionalKey(ContainerUser),
   kind: Schema.optionalKey(Schema.Literals(["command", "http", "tcp", "none"])),
   command: Schema.optionalKey(CommandSpec),
-  url: Schema.optionalKey(Schema.String),
-  port: Schema.optionalKey(Schema.Number),
+  url: ProbeUrl,
+  port: ProbePort,
   intervalSeconds: Schema.optionalKey(IntervalSeconds),
   timeoutSeconds: Schema.optionalKey(TimeoutSeconds),
   retries: Schema.optionalKey(ProbeRetries),

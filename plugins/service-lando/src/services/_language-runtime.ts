@@ -95,7 +95,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     for (const [key, value] of spec.presets[framework].env ?? []) env[key] = value;
     for (const variable of spec.presets[framework].variables) env[variable] = String(port);
     addEnvRecord(ctx, env);
-    ctx.setListenerAuthority(applicationAuthority(spec.presets[framework], port));
+    ctx.setListenerAuthority(applicationAuthority(spec.presets[framework], port, service));
     ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
     applyAuthoredProcessFields(ctx, ["user", "entrypoint"]);
     ctx.addExtension(spec.extensionKey, {

@@ -1,7 +1,6 @@
 ---
 id: drupal-cms
 provider: test
-timeout: 900000
 tags: [recipe, drupal, drupal-cms, php]
 ---
 
@@ -90,7 +89,7 @@ Run that optional command from the parent directory, then `cd my-drupal-cms-app`
 For day-to-day tooling and database hosts, see [Run the Drupal CMS recipe](/guides/recipes/drupal-cms-workflow/).
 
 <Guide>
-  <Scenario id="reader-path" layer="e2e" tags={["@smoke"]} render>
+  <Scenario id="reader-path" layer="e2e" timeout={900000} tags={["@smoke"]} render>
     <Step name="scaffold">
       <Variable name="appName" value="drupal-cms" display="my-drupal-cms-app" />
       <Run command="lando init --recipe drupal-cms --name={{appName}} --yes" />

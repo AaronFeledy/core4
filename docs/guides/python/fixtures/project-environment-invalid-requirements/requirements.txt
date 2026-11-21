@@ -1,0 +1,2 @@
+--no-index
+lando-guide-unavailable-dependency==1.0

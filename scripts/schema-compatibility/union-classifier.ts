@@ -4,8 +4,45 @@ import {
   type JsonValue,
   type SchemaPolarity,
   isJsonObject,
+  jsonEquals,
   jsonValueKey,
 } from "./model.ts";
+
+// Prove only inclusion by preservation of each old arm, possibly with a
+// nested widening. Other changes are left to the ordinary classifier.
+const preservesValues = (before: JsonValue, after: JsonValue): boolean => {
+  if (jsonEquals(before, after)) return true;
+  if (!isJsonObject(before) || !isJsonObject(after)) return false;
+  if (Object.keys(before).length !== Object.keys(after).length) return false;
+  return Object.entries(before).every(([key, oldValue]) => {
+    const newValue = after[key];
+    if (newValue === undefined) return false;
+    if (jsonEquals(oldValue, newValue)) return true;
+    switch (key) {
+      case "anyOf":
+        return (
+          Array.isArray(oldValue) &&
+          Array.isArray(newValue) &&
+          oldValue.every((arm) => newValue.some((candidate) => preservesValues(arm, candidate)))
+        );
+      case "properties":
+        return (
+          isJsonObject(oldValue) &&
+          isJsonObject(newValue) &&
+          Object.keys(oldValue).length === Object.keys(newValue).length &&
+          Object.entries(oldValue).every(([name, field]) => {
+            const candidate = newValue[name];
+            return candidate !== undefined && preservesValues(field, candidate);
+          })
+        );
+      case "items":
+      case "additionalProperties":
+        return preservesValues(oldValue, newValue);
+      default:
+        return false;
+    }
+  });
+};
 
 const containsReference = (value: JsonValue): boolean =>
   Array.isArray(value)
@@ -61,12 +98,17 @@ export const compareUnion = (
   const afterKeys = new Set(after.map(jsonValueKey));
   const widened = beforeKeys.size < afterKeys.size && [...beforeKeys].every((key) => afterKeys.has(key));
   const narrowed = afterKeys.size < beforeKeys.size && [...afterKeys].every((key) => beforeKeys.has(key));
-  if (!widened && !narrowed) return undefined;
+  const nestedWidening =
+    !widened &&
+    !narrowed &&
+    before.every((arm) => after.some((candidate) => preservesValues(arm, candidate)));
+  if (!widened && !narrowed && !nestedWidening) return undefined;
+  const direction = narrowed ? "narrowed" : "widened";
   return {
-    verdict: context.polarity === (widened ? "input" : "output") ? "compatible" : "breaking",
-    changeKind: widened ? "union-widened" : "union-narrowed",
+    verdict: context.polarity === (narrowed ? "output" : "input") ? "compatible" : "breaking",
+    changeKind: `union-${direction}`,
     path: context.path,
-    message: `The union member set was ${widened ? "widened" : "narrowed"}.`,
+    message: `The union was ${direction}.`,
     accepted: false,
   };
 };

@@ -115,7 +115,7 @@ export const Transcript = Schema.Struct({
 export type Transcript = typeof Transcript.Type;
 
 export const PublicTranscriptFrame = Schema.Struct({
-  kind: Schema.Literals(["step", "run", "verify", "inspect", "cleanup", "inline", "tab"]),
+  kind: Schema.Literals(["step", "run", "verify", "fetch", "inspect", "cleanup", "inline", "tab"]),
   sourceFile: Schema.String,
   sourceLine: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
   displayText: Schema.optionalKey(Schema.String),

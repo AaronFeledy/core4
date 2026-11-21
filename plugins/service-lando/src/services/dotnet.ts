@@ -44,7 +44,7 @@ const applyDotnetFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   const port = plannedPort(service, DOTNET_LISTENER);
   ctx.addEnv("ASPNETCORE_HTTP_PORTS", String(port));
-  ctx.setListenerAuthority(applicationAuthority(DOTNET_LISTENER, port));
+  ctx.setListenerAuthority(applicationAuthority(DOTNET_LISTENER, port, service));
   ctx.addStorage({
     store: NUGET_CACHE.store,
     target: NUGET_CACHE.target,

@@ -28,7 +28,9 @@ export const containerHealthcheck = (
   switch (healthcheck.kind) {
     case "none":
       return { Test: ["NONE"] };
-    case "command": {
+    case "command":
+    case "http":
+    case "tcp": {
       const command = compileServiceProbe(healthcheck, plan, service);
       if (command === undefined) return undefined;
       return {
@@ -41,8 +43,5 @@ export const containerHealthcheck = (
           : { StartPeriod: healthcheck.startPeriodSeconds * 1_000_000_000 }),
       };
     }
-    case "http":
-    case "tcp":
-      return undefined;
   }
 };

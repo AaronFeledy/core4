@@ -1,7 +1,6 @@
 ---
 id: laravel
 provider: test
-timeout: 900000
 tags: [recipe, laravel, php]
 ---
 
@@ -170,7 +169,7 @@ For day-to-day tooling and DB/Redis hosts, see [Run the Laravel recipe](/guides/
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
     </Step>
   </Scenario>
-  <Scenario id="install-path" layer="e2e" render={false} reason="Live Laravel installation and HTTP verification">
+  <Scenario id="install-path" layer="e2e" timeout={900000} render={false} reason="Live Laravel installation and HTTP verification">
     <Step name="init">
       <Run command="lando init --recipe laravel --name=laravel-install --yes" />
     </Step>

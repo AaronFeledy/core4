@@ -1,4 +1,8 @@
 import { sha256Hex } from "../digest/index.ts";
+
+export const landoDependencyEnvironmentStoreName = (dataSlug: string, kind: string, digest: string): string =>
+  `lando-${segment(dataSlug, 57)}--env--${segment(kind, 32)}-${digest.slice(0, 16)}`;
+
 import { DOMAIN_NAME_PATTERN } from "./hostname.ts";
 
 const PREFIX = "lando-";

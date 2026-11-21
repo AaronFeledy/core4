@@ -1,6 +1,7 @@
 import { ServiceNotFoundError } from "@lando/sdk/errors";
 import { type AppPlan, ServiceName, clonedServiceParent } from "@lando/sdk/schema";
 import { Effect, Graph } from "effect";
+import { withDependencyEnvironmentJobs } from "../planner/dependency-environments.ts";
 
 const uniqueRequested = (requested: ReadonlyArray<ServiceName>): ReadonlyArray<ServiceName> => [
   ...new Map(requested.map((name) => [String(name), name])).values(),
@@ -64,6 +65,13 @@ export const selectInfoPlan = (
               .map((service) => String(service.name))
               .filter((name) => unique.some((requestedName) => String(requestedName) === name)),
           ),
+    ),
+  );
+
+export const selectRestartPlan = (plan: AppPlan, requested: ReadonlyArray<ServiceName> | undefined) =>
+  validateRequested(plan, requested).pipe(
+    Effect.map((names) =>
+      names.length === 0 ? plan : filteredPlan(plan, withDependencyEnvironmentJobs(plan.services, names)),
     ),
   );
 

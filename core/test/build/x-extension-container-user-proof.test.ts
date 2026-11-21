@@ -22,10 +22,10 @@ import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
-import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
-import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
+import { evolveHistoricalProbePort, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
@@ -170,13 +170,15 @@ test.each([
                 evolveHistoricalTimestamps(
                   evolveHistoricalContainerUser(
                     evolveHistoricalProjectUser(
-                      evolveHistoricalReadiness(
-                        evolveHistoricalShorthand(
-                          evolveHistoricalNetworks(
-                            evolveHistoricalNativeInit(
-                              evolveHistoricalSqliteTarget(normalizeJsonSchema(repaired)),
+                      evolveHistoricalProbePort(
+                        evolveHistoricalReadiness(
+                          evolveHistoricalShorthand(
+                            evolveHistoricalNetworks(
+                              evolveHistoricalNativeInit(
+                                evolveHistoricalSqliteTarget(normalizeJsonSchema(repaired)),
+                              ),
+                              "bare",
                             ),
-                            "bare",
                           ),
                         ),
                       ),
@@ -205,7 +207,9 @@ test.each([
       ),
     ),
   );
-  const expected = evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historical, "bare"));
+  const expected = evolveHistoricalRouteText(
+    evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historical, "bare")),
+  );
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
   expect(jsonEquals(expected, current)).toBe(true);
   const properties = current.properties;

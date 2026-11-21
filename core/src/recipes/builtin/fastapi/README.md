@@ -1,8 +1,8 @@
 # fastapi
 
 Use this recipe for a FastAPI app with PostgreSQL and Redis. It configures the
-services but does not create application files or install their dependencies.
-Install dependencies through the generated tooling before serving the app.
+services but does not create application files. Lando installs the dependencies
+from `requirements.txt` when the service starts.
 
 ## Host prerequisites
 
@@ -11,18 +11,13 @@ Install dependencies through the generated tooling before serving the app.
 ## Install dependencies
 
 Create your application files and `requirements.txt`, then run
-`lando pip install -r requirements.txt`. Startup does not install requirements
-or launch the application server; the default command keeps the service running
+`lando start` (or `lando restart` if `web` is running). The default command keeps the service running
 for setup. Add `.venv/` to `.gitignore` and commit `requirements.txt` so the
 dependency list stays with your project.
 
-The recipe's entrypoint runs `python -m venv /app/.venv` when
-`/app/.venv/bin/pip` is not executable, then executes the original command.
-`VIRTUAL_ENV` and `PATH` select this virtual environment for tooling and commands
-you run yourself. This initializes an empty environment; it does not guarantee
-repair of a damaged existing venv. Packages install into a
-service-owned `/app/.venv` overlay, not the host mount. Restart and a plain
-`lando destroy` keep it; `lando destroy --volumes` or `--purge` removes it.
+The stock Python service supplies the active `/app/.venv`. Packages installed
+there stay in the service's volume across restarts and rebuilds. If your app
+is in `app/main.py`, serve it with `lando uvicorn app.main:app`.
 
 ## Generated services
 

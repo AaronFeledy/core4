@@ -254,13 +254,13 @@ const compareNode = (
     return [...findings, finding("breaking", "type-changed", context.path, "The JSON Schema type changed.")];
   }
   if (!jsonEquals(before.enum, after.enum)) {
-    if (Array.isArray(before.enum) && Array.isArray(after.enum)) {
-      return [...findings, compareEnum(before.enum, after.enum, context)];
+    if (!Array.isArray(before.enum) || !Array.isArray(after.enum)) {
+      return [
+        ...findings,
+        finding("breaking", "enum-changed", context.path, "An enum constraint was added or removed."),
+      ];
     }
-    return [
-      ...findings,
-      finding("breaking", "enum-changed", context.path, "An enum constraint was added or removed."),
-    ];
+    findings.push(compareEnum(before.enum, after.enum, context));
   }
   if (!jsonEquals(before.const, after.const)) {
     return [
@@ -295,6 +295,13 @@ const compareNode = (
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   for (const key of [...keys].sort()) {
     if (ANNOTATION_KEYS.has(key) || HANDLED_KEYS.has(key) || jsonEquals(before[key], after[key])) continue;
+    if (key === "additionalProperties" && isJsonObject(before[key]) && isJsonObject(after[key])) {
+      const nested = compareNode(before[key], after[key], { ...context, path: childPath(context.path, key) });
+      if (nested.length > 0 && nested.every(({ changeKind }) => changeKind === "union-widened")) {
+        findings.push(...nested);
+        continue;
+      }
+    }
     if (
       context.unionProof &&
       key === "additionalProperties" &&
