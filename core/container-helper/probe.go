@@ -115,6 +115,12 @@ func runProbeHTTPOnce(rawURL string, timeout time.Duration) error {
 		return errors.New(probeNetworkError(err))
 	}
 
+	// RoundTrip does not turn URL userinfo into Basic Auth as http.Client does.
+	if user := req.URL.User; user != nil {
+		password, _ := user.Password()
+		req.SetBasicAuth(user.Username(), password)
+	}
+
 	// RoundTrip issues one request and never follows redirects.
 	resp, err := probeHTTPTransport(timeout).RoundTrip(req)
 	if err != nil {

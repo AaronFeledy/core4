@@ -156,6 +156,36 @@ func TestProbeHTTPSuccessAndStatus(t *testing.T) {
 	}
 }
 
+func TestProbeHTTPBasicAuthFromURL(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		userinfo string
+		wantAuth string
+	}{
+		{"with userinfo", "user:pass@", "Basic dXNlcjpwYXNz"},
+		{"without userinfo", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				auth := r.Header.Values("Authorization")
+				if (tc.wantAuth == "" && len(auth) != 0) || (tc.wantAuth != "" && (len(auth) != 1 || auth[0] != tc.wantAuth)) {
+					t.Errorf("Authorization = %q, want %q", auth, tc.wantAuth)
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer server.Close()
+
+			rawURL := "http://" + tc.userinfo + strings.TrimPrefix(server.URL, "http://") + "/ready"
+			if err := runProbeHTTPOnce(rawURL, 2*time.Second); err != nil {
+				t.Fatalf("probe failed: %v", err)
+			}
+		})
+	}
+}
+
 func TestProbeHTTPNoRedirectFollow(t *testing.T) {
 	t.Parallel()
 	var secondHits atomic.Int32
