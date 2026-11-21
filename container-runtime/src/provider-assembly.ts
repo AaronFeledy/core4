@@ -18,6 +18,9 @@ import { makeResourceOwnershipStore } from "./resource-ownership.ts";
 export { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 export { makeResourceOwnershipStore } from "./resource-ownership.ts";
 export { hasResourceOwnershipRecords } from "./resource-ownership-records.ts";
+export { PlanfulVolumeCoverage } from "./teardown-volumes.ts";
+export const hasExactVolumeTeardown = (provider: object): boolean =>
+  "exactVolumeTeardown" in provider && provider.exactVolumeTeardown === true;
 
 import { type ProviderDataPlaneOptions, makeProviderDataPlane } from "./data-plane.ts";
 import type { ProviderErrorContext } from "./engine-api.ts";
@@ -75,6 +78,7 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
         : options.load(options.appliedPlanState, app).pipe(Effect.asVoid),
     store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
     ctx: options.ctx,
+    ...(options.endpointNamespace === undefined ? {} : { endpointNamespace: options.endpointNamespace }),
     ...(options.api === undefined ? {} : { api: options.api }),
   }),
   ...(options.api === undefined
@@ -101,14 +105,16 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
 export const bindResolvedProviderOps = (
   state: ReturnType<typeof makeProviderPlanState>,
   input: Omit<ResolvedProviderOpsInput, "resolvePlan" | "dataPlane">,
-) =>
-  makeResolvedProviderOps({
+) => ({
+  exactVolumeTeardown: true,
+  ...makeResolvedProviderOps({
     ...input,
     beforeMutation:
       input.beforeMutation ?? ((app) => state.appliedPlans.resolveMutationPlan(app).pipe(Effect.asVoid)),
     resolvePlan: state.appliedPlans.resolvePlan,
     ...(state.dataPlane === undefined ? {} : { dataPlane: state.dataPlane }),
-  });
+  }),
+});
 
 export const rememberAppliedPlan = (
   appliedPlans: Pick<ReturnType<typeof makeAppliedPlanCache>, "rememberPlan">,

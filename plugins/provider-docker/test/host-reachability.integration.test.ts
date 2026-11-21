@@ -151,7 +151,11 @@ test.skipIf(dockerHost === undefined)(
         ).toEqual(["green", "green"]);
       } finally {
         try {
-          await Effect.runPromise(provider.destroy({ app: plan.id, plan }, { volumes: true }));
+          await Effect.runPromise(
+            provider
+              .destroy({ app: plan.id, plan }, { volumes: true })
+              .pipe(Effect.provide(makeTestStateStore().layer)),
+          );
         } finally {
           const removed = await Effect.runPromise(
             request({ method: "DELETE", path: `/networks/${encodeURIComponent(sharedNetworkName)}` }),

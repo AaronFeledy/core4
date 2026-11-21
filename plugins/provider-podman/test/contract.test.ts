@@ -213,7 +213,8 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
-        if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
+        if (request.path === "/volumes")
+          return { status: 200, body: JSON.stringify({ Volumes: [...createdVolumes.values()] }) };
         if (request.path === "/volumes/create") {
           const body = Schema.decodeUnknownSync(
             Schema.Struct({ Name: Schema.String, Labels: Schema.Record(Schema.String, Schema.String) }),
@@ -762,12 +763,13 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
-        if (request.path.startsWith("/libpod/volumes/prune")) {
-          // Ownership-complete prune: drop every tracked volume (tests only own this fake).
-          volumes.clear();
-          volumeLabels.clear();
-          return { status: 200, body: "[]" };
-        }
+        if (request.path === "/volumes")
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Volumes: [...volumes].map((Name) => ({ Name, Labels: volumeLabels.get(Name) })),
+            }),
+          };
         if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
           const payload =
             request.path === "/libpod/networks/create"

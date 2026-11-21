@@ -336,7 +336,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
           origin: "created",
         },
       } satisfies VolumeInfo),
-    withVolumeLock: (_instanceId, body) =>
+    withVolumeLock: (_request, body) =>
       Effect.sync(() => {
         lifecycle.push("lock");
       }).pipe(Effect.andThen(body)),

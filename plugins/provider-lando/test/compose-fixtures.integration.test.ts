@@ -356,7 +356,11 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     } finally {
       try {
         if (plan !== undefined) {
-          await Effect.runPromise(Effect.result(bringDown(plan, { api, volumes: true })));
+          await Effect.runPromise(
+            Effect.result(
+              bringDown(plan, { api, volumes: true }).pipe(Effect.provide(makeTestStateStore().layer)),
+            ),
+          );
         }
       } finally {
         await rm(appRoot, { recursive: true, force: true });

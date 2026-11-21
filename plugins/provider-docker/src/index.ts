@@ -294,6 +294,7 @@ export const dockerCapabilitiesForHost = (
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
+    serializesVolumeCopyUp: false,
     volumeSnapshot: "none",
     serviceFileCopy: "native",
     artifactExport: true,
@@ -710,6 +711,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
               ? Effect.succeed(DESTROY_NO_OP)
               : bringDown(plan, {
                   api: dockerApi,
+                  endpointNamespace: resolvedDockerHost,
                   ctx: DOCKER_CTX,
                   dialect: dockerLifecycleDialect,
                   volumes: destroyOptions.volumes,
@@ -718,10 +720,11 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
                     : { purgeCaches: destroyOptions.purgeCaches }),
                 }).pipe(
                   Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
-                  Effect.map(({ shutdownObservations, volumesRemoved }) => ({
+                  Effect.map(({ shutdownObservations, volumesRemoved, skipped }) => ({
                     kind: "destroyed" as const,
                     volumesRemoved,
                     shutdownObservations,
+                    ...(skipped === undefined ? {} : { skipped }),
                   })),
                 ),
           ),
