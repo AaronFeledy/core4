@@ -3,167 +3,109 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
-	"time"
 )
 
-func (s *scaffold) releaseLock() {
-	if s.lock == nil {
-		return
-	}
-	s.lock.release()
-	s.lock = nil
-}
-
 type scaffoldLock struct {
-	path     string
-	identity fileIdentity
+	file *os.File
+	info os.FileInfo
 }
 
 func acquireScaffoldLock(appRoot string) (*scaffoldLock, error) {
+	return acquireScaffoldLockWithFlock(appRoot, syscall.Flock)
+}
+
+func acquireScaffoldLockWithFlock(appRoot string, flock func(int, int) error) (*scaffoldLock, error) {
 	path := filepath.Join(appRoot, scaffoldLockName)
-	cleanScaffoldLockTemps(appRoot)
 	for attempt := 0; attempt < 8; attempt++ {
-		err := publishScaffoldLock(path)
-		if err == nil {
-			info, statErr := os.Lstat(path)
-			if statErr != nil {
-				return nil, statErr
-			}
-			return &scaffoldLock{path: path, identity: identityOf(info)}, nil
-		}
-		if !errors.Is(err, syscall.EEXIST) {
-			return nil, err
-		}
-		info, statErr := os.Lstat(path)
-		if errors.Is(statErr, fs.ErrNotExist) {
-			continue
-		}
-		if statErr != nil {
-			return nil, statErr
-		}
-		identity := identityOf(info)
-		pid, ownerKnown := readScaffoldLockPID(path)
-		if ownerKnown && processAlive(pid) {
+		lock, err := tryScaffoldLock(path, flock)
+		switch {
+		case errors.Is(err, syscall.EWOULDBLOCK), errors.Is(err, syscall.EAGAIN):
 			return nil, fmt.Errorf("Another Lando scaffold is already running for %s.", appRoot)
-		}
-		current, statErr := os.Lstat(path)
-		if errors.Is(statErr, fs.ErrNotExist) {
-			continue
-		}
-		if statErr != nil {
-			return nil, statErr
-		}
-		if identityOf(current) != identity {
-			// Someone else recovered or replaced it between our read and
-			// removal; retry instead of deleting their lock.
-			continue
-		}
-		if err := os.RemoveAll(path); err != nil {
+		case err != nil:
 			return nil, err
+		case lock != nil:
+			return lock, nil
 		}
-		syncDir(appRoot)
 	}
 	return nil, fmt.Errorf("Unable to acquire the Lando scaffold lock for %s.", appRoot)
 }
 
-func publishScaffoldLock(path string) error {
-	temporary := fmt.Sprintf("%s.tmp.%d.%d", path, os.Getpid(), time.Now().UnixNano())
-	if err := os.Mkdir(temporary, 0o700); err != nil {
-		return err
+// A nil lock with no error means the path changed while this fd was open.
+func tryScaffoldLock(path string, flock func(int, int) error) (lock *scaffoldLock, err error) {
+	var fd int
+	for {
+		fd, err = syscall.Open(path, syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0o600)
+		if err != syscall.EINTR {
+			break
+		}
 	}
-	owner := filepath.Join(temporary, "pid")
-	file, err := os.OpenFile(owner, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		_ = os.RemoveAll(temporary)
-		return err
+		// Some special files (e.g. sockets) fail open before we can fstat.
+		info, statErr := os.Lstat(path)
+		if err == syscall.ELOOP || err == syscall.EISDIR || (statErr == nil && !info.Mode().IsRegular()) {
+			return nil, unsafeScaffoldLockPath(path)
+		}
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
 	}
-	if _, err := file.WriteString(strconv.Itoa(os.Getpid()) + "\n"); err != nil {
-		_ = file.Close()
-		_ = os.RemoveAll(temporary)
-		return err
+	file := os.NewFile(uintptr(fd), path)
+	defer func() {
+		if lock == nil {
+			_ = file.Close()
+		}
+	}()
+	for {
+		err = flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
+		if err != syscall.EINTR {
+			break
+		}
 	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		_ = os.RemoveAll(temporary)
-		return err
+	if err != nil {
+		return nil, &os.PathError{Op: "flock", Path: path, Err: err}
 	}
-	if err := file.Close(); err != nil {
-		_ = os.RemoveAll(temporary)
-		return err
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
 	}
-	syncDir(temporary)
-	if err := renameNoReplace(temporary, path); err != nil {
-		_ = os.RemoveAll(temporary)
-		return err
+	if !info.Mode().IsRegular() {
+		return nil, unsafeScaffoldLockPath(path)
 	}
-	syncDir(filepath.Dir(path))
-	return nil
+	current, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	// A previous owner may have unlinked this inode before unlocking it.
+	if !os.SameFile(info, current) {
+		return nil, nil
+	}
+	host, err := os.Hostname()
+	if err != nil {
+		host = "unknown"
+	}
+	if err := file.Truncate(0); err != nil {
+		return nil, err
+	}
+	if _, err := fmt.Fprintf(file, "pid=%d host=%s\n", os.Getpid(), host); err != nil {
+		return nil, err
+	}
+	return &scaffoldLock{file: file, info: info}, nil
 }
 
-func cleanScaffoldLockTemps(appRoot string) {
-	entries, err := os.ReadDir(appRoot)
-	if err != nil {
-		return
-	}
-	prefix := scaffoldLockName + ".tmp."
-	for _, entry := range entries {
-		if !strings.HasPrefix(entry.Name(), prefix) {
-			continue
-		}
-		rest := strings.TrimPrefix(entry.Name(), prefix)
-		pidText, _, ok := strings.Cut(rest, ".")
-		if !ok {
-			continue
-		}
-		pid, err := strconv.Atoi(pidText)
-		if err != nil || processAlive(pid) {
-			continue
-		}
-		_ = os.RemoveAll(filepath.Join(appRoot, entry.Name()))
-	}
-}
-
-func readScaffoldLockPID(path string) (int, bool) {
-	data, err := os.ReadFile(filepath.Join(path, "pid"))
-	if err != nil {
-		return 0, false
-	}
-	text := strings.TrimSpace(string(data))
-	pid, err := strconv.Atoi(text)
-	if err != nil || pid <= 0 {
-		return 0, false
-	}
-	return pid, true
-}
-
-func processAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	if err == nil {
-		return true
-	}
-	return errors.Is(err, syscall.EPERM)
+func unsafeScaffoldLockPath(path string) error {
+	return fmt.Errorf("Unsafe Lando scaffold lock path %s: expected a regular file. Make sure no scaffold is running, then remove it.", path)
 }
 
 func (l *scaffoldLock) release() {
-	info, err := os.Lstat(l.path)
-	if err != nil || identityOf(info) != l.identity {
-		return
+	defer l.file.Close()
+	path := l.file.Name()
+	if current, err := os.Lstat(path); err == nil && os.SameFile(l.info, current) {
+		_ = syscall.Unlink(path)
 	}
-	pid, ok := readScaffoldLockPID(l.path)
-	if !ok || pid != os.Getpid() {
-		return
+	for syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN) == syscall.EINTR {
 	}
-	if err := os.RemoveAll(l.path); err != nil {
-		return
-	}
-	syncDir(filepath.Dir(l.path))
 }
