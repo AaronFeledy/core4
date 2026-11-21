@@ -113,6 +113,7 @@ export const SchemaIssueLeaf = Schema.Struct({
   path: Schema.Array(Schema.PropertyKey),
   message: Schema.String,
   suggestion: Schema.optionalKey(Schema.String),
+  reason: ValidationIssue.fields.reason,
   kind: ValidationIssue.fields.kind,
 });
 export type SchemaIssueLeaf = typeof SchemaIssueLeaf.Type;
@@ -122,7 +123,14 @@ export type SchemaIssueLeaf = typeof SchemaIssueLeaf.Type;
 const distinctLeaves = (leaves: ReadonlyArray<SchemaIssueLeaf>): ReadonlyArray<SchemaIssueLeaf> => {
   const seen = new Set<string>();
   return leaves.filter((leaf) => {
-    const key = JSON.stringify([leaf._tag, leaf.path.map(String), leaf.message, leaf.suggestion, leaf.kind]);
+    const key = JSON.stringify([
+      leaf._tag,
+      leaf.path.map(String),
+      leaf.message,
+      leaf.suggestion,
+      leaf.kind,
+      leaf.reason,
+    ]);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -167,11 +175,33 @@ export const schemaIssueLeaves = (
         const children = shapeCandidates.filter((child) => !authoringNonCandidate(child));
         return children.length === 0 ? walk(expectationIssue(value, issue)) : children.flatMap(walk);
       }
+      const resolveReason = (authoringSource(issue.ast) ?? issue.ast).annotations?.[
+        "lando/union-failure-reason"
+      ];
+      const summarize = (message: string): readonly SchemaIssueLeaf[] => {
+        const reason: unknown =
+          typeof resolveReason === "function"
+            ? resolveReason(
+                options !== undefined && Object.hasOwn(options, "input")
+                  ? valueAt(options.input, path, true)
+                  : input,
+              )
+            : undefined;
+        return [
+          {
+            _tag: "Type",
+            path,
+            message,
+            ...classification,
+            ...(typeof reason === "string" ? { reason } : {}),
+          },
+        ];
+      };
       if (authoringSource(issue.ast) !== undefined) {
         const children = shapeCandidates.filter((child) => !authoringNonCandidate(child));
         const candidates = diagnosticUnionCandidates(issue.ast, children);
         const message = unionValueMessage(issue.ast, candidates);
-        if (message !== undefined) return [{ _tag: "Type", path, message, ...classification }];
+        if (message !== undefined) return summarize(message);
         const attempted = new SchemaIssue.AnyOf(issue.ast, candidates, issue.input, {
           reportInput: SchemaIssue.hasInput(issue),
         });
@@ -188,19 +218,28 @@ export const schemaIssueLeaves = (
             );
       }
       const message = unionValueMessage(issue.ast, shapeCandidates);
-      if (message !== undefined) return [{ _tag: "Type", path, message, ...classification }];
+      if (message !== undefined) return summarize(message);
       if (shapeCandidates.length > 0) return unionLeaves(shapeCandidates);
       break;
     }
     case "InvalidType":
       if (authoringSource(issue.ast) !== undefined) return walk(expectationIssue(issue.ast, issue));
       break;
-    case "Filter":
-      if (isSemanticSite(issue.filter)) return walk(issue.issue);
-      if (SchemaIssue.defaultCheckHook(issue) === undefined && issue.issue._tag !== "InvalidValue") {
-        return walk(issue.issue).map((leaf) => ({ ...leaf, kind: "value" }));
+    case "Filter": {
+      const reason = issue.filter.annotations?.["lando/issue-reason"];
+      const semantic = isSemanticSite(issue.filter);
+      if (
+        semantic ||
+        (SchemaIssue.defaultCheckHook(issue) === undefined && issue.issue._tag !== "InvalidValue")
+      ) {
+        return walk(issue.issue).map((leaf) => ({
+          ...leaf,
+          ...(semantic ? {} : { kind: "value" }),
+          ...(leaf.reason === undefined && typeof reason === "string" ? { reason } : {}),
+        }));
       }
       break;
+    }
     case "UnexpectedKey":
     case "MissingKey":
     case "InvalidValue":
@@ -215,6 +254,13 @@ export const schemaIssueLeaves = (
     return [{ _tag: "Type", path, message: validationExpectation(issue.ast), ...classification }];
   }
   const unknownKey = normalizedPath.at(-1);
+  const reason = (
+    issue._tag === "Filter"
+      ? issue.filter.annotations
+      : issue._tag === "InvalidValue"
+        ? issue.annotations
+        : undefined
+  )?.["lando/issue-reason"];
   const suggestion =
     issue._tag === "UnexpectedKey" && typeof unknownKey === "string"
       ? suggestionForUnknownKey(unknownKey, [
@@ -227,6 +273,7 @@ export const schemaIssueLeaves = (
     path,
     message: formatted.message,
     ...classification,
+    ...(typeof reason === "string" ? { reason } : {}),
     ...(suggestion === undefined ? {} : { suggestion }),
   }));
 };

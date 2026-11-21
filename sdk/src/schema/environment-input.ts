@@ -10,19 +10,16 @@ const reservedName =
   'The key "__proto__" is reserved and cannot be used in an environment map. Choose another name.';
 
 export const EnvironmentAssignment = Schema.String.check(
-  Schema.makeFilter<string>(
-    (entry) => {
-      if (entry.includes("=")) return undefined;
-      const name = JSON.stringify(entry);
-      const explicit = /^[A-Za-z_][A-Za-z0-9_]*$/u.test(entry)
-        ? ` To use a host value, write ${entry}: "{{ env.${entry} }}" in the map.`
-        : ' To use a host value, use a whole-value expression such as KEY: "{{ env.KEY }}" in the map.';
-      return `Lando does not pass host variables through by name (${name}). Use KEY=value or the map form.${explicit}`;
-    },
-    { toJsonSchema: () => ({ pattern: /=/u.source }) },
-  ),
-  Schema.isPattern(/^(?!=)/u, { message: emptyName }),
-  Schema.isPattern(/^(?!__proto__=)/u, { message: reservedName }),
+  Schema.makeFilter<string>((entry) => entry.includes("="), {
+    message: "Lando does not pass host variables through by name. Use KEY=value or the map form.",
+    "lando/issue-reason": "environment.bare-entry",
+    toJsonSchema: () => ({ pattern: /=/u.source }),
+  }),
+  Schema.isPattern(/^(?!=)/u, { message: emptyName, "lando/issue-reason": "environment.empty-name" }),
+  Schema.isPattern(/^(?!__proto__=)/u, {
+    message: reservedName,
+    "lando/issue-reason": "environment.reserved-name",
+  }),
 );
 
 const EnvironmentMapInput = propertyNameCheckedRecord(
@@ -30,10 +27,12 @@ const EnvironmentMapInput = propertyNameCheckedRecord(
     Schema.String,
     Schema.Union([EnvironmentValue, Schema.Finite, Schema.Boolean]).annotate({
       message: "Supply a concrete environment value; host-environment interpolation is unsupported.",
+      "lando/union-failure-reason": (input: unknown) =>
+        input === null ? "environment.null-value" : undefined,
     }),
   ).annotate({ expected: "a map or a list of KEY=VALUE strings" }),
-  indexedPropertyNameCheck(/^[\s\S]/u, emptyName),
-  indexedPropertyNameCheck(/^(?!__proto__(?![\s\S]))/u, reservedName),
+  indexedPropertyNameCheck(/^[\s\S]/u, emptyName, "environment.empty-name"),
+  indexedPropertyNameCheck(/^(?!__proto__(?![\s\S]))/u, reservedName, "environment.reserved-name"),
 );
 
 export const ComposeEnvironmentInput = Schema.Union([

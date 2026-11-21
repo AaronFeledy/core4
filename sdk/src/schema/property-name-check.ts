@@ -66,14 +66,18 @@ export const propertyNameCheckedRecord = <A, I>(
   );
 };
 
-export const indexedPropertyNameCheck = (pattern: RegExp, message: string) =>
+export const indexedPropertyNameCheck = (pattern: RegExp, message: string, reason?: string) =>
   Schema.makeFilter(
     (input: unknown, _ast, options) => {
       if (!Predicate.isObject(input)) return undefined;
       let issues: Array<Schema.FilterIssue> | undefined;
       for (const key of Object.keys(input)) {
         if (pattern.test(key)) continue;
-        const issue = { path: [key], issue: message };
+        // This declaration calls check.run directly, so there is no Filter wrapper.
+        const issue = {
+          path: [key],
+          issue: new SchemaIssue.InvalidValue({ message, "lando/issue-reason": reason }, key, options),
+        };
         if (options.errors !== "all") return issue;
         issues ??= [];
         issues.push(issue);

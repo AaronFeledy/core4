@@ -57,6 +57,7 @@ const presence = Schema.makeFilter(
   (value: unknown) => Predicate.isObject(value) && Object.keys(value).length > 0,
   {
     "lando/authoring-key-presence": true,
+    "lando/issue-reason": "build.empty",
     message:
       'Landofile service "build" is empty. Provide Compose image-build keys or Lando build-script keys.',
     toJsonSchema: () => ({ minProperties: 1 }),
@@ -78,6 +79,7 @@ const ComposeInput = Schema.Struct({ ...composeFields, artifact: anti(), app: an
     ({ dockerfile, dockerfile_inline }) => dockerfile === undefined || dockerfile_inline === undefined,
     {
       "lando/authoring-key-presence": true,
+      "lando/issue-reason": "build.dockerfile-conflict",
       message: 'Landofile service "build" sets both "dockerfile" and "dockerfile_inline". Keep exactly one.',
       toJsonSchema: () => ({ not: { required: ["dockerfile", "dockerfile_inline"] } }),
     },
@@ -87,6 +89,7 @@ const ComposeInput = Schema.Struct({ ...composeFields, artifact: anti(), app: an
 const knownKeys = indexedPropertyNameCheck(
   new RegExp(`^(?:${Object.keys({ ...composeFields, ...scriptFields }).join("|")})(?![\\s\\S])`, "u"),
   'Unsupported Compose build key. Use a listed build key; spell an inline Dockerfile as "dockerfile_inline".',
+  "build.unsupported-key",
 );
 
 const BUILD_BLOCK_DESCRIPTION =
@@ -100,6 +103,13 @@ const BuildBlockFrom = Schema.Union([
   description: BUILD_BLOCK_DESCRIPTION,
   message:
     'Landofile service "build" must use either Compose image-build keys or Lando build-script keys. To use a separately built image with scripts, reference it using image:.',
+  // The opposing anti-fields reject the combination; classify it when the union reports it.
+  "lando/union-failure-reason": (input: unknown) =>
+    Predicate.isObject(input) &&
+    Object.keys(scriptFields).some((key) => Object.hasOwn(input, key)) &&
+    Object.keys(composeFields).some((key) => Object.hasOwn(input, key))
+      ? "build.mixed-families"
+      : undefined,
 });
 
 type BuildBlockShape = typeof BuildBlockCanonical.Type;
