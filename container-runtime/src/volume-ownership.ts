@@ -69,6 +69,42 @@ export const sharedCacheOwnershipLabels = (providerId: string) => ({
   }),
 });
 
+/**
+ * A global cache Lando owns as a class on this provider. Caches created before class ownership
+ * carry their first app's coherent ownership pair instead; volume labels are immutable, so that
+ * persisted form is still Lando's shared cache and stays purgeable.
+ */
+export const hasSharedCacheOwnership = (
+  labels: Readonly<Record<string, string>>,
+  providerId: string,
+): boolean => {
+  if (
+    labels["dev.lando.scope"] !== "global" ||
+    labels["dev.lando.storage-kind"] !== "cache" ||
+    !labels["dev.lando.store"] ||
+    !labels["dev.lando.volume-instance"]
+  )
+    return false;
+  if (Object.entries(sharedCacheOwnershipLabels(providerId)).every(([key, value]) => labels[key] === value))
+    return true;
+  const root = labels[VOLUME_OWNER_LABEL];
+  const app = labels["dev.lando.app"];
+  return (
+    root !== undefined &&
+    isOwnershipRoot(root) &&
+    app !== undefined &&
+    app.length > 0 &&
+    (labels["dev.lando.provider"] === undefined || labels["dev.lando.provider"] === providerId) &&
+    labels[VOLUME_SELECTOR_LABEL] ===
+      volumeSelectorValue({
+        providerId,
+        appId: app,
+        ownerKey: appIdentityKey("owner", root),
+        volumeClass: "cache",
+      })
+  );
+};
+
 export const coherentVolumeOwnership = (
   labels: Readonly<Record<string, string>>,
   providerId: string,
@@ -77,11 +113,7 @@ export const coherentVolumeOwnership = (
   const app = labels["dev.lando.app"];
   const scope = labels["dev.lando.scope"];
   const kind = labels["dev.lando.storage-kind"];
-  if (scope === "global" && kind === "cache")
-    return (
-      Boolean(labels["dev.lando.store"] && labels["dev.lando.volume-instance"]) &&
-      Object.entries(sharedCacheOwnershipLabels(providerId)).every(([key, value]) => labels[key] === value)
-    );
+  if (scope === "global" && kind === "cache") return hasSharedCacheOwnership(labels, providerId);
   if (
     !root ||
     !isOwnershipRoot(root) ||

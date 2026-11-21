@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, AppId, type AppPlan } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, appIdentityKey } from "@lando/sdk/schema";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { Deferred, Effect, Fiber } from "effect";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpResponse } from "../src/engine-api.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { podmanVolumeCreationLabels } from "../src/podman/bring-up.ts";
+import { volumeSelectorValue } from "../src/podman/volume-prune.ts";
+import { VOLUME_OWNER_LABEL, VOLUME_SELECTOR_LABEL } from "../src/volume-ownership.ts";
 import { networkPlan } from "./authored-network-fixture.ts";
 
 const stores: AppPlan["stores"] = [
@@ -125,14 +127,35 @@ test("selector cleanup removes unplanned app data but not an unplanned shared ca
   expect(recorded.requests).not.toContain("DELETE /volumes/old-cache");
 });
 
-test.each([false, true])(
-  "a different app can purge a planned global cache unless a container holds it (held=%s)",
-  async (held) => {
+// Caches created before class ownership carry their first app's coherent ownership pair.
+const creatorStampedCacheLabels = (creator: AppPlan, store: AppPlan["stores"][number]) => ({
+  ...podmanVolumeCreationLabels(creator, store),
+  "dev.lando.app": String(creator.id),
+  [VOLUME_OWNER_LABEL]: creator.root,
+  [VOLUME_SELECTOR_LABEL]: volumeSelectorValue({
+    providerId: creator.provider,
+    appId: String(creator.id),
+    ownerKey: appIdentityKey("owner", creator.root),
+    volumeClass: "cache",
+  }),
+});
+
+test.each([
+  { held: false, labels: "class" },
+  { held: true, labels: "class" },
+  { held: false, labels: "creator-stamped" },
+  { held: true, labels: "creator-stamped" },
+] as const)(
+  "a different app can purge a planned global cache unless a container holds it (held=$held, labels=$labels)",
+  async ({ held, labels: labelForm }) => {
     const store = { name: "lando-cache-composer", scope: "global", kind: "cache" } as const;
     const creator = { ...plan, stores: [store] };
     const consumer = { ...creator, id: AppId.make("consumer"), root: AbsolutePath.make("/other/app") };
     let retained = true;
-    const labels = podmanVolumeCreationLabels(creator, store);
+    const labels =
+      labelForm === "class"
+        ? podmanVolumeCreationLabels(creator, store)
+        : creatorStampedCacheLabels(creator, store);
     const result = await Effect.runPromise(
       bringDown(consumer, {
         ctx: { providerId: consumer.provider, remediation: "Retry.", env: {} },

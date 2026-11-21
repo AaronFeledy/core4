@@ -17,8 +17,7 @@ import { NativeVolumeSchema, volumeCoordinationKey } from "./native-volume-ident
 import type { VolumeSelectorClass } from "./podman/volume-prune.ts";
 import { redactDetails, redactorFor, withApiReason } from "./redact.ts";
 import { removeAllStaleVolumeHolders } from "./stale-data-helpers.ts";
-import { STORAGE_KIND_LABEL, STORAGE_SCOPE_LABEL } from "./volume-classes.ts";
-import { sharedCacheOwnershipLabels } from "./volume-ownership.ts";
+import { hasSharedCacheOwnership } from "./volume-ownership.ts";
 
 export interface TeardownVolumeRuntime {
   readonly request: (request: EngineHttpRequest) => Effect.Effect<EngineHttpResponse, ProviderError>;
@@ -49,11 +48,7 @@ export const matchesSharedCache = (
   providerId: string,
   name: string,
   labels: Readonly<Record<string, string>>,
-) =>
-  labels[STORAGE_SCOPE_LABEL] === "global" &&
-  labels[STORAGE_KIND_LABEL] === "cache" &&
-  labels[STORE_LABEL] === name &&
-  Object.entries(sharedCacheOwnershipLabels(providerId)).every(([key, value]) => labels[key] === value);
+) => labels[STORE_LABEL] === name && hasSharedCacheOwnership(labels, providerId);
 
 const volumePath = (name: string): EngineHttpRequest["path"] => `/volumes/${encodeURIComponent(name)}`;
 
