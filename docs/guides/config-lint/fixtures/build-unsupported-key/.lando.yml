@@ -4,4 +4,4 @@ services:
   web:
     image: alpine
     build:
-      dockerfileInline: FROM alpine
+      typoBuildKey: FROM alpine

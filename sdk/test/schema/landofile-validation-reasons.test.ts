@@ -7,7 +7,7 @@ test.each([
   [{ environment: { "": "value" } }, ["environment", ""], "environment.empty-name"],
   [{ environment: { ["__proto__"]: "value" } }, ["environment", "__proto__"], "environment.reserved-name"],
   [{ environment: { FOO: null } }, ["environment", "FOO"], "environment.null-value"],
-  [{ build: { dockerfileInline: "FROM alpine" } }, ["build", "dockerfileInline"], "build.unsupported-key"],
+  [{ build: { dockerfileInline: "FROM alpine" } }, ["build", "dockerfileInline"], "key.renamed"],
   [{ build: { context: ".", app: "echo ok" } }, ["build"], "build.mixed-families"],
   [
     { build: { dockerfile: "Dockerfile", dockerfile_inline: "FROM alpine" } },

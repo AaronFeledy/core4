@@ -78,6 +78,10 @@ export const CONFIG_LINT_RULES = {
         summary: "The build object sets both `dockerfile` and `dockerfile_inline`.",
       },
       { id: "build.empty", summary: "The build object has no keys." },
+      {
+        id: "key.renamed",
+        summary: "An authored key uses a removed spelling; the suggestion names the canonical key.",
+      },
     ],
   },
   "landofile.compose-rejection": {
@@ -243,20 +247,20 @@ export const CONFIG_LINT_RULES = {
     stages: ["resolve"],
     severities: ["error"],
     summary: "A declared env file is missing or cannot be read.",
-    examplePaths: ["serviceDefaults.env_file[0]", "services.web.envFile[0]"],
+    examplePaths: ["serviceDefaults.env_file[0]", "services.web.env_file[0]"],
   },
   "env-file.syntax": {
     stages: ["resolve"],
     severities: ["error"],
     summary: "Invalid env-file entries, including a bare name without `=` or unmatched quotes.",
-    examplePaths: ["serviceDefaults.env_file[0]", "services.web.envFile[0]"],
+    examplePaths: ["serviceDefaults.env_file[0]", "services.web.env_file[0]"],
   },
   "env-file.literal": {
     stages: ["resolve"],
     severities: ["warning"],
     summary:
       "Double-quoted escapes change a value, or an unquoted or double-quoted value contains `${`, which env files never interpolate.",
-    examplePaths: ["serviceDefaults.env_file[0]", "services.web.envFile[0]"],
+    examplePaths: ["serviceDefaults.env_file[0]", "services.web.env_file[0]"],
   },
   "unsupported-expression": {
     stages: ["load", "global-config"],

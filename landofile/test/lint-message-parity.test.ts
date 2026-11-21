@@ -52,14 +52,31 @@ test("merges a null environment defect through an authored override", async () =
   ]);
 });
 
-test.each(["dockerfileInline", "typoBuildKey"])("reports unsupported build key %s once", async (key) => {
+test("reports dockerfileInline as one key.renamed finding", async () => {
   const { result } = await lintLayers({
-    ".lando.yml": `name: lint-parity\nservices:\n  web:\n    type: compose\n    image: alpine\n    build:\n      ${key}: FROM alpine\n`,
+    ".lando.yml":
+      "name: lint-parity\nservices:\n  web:\n    type: compose\n    image: alpine\n    build:\n      dockerfileInline: FROM alpine\n",
   });
   expect(result.violations).toEqual([
     expect.objectContaining({
       rule: "landofile.validation",
-      path: ["services", "web", "build", key],
+      path: ["services", "web", "build", "dockerfileInline"],
+      reason: "key.renamed",
+      suggestion: "Rename dockerfileInline to dockerfile_inline.",
+      scopes: ["fragment", "effective"],
+    }),
+  ]);
+});
+
+test("reports an unknown build key as build.unsupported-key once", async () => {
+  const { result } = await lintLayers({
+    ".lando.yml":
+      "name: lint-parity\nservices:\n  web:\n    type: compose\n    image: alpine\n    build:\n      typoBuildKey: FROM alpine\n",
+  });
+  expect(result.violations).toEqual([
+    expect.objectContaining({
+      rule: "landofile.validation",
+      path: ["services", "web", "build", "typoBuildKey"],
       reason: "build.unsupported-key",
       scopes: ["fragment", "effective"],
     }),

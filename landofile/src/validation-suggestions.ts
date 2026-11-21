@@ -172,10 +172,10 @@ const reasonSuggestion = (
       const host = hostEnvMember(key);
       return `Write ${yamlMappingKeyText(key)}: "" for a literal empty value.${host === undefined ? "" : ` Use ${host} to read the host value.`}`;
     }
+    case "key.renamed":
+      return issue.suggestion;
     case "build.unsupported-key":
-      return key === "dockerfileInline"
-        ? "Rename dockerfileInline to dockerfile_inline."
-        : "Remove the unsupported build key.";
+      return "Remove the unsupported build key.";
     case "build.mixed-families":
       return "Keep either Compose image-build keys or Lando build-script keys in build, not both.";
     case "build.dockerfile-conflict":

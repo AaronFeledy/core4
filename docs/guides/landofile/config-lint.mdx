@@ -168,6 +168,8 @@ form (and `kind` objects). The `source.path` keeps the authored index.
 
 An unknown key gets a `suggestion` naming the closest allowed key, as long as the typo is within two edits. `imgae` suggests `image`. A key nowhere near anything valid gets a plain unknown-key message instead. Unknown keys are schema-only violations, never a `NotImplementedError`.
 
+A removed spelling such as `workingDirectory` or `dockerfileInline` is one `landofile.validation` finding with `reason: "key.renamed"`. The `suggestion` names the canonical key (`working_dir`, `dockerfile_inline`). Match on `reason` rather than the message.
+
 If your service has `environment: [FOO]`, lint reports `environment.bare-entry` at `services.web.environment[0]` (for a service named `web`). To pass `FOO` from your host, use the suggested entry `"FOO={{ env.FOO }}"` and set `FOO` before running Lando. For a literal value, write `FOO=value`; `FOO=` passes an empty string. When scripting against lint JSON, match `rule` and `reason` rather than the message. The [rule reference](../../reference/config-lint-rules.mdx#reasons-within-a-rule) lists the documented reasons.
 
 ## Read rejected Compose keys
@@ -305,10 +307,28 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"environment[.]null-value\".*\"path\":\\[\"services\",\"web\",\"environment\",\"FOO\"\\].*\"suggestion\":.*FOO: \\\\\"\\\\\".*[{][{] env[.]FOO [}][}]", not: { regex: "\"rule\":.*\"rule\":" } } }} />
     </Step>
   </Scenario>
-  <Scenario id="build-unsupported-key" render={false} reason="Check the canonical inline Dockerfile spelling">
+  <Scenario id="key-renamed-working-directory" render={false} reason="Check removed Compose twin spelling in lint JSON">
+    <Step name="lint">
+      <UseFixture name="key-renamed-working-directory" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"key[.]renamed\".*\"path\":\\[\"services\",\"web\",\"workingDirectory\"\\].*\"suggestion\":.*working_dir", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="canonical-working-dir" render={false} reason="Canonical working_dir spelling lints clean">
+    <Step name="lint">
+      <UseFixture name="canonical-working-dir" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":true.*\"violations\":\\[\\]" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="key-renamed-dockerfile-inline" render={false} reason="Check removed inline Dockerfile spelling in lint JSON">
+    <Step name="lint">
+      <UseFixture name="key-renamed-dockerfile-inline" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"key[.]renamed\".*\"path\":\\[\"services\",\"web\",\"build\",\"dockerfileInline\"\\].*\"suggestion\":.*dockerfile_inline", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="build-unsupported-key" render={false} reason="Check an unsupported build key that is not a rename">
     <Step name="lint">
       <UseFixture name="build-unsupported-key" />
-      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"build[.]unsupported-key\".*\"path\":\\[\"services\",\"web\",\"build\",\"dockerfileInline\"\\].*\"suggestion\":.*dockerfile_inline", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"build[.]unsupported-key\".*\"path\":\\[\"services\",\"web\",\"build\",\"typoBuildKey\"\\]", not: { regex: "\"rule\":.*\"rule\":" } } }} />
     </Step>
   </Scenario>
   <Scenario id="build-mixed-families" render={false} reason="Check the repair when both build families occur">

@@ -337,6 +337,30 @@ For example, if `router.httpPort`, `defaultProvidreId`, and `tracing.otlp.header
 
 Problems in another config layer never block the write: fixing `config.yml` while `LANDO_ROUTER_HTTP_PORT=99999` is still exported succeeds. Once the candidate file is valid, the command reports the other source and its fix with `LANDO_CONFIG_OTHER_SOURCE_INVALID`. Unset the variable or edit the drop-in it names, then rerun `lando config validate`.
 
+  <Scenario id="renamed-service-default" render={false} reason="Check the structured repair for a removed config.yml key">
+    <Step name="validate-old-key">
+      <Run runtime="library" code={`const fs = yield* Effect.promise(() => import("node:fs/promises"));
+const { tmpdir } = yield* Effect.promise(() => import("node:os"));
+const { join } = yield* Effect.promise(() => import("node:path"));
+const { config } = yield* Effect.promise(() => import("@lando/engine/operations/config"));
+const { GlobalConfigSources } = yield* Effect.promise(() => import("@lando/engine/services/config"));
+const root = yield* Effect.promise(() => fs.mkdtemp(join(tmpdir(), "lando-guide-renamed-key-")));
+try {
+  yield* Effect.promise(() => fs.writeFile(join(root, "config.yml"), "appEnv:\n  TEAM: platform\n"));
+  const failure = yield* Effect.flip(config({ subcommand: "validate" }).pipe(
+    Effect.provideService(GlobalConfigSources, { env: {}, sources: { user: true, env: false }, rootOverrides: { userConfRoot: root } }),
+  ));
+  expect(failure._tag).toBe("ConfigError");
+  if (failure._tag !== "ConfigError") throw failure;
+  expect(failure.issues).toHaveLength(1);
+  expect(failure.issues?.[0]).toMatchObject({ path: ["appEnv"], reason: "key.renamed" });
+  expect(failure.issues?.[0]?.suggestion).toContain("serviceDefaults.environment");
+} finally {
+  yield* Effect.promise(() => fs.rm(root, { recursive: true, force: true }));
+}`} displayCode={`config({ subcommand: "validate" })`} />
+    </Step>
+  </Scenario>
+
   <Scenario id="repair-one-of-several-issues" render={false} reason="Repair one invalid key without blocking on unrelated pre-existing issues">
     <Step name="repair-one-key">
       <Run runtime="library" code={`const fs = yield* Effect.promise(() => import("node:fs/promises"));

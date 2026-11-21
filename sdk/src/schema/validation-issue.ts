@@ -1,5 +1,6 @@
 import { Schema, SchemaIssue } from "effect";
 import { authoringSource, directiveValue, isSemanticSite } from "./authoring-issue-metadata.ts";
+import { applyRenamedConfigKey } from "./renamed-keys.ts";
 import { validationExpectation } from "./validation-expectation.ts";
 import { schemaIssueKind } from "./validation-issue-kind.ts";
 import {
@@ -138,12 +139,12 @@ const distinctLeaves = (leaves: ReadonlyArray<SchemaIssueLeaf>): ReadonlyArray<S
 };
 
 /** Flatten diagnostics, hiding authoring-only alternatives and synthetic directive payload paths. */
-export const schemaIssueLeaves = (
+const schemaIssueLeavesInner = (
   issue: SchemaIssue.Issue,
   path: ReadonlyArray<PropertyKey> = [],
   options?: SchemaValidationIssueOptions,
 ): ReadonlyArray<SchemaIssueLeaf> => {
-  const walk = (child: SchemaIssue.Issue) => schemaIssueLeaves(child, path, options);
+  const walk = (child: SchemaIssue.Issue) => schemaIssueLeavesInner(child, path, options);
   const kind = schemaIssueKind(
     issue,
     options !== undefined && Object.hasOwn(options, "input")
@@ -159,7 +160,7 @@ export const schemaIssueLeaves = (
     });
   switch (issue._tag) {
     case "Pointer":
-      return schemaIssueLeaves(issue.issue, [...path, ...issue.path], options);
+      return schemaIssueLeavesInner(issue.issue, [...path, ...issue.path], options);
     case "Encoding":
       return walk(issue.issue);
     case "Composite":
@@ -277,6 +278,18 @@ export const schemaIssueLeaves = (
     ...(suggestion === undefined ? {} : { suggestion }),
   }));
 };
+
+/** Flatten diagnostics, applying removed-key renames once at the root walk. */
+export const schemaIssueLeaves = (
+  issue: SchemaIssue.Issue,
+  path: ReadonlyArray<PropertyKey> = [],
+  options?: SchemaValidationIssueOptions,
+): ReadonlyArray<SchemaIssueLeaf> =>
+  distinctLeaves(
+    schemaIssueLeavesInner(issue, path, options).map((leaf) =>
+      applyRenamedConfigKey(leaf, valueAt(options?.input, leaf.path)),
+    ),
+  );
 
 /** Standard Schema V1 path and message, plus a closest-key suggestion for unexpected keys. */
 export const validationIssuesFromSchemaIssue = (

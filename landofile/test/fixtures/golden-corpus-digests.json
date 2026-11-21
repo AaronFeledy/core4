@@ -196,6 +196,10 @@
       }
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/canonical-working-dir",
+      "digest": "828e5c3d75c224fc3a4e590960de927d7222b93164f28f82aa6bd64064753355"
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-demo",
       "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
     },
@@ -263,6 +267,20 @@
     },
     {
       "fixture": "docs/guides/config-lint/fixtures/environment-reserved-name",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/key-renamed-dockerfile-inline",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/key-renamed-working-directory",
       "invalid": {
         "status": "invalid",
         "tag": "LandofileValidationError"
