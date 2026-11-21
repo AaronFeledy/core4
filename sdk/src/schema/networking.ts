@@ -126,7 +126,7 @@ export const ScannerConfig = Schema.Union([
     ).annotate({
       description: "Retry budget after the first attempt; N retries allow N+1 attempts.",
     }),
-    timeout: Schema.optionalKey(
+    timeoutMs: Schema.optionalKey(
       Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 1, maximum: 600000 }))),
     ).annotate({
       description: "Overall probe deadline in milliseconds, including all retry attempts.",
