@@ -69,7 +69,6 @@
   "docs/guides/recipes/backdrop-workflow.mdx": [
     "lando bee cc all",
     "lando bee status",
-    "lando bee uli --base-url=https://backdrop-demo.lndo.site",
     "lando bee version",
     "lando db:export backdrop.sql.gz",
     "lando db:import backdrop.sql.gz --yes",
@@ -385,7 +384,6 @@
     "lando db:import typo3.sql.gz --yes",
     "lando db:restore before-update --yes",
     "lando db:snapshot --label before-update",
-    "lando typo3 cache:flush",
     "lando typo3 extension:setup"
   ],
   "docs/guides/recipes/wordpress-multisite.mdx": [
@@ -421,11 +419,9 @@
     "lando wp config set DB_PASSWORD lando",
     "lando wp config set DB_USER lando",
     "lando wp core download",
-    "lando wp core install --url=https://wp-demo.lndo.site '--title=WP Demo' --admin_user=admin --admin_email=admin@example.com --skip-email",
     "lando wp core is-installed",
     "lando wp eval 'var_dump( wp_mail( \"you@example.test\", \"Mailpit check\", \"Hello\" ) );'",
     "lando wp option get home",
-    "lando wp search-replace https://www.example.com https://wp-demo.lndo.site --all-tables --skip-columns=guid",
     "lando xdebug status"
   ],
   "docs/guides/scripting-with-json.mdx": ["lando stamp abc1234 --format=json"],

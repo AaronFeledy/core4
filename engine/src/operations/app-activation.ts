@@ -1,8 +1,9 @@
 import type { StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import type { AppPlan, PreparedFileSyncTarget, ServiceName } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
+import { RouterService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { Effect } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
+import { routeUrlRouterError } from "../lifecycle/route-url-bindings.ts";
 import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
 import { type PreparedRuntimeProvider, prepareProvider } from "../providers/prepared.ts";
@@ -91,6 +92,8 @@ export function withAppActivation<A, E, R>(
         const target = yield* reconcileAppDataIdentity(request.target);
         const plan = target.plan;
         yield* requireSelectableRouter(plan);
+        const routeError = routeUrlRouterError(plan, yield* RouterService);
+        if (routeError !== undefined) return yield* routeError;
         yield* validateDesiredFileSyncEngine(plan);
         let scoped = false;
         let selectedPlan = plan;

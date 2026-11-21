@@ -1,0 +1,5 @@
+name: url-command
+services:
+  web:
+    type: "node:22"
+    command: "echo {{ services.web.url }}"

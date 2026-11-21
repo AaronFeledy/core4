@@ -34,7 +34,7 @@
     },
     {
       "fixture": "docs/guides/backdrop-workflow/fixtures/backdrop-dev",
-      "digest": "b192c1875795ea732e3326b8d774c489e75285139564caf35077591136ada1d7"
+      "digest": "31e168807f676196f4589e0b6751b2ca8234ed14d2b3bafbbe4b64b1c46888e1"
     },
     {
       "fixture": "docs/guides/build-steps/fixtures/build-steps-demo",
@@ -428,6 +428,13 @@
       "digest": "5b7e08fc5571540bd86652b554c130a67ffe5ac422348c0fa367dac0cdd84220"
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-info-scope",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-missing-creds",
       "digest": "35d13d408375ea22d127f106d09db098d80f3d76e1697063f3a86c02d6bf3f35"
     },
@@ -447,6 +454,14 @@
       "digest": "356b7260d10d8f13ac2a85aceb7f4ee600cba7be8b55efcac7c0713088ed6fde"
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-public-url-live",
+      "digest": "82c2a2facf3f8cb9555b8dc46208f2001c73434d55fb4ea8d5c427372f01a9e3"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-public-url",
+      "digest": "350f208855066c7942221686e103f79319abf1da51ba728d87fe1710ffdade86"
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-service-creds",
       "digest": "096e0c0033fd8b2ddc3fa52d5f415c469c9e733b3adb89712a3c192d37c9b8c9"
     },
@@ -460,6 +475,17 @@
         "status": "invalid",
         "tag": "LandofileValidationError"
       }
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-command",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-no-route",
+      "digest": "ae39c675777924609f85fe9470b92a30a96fe661533f254c7e164c02b72c21fd"
     },
     {
       "fixture": "docs/guides/external-access/fixtures/external-access-demo",
@@ -610,15 +636,15 @@
     },
     {
       "fixture": "docs/guides/laravel-horizon/fixtures/laravel-horizon",
-      "digest": "201b5e88bbd42e217f7ccfe81bc44e75b4d0408229347636248e3564b5224acf"
+      "digest": "e3aa638c83a0ff8d3798b3d2615f02fbe7efa59102054a30d2a2d3cf3ae72f8f"
     },
     {
       "fixture": "docs/guides/laravel-reverb/fixtures/laravel-reverb",
-      "digest": "327f073ed97ef99d37bbbeab31398043483b11459b40b9a5f200150cf783801e"
+      "digest": "002e6962c7da72aa5433697bad246a66fdd4ab35330b9eaa7699e97bcba300b8"
     },
     {
       "fixture": "docs/guides/laravel-vite/fixtures/laravel-vite",
-      "digest": "ee3b7b4ff6975ba5b940b502dc3d29a9b8932f24b9f0d37f1b5984fb67456a2f"
+      "digest": "3151f61865ae31273c66776ca050b8e3845514fc3da7face5711525e495f2ebd"
     },
     {
       "fixture": "docs/guides/locale/fixtures/locale-demo",
@@ -1485,7 +1511,7 @@
     },
     {
       "fixture": "docs/guides/wordpress-vite/fixtures/wordpress-vite",
-      "digest": "58281f08fb007b5f35f9c4f47f6c2a611a3bbd9a87658805af3ee8df45f750ab"
+      "digest": "62a630dc94b73afb3651df6aed9047c1505f99f8c27706cacbd8a8dc840b0e75"
     },
     {
       "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-demo",

@@ -19,6 +19,8 @@ The persisted app-plan key includes private implementation coordinates `{ name, 
 
 The plan's private tooling extension is `version: 2`: effective tasks, internal names, connection-client owners, a provenance entry for every task, and optional service-type and launcher facts by target service (§8.5, §8.7). Missing launcher facts do not imply a default launcher. An applied plan is durable intent and is never replanned or rewritten to add these facts or provenance: an applied plan whose tooling extension has no `version` MUST still decode, keeping its tasks, internal names, and connection clients, with every origin unknown. Unknown is not a path. Diagnostics from such a plan carry no issue `source`; the plan's recorded app source remains invocation context only.
 
+Reusable app-plan caches store `RouteText` descriptors and no realized public URLs. Provider-applied plans retain the descriptors and record each consumer's realized public URLs in its service extensions. A partial apply keeps evidence for unaffected services; missing evidence is not proof that a retained consumer's URL is unchanged (§6.15). Neither record stores resolved secret bytes.
+
 `<userCacheRoot>` holds only regenerable caches, diagnostics, and operation-scoped temporary files (§7.5). Clearing it between operations MAY cost rebuild time or network access and MUST NOT lose ownership records, live-resource state, security floors such as the update-manifest replay floor (§17.6.1), or user data. Rows under `<userDataRoot>` are durable records listed here for their catalog identity.
 
 | Cache | Location | Encoding | Contract |

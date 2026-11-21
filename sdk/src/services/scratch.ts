@@ -4,6 +4,7 @@ import type {
   AppPlacementError,
   DebuggerHostUnavailableError,
   LandofileVersionConstraintError,
+  RouteUrlBindingError,
   ScratchAppError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
@@ -163,6 +164,7 @@ export class ScratchAppService extends Context.Service<
       | ScratchSourceUnresolvedError
       | ScratchIsolationConflictError
       | ScratchAppError
+      | RouteUrlBindingError
       | AppPlacementError
       | DebuggerHostUnavailableError
       | LandofileVersionConstraintError,
@@ -176,7 +178,7 @@ export class ScratchAppService extends Context.Service<
     readonly start: (
       id: string,
       options?: ScratchStartOptions,
-    ) => Effect.Effect<ScratchHandle, ScratchAppNotFoundError | ScratchAppError>;
+    ) => Effect.Effect<ScratchHandle, ScratchAppNotFoundError | ScratchAppError | RouteUrlBindingError>;
     readonly stop: (id: string) => Effect.Effect<ScratchHandle, ScratchAppNotFoundError | ScratchAppError>;
     readonly destroy: (
       id: string,

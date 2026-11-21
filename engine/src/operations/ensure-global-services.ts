@@ -72,6 +72,7 @@ export interface EnsureGlobalServicesResult {
 }
 
 export type EnsureGlobalServicesError =
+  | import("@lando/sdk/errors").RouteUrlBindingError
   | import("@lando/sdk/errors").CaError
   | import("@lando/sdk/services").FileSystemError
   | DebuggerHostUnavailableError

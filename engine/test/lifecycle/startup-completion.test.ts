@@ -4,12 +4,63 @@ import { type AppPlan, FileSyncSessionRef, ServiceName } from "@lando/sdk/schema
 import { BuildOrchestrator, type RuntimeProviderShape } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
+import { prepareRouteUrlBindings } from "../../src/lifecycle/route-url-bindings.ts";
 import { completeStartup } from "../../src/lifecycle/startup-completion.ts";
 import { provideFileSyncEngine } from "../file-sync-engine.ts";
 import { acceleratedPlan } from "../operations/accelerated-start-recovery-support.ts";
 import { plan, web } from "../operations/start-progress-topology-support.ts";
+import { publicUrlRouter, urlReadingPlan } from "./route-url-fixture.ts";
 
 const policies = ["user-start", "selected", "ensure-global", "scratch"] as const;
+
+test("scratch with bound URLs reports the actual publication failure", async () => {
+  const failure = new ProxyApplyError({
+    proxyId: "test",
+    app: urlReadingPlan.id,
+    message: "Offline",
+    remediation: "Restore the proxy.",
+  });
+  const router = { ...publicUrlRouter(), applyRoutes: () => Effect.fail(failure) };
+  const routeUrls = await Effect.runPromise(
+    prepareRouteUrlBindings({ plan: urlReadingPlan, routes: urlReadingPlan.routes, router }),
+  );
+  const result = await Effect.runPromise(
+    completeStartup({
+      policy: "scratch",
+      plan: urlReadingPlan,
+      routeUrls,
+      router,
+      provider: TestRuntimeProvider,
+      services: [web.name],
+    }).pipe(Effect.result),
+  );
+  expect(result).toMatchObject({ _tag: "Failure", failure });
+});
+
+test("a changed router authority fails startup after route publication", async () => {
+  const router = publicUrlRouter(9443);
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const routeUrls = yield* prepareRouteUrlBindings({
+        plan: urlReadingPlan,
+        routes: urlReadingPlan.routes,
+        router,
+      });
+      return yield* completeStartup({
+        policy: "scratch",
+        plan: urlReadingPlan,
+        router,
+        routeUrls,
+        provider: TestRuntimeProvider,
+        services: [web.name],
+      });
+    }).pipe(Effect.result),
+  );
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "RouteUrlBindingError", reason: "authority-changed", service: web.name },
+  });
+});
 test.each([...policies, "forced-user-start" as const, "forced-selected" as const])(
   "%s owns its complete ordered post-apply policy",
   async (policy) => {
