@@ -78,6 +78,22 @@ services:
 Lando starts `valkey-server` with `--port 6380`. Other services connect to
 `cache:6380`. Valkey has no daemon-native port environment variable.
 
+To add daemon flags without replacing Lando's launcher, use
+[`extraArgs:`](./extra-args.mdx):
+
+```yaml
+services:
+  cache:
+    type: valkey
+    port: 6380
+    extraArgs:
+      - --maxmemory
+      - 10mb
+```
+
+Lando keeps `--port` and `persist:`, then appends your list. Do not put
+`--port` in `extraArgs:`; set `port:` instead.
+
 With an authored `command:`, pass `--port "{{ service.port }}"` using the
 [port expression](../landofile/expressions.mdx#your-services-own-port), or set
 the port in Valkey's config file. An authored

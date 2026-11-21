@@ -96,7 +96,7 @@ If you are looking for a public surface or policy:
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
 | Bundled providers (managed init helper ownership, `0.1.7` bridge, existing-runtime rescue) and multi-provider non-goal | 05 | §5.8 + §5.9 |
-| Service bases and common service schema | 06 | §6.1 + §6.2 |
+| Service bases and common service schema, including `extraArgs` | 06 | §6.1 + §6.2 |
 | Native container init: one authored `init` key, canonical `ServicePlan.init`, base default, opt-out, `serviceInit` capability, and signal guarantees | 06 | §6.2.1 |
 | Scheduled jobs: per-service `schedule`, cadence, timezone, identity, sidecar grouping and naming, scheduler acquisition, and the `schedule:list` / `schedule:run` commands | 01 + 06 + 08 + 11 | §1.4 + §6.2.2 + §8.2.8 + §10.14 |
 | Artifact build contract | 06 | §6.3 |

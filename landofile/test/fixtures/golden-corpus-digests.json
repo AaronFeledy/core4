@@ -485,6 +485,18 @@
       "digest": "167f5aa0981074f86f93925c54bfc7c9c9d96654132433fd01353049d08111e0"
     },
     {
+      "fixture": "docs/guides/extra-args/fixtures/extra-args-unsupported",
+      "digest": "b98215e1990e2d7e81cee56c6b21e6b8c2fca30d260bf2e0ac690a6328f4b404"
+    },
+    {
+      "fixture": "docs/guides/extra-args/fixtures/extra-args-with-command",
+      "digest": "849e0b8246ac5d5776792a876362b5e5bacaee0cdcf6a35253a84aa3cd4a8941"
+    },
+    {
+      "fixture": "docs/guides/extra-args/fixtures/redis-extra-args",
+      "digest": "934d29a7772897c6916ea975bb55b40cca3bb6db66a87630a6508a73c81037b7"
+    },
+    {
       "fixture": "docs/guides/fastapi-workflow/fixtures/venv-and-env",
       "digest": "bc7a0874dc96356ac8a08275646995ac255a2776f2f3cb3e4fa140814d436b32"
     },

@@ -62,6 +62,22 @@ Lando starts `memcached` with `-p 11212`. Other services connect to
 `cache:11212`. Memcached has no daemon-native port environment variable.
 Update any tooling that hardcodes `11211` when you move the port.
 
+To add daemon flags without replacing Lando's launcher, use
+[`extraArgs:`](./extra-args.mdx):
+
+```yaml
+services:
+  cache:
+    type: memcached
+    port: 11212
+    extraArgs:
+      - -m
+      - "64"
+```
+
+Lando keeps `-p` for the planned port, then appends your list. Do not put `-p`
+or `--port` in `extraArgs:`; set `port:` instead.
+
 If you author `command:`, use `[memcached, -p, "{{ service.port }}"]` to pass
 the [planned port](../landofile/expressions.mdx#your-services-own-port).
 An authored `entrypoint:` still receives Lando's command

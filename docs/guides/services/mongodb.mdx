@@ -136,6 +136,23 @@ This allows other services to connect over the app network, and it is what the d
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
+To add daemon flags without replacing Lando's launcher, use
+[`extraArgs:`](./extra-args.mdx):
+
+```yaml
+services:
+  db:
+    type: mongodb
+    extraArgs:
+      - --wiredTigerCacheSizeGB
+      - "0.5"
+```
+
+Lando keeps the planned port and any `config.server` flag, then appends your
+list. Do not put `--port`, `--config`, `-f`, or bind-IP flags in `extraArgs:`;
+set `port:` or `config.server` instead. Custom images and Compose builds reject
+the key.
+
 If you also set `command:` or `entrypoint:` on the service, yours wins. Lando
 never appends `--config` to a command you wrote yourself, so pass it in your
 own command if you still want the file loaded.

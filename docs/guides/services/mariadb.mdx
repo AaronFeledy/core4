@@ -97,6 +97,22 @@ Lando mounts that file read-only at `/etc/mysql/conf.d/99-lando.cnf`. The server
 
 Lando's generated launcher gives the planned port, `port:` or the default, precedence over a port line in your config file. If you replace the launcher, see [Change the port](#change-the-port).
 
+To add daemon flags without replacing Lando's launcher, use
+[`extraArgs:`](./extra-args.mdx):
+
+```yaml
+services:
+  db:
+    type: mariadb
+    extraArgs:
+      - --max-connections=77
+```
+
+Lando keeps the planned port and any `config.server` handling, then appends
+your list. Do not put `--port`, `-P`, or `--defaults-*` in `extraArgs:`; set
+`port:` or `config.server` instead. Custom images and Compose builds reject
+the key.
+
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
 ## Change the port

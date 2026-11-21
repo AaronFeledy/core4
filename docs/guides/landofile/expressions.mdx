@@ -200,7 +200,9 @@ services:
 
 The command gets `6380` as one argument, and the healthcheck uses the same port. Change `port:` to update both, or omit it to use Redis's default of `6379`. The expression supplies the value, not the flag or the server configuration.
 
-Use `service.port` in `command:`, `entrypoint:`, or a command in a container `healthcheck:` or `readiness:` probe. It does not refer to a published host port. It is not available in host readiness, `environment:`, build steps, events, or tooling. Some modes, such as PHP in CLI mode, have no planned listen port.
+When you only need extra daemon flags and Lando already owns the launcher, use [`extraArgs:`](../services/extra-args.mdx) instead of replacing `command:`. Lando keeps its port, persistence, password, and config-file flags, then appends your argv list. A non-empty `extraArgs:` with an authored `command:` or `entrypoint:` is rejected.
+
+Use `service.port` in `command:`, `entrypoint:`, `extraArgs:` elements, or a command in a container `healthcheck:` or `readiness:` probe. It does not refer to a published host port. It is not available in host readiness, `environment:`, build steps, events, or tooling. Some modes, such as PHP in CLI mode, have no planned listen port.
 
 On raw `type: lando` and `type: compose` services, set `port:` yourself. You can omit `type:` on a custom image when neither the image nor the service name selects a registered type. For example, if your image provides `api-server`:
 
