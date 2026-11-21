@@ -112,6 +112,23 @@ Lando's planned port, `port:` or the default, beats a port line in your config f
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
+To add daemon flags without replacing Lando's launcher, use
+[`extraArgs:`](./extra-args.mdx):
+
+```yaml
+services:
+  db:
+    type: postgres
+    extraArgs:
+      - -c
+      - max_connections=200
+```
+
+Lando keeps the planned port and any `config.server` flag, then appends your
+list. Do not put `-p`, `-c port=...`, or `-c config_file=...` in `extraArgs:`;
+set `port:` or `config.server` instead. Custom images and Compose builds reject
+the key.
+
 If you also set `command:` or `entrypoint:` on the service, yours wins. Lando won't append the `-c config_file=...` flag to a command you wrote yourself, so pass it in your own command if you still want the file loaded.
 
 ## Change the port
@@ -127,7 +144,7 @@ services:
 
 Other services then connect to `db:5433`, and a `{{ services.db.port }}` expression in their config follows along. Lando sets `PGPORT` from `port:`. An authored `PGPORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.db.environment.PGPORT` with the `port:` value to set. With `config.server`, Lando pins `port:` or the default on its command line.
 
-The service also exposes `LANDO_DB_PORT=5433`. The `psql` task and `lando db:*` commands pass the planned port explicitly, including for local socket connections. If you author `command:` or `entrypoint:`, you own the daemon's flags; make your launcher honor the planned port, including when you load a config file yourself.
+The service also exposes `LANDO_DB_PORT=5433`. The `psql` task and `lando db:*` commands pass the planned port explicitly, including for local socket connections. If you replace `command:` or `entrypoint:`, pass `-p "{{ service.port }}"` to `postgres`, including when you load your own config file. The [port expression](../landofile/expressions.mdx#your-services-own-port) supplies the value, not the flag.
 
 Apply the change with `lando rebuild`, then check the running listener:
 

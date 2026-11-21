@@ -12,7 +12,6 @@ import (
 // convergeDrupalContrib brings a built site in line with its inputs. It
 // reports an unchanged site unless this run just built it.
 func convergeDrupalContrib(o drupalContribOptions, s *scaffold, built bool) error {
-	streams := s.streams
 	site, err := readContribComposer(o.appRoot)
 	if err != nil {
 		return err
@@ -31,7 +30,7 @@ func convergeDrupalContrib(o drupalContribOptions, s *scaffold, built bool) erro
 		if built {
 			return nil
 		}
-		_, err := fmt.Fprintln(streams.stdout, s.completeMessage)
+		_, err := fmt.Fprintln(s.streams.stdout, s.completeMessage)
 		return err
 	}
 
@@ -41,20 +40,21 @@ func convergeDrupalContrib(o drupalContribOptions, s *scaffold, built bool) erro
 	if err != nil {
 		return err
 	}
-	if err := applyContribChanges(streams, o.appRoot, changes); err != nil {
+	if err := s.applyContribChanges(changes); err != nil {
 		return errors.Join(err, manifests.restore())
 	}
 	return finishContribSync(o, s, desired)
 }
 
-func applyContribChanges(streams helperIO, root string, changes contribChanges) error {
+func (s *scaffold) applyContribChanges(changes contribChanges) error {
+	root := s.appRoot
 	for _, step := range []string{"require", "remove"} {
 		edits := changes.require
 		if step == "remove" {
 			edits = changes.remove
 		}
 		for _, dev := range []bool{false, true} {
-			if err := streams.contribComposerEdit(root, step, dev, edits[dev]); err != nil {
+			if err := s.contribComposerEdit(root, step, dev, edits[dev]); err != nil {
 				return err
 			}
 		}
@@ -74,7 +74,7 @@ func applyContribChanges(streams helperIO, root string, changes contribChanges) 
 	if err != nil {
 		return err
 	}
-	return errors.Join(streams.contribComposer(root, step, args), restore())
+	return errors.Join(s.contribComposer(root, step, args), restore())
 }
 
 func finishContribSync(o drupalContribOptions, s *scaffold, desired contribSyncRecord) error {

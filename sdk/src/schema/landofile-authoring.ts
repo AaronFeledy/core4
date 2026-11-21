@@ -1,11 +1,12 @@
 import { type SchemaAST as AST, Schema } from "effect";
 import { LandofileShape } from "./landofile.ts";
-import { deriveAuthoringAst } from "./landofile-authoring-ast.ts";
+import { type DeriveAuthoringOptions, deriveAuthoringAst } from "./landofile-authoring-ast.ts";
 import {
   type AuthoringExpression,
   type AuthoringExpressionExpectedType,
   authoringExpressionSlot,
 } from "./landofile-authoring-expression.ts";
+import { authoringSelfScope } from "./landofile-authoring-self.ts";
 import { authoringWireAst } from "./landofile-authoring-wire.ts";
 import type {
   LandofileOverride,
@@ -85,6 +86,10 @@ type AuthoringRootValue<T extends object> = { readonly [K in keyof T]: Authoring
 type AuthoringRootEncoded<T extends object> = { readonly [K in keyof T]: AuthoringEncoded<T[K]> };
 const slotFor = (kind: AuthoringExpressionExpectedType): AST.AST => authoringExpressionSlot(kind).ast;
 const nativeSlotFor = (kind: AuthoringExpressionExpectedType): AST.AST => authoringExpressionSlot(kind).ast;
+const landofileAst = (options: DeriveAuthoringOptions) =>
+  Schema.make<Schema.Codec<unknown>>(deriveAuthoringAst(LandofileShape.ast, options)).check(
+    authoringSelfScope,
+  ).ast;
 
 const authoringSchema = <A, I>(
   derive: () => AST.AST,
@@ -99,32 +104,26 @@ const authoringSchema = <A, I>(
 export const LandofileAuthoringShape: Schema.Codec<
   AuthoringRootValue<LandofileEncoded>,
   AuthoringRootEncoded<LandofileEncoded>
-> = authoringSchema(
-  () => deriveAuthoringAst(LandofileShape.ast, { partial: false, rootExpression: false, slotFor }),
-  {
-    identifier: "LandofileAuthoringShape",
-    title: "Landofile authoring shape",
-    description:
-      "Complete Landofile authoring values with parsed, unresolved expressions at typed value sites.",
-  },
-);
+> = authoringSchema(() => landofileAst({ partial: false, rootExpression: false, slotFor }), {
+  identifier: "LandofileAuthoringShape",
+  title: "Landofile authoring shape",
+  description:
+    "Complete Landofile authoring values with parsed, unresolved expressions at typed value sites.",
+});
 
 export const LandofileAuthoringFragment: Schema.Codec<
   AuthoringDeepPartial<DirectiveAuthoringValue<AuthoringValue<LandofileEncoded>>>,
   AuthoringDeepPartial<DirectiveAuthoringEncoded<AuthoringEncoded<LandofileEncoded>>>
-> = authoringSchema(
-  () => deriveAuthoringAst(LandofileShape.ast, { partial: true, slotFor, directives: true }),
-  {
-    identifier: "LandofileAuthoringFragment",
-    title: "Landofile authoring fragment",
-    description:
-      "Recursively partial Landofile authoring values with parsed, unresolved expressions at typed value sites.",
-  },
-);
+> = authoringSchema(() => landofileAst({ partial: true, slotFor, directives: true }), {
+  identifier: "LandofileAuthoringFragment",
+  title: "Landofile authoring fragment",
+  description:
+    "Recursively partial Landofile authoring values with parsed, unresolved expressions at typed value sites.",
+});
 
 export const LandofileAuthoringFragmentNative: Schema.Codec<typeof LandofileAuthoringFragment.Type, unknown> =
   authoringSchema(() =>
-    deriveAuthoringAst(LandofileShape.ast, {
+    landofileAst({
       partial: true,
       rootExpression: false,
       slotFor: nativeSlotFor,

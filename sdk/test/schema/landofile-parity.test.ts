@@ -333,6 +333,10 @@ const INPUT_INEXPRESSIBLE = new Map([
   ],
   ["proxy-boolean", "Planner-scope reads require parsed scope analysis."],
   ["services-boolean", "Planner-scope reads nested inside helpers require parsed scope analysis."],
+  [
+    "docs/guides/expressions/fixtures/expressions-service-port-misuse/.lando.yml",
+    "Self-port scope admission requires parsed member and destination checks.",
+  ],
   ["static-number-at-text", "JSON Schema cannot infer helper return types at text sites."],
   [
     "docs/guides/expressions/fixtures/expressions-plan-time-typed-field/.lando.yml",

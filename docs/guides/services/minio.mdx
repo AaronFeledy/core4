@@ -201,13 +201,31 @@ Applications in another service talk to `http://object-store:9000` by default,
 or `http://object-store:9001` with the custom ports above. The console URL is for
 browser access, not an S3 client endpoint.
 
+To add server flags without replacing Lando's launcher, use
+[`extraArgs:`](./extra-args.mdx) on the default MinIO launcher:
+
+```yaml
+services:
+  object-store:
+    type: minio
+    image: minio/minio:RELEASE.2024-01-01T00-00-00Z
+    extraArgs:
+      - --quiet
+```
+
+Lando keeps `--address` and `--console-address` for the planned API and console
+ports, then appends your list. Do not put those bind flags in `extraArgs:`; set
+`port:` and `consolePort:` instead.
+
 If you supply your own `command:`, Lando preserves it and never appends
-`--address` or `--console-address`. Your command must bind the API and console
-to the ports you declared. If you set only `entrypoint:` and leave `command:`
-unset, Lando still supplies its server arguments for the planned API and
-console ports after your entrypoint. Changing `port:` or `consolePort:` does
-not rewrite an authored `command:`.
-If startup fails with an authored command, Lando includes a hint naming
+`--address` or `--console-address`. Write `--address ":{{ service.port }}"`
+to use the [planned API port](../landofile/expressions.mdx#your-services-own-port).
+Set `--console-address` separately to match `consolePort:`. If you set only
+`entrypoint:` and leave `command:` unset, Lando still supplies its server
+arguments for the planned API and console ports after your entrypoint.
+A non-empty `extraArgs:` with that authored `entrypoint:` is rejected; put
+the flags in `command:` instead. If startup fails with an authored command,
+Lando includes a hint naming
 `--address :<api-port> --console-address :<console-port>` with your effective
 port numbers.
 

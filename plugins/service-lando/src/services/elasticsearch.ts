@@ -6,17 +6,17 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   commandHealthcheck,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -70,7 +70,7 @@ const elasticsearchListener = (service: ServiceConfig): ListenerContract => {
 const applyElasticsearchFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   assertListenerConfig(service, elasticsearchListener(service));
-  const port = plannedPort(service, ELASTICSEARCH_LISTENER);
+  const port = selectPort(service);
   const transport = transportPort(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -105,7 +105,7 @@ export const elasticsearchServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, ELASTICSEARCH_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "tcp",
       }),
     ),
@@ -129,10 +129,15 @@ const resolveElasticsearchServiceType: ServiceType["resolve"] = (input) =>
     features: [{ id: ELASTICSEARCH_FEATURE_ID }],
   });
 
+const selectPort = primaryPortSelector(ELASTICSEARCH_LISTENER);
+const EXTRA_ARGS_REMEDIATION = IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Elasticsearch environment and config");
+
 export const elasticsearch8ServiceType: ServiceType = {
   id: "elasticsearch:8",
   name: "elasticsearch",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -144,6 +149,8 @@ export const elasticsearchServiceType: ServiceType = {
   id: "elasticsearch",
   name: "elasticsearch",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

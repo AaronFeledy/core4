@@ -1,0 +1,13 @@
+name: expressions-service-port
+services:
+  cache:
+    type: redis
+    port: 6380
+    command: [redis-server, --port, "{{ service.port }}"]
+    healthcheck: "redis-cli -p {{ service.port }} ping"
+  db:
+    type: postgres
+  web:
+    type: node:22
+    environment:
+      DB_PORT: "{{ services.db.port }}"

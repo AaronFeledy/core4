@@ -4123,21 +4123,16 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("image: postgrest:latest and postgresml:latest do NOT classify as postgres", async () => {
+  test("images with a postgres prefix but a different name plan as raw services", async () => {
     await withTempCwd(async () => {
       for (const image of ["postgrest:latest", "postgresml:latest"]) {
-        const exit = await planExit({
+        const app = await plan({
           name: "myapp",
           runtime: 4,
           services: { [ServiceName.make("db")]: { image } },
         });
 
-        const failure = expectSomeFailure(exit);
-        expect(failure).toBeInstanceOf(LandofileValidationError);
-        if (failure instanceof LandofileValidationError) {
-          expect(failure.message).toContain("db");
-          expect(failure.message).not.toContain("type postgres");
-        }
+        expect(app.services[ServiceName.make("db")]?.type).toBe("lando");
       }
     });
   });

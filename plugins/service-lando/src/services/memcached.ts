@@ -1,7 +1,8 @@
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { PORT_EXTRA_ARGS_REMEDIATION, RESERVED_LONG_PORT, extraArgsCommandOptions } from "./_extra-args.ts";
 import { serviceFeatureApply } from "./_feature-helpers.ts";
-import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 
@@ -13,18 +14,25 @@ export const MEMCACHED_LISTENER = {
   launcher: { setting: (port: number) => `-p ${port}` },
 } as const;
 export const DEFAULT_PORT = MEMCACHED_LISTENER.port;
+const selectPort = primaryPortSelector(MEMCACHED_LISTENER);
 export const MEMCACHED_FEATURE_ID = "service-lando.memcached";
 
 const applyMemcachedFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = plannedPort(service, MEMCACHED_LISTENER);
+  const port = selectPort(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   if (service.command !== undefined) {
     ctx.setCommand(service.command);
     ctx.setListenerAuthority(launcherAuthority(MEMCACHED_LISTENER, port));
   } else {
-    ctx.setCommand(["memcached", "-p", String(port)]);
+    ctx.setCommand(
+      ["memcached", "-p", String(port)],
+      extraArgsCommandOptions([
+        { form: "short", name: "p", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
+        RESERVED_LONG_PORT,
+      ]),
+    );
   }
   ctx.setHealthcheck(tcpProbe(port, 30));
 
@@ -38,7 +46,7 @@ export const memcachedServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, MEMCACHED_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "tcp",
       }),
     ),
@@ -53,6 +61,7 @@ export const memcachedServiceType: ServiceType = {
   id: "memcached",
   name: "memcached",
   base: "lando",
+  plannedPort: selectPort,
   identity: { defaultUser: "memcache", homes: { memcache: "/home/memcache", root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) =>

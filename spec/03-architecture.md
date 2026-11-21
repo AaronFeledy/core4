@@ -140,7 +140,7 @@ Events are typed, schema-validated, and drawn from a closed registry. Plugin sub
 | Scope | Event names |
 |---|---|
 | Lando | `pre-bootstrap-<level>`, `post-bootstrap-<level>`, `post-bootstrap`, `ready`, `pre-setup`, `post-setup`, `before-exit` |
-| App | `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy` |
+| App | `pre-init`, `post-init`, `pre-app-start`, `pre-start`, `post-app-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy` |
 | Service | `pre-service-start`, `post-service-start`, `pre-service-stop`, `post-service-stop` |
 | Provider | `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `pre-provider-logs`, `post-provider-logs`, `image-pull-progress` |
 | Process / shell / network | `pre-process-exec`, `post-process-exec`, `pre-shell-exec`, `post-shell-exec`, `pre-bun-self-exec`, `post-bun-self-exec`, `pre-http-call`, `post-http-call`, `pre-download`, `download-progress`, `post-download` |
@@ -250,6 +250,8 @@ Every event payload is an Effect Schema in `@lando/sdk`, and `publish` accepts o
 
 `AppRef.kind` distinguishes `user`, `global`, and `scratch`; subscribers MUST branch on kind when behavior differs. Restart payloads MUST match start payload shape apart from tags. Global start events always emit and distinguish warm from cold through `cached`. Tooling and build terminal families share discriminated result schemas. An up-to-date build step MUST emit `build-step-skip` with reason `up-to-date`. Event payloads expose only redacted command, path, token, and output data; full sensitive data never reaches subscribers.
 
+Selected user start carries optional `services` on `PreStartEvent` and `PostStartEvent`: the ordered execution scope, including dependencies and companions. Whole-app start omits it. The scope qualifies the selected readiness result, not whole-app readiness; `pre-app-start` and `post-app-start` retain their existing payloads. The restart shape rule above applies to the common payload, not the selected-start scope.
+
 ### 11.3 Subscriber priority
 
 Lower priority runs first.
@@ -284,8 +286,8 @@ A cold `app:start` follows this canonical order; optional global and build detai
 6. `post-bootstrap`, `ready`
 7. `cli-app:start-init`
 8. `pre-init`, `post-init`
-9. `pre-start`, whose body nests, in order: the global bracket `pre-global-start` … `post-global-start` (with an optional nested global `pre-build` … `post-build`) whenever `AppFeature.requires.globalServices` yields a non-empty set, then, in SSH sidecar mode and only when the sidecar's agent does not answer, the best-effort sidecar global bracket (§20.6.3), then the user-app build bracket `pre-build`, ordered artifact then app `pre-build-phase`/step events/`post-build-phase`, `post-build`
-10. Readiness barrier (running-state check and healthchecks; §6.7), then `post-start` subscribers and app checks (§10.5.2). `post-start` after the barrier is the whole-app-ready hook; there is no separate `ready-app` event
+9. `pre-app-start`, then `pre-start`, whose body nests, in order: the global bracket `pre-global-start` … `post-global-start` (with an optional nested global `pre-build` … `post-build`) whenever `AppFeature.requires.globalServices` yields a non-empty set, then, in SSH sidecar mode and only when the sidecar's agent does not answer, the best-effort sidecar global bracket (§20.6.3), then the user-app build bracket `pre-build`, ordered artifact then app `pre-build-phase`/step events/`post-build-phase`, `post-build`
+10. Readiness barrier (running-state check and healthchecks; §6.7), then `post-app-start`, `post-start` subscribers and app checks (§10.5.2). `post-start` signals whole-app readiness for bare start and execution-scope readiness for selected start; there is no separate `ready-app` event
 11. exactly one of `cli-app:start-run` or `cli-app:start-error`
 12. `before-exit`
 

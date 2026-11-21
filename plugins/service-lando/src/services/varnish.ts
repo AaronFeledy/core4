@@ -3,13 +3,13 @@ import { PortNumber, ServiceName, parseShortVolume } from "@lando/sdk/schema";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { rootIdentity, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
   launcherAuthority,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -72,7 +72,7 @@ const varnishListener = (service: ServiceFeatureContext["normalizedConfig"]): Li
 const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   assertListenerConfig(service, varnishListener(service));
-  const port = plannedPort(service, VARNISH_LISTENER);
+  const port = selectPort(service);
   const backend = service.backend ?? "";
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["7"] });
@@ -119,7 +119,7 @@ export const varnishServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, VARNISH_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "http",
       }),
     ),
@@ -130,10 +130,16 @@ export const varnishServiceFeature: ServiceFeatureDefinition = {
   ),
 };
 
+const selectPort = primaryPortSelector(VARNISH_LISTENER);
 const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
   id,
   name: "varnish",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
+    "Varnish",
+    "Put flags in command: or configure VCL through config.vcl / backend:.",
+  ),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity:

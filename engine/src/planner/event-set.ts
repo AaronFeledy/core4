@@ -1,12 +1,10 @@
-import { compileInvocationSites, compiledValueError } from "@lando/landofile/compiled-sites";
+import { compileInvocationSites } from "@lando/landofile/compiled-sites";
 import { provenanceOf } from "@lando/landofile/provenance";
 import { landofileValidationError, unavailableEntryPath } from "@lando/landofile/validation";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
-  LandofileShape,
   type LoadScopedLandofile,
-  type ParsedPendingSite,
   type ProviderCapabilities,
   type ProviderId,
   ServiceName,
@@ -14,7 +12,7 @@ import {
   authoredProbeTargetError,
 } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Iterable, Result, Schema } from "effect";
+import { type Context, DateTime, Effect, Result } from "effect";
 import { routerEnabledFrom } from "../config/router-config.ts";
 import { hostProviderIdFrom } from "../providers/host-provider.ts";
 import { resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
@@ -25,18 +23,13 @@ import { projectEndpoints } from "./endpoint-projection.ts";
 import { validEventNames } from "./event-names.ts";
 import { planningHostShellIssues } from "./host-shell-issues.ts";
 import { effectiveInvocationSites } from "./invocation-authority.ts";
-import {
-  materializeLandofileScopes,
-  materializeServiceScopeSites,
-  pathIsBlocked,
-  referencedServices,
-  serviceScopeContext,
-} from "./landofile-scopes.ts";
+import { materializeLandofileScopes, pathIsBlocked, serviceScopeContext } from "./landofile-scopes.ts";
 import { validateResolvedLandofile } from "./resolved-validation.ts";
 import { applyRouteDemandedCertificates } from "./route-certificate-defaults.ts";
 import { type PlanningUnavailableSite, resolveServiceSeeds } from "./service-seeds.ts";
 import { contributionId, resolveHostFacts } from "./service-types.ts";
 import { toolingAndEventIssues } from "./tooling-event-issues.ts";
+import { materializeWholeDocument, pendingAfterSeeds } from "./whole-document-expressions.ts";
 
 export interface KnownEventSetInput {
   readonly dataName?: string;
@@ -55,8 +48,9 @@ export interface KnownEventSetInput {
 
 export type { PlanningUnavailableSite };
 
-export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(function* (
+const resolveLandofile = Effect.fn("AppPlanner.resolve")(function* (
   input: KnownEventSetInput,
+  mode?: "diagnostic",
 ) {
   const unavailableSites = input.unavailableSites ?? [];
   const { pluginRegistry, configService, fileSystem, pathsService } = input;
@@ -129,56 +123,39 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     ),
     ...(capabilities === undefined ? {} : { capabilities }),
     ...(unavailableSites.length === 0 ? {} : { unavailableSites }),
+    ...(mode === undefined ? {} : { mode }),
   });
-  // Every service type has published its credentials now, so the sites the
-  // identity pass deferred (tooling, extensions, and the services themselves)
-  // resolve across the whole document before tooling is compiled.
-  // Sites that read a service whose type failed to resolve cannot be evaluated;
-  // the stage skips values holding them instead of reporting a cascade. A
-  // computed member cannot be analyzed, so it is held back too.
-  let blocked: Set<ParsedPendingSite> | undefined;
-  if (seeds.unavailable.size > 0) {
-    for (const site of seeds.pendingSites) {
-      const references = referencedServices([], [site], landofilePath);
-      if (
-        Result.isFailure(references) ||
-        Iterable.some(references.success, (name) => seeds.unavailable.has(name))
-      ) {
-        blocked ??= new Set();
-        blocked.add(site);
-      }
-    }
-  }
-  let pendingSites = seeds.pendingSites;
-  landofile = seeds.document;
-  if (pendingSites.length > 0) {
-    const serviceScoped = yield* materializeServiceScopeSites({
-      value: landofile,
-      landofilePath,
-      pathPrefix: [],
-      deferredSites:
-        blocked === undefined ? pendingSites : pendingSites.filter((site) => !blocked?.has(site)),
-      context: serviceScopeContext({
-        landofile,
-        context: materialized.context,
-        appSlug,
-        defaultDomain,
-        services: seeds.serviceCredsScope,
-      }),
-    });
-    const decoded = yield* Schema.decodeUnknownEffect(Schema.toType(LandofileShape))(
-      serviceScoped.document,
-    ).pipe(mapFailures((cause) => compiledValueError(cause, { filePath: landofilePath, pendingSites })));
-    landofile = decoded;
-    pendingSites =
-      blocked === undefined ? serviceScoped.pendingSites : [...blocked, ...serviceScoped.pendingSites];
-  }
-  if (heldSites?.length) pendingSites = [...pendingSites, ...heldSites];
+  const { available, blocked, dependentSkips } = pendingAfterSeeds(seeds, landofilePath);
+  const scoped = yield* materializeWholeDocument({
+    landofile: seeds.document,
+    landofilePath,
+    pendingSites: available,
+    context: serviceScopeContext({
+      ...materialized,
+      landofile: seeds.document,
+      services: seeds.serviceCredsScope,
+    }),
+  }).pipe(
+    Effect.map(Result.succeed),
+    Effect.catchTag("ConfigExpressionError", (error) =>
+      mode === "diagnostic" ? Effect.succeed(Result.fail(error)) : Effect.fail(error),
+    ),
+  );
+  if (Result.isFailure(scoped))
+    return {
+      _tag: "ExpressionAborted" as const,
+      error: scoped.failure,
+      issues: seeds.issues,
+      dependentSkips,
+    };
+  landofile = scoped.success.document;
+  const { pendingSites } = scoped.success;
+  const blockedPaths = blocked.map((site) => site.path);
   const validated = validateResolvedLandofile({
     landofile,
     provenance,
     landofilePath,
-    blocked: blocked === undefined ? undefined : Array.from(blocked, (site) => site.path),
+    blocked: blockedPaths,
     loadBlocked,
     appSlug,
   });
@@ -217,7 +194,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     compiled: ServiceScopedLandofile.make({
       stage: "service-scoped",
       document: landofile,
-      pendingSites,
+      pendingSites: [...pendingSites, ...blocked, ...(heldSites ?? [])],
       context: materialized.context,
       provenance,
     }),
@@ -226,7 +203,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     pendingSites,
     context: materialized.context,
     landofile,
-    blocked: loadBlocked,
+    blocked: blocked.length === 0 ? loadBlocked : [...(loadBlocked ?? []), ...blockedPaths],
     appSlug,
     defaultDomain,
     appRoot,
@@ -253,9 +230,18 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
       })),
     }),
   };
-  if (issues.length > 0) return { _tag: "Invalid" as const, issues, resolution };
-  return { _tag: "Resolved" as const, resolution };
+  if (issues.length > 0) return { _tag: "Invalid" as const, issues, resolution, dependentSkips };
+  return { _tag: "Resolved" as const, resolution, dependentSkips };
 });
+
+export const resolveLandofileForLint = (input: KnownEventSetInput) => resolveLandofile(input, "diagnostic");
+
+export const resolveLandofileForPlanning = (input: KnownEventSetInput) =>
+  resolveLandofile(input).pipe(
+    Effect.flatMap((result) =>
+      result._tag === "ExpressionAborted" ? Effect.fail(result.error) : Effect.succeed(result),
+    ),
+  );
 
 export type ResolvedLandofile = Extract<
   Effect.Success<ReturnType<typeof resolveLandofileForPlanning>>,

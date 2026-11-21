@@ -16,6 +16,7 @@ import { evolveHistoricalDeprecationNotice } from "./x-extension-deprecation-not
 import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
 import { evolveHistoricalIncludeWhen } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
@@ -143,9 +144,9 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
     evolveHistoricalEndpointKind(beforeEndpointKind, "wire"),
     source === "fragment" ? "landofile" : source,
   );
-  const withRouteText = evolveHistoricalRouteText(evolved, "authoring");
-  evolvedTypedCache.set(source, withRouteText);
-  return withRouteText;
+  const expected = evolveHistoricalExtraArgs(evolveHistoricalRouteText(evolved, "authoring"));
+  evolvedTypedCache.set(source, expected);
+  return expected;
 };
 const artifactCache = new Map<string, ReturnType<typeof loadNormalizedArtifact>>();
 const currentArtifact = (surface: string) => {
@@ -220,9 +221,11 @@ describe("embedded wire closed x-* artifact repair", () => {
         ),
       ),
     );
-    const repaired = evolveHistoricalRouteText(
-      evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(beforeEndpointKind, "wire"), "services"),
-      "authoring",
+    const repaired = evolveHistoricalExtraArgs(
+      evolveHistoricalRouteText(
+        evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(beforeEndpointKind, "wire"), "services"),
+        "authoring",
+      ),
     );
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),

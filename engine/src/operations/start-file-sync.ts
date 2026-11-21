@@ -103,7 +103,8 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
   events: ProgressEmitter,
   managed?: StartManagedScope,
   boundEngine?: FileSyncEngineShape,
-  resumedAfterApply = false,
+  /** The command that finishes an attempt resumed after apply intent, whose missing sessions need history. */
+  resumedAfterApply?: string,
 ) {
   const bundle = yield* fileSyncBundle(plan);
   if (bundle.kind === "ordinary") return;
@@ -236,7 +237,7 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
               }
 
               const sessionScope = managed?.scope ?? (yield* Scope.make());
-              if (resumedAfterApply && engine.sessionsPersistAcrossProcesses === true) {
+              if (resumedAfterApply !== undefined && engine.sessionsPersistAcrossProcesses === true) {
                 const recovered =
                   engine.recoverSession === undefined
                     ? Option.none()
@@ -249,8 +250,7 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                       engineId: engine.id,
                       sessionSpec: session,
                       message: `Session ${session.service}/${session.mountKey} is missing after app writers may have used its target and its synchronization history cannot be recovered.`,
-                      remediation:
-                        "Restore the session's synchronization history in the file-sync engine, then run `lando start`. Lando left the target untouched. `lando stop` still stops app writers; `lando destroy` refuses until the history is restored because the target may hold the only copy of app writes.",
+                      remediation: `Restore the session's synchronization history in the file-sync engine, then run \`${resumedAfterApply}\`. Lando left the target untouched. \`lando stop\` still stops app writers; \`lando destroy\` refuses until the history is restored because the target may hold the only copy of app writes.`,
                     }),
                   );
                 yield* engine.flushSession(recovered.value);

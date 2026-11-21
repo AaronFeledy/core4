@@ -77,7 +77,7 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
   const fileSync =
     target === undefined || provider === undefined || plan.missingStart !== undefined
       ? undefined
-      : yield* prepareDestroyFileSync(target, provider);
+      : yield* prepareDestroyFileSync(target, provider, plan.applied?.plan);
   const events = yield* EventService;
   const proxy = yield* Effect.serviceOption(RouterService);
   const applied = evidence === "applied" ? plan.applied : undefined;
