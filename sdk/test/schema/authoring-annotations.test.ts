@@ -115,7 +115,9 @@ test("a branch deprecation survives flattening and reordering without marking it
   const string = { type: "string" };
   const boolean = { type: "boolean" };
   const nil = { type: "null" };
-  const artifact = { anyOf: [nil, boolean, string] };
+  const artifact: { readonly anyOf: ReadonlyArray<Record<string, unknown>> } = {
+    anyOf: [nil, boolean, string],
+  };
   expect(withSchemaDeprecations(schema, artifact)).toEqual({
     anyOf: [nil, boolean, { ...string, deprecated: true, "x-deprecation": notice }],
   });
