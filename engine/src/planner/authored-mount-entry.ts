@@ -40,7 +40,7 @@ export const mountInputError = (
   new LandofileValidationError({
     message,
     remediation,
-    file: `${context.appRoot}/.lando.yml`,
+    file: context.appRoot,
     issues: paths.map((path) => validationIssue(path, message, remediation)),
   });
 

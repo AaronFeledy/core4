@@ -1,8 +1,9 @@
 import type { StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import type { AppPlan, PreparedFileSyncTarget, ServiceName } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
+import { RouterService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { Effect } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
+import { routeUrlRouterError } from "../lifecycle/route-url-bindings.ts";
 import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
 import { type PreparedRuntimeProvider, prepareProvider } from "../providers/prepared.ts";
@@ -14,7 +15,7 @@ import { runAppInitEvents } from "./events.ts";
 import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
 import { requireSelectableRouter } from "./global-consumer-admission.ts";
 import { preflightSelectedRelaunch } from "./selected-relaunch.ts";
-import { selectInfoPlan, selectRebuildPlan } from "./service-selection.ts";
+import { selectRebuildPlan, selectRestartPlan } from "./service-selection.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
 import {
@@ -91,6 +92,8 @@ export function withAppActivation<A, E, R>(
         const target = yield* reconcileAppDataIdentity(request.target);
         const plan = target.plan;
         yield* requireSelectableRouter(plan);
+        const routeError = routeUrlRouterError(plan, yield* RouterService);
+        if (routeError !== undefined) return yield* routeError;
         yield* validateDesiredFileSyncEngine(plan);
         let scoped = false;
         let selectedPlan = plan;
@@ -99,7 +102,7 @@ export function withAppActivation<A, E, R>(
             break;
           case "restart":
             scoped = request.services !== undefined && request.services.length > 0;
-            if (scoped) selectedPlan = yield* selectInfoPlan(plan, request.services);
+            if (scoped) selectedPlan = yield* selectRestartPlan(plan, request.services);
             break;
           case "rebuild":
             selectedPlan = yield* selectRebuildPlan(plan, request.services);

@@ -82,13 +82,26 @@ export const missingRootAppliedTarget = Effect.fnUntraced(function* (plan: AppPl
   return { plan, root: plan.root, app: userAppRef(plan) } satisfies ResolvedAppTarget;
 });
 
-export const resolveAppliedStateTarget = Effect.gen(function* () {
+const appliedStateTargetForCwd = Effect.fnUntraced(function* (preferDiscoveredRoot: boolean) {
   const registry = yield* RuntimeProviderRegistry;
-  const cwdIdentity = yield* resolveAppIdentity((yield* findAppRoot()) ?? (yield* discoveryCwd()));
-  const plan = yield* registry.resolveAppliedPlan(cwdIdentity.appRoot);
+  const discovered = yield* findAppRoot();
+  const cwdIdentity = yield* resolveAppIdentity(discovered ?? (yield* discoveryCwd()));
+  const exact = preferDiscoveredRoot && discovered !== undefined;
+  const plan = yield* registry
+    .resolveAppliedPlan(cwdIdentity.appRoot, undefined, exact ? "exact" : "ancestor")
+    .pipe(
+      Effect.catchTag("AppResolveError", (error) =>
+        exact && error.reason === "mismatch" && error.detail === "provider-resources"
+          ? Effect.succeed(undefined)
+          : Effect.fail(error),
+      ),
+    );
   if (plan === undefined) return undefined;
   return yield* appliedStateTarget(plan);
 });
+
+export const resolveAppliedStateTarget = appliedStateTargetForCwd(false);
+export const resolveAppliedLogsTarget = appliedStateTargetForCwd(true);
 
 /** What teardown may act on for the discovered app root, decided before any desired config loads. */
 export type TeardownResolution =

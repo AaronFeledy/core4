@@ -75,7 +75,7 @@ export const composePreparedLayers = Effect.fn("Landofile.compose")(function* (
       Effect.catch((error) => {
         if (context.recorder === undefined || !Schema.is(LandofileLoadFailure)(error))
           return Effect.fail(error);
-        context.recorder.record(error);
+        context.recorder.record(error, { kind: "missing-content" });
         return Effect.succeed({
           document: {
             value: {},

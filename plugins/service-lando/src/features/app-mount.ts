@@ -37,7 +37,12 @@ export const landoAppMountFeature: ServiceFeatureDefinition = {
       target,
       readOnly: authored?.readOnly ?? config.readOnly ?? false,
       excludes: [...excludes, ...(authored?.excludes ?? []).filter((entry) => !excludes.includes(entry))],
-      includes: [...new Set([...(config.includes ?? []), ...(authored?.includes ?? [])])],
+      includes: [
+        ...new Set([
+          ...(config.includes ?? []).filter((entry) => !authored?.excludes?.includes(entry)),
+          ...(authored?.includes ?? []),
+        ]),
+      ],
     });
     if (ctx.base === "lando") {
       ctx.addEnv("LANDO_APP_ROOT", target);

@@ -36,6 +36,7 @@ import {
   requireContract,
   utf8,
 } from "./_shared.ts";
+import { checkProviderStartupDns } from "./provider-startup-dns.ts";
 
 export const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin", "linux", "win32", "wsl"];
 
@@ -534,6 +535,8 @@ export const runProviderContract = Effect.fnUntraced(function* (
   yield* provider
     .destroy({ app: TEST_APP_ID }, { volumes: true })
     .pipe(mapFailures(mapProviderFailure("destroy succeeds for the contract fixture")));
+
+  yield* checkProviderStartupDns(provider, testAppPlan);
 
   yield* requireContract(
     typeof provider.planSetup === "function",

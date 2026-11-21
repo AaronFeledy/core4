@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
+import { pinnedAction } from "./action-pins.ts";
 
 import { CI_PLATFORMS, isWindowsCiPlatform, releaseBinaryFileName } from "./ci-platforms.ts";
-import { RUNTIME_BUNDLE_ACTION_PINS } from "./runtime-bundle-supply-chain.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/release.yml");
@@ -73,12 +73,12 @@ jobs:
       group: dev-prerelease-\${{ github.run_number }}
       cancel-in-progress: false
     steps:
-      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
         with:
           ref: \${{ github.event.workflow_run.head_sha }}
 
       - name: Setup Bun
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun} # v2.0.2
+        uses: ${pinnedAction("oven-sh/setup-bun")}
         with:
           bun-version-file: .bun-version
 

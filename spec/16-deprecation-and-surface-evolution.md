@@ -1,6 +1,6 @@
 # Lando v4: Deprecation and Surface Evolution
 
-> **Part 16 of 20** · [Index](./README.md)
+> **Part 16 of 21** · [Index](./README.md)
 > **Read next:** [17 Executable Guides and Scenarios](./17-executable-tutorials.md)
 
 This part defines the single machine-readable deprecation contract for every public surface.
@@ -26,7 +26,9 @@ This part defines the single machine-readable deprecation contract for every pub
 
 The unreleased `ToolingVarDefault` and `ToolingVarPrompt` schemas are removed without aliases or a deprecation cycle: a literal var replaces `{ default }`, and a declared flag or arg, or a `vars.<name>.sh` command, replaces `{ prompt }` (§8.5.3). The removal updates the public-surface fixture and schema artifacts.
 
-Endpoint and route-filter discriminators use `kind` on authored input, plans, and applied state (`EndpointPlan.kind`, `RouteFilter.kind`, `RouteFilterKind`). The unreleased spellings have no live aliases or deprecation cycle. Plugin `declareEndpoints` returns `EndpointDeclaration.Encoded` values; only plugin HTTP(S) objects accept authored `scan` (§6.11.0). The endpoint shorthand alias grammar does not narrow object names (§6.6). Applied-state v7 MUST migrate to v8 on read; executable app-plan cache revision 57 and scratch plan envelope 2 MUST reject older frames (§5.5.2, §12.1).
+The unreleased structured diagnostic coordinates replace `RouteInputError.key` with `path` and `otherPath` (§6.6), `DataTreeOwnershipCapabilityError.option` with the array `path` (§6.12), and the string `RecipeSourceCompileError.path` with an array of segments (§8.8). Regenerate schema artifacts; do not add aliases, adapters, or a deprecation cycle. `LandofileWriteValidationError.path` continues to carry the raw selector string (§8.11.1).
+
+Endpoint and route-filter discriminators use `kind` on authored input, plans, and applied state (`EndpointPlan.kind`, `RouteFilter.kind`, `RouteFilterKind`). The unreleased spellings have no live aliases or deprecation cycle. Plugin `declareEndpoints` returns `EndpointDeclaration.Encoded` values; only plugin HTTP(S) objects accept authored `scan` (§6.11.0). The endpoint shorthand alias grammar does not narrow object names (§6.6). Applied-state v7 migrates to the v8 shape on read. The v10 reader accepts versions 1 through 10 (§5.5.2); v8 and v9 decode without rewriting discriminators, inferring keep-alive intent (added in v9), or inventing `RouteText` descriptors (added in v10). The current executable app-plan cache revision (§12.1) and scratch plan envelope 2 MUST reject older frames (§5.5.2).
 
 ### 18.2 The `DeprecationNotice` schema
 

@@ -7,6 +7,7 @@ import {
 import type { CommandSpec, ExecChunk } from "@lando/sdk/services";
 import { Cause, Duration, Effect, type Scope, Stream } from "effect";
 import { classifyTcpListeners, parseTcpListeners } from "./listener-parser.ts";
+import { serviceProbeListener } from "./service-probe.ts";
 
 export const LISTENER_COMMAND = {
   command: ["cat", "/proc/net/tcp", "/proc/net/tcp6"],
@@ -17,11 +18,12 @@ export const LISTENER_MAX_BYTES = 128 * 1024;
 export const expectedTcpListener = (service: ServicePlan) => {
   const probe = effectiveReadiness(service);
   if (probe?.executionTarget === "host") return undefined;
-  if (probe?.target !== undefined)
-    return probe.target.transport === "tcp"
+  const listener = probe === undefined ? undefined : serviceProbeListener(probe);
+  if (listener !== undefined)
+    return listener.transport === "tcp"
       ? {
           service: String(service.name),
-          port: probe.target.port,
+          port: listener.port,
           transport: "tcp" as const,
           basis: "probe-target" as const,
         }

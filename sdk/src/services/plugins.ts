@@ -115,12 +115,23 @@ export interface FeatureRef {
   readonly config?: Record<string, unknown>;
 }
 
+import type { ServiceLaunchers as ServiceLaunchersTable } from "../schema/service-launchers.ts";
+import {
+  ServiceLauncherMarker as ServiceLauncherMarkerSchema,
+  ServiceLaunchers as ServiceLaunchersSchema,
+} from "../schema/service-launchers.ts";
+
+export const ServiceLauncherMarker = ServiceLauncherMarkerSchema;
+export const ServiceLaunchers = ServiceLaunchersSchema;
+export type ServiceLaunchers = ServiceLaunchersTable;
+
 /**
  * The output of {@link ServiceType.resolve}: normalized config plus the
  * priority-ordered features core composes onto the named base.
  * A service type MUST NOT hand-build a `ServicePlan`.
  */
 export interface ServiceTypeResolution {
+  readonly launchers?: ServiceLaunchersTable;
   readonly connection?: DatabaseConnection;
   readonly nonSqlCreds?: ServiceCreds;
   readonly base: "l337" | "lando";

@@ -2,6 +2,7 @@ export {
   AxisToken,
   CleanupProps,
   ComponentId,
+  FetchProps,
   GuideProps,
   HiddenProps,
   InlineProps,

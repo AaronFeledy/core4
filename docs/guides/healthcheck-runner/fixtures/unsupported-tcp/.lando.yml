@@ -4,4 +4,3 @@ services:
     type: node:lts
     healthcheck:
       kind: tcp
-      port: 3000

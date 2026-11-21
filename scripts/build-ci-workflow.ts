@@ -11,6 +11,7 @@ import {
   renderContainerHelperJob,
 } from "./_container-helper-workflow.ts";
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
+import { pinnedAction } from "./action-pins.ts";
 import { PROVIDER_IMAGES } from "./build-provider-images.ts";
 import {
   CI_PLATFORMS,
@@ -20,7 +21,6 @@ import {
   LINUX_X64_TEST_RUNNER,
   isWindowsCiPlatform,
 } from "./ci-platforms.ts";
-import { RUNTIME_BUNDLE_ACTION_PINS } from "./runtime-bundle-supply-chain.ts";
 import { type TestSelectionId, UNIT_SHARD_COUNT, testSelectionCommand } from "./test-selections.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -75,7 +75,7 @@ ${staticCheckMatrixInclude()}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${timingStartStep}
 
@@ -147,7 +147,7 @@ const renderDarwinSignalTests = (): string => {
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${isolateLandoRootsStep}
 
@@ -175,7 +175,7 @@ const renderUnitTests = (): string => `  unit-tests-linux-x64-shard:
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${timingStartStep}
 
@@ -202,7 +202,7 @@ const renderTestIsolation = (): string => `  test-isolation-linux-x64:
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${timingStartStep}
 
@@ -229,7 +229,7 @@ const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}
     runs-on: ${platform.runsOn}
     timeout-minutes: ${platform.timeoutMinutes}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${timingStartStep}
 
@@ -273,7 +273,7 @@ ${renderSmokeCommands(platform)}
 
       - name: Upload ${platform.id} binary
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: lando-${platform.id}
           path: |
@@ -289,7 +289,7 @@ const renderDocsBuild = (): string => `  docs-build:
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${timingStartStep}
 
@@ -311,7 +311,7 @@ ${codegenStep}
 
       - name: Upload Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        uses: ${pinnedAction("actions/upload-pages-artifact")}
         with:
           path: docs/dist
 
@@ -331,7 +331,7 @@ ${timingNoticeStep("docs-build", 15)}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: ${pinnedAction("actions/deploy-pages")}
 `;
 
 const renderPerfBudgetJob = (): string => `  perf-budget-linux-x64:
@@ -339,14 +339,14 @@ const renderPerfBudgetJob = (): string => `  perf-budget-linux-x64:
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${timingStartStep}
 
 ${setupBunSteps}
 
       - name: Download Linux x64 binary artifact
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: ${pinnedAction("actions/download-artifact")}
         with:
           name: lando-linux-x64
           path: dist
@@ -422,7 +422,7 @@ const nodeImagePullLines = nodeReleases.releases
   .join("\n");
 
 const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linux x64 runtime bundle
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: ${pinnedAction("actions/download-artifact")}
         with:
           name: runtime-bundle-linux-x64-current
           path: dist/cache/runtime-bundle
@@ -509,6 +509,7 @@ ${landoManagedPodmanRuntimeDirCommands}
 ${nodeImagePullLines}
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/adminer:6
+          pull_image quay.io/keycloak/keycloak:26.8
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -631,7 +632,7 @@ export const restoreOrAssembleRuntimeBundleSteps = (hostKey: string): string => 
 
       - name: Restore assembled ${label} runtime bundle
         id: runtime-bundle-cache
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache} # v6.1.0
+        uses: ${pinnedAction("actions/cache")}
         with:
           path: dist/cache/runtime-bundle/lando-runtime-${hostKey}.tar.gz
           key: \${{ steps.runtime-bundle-key.outputs.key }}
@@ -649,12 +650,12 @@ export const linuxRuntimeBundleJob = (hostKey: "linux-x64" | "linux-arm64"): str
     runs-on: ${hostKey === "linux-x64" ? LINUX_X64_PRIMARY_RUNNER : platform.runsOn}
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${timingStartStep}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ${pinnedAction("oven-sh/setup-bun")}
         with:
           bun-version-file: .bun-version
 
@@ -664,7 +665,7 @@ ${timingStartStep}
 ${restoreOrAssembleRuntimeBundleSteps(hostKey)}
 
       - name: Upload current-commit ${label} runtime bundle
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: runtime-bundle-${hostKey}-current
           path: dist/cache/runtime-bundle/lando-runtime-${hostKey}.tar.gz
@@ -679,7 +680,7 @@ const windowsRuntimeBundleJob = `  runtime-bundle-win32-x64:
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${timingStartStep}
 
@@ -689,7 +690,7 @@ ${setupBunSteps}
         run: bun run scripts/assemble-runtime-bundle.ts --platform win32-x64
 
       - name: Upload current-commit Windows runtime bundle
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: runtime-bundle-win32-x64-current
           path: dist/cache/runtime-bundle/lando-runtime-win32-x64.zip
@@ -700,7 +701,7 @@ ${timingNoticeStep("runtime-bundle-win32-x64", 15)}
 `;
 
 const windowsManagedSetupSteps = `      - name: Download current-commit Windows runtime bundle
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: ${pinnedAction("actions/download-artifact")}
         with:
           name: runtime-bundle-win32-x64-current
           path: dist/cache/runtime-bundle
@@ -755,7 +756,7 @@ const renderProviderIntegrationJob = (platform: CiPlatform): string => {
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: ${platform.providerTimeoutMinutes}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${isolateLandoRootsStep}
 
@@ -768,7 +769,7 @@ ${codegenStep}
 ${containerHelperDownloadStep}
 
       - name: Download ${platform.id} binary artifact
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: ${pinnedAction("actions/download-artifact")}
         with:
           name: lando-${platform.id}
           path: dist
@@ -780,7 +781,7 @@ ${providerIntegrationSteps(platform)}
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: ${diagnosticsName}
           path: provider-diagnostics
@@ -798,6 +799,10 @@ ${renderLinuxX64MatrixGate(
 )}`;
 };
 
+// The @smoke [e2e] scenarios run serially against one real provider, so they are split across
+// shards that each start their own provider instead of sharing the generated-scenario job's clock.
+const GUIDE_E2E_SHARD_COUNT = 2;
+
 const guideScenarioRunCommand =
   "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**";
 const guideScenarioLiveOutputEnv = `          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"`;
@@ -807,7 +812,7 @@ export const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
 ${landoRuntimeBundleSetupSteps}`;
 
 const linuxGuideScenarioE2eSteps = `      - name: Download Linux x64 binary artifact
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: ${pinnedAction("actions/download-artifact")}
         with:
           name: lando-linux-x64
           path: dist
@@ -821,7 +826,7 @@ ${linuxGuideE2eProviderSetupSteps}
         env:
           LANDO_GUIDE_E2E: "1"
 ${guideScenarioLiveOutputEnv}
-        run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"
+        run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts --smoke-e2e --shard=\${{ matrix.shard }}/${GUIDE_E2E_SHARD_COUNT}
 
       - name: Teardown guide e2e provider
         if: always()
@@ -838,18 +843,18 @@ ${landoManagedPodmanTeardownCommands}
 
       - name: Upload guide scenario transcripts
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
-          name: guide-scenario-transcripts-\${{ github.run_id }}-\${{ matrix.runs-on }}.zip
+          name: guide-scenario-transcripts-\${{ github.run_id }}-\${{ matrix.runs-on }}-shard\${{ matrix.shard }}.zip
           path: dist/transcripts/guides/**/*.json
           if-no-files-found: ignore
           retention-days: 7
 
       - name: Upload guide e2e provider diagnostics
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
-          name: guide-e2e-provider-diagnostics-\${{ github.run_id }}-\${{ matrix.runs-on }}.zip
+          name: guide-e2e-provider-diagnostics-\${{ github.run_id }}-\${{ matrix.runs-on }}-shard\${{ matrix.shard }}.zip
           path: guide-e2e-provider-diagnostics
           if-no-files-found: ignore
           retention-days: 7`;
@@ -870,11 +875,11 @@ const renderGuideScenariosJob = (platform: CiPlatform): string => {
     : `guide-scenarios-${platform.id}`;
 
   const runnerJob = `  ${runnerJobId}:
-    needs: ${isLinuxX64 ? "[static-checks, build-linux-x64, runtime-bundle-linux-x64]" : "[static-checks]"}
+    needs: [static-checks]
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
         with:
           fetch-depth: 0
 
@@ -907,33 +912,54 @@ ${codegenStep}
       - name: Run generated guide scenarios
         env:
 ${guideScenarioLiveOutputEnv}
-        run: ${guideScenarioRunCommand}${
-          isLinuxX64
-            ? `
-
-${linuxGuideScenarioE2eSteps}`
-            : ""
-        }
+        run: ${guideScenarioRunCommand}
 
 ${timingNoticeStep(timingLabel, 30)}
 `;
 
   if (!isLinuxX64) return runnerJob;
   return `${runnerJob}
-${renderLinuxX64MatrixGate(`guide-scenarios-${platform.id}`, `guide-scenarios-${platform.id}-runner`)}`;
+${renderLinuxX64MatrixGate(`guide-scenarios-${platform.id}`, `guide-scenarios-${platform.id}-runner`)}
+${renderGuideE2eJobs()}`;
 };
+
+const renderGuideE2eJobs = (): string => `  guide-e2e-linux-x64-runner:
+    needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [${linuxX64RunnerList}]
+        shard: [${Array.from({ length: GUIDE_E2E_SHARD_COUNT }, (_, index) => index + 1).join(", ")}]
+    runs-on: \${{ matrix.runs-on }}
+    timeout-minutes: 30
+    steps:
+      - uses: ${pinnedAction("actions/checkout")}
+
+${isolateLandoRootsStep}
+
+${timingStartStep}
+
+${setupBunSteps}
+
+${codegenStep}
+
+${linuxGuideScenarioE2eSteps}
+
+${timingNoticeStep("guide-e2e-linux-x64/${{ matrix.runs-on }}/shard ${{ matrix.shard }}", 30)}
+
+${renderLinuxX64MatrixGate("guide-e2e-linux-x64", "guide-e2e-linux-x64-runner")}`;
 
 const renderIsolatedInstallExperiment = (): string => `  bun-install-isolated-experiment:
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     continue-on-error: true
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${timingStartStep}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ${pinnedAction("oven-sh/setup-bun")}
         with:
           bun-version-file: .bun-version
 
@@ -954,6 +980,7 @@ name: ci
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:
@@ -979,7 +1006,7 @@ ${renderContainerHelperArm64Job()}
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
         with:
           fetch-depth: 0
 
@@ -1025,7 +1052,7 @@ ${timingNoticeStep("schema-snapshot", 15)}
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${timingStartStep}
 
@@ -1067,7 +1094,7 @@ ${timingNoticeStep("bundled-codegen", 15)}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${timingStartStep}
 
@@ -1089,7 +1116,7 @@ ${renderLinuxX64MatrixGate("library-api-tests", "library-api-tests-runner")}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${timingStartStep}
 

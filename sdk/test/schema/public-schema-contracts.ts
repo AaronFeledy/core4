@@ -288,6 +288,8 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   ScheduleConfig: "sdk/test/schema/schedule.test.ts",
   ScheduleJob: "sdk/test/schema/schedule.test.ts",
   ScheduleJobName: "sdk/test/schema/schedule.test.ts",
+  ServiceLauncherMarker: "sdk/test/schema/service-launchers.test.ts",
+  ServiceLaunchers: "sdk/test/schema/service-launchers.test.ts",
 } satisfies Partial<Record<JsonSchemaName, PublicSchemaContractFixture["testFile"]>>;
 
 export const publicSchemaContractTestFile = (
@@ -654,6 +656,7 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
     notes: "https://example.test/releases/v4.2.0",
   },
   VerifyProps: { command: "documented value" },
+  FetchProps: { url: "{{route:web}}/", expect: { status: 200 } },
   InspectProps: { file: "/tmp/lando-app/output.json" },
   HiddenProps: { reason: "documented value" },
   InlineProps: { code: "alpha", justification: "documented value" },
@@ -742,6 +745,8 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
     root: "root PEM",
   },
   ScheduleJobName: "tick",
+  ServiceLauncherMarker: ":local-bin",
+  ServiceLaunchers: { ":local-bin2": ["env", "NAME=value"] },
   ScheduleJob: { name: "tick", every: "@hourly", run: "true" },
   ScheduleConfig: [{ name: "tick", every: "@hourly", run: "true" }],
 };

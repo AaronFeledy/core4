@@ -1,5 +1,6 @@
 import { SchemaAST as AST, Schema, SchemaTransformation } from "effect";
 import { decodeUnknownEffect, encodeUnknownEffect } from "effect/SchemaParser";
+import { propertyNameCheckedRecord, propertyNameRecordProjection } from "./property-name-check.ts";
 
 const JSON_PROJECTION = "lando/authoring/json-projection";
 
@@ -171,6 +172,9 @@ const propertyNameChecks = (check: AST.Check<unknown>): ReadonlyArray<AST.Check<
 
 export const authoringJsonContainer = (source: AST.AST, runtime: AST.AST): AST.AST | undefined => {
   const [first, ...rest] = (source.checks ?? []).flatMap(propertyNameChecks);
+  if (first?._tag === "Filter" && first.annotations?.["lando/indexed-property-names"] === true) {
+    return propertyNameCheckedRecord(Schema.make<Schema.Codec<unknown>>(runtime), first).ast;
+  }
   const keyChecks: AST.Checks | undefined = first === undefined ? undefined : [first, ...rest];
   const container =
     keyChecks === undefined ? runtime : Schema.make<Schema.Codec<unknown>>(runtime).check(...keyChecks).ast;
@@ -233,7 +237,12 @@ export const authoringWireAst = (ast: AST.AST): AST.AST => {
     }
     return mapComposite(node, go, "walk");
   });
-  const strip = memoWalk((node, go) => mapComposite(node, go, "keep"));
+  const strip = memoWalk((node, go) => {
+    const checkedRecord = propertyNameRecordProjection(node);
+    return checkedRecord === undefined
+      ? mapComposite(node, go, "keep")
+      : go(AST.toEncoded(unwrap(checkedRecord)));
+  });
   const root = AST.isSuspend(ast)
     ? Schema.make<Schema.Codec<unknown>>(ast.thunk()).annotate(ast.annotations ?? {}).ast
     : ast;

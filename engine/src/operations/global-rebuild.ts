@@ -56,6 +56,7 @@ export const GlobalRebuildResultSchema = Schema.Struct({
 export type GlobalRebuildResult = typeof GlobalRebuildResultSchema.Type;
 
 export type GlobalRebuildError =
+  | import("@lando/sdk/errors").RouteUrlBindingError
   | import("@lando/sdk/errors").CaError
   | import("@lando/sdk/services").FileSystemError
   | Effect.Error<ReturnType<typeof installAndLoadGlobalPlan>>

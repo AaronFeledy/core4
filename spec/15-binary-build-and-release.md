@@ -1,6 +1,6 @@
 # Lando v4: Binary Build and Release Engineering
 
-> **Part 15 of 20** · [Index](./README.md)
+> **Part 15 of 21** · [Index](./README.md)
 > **Read next:** [16 Deprecation and Surface Evolution](./16-deprecation-and-surface-evolution.md)
 
 This part specifies how the §13 distribution artifacts are built, signed, published, installed, and updated.
@@ -55,6 +55,7 @@ The deprecation gate runs immediately after codegen. For Lando-owned surfaces, i
 | `provider-images` | Pinned provider image table | Generated provider-image table | Derived drift and provider tests |
 | `compose-fixture-manifest` | Compose fixtures | Fixture rejection manifest | Derived drift and fixture tests |
 | `bundled-recipes` | Recipe ship list and manifests | Static recipe index; target embedded recipe assets | Derived drift and recipe tests |
+| `bundled-templates` | Template ship list and `templates/*/template.yml` | Static template index and embedded template trees | Derived drift and template tests |
 | `bootstrap-layers` | Service registry, bootstrap ranks, plugin contributions | One generated Layer per bootstrap level | Derived drift, boundary, and perf gates |
 | `schema-snapshot` | Public schema, command-result, and bundled-manifest registries | Schema artifacts, references, fixtures, package mirrors | Derived regeneration and schema compatibility |
 | `setup-plugin-flags` | Ship list and setup contributions | Setup flag metadata | Derived drift and command tests |
@@ -77,7 +78,7 @@ The deprecation gate runs immediately after codegen. For Lando-owned surfaces, i
 | `tomcat-bump-workflow` | Paired Tomcat maintenance policy and action pins | Tomcat maintenance workflow | Committed-workflow regeneration, proposal behavior, and CI dispatch checks |
 | `node-releases-bump-workflow` | Node release maintenance policy and action pins | Node release-schedule maintenance workflow | Committed-workflow regeneration and diff |
 
-Network-dependent maintenance generators for runtime bundles, Compose vendor bytes, upstream Compose fixtures, paired Tomcat images/configuration, and the Node release-schedule pin remain outside `bun run codegen`; their dedicated workflows or maintainer commands own pin updates and live verification. Planned error, event, service, recipe-action, API-report, acceptance-index, Mutagen-client, and plugin-template generators remain deferred until corresponding scripts exist.
+Network-dependent maintenance generators for runtime bundles, Compose vendor bytes, upstream Compose fixtures, paired Tomcat images/configuration, and the Node release-schedule pin remain outside `bun run codegen`; their dedicated workflows or maintainer commands own pin updates and live verification. Planned error, event, service, template-step, API-report, acceptance-index, Mutagen-client, and plugin-template generators remain deferred until corresponding scripts exist.
 
 The explicit `update:tomcat` command MUST verify the multi-platform image index, required Linux architectures, release identity, and matching immutable Apache baseline before writing paired inputs. Same-version image rebuilds count as updates. The update report MUST distinguish a same-version image rebuild from a release change and MUST NOT present an unchanged major as updated. Network or validation failures MUST leave existing inputs untouched. Image pins, baseline XML, and upstream notices remain committed; the embedded TypeScript catalog is derived offline. Every codegen consumer, including standalone CI jobs, MUST materialize that catalog before importing bundled plugins. Dedicated maintenance automation MAY propose paired changes after focused checks and MUST request live compatibility checks for supported majors, but MUST NOT auto-merge. Upstream drift requires maintenance review, not network discovery during normal builds or app startup.
 
@@ -86,6 +87,8 @@ Node release maintenance refreshes codenames, LTS dates, and end dates for the s
 Compose-vendor, Tomcat, Node release, and nightly automation MUST share failure-issue reporting that searches open issues by title, matches the exact title, comments on the oldest match, and creates an issue only when none is open. Each reporter MUST run after every run that was not cancelled as a whole and MUST treat every dependency result other than `success` or `skipped` as failed, including `cancelled` (a job stopped by its timeout), GitHub's undocumented `abandoned` (a lost runner), and any result it does not recognize; when no job failed it MUST exit without reading or writing issues, and a run cancelled as a whole files nothing. Each report MUST link the run and name the failed jobs, marking a cancelled job as timed out or cancelled and any other non-`failure` result with its name. Nightly MUST report only for scheduled runs on `refs/heads/main`, including when other dependencies were skipped; its reporter MUST need every other nightly job, use the title `nightly automation failure`, and assign newly created issues to `AaronFeledy`. Every workflow MUST grant `issues: write` only to its reporter job; nightly retains workflow-level `contents: read`.
 
 Compose-vendor, Tomcat, and Node release maintenance automation MUST own the rolling PR's title and, in the body, only the report that ends at the first line starting with `<!-- maintenance-report:end -->` and starts at the nearest preceding line starting with `<!-- maintenance-report:start -->`, preserving reviewer text outside that section; a body without such a pair MUST be replaced by the marked report. It MUST NOT force-push the rolling branch. Compose-vendor automation MUST run the coverage gate while building its proposal report and lead with the result, including the gate output and the steps to fix it when the gate fails. It MUST NOT classify keys automatically or block or fail the proposal because the coverage gate fails.
+
+Workflow generators MUST take every action from `.github/actions/pins.yml`, which holds one line per action pinning a full commit SHA labeled with its exact release (`owner/repo@<sha> # vX.Y.Z`), and MUST emit that text unchanged. Renovate then moves a pin in that file and in the committed workflows with identical text, so `codegen:check` stays clean without a regeneration step. Runner labels, job containers, and action inputs remain generator-owned, and the dependency updater MUST NOT edit them.
 
 Pin manifests and generated workflows remain committed. Pure build products are derived and need not be Git sources of truth. `bun run codegen` runs the catalog in dependency order; `bun run codegen:check` is the pure-drift gate. Semantic gates such as schema compatibility, guide coverage, public transcripts, and boundaries remain separate.
 

@@ -53,7 +53,12 @@ export const normalizeEnvironmentSites = (
             if (canonical !== false) {
               if (input.recorder === undefined) throw canonical;
               if (input.recorder.failures.includes(canonical)) input.recorder.block(origin.source);
-              else input.recorder.record(canonical, origin.source);
+              else
+                input.recorder.record(canonical, {
+                  kind: "local",
+                  source: origin.source,
+                  normalizedContainer: origins.source,
+                });
               continue;
             }
           }
@@ -66,7 +71,11 @@ export const normalizeEnvironmentSites = (
             remediation: "Use KEY=value entries or an environment mapping.",
           });
           if (input.recorder === undefined) throw error;
-          input.recorder.record(error, origin.source);
+          input.recorder.record(error, {
+            kind: "local",
+            source: origin.source,
+            normalizedContainer: origins.source,
+          });
           continue;
         }
         const key = item.slice(0, equal);

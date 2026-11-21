@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, resolve } from "node:path";
 import * as Schema from "effect/Schema";
-
+import { pinnedAction } from "../../../scripts/action-pins.ts";
 import { CI_PLATFORMS, releaseBinaryFileName } from "../../../scripts/ci-platforms";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -334,7 +334,7 @@ describe("ci workflow codegen", () => {
       const providerMatrixWorkflowGenerator = await readFile(providerMatrixWorkflowGeneratorPath, "utf8");
       const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(42);
+      expect(versionFileMatches).toBe(44);
       expect(workflow).not.toContain("bun-version: ");
       expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(21);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
@@ -424,7 +424,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain(`    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
         with:
           fetch-depth: 0`);
       expect(workflow).toContain("- name: Check schema compatibility");
@@ -618,7 +618,7 @@ describe("ci workflow codegen", () => {
       for (const hostKey of ["linux-x64", "linux-arm64"]) {
         const job = workflow.split(`\n  runtime-bundle-${hostKey}:\n`)[1]?.split(/^ {2}[a-z]/m)[0] ?? "";
         expect(job).toContain("id: runtime-bundle-cache");
-        expect(job).toContain("uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9");
+        expect(job).toContain(`uses: ${pinnedAction("actions/cache")}`);
         expect(job).toContain("key: ${{ steps.runtime-bundle-key.outputs.key }}");
         expect(job).toContain(`bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey} --cache-key`);
         expect(job).toContain("if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'");
@@ -641,7 +641,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain(
         "needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
       );
-      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(27);
+      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(28);
       expect(workflow).not.toContain("run: bun run codegen:guide-scenarios");
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("run: bun run lint:guides");
@@ -661,13 +661,13 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("name: lando-linux-x64");
       expect(workflow).toContain('LANDO_GUIDE_E2E: "1"');
       expect(workflow).toContain(
-        'run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"',
+        'run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts --smoke-e2e --shard=${{ matrix.shard }}/2',
       );
       expect(workflow).toContain(
-        "name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}.zip",
+        "name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}-shard${{ matrix.shard }}.zip",
       );
       expect(workflow).toContain(
-        "name: guide-e2e-provider-diagnostics-${{ github.run_id }}-${{ matrix.runs-on }}.zip",
+        "name: guide-e2e-provider-diagnostics-${{ github.run_id }}-${{ matrix.runs-on }}-shard${{ matrix.shard }}.zip",
       );
       expect(workflow).toContain("path: dist/transcripts/guides/**/*.json");
       expect(workflow).toContain("retention-days: 7");

@@ -86,10 +86,12 @@ for (const rendererMode of ["lando", "plain", "verbose", "json"] as const) {
       undefined,
       "appEnv",
       "appEnv.API_TOKEN",
+      'appEnv["API_TOKEN"]',
       "appLabels.API_KEY",
       "network.proxy.https",
       "tracing.otlp.headers",
       "tracing.otlp.headers.x-team",
+      'tracing.otlp.headers["x-team"]',
     ] as const) {
       test(`${rendererMode}/${format} redacts config when selecting ${key ?? "view"}`, async () => {
         // Given

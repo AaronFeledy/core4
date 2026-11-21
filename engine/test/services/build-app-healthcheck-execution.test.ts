@@ -22,6 +22,59 @@ const plan = planWith(
   },
 );
 
+test("an HTTP readiness gate probes the dependency before the dependent app build", async () =>
+  withTempRoots(async () => {
+    const planned = planWith(
+      { db: [], web: [{ id: "install", phase: "app", command: { command: ["install"] } }] },
+      {
+        db: {
+          readiness: {
+            kind: "http",
+            url: "http://localhost:8080/ready",
+            intervalSeconds: 0,
+            timeoutSeconds: 1,
+            retries: 1,
+          },
+        },
+        web: { dependsOn: [{ service: db, condition: "service_healthy", required: true }] },
+      },
+    );
+    const calls: unknown[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      exec: (...[target, command]: Parameters<typeof TestRuntimeProvider.exec>) => {
+        calls.push([target.service, command]);
+        return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
+      },
+      execStream: () => {
+        calls.push("build");
+        return Stream.make({ exitCode: 0 });
+      },
+    };
+    await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (build) => build.buildApp(planned)).pipe(
+        Effect.provide(makeLayer(provider)),
+      ),
+    );
+    expect(calls).toEqual([
+      [
+        "db",
+        {
+          command: [
+            "/run/lando/helper/engines/lando-container-helper",
+            "probe-http",
+            "--url",
+            "http://localhost:8080/ready",
+            "--timeout",
+            "1",
+          ],
+          raw: true,
+        },
+      ],
+      "build",
+    ]);
+  }));
+
 test("app build gates use captured host runners before dependent builds", async () =>
   withTempRoots(async () => {
     // Given

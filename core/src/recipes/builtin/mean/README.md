@@ -5,7 +5,7 @@ Express and MongoDB are fixed choices: there is no framework or database
 picker. The generated app includes a hello-world server you can open after
 starting the stack.
 
-The `api` startup command runs `npm install`, then serves the Express scaffold on port `3000`. Run `lando start`, then `lando info` and open its URL to see `Hello from Lando`. Use `lando npm` and `lando node` for tooling inside `api`.
+The `api` command is `[":node-install-run", "start"]`. Each time the `api` process starts, it installs the project's dependencies with the project's package manager (npm for the scaffold), then runs the `start` script, `node server.js`, which serves the Express scaffold on port `3000`. A failed install means the server does not start. Run `lando start`, then `lando info` and open its URL to see `Hello from Lando`. Use `lando npm` and `lando node` for tooling inside `api`.
 
 ## Generated services
 
@@ -16,7 +16,7 @@ The `api` startup command runs `npm install`, then serves the Express scaffold o
 ## Generated files
 
 - `.lando.yml`
-- `package.json` with Express
+- `package.json` with Express and a `start` script
 - `server.js` Express hello-world
 
 The scaffold closes its HTTP server on SIGTERM or SIGINT and exits within five seconds if connections linger.

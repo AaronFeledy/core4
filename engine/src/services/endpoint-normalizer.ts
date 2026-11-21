@@ -134,7 +134,7 @@ export const endpointValidationError = (
     message: `Invalid endpoints for service ${location.serviceName}: ${messages.join(" ")}`,
     remediation:
       "Use aliases for only one logical listener, agree on its protocol and scan defaults, and mark at most one listener primary: true.",
-    file: `${location.appRoot}/.lando.yml`,
+    file: location.appRoot,
     issues: messages.map((message) =>
       validationIssue(["services", location.serviceName, "endpoints"], message),
     ),

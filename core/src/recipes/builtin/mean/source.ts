@@ -16,7 +16,7 @@ export const source = {
         type: "node:{{ recipe.node }}",
         primary: true,
         port: 3000,
-        command: "npm install --no-audit --no-fund && exec node server.js",
+        command: [":node-install-run", "start"],
         environment: {
           NODE_ENV: "development",
           PORT: 3000,

@@ -83,6 +83,83 @@ const run = (
   );
 };
 
+test("lowers using the flag-selected service after evaluating authored argv indexes", async () => {
+  const task = {
+    service: ":target",
+    flags: { target: { default: "worker" } },
+    cmd: [":local", "tool", "{{ flags.target }}", "two words"],
+  };
+  const result = await run(
+    task,
+    undefined,
+    attachEffectiveTooling(
+      plan,
+      { probe: task },
+      {
+        launcherServices: {
+          web: { serviceTypeId: "custom", launchers: { ":local": ["other"] } },
+          worker: { serviceTypeId: "custom", launchers: { ":local": ["manager", "exec"] } },
+        },
+      },
+    ),
+  );
+  expect(result).toMatchObject({
+    _tag: "Success",
+    success: {
+      invocations: [{ service: "worker", commands: [["manager", "exec", "tool", "worker", "two words"]] }],
+    },
+  });
+});
+
+test.each([
+  {
+    service: "worker",
+    cmd: [":unknown", "tool"],
+    reason: "launcher-undeclared-marker",
+    message: "is not declared",
+  },
+  { service: "worker", cmd: [":local"], reason: "launcher-missing-command", message: "requires a command" },
+  {
+    service: "worker",
+    cmd: [":local", ":other", "tool"],
+    reason: "launcher-chained-marker",
+    message: "another launcher marker",
+  },
+  { service: ":host", cmd: [":local", "tool"], reason: "launcher-unavailable-target", message: "the host" },
+  {
+    service: "database",
+    cmd: [":local", "tool"],
+    reason: "launcher-unavailable-target",
+    message: "service database (compose)",
+  },
+])(
+  "rejects launcher misuse only in the selected task ($message)",
+  async ({ service, cmd, reason, message }) => {
+    const badTask = { service, cmd };
+    const result = await run(
+      badTask,
+      undefined,
+      attachEffectiveTooling(
+        plan,
+        { probe: badTask },
+        {
+          launcherServices: {
+            worker: { serviceTypeId: "custom", launchers: { ":local": ["manager"] } },
+            database: { serviceTypeId: "compose" },
+          },
+        },
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ToolingCompileError",
+        issues: [{ path: ["tooling", "probe", "cmd"], reason, message: expect.stringContaining(message) }],
+      },
+    });
+  },
+);
+
 test("registers a sensitive var before a later var reports it in stderr", async () => {
   const result = await run({
     service: ":host",

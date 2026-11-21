@@ -52,7 +52,10 @@ import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { DEFAULT_APP_MOUNT_EXCLUDES } from "../../src/services/planner.ts";
 import { HOST_INTERNAL_ALIAS, HOST_IP_ENV_KEY } from "../../src/subsystems/networking.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
-import { planLiteralTestLandofile as planTestLandofile } from "../compiled-landofile.ts";
+import {
+  planTestLandofile as planCompiledTestLandofile,
+  planLiteralTestLandofile as planTestLandofile,
+} from "../compiled-landofile.ts";
 import { fileSyncEngineLayer } from "../file-sync-engine.ts";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
@@ -167,6 +170,17 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
     ),
   );
 
+// Authored values reach the planner only after Landofile load has decoded them.
+const compiledPlanExit = (landofile: LandofileShape) =>
+  Effect.runPromiseExit(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planCompiledTestLandofile(appPlanner, landofile, providerLandoCapabilities),
+    ).pipe(
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
+    ),
+  );
+
 const planWithoutFileSystem = (landofile: LandofileShape) =>
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (appPlanner) =>
@@ -227,6 +241,7 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     "AppPlanner.finalizeServices",
     "AppPlanner.normalizeNetworks",
     "AppPlanner.validateServiceProbes",
+    "AppPlanner.validateRouteUrls",
   ]);
   const discover = spans.find((span) => span.name === "AppPlanner.discover");
   const resolvedLandofile = spans.find((span) => span.name === "AppPlanner.resolve");
@@ -3897,7 +3912,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("python venv overlays are service-owned and isolated between services", async () => {
+  test("compatible Python services use one app-scoped dependency environment and one prepare job", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(
         {
@@ -3926,14 +3941,34 @@ describe("AppPlannerLayer.layer", () => {
         const mount = appPlan.services[ServiceName.make(name)]?.mounts.find(
           (entry) => entry.type === "volume" && entry.target === "/app/.venv",
         );
-        expect(mount).toMatchObject({ type: "volume", origin: "derived", readOnly: false });
+        expect(mount).toMatchObject({ type: "volume", origin: "service", readOnly: false });
         if (mount?.type !== "volume") throw new Error("Expected a venv overlay");
         expect(appPlan.stores.find((store) => store.name === mount.store)).toMatchObject({
-          scope: "service",
+          scope: "app",
+          kind: "data",
         });
         return mount.store;
       });
-      expect(new Set(venvStores).size).toBe(2);
+      expect(new Set(venvStores).size).toBe(1);
+      const job = appPlan.services[ServiceName.make("python-env")];
+      expect(job).toMatchObject({
+        dependsOn: [],
+        endpoints: [],
+        routes: [],
+        user: "root",
+        mounts: [
+          { role: "app", realization: "passthrough" },
+          { target: "/app/.venv", store: venvStores[0] },
+          { target: "/var/lib/lando/uv-cache", store: "lando-cache-uv" },
+        ],
+      });
+      for (const name of ["web", "worker"]) {
+        expect(appPlan.services[ServiceName.make(name)]?.dependsOn).toContainEqual({
+          service: ServiceName.make("python-env"),
+          condition: "service_completed_successfully",
+          required: true,
+        });
+      }
     });
   });
 
@@ -3958,6 +3993,31 @@ describe("AppPlannerLayer.layer", () => {
       expect(worker?.mounts).toContainEqual(
         expect.objectContaining({ type: "volume", target: "/app/.venv" }),
       );
+    });
+  });
+
+  test("refuses a consumer mount nested under its managed Python environment", async () => {
+    await withTempCwd(async () => {
+      await expect(
+        plan({
+          name: "pyapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("web")]: {
+              type: "python:3.12",
+              storage: [{ store: "nested", target: "/app/.venv/lib" }],
+            },
+          },
+        }),
+      ).rejects.toMatchObject({
+        _tag: "LandofileValidationError",
+        issues: [
+          expect.objectContaining({
+            path: ["services", "web", "storage"],
+            message: expect.stringContaining("/app/.venv/lib"),
+          }),
+        ],
+      });
     });
   });
 
@@ -4148,9 +4208,46 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("rejects authored tcp at the validation boundary", async () => {
+  test("keeps probe kinds and accepts healthy dependencies on HTTP readiness and TCP native health", async () => {
     await withTempCwd(async () => {
-      const exit = await planExit({
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: {
+          web: {
+            image: "node:lts",
+            readiness: { kind: "http", url: "http://localhost:9000/ready", timeoutSeconds: 0.75 },
+          },
+          db: {
+            image: "node:lts",
+            healthcheck: { kind: "tcp", port: 8080 },
+            depends_on: { web: { condition: "service_healthy" } },
+          },
+          worker: { image: "node:lts", depends_on: { db: { condition: "service_healthy" } } },
+        },
+      });
+      const result = await planExit(landofile);
+      if (Exit.isFailure(result)) throw new Error(Cause.pretty(result.cause));
+      expect(result.value.services[ServiceName.make("web")]?.readiness).toMatchObject({
+        kind: "http",
+        url: "http://localhost:9000/ready",
+        timeoutSeconds: 0.75,
+      });
+      expect(result.value.services[ServiceName.make("db")]?.healthcheck).toMatchObject({
+        kind: "tcp",
+        port: 8080,
+      });
+      expect(result.value.services[ServiceName.make("db")]?.dependsOn).toMatchObject([
+        { service: "web", condition: "service_healthy" },
+      ]);
+      expect(result.value.services[ServiceName.make("worker")]?.dependsOn).toMatchObject([
+        { service: "db", condition: "service_healthy" },
+      ]);
+    });
+  });
+
+  test.each([undefined, 0, 65536, 3.5])("rejects invalid authored TCP port %s", async (port) => {
+    await withTempCwd(async () => {
+      const exit = await compiledPlanExit({
         name: "myapp",
         runtime: 4,
         services: {
@@ -4159,7 +4256,7 @@ describe("AppPlannerLayer.layer", () => {
             home: false,
             healthcheck: {
               kind: "tcp",
-              port: 3000,
+              ...(port === undefined ? {} : { port }),
               intervalSeconds: 10,
               timeoutSeconds: 5,
               retries: 5,
@@ -4171,40 +4268,41 @@ describe("AppPlannerLayer.layer", () => {
       const failure = expectSomeFailure(exit);
       expect(failure).toBeInstanceOf(LandofileValidationError);
       if (failure instanceof LandofileValidationError) {
-        expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "kind"]);
-        expect(failure.issues[0]?.suggestion).toContain("kind: command");
+        expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "port"]);
       }
     });
   });
 
-  test("rejects authored http at the validation boundary", async () => {
-    await withTempCwd(async () => {
-      const exit = await planExit({
-        name: "myapp",
-        runtime: 4,
-        services: {
-          [ServiceName.make("web")]: {
-            image: "node:lts",
-            home: false,
-            healthcheck: {
-              kind: "http",
-              url: "http://localhost:3000/health",
-              intervalSeconds: 10,
-              timeoutSeconds: 5,
-              retries: 5,
+  test.each([undefined, "/health", "ftp://localhost/health", "http:///health"])(
+    "rejects invalid authored HTTP URL %s",
+    async (url) => {
+      await withTempCwd(async () => {
+        const exit = await compiledPlanExit({
+          name: "myapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("web")]: {
+              image: "node:lts",
+              home: false,
+              healthcheck: {
+                kind: "http",
+                ...(url === undefined ? {} : { url }),
+                intervalSeconds: 10,
+                timeoutSeconds: 5,
+                retries: 5,
+              },
             },
           },
-        },
-      });
+        });
 
-      const failure = expectSomeFailure(exit);
-      expect(failure).toBeInstanceOf(LandofileValidationError);
-      if (failure instanceof LandofileValidationError) {
-        expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "kind"]);
-        expect(failure.issues[0]?.suggestion).toContain("kind: command");
-      }
-    });
-  });
+        const failure = expectSomeFailure(exit);
+        expect(failure).toBeInstanceOf(LandofileValidationError);
+        if (failure instanceof LandofileValidationError) {
+          expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "url"]);
+        }
+      });
+    },
+  );
 
   test("rejects a partial healthcheck without a default command rather than silently dropping it", async () => {
     await withTempCwd(async () => {
@@ -5264,9 +5362,6 @@ describe("AppPlannerLayer.layer", () => {
       ]);
       expect(failure.message).toContain(
         "Service web depends on service db with condition service_healthy, but service db has no enabled readiness probe.",
-      );
-      expect(failure.message).toContain(
-        "Configure an enabled command readiness for service db, remove readiness: false to inherit its healthcheck, or use condition service_started.",
       );
     }
   });

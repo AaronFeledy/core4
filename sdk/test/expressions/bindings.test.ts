@@ -4,6 +4,7 @@ import { evaluateTemplateEither, parseExpressionEither } from "@lando/sdk/expres
 import { Result } from "effect";
 
 const reference = { _tag: "SecretRef", reference: "PASSWORD" } as const;
+const publicUrl = { _tag: "RouteText", parts: [{ service: "web", encoding: "raw" }] } as const;
 const context = {
   services: { db: { creds: { password: reference }, port: 5544 } },
   secrets: { PASSWORD: reference },
@@ -45,6 +46,52 @@ test("concatenates and explicitly encodes descriptors without decrypting", () =>
   expect(evaluate('{{ concat("a", services.db.creds.password, "b") }}')).toEqual(
     Result.succeed({ _tag: "BoundText", parts: ["a", { reference: "PASSWORD", encoding: "raw" }, "b"] }),
   );
+});
+
+const routeContext = { ...context, services: { ...context.services, web: { url: publicUrl } } };
+
+test.each([
+  "services.web.url.parts",
+  '(services.web.url)["parts"][0]',
+  "services.db.creds.password._tag",
+  "url.encodeComponent(services.db.creds.password).parts",
+])("blocks access into opaque binding values: %s", (access) => {
+  expect(evaluate(`{{ ${access} }}`, routeContext)).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ConfigExpressionError",
+      filePath: "/app/.lando.yml",
+      path: ["services", "web", "environment", "URL"],
+    },
+  });
+});
+
+test("concatenates public URLs and preserves component encoding until activation", () => {
+  expect(
+    evaluate("{{ concat(services.web.url, '?next=', url.encodeComponent(services.web.url)) }}", routeContext),
+  ).toEqual(
+    Result.succeed({
+      _tag: "RouteText",
+      parts: [{ service: "web", encoding: "raw" }, "?next=", { service: "web", encoding: "uri-component" }],
+    }),
+  );
+});
+
+test.each([
+  "{{ lower(services.web.url) }}",
+  "{{ services.web.url ? 'yes' : 'no' }}",
+  "{{ services.web.url }}:${secret:PASSWORD}",
+  "{{ concat(services.web.url, services.db.creds.password) }}",
+])("rejects unsupported operations on public URL bindings: %s", (text) => {
+  expect(evaluate(text, routeContext)).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ConfigExpressionError",
+      path: ["services", "web", "environment", "URL"],
+      filePath: "/app/.lando.yml",
+      message: expect.stringMatching(/binding|public URL/i),
+    },
+  });
 });
 test("keeps context and helper-produced strings inert", () => {
   // Given / When

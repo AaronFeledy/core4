@@ -52,6 +52,8 @@ lando bundle
 lando rake
 ```
 
+`lando rake` runs the Rake your app's bundle locks. Once `rails new` has written `Gemfile.lock`, it goes through `bundle exec`, so `lando rake db:migrate` uses the same Rake version as the app. Before that, with only the recipe's minimal Gemfile, it runs the image's own Rake. `lando rails` and `lando bundle` run those commands directly.
+
 With PostgreSQL, `web` starts with `DATABASE_URL` pointing at the `database` service and `REDIS_URL` pointing at `cache`. ActiveRecord reads `DATABASE_URL` on its own, so `lando rails db:prepare` connects without a `database.yml` edit. The URL is built from the database service's resolved credentials and its planned port, with the user, password, and database name each percent-encoded, so it follows an authored `creds:` block or `port:` on `database`. A `creds.password` written as a `${secret:...}` reference resolves when `web` is created, never into the plan. `lando info` shows the user and database name and redacts the rest.
 
 `lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).

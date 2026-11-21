@@ -15,9 +15,8 @@ export { parseRouteShorthand } from "@lando/sdk/landofile";
 
 export interface NormalizedRoute {
   readonly source?: {
-    readonly key: string;
+    readonly path: ValidationIssuePath;
     readonly file?: string;
-    readonly path?: ValidationIssuePath;
     readonly provenance?: ValidationIssueSource;
   };
   readonly hostname: string;
@@ -34,7 +33,6 @@ type RouteContext = {
 };
 
 const routeSource = (ctx: RouteContext) => ({
-  key: formatValidationIssuePath(ctx.path),
   path: ctx.path,
   ...(ctx.file === undefined ? {} : { file: ctx.file }),
   ...(ctx.provenance === undefined ? {} : { provenance: ctx.provenance }),
@@ -99,7 +97,7 @@ export const normalizeRoute = (
         {
           path: ctx.path,
           message,
-          suggestion: `Correct ${source.key} using hostname[:port][/pathPrefix]. ${message}`,
+          suggestion: `Correct ${formatValidationIssuePath(ctx.path)} using hostname[:port][/pathPrefix]. ${message}`,
         },
       ]),
   });

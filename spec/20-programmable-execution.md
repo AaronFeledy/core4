@@ -1,7 +1,7 @@
 # Lando v4: Programmable Execution
 
-> **Part 20 of 20** · [Index](./README.md)
-> **Read next:** *(end of spec)*
+> **Part 20 of 21** · [Index](./README.md)
+> **Read next:** [21 Templates and `lando create`](./21-templates-and-create.md)
 
 **Programmable execution** lets a library host, plugin Effect, or agent retain an environment, run typed or interactive work in it, and collect bounded results. It composes the existing runtime (§16), App handle (§16.3), scratch apps (§21), runners (§3.4), and event bus (§11). It is authored design, not a shipped feature.
 
@@ -37,7 +37,7 @@ Exec, tooling, logs, and lifecycle methods delegate to the wrapped App or scratc
 
 ### 22.4 Programmatic environment inputs
 
-`ScratchSource` gains `kind: "config"` beside the existing `fork` and `recipe` discriminants, which keep their spelling (§21.4). The form carries `config: Schema.Encoded<typeof LandofileAuthoringShapeWire>` and an authoritative `sourceRoot: AbsolutePath`; validation, one-time conversion, managed copy, canonical composition, retained-target provenance, and registry summaries follow §21.4.3, and session admission (§22.6) precedes materialization. Within a session, invalid wire input fails with existing Landofile errors before any copy or provider action, `sourceRoot` MUST be within `policy.sourceRoots` (§22.6.1), absolute mounts and shared global storage require affirmative admission, and persisted applied plans use safe environment descriptors (§5.5.2). There is no caller-supplied `AppPlan` and no temporary YAML reload.
+`ScratchSource` gains `kind: "config"` beside the existing `fork` and `recipe` discriminants, which keep their spelling (§21.4). The form carries `config: Schema.Encoded<typeof LandofileAuthoringShapeWire>` and an authoritative `sourceRoot: AbsolutePath`; validation, one-time conversion, managed copy, canonical composition, retained-target provenance, and registry summaries follow §21.4.3, and session admission (§22.6) precedes materialization. Within a session, invalid wire input fails with existing Landofile errors before any copy or provider action, `sourceRoot` MUST be within `policy.sourceRoots` (§22.6.1), absolute mounts and shared global storage require affirmative admission, and persisted applied plans use safe environment descriptors (§5.5.2). There is no caller-supplied `AppPlan` and no temporary YAML reload. `apps:create` is the first built-in consumer: it opens one session per run with host execution denied (§23.8).
 
 ### 22.5 Operations and process handles
 

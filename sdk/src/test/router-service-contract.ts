@@ -89,11 +89,20 @@ export const runRouterServiceContractSuite = Effect.fnUntraced(function* (
     JSON.stringify(yield* harness.readRoutes(owner)) === JSON.stringify(beforeObservation),
     "observation does not configure requested routes",
   );
+  const preview = yield* proxy
+    .routeAuthorities?.(routes)
+    .pipe(mapFailures((cause) => failure("routeAuthorities resolves", cause))) ?? Effect.succeed(undefined);
   const result = yield* proxy
     .applyRoutes(routes, owner)
     .pipe(mapFailures((cause) => failure("applyRoutes resolves", cause)));
   yield* requireContract(result.app === owner.id, "apply result identifies the owner app id", result);
   yield* requireContract(result.appliedRoutes.length === 2, "apply result reports every route", result);
+  if (preview !== undefined)
+    yield* requireContract(
+      JSON.stringify(preview) === JSON.stringify(result.authorities),
+      "preview and publication report the same external authorities",
+      { preview, published: result.authorities },
+    );
   yield* requireContract(
     result.authorities.some((authority) => authority.scheme === "https" && authority.port !== 80),
     "apply result reports proxy-selected external authorities",
@@ -136,6 +145,15 @@ export const runRouterServiceContractSuite = Effect.fnUntraced(function* (
 
 export const makeRouterServiceContractSuite = runRouterServiceContractSuite;
 
+const testAuthorities = (routes: ReadonlyArray<RoutePlan>) =>
+  routes.flatMap((route) =>
+    (route.scheme === "both" ? (["http", "https"] as const) : [route.scheme]).map((scheme) => ({
+      scheme,
+      hostname: route.hostname,
+      port: scheme === "https" ? 38443 : 38080,
+    })),
+  );
+
 export const makeTestRouterService = (): RouterServiceShape & {
   readonly routesByOwner: ReadonlyMap<string, ReadonlyArray<RoutePlan>>;
   readonly readRoutes: (owner: AppRouteOwner) => Effect.Effect<ReadonlyArray<RoutePlan>>;
@@ -148,6 +166,7 @@ export const makeTestRouterService = (): RouterServiceShape & {
     id: "test",
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
     prepare: () => Effect.void,
+    routeAuthorities: (routes) => Effect.succeed(testAuthorities(routes)),
     setup: () =>
       Effect.sync(() => {
         running = true;
@@ -158,17 +177,7 @@ export const makeTestRouterService = (): RouterServiceShape & {
       Effect.sync((): ProxyApplyResult => {
         routesByOwner.set(owner.ownerKey, routes);
         ownersByKey.set(owner.ownerKey, owner);
-        return {
-          app: owner.id,
-          appliedRoutes: routes,
-          authorities: routes.flatMap((route) =>
-            (route.scheme === "both" ? (["http", "https"] as const) : [route.scheme]).map((scheme) => ({
-              scheme,
-              hostname: route.hostname,
-              port: scheme === "https" ? 38443 : 38080,
-            })),
-          ),
-        };
+        return { app: owner.id, appliedRoutes: routes, authorities: testAuthorities(routes) };
       }),
     removeRoutes: (owner) =>
       Effect.sync(() => {
@@ -200,13 +209,7 @@ export const makeTestRouterService = (): RouterServiceShape & {
             })),
           );
         return {
-          configuredAuthorities: configured.flatMap((route) =>
-            (route.scheme === "both" ? (["http", "https"] as const) : [route.scheme]).map((scheme) => ({
-              scheme,
-              hostname: route.hostname,
-              port: scheme === "https" ? 38443 : 38080,
-            })),
-          ),
+          configuredAuthorities: testAuthorities(configured),
           observation: observed
             ? running && publications.length > 0
               ? { status: "present", publications }

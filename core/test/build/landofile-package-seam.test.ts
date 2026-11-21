@@ -210,6 +210,7 @@ describe("Landofile package seam", () => {
         "routeInputObject",
         "routeMatchKey",
         "splitComposeCommand",
+        "splitMappingEntry",
         "validateConfigTranslateInput",
         "validateConfigTranslateResult",
         "valueOriginAt",

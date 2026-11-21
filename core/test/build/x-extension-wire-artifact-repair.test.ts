@@ -15,7 +15,7 @@ import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts
 import { evolveHistoricalDeprecationNotice } from "./x-extension-deprecation-notice-proof.ts";
 import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
-import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
 import { evolveHistoricalIncludeWhen } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
@@ -23,6 +23,7 @@ import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
+import { evolveHistoricalServiceKeys } from "./x-extension-service-keys-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
 import { evolveHistoricalSwarmReservations } from "./x-extension-swarm-reservations-proof.ts";
@@ -138,9 +139,13 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
       evolveHistoricalSwarmReservations(evolveHistoricalToolingVars(evolveHistoricalSqliteTarget(projected))),
     ),
   );
-  const evolved = evolveHistoricalEndpointKind(beforeEndpointKind, "wire");
-  evolvedTypedCache.set(source, evolved);
-  return evolved;
+  const evolved = evolveHistoricalServiceKeys(
+    evolveHistoricalEndpointKind(beforeEndpointKind, "wire"),
+    source === "fragment" ? "landofile" : source,
+  );
+  const withRouteText = evolveHistoricalRouteText(evolved, "authoring");
+  evolvedTypedCache.set(source, withRouteText);
+  return withRouteText;
 };
 const artifactCache = new Map<string, ReturnType<typeof loadNormalizedArtifact>>();
 const currentArtifact = (surface: string) => {
@@ -215,7 +220,10 @@ describe("embedded wire closed x-* artifact repair", () => {
         ),
       ),
     );
-    const repaired = evolveHistoricalEndpointKind(beforeEndpointKind, "wire");
+    const repaired = evolveHistoricalRouteText(
+      evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(beforeEndpointKind, "wire"), "services"),
+      "authoring",
+    );
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
       "$.context.services",

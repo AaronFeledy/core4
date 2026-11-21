@@ -33,7 +33,24 @@ function isJsonSchema(value: unknown): value is JsonSchema.JsonSchema {
 const root = new URL("../../../", import.meta.url);
 const parseOptions = { onExcessProperty: "error", errors: "all" } as const;
 
+const invalidServiceKeys = [
+  { id: "service-label-too-long", input: { name: "demo", services: { ["a".repeat(64)]: {} } } },
+  {
+    id: "service-name-too-long",
+    input: {
+      name: "demo",
+      services: { [["a".repeat(63), "b".repeat(63), "c".repeat(63), "d".repeat(62)].join(".")]: {} },
+    },
+  },
+  { id: "service-key-with-slash", input: { name: "demo", services: { "bad/name": {} } } },
+];
+
 const curated = [
+  ...invalidServiceKeys,
+  {
+    id: "bad-service-key-and-bodies",
+    input: { name: "demo", services: { "bad/name": { image: 5 }, web: { primary: "maybe" } } },
+  },
   { id: "empty-healthcheck-command", input: { name: "demo", services: { web: { healthcheck: "" } } } },
   { id: "empty-healthcheck-argv", input: { name: "demo", services: { web: { healthcheck: [] } } } },
   { id: "true-healthcheck", input: { name: "demo", services: { web: { healthcheck: true } } } },
@@ -67,6 +84,10 @@ const curated = [
 ] as const;
 
 const curatedValid = [
+  {
+    id: "dns-service-keys",
+    input: { name: "demo", services: { pma_theme: {}, "8.3": {}, ["a".repeat(63)]: {} } },
+  },
   { id: "false-healthcheck", input: { name: "demo", services: { web: { healthcheck: false } } } },
   { id: "string-healthcheck", input: { name: "demo", services: { web: { healthcheck: "pg_isready" } } } },
   { id: "argv-healthcheck", input: { name: "demo", services: { web: { healthcheck: ["pg_isready"] } } } },
@@ -251,6 +272,11 @@ const inputValid = [
   },
 ] as const;
 const inputInvalid = [
+  ...invalidServiceKeys,
+  {
+    id: "bad-service-key-and-bodies",
+    input: { name: "demo", services: { "bad/name": { image: 5 }, web: { primary: "maybe" } } },
+  },
   {
     id: "notice-removal-not-after-since",
     input: {
@@ -350,6 +376,13 @@ test("input Standard Schema and editor JSON Schema accept every classified autho
     const accepted = standard.issues === undefined;
     expect(accepted, id).toBe(Result.isSuccess(decoded));
     expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded));
+    if (id === "bad-service-key-and-bodies") {
+      expect(decoderIssues(decoded).map(({ path }) => path)).toEqual([
+        ["services", "bad/name"],
+        ["services", "bad/name", "image"],
+        ["services", "web", "primary"],
+      ]);
+    }
     if (invalidReason === undefined)
       expect(accepted, `${id}: valid authoring input`).toBe(!inputInvalid.some((entry) => entry.id === id));
     const jsonAccepted = Exit.isSuccess(Effect.runSyncExit(decode(input, parseOptions)));

@@ -20,6 +20,7 @@ import { DataTreeOwnershipCapabilityError } from "@lando/sdk/errors";
 import {
   type MountPlan,
   type ServiceProjectUser,
+  formatValidationIssuePath,
   parseContainerDestination,
   serviceAppMount,
 } from "@lando/sdk/schema";
@@ -68,9 +69,9 @@ const refusal = (input: {
     service: input.serviceName,
     serviceType: input.serviceType,
     target: input.target,
-    option: input.option,
+    path: ["services", input.serviceName, input.option],
     user: input.user,
-    remediation: `Set services.${input.serviceName}.user to root, to a numeric uid such as "10001", or to a user service type ${input.serviceType} declares.`,
+    remediation: `Set ${formatValidationIssuePath(["services", input.serviceName, "user"])} to root, to a numeric uid such as "10001", or to a user service type ${input.serviceType} declares.`,
   });
 
 /**
@@ -111,7 +112,7 @@ export const resolveDataTreeOwnership = (input: {
         serviceName: input.serviceName,
         serviceType: input.serviceType,
         target: tree.target,
-        option: `services.${input.serviceName}.image`,
+        option: "image",
         user: input.plannedUser,
         reason: `its image is supplied by the Landofile, so Lando does not know whether user ${principal} exists inside it.`,
       });
@@ -121,7 +122,7 @@ export const resolveDataTreeOwnership = (input: {
         serviceName: input.serviceName,
         serviceType: input.serviceType,
         target: tree.target,
-        option: `services.${input.serviceName}.type`,
+        option: "type",
         user: input.plannedUser,
         reason: `service type ${input.serviceType} declares no image identities, so Lando does not know whether user ${principal} exists inside it.`,
       });
@@ -131,7 +132,7 @@ export const resolveDataTreeOwnership = (input: {
         serviceName: input.serviceName,
         serviceType: input.serviceType,
         target: tree.target,
-        option: `services.${input.serviceName}.user`,
+        option: "user",
         user: input.plannedUser,
         reason: `service type ${input.serviceType} does not declare user ${principal}, so Lando cannot give that user the tree.`,
       });
@@ -150,28 +151,35 @@ const nestedTarget = (tree: string, target: string): string | undefined => {
 /**
  * A fresh volume copies up the image tree with ownership intact. Prepare
  * nested mount parents there so the runtime does not create them as root.
- * Exclude shadows, writable service caches, and authored storage enclosing the
- * app bind are project-user write targets; a home the catalog already prepares is skipped.
+ * Exclude shadows, writable service caches, and writable authored volumes inside
+ * or enclosing the app bind are project-user write targets.
  */
 export const projectUserVolumeTrees = (input: {
   readonly mounts: ReadonlyArray<MountPlan>;
   readonly projectUser?: ServiceProjectUser;
   readonly homeStore?: string | undefined;
   readonly cacheStores?: ReadonlySet<string>;
+  readonly dependencyEnvironmentStores?: ReadonlyMap<string, unknown>;
 }): ReadonlyArray<DataTreeOwnership> => {
   const { mounts, projectUser, homeStore } = input;
   if (projectUser === undefined) return [];
   const owner = `${projectUser.uid}:${projectUser.gid}`;
   const appMount = serviceAppMount(input);
   return mounts.flatMap((mount) => {
-    if (mount.type !== "volume" || mount.store === homeStore) return [];
+    if (mount.type !== "volume" || mount.readOnly || mount.store === homeStore) return [];
     const enclosesApp =
       mount.origin === "authored" &&
       appMount !== undefined &&
       nestedTarget(mount.target, appMount.target) !== undefined;
-    const serviceCache =
-      mount.origin === "service" && !mount.readOnly && input.cacheStores?.has(mount.store) === true;
-    if (mount.origin !== "derived" && !enclosesApp && !serviceCache) return [];
+    const insideApp =
+      mount.origin === "authored" &&
+      appMount !== undefined &&
+      nestedTarget(appMount.target, mount.target) !== undefined;
+    const serviceStore =
+      mount.origin === "service" &&
+      (input.cacheStores?.has(mount.store) === true ||
+        input.dependencyEnvironmentStores?.has(mount.store) === true);
+    if (mount.origin !== "derived" && !enclosesApp && !insideApp && !serviceStore) return [];
     const parents = new Set<string>();
     for (const other of mounts) {
       const child = nestedTarget(mount.target, other.target);
