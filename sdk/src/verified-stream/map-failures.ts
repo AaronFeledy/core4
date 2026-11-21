@@ -12,16 +12,16 @@ export const mapVerifiedStreamFailures =
         error instanceof VerifiedStreamError ? wrap(error) : error,
       );
       if (
-        primary.kind === "typed" &&
-        primary.source === "elected" &&
-        primary.error instanceof VerifiedStreamError
-      ) {
-        const verified = primary.error;
-        return Effect.failCause(
-          mapDefectCause(mapped, (defect, role) =>
-            role === undefined && defect === verified ? wrap(verified) : defect,
-          ),
-        );
-      }
-      return Effect.failCause(mapped);
+        primary.kind !== "typed" ||
+        primary.source !== "elected" ||
+        !(primary.error instanceof VerifiedStreamError)
+      )
+        return Effect.failCause(mapped);
+
+      const verified = primary.error;
+      return Effect.failCause(
+        mapDefectCause(mapped, (defect, role) =>
+          role === undefined && defect === verified ? wrap(verified) : defect,
+        ),
+      );
     });
