@@ -2361,7 +2361,12 @@
       "toolVersionMarkerPath"
     ],
     "./transitions": ["defineTransitions", "illegalTransitionMessage", "planTransition"],
-    "./verified-stream": ["VerifiedStreamError", "collectVerifiedStream", "persistVerifiedStream"],
+    "./verified-stream": [
+      "VerifiedStreamError",
+      "collectVerifiedStream",
+      "mapVerifiedStreamFailures",
+      "persistVerifiedStream"
+    ],
     "./yaml": [
       "YamlEmitError",
       "emitYamlDocument",
