@@ -40,12 +40,12 @@ test("publishes reachable host defaults without changing decoded values", () => 
   expect(getJsonSchema("GlobalConfig")).toMatchObject({
     properties: {
       allowLoadOutsideRoot: { allOf: [{ default: false }] },
-      loadMaxFileBytes: { allOf: [{ default: 1_048_576 }] },
+      loadMaxFileBytes: { allOf: expect.arrayContaining([expect.objectContaining({ default: 1_048_576 })]) },
       telemetry: { allOf: [{ default: { enabled: true } }] },
       notify: {
         properties: {
           enabled: { allOf: [{ default: true }] },
-          thresholdMs: { allOf: [{ default: 15_000 }] },
+          thresholdMs: { allOf: expect.arrayContaining([expect.objectContaining({ default: 15_000 })]) },
           commands: { allOf: [{ default: [] }] },
         },
       },

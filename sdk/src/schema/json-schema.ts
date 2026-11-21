@@ -334,6 +334,7 @@ import {
   publishedFieldMetadata,
   renderSchemaReferenceMarkdown,
 } from "./json-schema-deprecations.ts";
+import { getAuthoringInputJsonSchema } from "./json-schema-editor.ts";
 import {
   repairLandofileExtensions,
   repairTemplateLiteralExtensionRecords,
@@ -2849,12 +2850,13 @@ const schemaForPublicName = (schemaName: JsonSchemaName) => {
 };
 
 export const getJsonSchema = (schemaName: JsonSchemaName) => {
+  if (schemaName === "LandofileAuthoringShape") return getAuthoringInputJsonSchema("LandofileShape");
+  if (schemaName === "GlobalConfig") return getAuthoringInputJsonSchema("GlobalConfig");
   if (schemaName === "DeprecationNotice") return getJsonSchemaWithDeprecations(DeprecationNoticeJsonShape);
   if (schemaName === "LandofileShape") return landofileJsonSchema();
   if (
     schemaName === "ServiceConfig" ||
     schemaName === "ServiceConfigInput" ||
-    schemaName === "LandofileAuthoringShape" ||
     schemaName === "LandofileAuthoringFragment" ||
     schemaName === "LandofileAuthoringShapeWire" ||
     schemaName === "LandofileAuthoringFragmentWire"

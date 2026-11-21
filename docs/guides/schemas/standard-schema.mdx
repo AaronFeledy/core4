@@ -81,8 +81,9 @@ literal, and an expression field comes back as a parsed
 `lando app:config --format=json`; see [Landofile
 expressions](../landofile/expressions.mdx#whole-value-expressions-keep-their-type).
 
-`LandofileStandardJSONSchema` describes that same input. Its draft-07
-document is the editor schema byte for byte. It checks environment entry syntax
+`LandofileStandardJSONSchema` describes that same input. Its two drafts use the
+same constraints as the editor schema, without the YAML tag registration metadata.
+It checks environment entry syntax
 and accepts typed expressions inside build blocks. See the
 [authored and resolved examples](./json-schema-artifacts.mdx). At a typed field it accepts the
 literal or one whole `{{ ... }}`, with `{{-` / `-}}` trim markers allowed

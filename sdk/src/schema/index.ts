@@ -132,7 +132,7 @@ export {
 } from "./hostname.ts";
 export * from "./image-reference.ts";
 export * from "./json-schema.ts";
-export * from "./json-schema-editor.ts";
+export { getEditorJsonSchema } from "./json-schema-editor.ts";
 export * from "./keymap.ts";
 export * from "./keymap-conflict.ts";
 export * from "./landofile.ts";

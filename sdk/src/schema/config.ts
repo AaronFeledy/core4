@@ -5,6 +5,16 @@ import { withDefaultKey } from "./default-key.ts";
 import { BindAddress } from "./endpoint.ts";
 import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { isCoreServiceEnvKey } from "./generated/core-service-env.ts";
+import {
+  APP_DEFAULTS_MAX_PROPERTIES,
+  APP_ENVIRONMENT_KEY,
+  APP_ENVIRONMENT_MAP_KIB,
+  APP_ENVIRONMENT_VALUE_KIB,
+  APP_LABEL_KEY,
+  APP_LABEL_KEY_BYTES,
+  APP_LABEL_MAP_KIB,
+  APP_LABEL_VALUE_KIB,
+} from "./global-config-map-limits.ts";
 import { HostEvents } from "./host-events.ts";
 import { DomainName } from "./hostname.ts";
 import { ScannerConfig } from "./networking.ts";
@@ -18,10 +28,9 @@ const encodedByteLength = (value: string): number => new TextEncoder().encode(va
 const encodedMapByteLength = (value: Readonly<Record<string, string>>): number =>
   encodedByteLength(JSON.stringify(value));
 
-const APP_ENVIRONMENT_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const AppEnvironmentValue = Schema.String.pipe(
   Schema.check(
-    Schema.makeFilter((value) => encodedByteLength(value) <= 32 * 1024, {
+    Schema.makeFilter((value) => encodedByteLength(value) <= APP_ENVIRONMENT_VALUE_KIB * 1024, {
       message: "Global app environment values must not exceed 32 KiB of UTF-8 text",
     }),
   ),
@@ -33,15 +42,15 @@ export const AppEnvironmentDefaults = Schema.Record(Schema.String, AppEnvironmen
       (value) => {
         const keys = Object.keys(value);
         return (
-          keys.length <= 256 &&
+          keys.length <= APP_DEFAULTS_MAX_PROPERTIES &&
           keys.every((key) => APP_ENVIRONMENT_KEY.test(key) && !isCoreServiceEnvKey(key)) &&
-          encodedMapByteLength(value) <= 1024 * 1024
+          encodedMapByteLength(value) <= APP_ENVIRONMENT_MAP_KIB * 1024
         );
       },
       {
         message:
           "Global app environment must use POSIX identifiers, exclude core-owned keys, contain at most 256 entries, and encode to at most 1 MiB",
-        toJsonSchema: () => [{ maxProperties: 256 }, true],
+        toJsonSchema: () => [{ maxProperties: APP_DEFAULTS_MAX_PROPERTIES }, true],
       },
     ),
   ),
@@ -55,13 +64,11 @@ export type AppEnvironmentDefaults = typeof AppEnvironmentDefaults.Type;
 
 const validAppLabelKey = (key: string): boolean => {
   const bytes = encodedByteLength(key);
-  return (
-    bytes >= 1 && bytes <= 253 && !key.includes("\0") && !key.includes("=") && !key.startsWith("dev.lando.")
-  );
+  return bytes <= APP_LABEL_KEY_BYTES && APP_LABEL_KEY.test(key);
 };
 const AppLabelValue = Schema.String.pipe(
   Schema.check(
-    Schema.makeFilter((value) => encodedByteLength(value) <= 4 * 1024, {
+    Schema.makeFilter((value) => encodedByteLength(value) <= APP_LABEL_VALUE_KIB * 1024, {
       message: "Global app label values must not exceed 4 KiB of UTF-8 text",
     }),
   ),
@@ -73,13 +80,15 @@ export const AppLabelDefaults = Schema.Record(Schema.String, AppLabelValue).pipe
       (value) => {
         const keys = Object.keys(value);
         return (
-          keys.length <= 256 && keys.every(validAppLabelKey) && encodedMapByteLength(value) <= 256 * 1024
+          keys.length <= APP_DEFAULTS_MAX_PROPERTIES &&
+          keys.every(validAppLabelKey) &&
+          encodedMapByteLength(value) <= APP_LABEL_MAP_KIB * 1024
         );
       },
       {
         message:
           "Global app labels must use valid non-reserved keys, contain at most 256 entries, and encode to at most 256 KiB",
-        toJsonSchema: () => [{ maxProperties: 256 }, true],
+        toJsonSchema: () => [{ maxProperties: APP_DEFAULTS_MAX_PROPERTIES }, true],
       },
     ),
   ),

@@ -1,8 +1,12 @@
 import { JsonSchema, Predicate } from "effect";
 
 import { GlobalConfig } from "./config.ts";
-import { jsonSchemaDocument, withSchemaDeprecations } from "./json-schema-deprecations.ts";
-import { repairLandofileExtensions } from "./json-schema-extensions.ts";
+import { globalConfigMapInputs } from "./global-config-map-limits.ts";
+import { getJsonSchemaWithDeprecations } from "./json-schema-deprecations.ts";
+import {
+  repairLandofileExtensions,
+  repairTemplateLiteralExtensionRecords,
+} from "./json-schema-extensions.ts";
 import { LandofileAuthoringShape } from "./landofile-authoring.ts";
 import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
 
@@ -26,7 +30,7 @@ const constrainTaskStrings = (node: unknown): void => {
 
 const definitionRefName = (node: unknown): string | undefined => {
   if (!Predicate.isObject(node) || typeof node.$ref !== "string") return undefined;
-  const match = /^#\/definitions\/(.+)$/u.exec(node.$ref);
+  const match = /^#\/\$defs\/(.+)$/u.exec(node.$ref);
   return match?.[1];
 };
 
@@ -34,8 +38,8 @@ const definitionRefName = (node: unknown): string | undefined => {
  * Drop decoded-only descriptor definitions and every anyOf/oneOf arm that only
  * referenced them, so the published input document describes authored syntax alone.
  */
-const dropDecodedInputDescriptors = (artifact: Record<string, unknown>): void => {
-  const definitions = artifact.definitions;
+const dropDecodedInputDescriptors = (artifact: JsonSchema.JsonSchema): void => {
+  const definitions = artifact.$defs;
   if (!Predicate.isObject(definitions)) return;
 
   const dropped = new Set<string>();
@@ -93,23 +97,46 @@ const LANDOFILE_YAML_TAGS = {
   },
 };
 
-/** Draft-07 projection for YAML editors, derived from the public contracts. */
-export const getEditorJsonSchema = (name: "LandofileShape" | "GlobalConfig"): JsonSchema.JsonSchema => {
+type InputSchemaName = "LandofileShape" | "GlobalConfig";
+
+export const getAuthoringInputJsonSchema = (name: InputSchemaName): JsonSchema.JsonSchema => {
   const schema = { LandofileShape: LandofileAuthoringShape, GlobalConfig }[name];
-  const document = JsonSchema.toDocumentDraft07(
-    jsonSchemaDocument(schema, { onExcessProperty: "error", generateDescriptions: true }),
-  );
-  const artifact = withSchemaDeprecations(schema, {
-    $schema: JsonSchema.META_SCHEMA_URI_DRAFT_07,
-    ...document.schema,
-    ...(Object.keys(document.definitions).length === 0 ? {} : { definitions: document.definitions }),
+  const artifact = getJsonSchemaWithDeprecations(schema, {
+    onExcessProperty: "error",
+    generateDescriptions: true,
   });
-  if (name !== "LandofileShape") return artifact;
+  const definitions = artifact.$defs;
+  if (name === "GlobalConfig") {
+    if (Predicate.isObject(definitions)) {
+      for (const [key, metadata] of Object.entries(globalConfigMapInputs)) {
+        const node = definitions[key];
+        if (Predicate.isObject(node)) Object.assign(node, metadata);
+      }
+    }
+    return artifact;
+  }
+  repairTemplateLiteralExtensionRecords(artifact);
   repairLandofileExtensions(artifact);
-  dropDecodedInputDescriptors(artifact as Record<string, unknown>);
-  const definitions = artifact.definitions;
+  dropDecodedInputDescriptors(artifact);
   if (Predicate.isObject(definitions) && Predicate.isObject(definitions.ToolingTaskInputAuthoring)) {
     constrainTaskStrings(definitions.ToolingTaskInputAuthoring);
   }
-  return { ...artifact, "x-lando-yaml-tags": LANDOFILE_YAML_TAGS };
+  return artifact;
+};
+
+export const getDraft07InputJsonSchema = (name: InputSchemaName): JsonSchema.JsonSchema => {
+  const document = JsonSchema.toDocumentDraft07(
+    JsonSchema.fromSchemaDraft2020_12(getAuthoringInputJsonSchema(name)),
+  );
+  return {
+    $schema: JsonSchema.META_SCHEMA_URI_DRAFT_07,
+    ...document.schema,
+    ...(Object.keys(document.definitions).length === 0 ? {} : { definitions: document.definitions }),
+  };
+};
+
+/** Draft-07 projection for YAML editors, derived from the public contracts. */
+export const getEditorJsonSchema = (name: InputSchemaName): JsonSchema.JsonSchema => {
+  const artifact = getDraft07InputJsonSchema(name);
+  return name === "LandofileShape" ? { ...artifact, "x-lando-yaml-tags": LANDOFILE_YAML_TAGS } : artifact;
 };
