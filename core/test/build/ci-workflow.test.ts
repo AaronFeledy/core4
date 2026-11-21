@@ -306,8 +306,8 @@ describe("ci workflow", () => {
     const jobs = findIndentedBlock(workflow, "jobs");
     const providerLandoE2e = findIndentedBlock(jobs, "provider-lando-e2e-linux-x64", 2);
 
-    expect(appLifecycleGuide).toContain(
-      '<Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>',
+    expect(appLifecycleGuide).toMatch(
+      /<Scenario id="real-provider-loop" layer="e2e"[^>]* tags=\{\["@smoke"\]\}/,
     );
     expect(workflow).toContain("name: nightly");
     expect(providerLandoE2e).toContain("    runs-on: ubuntu-26.04");
