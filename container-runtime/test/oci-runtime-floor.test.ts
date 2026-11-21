@@ -8,6 +8,7 @@ import {
   KNOWN_BAD_CRUN,
   type KnownBadOciRuntime,
   PODMAN_EXEC_CLAMP_AFTER,
+  PODMAN_EXEC_CLAMP_VERSION,
   evaluateKnownBadOciRuntime,
   evaluateLibpodCrunExecCompatibility,
   parseOciRuntimeBanner,
@@ -106,7 +107,7 @@ describe("known-bad crun range", () => {
     expect(warning?.message).toContain("lando setup");
   });
 
-  test("warns at the Podman ceiling 6.2.0", () => {
+  test("warns at 6.2.0 and at later Podman versions until a clamp release is recorded", () => {
     expect(
       evaluateKnownBadOciRuntime({
         runtimeName: "crun",
@@ -115,6 +116,24 @@ describe("known-bad crun range", () => {
         rootless: true,
       })?.podmanVersion,
     ).toBe("6.2.0");
+    expect(PODMAN_EXEC_CLAMP_VERSION).toBeUndefined();
+    expect(KNOWN_BAD_CRUN.podmanExecClampVersion).toBeUndefined();
+    expect(
+      evaluateKnownBadOciRuntime({
+        runtimeName: "crun",
+        runtimeVersionBanner: CRUN_1_31_BANNER,
+        podmanVersion: "6.2.1",
+        rootless: true,
+      })?.podmanVersion,
+    ).toBe("6.2.1");
+    expect(
+      evaluateKnownBadOciRuntime({
+        runtimeName: "crun",
+        runtimeVersionBanner: CRUN_1_31_BANNER,
+        podmanVersion: "6.3.0",
+        rootless: true,
+      })?.podmanVersion,
+    ).toBe("6.3.0");
   });
 
   test("does not warn below the crun floor", () => {
@@ -177,24 +196,45 @@ describe("known-bad crun range", () => {
     ).toBeUndefined();
   });
 
-  test("retires the warning when Podman is newer than the exec clamp", () => {
-    expect(KNOWN_BAD_CRUN.podmanExecClampAfter).toBe(PODMAN_EXEC_CLAMP_AFTER);
+  test("retires the warning when a Podman clamp version is recorded", () => {
+    expect(PODMAN_EXEC_CLAMP_VERSION).toBeUndefined();
     expect(versionGreaterThan("6.2.1", PODMAN_EXEC_CLAMP_AFTER)).toBe(true);
+    const withClamp: KnownBadOciRuntime = {
+      ...KNOWN_BAD_CRUN,
+      podmanExecClampVersion: "6.3.0",
+    };
     expect(
-      evaluateKnownBadOciRuntime({
-        runtimeName: "crun",
-        runtimeVersionBanner: CRUN_1_31_BANNER,
-        podmanVersion: "6.2.1",
-        rootless: true,
-      }),
+      evaluateKnownBadOciRuntime(
+        {
+          runtimeName: "crun",
+          runtimeVersionBanner: CRUN_1_31_BANNER,
+          podmanVersion: "6.2.1",
+          rootless: true,
+        },
+        withClamp,
+      )?.podmanVersion,
+    ).toBe("6.2.1");
+    expect(
+      evaluateKnownBadOciRuntime(
+        {
+          runtimeName: "crun",
+          runtimeVersionBanner: CRUN_1_31_BANNER,
+          podmanVersion: "6.3.0",
+          rootless: true,
+        },
+        withClamp,
+      ),
     ).toBeUndefined();
     expect(
-      evaluateKnownBadOciRuntime({
-        runtimeName: "crun",
-        runtimeVersionBanner: CRUN_1_31_BANNER,
-        podmanVersion: "6.3.0",
-        rootless: true,
-      }),
+      evaluateKnownBadOciRuntime(
+        {
+          runtimeName: "crun",
+          runtimeVersionBanner: CRUN_1_31_BANNER,
+          podmanVersion: "6.3.1",
+          rootless: true,
+        },
+        withClamp,
+      ),
     ).toBeUndefined();
   });
 

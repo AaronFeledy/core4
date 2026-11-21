@@ -9,10 +9,17 @@ export const CRUN_OOM_SCORE_ADJ_BROKEN_AT = "1.31";
 
 /**
  * Last Podman release known not to include the exec oom_score_adj clamp.
- * Retire the warning for any observed Podman version greater than this once a
- * release that includes the clamp ships (currently anything after 6.2.0).
+ * Newer patch releases may still lack it; do not treat this as a retirement
+ * bound.
  */
 export const PODMAN_EXEC_CLAMP_AFTER = "6.2.0";
+
+/**
+ * First Podman release known to include the exec oom_score_adj clamp.
+ * Leave undefined until such a release exists; the clamp is merged but
+ * unreleased, so a 6.2.x without it must still warn.
+ */
+export const PODMAN_EXEC_CLAMP_VERSION: string | undefined = undefined;
 
 /**
  * First crun release known to actually fix containers/crun#2466.
@@ -31,13 +38,17 @@ export interface KnownBadOciRuntime {
   readonly name: string;
   /** Inclusive lower bound of the broken OCI runtime range. */
   readonly versionAtLeast: string;
-  /** Inclusive upper bound of affected Podman releases. */
-  readonly affectedPodmanAtMost: string;
   /**
-   * Podman releases after this include the exec clamp. Undefined means that
+   * Inclusive upper bound of affected Podman releases. Undefined means every
+   * Podman release is still in the warning window until
+   * `podmanExecClampVersion` is recorded.
+   */
+  readonly affectedPodmanAtMost: string | undefined;
+  /**
+   * First Podman release known to include the exec clamp. Undefined means that
    * retirement path is not yet known.
    */
-  readonly podmanExecClampAfter: string | undefined;
+  readonly podmanExecClampVersion: string | undefined;
   /**
    * First OCI runtime release known to fix the bug. Undefined means that
    * retirement path is not yet known.
@@ -49,8 +60,8 @@ export interface KnownBadOciRuntime {
 export const KNOWN_BAD_CRUN: KnownBadOciRuntime = {
   name: "crun",
   versionAtLeast: CRUN_OOM_SCORE_ADJ_BROKEN_AT,
-  affectedPodmanAtMost: PODMAN_EXEC_CLAMP_AFTER,
-  podmanExecClampAfter: PODMAN_EXEC_CLAMP_AFTER,
+  affectedPodmanAtMost: undefined,
+  podmanExecClampVersion: PODMAN_EXEC_CLAMP_VERSION,
   fixedRuntimeVersion: CRUN_OOM_SCORE_ADJ_FIXED_VERSION,
   issueUrl: CRUN_OOM_SCORE_ADJ_ISSUE_URL,
 };
@@ -187,13 +198,18 @@ export const evaluateKnownBadOciRuntime = (
     return undefined;
   }
   if (
-    entry.podmanExecClampAfter !== undefined &&
-    versionGreaterThan(input.podmanVersion, entry.podmanExecClampAfter)
+    entry.podmanExecClampVersion !== undefined &&
+    versionAtLeast(input.podmanVersion, entry.podmanExecClampVersion)
   ) {
     return undefined;
   }
   if (!versionAtLeast(parsed.version, entry.versionAtLeast)) return undefined;
-  if (!versionAtMost(input.podmanVersion, entry.affectedPodmanAtMost)) return undefined;
+  if (
+    entry.affectedPodmanAtMost !== undefined &&
+    !versionAtMost(input.podmanVersion, entry.affectedPodmanAtMost)
+  ) {
+    return undefined;
+  }
 
   return {
     runtimeName: parsed.name,

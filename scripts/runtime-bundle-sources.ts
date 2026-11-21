@@ -10,8 +10,8 @@ export const RUNTIME_BUNDLE_SOURCES_PATH = join(PROVIDER_DIR, "runtime-bundle-so
 
 // Do not bump managed Linux crun to 1.31+ until a real crun fix for
 // https://github.com/containers/crun/issues/2466 ships, or until bundled
-// Podman includes the exec oom_score_adj clamp (after 6.2.0). See
-// container-runtime/src/podman/oci-runtime-floor.ts.
+// Podman is a recorded release that includes the exec oom_score_adj clamp.
+// See container-runtime/src/podman/oci-runtime-floor.ts.
 
 export const LinuxPodmanSourceBuild = "podman-linux-native" as const;
 export const LinuxNetavarkSourceBuild = "netavark-linux-native" as const;
