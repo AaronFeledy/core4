@@ -141,7 +141,7 @@ test.each([":", "="])("rejects a deferred hostname with an authored list locatio
         issues: [
           {
             rule: "unsupported-expression",
-            message: expect.stringContaining("Key expressions are not supported"),
+            suggestion: expect.stringMatching(/\S/),
             path,
             source: { file, layer: "canonical", path },
           },

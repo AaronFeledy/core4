@@ -153,8 +153,12 @@ test("rejects a boolean result in the deferred service-credential pass", () =>
     // When
     const error = await failure(landofile);
     // Then
-    expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "web", "framework"] });
-    expect(error.message).toContain("takes text");
+    expect(error).toMatchObject({
+      _tag: "ConfigExpressionError",
+      path: ["services", "web", "framework"],
+      expression: "{{ eq(services.database.creds.user, 'lando') }}",
+      remediation: expect.stringMatching(/\S/),
+    });
   }));
 
 test("resolves services.<name>.creds.* before the reading service's type runs, whatever the declaration order", () =>

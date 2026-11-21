@@ -114,8 +114,12 @@ test("rejects a non-string result at a plan-time text site", async () => {
     compileTestLandofile(landofile).pipe(Effect.flatMap(plan), Effect.flip),
   );
   // Then
-  expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "database", "framework"] });
-  expect(error.message).toContain("takes text");
+  expect(error).toMatchObject({
+    _tag: "ConfigExpressionError",
+    path: ["services", "database", "framework"],
+    expression: "{{ eq(app.name, 'x') }}",
+    remediation: expect.stringMatching(/\S/),
+  });
 });
 
 test("materializes app and proxy expressions before service resolution and tooling compilation", async () => {

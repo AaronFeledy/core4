@@ -171,7 +171,8 @@ test("locates canonical decode failures without rendering scope values into erro
   if (Result.isFailure(result)) {
     expect(result.failure.path).toEqual(["services", "web", "environment", "BAD"]);
     expect(result.failure.filePath).toBe("/app/.lando.local.yml");
-    expect(result.failure.message).toContain("takes text");
+    expect(result.failure.expression).toBe("{{ app }}");
+    expect(result.failure.remediation).toMatch(/\S/);
     expect(result.failure.message).not.toContain("DO_NOT_RENDER_SCOPE_BYTES");
   }
 });

@@ -57,15 +57,19 @@ test("checks the readiness target after overlays compose", async () => {
     _tag: "LandofileValidationError",
     issues: [
       expect.objectContaining({
+        rule: "unsupported-expression",
         path: ["services", "web", "readiness", "command"],
         source: expect.objectContaining({ file }),
       }),
     ],
   });
-  expect(
-    (await load({ readiness: { target: "host", command: self } }, { readiness: { target: "service" } }))
-      .pendingSites,
-  ).toHaveLength(1);
+  const compiled = await load(
+    { readiness: { target: "host", command: self } },
+    { readiness: { target: "service" } },
+  );
+  expect(compiled.pendingSites.map(({ path }) => path)).toEqual([
+    ["services", "web", "readiness", "command"],
+  ]);
 });
 
 test("does not record an escaped expression or a launcher replaced by an overlay", async () => {
