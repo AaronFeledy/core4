@@ -323,4 +323,81 @@ describe.serial("live advisory app locks", () => {
     },
     1_200_000,
   );
+
+  test.skipIf(prerequisite !== undefined)(
+    "any app that uses a shared cache purges it once no container uses it",
+    async () => {
+      const cache = `lock-live-${crypto.randomUUID().slice(0, 8)}`;
+      const scenario = (id: string) => ({ guideId: "advisory-lock-live", scenarioId: id, render: false });
+      const Destroyed = Schema.fromJsonString(
+        Schema.Struct({
+          ok: Schema.Literal(true),
+          result: Schema.Struct({
+            cacheVolumesRemoved: Schema.Boolean,
+            skipped: Schema.optional(
+              Schema.Array(Schema.Struct({ resource: Schema.String, reason: Schema.String })),
+            ),
+          }),
+        }),
+      );
+      await Effect.runPromise(
+        ScenarioContextFactory.e2e(scenario("purge-alpha"), (alpha) =>
+          ScenarioContextFactory.e2e(scenario("purge-beta"), (beta) =>
+            Effect.gen(function* () {
+              for (const [ctx, name] of [
+                [alpha, `${cache}-alpha`],
+                [beta, `${cache}-beta`],
+              ] as const)
+                yield* Effect.promise(() =>
+                  Bun.write(join(ctx.testDir, ".lando.yml"), landofile(name, cache)),
+                );
+              yield* Effect.addFinalizer(() =>
+                alpha
+                  .runCli(["destroy", "-y", "--volumes", "--purge-caches", "--format=json"])
+                  .pipe(Effect.ignore),
+              );
+
+              // Given alpha created the cache and its container still uses it.
+              const created = yield* alpha.runCli(["start", "--format=json"]);
+              expect(created.exitCode, created.stdout).toBe(0);
+              const started = yield* beta.runCli(["start", "--format=json"]);
+              expect(started.exitCode, started.stdout).toBe(0);
+              const store = `lando-cache-${cache}`;
+
+              // When beta purges while alpha runs, the cache is kept and reported, and teardown succeeds.
+              const kept = yield* beta.runCli([
+                "destroy",
+                "-y",
+                "--volumes",
+                "--purge-caches",
+                "--format=json",
+              ]);
+              expect(kept.exitCode, kept.stdout).toBe(0);
+              expect(Schema.decodeUnknownSync(Destroyed)(kept.stdout).result.skipped).toContainEqual(
+                expect.objectContaining({ resource: store, reason: "in use" }),
+              );
+
+              // When alpha is gone, beta, which never created the cache, removes it.
+              const gone = yield* alpha.runCli(["destroy", "-y", "--volumes", "--format=json"]);
+              expect(gone.exitCode, gone.stdout).toBe(0);
+              const restarted = yield* beta.runCli(["start", "--format=json"]);
+              expect(restarted.exitCode, restarted.stdout).toBe(0);
+              const purged = yield* beta.runCli([
+                "destroy",
+                "-y",
+                "--volumes",
+                "--purge-caches",
+                "--format=json",
+              ]);
+              expect(purged.exitCode, purged.stdout).toBe(0);
+              const result = Schema.decodeUnknownSync(Destroyed)(purged.stdout).result;
+              expect(result.cacheVolumesRemoved).toBe(true);
+              expect(result.skipped ?? []).not.toContainEqual(expect.objectContaining({ resource: store }));
+            }),
+          ),
+        ),
+      );
+    },
+    1_200_000,
+  );
 });
