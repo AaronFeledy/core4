@@ -12,7 +12,7 @@ import {
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { assertListenerConfig, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -124,10 +124,12 @@ const postgresToolingForConnection: NonNullable<ServiceType["toolingForConnectio
         },
       };
 
+const selectPort = primaryPortSelector(POSTGRES_LISTENER);
 export const postgresServiceType: ServiceType = {
   id: "postgres",
   name: "postgres",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
@@ -136,7 +138,7 @@ export const postgresServiceType: ServiceType = {
   resolve: (input) => {
     return serviceTypeResolve("postgres", "postgres service type failed to resolve", () => {
       const creds = credsFor(input);
-      const port = plannedPort(input.service, POSTGRES_LISTENER);
+      const port = selectPort(input.service);
       assertListenerConfig(input.service, POSTGRES_LISTENER);
       return {
         base: "lando",

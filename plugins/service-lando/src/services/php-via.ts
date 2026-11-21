@@ -1,5 +1,5 @@
 import type { LogSource, ServiceConfig } from "@lando/sdk/schema";
-import { LogSourceId } from "@lando/sdk/schema";
+import { LogSourceId, PortNumber } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
@@ -105,18 +105,15 @@ const phpUpstreamVersion = (version: string): string => (version === "8.6" ? "8.
 export const phpImageFor = (version: string, via: PhpVia): string =>
   `php:${phpUpstreamVersion(version)}-${via}-bookworm`;
 
-export const phpListenPort = (via: Exclude<PhpVia, "cli">, authoredPort: number | undefined): number => {
-  if (authoredPort !== undefined) return authoredPort;
-  switch (via) {
-    case "apache":
-      return PHP_APACHE_PORT;
-    case "fpm":
-      return PHP_FPM_PORT;
-    default: {
-      const exhaustive: never = via;
-      return exhaustive;
-    }
-  }
+export const phpListenPort = (via: Exclude<PhpVia, "cli">, authoredPort: number | undefined): PortNumber =>
+  PortNumber.make(authoredPort ?? PHP_LISTENERS[via].port);
+
+export const phpPlannedPort = ({
+  via,
+  port,
+}: Pick<ServiceConfig, "via" | "port">): PortNumber | undefined => {
+  const mode = via ?? "apache";
+  return mode === "apache" || mode === "fpm" ? phpServingMode(mode, port).listener?.port : undefined;
 };
 
 /** CLI has no listener. Apache must retain whether its port was explicitly authored. */

@@ -22,7 +22,7 @@ import {
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { assertListenerConfig, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -165,10 +165,12 @@ const mariadbToolingForConnection: NonNullable<ServiceType["toolingForConnection
         },
       };
 
+const selectPort = primaryPortSelector(MARIADB_LISTENER);
 export const mariadbServiceType: ServiceType = {
   id: "mariadb",
   name: "mariadb",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
@@ -177,7 +179,7 @@ export const mariadbServiceType: ServiceType = {
   resolve: (input) => {
     return serviceTypeResolve("mariadb", "mariadb service type failed to resolve", () => {
       const creds = mariadbCreds(input, input.service);
-      const port = plannedPort(input.service, MARIADB_LISTENER);
+      const port = selectPort(input.service);
       assertListenerConfig(input.service, MARIADB_LISTENER);
       return {
         base: "lando",

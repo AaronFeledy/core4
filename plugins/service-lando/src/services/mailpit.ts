@@ -12,7 +12,7 @@ import {
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { resolveMailListeners } from "./_mail-listeners.ts";
+import { mailpitPlannedPort, resolveMailListeners } from "./_mail-listeners.ts";
 
 export { MAILPIT_LISTENER } from "./_mail-listeners.ts";
 
@@ -55,6 +55,7 @@ export const mailpitServiceType: ServiceType = {
   id: "mailpit",
   name: "mailpit",
   base: "lando",
+  plannedPort: mailpitPlannedPort,
   identity: rootIdentity(),
   schema: MailpitServiceConfig,
   resolve: (input) =>

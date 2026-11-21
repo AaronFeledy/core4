@@ -22,7 +22,12 @@ import {
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { imageAuthority, launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  imageAuthority,
+  launcherAuthority,
+  primaryPortSelector,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
@@ -45,6 +50,7 @@ export const APACHE_LISTENER = {
   image: { setting: (port: number) => `Listen ${port}` },
 } as const;
 export const DEFAULT_PORT = APACHE_LISTENER.port;
+const selectPort = primaryPortSelector(APACHE_LISTENER);
 export const APP_MOUNT_TARGET = "/app";
 
 /**
@@ -273,7 +279,7 @@ const apacheStartCommand = (
 const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const listenPort = authoredListenPort(service.port);
-  const port = plannedPort(service, APACHE_LISTENER);
+  const port = selectPort(service);
   const webroot = resolveWebroot("Apache", service.webroot, service.appMount);
   const documentRoot = service.environment?.APACHE_DOCUMENT_ROOT ?? webroot;
   const owned = apacheOwnedLauncher(service);
@@ -321,7 +327,7 @@ export const apacheServiceFeature: ServiceFeatureDefinition = {
   }),
   declareEndpoints: (ctx) =>
     Effect.sync(() => {
-      const port = plannedPort(ctx.normalizedConfig, APACHE_LISTENER);
+      const port = selectPort(ctx.normalizedConfig);
       const endpoints = servicePortEndpoints(ctx, { port, protocol: "http" });
       const owned = apacheOwnedLauncher(ctx.normalizedConfig);
       return nativeTlsEligible({ owned, config: ctx.normalizedConfig })
@@ -335,6 +341,7 @@ export const apacheServiceType: ServiceType = {
   id: "apache",
   name: "apache",
   base: "lando",
+  plannedPort: selectPort,
   // Verified from /etc/passwd in docker.io/library/httpd:2.4-alpine (HTTPD_VERSION=2.4.68):
   // sha256:7ed5668e2fb31c738bcd291847fbb313073998e561ac6d8dc63cfd061dd0fb4d
   // www-data:x:82:82::/home/www-data:/sbin/nologin
@@ -345,7 +352,7 @@ export const apacheServiceType: ServiceType = {
     serviceTypeResolve("apache", "Failed to resolve apache", () => {
       const webroot = resolveWebroot("Apache", input.service.webroot, input.service.appMount);
       const endpoint = apacheGeneratedCertificateEndpoint({
-        plainPort: input.service.port ?? APACHE_LISTENER.port,
+        plainPort: selectPort(input.service),
         owned: apacheOwnedLauncher(input.service),
       });
       return {

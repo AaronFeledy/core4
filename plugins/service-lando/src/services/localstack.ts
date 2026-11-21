@@ -15,7 +15,7 @@ import {
   type ListenerContract,
   assertListenerConfig,
   parseWildcardBind,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -35,7 +35,7 @@ const DATA_TARGET = PortablePath.make("/var/lib/localstack");
 export const LOCALSTACK_FEATURE_ID = "service-lando.localstack" as const;
 
 const localstackListener = (service: ServiceConfig) => {
-  const port = plannedPort(service, LOCALSTACK_LISTENER);
+  const port = selectPort(service);
   const authoredDnsPort = service.environment?.DNS_PORT;
   const dnsPort =
     authoredDnsPort === undefined
@@ -133,10 +133,12 @@ export const localstackServiceFeature: ServiceFeatureDefinition = {
   ),
 };
 
+const selectPort = primaryPortSelector(LOCALSTACK_LISTENER);
 export const localstackServiceType: ServiceType = {
   id: "localstack",
   name: "localstack",
   base: "lando",
+  plannedPort: selectPort,
   identity: rootIdentity(),
   schema: LocalStackServiceConfig,
   resolve: (input) =>

@@ -17,7 +17,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { assertListenerConfig, plannedPort } from "./_port-helpers.ts";
+import { assertListenerConfig, primaryPortSelector } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { rabbitmqProbes } from "./rabbitmq-probes.ts";
 
@@ -37,7 +37,7 @@ export const RABBITMQ_LISTENER = {
 } as const;
 
 const assertDistributionPort = (service: ServiceConfig): void => {
-  const port = plannedPort(service, RABBITMQ_LISTENER);
+  const port = selectPort(service);
   const secondary = RABBITMQ_LISTENER.derived[0];
   const authored = service.environment?.[secondary.variable];
   const distribution =
@@ -96,7 +96,7 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   assertListenerConfig(service, RABBITMQ_LISTENER);
   assertDistributionPort(service);
-  const port = plannedPort(service, RABBITMQ_LISTENER);
+  const port = selectPort(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["4"] });
   ctx.addEnv("RABBITMQ_DEFAULT_USER", service.environment?.RABBITMQ_DEFAULT_USER ?? "lando");
@@ -123,7 +123,7 @@ export const rabbitmqServiceFeature: ServiceFeatureDefinition = {
   priority: 600,
   declareEndpoints: (ctx) =>
     Effect.sync(() => {
-      const port = plannedPort(ctx.normalizedConfig, RABBITMQ_LISTENER);
+      const port = selectPort(ctx.normalizedConfig);
       return [
         {
           kind: "internal" as const,
@@ -147,10 +147,12 @@ export const rabbitmqServiceFeature: ServiceFeatureDefinition = {
   ),
 };
 
+const selectPort = primaryPortSelector(RABBITMQ_LISTENER);
 const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
   id,
   name: "rabbitmq",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),

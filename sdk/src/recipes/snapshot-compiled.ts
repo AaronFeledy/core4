@@ -5,6 +5,7 @@ import { containsReservedBinding } from "../expressions/bindings.ts";
 import { evaluateExpressionEither, evaluateTemplateEither } from "../expressions/evaluator.ts";
 import { parseExpressionEither } from "../expressions/parser.ts";
 import { expressionInterpolationsTouchOnlyScopes } from "../expressions/scopes.ts";
+import { servicePortExpression } from "../landofile/execution-sites.ts";
 import {
   type CompilationContext,
   ComposedCompiledLandofile,
@@ -59,18 +60,21 @@ export const renderCompiledRecipeSnapshot = (
           bareShellParameters: "preserve",
         });
         if (Result.isFailure(parsed)) return Result.fail(fail(sourcePath, parsed.failure.message));
+        const self = servicePortExpression(parsed.success, path);
         const bindingSite =
           (path[0] === "services" &&
             ((path[2] === "environment" && path.length === 4) ||
               (path[2] === "creds" && (path[3] === "password" || path[3] === "rootPassword")))) ||
           (path[0] === "tooling" && path.includes("env"));
         if (
+          self === "unsupported" ||
           !expressionInterpolationsTouchOnlyScopes(parsed.success, [
             "app",
             "proxy",
             "recipe",
             "env",
             "services",
+            "service",
             ...(bindingSite ? ["secrets"] : []),
           ]) ||
           parsed.success.segments.some(

@@ -133,7 +133,7 @@ const failure = async (landofile: LandofileShape): Promise<ConfigExpressionError
   return result.failure;
 };
 
-test("rejects non-string results in the deferred service-credential pass", () =>
+test("rejects a boolean result in the deferred service-credential pass", () =>
   withAppRoot(async (root) => {
     // Given
     const landofile = withAppRootProvenance(
@@ -154,7 +154,7 @@ test("rejects non-string results in the deferred service-credential pass", () =>
     const error = await failure(landofile);
     // Then
     expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "web", "framework"] });
-    expect(error.message).toContain("Expected string");
+    expect(error.message).toContain("takes text");
   }));
 
 test("resolves services.<name>.creds.* before the reading service's type runs, whatever the declaration order", () =>

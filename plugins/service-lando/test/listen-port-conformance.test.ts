@@ -70,8 +70,70 @@ const exemptions: Readonly<Record<string, string>> = {
 const commandText = (command: string | readonly string[] | undefined): string =>
   typeof command === "string" ? command : (command ?? []).join(" ");
 
+const listenerVariants = (family: string): readonly Partial<Pick<ServiceConfig, "via" | "framework">>[] => {
+  switch (family) {
+    case "php":
+      return [{}, { via: "fpm" }, { via: "cli" }];
+    case "python":
+      return [{}, { framework: "django" }, { framework: "fastapi" }, { framework: "flask" }];
+    case "ruby":
+      return [{}, { framework: "rails" }];
+    default:
+      return [{}];
+  }
+};
+
 describe("bundled catalog listen-port conformance", () => {
   for (const [id, serviceType] of serviceTypes) {
+    const family = id.split(":")[0] ?? id;
+    for (const variant of listenerVariants(family)) {
+      test(`${id} ${variant.framework ?? variant.via ?? "default"} predicts its primary endpoint`, async () => {
+        if (Object.hasOwn(exemptions, family)) {
+          expect(serviceType.plannedPort).toBeUndefined();
+          return;
+        }
+        const select = serviceType.plannedPort;
+        if (select === undefined) throw new Error(`Missing selector for ${id}`);
+        for (const port of [undefined, PORT]) {
+          const service = Schema.decodeUnknownSync(ServiceConfig)({
+            type: id,
+            ...variant,
+            ...(port === undefined ? {} : { port }),
+            ...(family === "minio" ? { image: "example.test/minio:fixture" } : {}),
+            ...(family === "varnish" ? { backend: "web" } : {}),
+          });
+          const plan = await composeServicePlan({
+            serviceType:
+              id === "node"
+                ? {
+                    ...serviceType,
+                    resolve: (input) =>
+                      serviceType.resolve({
+                        ...input,
+                        projectFiles: [
+                          { path: ".nvmrc", present: true, text: "22", sha256: "node-port-fixture" },
+                        ],
+                      }),
+                  }
+                : serviceType,
+            service,
+            serviceName: "server",
+            appName: "port-test",
+            appRoot: "/srv/apps/port-test",
+            metadata,
+          });
+          const primary = plan.endpoints.find(
+            (endpoint) => "primary" in endpoint && endpoint.primary === true,
+          );
+          const planned = select(service);
+          if (variant.via === "cli") expect(planned).toBeUndefined();
+          else expect(planned).toBeNumber();
+          expect(primary).toEqual(
+            planned === undefined ? undefined : expect.objectContaining({ port: planned }),
+          );
+        }
+      });
+    }
     test(`${id} classifies and honors an authored non-default listen port`, async () => {
       const family = id.split(":")[0] ?? id;
       const mechanism = mechanisms[id] ?? mechanisms[family];

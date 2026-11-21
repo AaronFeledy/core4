@@ -1,4 +1,6 @@
 import { SchemaAST as AST, Schema } from "effect";
+import type { ExpressionTemplate } from "../expressions/ast.ts";
+import { expressionScopeMembers } from "../expressions/scopes.ts";
 import { ExecutionSite, getExecutionSite } from "../schema/execution-site.ts";
 import { LandofileShape } from "../schema/landofile.ts";
 import { ValidationIssuePath } from "../schema/validation-issue.ts";
@@ -40,7 +42,7 @@ const branches = (candidate: Candidate, index: number): ReadonlyArray<Candidate>
   }
 };
 
-/** Resolve an authored string site; callers reach this only for values that hold a secret reference outside a binding site. */
+/** Resolve the execution semantics of an authored string path. */
 export const executionSiteAt = (path: ReadonlyArray<string | number>): ExecutionSiteMatch | undefined => {
   let candidates = branches({ ast: LandofileShape.ast, match: undefined }, -1);
   for (const [index, key] of path.entries()) {
@@ -58,4 +60,28 @@ export const executionSiteAt = (path: ReadonlyArray<string | number>): Execution
   )
     return undefined;
   return { site: match.site, relativePath: path.slice(match.index + 1) };
+};
+
+/** Only process text, excluding Compose's probe mode marker and other probe fields. */
+const servicePortExpressionSite = (path: ReadonlyArray<string | number>): boolean => {
+  if (path[0] !== "services") return false;
+  const match = executionSiteAt(path);
+  if (match?.site === "service-command" || match?.site === "service-entrypoint") return true;
+  if (match?.site !== "healthcheck") return false;
+  const [field, index] = match.relativePath;
+  return (
+    field === undefined ||
+    typeof field === "number" ||
+    field === "command" ||
+    (field === "test" && index !== 0)
+  );
+};
+
+export const servicePortExpression = (template: ExpressionTemplate, path: ReadonlyArray<string | number>) => {
+  const self = expressionScopeMembers(template, "service", "direct-property");
+  if (!self.analyzable) return "unsupported";
+  if (self.members.size === 0) return "absent";
+  return self.members.size === 1 && self.members.has("port") && servicePortExpressionSite(path)
+    ? "supported"
+    : "unsupported";
 };

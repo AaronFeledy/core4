@@ -3,6 +3,7 @@ import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { mapFailures } from "@lando/sdk/command-result";
 import type { LandofileLoadFailure } from "@lando/sdk/errors";
 import { LandofileValidationError, ServiceTypeCollisionError } from "@lando/sdk/errors";
+import type { ExpressionContext } from "@lando/sdk/expressions";
 import type {
   CompilationContext,
   LandofileShape,
@@ -22,6 +23,7 @@ import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
 import {
   type DeferredExpressionSites,
   type ServiceCredsScope,
+  materializeServicePort,
   materializeServiceScopeSites,
   orderServicesByCredsReferences,
   serviceScopeContext,
@@ -78,27 +80,20 @@ export interface ServiceSeedInput {
 const resolveSeed = Effect.fnUntraced(function* (
   input: ServiceSeedInput,
   topLevelEnvFiles: Effect.Success<ReturnType<typeof loadTopLevelEnvFiles>>,
-  name: string,
-  service: ServiceConfig,
+  seed: {
+    readonly name: string;
+    readonly service: ServiceConfig;
+    readonly sites: DeferredExpressionSites;
+    readonly context: ExpressionContext;
+  },
 ) {
+  const { name } = seed;
   const { pluginRegistry, fileSystem, appRoot, appName, appDefaults, registeredServiceTypeIds } = input;
-  const loadedEnvFiles = yield* loadServiceEnvFiles({
-    appRoot,
-    serviceName: name,
-    service,
-    fileSystem,
-  });
-  const serviceWithEnvironment = withUserAppDefaults({
-    service,
-    defaults: appDefaults,
-    topLevelEnvironment: topLevelEnvFiles.environment,
-    serviceEnvironment: loadedEnvFiles.environment,
-    hasEnvFiles: topLevelEnvFiles.inputs.length > 0 || loadedEnvFiles.inputs.length > 0,
-  });
+  const serviceTypeId = serviceTypeFor(name, seed.service);
   if (
-    serviceWithEnvironment.image !== undefined &&
-    serviceWithEnvironment.build !== undefined &&
-    isComposeBuild(serviceWithEnvironment.build)
+    seed.service.image !== undefined &&
+    seed.service.build !== undefined &&
+    isComposeBuild(seed.service.build)
   ) {
     return yield* Effect.fail(
       new LandofileValidationError({
@@ -114,10 +109,6 @@ const resolveSeed = Effect.fnUntraced(function* (
       }),
     );
   }
-  const authored = authoredStorageScopes(appRoot, name, serviceWithEnvironment);
-  if (authored.invalidCacheEntry !== undefined) yield* Effect.fail(authored.invalidCacheEntry);
-  if (authored.globalEntry !== undefined) yield* Effect.fail(rejectGlobalScope(name, authored.globalEntry));
-  const serviceTypeId = serviceTypeFor(name, serviceWithEnvironment);
   const { serviceType, version } = yield* loadServiceTypeWithVersion(pluginRegistry, serviceTypeId).pipe(
     mapFailures((error) => {
       if (error instanceof ServiceTypeCollisionError) return serviceTypeCollision(appRoot, name, error);
@@ -134,6 +125,23 @@ const resolveSeed = Effect.fnUntraced(function* (
     yield* Effect.fail(unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds));
   }
   const resolvedArtifactTag = yield* resolvePinnedArtifactTag(appRoot, name, serviceType, version);
+  const service = yield* materializeServicePort({
+    ...seed,
+    serviceType,
+    pathPrefix: ["services", name],
+    landofilePath: input.landofilePath,
+  });
+  const loadedEnvFiles = yield* loadServiceEnvFiles({ appRoot, serviceName: name, service, fileSystem });
+  const serviceWithEnvironment = withUserAppDefaults({
+    service,
+    defaults: appDefaults,
+    topLevelEnvironment: topLevelEnvFiles.environment,
+    serviceEnvironment: loadedEnvFiles.environment,
+    hasEnvFiles: topLevelEnvFiles.inputs.length > 0 || loadedEnvFiles.inputs.length > 0,
+  });
+  const authored = authoredStorageScopes(appRoot, name, serviceWithEnvironment);
+  if (authored.invalidCacheEntry !== undefined) yield* Effect.fail(authored.invalidCacheEntry);
+  if (authored.globalEntry !== undefined) yield* Effect.fail(rejectGlobalScope(name, authored.globalEntry));
   const pinnedService: ServiceConfig =
     resolvedArtifactTag === undefined || serviceWithEnvironment.image !== undefined
       ? serviceWithEnvironment
@@ -269,18 +277,19 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     }
     const authoredService = landofile.services?.[ServiceName.make(name)];
     if (authoredService === undefined) continue;
+    const context = serviceScopeContext({
+      landofile,
+      context: input.context,
+      appSlug: input.appSlug,
+      defaultDomain: input.defaultDomain,
+      services: serviceCredsScope,
+    });
     const materialized = yield* materializeServiceScopeSites({
       value: authoredService,
       landofilePath: input.landofilePath,
       pathPrefix: ["services", name],
       deferredSites: pendingSites,
-      context: serviceScopeContext({
-        landofile,
-        context: input.context,
-        appSlug: input.appSlug,
-        defaultDomain: input.defaultDomain,
-        services: serviceCredsScope,
-      }),
+      context,
     });
     const service = yield* Schema.decodeUnknownEffect(Schema.toType(ServiceConfigSchema))(
       materialized.document,
@@ -295,7 +304,12 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     );
     documents[ServiceName.make(name)] = service;
     pendingSites = pendingSites.filter((site) => !(site.path[0] === "services" && site.path[1] === name));
-    const resolved = yield* resolveSeed(input, topLevelEnvFiles, name, service).pipe(
+    const resolved = yield* resolveSeed(input, topLevelEnvFiles, {
+      name,
+      service,
+      sites: materialized.pendingSites,
+      context,
+    }).pipe(
       Effect.map(Result.succeed),
       Effect.catchTag("LandofileValidationError", (error) => Effect.succeed(Result.fail(error))),
     );
@@ -304,6 +318,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
       continue;
     }
     const seed = resolved.success;
+    documents[ServiceName.make(name)] = seed.authoredService;
     const facts = serviceExpressionFacts(seed.resolution);
     if (facts !== undefined) serviceCredsScope[name] = facts;
     const checked = yield* validateServiceSeed(

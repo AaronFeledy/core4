@@ -13,7 +13,7 @@ import {
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { assertListenerConfig, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { mssqlHealthcheck, mssqlStartupCommand } from "./mssql-startup.ts";
 
@@ -106,10 +106,12 @@ const mssqlToolingForConnection: NonNullable<ServiceType["toolingForConnection"]
         },
       };
 
+const selectPort = primaryPortSelector(MSSQL_LISTENER);
 const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
   id,
   name: "mssql",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: {
@@ -151,7 +153,7 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
         defaults: defaultCreds(appName),
         ...(input.service.creds === undefined ? {} : { authored: input.service.creds }),
       });
-      const port = plannedPort(input.service, MSSQL_LISTENER);
+      const port = selectPort(input.service);
       assertListenerConfig(input.service, MSSQL_LISTENER);
       return {
         base: "lando",

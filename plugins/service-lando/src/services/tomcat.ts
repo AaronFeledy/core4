@@ -12,7 +12,7 @@ import {
   type ListenerContract,
   assertListenerConfig,
   imageAuthority,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -53,7 +53,7 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const config = Schema.decodeUnknownSync(TomcatFeatureConfig)(ctx.config);
   assertListenerConfig(service, tomcatListener(config.ownsImageConfig));
-  const port = plannedPort(service, TOMCAT_LISTENER);
+  const port = selectPort(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["11"] });
   ctx.setHealthcheck(tcpProbe(port, 20));
@@ -99,17 +99,19 @@ export const tomcatServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, TOMCAT_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "http",
       }),
     ),
   apply: serviceFeatureApply(TOMCAT_FEATURE_ID, "tomcat service feature failed to apply", applyTomcatFeature),
 };
 
+const selectPort = primaryPortSelector(TOMCAT_LISTENER);
 const makeTomcatServiceType = (id: string, major: (typeof VERSIONS)[number]): ServiceType => ({
   id,
   name: "tomcat",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),

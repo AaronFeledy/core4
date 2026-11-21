@@ -107,12 +107,13 @@ export const validateServer = (
   );
 };
 
-const configFor = (ctx: ServiceFeatureContext): StaticFeatureConfig => ctx.config as StaticFeatureConfig;
+const configFor = (ctx: Pick<ServiceFeatureContext, "config">): StaticFeatureConfig =>
+  ctx.config as StaticFeatureConfig;
 
 const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { docRoot, server } = configFor(ctx);
-  const port = plannedPort(service, STATIC_LISTENER);
+  const port = selectPort(service, server);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? STATIC_SERVER_IMAGES[server] });
   if (server === "caddy") {
@@ -178,7 +179,7 @@ export const staticServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, STATIC_LISTENER),
+        port: selectPort(ctx.normalizedConfig, configFor(ctx).server),
         protocol: "http",
       }),
     ),
@@ -190,6 +191,9 @@ const normalizedService = (service: ServiceConfig, serviceType: string): Service
   type: serviceType,
 });
 
+const selectPort = (service: Pick<ServiceConfig, "port">, server: SupportedStaticServer) =>
+  plannedPort(service, STATIC_LISTENERS[server]);
+
 export const makeStaticServiceType = (server: SupportedStaticServer): ServiceType => {
   const id = server === "nginx" ? "static" : `static:${server}`;
 
@@ -197,6 +201,7 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
     id,
     name: id,
     base: "lando",
+    plannedPort: (service) => selectPort(service, server),
     // Verified linux/amd64: nginx:1.26-alpine config
     // sha256:42ce3d3585d47518cb0c1ef4bd3d8a65c1edfcbbfd423eda86990a83f378b111 has
     // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin (cache, not a persisted home).

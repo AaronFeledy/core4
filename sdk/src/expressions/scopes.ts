@@ -163,12 +163,17 @@ export const expressionInterpolationsTouchOnlyScopes = (
 export const expressionScopeMembers = (
   ast: ExpressionTemplate | ExpressionNode,
   scope: string,
+  access: "member" | "direct-property" = "member",
 ): { readonly members: ReadonlySet<string>; readonly analyzable: boolean } => {
   const members = new Set<string>();
   let analyzable = true;
   const visitPath = (head: string, segments: ReadonlyArray<PathSegment>): void => {
     if (head !== scope) return;
     const first = segments[0];
+    if (access === "direct-property" && (segments.length !== 1 || first?.type !== "prop")) {
+      analyzable = false;
+      return;
+    }
     if (first?.type === "prop") members.add(first.name);
     else if (first?.type === "key") members.add(first.key);
     else analyzable = false;
@@ -182,7 +187,13 @@ export const expressionScopeMembers = (
         for (const segment of node.segments) if (segment.type === "dynamic") visit(segment.expr);
         return;
       case "Access":
-        if (node.target.kind === "Path" && node.target.head === scope && node.target.segments.length === 0) {
+        if (access === "direct-property" && node.target.kind === "Path" && node.target.head === scope) {
+          visitPath(scope, [...node.target.segments, ...node.segments]);
+        } else if (
+          node.target.kind === "Path" &&
+          node.target.head === scope &&
+          node.target.segments.length === 0
+        ) {
           visitPath(scope, node.segments);
         } else {
           visit(node.target);

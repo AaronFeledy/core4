@@ -20,7 +20,7 @@ import {
   authoredPmaCreds,
   resolveAuthoredHosts,
 } from "./_phpmyadmin-hosts.ts";
-import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { assertListenerConfig, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 
@@ -44,7 +44,7 @@ export const PHPMYADMIN_WIRE_FEATURE_ID = "service-lando.phpmyadmin.wire";
 const applyPhpMyAdminFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   assertListenerConfig(service, PHPMYADMIN_LISTENER);
-  const port = plannedPort(service, PHPMYADMIN_LISTENER);
+  const port = selectPort(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS.latest });
   ctx.addEnv("APACHE_PORT", String(port));
@@ -61,7 +61,7 @@ export const phpmyadminServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, PHPMYADMIN_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "http",
       }),
     ),
@@ -72,10 +72,12 @@ export const phpmyadminServiceFeature: ServiceFeatureDefinition = {
   ),
 };
 
+const selectPort = primaryPortSelector(PHPMYADMIN_LISTENER);
 const makePhpMyAdminServiceType = (id: string, image: string): ServiceType => ({
   id,
   name: "phpmyadmin",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),

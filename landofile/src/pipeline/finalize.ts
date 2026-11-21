@@ -33,6 +33,7 @@ import {
   normalizeLocalIncludePaths,
   normalizeReferencedFiles,
 } from "../provenance.ts";
+import { hostReadinessPortSite, servicePortSiteError } from "../service-port-sites.ts";
 import { applyToolingIncludeDefaults } from "../tooling-include-defaults.ts";
 import { resolveToolingIncludes, winningInternalToolingTasks } from "../tooling-includes.ts";
 import { rejectUnsupportedToolingFeatures, scanToolingForUnsupported } from "../tooling-unsupported.ts";
@@ -194,6 +195,9 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   };
   context.onAssembled?.(assembled);
   const effectiveOrigins = assembled.provenance.origins;
+  const effectiveSites = survivingSites(effectiveOrigins, scope.pendingSites ?? []);
+  const hostPortSite = hostReadinessPortSite(assembled.value, effectiveSites);
+  if (hostPortSite !== undefined) recorder.record(servicePortSiteError(hostPortSite.source, true));
   const load =
     context.rootDocuments === undefined
       ? finishLoadStage(file, recorder)
@@ -245,11 +249,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
       stage: "load-scoped",
       document: decoded,
       pendingSites: [
-        ...decodedPendingSites(
-          assembled.value,
-          decoded,
-          survivingSites(effectiveOrigins, scope.pendingSites ?? []),
-        ),
+        ...decodedPendingSites(assembled.value, decoded, effectiveSites),
         ...survivingSites(defaults.addedOrigins, scope.pendingSites ?? []),
       ],
       context: { appRoot: AbsolutePath.make(context.appRoot), env: scope.env },
@@ -272,9 +272,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   }
   const loaded = yield* load.pipe(Effect.result);
   if (Result.isSuccess(loaded)) return yield* finalize;
-  const identityPending = survivingSites(effectiveOrigins, scope.pendingSites ?? []).some(
-    (site) => site.path[0] === "name",
-  );
+  const identityPending = effectiveSites.some((site) => site.path[0] === "name");
   const unavailable =
     !recorder.diagnostic || identityPending
       ? Result.fail(recorder.entries.find((entry) => entry.kind !== "local") ?? recorder.entries[0])

@@ -10,7 +10,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "redis:7";
@@ -27,12 +27,13 @@ export const REDIS_LISTENER = {
   launcher: { setting: (port: number) => `--port ${port}` },
 } as const;
 export const DEFAULT_PORT = REDIS_LISTENER.port;
+const selectPort = primaryPortSelector(REDIS_LISTENER);
 const DATA_TARGET = PortablePath.make("/data");
 export const REDIS_FEATURE_ID = "service-lando.redis";
 
 const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = plannedPort(service, REDIS_LISTENER);
+  const port = selectPort(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   const password = service.creds?.password;
@@ -68,7 +69,7 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, REDIS_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "tcp",
       }),
     ),
@@ -106,6 +107,7 @@ export const redisServiceType: ServiceType = {
   id: "redis",
   name: "redis",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
@@ -131,9 +133,7 @@ export const redisServiceType: ServiceType = {
             service: input.name,
             cmd: [
               "redis-cli",
-              ...(input.service.port === undefined
-                ? []
-                : ["-p", String(plannedPort(input.service, REDIS_LISTENER))]),
+              ...(input.service.port === undefined ? [] : ["-p", String(selectPort(input.service))]),
             ],
             wrapper: true,
             ...(password === undefined ? {} : { env: auth }),

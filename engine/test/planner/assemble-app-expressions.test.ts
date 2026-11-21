@@ -115,7 +115,7 @@ test("rejects a non-string result at a plan-time text site", async () => {
   );
   // Then
   expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "database", "framework"] });
-  expect(error.message).toContain("Expected string");
+  expect(error.message).toContain("takes text");
 });
 
 test("materializes app and proxy expressions before service resolution and tooling compilation", async () => {

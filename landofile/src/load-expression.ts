@@ -14,7 +14,7 @@ import {
   parseExpressionEither,
 } from "@lando/sdk/expressions";
 import { isLandofileOverride, isLandofileReset, override } from "@lando/sdk/landofile";
-import { executionSiteAt } from "@lando/sdk/landofile/execution-sites";
+import { executionSiteAt, servicePortExpression } from "@lando/sdk/landofile/execution-sites";
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Predicate, Result } from "effect";
 import { INVOCATION_SCOPES, authoredSiteId, executableExpressionPath } from "./compiled-sites.ts";
@@ -37,6 +37,7 @@ import { loadExpressionFailureKind } from "./load-failures.ts";
 import type { LandofileReferencedFile } from "./provenance.ts";
 import { LOAD_DEFERRED_EXPRESSION_SCOPES } from "./recipe-expressions.ts";
 import { eligibleBindingPath, isLoweredSecretReferenceSite } from "./secret-reference.ts";
+import { servicePortSiteError } from "./service-port-sites.ts";
 import { deferredToolingScopeError } from "./tooling-deferred-scopes.ts";
 import { loweredSecretRefusal } from "./tooling-shell-binding.ts";
 import { unsupportedSecretReferenceError } from "./unsupported-secret-reference.ts";
@@ -188,6 +189,14 @@ export const resolveLandofileLoadExpressions = (
             recordExpressionEnvironment(options.environmentRecorder, parsed.success);
           const deferred = deferredToolingScopeError(parsed.success, path, options.source.sourcePath);
           if (deferred !== undefined) throw deferred;
+          const self = servicePortExpression(parsed.success, path);
+          if (self === "unsupported") {
+            throw servicePortSiteError({
+              file: options.source.sourcePath,
+              layer: options.source.layer,
+              path,
+            });
+          }
           const references = parsed.success.segments.flatMap((segment) =>
             segment.kind === "SecretRefSegment" ? [segment.name] : [],
           );
@@ -229,7 +238,11 @@ export const resolveLandofileLoadExpressions = (
             (bindable || lowered) && secretMembers.analyzable
               ? [...LOAD_DEFERRED_EXPRESSION_SCOPES, "secrets"]
               : LOAD_DEFERRED_EXPRESSION_SCOPES;
-          const admittedScopes = executableExpressionPath(path) ? [...scopes, ...INVOCATION_SCOPES] : scopes;
+          const admittedScopes = [
+            ...scopes,
+            ...(executableExpressionPath(path) ? INVOCATION_SCOPES : []),
+            ...(self === "supported" ? ["service"] : []),
+          ];
           if (expressionInterpolationsTouchOnlyScopes(parsed.success, admittedScopes)) {
             if (
               parsed.success.segments.every(

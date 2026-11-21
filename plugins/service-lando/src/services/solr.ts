@@ -18,7 +18,7 @@ import {
   type ListenerContract,
   assertListenerConfig,
   launcherAuthority,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -106,7 +106,7 @@ const defaultCommand = (port: number, cores: readonly string[], hasConfigDir: bo
 
 const solrListener = (service: ServiceConfig): ListenerContract => {
   if (service.command !== undefined) return SOLR_LISTENER;
-  const port = plannedPort(service, SOLR_LISTENER);
+  const port = selectPort(service);
   const secondary = SOLR_LISTENER.derived[0];
   const authored = service.environment?.[secondary.variable];
   const stopPort =
@@ -132,7 +132,7 @@ const solrListener = (service: ServiceConfig): ListenerContract => {
 const applySolrFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   assertListenerConfig(service, solrListener(service));
-  const port = plannedPort(service, SOLR_LISTENER);
+  const port = selectPort(service);
   const cores = service.cores ?? [];
   const configDir = service.config?.dir;
   const hasConfigDir = typeof configDir === "string" && configDir.length > 0;
@@ -185,7 +185,7 @@ export const solrServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, SOLR_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "http",
       }),
     ),
@@ -210,10 +210,12 @@ const resolveSolr =
     });
   };
 
+const selectPort = primaryPortSelector(SOLR_LISTENER);
 export const solr9ServiceType: ServiceType = {
   id: "solr:9",
   name: "solr",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -225,6 +227,7 @@ export const solrServiceType: ServiceType = {
   id: "solr",
   name: "solr",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

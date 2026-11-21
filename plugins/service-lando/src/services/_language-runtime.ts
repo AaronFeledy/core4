@@ -1,3 +1,4 @@
+import type { ServiceConfig } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
   ServiceFeatureDefinition,
@@ -64,8 +65,10 @@ export const APP_MOUNT_TARGET = "/app";
 const DEFAULT_KEEP_ALIVE = ["tail", "-f", "/dev/null"] as const;
 
 export const makeLanguageRuntime = <V extends string, F extends string>(spec: LanguageRuntimeSpec<V, F>) => {
+  const frameworkFor = (raw: string | undefined) =>
+    spec.frameworks.find((candidate) => candidate === (raw ?? "none"));
   const validateFramework = (raw: string | undefined): F => {
-    const framework = spec.frameworks.find((candidate) => candidate === (raw ?? "none"));
+    const framework = frameworkFor(raw);
     if (framework !== undefined) return framework;
     throw new ServiceConfigIssue(
       ["framework"],
@@ -73,6 +76,8 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
       `Set framework to one of: ${spec.frameworks.join(", ")} (got ${raw}).`,
     );
   };
+  const selectPort = (service: Pick<ServiceConfig, "port">, framework: F) =>
+    plannedPort(service, spec.presets[framework]);
 
   const validateVersion = (declaredType: string | undefined, fallback: V): V => {
     const prefix = `${spec.language}:`;
@@ -134,6 +139,10 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     id: `${spec.language}:${version}`,
     name: `${spec.language}:${version}`,
     base: "lando",
+    plannedPort: (service) => {
+      const framework = frameworkFor(service.framework);
+      return framework === undefined ? undefined : selectPort(service, framework);
+    },
     versions: spec.versions,
     artifacts: spec.artifacts,
     identity: rootIdentity(),
@@ -143,7 +152,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
         const resolvedVersion = validateVersion(input.service.type, version);
         const framework = validateFramework(input.service.framework);
         const preset = spec.presets[framework];
-        const endpointPort = plannedPort(input.service, preset);
+        const endpointPort = selectPort(input.service, framework);
         const webroot =
           spec.includeWebrootInFeatureConfig && input.service.appMount !== false
             ? {

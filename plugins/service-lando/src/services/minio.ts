@@ -12,7 +12,7 @@ import {
   serviceFeatureDeclareEndpoints,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-import { assertListenerConfig, launcherAuthority, plannedPort } from "./_port-helpers.ts";
+import { assertListenerConfig, launcherAuthority, primaryPortSelector } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const DEFAULT_API_PORT = 9000;
@@ -40,7 +40,7 @@ const minioPorts = (ctx: Pick<ServiceFeatureContext, "config" | "normalizedConfi
     ...MINIO_LISTENER,
     reserved: [{ port: consolePort, use: "console listener (consolePort:)" }],
   });
-  return { apiPort: plannedPort(ctx.normalizedConfig, MINIO_LISTENER), consolePort };
+  return { apiPort: selectPort(ctx.normalizedConfig), consolePort };
 };
 
 // The names MinIO accepts as buckets.
@@ -161,10 +161,12 @@ export const minioServiceFeature: ServiceFeatureDefinition = {
   apply: serviceFeatureApply(MINIO_FEATURE_ID, "minio service feature failed to apply", applyMinioFeature),
 };
 
+const selectPort = primaryPortSelector(MINIO_LISTENER);
 export const minioServiceType: ServiceType = {
   id: "minio",
   name: "minio",
   base: "lando",
+  plannedPort: selectPort,
   schema: MinIOServiceConfig,
   resolve: (input) =>
     Effect.succeed({

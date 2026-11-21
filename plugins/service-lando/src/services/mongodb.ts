@@ -16,7 +16,7 @@ import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } f
 import {
   assertListenerConfig,
   launcherAuthority,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -33,6 +33,7 @@ export const MONGODB_LISTENER = {
   launcher: { setting: (port: number) => `--port ${port}` },
 } as const;
 export const DEFAULT_PORT = MONGODB_LISTENER.port;
+const selectPort = primaryPortSelector(MONGODB_LISTENER);
 const DATA_TARGET = PortablePath.make("/data/db");
 const FAMILY = "mongodb" as const;
 export const MONGODB_FEATURE_ID = "service-lando.mongodb";
@@ -145,6 +146,7 @@ export const mongodbServiceType: ServiceType = {
   id: "mongodb",
   name: "mongodb",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
@@ -154,7 +156,7 @@ export const mongodbServiceType: ServiceType = {
     return serviceTypeResolve("mongodb", "mongodb service type failed to resolve", () => {
       const creds = credsFor(input, input.service);
       assertListenerConfig(input.service, MONGODB_LISTENER);
-      const port = plannedPort(input.service, MONGODB_LISTENER);
+      const port = selectPort(input.service);
       return {
         base: "lando",
         connection: { family: "mongodb", creds, port },

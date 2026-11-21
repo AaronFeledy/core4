@@ -199,6 +199,7 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
                   severity: "error",
                   path,
                   message: resolved.failure.message,
+                  suggestion: resolved.failure.remediation,
                   scopes: ["effective"],
                   ...(source === undefined ? {} : { source }),
                 } satisfies ConfigLintViolation,

@@ -16,7 +16,7 @@ import {
 import {
   type ListenerContract,
   assertListenerConfig,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -70,7 +70,7 @@ const elasticsearchListener = (service: ServiceConfig): ListenerContract => {
 const applyElasticsearchFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   assertListenerConfig(service, elasticsearchListener(service));
-  const port = plannedPort(service, ELASTICSEARCH_LISTENER);
+  const port = selectPort(service);
   const transport = transportPort(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -105,7 +105,7 @@ export const elasticsearchServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, ELASTICSEARCH_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "tcp",
       }),
     ),
@@ -129,10 +129,12 @@ const resolveElasticsearchServiceType: ServiceType["resolve"] = (input) =>
     features: [{ id: ELASTICSEARCH_FEATURE_ID }],
   });
 
+const selectPort = primaryPortSelector(ELASTICSEARCH_LISTENER);
 export const elasticsearch8ServiceType: ServiceType = {
   id: "elasticsearch:8",
   name: "elasticsearch",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -144,6 +146,7 @@ export const elasticsearchServiceType: ServiceType = {
   id: "elasticsearch",
   name: "elasticsearch",
   base: "lando",
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

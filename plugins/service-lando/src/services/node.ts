@@ -11,7 +11,7 @@ import type {
 import { type Effect, Schema } from "effect";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { normalizeNpmGlobals } from "./_package-specs.ts";
-import { NODE_FEATURE_ID, artifactFor } from "./node-feature.ts";
+import { NODE_FEATURE_ID, artifactFor, nodePlannedPort } from "./node-feature.ts";
 import { resolveNodeInference } from "./node-inference.ts";
 import { applyProvisionedGlobals, packageManagerConfigFor } from "./node-package-manager.ts";
 import { resolveNodePackageManager } from "./node-package-manager-declaration.ts";
@@ -134,6 +134,7 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
   id: `node:${version}`,
   name: `node:${version}`,
   base: "lando",
+  plannedPort: nodePlannedPort,
   versions: SUPPORTED_NODE_VERSIONS,
   artifacts: NODE_ARTIFACTS,
   identity: rootIdentity({ node: "/home/node" }),
@@ -154,6 +155,7 @@ export const nodeServiceType: ServiceType = {
   id: "node",
   name: "node",
   base: "lando",
+  plannedPort: nodePlannedPort,
   identity: rootIdentity({ node: "/home/node" }),
   schema: Schema.Unknown,
   projectFiles: (service) => nodeProjectFiles(service, true),

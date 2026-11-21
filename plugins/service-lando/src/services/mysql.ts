@@ -22,7 +22,7 @@ import {
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { assertListenerConfig, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -152,10 +152,12 @@ const mysqlToolingForConnection: NonNullable<ServiceType["toolingForConnection"]
         },
       };
 
+const selectPort = primaryPortSelector(MYSQL_LISTENER);
 const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
   id,
   name: "mysql",
   base: "lando",
+  plannedPort: selectPort,
   versions: MYSQL_VERSIONS,
   artifacts: MYSQL_ARTIFACTS,
   identity: rootIdentity(),
@@ -180,7 +182,7 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
     }
     return serviceTypeResolve(id, "mysql service type failed to resolve", () => {
       const creds = mysqlCredsFor(dataNameFor(input), input.service);
-      const port = plannedPort(input.service, MYSQL_LISTENER);
+      const port = selectPort(input.service);
       assertListenerConfig(input.service, MYSQL_LISTENER);
       return {
         base: "lando",

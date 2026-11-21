@@ -20,7 +20,7 @@ import {
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
@@ -39,6 +39,7 @@ export const NGINX_LISTENER = {
   launcher: { setting: (port: number) => `listen ${port};` },
 } as const;
 export const DEFAULT_PORT = NGINX_LISTENER.port;
+const selectPort = primaryPortSelector(NGINX_LISTENER);
 export const APP_MOUNT_TARGET = "/app";
 
 const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
@@ -148,7 +149,7 @@ const phpFastcgiCommand = (
 
 const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = plannedPort(service, NGINX_LISTENER);
+  const port = selectPort(service);
   const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
   const backend = service.backend?.trim() ?? "";
 
@@ -198,7 +199,7 @@ export const nginxServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, NGINX_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "http",
       }),
     ),
@@ -223,7 +224,7 @@ const applyNginxPhpFpmWire = (ctx: AppFeatureContext): void => {
     if (backend.length === 0) return;
     const fpm = fpmPortByService.get(backend);
     if (fpm === undefined) return;
-    const listen = plannedPort(service, NGINX_LISTENER);
+    const listen = selectPort(service);
     const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
     mutator.addBuildStep(landoErrorPagesBuildStep());
     mutator.addBuildStep(nginxDefaultSiteRemovalBuildStep());
@@ -249,6 +250,7 @@ export const nginxServiceType: ServiceType = {
   id: "nginx",
   name: "nginx",
   base: "lando",
+  plannedPort: selectPort,
   // Verified /etc/passwd in nginx:1.26-alpine (linux/amd64), config:
   // sha256:42ce3d3585d47518cb0c1ef4bd3d8a65c1edfcbbfd423eda86990a83f378b111.
   // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin

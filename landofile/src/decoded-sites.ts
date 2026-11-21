@@ -28,7 +28,7 @@ export const decodedPendingSites = (
               ? "target"
               : field === "build"
                 ? "context"
-                : field === "healthcheck"
+                : field === "healthcheck" || field === "readiness"
                   ? "command"
                   : typeof field === "number" && (path.at(-2) === "configs" || path.at(-2) === "secrets")
                     ? "source"
@@ -61,7 +61,7 @@ export const decodedPendingSites = (
       )
         destination = "ca";
       if (field === "build" && key === "dockerfile_inline") destination = "dockerfileInline";
-      if (field === "healthcheck" && key === "test") {
+      if ((field === "healthcheck" || field === "readiness") && key === "test") {
         destination = "command";
         const test = child(input, key);
         if (Array.isArray(test) && typeof remaining[0] === "number") {

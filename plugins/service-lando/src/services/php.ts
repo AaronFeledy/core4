@@ -11,12 +11,13 @@ import { PHP_COMPOSER_CACHE, PHP_FEATURE_ID } from "./php-feature.ts";
 import { assertPhpComposerCompatible, resolvePhpComposer } from "./php-prerequisites.ts";
 import { PHP_RUNTIME_POLICY_KEY, resolvePhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
-  PHP_LISTENERS,
   SUPPORTED_PHP_VERSIONS,
   type SupportedPhpVersion,
   assertPhpViaKeys,
   phpImageFor,
+  phpListenPort,
   phpLogSources,
+  phpPlannedPort,
   resolvePhpVia,
 } from "./php-via.ts";
 import { assertPhpXdebugSupported, phpXdebugTooling, resolvePhpXdebug } from "./php-xdebug.ts";
@@ -71,6 +72,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   id: `php:${version}`,
   name: `php:${version}`,
   base: "lando",
+  plannedPort: phpPlannedPort,
   versions: SUPPORTED_PHP_VERSIONS,
   artifacts: PHP_ARTIFACTS,
   // Verified /etc/passwd in php:8.3-apache-bookworm and php:8.3-fpm-bookworm (linux/amd64):
@@ -100,7 +102,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       const policy = resolvePhpRuntimePolicy(input.service, resolvedVersion, via);
       const owned = via === "apache" && policy.processAuthority === "lando";
       const generatedCertificateEndpoint = apacheGeneratedCertificateEndpoint({
-        plainPort: input.service.port ?? PHP_LISTENERS.apache.port,
+        plainPort: phpListenPort("apache", input.service.port),
         owned,
       });
       return {
