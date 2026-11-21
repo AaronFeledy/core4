@@ -21,7 +21,6 @@ export const validateSourceConfig = (
     });
     if (Result.isFailure(parsed)) return fail();
     const self = servicePortExpression(parsed.success, path);
-    if (self === "unsupported") return fail();
     const bindingSite =
       (path[0] === "services" &&
         ((path[2] === "environment" && path.length === 4) ||
@@ -34,7 +33,7 @@ export const validateSourceConfig = (
         "env",
         "services",
         "proxy",
-        "service",
+        ...(self === "supported" ? ["service"] : []),
         ...(bindingSite ? ["secrets"] : []),
       ]) ||
       parsed.success.segments.some(

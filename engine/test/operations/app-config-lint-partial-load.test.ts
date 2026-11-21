@@ -39,6 +39,22 @@ const lint = async (yaml: string, env: Readonly<Record<string, string>> = {}) =>
 
 test.each([
   {
+    title: "reports one load violation for each unsupported self-port expression",
+    yaml: `services:
+  cache:
+    type: redis
+    port: "{{ service.port }}"
+    environment:
+      SELF_PORT: "{{ service.port }}"
+    command: [redis-server, --port, "{{ service.name }}"]
+`,
+    expected: [
+      ["landofile.load", ["services", "cache", "port"]],
+      ["landofile.load", ["services", "cache", "environment", "SELF_PORT"]],
+      ["landofile.load", ["services", "cache", "command", 2]],
+    ],
+  },
+  {
     title: "reports an unsupported type alongside an isolated load failure",
     yaml: unavailableService + badType,
     expected: [missingEnv, unsupportedType],

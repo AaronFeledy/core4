@@ -3,10 +3,19 @@ import { expressionScopeMembers } from "@lando/sdk/expressions";
 import { isPlainRecord } from "@lando/sdk/landofile";
 import type { ParsedPendingSite, ValidationIssueSource } from "@lando/sdk/schema";
 
-export const servicePortSiteError = (source: ValidationIssueSource, host = false) => {
-  const message = host
-    ? "service.port is not supported in host readiness probes; it is a container port."
-    : "Only the direct expression member service.port is supported at service process sites.";
+const servicePortMessages = {
+  "host-readiness": "service.port is not supported in host readiness probes; it is a container port.",
+  "unsupported-site":
+    "service.port is available only in a service's command, entrypoint, or container healthcheck or readiness command.",
+  "unsupported-member":
+    "Only the direct expression member service.port is supported at service process sites.",
+} as const;
+
+export const servicePortSiteError = (
+  source: ValidationIssueSource,
+  reason: keyof typeof servicePortMessages,
+) => {
+  const message = servicePortMessages[reason];
   const suggestion =
     "Use {{ service.port }} in a service command, entrypoint, or container healthcheck or readiness command.";
   return new LandofileValidationError({

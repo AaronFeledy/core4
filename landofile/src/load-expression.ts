@@ -204,12 +204,11 @@ export const resolveLandofileLoadExpressions = (
           const deferred = deferredToolingScopeError(parsed.success, path, options.source.sourcePath);
           if (deferred !== undefined) throw deferred;
           const self = servicePortExpression(parsed.success, path);
-          if (self === "unsupported") {
-            throw servicePortSiteError({
-              file: options.source.sourcePath,
-              layer: options.source.layer,
-              path,
-            });
+          if (self === "unsupported-site" || self === "unsupported-member") {
+            throw servicePortSiteError(
+              { file: options.source.sourcePath, layer: options.source.layer, path },
+              self,
+            );
           }
           const references = parsed.success.segments.flatMap((segment) =>
             segment.kind === "SecretRefSegment" ? [segment.name] : [],

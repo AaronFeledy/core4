@@ -79,9 +79,8 @@ const servicePortExpressionSite = (path: ReadonlyArray<string | number>): boolea
 
 export const servicePortExpression = (template: ExpressionTemplate, path: ReadonlyArray<string | number>) => {
   const self = expressionScopeMembers(template, "service", "direct-property");
-  if (!self.analyzable) return "unsupported";
+  if (!self.analyzable) return "unsupported-member";
   if (self.members.size === 0) return "absent";
-  return self.members.size === 1 && self.members.has("port") && servicePortExpressionSite(path)
-    ? "supported"
-    : "unsupported";
+  if (self.members.size !== 1 || !self.members.has("port")) return "unsupported-member";
+  return servicePortExpressionSite(path) ? "supported" : "unsupported-site";
 };

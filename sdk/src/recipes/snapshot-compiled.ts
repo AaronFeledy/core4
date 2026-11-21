@@ -67,14 +67,13 @@ export const renderCompiledRecipeSnapshot = (
               (path[2] === "creds" && (path[3] === "password" || path[3] === "rootPassword")))) ||
           (path[0] === "tooling" && path.includes("env"));
         if (
-          self === "unsupported" ||
           !expressionInterpolationsTouchOnlyScopes(parsed.success, [
             "app",
             "proxy",
             "recipe",
             "env",
             "services",
-            "service",
+            ...(self === "supported" ? ["service"] : []),
             ...(bindingSite ? ["secrets"] : []),
           ]) ||
           parsed.success.segments.some(

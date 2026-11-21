@@ -197,7 +197,8 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   const effectiveOrigins = assembled.provenance.origins;
   const effectiveSites = survivingSites(effectiveOrigins, scope.pendingSites ?? []);
   const hostPortSite = hostReadinessPortSite(assembled.value, effectiveSites);
-  if (hostPortSite !== undefined) recorder.record(servicePortSiteError(hostPortSite.source, true));
+  if (hostPortSite !== undefined)
+    recorder.record(servicePortSiteError(hostPortSite.source, "host-readiness"));
   const load =
     context.rootDocuments === undefined
       ? finishLoadStage(file, recorder)
