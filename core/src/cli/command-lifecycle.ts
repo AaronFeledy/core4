@@ -194,14 +194,13 @@ export const runCommandLifecycle: <A, E, R>(
     } else {
       const failure = failureOutcomeFromCause(outcome.cause, normalizeDefect);
       const interrupted = failure.kind === "none" && Cause.hasInterruptsOnly(outcome.cause);
+      let exitCode = 1;
+      if (interrupted) exitCode = options.interruptionExitCode?.() ?? 1;
+      else if (failure.kind === "typed") exitCode = options.failureExitCode?.(failure.error) ?? 1;
       yield* publishRedacted(CliCommandErrorEvent, {
         _tag: `cli-${options.invocation.commandId}-error`,
         ...terminal,
-        exitCode: interrupted
-          ? (options.interruptionExitCode?.() ?? 1)
-          : failure.kind === "typed"
-            ? (options.failureExitCode?.(failure.error) ?? 1)
-            : 1,
+        exitCode,
         ...(interrupted ? { failureTag: "Interrupted" } : failureIdentity(failure)),
       });
     }
