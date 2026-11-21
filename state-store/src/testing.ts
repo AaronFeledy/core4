@@ -8,10 +8,11 @@ import {
   StateStore,
   type StateStoreShape,
 } from "@lando/sdk/services";
-import { Clock, Deferred, Effect, Layer } from "effect";
+import { Clock, Deferred, Effect, Layer, Option } from "effect";
 
 import { type StateBucketBackend, buildStateBucket } from "./bucket.ts";
 import { lockTimeout, lockWaitBudget } from "./lock.ts";
+import { makeLockGate } from "./lock-gate.ts";
 import { makeLockReentryGuard } from "./lock-reentry.ts";
 import { resolveStatePath } from "./paths.ts";
 import { validateCacheSpec } from "./spec.ts";
@@ -21,22 +22,20 @@ const textEncoder = new TextEncoder();
 const toBytes = (bytes: Uint8Array | string): Uint8Array =>
   typeof bytes === "string" ? textEncoder.encode(bytes) : new Uint8Array(bytes);
 
+// The same FIFO, writer-preferring gate production uses in-process, one per store.
 const makeMemoryLocks = () => {
   const enter = makeLockReentryGuard();
-  const held = new Map<
-    string,
-    { readonly released: Deferred.Deferred<void>; readonly mode: "exclusive" | "shared"; count: number }
-  >();
+  const gate = makeLockGate();
   return <A, E, R>(file: string, body: Effect.Effect<A, E, R>, options: StateLockOptions = {}) =>
     Effect.scoped(
       Effect.gen(function* () {
         yield* enter(file);
         const timeoutMs = lockWaitBudget(options);
-        const deadline = (yield* Clock.monotonicTimeNanos) + BigInt(timeoutMs) * 1_000_000n;
-        const shared = options.mode === "shared";
-        const timeout = () =>
-          Effect.flatMap(Clock.currentTimeMillis, (now) =>
-            Effect.fail(
+        const pending = yield* gate(file, options.mode ?? "exclusive");
+        if (pending !== undefined) {
+          const granted = yield* Deferred.await(pending).pipe(Effect.timeoutOption(timeoutMs));
+          if (Option.isNone(granted))
+            return yield* Effect.fail(
               lockTimeout(
                 {
                   path: file,
@@ -47,40 +46,11 @@ const makeMemoryLocks = () => {
                   subject: "resource",
                 },
                 null,
-                now,
+                yield* Clock.currentTimeMillis,
               ),
-            ),
-          );
-        for (;;) {
-          const waiting = yield* Effect.acquireRelease(
-            Effect.sync(() => {
-              const current = held.get(file);
-              if (current !== undefined) {
-                if (!shared || current.mode === "exclusive") return current.released;
-                current.count++;
-              } else {
-                held.set(file, {
-                  released: Deferred.makeUnsafe<void>(),
-                  mode: shared ? "shared" : "exclusive",
-                  count: 1,
-                });
-              }
-            }),
-            (waiting) =>
-              Effect.suspend(() => {
-                if (waiting !== undefined) return Effect.void;
-                const current = held.get(file);
-                if (current === undefined || --current.count !== 0) return Effect.void;
-                held.delete(file);
-                return Deferred.succeed(current.released, undefined);
-              }),
-          );
-          if (waiting === undefined) return yield* body;
-          const remaining = Number(deadline - (yield* Clock.monotonicTimeNanos)) / 1_000_000;
-          if (remaining <= 0) return yield* timeout();
-          yield* Effect.race(Deferred.await(waiting), Effect.sleep(remaining));
-          if ((yield* Clock.monotonicTimeNanos) >= deadline) return yield* timeout();
+            );
         }
+        return yield* body;
       }),
     );
 };

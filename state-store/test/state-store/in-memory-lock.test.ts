@@ -230,4 +230,40 @@ describe("in-memory advisory lock", () => {
     await Effect.runPromise(Fiber.join(exclusive));
     expect((await Effect.runPromise(Deferred.poll(exclusiveEntered)))._tag).toBe("Some");
   });
+
+  test("a new shared request queues behind a waiting exclusive request", async () => {
+    // Given a shared holder and an exclusive request waiting behind it.
+    const store = makeTestStateStore().service;
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const release = yield* Deferred.make<void>();
+          const holding = yield* Deferred.make<void>();
+          yield* Effect.forkScoped(
+            store.withLock(
+              "volume.lock",
+              Deferred.succeed(holding, undefined).pipe(Effect.andThen(Deferred.await(release))),
+              { mode: "shared" },
+            ),
+          );
+          yield* Deferred.await(holding);
+          const writer = yield* Effect.forkScoped(
+            store.withLock("volume.lock", Effect.succeed("writer"), { timeoutMs: 10_000 }),
+          );
+          yield* Effect.yieldNow;
+
+          // When another shared request arrives with no wait budget.
+          const reader = yield* Effect.result(
+            store.withLock("volume.lock", Effect.succeed("reader"), { mode: "shared", timeoutMs: 0 }),
+          );
+
+          // Then it does not jump the queued writer, and the writer runs once the holder releases.
+          expect(reader._tag).toBe("Failure");
+          if (reader._tag === "Failure") expect(reader.failure).toMatchObject({ lockFailure: "timeout" });
+          yield* Deferred.succeed(release, undefined);
+          expect(yield* Fiber.join(writer)).toBe("writer");
+        }),
+      ),
+    );
+  });
 });
