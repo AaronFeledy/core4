@@ -62,9 +62,9 @@ test.each(["map", "catch-tag", "span", "round-trip", "nested-command"] as const)
   },
 );
 
-test("characterizes raw mapError dropping compound reasons rather than relying on it", () => {
+test("characterizes raw mapError preserving compound reasons without exposing their roles to the mapper", () => {
   const exit = Effect.runSyncExit(Effect.failCause(cause).pipe(Effect.mapError((error) => error)));
-  expect(Exit.isFailure(exit) && exit.cause.reasons.length).toBe(1);
+  expect(Exit.isFailure(exit) && exit.cause.reasons).toEqual(cause.reasons);
 });
 
 test("preserves annotated cleanup in a scope finalizer", async () => {
@@ -92,6 +92,8 @@ test("keeps an unannotated operation primary even after an earlier annotated typ
   );
   expect(failureOutcomeFromCause(reordered)).toEqual({
     _tag: "failure",
+    kind: "typed",
+    source: "fail",
     error: primary,
     additionalErrors: [{ role: "rollback", error: secondary }],
   });
