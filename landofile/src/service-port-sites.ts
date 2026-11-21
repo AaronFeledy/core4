@@ -8,7 +8,7 @@ const servicePortMessages = {
   "unsupported-site":
     "service.port is available only in a service's command, entrypoint, extraArgs, or container healthcheck or readiness command.",
   "unsupported-member":
-    "Only the direct expression member service.port is supported at service process sites.",
+    "Unsupported `service` scope read. Use service.port at a service process site or service.url in a service environment map.",
 } as const;
 
 export const servicePortSiteError = (
