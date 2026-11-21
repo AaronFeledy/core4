@@ -14,6 +14,7 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   literalEnvironmentValue,
@@ -342,6 +343,10 @@ export const apacheServiceType: ServiceType = {
   name: "apache",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
+    "Apache",
+    "Put flags in command: or configure the generated httpd launcher through type settings.",
+  ),
   // Verified from /etc/passwd in docker.io/library/httpd:2.4-alpine (HTTPD_VERSION=2.4.68):
   // sha256:7ed5668e2fb31c738bcd291847fbb313073998e561ac6d8dc63cfd061dd0fb4d
   // www-data:x:82:82::/home/www-data:/sbin/nologin

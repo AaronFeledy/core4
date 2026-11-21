@@ -7,13 +7,13 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -104,6 +104,7 @@ export const meilisearch1ServiceType: ServiceType = {
   name: "meilisearch",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Meilisearch environment"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -117,6 +118,7 @@ export const meilisearchServiceType: ServiceType = {
   name: "meilisearch",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Meilisearch environment"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

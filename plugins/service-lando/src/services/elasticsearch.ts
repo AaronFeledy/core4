@@ -6,13 +6,13 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   commandHealthcheck,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -135,6 +135,7 @@ export const elasticsearch8ServiceType: ServiceType = {
   name: "elasticsearch",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Elasticsearch environment and config"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -147,6 +148,7 @@ export const elasticsearchServiceType: ServiceType = {
   name: "elasticsearch",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Elasticsearch environment and config"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

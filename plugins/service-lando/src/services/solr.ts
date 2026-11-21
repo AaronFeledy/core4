@@ -7,13 +7,13 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   commandHealthcheck,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -216,6 +216,10 @@ export const solr9ServiceType: ServiceType = {
   name: "solr",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
+    "Solr",
+    "Core creation uses the trailing argv today; put flags in command: or remove extraArgs.",
+  ),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -228,6 +232,10 @@ export const solrServiceType: ServiceType = {
   name: "solr",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
+    "Solr",
+    "Core creation uses the trailing argv today; put flags in command: or remove extraArgs.",
+  ),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

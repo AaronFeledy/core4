@@ -7,6 +7,7 @@ import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   addEnvRecord,
   commandHealthcheck,
@@ -112,6 +113,9 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
   name: "mssql",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION(
+    "MSSQL environment and the catalog startup wrapper",
+  ),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: {

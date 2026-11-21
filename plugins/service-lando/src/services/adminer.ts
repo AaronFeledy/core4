@@ -10,6 +10,7 @@ import type {
 import { Effect } from "effect";
 
 import { adminerPlugin } from "./_adminer-plugin.ts";
+import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 import { landoImageFilesBuildStep } from "./_image-files.ts";
 import {
@@ -82,6 +83,10 @@ const makeAdminerServiceType = (id: string): ServiceType => ({
   name: "adminer",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
+    "Adminer",
+    "Put flags in command: or remove extraArgs.",
+  ),
   versions: ["6"],
   artifacts: { "6": IMAGE },
   identity: {

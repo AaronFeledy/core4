@@ -9,6 +9,7 @@ import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   literalEnvironmentValue,
@@ -16,7 +17,6 @@ import {
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-
 import { assertListenerConfig, primaryPortSelector } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { rabbitmqProbes } from "./rabbitmq-probes.ts";
@@ -153,6 +153,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
   name: "rabbitmq",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("RabbitMQ environment"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),

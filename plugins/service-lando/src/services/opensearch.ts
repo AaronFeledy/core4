@@ -6,13 +6,13 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   commandHealthcheck,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -143,6 +143,7 @@ export const opensearch2ServiceType: ServiceType = {
   name: "opensearch",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("OpenSearch environment and config"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -155,6 +156,7 @@ export const opensearchServiceType: ServiceType = {
   name: "opensearch",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("OpenSearch environment and config"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

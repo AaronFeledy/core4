@@ -13,6 +13,7 @@ import type {
 import { Effect, Schema, absurd } from "effect";
 
 import { PHPMYADMIN_UNUSED_CREDS, assertCredsMembersUsed, claimsCreds } from "./_creds-helpers.ts";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 import {
   type AuthoredHostsWire,
@@ -78,6 +79,7 @@ const makePhpMyAdminServiceType = (id: string, image: string): ServiceType => ({
   name: "phpmyadmin",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("phpMyAdmin environment"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),

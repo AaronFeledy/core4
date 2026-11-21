@@ -2,6 +2,7 @@ import { PortNumber } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   rootIdentity,
   serviceFeatureApply,
@@ -112,6 +113,7 @@ const makeTomcatServiceType = (id: string, major: (typeof VERSIONS)[number]): Se
   name: "tomcat",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Tomcat server.xml and environment"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),

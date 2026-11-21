@@ -9,6 +9,7 @@ import type {
   ServiceTypeResolution,
 } from "@lando/sdk/services";
 import { type Effect, Schema } from "effect";
+import { LANGUAGE_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { normalizeNpmGlobals } from "./_package-specs.ts";
 import { NODE_FEATURE_ID, artifactFor, nodePlannedPort } from "./node-feature.ts";
@@ -134,6 +135,7 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
   id: `node:${version}`,
   name: `node:${version}`,
   base: "lando",
+  extraArgsRemediation: LANGUAGE_EXTRA_ARGS_REMEDIATION,
   plannedPort: nodePlannedPort,
   versions: SUPPORTED_NODE_VERSIONS,
   artifacts: NODE_ARTIFACTS,
@@ -155,6 +157,7 @@ export const nodeServiceType: ServiceType = {
   id: "node",
   name: "node",
   base: "lando",
+  extraArgsRemediation: LANGUAGE_EXTRA_ARGS_REMEDIATION,
   plannedPort: nodePlannedPort,
   identity: rootIdentity({ node: "/home/node" }),
   schema: Schema.Unknown,

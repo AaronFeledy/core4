@@ -2,6 +2,7 @@ import type { ServiceConfig } from "@lando/sdk/schema";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
+import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { apacheGeneratedCertificateEndpoint } from "./apache-native-tls.ts";
@@ -72,6 +73,13 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   id: `php:${version}`,
   name: `php:${version}`,
   base: "lando",
+  extraArgsRemediation: (config) =>
+    UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
+      config.via === "cli" ? "PHP CLI" : "PHP",
+      config.via === "cli"
+        ? "CLI mode keeps a keep-alive process; put flags in command: or remove extraArgs."
+        : "Put flags in command: or configure via:/port:/webroot: settings.",
+    ),
   plannedPort: phpPlannedPort,
   versions: SUPPORTED_PHP_VERSIONS,
   artifacts: PHP_ARTIFACTS,

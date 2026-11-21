@@ -2,8 +2,8 @@ import { PortablePath } from "@lando/sdk/schema";
 import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { LANGUAGE_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { rootIdentity, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   applicationAuthority,
@@ -77,6 +77,7 @@ const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
   id,
   name: "dotnet",
   base: "lando",
+  extraArgsRemediation: LANGUAGE_EXTRA_ARGS_REMEDIATION,
   plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,

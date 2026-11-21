@@ -1,6 +1,7 @@
 import { type ServiceConfig, sameImageReference } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   rootIdentity,
@@ -202,6 +203,10 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
     name: id,
     base: "lando",
     plannedPort: (service) => selectPort(service, server),
+    extraArgsRemediation: UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
+      server === "caddy" ? "static:caddy" : "static",
+      "Put flags in command: or configure the generated server through type settings.",
+    ),
     // Verified linux/amd64: nginx:1.26-alpine config
     // sha256:42ce3d3585d47518cb0c1ef4bd3d8a65c1edfcbbfd423eda86990a83f378b111 has
     // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin (cache, not a persisted home).

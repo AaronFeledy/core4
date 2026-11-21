@@ -3,8 +3,8 @@ import { PortNumber, ServiceName, parseShortVolume } from "@lando/sdk/schema";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { rootIdentity, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -136,6 +136,10 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
   name: "varnish",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
+    "Varnish",
+    "Put flags in command: or configure VCL through config.vcl / backend:.",
+  ),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity:

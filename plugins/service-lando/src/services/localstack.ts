@@ -2,6 +2,7 @@ import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   commandHealthcheck,
@@ -10,7 +11,6 @@ import {
   serviceFeatureDeclareEndpoints,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -139,6 +139,7 @@ export const localstackServiceType: ServiceType = {
   name: "localstack",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("LocalStack environment"),
   identity: rootIdentity(),
   schema: LocalStackServiceConfig,
   resolve: (input) =>

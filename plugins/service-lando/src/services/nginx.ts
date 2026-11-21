@@ -14,6 +14,7 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   rootIdentity,
   serviceFeatureApply,
@@ -251,6 +252,10 @@ export const nginxServiceType: ServiceType = {
   name: "nginx",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
+    "nginx",
+    "Put flags in command: or configure the generated server block through type settings.",
+  ),
   // Verified /etc/passwd in nginx:1.26-alpine (linux/amd64), config:
   // sha256:42ce3d3585d47518cb0c1ef4bd3d8a65c1edfcbbfd423eda86990a83f378b111.
   // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin

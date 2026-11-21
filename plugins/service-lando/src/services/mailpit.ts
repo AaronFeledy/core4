@@ -17,6 +17,7 @@ import { mailpitPlannedPort, resolveMailListeners } from "./_mail-listeners.ts";
 export { MAILPIT_LISTENER } from "./_mail-listeners.ts";
 
 import { MAILPIT_IMAGE, MAILPIT_READINESS_COMMAND } from "../mailpit-constants.ts";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const MAILPIT_FEATURE_ID = "service-lando.mailpit";
@@ -56,6 +57,7 @@ export const mailpitServiceType: ServiceType = {
   name: "mailpit",
   base: "lando",
   plannedPort: mailpitPlannedPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Mailpit environment"),
   identity: rootIdentity(),
   schema: MailpitServiceConfig,
   resolve: (input) =>

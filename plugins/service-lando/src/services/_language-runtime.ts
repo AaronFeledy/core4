@@ -5,7 +5,7 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
-
+import { LANGUAGE_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   addEnvRecord,
@@ -135,6 +135,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     id: `${spec.language}:${version}`,
     name: `${spec.language}:${version}`,
     base: "lando",
+    extraArgsRemediation: LANGUAGE_EXTRA_ARGS_REMEDIATION,
     plannedPort: (service) => {
       const framework = frameworkFor(service.framework);
       return framework === undefined ? undefined : plannedPort(service, spec.presets[framework]);
