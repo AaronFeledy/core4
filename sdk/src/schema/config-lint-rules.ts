@@ -243,20 +243,20 @@ export const CONFIG_LINT_RULES = {
     stages: ["resolve"],
     severities: ["error"],
     summary: "A declared env file is missing or cannot be read.",
-    examplePaths: ["env_file[0]", "services.web.envFile[0]"],
+    examplePaths: ["serviceDefaults.env_file[0]", "services.web.envFile[0]"],
   },
   "env-file.syntax": {
     stages: ["resolve"],
     severities: ["error"],
     summary: "Invalid env-file entries, including a bare name without `=` or unmatched quotes.",
-    examplePaths: ["env_file[0]", "services.web.envFile[0]"],
+    examplePaths: ["serviceDefaults.env_file[0]", "services.web.envFile[0]"],
   },
   "env-file.literal": {
     stages: ["resolve"],
     severities: ["warning"],
     summary:
       "Double-quoted escapes change a value, or an unquoted or double-quoted value contains `${`, which env files never interpolate.",
-    examplePaths: ["env_file[0]", "services.web.envFile[0]"],
+    examplePaths: ["serviceDefaults.env_file[0]", "services.web.envFile[0]"],
   },
   "unsupported-expression": {
     stages: ["load", "global-config"],

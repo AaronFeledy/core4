@@ -178,9 +178,16 @@ export const lowerTopLevel = (document: Record<string, unknown>, ctx: TopLevelCo
             "Lando 4 loads your default ~/.ssh keys through the SSH agent sidecar; for hardware-backed or 1Password keys, forward your host agent with sshAgent: { sidecar: false }.",
         });
         break;
-      case "env_file":
-        fragment[key] = value;
+      case "env_file": {
+        const existing =
+          typeof fragment.serviceDefaults === "object" &&
+          fragment.serviceDefaults !== null &&
+          !Array.isArray(fragment.serviceDefaults)
+            ? (fragment.serviceDefaults as Record<string, unknown>)
+            : {};
+        fragment.serviceDefaults = { ...existing, env_file: value };
         break;
+      }
       case "volumes":
       case "networks":
         if (hasPlainObjectPrototype(value) && Object.keys(value).length > 0) {

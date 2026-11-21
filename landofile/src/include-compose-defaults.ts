@@ -105,7 +105,19 @@ export const composeIncludeDefaults = (
   return {
     ...document,
     ...(services === undefined ? {} : { services }),
-    ...(document.env_file === undefined ? {} : { env_file: envFiles(document.env_file) }),
+    ...(document.serviceDefaults !== undefined &&
+    typeof document.serviceDefaults === "object" &&
+    document.serviceDefaults !== null &&
+    !Array.isArray(document.serviceDefaults) &&
+    "env_file" in document.serviceDefaults &&
+    (document.serviceDefaults as { env_file?: unknown }).env_file !== undefined
+      ? {
+          serviceDefaults: {
+            ...(document.serviceDefaults as Record<string, unknown>),
+            env_file: envFiles((document.serviceDefaults as { env_file: unknown }).env_file),
+          },
+        }
+      : {}),
     ...(document.configs === undefined ? {} : { configs: fileDefinitions(document.configs) }),
     ...(document.secrets === undefined ? {} : { secrets: fileDefinitions(document.secrets) }),
   };

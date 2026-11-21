@@ -41,13 +41,15 @@ const load = () =>
 test("attributes dotted label keys to their environment override", async () => {
   // Given a valid file and an invalid map value whose key contains dots.
   await writeFile(join(root, "config.yml"), "router:\n  httpPort: 8080\n");
-  process.env.LANDO_APP_LABELS = '{"com.example.owner":{"bad":true}}';
+  process.env.LANDO_SERVICE_DEFAULTS_LABELS = '{"com.example.owner":{"bad":true}}';
   // When the merged configuration is loaded.
   const result = await load();
   // Then the original key remains one segment and repair targets the environment.
   expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") return;
-  expect(result.failure.issues?.map((issue) => issue.path)).toEqual([["appLabels", "com.example.owner"]]);
+  expect(result.failure.issues?.map((issue) => issue.path)).toEqual([
+    ["serviceDefaults", "labels", "com.example.owner"],
+  ]);
   expect(result.failure.message).not.toContain("Invalid config file");
   expect(result.failure.remediation).toContain("environment override");
   expect(result.failure.remediation).not.toContain("lando config set");
@@ -108,7 +110,10 @@ test("config file decoding attributes invalid host events to the owning file", (
 
 test("retains specific expected-value diagnostics without rejected values", () => {
   // Given independent type and range errors carrying a secret value.
-  const input = { router: { httpPort: 99999 }, appEnv: { TOKEN: ["opaque-canary-schema"] } };
+  const input = {
+    router: { httpPort: 99999 },
+    serviceDefaults: { environment: { TOKEN: ["opaque-canary-schema"] } },
+  };
   // When the candidate is decoded.
   const result = decodeGlobalConfigFile(input, join(root, "config.yml"));
   // Then useful schema expectations survive but actual values never do.
@@ -121,7 +126,7 @@ test("retains specific expected-value diagnostics without rejected values", () =
         message: expect.stringContaining("between 1 and 65535"),
       }),
       expect.objectContaining({
-        path: ["appEnv", "TOKEN"],
+        path: ["serviceDefaults", "environment", "TOKEN"],
         message: expect.stringContaining("Expected string"),
       }),
     ]),

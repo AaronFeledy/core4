@@ -189,6 +189,12 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
       golden: [diagnostic(`${key}: []\n`, "dropped", [key])],
     }),
   ),
+  {
+    pattern: ["env_file"],
+    disposition: "target",
+    owner: "lower-top-level",
+    golden: [output("env_file: [.env]\n", ["serviceDefaults", "env_file"], [".env"])],
+  },
   ...(
     [
       ["env_file", "[.env]", [".env"]],

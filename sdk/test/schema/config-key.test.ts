@@ -185,7 +185,11 @@ describe("config key schema navigation", () => {
 
   test.each([
     ["GlobalConfig", ["router", "httpPort"], "an integer from 1 to 65535"],
-    ["GlobalConfig", ["appEnv"], "a mapping of names to text with at most 256 entries"],
+    [
+      "GlobalConfig",
+      ["serviceDefaults", "environment"],
+      "a mapping of names to text with at most 256 entries",
+    ],
     ["GlobalConfig", ["hostProxy", "allowedSchemes"], "a list of text values"],
     ["LandofileShape", ["services", "web", "type"], "text"],
     ["LandofileShape", ["services", "web", "cap_add"], "text or a list of text values"],

@@ -92,8 +92,8 @@ export const loadTopLevelEnvFiles = (input: {
   loadEnvFiles({
     ...input,
     owner: "The Landofile",
-    readContext: "declared by the Landofile",
-    issuePath: ["env_file"],
+    readContext: "declared by serviceDefaults.env_file",
+    issuePath: ["serviceDefaults", "env_file"],
   });
 
 export const loadServiceEnvFiles = (input: {

@@ -263,7 +263,7 @@ const ComposeEnvFileInput = Schema.Union([Schema.String, Schema.Array(Schema.Str
   .annotate({ description: COMPOSE_ENV_FILE_DESCRIPTION });
 
 const TOP_LEVEL_ENV_FILE_DESCRIPTION =
-  "One or more app-root-relative env-file paths applied to every service below service-level envFile and environment overrides.";
+  "One or more app-root-relative env-file paths under serviceDefaults applied to every user-app service below each service's own env_file and environment.";
 
 const TopLevelEnvFileInput = Schema.Union([Schema.String, Schema.Array(Schema.String)])
   .annotate({
@@ -279,6 +279,15 @@ const TopLevelEnvFileInput = Schema.Union([Schema.String, Schema.Array(Schema.St
     ),
   )
   .annotate({ description: TOP_LEVEL_ENV_FILE_DESCRIPTION });
+
+const LandofileServiceDefaults = Schema.Struct({
+  env_file: Schema.optionalKey(TopLevelEnvFileInput),
+}).annotate({
+  identifier: "LandofileServiceDefaults",
+  title: "Landofile Service Defaults",
+  description:
+    "Cross-service defaults in the Landofile. Keys use the same spelling as on a service; env_file applies below each service's own env_file and environment.",
+});
 
 const COMPOSE_DEPENDS_ON_DESCRIPTION =
   "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries.";
@@ -1232,7 +1241,10 @@ const LandofileShapeBase = Schema.Struct({
   networks: Schema.optionalKey(Schema.Record(Schema.String, ComposeNamedNetworkConfig)),
   configs: Schema.optionalKey(Schema.Record(Schema.String, ComposeConfigConfig)),
   secrets: Schema.optionalKey(Schema.Record(Schema.String, ComposeSecretConfig)),
-  env_file: Schema.optionalKey(TopLevelEnvFileInput),
+  serviceDefaults: Schema.optionalKey(LandofileServiceDefaults).annotate({
+    description:
+      "Cross-service defaults for this app. serviceDefaults.env_file loads app-root-relative env files into every user-app service below each service's own env_file and environment.",
+  }),
   sshAgent: Schema.optionalKey(SshAgentConfig).annotate({
     description: "App SSH-agent forwarding policy, overriding global settings per field.",
   }),

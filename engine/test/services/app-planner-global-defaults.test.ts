@@ -80,8 +80,10 @@ test("global app defaults apply below user-app service-authored environment and 
       appRoot,
       paths,
       config: Schema.decodeUnknownSync(GlobalConfig)({
-        appEnv: { DEFAULT_ONLY: "global", SHARED: "global" },
-        appLabels: { "com.example.default": "global", "com.example.shared": "global" },
+        serviceDefaults: {
+          environment: { DEFAULT_ONLY: "global", SHARED: "global" },
+          labels: { "com.example.default": "global", "com.example.shared": "global" },
+        },
       }),
       landofile: composeLandofile("user-app", { SHARED: "service" }, { "com.example.shared": "service" }),
     });
@@ -117,8 +119,10 @@ test.each(["global", "scratch"] as const)("global app defaults do not apply to %
       appRoot,
       paths,
       config: Schema.decodeUnknownSync(GlobalConfig)({
-        appEnv: { DEFAULT_ONLY: "global" },
-        appLabels: { "com.example.default": "global" },
+        serviceDefaults: {
+          environment: { DEFAULT_ONLY: "global" },
+          labels: { "com.example.default": "global" },
+        },
       }),
       landofile: composeLandofile(kind === "global" ? "global" : "scratch-example"),
     });

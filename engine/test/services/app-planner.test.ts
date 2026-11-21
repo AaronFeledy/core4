@@ -1832,7 +1832,7 @@ describe("AppPlannerLayer.layer", () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "top-level-env-file",
         runtime: 4,
-        env_file: ["shared.env", "shared.local.env"],
+        serviceDefaults: { env_file: ["shared.env", "shared.local.env"] },
         services: {
           inherited: { image: "node:lts", home: false },
           serviceFile: { image: "node:lts", home: false, env_file: "service.env" },
@@ -1881,7 +1881,7 @@ describe("AppPlannerLayer.layer", () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "missing-top-level-env-file",
         runtime: 4,
-        env_file: "missing.env",
+        serviceDefaults: { env_file: "missing.env" },
       });
 
       // When
@@ -2158,7 +2158,7 @@ describe("AppPlannerLayer.layer", () => {
       );
       const landofile: LandofileShape = {
         name: "env-file-cache-app",
-        env_file: ["cache.env"],
+        serviceDefaults: { env_file: ["cache.env"] },
         services: { [ServiceName.make("web")]: { type: "env-file-cache-type", home: false } },
       };
 

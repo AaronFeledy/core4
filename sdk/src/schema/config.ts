@@ -299,11 +299,25 @@ export const GlobalConfig = Schema.Struct({
   defaultFileSyncEngine: Schema.optionalKey(Schema.String).annotate({
     description: "File-sync engine contribution id, or passthrough to use ordinary binds without sessions.",
   }),
-  appEnv: Schema.optionalKey(AppEnvironmentDefaults).annotate({
-    description: "Environment defaults applied below each user-app service's authored environment.",
-  }),
-  appLabels: Schema.optionalKey(AppLabelDefaults).annotate({
-    description: "Container-label defaults applied below each user-app service's authored labels.",
+  serviceDefaults: Schema.optionalKey(
+    Schema.Struct({
+      environment: Schema.optionalKey(AppEnvironmentDefaults).annotate({
+        description:
+          "Environment defaults applied below each user-app service's authored environment (global serviceDefaults.environment).",
+      }),
+      labels: Schema.optionalKey(AppLabelDefaults).annotate({
+        description:
+          "Container-label defaults applied below each user-app service's authored labels (global serviceDefaults.labels).",
+      }),
+    }).annotate({
+      identifier: "GlobalServiceDefaults",
+      title: "Global Service Defaults",
+      description:
+        "Cross-service defaults applied only to user-app services, below each service's own environment and labels.",
+    }),
+  ).annotate({
+    description:
+      "Cross-service defaults for user apps: environment and labels maps apply below each service's own values.",
   }),
   telemetry: TelemetryConfig.pipe(
     withDefaultKey({ enabled: true }, { description: "CLI telemetry policy." }),
