@@ -237,42 +237,103 @@ Run `lando build -- --help` or `lando build -- --format=csv`. Lando consumes onl
 
 A lone `lando build --version` fails with `ToolingInputError` before execution because a project task has no version of its own. Run `lando version` for Lando's version, or `lando build -- --version` to pass the option to the command. A declared flag named `version` owns that input instead. `--version` with other tokens is ordinary input. `.bun.sh` scripts follow the same help and lone-version rules; `wrapper` is not a front-matter key.
 
-## Run a project's local Node binary
+## Run a command through the project's toolchain
 
-A Node project installs CLIs such as `vite` or `next` into the project, and
-each package manager has its own way to run them. Start an argv-list `cmd`
-with `:node-local` and Lando picks the right one for the task's service:
+A project pins its own tools: `vite` in `node_modules`, `rake` in the bundle.
+A launcher runs a command through that toolchain, so you don't hard-code
+`pnpm exec` or `bundle exec` into a task. Start an argv-list `cmd` with a
+launcher marker and put the command after it:
 
 ```yaml
 services:
   web:
     type: node:lts
     primary: true
+  app:
+    type: "ruby:3.3"
 tooling:
   vite:
     service: web
     cmd: [":node-local", "vite"]
     wrapper: true
+  rspec:
+    service: app
+    cmd: [":ruby-local", "rspec"]
+    wrapper: true
 ```
 
-`lando vite build` then runs one of these inside `web`, depending on the
-package manager that service's `package.json` declares:
+`lando vite build` runs the `vite` your project installed, and
+`lando rspec spec` runs the `rspec` your bundle locked. Each service type
+declares its own launchers:
 
-| `package.json` declares | Command |
+| Marker | Declared by | Runs |
+| --- | --- | --- |
+| `:node-local <bin> [args]` | Every Node service | A binary your project installed, through the service's package manager |
+| `:node-install-run <script> [args]` | Bundled Node types on npm, pnpm, Yarn, or no declared manager | An install with that manager, then a `package.json` script |
+| `:python-local <command> [args]` | Stock Python services that include Lando's `uv` install | The command through `uv run` in a uv project, in the app-root `.venv` when one exists, and directly otherwise |
+| `:ruby-local <command> [args]` | Ruby services | The command through `bundle exec` when the bundle has a lockfile, and directly otherwise |
+
+`:node-local` picks the command from the package manager the service's
+`package.json` declares:
+
+| `package.json` declares | `lando vite build` runs |
 | --- | --- |
 | pnpm | `pnpm exec vite build` |
-| Yarn | `yarn run vite build`, which also works with Plug'n'Play |
+| Yarn | `yarn run vite build`, including with [Plug'n'Play](../services/node.mdx#use-yarn-plugnplay) |
 | npm, Bun, or nothing | `npm exec --no -- vite build` |
 
-All three run the binary your project already installed. None of them
-downloads a missing package, so run your install first.
+`:node-local` never downloads a missing package, so run your install first.
+[Use your project's package manager](../services/node.mdx#use-your-projects-package-manager)
+covers how a Node service selects its manager and when to use
+`:node-install-run`.
+[Run tools in your project's environment](../services/python.mdx#run-tools-in-your-projects-environment)
+covers when `:python-local` syncs dependencies and updates `uv.lock`.
+[Add Ruby](../services/ruby.mdx#run-the-app) covers how `:ruby-local` finds the bundle.
 
-Two rules apply. Set `service:` on the task itself, because Lando reads the
-package manager from that service. And write `cmd` as a list: `:node-local`
-isn't recognized in a command string or under `cmds`. The bundled Next.js,
-Astro, SvelteKit, and Eleventy recipes define their framework commands this
-way. [Use your project's package manager](../services/node.mdx#use-your-projects-package-manager)
-covers how a Node service selects its manager.
+### Where a marker works
+
+Lando recognizes a marker in two places only:
+
+- The first item of an argv-list tooling `cmd`. The launcher comes from the
+  service the task runs in: its `service:`, or the primary service when the
+  task names none.
+- The first item of an argv-list service `command`. The launcher comes from
+  that service.
+
+Anywhere else the text is literal. A command string such as
+`cmd: ":node-local vite"`, an entry under `cmds`, and the arguments of
+`lando exec` are never expanded. `:host` is a tooling target, not a launcher,
+and a task that runs on the host has no launchers to use.
+
+Use one marker, then a command. A marker with nothing after it fails, and so
+does a second marker right behind the first, because launchers don't chain. To
+run a file whose name starts with a colon, write its path: `cmd: ["./:name"]`.
+
+`lando help vite` shows the launcher program selected for the project, such as
+`pnpm`, when Lando knows the target service. If the target is chosen at
+invocation time, help describes how it is selected and omits the program.
+
+### When a marker fails
+
+A marker the target service doesn't declare is an error, never a literal
+command. Point `:node-local` at the Ruby service and the task fails with
+`ToolingCompileError`:
+
+```
+tooling.wrong.cmd: Launcher :node-local is not declared for service app (ruby:3.3). Declared launchers: :ruby-local.
+```
+
+Only that task is affected. `lando start`, `lando help`, and every other task
+keep working, and `lando app:config:lint` reports the same message at
+`tooling.wrong.cmd`.
+
+A service `command` is part of the app plan, so a bad marker there fails
+planning at `services.<name>.command` with `LandofileValidationError`, and
+the app doesn't start until you fix it.
+
+The bundled Next.js, Astro, SvelteKit, and Eleventy recipes define their
+framework commands with `:node-local`, and the Rails recipe defines
+`lando rake` with `:ruby-local`.
 
 ## Pick the service from a flag
 
@@ -482,21 +543,93 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
       <Cleanup />
     </Step>
   </Scenario>
-  <Scenario id="node-local-follows-package-manager" render={false} reason="A :node-local task resolves through the package manager its service declares">
-    <Step name="write-pnpm-project">
-      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: node-local-demo\nservices:\n  web:\n    type: node:lts\n    primary: true\ntooling:\n  vite:\n    service: web\n    cmd: [\":node-local\", \"vite\"]\n    wrapper: true\n"));
-yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "node-local-demo", private: true, packageManager: "pnpm@9.15.0" })));`} displayCode={`await Bun.write("package.json", JSON.stringify({ name: "node-local-demo", private: true, packageManager: "pnpm@9.15.0" }));`} />
+  <Scenario id="launchers-follow-the-service" render={false} reason="Launcher tasks lower through the launcher their target service declares">
+    <Step name="write-project-and-start">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: launcher-demo\nservices:\n  web:\n    type: node:lts\n    primary: true\n  app:\n    type: \"ruby:3.3\"\ntooling:\n  vite:\n    service: web\n    cmd: [\":node-local\", \"vite\"]\n    wrapper: true\n  primary-vite:\n    cmd: [\":node-local\", \"vite\"]\n    wrapper: true\n  rspec:\n    service: app\n    cmd: [\":ruby-local\", \"rspec\"]\n    wrapper: true\n  wrong:\n    service: app\n    cmd: [\":node-local\", \"vite\"]\n  chained:\n    service: web\n    cmd: [\":node-local\", \":node-local\", \"vite\"]\n  bare:\n    service: web\n    cmd: [\":node-local\"]\n  on-host:\n    service: \":host\"\n    cmd: [\":node-local\", \"vite\"]\n"));
+yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "launcher-demo", private: true })));
+lastRun = yield* context.runCli("lando start --format=json");
+expect(lastRun.exitCode).toBe(0);`} displayCode={`lando start --format=json`} />
     </Step>
-    <Step name="runs-through-pnpm">
-      <Run runtime="library" code={`lastRun = yield* context.runCli("lando help vite --format=json");
+    <Step name="node-local-runs-through-npm">
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando --format=json vite build");
 expect(lastRun.exitCode).toBe(0);
-expect(lastRun.stdout).toMatch(/"name":\s*"web"[\s\S]*"program":\s*"pnpm"/);`} displayCode={`lando help vite --format=json`} />
-    </Step>
-    <Step name="switch-to-yarn">
-      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "node-local-demo", private: true, packageManager: "yarn@4.18.1" })));
+expect(lastRun.stdout).toMatch(/"service":"web"[\s\S]*"stdout":"npm exec --no -- vite build\\n"/);
+lastRun = yield* context.runCli("lando --format=json primary-vite build");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"service":"web"[\s\S]*"stdout":"npm exec --no -- vite build\\n"/);
 lastRun = yield* context.runCli("lando help vite --format=json");
 expect(lastRun.exitCode).toBe(0);
-expect(lastRun.stdout).toMatch(/"program":\s*"yarn"/);`} displayCode={`lando help vite --format=json`} />
+expect(JSON.parse(lastRun.stdout).result.target.runs).toMatchObject({ targets: [{ kind: "service", name: "web" }], program: "npm" });`} displayCode={`lando --format=json vite build`} />
+    </Step>
+    <Step name="ruby-local-runs-in-the-ruby-service">
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando --format=json rspec spec");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"service":"app"[\s\S]*"stdout":"ruby -e [\s\S]*bundle[\s\S]* -- rspec spec\\n"/);`} displayCode={`lando --format=json rspec spec`} />
+    </Step>
+    <Step name="reject-bad-markers-per-task">
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando wrong --format=json");
+expect(lastRun.exitCode).toBe(1);
+expect(lastRun.stdout).toMatch(/ToolingCompileError[\s\S]*tooling\.wrong\.cmd: Launcher :node-local is not declared for service app \(ruby:3\.3\)\. Declared launchers: :ruby-local\./);
+expect(JSON.parse(lastRun.stdout).error).toMatchObject({ _tag: "ToolingCompileError", issues: [{ path: ["tooling", "wrong", "cmd"], reason: "launcher-undeclared-marker" }] });
+lastRun = yield* context.runCli("lando chained --format=json");
+expect(lastRun.exitCode).toBe(1);
+expect(lastRun.stdout).toMatch(/ToolingCompileError[\s\S]*cannot be followed by another launcher marker/);
+lastRun = yield* context.runCli("lando bare --format=json");
+expect(lastRun.exitCode).toBe(1);
+expect(lastRun.stdout).toMatch(/ToolingCompileError[\s\S]*Launcher :node-local requires a command/);
+lastRun = yield* context.runCli("lando on-host --format=json");
+expect(lastRun.exitCode).toBe(1);
+expect(lastRun.stdout).toMatch(/ToolingCompileError[\s\S]*Launcher :node-local is not declared for the host/);
+lastRun = yield* context.runCli("lando app:config:lint --format=json");
+expect(lastRun.stdout).toMatch(/"valid":false[\s\S]*"path":\["tooling","wrong","cmd"\]/);
+lastRun = yield* context.runCli("lando --format=json vite build");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"stdout":"npm exec --no -- vite build\\n"/);`} displayCode={`lando wrong --format=json`} />
+    </Step>
+    <Step name="compare-lint-and-index-diagnostics">
+      <Run runtime="library" code={`const path = ["tooling", "wrong", "cmd"];
+const finding = { path, reason: "launcher-undeclared-marker", source: { file: join(context.testDir, ".lando.yml"), layer: "canonical", path } };
+const lint = yield* context.runCli("lando app:config:lint --format=json");
+expect(lint.exitCode).toBe(1);
+expect(JSON.parse(lint.stdout).result.violations).toContainEqual(expect.objectContaining({ rule: "landofile.tooling", ...finding }));
+lastRun = yield* context.runCli("lando app:cache:refresh --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(JSON.parse(lastRun.stdout).result.unavailableTasks).toContainEqual(expect.objectContaining({ task: "wrong", issues: [expect.objectContaining(finding)] }));`} displayCode={`lando app:config:lint --format=json
+lando app:cache:refresh --format=json`} />
+    </Step>
+    <Step name="switch-to-pnpm">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "launcher-demo", private: true, packageManager: "pnpm@9.15.0" })));
+lastRun = yield* context.runCli("lando --format=json vite build");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"stdout":"pnpm exec vite build\\n"/);`} displayCode={`lando --format=json vite build`} />
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando help vite --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(JSON.parse(lastRun.stdout).result.target.runs).toMatchObject({ program: "pnpm" });`} displayCode={`lando help vite --format=json`} />
+    </Step>
+    <Step name="switch-to-yarn">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "launcher-demo", private: true, packageManager: "yarn@4.18.1" })));
+lastRun = yield* context.runCli("lando --format=json vite build");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"stdout":"yarn run vite build\\n"/);`} displayCode={`lando --format=json vite build`} />
+    </Step>
+  </Scenario>
+  <Scenario id="launcher-in-a-service-command" render={false} reason="A service command lowers its launcher at planning and rejects one its service does not declare">
+    <Step name="reject-undeclared-marker">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: launcher-command\nservices:\n  web:\n    type: node:lts\n    primary: true\n    command: [\":ruby-local\", \"start\"]\n"));`} displayCode={`await Bun.write(".lando.yml", "name: launcher-command\nservices:\n  web:\n    type: node:lts\n    primary: true\n    command: [\":ruby-local\", \"start\"]\n");`} />
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando app:cache:refresh --format=json");
+expect(lastRun.exitCode).toBe(1);
+const path = ["services", "web", "command"];
+expect(JSON.parse(lastRun.stdout).error).toMatchObject({ _tag: "LandofileValidationError", issues: [{ path, reason: "launcher-undeclared-marker", source: { file: join(context.testDir, ".lando.yml"), layer: "canonical", path } }] });`} displayCode={`lando app:cache:refresh --format=json`} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "services\\.web\\.command: Launcher :ruby-local is not declared for service web \\(node:lts\\)" }} />
+    </Step>
+    <Step name="accept-declared-marker">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: launcher-command\nservices:\n  web:\n    type: node:lts\n    primary: true\n    command: [\":node-install-run\", \"start\"]\n"));`} displayCode={`await Bun.write(".lando.yml", "name: launcher-command\nservices:\n  web:\n    type: node:lts\n    primary: true\n    command: [\":node-install-run\", \"start\"]\n");`} />
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando app:config:lint --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"valid":true/);`} displayCode={`lando app:config:lint --format=json`} />
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando app:config get services.web.command --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(JSON.parse(lastRun.stdout).result.value).toEqual([":node-install-run", "start"]);`} displayCode={`lando app:config get services.web.command --format=json`} />
     </Step>
   </Scenario>
 

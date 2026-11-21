@@ -20,10 +20,15 @@ the database service when it builds the app plan. Both services use
 `DJANGO_SETTINGS_MODULE: config.settings`; edit their `environment` fields if
 your project uses another settings module.
 
-If you enabled Celery, start warns about a `restarting` worker until the
-application and dependencies exist. The engine retries the worker automatically,
-so it starts after installation. Check `lando logs --service=worker` to see
-what it is doing.
+The `web` and `worker` services share `/app/.venv` automatically.
+Run `lando start` on a fresh clone to install `requirements.txt`. After editing
+it in a running app, run `lando restart`. Rebuilds keep installed packages.
+
+For Celery, include `celery[redis]` in the requirements, configure the Celery
+app in `config/celery.py`, and set `CELERY_BROKER_URL` from `REDIS_URL` in
+your Django settings. `lando start` warns while the worker retries with missing
+application code or dependencies. Check `lando logs --service=worker` for readiness, and run
+`lando restart -s worker` after changing code or dependencies.
 
 ## Generated services
 
@@ -35,18 +40,17 @@ what it is doing.
   `startproject config .` layout puts `BASE_DIR` at `/app`, so Django's default
   file and `dj-database-url` resolve to the same path. PostgreSQL stays the default.
 - `cache`: `redis`.
-- `worker`: additional `python:3.12` running `celery -A app worker` with `restart: unless-stopped` when
-  prompt `celery` answers `true`.
+- `worker`: additional `python:3.12` with `command: exec celery -A config worker --loglevel=info`, `restart: unless-stopped`, and
+  `endpoints: []` (Celery serves no HTTP, so the worker gets no route) when prompt `celery` answers `true`.
 
 ## Generated tooling
 
 - `lando django`: Django management script through `python manage.py`.
-- `lando pip`: pip inside the web service.
+- `lando pip`: `python -m pip` inside the web service, installing into the shared venv.
 
 ## Limitations
 
 - The recipe writes a Landofile only; after installing Django, bootstrap the
   project with `lando exec web -- django-admin startproject config .`.
-- The recipe configures Redis as the only broker and Celery as the only
-  worker. It does not configure Channels, ASGI workers, or other broker
-  backends; add those services to the Landofile yourself.
+- The recipe provides Redis and the optional Celery worker. It does not
+  configure Channels, ASGI workers, or other broker backends.

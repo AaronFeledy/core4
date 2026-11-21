@@ -64,8 +64,8 @@ export const globalSiblingConflicts = Effect.fn("GlobalApp.siblingConflicts")(fu
     for (const old of prior.routes.filter((route) => route.service === sibling.id)) {
       for (const route of selectedRoutes) {
         const accumulator = makeRouteAccumulator();
-        yield* accumulator.add(route, { key: String(route.service) });
-        const result = yield* Effect.result(accumulator.add(old, { key: sibling.id }));
+        yield* accumulator.add(route, { path: ["services", route.service] });
+        const result = yield* Effect.result(accumulator.add(old, { path: ["services", sibling.id] }));
         if (result._tag === "Failure") {
           conflicts.push({ reason: `route host ${old.hostname}`, with: [String(route.service)] });
         }

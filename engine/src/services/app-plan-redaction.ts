@@ -1,8 +1,12 @@
-import { committedSensitiveLiterals, sensitiveLandofileOccurrences } from "@lando/landofile/authored-literal";
-import type { LandofileProvenance } from "@lando/landofile/provenance";
+import {
+  authoredSourceDocument,
+  committedSensitiveLiterals,
+  sensitiveLandofileOccurrences,
+} from "@lando/landofile/authored-literal";
+import { type LandofileProvenance, provenanceOf } from "@lando/landofile/provenance";
 import { RedactionService, collectPublicCredentialValues } from "@lando/redaction/service";
 import { isLandofileOverride, isLandofileReset, isPlainRecord } from "@lando/sdk/landofile";
-import type { ValidationIssuePath } from "@lando/sdk/schema";
+import type { LoadScopedLandofile, ValidationIssuePath } from "@lando/sdk/schema";
 import { isPublicDefaultCredential, isUsableExactRedactionValue } from "@lando/sdk/secrets";
 import { Effect, Option } from "effect";
 
@@ -97,4 +101,16 @@ export const registerLandofileRedaction = Effect.fnUntraced(function* (values: L
     yield* redaction.value.registerValues(values.wholeToken, { match: "whole-token" });
   }
   return values;
+});
+
+export const registerResolvedLandofileRedaction = Effect.fnUntraced(function* (loaded: LoadScopedLandofile) {
+  const provenance = provenanceOf(loaded);
+  const authored = yield* Effect.forEach(provenance?.documents ?? [], (document) =>
+    authoredSourceDocument(document).pipe(
+      Effect.map((source) => collectAuthoredRedactionTokens(source.value, source.provenance)),
+    ),
+  );
+  return yield* registerLandofileRedaction(
+    mergeLandofileRedactionValues(collectAuthoredRedactionTokens(loaded.document, provenance), ...authored),
+  );
 });

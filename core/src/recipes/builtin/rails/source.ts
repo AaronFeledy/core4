@@ -55,7 +55,7 @@ export const source = {
       rake: {
         service: "web",
         description: "Run Rake inside the web service.",
-        cmds: ["rake"],
+        cmd: [":ruby-local", "rake"],
         wrapper: true,
       },
     },

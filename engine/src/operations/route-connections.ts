@@ -8,7 +8,7 @@ import type {
   ServiceState,
 } from "@lando/sdk/schema";
 import { connectionActivity } from "./connection-state.ts";
-import { connectionHost, connectionUrl } from "./connection-url.ts";
+import { connectionHost, routeUrl } from "./connection-url.ts";
 
 const matchesRoute = (left: RoutePlan, right: RoutePlan): boolean =>
   left.hostname.toLowerCase() === right.hostname.toLowerCase() &&
@@ -88,12 +88,7 @@ export const projectRouteConnections = (input: {
           ...common,
           binding: "assigned",
           port: authority.port,
-          url: connectionUrl({
-            host: route.hostname,
-            port: authority.port,
-            protocol,
-            pathPrefix: route.pathPrefix ?? "",
-          }),
+          url: routeUrl(route, protocol, authority.port),
           alternateUrls: [],
           state:
             !inactive && observed.some((actual) => actual.port === authority.port) ? activity : unobserved,

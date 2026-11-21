@@ -55,9 +55,8 @@ test("malformed paths use the shared config path failure", async () => {
 });
 
 test("set remediation can query summaries without loading config", () => {
-  expect(configKeySummary("GlobalConfig", "router.httpPort")).toBe("an integer from 1 to 65535");
-  expect(configKeySummary("GlobalConfig", "router.nope")).toBeUndefined();
-  expect(configKeySummary("GlobalConfig", "router..httpPort")).toBeUndefined();
+  expect(configKeySummary("GlobalConfig", ["router", "httpPort"])).toBe("an integer from 1 to 65535");
+  expect(configKeySummary("GlobalConfig", ["router", "nope"])).toBeUndefined();
 });
 
 test("host result decoding cannot accept an incomplete describe as a view", () => {

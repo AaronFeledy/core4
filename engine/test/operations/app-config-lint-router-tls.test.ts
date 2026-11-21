@@ -16,7 +16,10 @@ const capabilities = { ...TestRuntimeProvider.capabilities, artifactBuild: true 
 const lint = (root: string) =>
   Effect.runPromise(
     Effect.flatMap(PluginRegistry, (registry) =>
-      appConfigLint({ cwd: root }).pipe(
+      appConfigLint({
+        cwd: root,
+        templates: { modules: [], context: { env: {}, scope: "test", bootstrapLevel: "minimal" } },
+      }).pipe(
         Effect.provideService(PluginRegistry, {
           ...registry,
           declaredProviderCapabilities: () => capabilities,
@@ -42,6 +45,15 @@ const withApp = async (
 const php = (config: Record<string, unknown>) => ({
   name: "router-tls",
   services: { web: { type: "php:8.3", ...config } },
+});
+
+test("does not infer default HTTPS intent when the service's proxy entry failed to load", async () => {
+  await withApp({ ...php({ certs: false }), proxy: { web: ["{{ env.ROUTE }}"] } }, (_root, result) => {
+    expect(result.valid).toBe(false);
+    expect(result.violations.map(({ rule, path }) => [rule, path])).toEqual([
+      ["landofile.load", ["proxy", "web", 0]],
+    ]);
+  });
 });
 
 test("warns when certs: false leaves generated Apache terminating TLS at the router", async () => {

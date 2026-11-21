@@ -1,6 +1,6 @@
 # Lando v4: Scratch Apps
 
-> **Part 19 of 20** · [Index](./README.md)
+> **Part 19 of 21** · [Index](./README.md)
 > **Read next:** [20 Programmable Execution](./20-programmable-execution.md)
 
 **Scratch apps** are short-lived Lando apps whose resources and materialized state are owned by an Effect `Scope`. They support isolated forks of existing apps, recipe-backed temporary stacks, and library-hosted test environments.
@@ -64,7 +64,7 @@ The entire scratch tree MUST be excluded from cwd discovery. After resource dest
 
 #### 21.4.2 Scratch mode
 
-`apps:scratch:start --from <recipe-ref>` materializes through the standard recipe pipeline (§8.8). Recipe `postInit:` actions MUST NOT run unless `--run-post-init` is set.
+`apps:scratch:start --from <recipe-ref>` materializes through the standard recipe pipeline (§8.8). `<recipe-ref>` is a `SourceLocator` (§23.3).
 
 Recipe resolution, prompt precedence, validation, fragments, and assets follow §8.8. Missing non-interactive answers fail through the recipe error contract and remove partial state. The generated Landofile uses the scratch id. Scratch mode defaults to `baked` isolation (§21.7).
 
@@ -75,6 +75,8 @@ The `config` source requires strict authoring-wire validation, one conversion to
 Copy the workspace under fork containment/exclusion rules; default isolation is `full`. The supplied document is authoritative over copied `.lando.*` and ambient local/user layers. Explicit includes and load inputs follow canonical policy inside the managed workspace. Standard scratch planning, build, and readiness apply, with session admission before materialization (§22.6).
 
 Retain the `LoadScopedLandofile` and managed-root provenance with the handle/plan for later operations and cleanup; never rediscover copied configuration. Registry/listing summaries contain kind, root identity, and digest, not authored input or resolved secrets. Existing applied-plan persistence and orphan recovery remain authoritative.
+
+A `config` acquisition MAY name a `workspace` mount: one authorized host directory bound read-write at the primary service's working directory in place of a copy. Template step environments use it for the destination (§23.8). Inside a session it requires `policy.mountRoots` admission (§22.6.1).
 
 ### 21.5 `ScratchAppService` core service
 
@@ -135,6 +137,8 @@ Acquisition wraps materialization and start; scratch start wraps the standard Ap
 
 `--mount-cwd` is sugar for `--isolate=cwd`; in fork mode it MUST warn that it overrides the safer `full` default. Combining it with an explicit incompatible isolation mode fails with `ScratchIsolationConflictError`. `--isolate=passthrough` is reserved and unsupported, raising `ScratchIsolationUnsupportedError`. Copy exclusions apply only to fork materialization.
 
+Scratch planning MUST skip dependency-environment materialization before deriving mount isolation: no generated store, activation defaults, or prepare job. This applies to all isolation modes, including passthrough (§6.5.1).
+
 ### 21.8 Storage shadowing
 
 At plan time, scratch storage obeys this rewrite:
@@ -158,7 +162,7 @@ The `scope: global` to `scope: app` rewrite is mandatory unless `--share-global-
 
 #### 21.9.2 Route auto-suffix
 
-`ScratchHostnameSuffix` is the plan-time hostname transform for scratch routes, separate from `RouteFilter` middleware. It runs after endpoint derivation and binding (§6.6). Unless overridden, it rewrites each route hostname with the scratch id before the domain, including nested and wildcard hostnames. The transform MUST be idempotent.
+`ScratchHostnameSuffix` is the plan-time hostname transform for scratch routes, separate from `RouteFilter` middleware. It runs after endpoint derivation and binding (§6.6). Unless overridden, it rewrites each route hostname with the scratch id before the domain, including nested and wildcard hostnames. The transform MUST be idempotent. Activation binds public URL descriptors against this suffixed publication table and the router's current authorities. For a scratch that bound URLs, route setup or publication failure is fatal and retains the original cause and remediation. Only successful publication can fail with `authority-changed` if its authorities disagree with the prepared proof.
 
 `--no-hostname-suffix` disables the filter. Repeated `--hostname` values preserve selected hostnames and MAY deliberately collide with another app.
 
@@ -185,7 +189,7 @@ Every command uses `scratch` bootstrap. `apps:list --include-scratch` adds runni
 
 #### 21.10.1 `apps:scratch:start` flags
 
-Behavior-defining flags are `--fork`, `--from`, `--source`, `--isolate=full|baked|cwd`, `--mount-cwd`, `--share-global-storage`, `--no-hostname-suffix`, `--hostname`, `--name`, `--exclude`, `--no-local-overrides`, recipe-answer and interaction flags, `--run-post-init`, `--detach`, `--keep-volumes`, and `--keep-on-failure`.
+Behavior-defining flags are `--fork`, `--from`, `--source`, `--isolate=full|baked|cwd`, `--mount-cwd`, `--share-global-storage`, `--no-hostname-suffix`, `--hostname`, `--name`, `--exclude`, `--no-local-overrides`, recipe-answer and interaction flags, `--detach`, `--keep-volumes`, and `--keep-on-failure`.
 
 Foreground mode owns the scratch in the command scope and blocks until exit or interruption. Detached mode records the identity, source, isolation, policy, owner, and start state in `<userDataRoot>/scratch/registry.bin` and returns. `--keep-volumes` applies to foreground and explicit stop cleanup but MUST NOT prevent `apps:poweroff` cleanup. `--keep-on-failure` retains failed state for explicit inspection and destruction.
 
@@ -234,6 +238,7 @@ Every error is tagged and includes remediation:
 - `ScratchRecipeAnswersError`
 - `ScratchRegistryCorruptError`
 - `ScratchRunTargetError`
+- `RouteUrlBindingError` with `no-route`, `router-unsupported`, or `authority-changed` for public URL binding failures. `retained-consumer` is specific to selected user-app relaunch. An unavailable router is still a `ProxySetupError` wrapped in `ScratchAppError`, not a binding error.
 
 `ScratchRecipeAnswersError` wraps `RecipeMissingAnswerError` or `RecipeOutputValidationError` with scratch identity. This surface also uses the shared `CommandAliasConflictError` tag (§8.1.2). Materialization failures remove partial roots. Corrupt registries are quarantined and recovery invokes label-driven GC. Finalizer failures are logged even when cleanup remains best-effort.
 

@@ -711,7 +711,7 @@ describe("shell parameter text alongside deferred-scope expressions", () => {
 
       // Then
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(failureMessage(exit)).toContain("Template expressions");
+      expect(failureMessage(exit)).toContain("`nope` scope");
     });
   });
 

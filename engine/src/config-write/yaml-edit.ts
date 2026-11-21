@@ -1,6 +1,7 @@
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
+import type { ValidationIssuePath } from "@lando/sdk/schema";
 import { Result } from "effect";
-import { getAtPath, parsePathSegments } from "./dot-path";
+import { getAtPath } from "./dot-path";
 import {
   type UnsupportedEdit,
   locateYamlEdit,
@@ -11,7 +12,7 @@ import {
 
 export interface YamlEdit {
   readonly source: string;
-  readonly key: string;
+  readonly path: ValidationIssuePath;
   readonly next: unknown;
   readonly operation: "set" | "unset";
 }
@@ -31,8 +32,7 @@ const fragment = (key: string, value: unknown, indent: number, ending: string) =
 export const spliceYamlEdit = (input: YamlEdit): Result.Result<string, UnsupportedEdit> => {
   const scanned = scanYamlLines(input.source);
   if (Result.isFailure(scanned)) return Result.fail(scanned.failure);
-  const segments = parsePathSegments(input.key);
-  if (segments === undefined) return unsupported("Malformed edit path.");
+  const segments = input.path;
   const located = locateYamlEdit(scanned.success, segments);
   if (Result.isFailure(located)) return Result.fail(located.failure);
   const { entry, parent, remaining, entries, indent, emptyFlowParent } = located.success;
@@ -48,12 +48,9 @@ export const spliceYamlEdit = (input: YamlEdit): Result.Result<string, Unsupport
   if (entry === undefined) {
     if (input.operation === "unset") return Result.succeed(input.source);
     const first = remaining[0];
-    if (first?.kind !== "key") return unsupported("Cannot create a list index.");
-    const prefix = segments
-      .slice(0, segments.length - remaining.length + 1)
-      .map((segment) => (segment.kind === "key" ? segment.key : `[${segment.index}]`))
-      .join(".");
-    const emitted = fragment(first.key, getAtPath(input.next, prefix), indent, ending);
+    if (typeof first !== "string") return unsupported("Cannot create a list index.");
+    const prefix = segments.slice(0, segments.length - remaining.length + 1);
+    const emitted = fragment(first, getAtPath(input.next, prefix), indent, ending);
     if (Result.isFailure(emitted)) return Result.fail(emitted.failure);
     if (emptyFlowParent === true && parent !== undefined) {
       let start = parent.valueStart;
@@ -82,13 +79,13 @@ export const spliceYamlEdit = (input: YamlEdit): Result.Result<string, Unsupport
       return splice(
         parent.valueStart,
         entry.regionEnd,
-        `${gap}${last?.kind === "index" ? "[]" : "{}"}${suffix.startsWith("#") ? " " : ""}${suffix}`,
+        `${gap}${typeof last === "number" ? "[]" : "{}"}${suffix.startsWith("#") ? " " : ""}${suffix}`,
       );
     }
     return splice(entry.line.start, entry.regionEnd, "");
   }
-  const value = getAtPath(input.next, input.key);
-  if (last?.kind === "index" && value !== null && typeof value === "object")
+  const value = getAtPath(input.next, segments);
+  if (typeof last === "number" && value !== null && typeof value === "object")
     return unsupported("Only scalar block-list items can be replaced.");
   const emitted = fragment("value", value, 0, ending);
   if (Result.isFailure(emitted)) return Result.fail(emitted.failure);
@@ -110,6 +107,9 @@ export const spliceYamlEdit = (input: YamlEdit): Result.Result<string, Unsupport
   const tail = /[\r\n]$/.test(input.source.slice(0, entry.regionEnd)) ? ending : "";
   if (!multiline) return splice(entry.valueStart, entry.regionEnd, gap + inline + commentGap + suffix + tail);
   const comment = suffix.trimStart();
-  const keyEnd = input.source.lastIndexOf(":", entry.valueStart - 1) + 1;
-  return splice(keyEnd, entry.regionEnd, (comment === "" ? "" : ` ${comment}`) + ending + childText + tail);
+  return splice(
+    entry.keyEnd,
+    entry.regionEnd,
+    (comment === "" ? "" : ` ${comment}`) + ending + childText + tail,
+  );
 };

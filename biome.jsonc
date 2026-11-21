@@ -182,7 +182,8 @@
     {
       "includes": [
         "**/container-runtime/test/fixtures/applied-state-v3/**/*.json",
-        "**/container-runtime/test/fixtures/applied-state-v7/**/*.json"
+        "**/container-runtime/test/fixtures/applied-state-v7/**/*.json",
+        "**/container-runtime/test/fixtures/applied-state-v9/**/*.json"
       ],
       "formatter": {
         "enabled": false

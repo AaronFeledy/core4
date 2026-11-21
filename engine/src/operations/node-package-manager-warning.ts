@@ -4,10 +4,10 @@ import type { ServicePlan } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
-import { nodePackageManagerEvidence } from "../planner/node-local-tooling.ts";
 
 const pin = (service: ServicePlan) => {
-  const raw = nodePackageManagerEvidence(service.provenance);
+  const node = isPlainRecord(service.provenance) ? service.provenance.node : undefined;
+  const raw = isPlainRecord(node) ? node.packageManager : undefined;
   if (raw === null) return null;
   if (
     !isPlainRecord(raw) ||

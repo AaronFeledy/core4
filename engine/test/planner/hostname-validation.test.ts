@@ -10,7 +10,6 @@ import { emitYamlDocument } from "@lando/sdk/yaml";
 import { Effect, Result, Schema } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import { resolveKnownEventSet } from "../../src/planner/event-set.ts";
-import { deferredSiteKey } from "../../src/planner/landofile-scopes.ts";
 import { validateResolvedLandofile } from "../../src/planner/resolved-validation.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
@@ -138,7 +137,7 @@ test("host alias validation skips blocked and pending expression sites", () => {
   const result = validateResolvedLandofile({
     landofile,
     landofilePath: "/app/.lando.yml",
-    blocked: new Set([deferredSiteKey(path)]),
+    blocked: [path],
   });
   expect(result.issues).toEqual([]);
 });
@@ -157,7 +156,7 @@ test("HTTPS coverage is reported alongside other route field failures and unreso
   const result = validateResolvedLandofile({
     landofile,
     landofilePath: "/app/.lando.yml",
-    blocked: new Set([deferredSiteKey(["services", "web", "routes", 1, "endpoint"])]),
+    blocked: [["services", "web", "routes", 1, "endpoint"]],
   });
   expect(result.issues.map((issue) => [issue.rule, issue.path.join(".")]).toSorted()).toEqual([
     ["landofile.route", "services.web.routes.0.hostname"],

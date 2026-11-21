@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
-
+import { pinnedActionRef } from "../../../scripts/action-pins.ts";
 import { landoManagedPodmanRuntimeDirCommands } from "../../../scripts/build-ci-workflow.ts";
 import { renderNightlyWorkflow } from "../../../scripts/build-nightly-workflow.ts";
 import { isShardedUnitTest } from "../../../scripts/test-shards.ts";
@@ -100,7 +100,7 @@ test("nightly jobs regenerate derived sources after frozen install and before th
   );
   expect(bundleDownload).toBeGreaterThanOrEqual(0);
   expect(armSteps[bundleDownload]).toMatchObject({
-    uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+    uses: pinnedActionRef("actions/download-artifact"),
     with: { name: "runtime-bundle-linux-arm64-current", path: "dist/cache/runtime-bundle" },
   });
   expect(
@@ -301,7 +301,7 @@ test.each([
     expect(download).toBeGreaterThanOrEqual(0);
     expect(steps[download]).toEqual({
       name: "Download container helper",
-      uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+      uses: pinnedActionRef("actions/download-artifact"),
       with: { name: "container-helper", path: "core/container-helper/dist" },
     });
     expect(restore).toBeGreaterThan(download);

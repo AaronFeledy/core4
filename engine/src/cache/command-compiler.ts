@@ -5,12 +5,18 @@ import type {
 } from "@lando/landofile/bun-sh-discovery";
 import { normalizeBunShellScript } from "@lando/landofile/bun-sh-metadata";
 import type { LandofileProvenance } from "@lando/landofile/provenance";
-import { type ToolingNormalizationSource, normalizeToolingTask } from "@lando/landofile/tooling-normalize";
+import {
+  type ToolingNormalizationSource,
+  normalizeToolingTask,
+  toolingCompileResult,
+} from "@lando/landofile/tooling-normalize";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { boundedDiagnosticSummary, projectToolingDiagnostic } from "@lando/sdk/command-result";
-import type { LandofileShape } from "@lando/sdk/schema";
+import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import { Result } from "effect";
-import type { EffectiveTooling } from "../planner/effective-tooling.ts";
+import { type EffectiveTooling, launcherServicesForPlan } from "../planner/effective-tooling.ts";
+import { primaryServiceName } from "../planner/primary-service.ts";
+import { staticToolingLauncher } from "../tooling/launchers.ts";
 import type { CommandIndexEntry, CommandLoadError } from "./command-index.ts";
 import { toolingRunSummary } from "./tooling-run-summary.ts";
 
@@ -22,6 +28,7 @@ interface ToolingCommandSources {
   readonly internalToolingTasks?: readonly string[] | undefined;
   readonly effectiveTooling?: EffectiveTooling | undefined;
   readonly toolingSource?: (name: string) => ToolingNormalizationSource;
+  readonly plan?: AppPlan;
 }
 
 export const compileToolingCommands = (
@@ -32,6 +39,15 @@ export const compileToolingCommands = (
   const effectiveTooling = options.effectiveTooling ?? landofile.tooling;
   if (effectiveTooling === undefined) return [];
   const internal = new Set(options.internalToolingTasks ?? options.provenance?.internalToolingTasks ?? []);
+  const launcherContext =
+    options.plan === undefined
+      ? Object.keys(landofile.services ?? {}).length === 0
+        ? { services: {}, primary: undefined }
+        : undefined
+      : {
+          services: launcherServicesForPlan(options.plan),
+          primary: primaryServiceName(options.plan.services),
+        };
   return Object.entries(effectiveTooling)
     .sort(([a], [b]) => compareOrdinal(a, b))
     .map(([name, authored]): CommandIndexEntry => {
@@ -48,7 +64,17 @@ export const compileToolingCommands = (
       };
       if (authored.disabled === true)
         return { ...identity, _tag: "Disabled", source: { path: source.path, task: name } };
-      const normalized = normalizeToolingTask(name, authored, source);
+      const declaration = normalizeToolingTask(name, authored, source);
+      const launcher =
+        launcherContext === undefined || Result.isFailure(declaration)
+          ? undefined
+          : staticToolingLauncher(authored, launcherContext);
+      const normalized =
+        launcher === undefined
+          ? declaration
+          : Result.flatMap(declaration, (task) =>
+              Result.map(toolingCompileResult(name, launcher, source), () => task),
+            );
       if (Result.isFailure(normalized))
         return {
           ...identity,
@@ -57,7 +83,10 @@ export const compileToolingCommands = (
           diagnostic: projectToolingDiagnostic(normalized.failure, { redactString: redact }),
         };
       const task = normalized.success;
-      const runs = toolingRunSummary(task);
+      const runs = toolingRunSummary(
+        task,
+        launcher !== undefined && Result.isSuccess(launcher) ? launcher.success[0] : undefined,
+      );
       let service: string | undefined;
       switch (task.service?.kind) {
         case "service":

@@ -1,8 +1,7 @@
 import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { applyToolingDefaults } from "@lando/landofile/tooling-defaults";
 import { type LandofileShape, ServiceName, type ToolingTaskShape } from "@lando/sdk/schema";
-import { lowerNodeLocalTooling } from "./node-local-tooling.ts";
-import { primaryServiceName } from "./primary-service.ts";
+import type { ServiceLaunchers } from "@lando/sdk/services";
 
 export type EffectiveTooling = Readonly<Record<string, ToolingTaskShape>>;
 
@@ -13,7 +12,7 @@ export interface ToolingServiceContribution {
   readonly name: string;
   readonly serviceTypeId?: string;
   readonly tooling?: EffectiveTooling;
-  readonly metadata?: unknown;
+  readonly launchers?: ServiceLaunchers;
   readonly connectionClientNames?: readonly string[];
 }
 
@@ -52,17 +51,7 @@ export const toolingBeforeDefaults = (input: ToolingComposition): EffectiveTooli
     const task = service.tooling?.[name];
     if (task !== undefined) contributed[name] = { service: service.name, ...task };
   }
-  const serviceMetadata = new Map(input.services.map(({ name, metadata }) => [name, metadata]));
-  const fallbackService =
-    input.landofile.toolingDefaults?.service ?? primaryServiceName(input.landofile.services);
-  const authored = Object.entries(input.landofile.tooling ?? {}).map(([name, task]) => {
-    const service = task.service ?? fallbackService;
-    return [
-      name,
-      lowerNodeLocalTooling(task, service === undefined ? undefined : serviceMetadata.get(service)),
-    ];
-  });
-  return { ...contributed, ...Object.fromEntries(authored) };
+  return { ...contributed, ...input.landofile.tooling };
 };
 
 export const compileEffectiveTooling = (input: ToolingComposition): EffectiveTooling =>

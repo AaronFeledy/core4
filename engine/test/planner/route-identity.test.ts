@@ -26,13 +26,16 @@ test.each(["http", "https"] as const)(
     // Given
     const accumulator = makeRouteAccumulator();
     await Effect.runPromise(
-      accumulator.add(route({ scheme: "both" }), { key: "services.web.routes[0]", file: "/app/base.yml" }),
+      accumulator.add(route({ scheme: "both" }), {
+        path: ["services", "web", "routes", 0],
+        file: "/app/base.yml",
+      }),
     );
     // When
     const result = await Effect.runPromise(
       Effect.result(
         accumulator.add(route({ scheme, filters: [{ kind: "addPrefix", prefix: "/v2" }] }), {
-          key: "proxy.web[0]",
+          path: ["proxy", "web", 0],
           file: "/app/local.yml",
         }),
       ),
@@ -41,7 +44,12 @@ test.each(["http", "https"] as const)(
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isSuccess(result)) throw new Error("expected conflict");
     expect(result.failure).toBeInstanceOf(RouteInputError);
-    expect(result.failure).toMatchObject({ file: "/app/local.yml", key: "proxy.web[0]" });
+    expect(result.failure).toMatchObject({
+      file: "/app/local.yml",
+      path: ["proxy", "web", 0],
+      otherPath: ["services", "web", "routes", 0],
+      otherFile: "/app/base.yml",
+    });
     expect(result.failure.message).toContain("/app/base.yml:services.web.routes[0]");
   },
 );
@@ -54,7 +62,7 @@ test.each([true, false])(
     const inputs = bothFirst ? (["both", "http", "https"] as const) : (["http", "https", "both"] as const);
     // When
     for (const scheme of inputs)
-      await Effect.runPromise(accumulator.add(route({ scheme, filters: [] }), { key: `routes.${scheme}` }));
+      await Effect.runPromise(accumulator.add(route({ scheme, filters: [] }), { path: ["routes", scheme] }));
     // Then
     expect(
       accumulator.routes
@@ -69,14 +77,14 @@ test("dedupes filter execution semantics regardless of merge identity names", as
   const accumulator = makeRouteAccumulator();
   await Effect.runPromise(
     accumulator.add(route({ filters: [{ kind: "redirect", name: "first", to: "https://new.test" }] }), {
-      key: "routes[0]",
+      path: ["routes", 0],
     }),
   );
   // When
   const refs = await Effect.runPromise(
     accumulator.add(
       route({ filters: [{ kind: "redirect", name: "second", to: "https://new.test", permanent: false }] }),
-      { key: "routes[1]" },
+      { path: ["routes", 1] },
     ),
   );
   // Then
@@ -88,12 +96,12 @@ test("rejects a different selected backend port for the same listener match", as
   // Given
   const accumulator = makeRouteAccumulator();
   const first = route();
-  await Effect.runPromise(accumulator.add(first, { key: "routes[0]" }));
+  await Effect.runPromise(accumulator.add(first, { path: ["routes", 0] }));
   // When
   const result = await Effect.runPromise(
     Effect.result(
       accumulator.add(route({ endpoint: 8080, backend: { ...first.backend, port: 8080 } }), {
-        key: "routes[1]",
+        path: ["routes", 1],
       }),
     ),
   );
@@ -104,10 +112,10 @@ test("rejects a different selected backend port for the same listener match", as
 test("dedupes omitted filters and empty filters, and hostname case", async () => {
   // Given
   const accumulator = makeRouteAccumulator();
-  await Effect.runPromise(accumulator.add(route(), { key: "routes[0]" }));
+  await Effect.runPromise(accumulator.add(route(), { path: ["routes", 0] }));
   // When
   const refs = await Effect.runPromise(
-    accumulator.add(route({ hostname: "APP.example.test", filters: [] }), { key: "routes[1]" }),
+    accumulator.add(route({ hostname: "APP.example.test", filters: [] }), { path: ["routes", 1] }),
   );
   // Then
   expect(refs).toEqual([{ index: 0 }]);

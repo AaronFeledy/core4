@@ -14,7 +14,7 @@ The web container stays running so you can create the application with
 `lando rails new . --database=postgresql --force` (the default choice) or
 `lando rails new . --database=sqlite3 --force` (the SQLite choice). Use `--force`
 only in a new app; Rails replaces the minimal Gemfile and adds `pg` or `sqlite3`.
-Install dependencies with `bundle install`. The recipe does not start
+Install dependencies with `lando bundle install`. The recipe does not start
 the Rails server. When the application is ready, run
 `lando rails server -b 0.0.0.0`.
 
@@ -46,7 +46,10 @@ chosen database adapter.
 
 - `lando rails …`: Rails CLI inside the web service.
 - `lando bundle …`: Bundler inside the web service.
-- `lando rake …`: Rake inside the web service.
+- `lando rake …`: Rake inside the web service, declared as
+  `cmd: [":ruby-local", "rake"]`. It runs through `bundle exec` once the app
+  has a Gemfile with a lockfile, so tasks use the Rake version the bundle
+  locks. Before `rails new` writes `Gemfile.lock`, it runs the image's Rake.
 
 ## Limitations
 

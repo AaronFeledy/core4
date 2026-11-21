@@ -1,5 +1,6 @@
 import { isPlainRecord, valueOriginAt } from "@lando/sdk/landofile";
 import type { ConfigLintViolation, ValidationIssue } from "@lando/sdk/schema";
+import { type LoadUnavailableSite, overlapsUnavailable } from "./lint-diagnostic.ts";
 import { attributeLintIssue } from "./lint-source.ts";
 import type { AuthoredDocument } from "./provenance.ts";
 
@@ -27,12 +28,14 @@ const COMPOSE_FIELDS = ["test", "interval", "timeout", "start_period", "start_in
 function* probeFindings(
   document: AuthoredDocument,
   severity: ConfigLintViolation["severity"],
+  unavailable?: readonly LoadUnavailableSite[],
 ): Iterable<ValidationIssue & Pick<ConfigLintViolation, "rule" | "severity">> {
   const merged = document.value;
   if (!isPlainRecord(merged.services)) return;
   const origins = document.provenance.origins;
   for (const [name, service] of Object.entries(merged.services)) {
     if (!isPlainRecord(service)) continue;
+    if (unavailable?.length && overlapsUnavailable(["services", name], unavailable)) continue;
     for (const role of ["healthcheck", "readiness"] as const) {
       const healthcheck = service[role];
       const path = ["services", name, role];
@@ -106,10 +109,16 @@ function* probeFindings(
   }
 }
 
-export const healthcheckWarnings = (document: AuthoredDocument): readonly ConfigLintViolation[] =>
-  Array.from(probeFindings(document, "warning"), (issue) =>
+export const healthcheckWarnings = (
+  document: AuthoredDocument,
+  unavailable?: readonly LoadUnavailableSite[],
+): readonly ConfigLintViolation[] =>
+  Array.from(probeFindings(document, "warning", unavailable), (issue) =>
     attributeLintIssue(issue, "effective", document.provenance.documents),
   );
 
-export const healthcheckDialectIssues = (document: AuthoredDocument): readonly ValidationIssue[] =>
-  Array.from(probeFindings(document, "error"), ({ severity: _severity, ...issue }) => issue);
+export const healthcheckDialectIssues = (
+  document: AuthoredDocument,
+  unavailable?: readonly LoadUnavailableSite[],
+): readonly ValidationIssue[] =>
+  Array.from(probeFindings(document, "error", unavailable), ({ severity: _severity, ...issue }) => issue);

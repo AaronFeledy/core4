@@ -102,7 +102,49 @@ Use one dialect per probe. If you wrote `command:` with `interval: 1s` or `timeo
 
 If the two dialects come from different files or layers, lint warns with `readiness.mixed-dialects` (or `healthcheck.mixed-dialects`). The Lando command and timing fields still take precedence in that case. Match the lower layer's dialect when overriding individual fields, or use `!override` to replace the whole probe. The shared `target`, `user`, and `retries` fields work with either dialect.
 
-Both keys accept `false`, a command string, argv, or a command/timing object. Probe HTTP through a command such as `curl`; the bundled runner does not execute `kind: http` or `kind: tcp`. Unsupported kinds fail planning with `LandofileValidationError` before Lando touches a container. Use `lando app:cache:refresh --format=json` to validate the plan without starting services.
+Both keys accept `false`, a command string, argv, or a command, HTTP, or TCP object with timing settings. Use `lando app:cache:refresh --format=json` to validate the plan without starting services.
+
+## Probe HTTP or TCP without curl
+
+Use `kind: http` when the service answers HTTP and the image doesn't include `curl`. Lando's mounted helper sends one GET from inside the service to an absolute `http://` or `https://` URL. Status codes 200 through 399 count as success without following redirects. The probe doesn't read the response body or verify TLS certificates. It checks readiness, not trust.
+
+```yaml
+services:
+  web:
+    type: compose
+    image: docker.io/library/busybox:1.37
+    command:
+      - sh
+      - -c
+      - echo ok >/tmp/index.html && exec httpd -f -p 8080 -h /tmp
+    readiness:
+      kind: http
+      url: http://127.0.0.1:8080/
+```
+
+Use `kind: tcp` to dial a port. Lando connects through the service's managed network name, the same host catalog TCP probes use, never loopback discovery or an interface address. Supply `port:` (1 to 65535), or let a service type attach a listener `target`.
+
+```yaml
+services:
+  cache:
+    type: compose
+    image: docker.io/library/busybox:1.37
+    command: [nc, -l, -p, "6379"]
+    readiness:
+      kind: tcp
+      port: 6379
+```
+
+You can use either kind under `healthcheck:` for ongoing monitoring, with the same timing fields as a command probe (`intervalSeconds`, `timeoutSeconds`, `retries`, `startPeriodSeconds`). Neither needs a shell or network tools in the image. `target: host` fails planning with `HealthcheckTargetUnsupportedError`; use a command under `readiness:` for host-side execution or when you need to check a response body.
+
+Validate the plan, then start:
+
+```sh
+lando app:cache:refresh --format=json
+lando start --format=json
+```
+
+`app:config --format=json` shows the normalized `kind`, `url`, and `port` on each service. `app:cache:refresh` runs the planner and records the plan without starting containers. Start waits until each probe succeeds.
 
 ## Run the probe as a container user
 
@@ -175,7 +217,7 @@ Private capture prevents live streaming and process/shell execution events; it d
 
 ## Turn the probe off
 
-Choose which policy to disable. `healthcheck: false` turns off native monitoring, including an inherited image healthcheck, but keeps explicit or contributed readiness. `readiness: false` disables the lifecycle command gate and prevents fallback to native health; it does not disable native monitoring. Process-running and job-completion supervision continue. A `service_healthy` dependency still requires enabled command readiness; disabling it does not relax the dependency gate and the plan is rejected.
+Choose which policy to disable. `healthcheck: false` turns off native monitoring, including an inherited image healthcheck, but keeps explicit or contributed readiness. `readiness: false` disables the lifecycle command gate and prevents fallback to native health; it does not disable native monitoring. Process-running and job-completion supervision continue. A `service_healthy` dependency still requires an enabled readiness probe; disabling it does not relax the dependency gate and the plan is rejected.
 
 Put the override in `.lando.local.yml` when only this machine should skip that policy. Literal `false` replaces its base value instead of merging with it. Disable both keys only if you intend to keep process supervision without either command policy. For [MongoDB](./mongodb.mdx#what-ready-checks-and-what-it-doesnt), native health off alone still preserves the stronger startup check.
 
@@ -243,7 +285,7 @@ lando logs -s app
 lando start
 ```
 
-An exhausted readiness probe stays fatal even if the service has a restart policy. To skip that command gate and keep process supervision, set `readiness: false`.
+An exhausted readiness probe stays fatal even if the service has a restart policy. To skip the readiness gate and keep process supervision, set `readiness: false`.
 
 ## Inspect configuration without claiming readiness
 
@@ -402,9 +444,51 @@ expect(JSON.parse(run.stdout).result.landofile.services.db.readiness).toMatchObj
       <Cleanup />
     </Step>
   </Scenario>
+
+  <Scenario id="http-tcp-plan" render={false} reason="Verify HTTP and TCP readiness plan through config and planner refresh">
+    <Step name="inspect-http-tcp-plan">
+      <UseFixture name="http-tcp" />
+      <Run runtime="library" displayCode="lando app:config --format=json" code={`{
+const run = yield* context.runCli("lando app:config --format=json");
+expect(run.exitCode).toBe(0);
+const services = JSON.parse(run.stdout).result.landofile.services;
+expect(services.web.readiness).toMatchObject({ kind: "http", url: "http://127.0.0.1:8080/" });
+expect(services.cache.readiness).toMatchObject({ kind: "tcp", port: 6379 });
+}`} />
+      <Run runtime="library" displayCode="lando app:cache:refresh --format=json" code={`{
+const run = yield* context.runCli("lando app:cache:refresh --format=json");
+expect(run.exitCode).toBe(0);
+const envelope = JSON.parse(run.stdout);
+expect(envelope.ok).toBe(true);
+expect(envelope.result.app).toBe("wait-http-tcp");
+const names = envelope.result.services.map((row: { service: string }) => row.service).sort();
+expect(names).toEqual(["cache", "web"]);
+}`} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="reject-host-http" render={false} reason="HTTP readiness cannot target the CLI host">
+    <Step name="reject-host-http-plan">
+      <UseFixture name="host-http-invalid" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="HealthcheckTargetUnsupportedError" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="http-tcp-ready" layer="e2e" tags={["@smoke"]} render={false} reason="Start waits on busybox HTTP and TCP readiness probes">
+    <Step name="start-http-tcp">
+      <UseFixture name="http-tcp" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "(?=[\\s\\S]*\"name\":\\s*\"web\"[^{}]*\"state\":\\s*\"ready\")(?=[\\s\\S]*\"name\":\\s*\"cache\"[^{}]*\"state\":\\s*\"ready\")" } }} />
+    </Step>
+    <Step name="cleanup-http-tcp">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## Next
 
 - [Add Node.js](./node.mdx)
 - [Read service logs](../cli/service-logs.mdx)
+- [Add a Keycloak login server](./keycloak.mdx) for a readiness probe on an image without `curl`

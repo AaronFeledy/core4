@@ -8,7 +8,7 @@ import type {
 import { type Context, Effect } from "effect";
 import { type DoctorOptions, doctor } from "./doctor";
 import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
-import { appConfigFindings, appConfigForReport } from "./doctor-app-config";
+import { appConfigForReport, appConfigSection } from "./doctor-app-config";
 import { certsDoctorStatus, certsSubsystemCheck } from "./doctor-certs-status";
 import type { DoctorSectionId, DoctorSectionResult } from "./doctor-contract";
 import { databaseCredentialsDoctorChecks } from "./doctor-database-credentials";
@@ -160,9 +160,7 @@ export const doctorSections = (input: {
     runtimeSection({
       id: "app-config",
       when: (candidate) => candidate.app === true,
-      run: appConfigForReport().pipe(
-        Effect.map((result): DoctorSectionResult => ({ checks: appConfigFindings(result) })),
-      ),
+      run: appConfigForReport().pipe(Effect.map(appConfigSection)),
     }),
   ];
 };

@@ -162,7 +162,7 @@ export const guardServiceRunning = Effect.fn("ServiceReadiness.guardRunning")(fu
 ) {
   const running = runtime.status === "running";
   const job = completionIntentServices(target.plan).has(String(target.service));
-  if (initial !== undefined && !sameReadinessIncarnation(initial, runtime))
+  if (initial !== undefined && readinessIncarnation(initial, runtime) !== "same")
     return yield* failReadinessIncarnation(target, runtime);
   if (!running && !(job && runtime.status === "exited" && runtime.exitCode === 0))
     return yield* failReadiness(target, {
@@ -177,8 +177,15 @@ const startedAt = (runtime: ServiceRuntimeInfo) =>
     ? undefined
     : DateTime.toEpochMillis(DateTime.makeUnsafe(runtime.lastStartedAt));
 
-export const sameReadinessIncarnation = (left: ServiceRuntimeInfo, right: ServiceRuntimeInfo) =>
-  left.containerId === right.containerId && startedAt(left) === startedAt(right);
+export const readinessIncarnation = (initial: ServiceRuntimeInfo, observed: ServiceRuntimeInfo) => {
+  if (initial.containerId !== observed.containerId) return "different";
+  const before = startedAt(initial);
+  const after = startedAt(observed);
+  if (before === after) return "same";
+  return initial.containerId !== undefined && before !== undefined && after !== undefined && after > before
+    ? "restarted"
+    : "different";
+};
 
 export const failReadinessIncarnation = (target: ReadinessTarget, runtime: ServiceRuntimeInfo) =>
   failReadiness(target, {

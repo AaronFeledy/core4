@@ -79,7 +79,7 @@ export const reserveConditionalSelectors = Effect.fnUntraced(function* (
     }).pipe(Effect.result);
     if (Result.isFailure(reserved)) {
       if (ctx.recorder === undefined) return yield* Effect.fail(reserved.failure);
-      ctx.recorder.record(reserved.failure, origin);
+      ctx.recorder.record(reserved.failure, { kind: "missing-content", source: origin });
       ctx.walk.complete = false;
     }
   }

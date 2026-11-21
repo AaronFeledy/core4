@@ -250,14 +250,13 @@ describe("makeHealthcheckRunner", () => {
     }
   });
 
-  test("unsupported probe kinds and missing command fail HealthcheckError", async () => {
+  test("missing probe inputs or missing TCP plan context fail HealthcheckError", async () => {
     const runner = makeHealthcheckRunner(execSequence([0]));
     const expectHealthcheckError = async (plan: HealthcheckPlan): Promise<void> =>
       expect(failureOf(await driveExit(runner.run(plan, appId, service)))).toBeInstanceOf(HealthcheckError);
 
     await expectHealthcheckError({
       kind: "http",
-      url: "https://example.test",
       intervalSeconds: 1,
       timeoutSeconds: 5,
       retries: 1,

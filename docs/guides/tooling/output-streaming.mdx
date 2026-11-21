@@ -2,7 +2,6 @@
 id: output-streaming
 provider: test
 platforms: [linux, darwin, win32, wsl]
-timeout: 300000
 tags: [docs, tooling, renderer, task-tree]
 ---
 
@@ -85,7 +84,7 @@ When both streams reach your terminal, Lando erases the live tree, writes each o
       <Cleanup />
     </Step>
   </Scenario>
-  <Scenario id="real-container-exact-stdout" layer="e2e" render>
+  <Scenario id="real-container-exact-stdout" layer="e2e" timeout={300000} render>
     <Step name="start-container">
       <UseFixture name="stream-container" />
       <Run command="lando start" />

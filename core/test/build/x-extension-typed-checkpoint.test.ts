@@ -17,12 +17,13 @@ import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-ext
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
-import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
+import { SERVICE_KEY_PATTERN, evolveHistoricalServiceKeys } from "./x-extension-service-keys-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
 import { evolveHistoricalSwarmReservations } from "./x-extension-swarm-reservations-proof.ts";
@@ -66,7 +67,10 @@ const projected = evolveHistoricalSchedule(
     ),
   ),
 );
-const expected = evolveHistoricalEndpointKind(projected, "wire");
+const expected = evolveHistoricalRouteText(
+  evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(projected, "wire"), "services"),
+  "authoring",
+);
 
 const mutateFirst = (value: JsonValue, change: (schema: JsonSchema) => JsonSchema | undefined): JsonValue => {
   if (isJsonObject(value)) {
@@ -93,6 +97,16 @@ test("pins the separate immutable typed-grammar checkpoint to its verified produ
 });
 
 const mutations: readonly [string, (schema: JsonSchema) => JsonSchema | undefined][] = [
+  [
+    "removed service-key constraint",
+    (schema) => {
+      if (!isJsonObject(schema.patternProperties)) return undefined;
+      const { [SERVICE_KEY_PATTERN]: values, ...patterns } = schema.patternProperties;
+      return values === undefined
+        ? undefined
+        : { ...schema, patternProperties: patterns, additionalProperties: values };
+    },
+  ],
   [
     "composite-expression plain-text exclusion",
     (schema) => (schema.pattern === REVIEWED_COMPOSITE_EXPRESSION_PATTERN ? { type: "string" } : undefined),

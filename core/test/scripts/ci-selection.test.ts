@@ -128,6 +128,7 @@ describe("CI selection", () => {
       "build-linux-x64",
       "runtime-bundle-linux-x64",
       "guide-scenarios-linux-x64-runner",
+      "guide-e2e-linux-x64-runner",
       "guide-scenarios-windows-x64",
     ]) {
       const tier = CI_JOB_TIERS[id];
@@ -254,9 +255,8 @@ describe("CI selection", () => {
       await writeFile(join(cwd, "docs", filename), "docs");
       git("add", ".");
       git("commit", "-m", "docs");
-      expect(selectCi({ event: "pull_request", base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe(
-        "docs",
-      );
+      for (const event of ["pull_request", "merge_group"])
+        expect(selectCi({ event, base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe("docs");
       git("mv", "runtime.ts", "docs/moved.md");
       git("commit", "-m", "move runtime to docs");
       expect(selectCi({ event: "pull_request", base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe(
@@ -353,6 +353,8 @@ describe("CI selection", () => {
         "runtime-bundle-linux-x64",
         "guide-scenarios-linux-x64-runner",
         "guide-scenarios-linux-x64",
+        "guide-e2e-linux-x64-runner",
+        "guide-e2e-linux-x64",
         "guide-scenarios-windows-x64",
       ];
       const runtime = [

@@ -18,7 +18,8 @@ import { diagnosticUnionCandidates, selectByKeyPresence, unionValueMessage } fro
 export { ValidationIssue, ValidationIssuePath, ValidationIssueSource } from "./validation-issue-schema.ts";
 export { closestKeys, suggestionForUnknownKey } from "./validation-key-suggestion.ts";
 
-const PATH_TEXT = /^(?:[A-Za-z_][A-Za-z0-9_-]*)(?:\.(?:[A-Za-z_][A-Za-z0-9_-]*)|\[\d+\])*$/;
+const IDENTIFIER = "[A-Za-z_][A-Za-z0-9_-]*";
+const PLAIN_KEY = new RegExp(`^${IDENTIFIER}$`, "u");
 
 export const validationIssue = (
   path: ValidationIssuePath,
@@ -26,29 +27,62 @@ export const validationIssue = (
   suggestion?: string,
 ): ValidationIssue => (suggestion === undefined ? { path, message } : { path, message, suggestion });
 
-/** Parse `services.web.ports[0].mode`. Prose returns undefined. */
-export const parseValidationIssuePath = (text: string): ValidationIssuePath | undefined => {
-  if (!PATH_TEXT.test(text)) return undefined;
+/** Parse a config selector, including the canonical spelling of a diagnostic path. */
+export const parseValidationIssuePath = (
+  text: string,
+  onBareKey?: (position: number, key: string) => void,
+): ValidationIssuePath | undefined => {
+  const bracket = /\[(?:(\d+)|("(?:[^"\\]|\\[\s\S])*"))\]/uy;
+  const bare = /[^.\x5b]+/uy;
   const path: Array<string | number> = [];
-  for (const match of text.matchAll(/([A-Za-z_][A-Za-z0-9_-]*)|\[(\d+)\]/g)) {
-    const key = match[1];
-    const index = match[2];
-    if (key !== undefined) path.push(key);
-    else if (index !== undefined) path.push(Number(index));
+  let cursor = 0;
+  while (cursor < text.length) {
+    const afterDot = text[cursor] === ".";
+    if (afterDot) {
+      if (cursor === 0 || cursor === text.length - 1) return undefined;
+      cursor += 1;
+    }
+    if (text[cursor] === "[") {
+      bracket.lastIndex = cursor;
+      const match = bracket.exec(text);
+      if (match === null) return undefined;
+      const [, index, quoted] = match;
+      if (quoted !== undefined) {
+        if (afterDot) return undefined;
+        try {
+          const key: unknown = JSON.parse(quoted);
+          if (typeof key !== "string") return undefined;
+          path.push(key);
+        } catch (error) {
+          if (error instanceof SyntaxError) return undefined;
+          throw error;
+        }
+      } else {
+        const number = Number(index);
+        if (!Number.isSafeInteger(number)) return undefined;
+        path.push(number);
+      }
+      cursor = bracket.lastIndex;
+    } else {
+      if (cursor > 0 && !afterDot) return undefined;
+      bare.lastIndex = cursor;
+      const match = bare.exec(text);
+      if (match === null) return undefined;
+      onBareKey?.(path.length, match[0]);
+      path.push(match[0]);
+      cursor = bare.lastIndex;
+    }
   }
   return path;
 };
 
-/** `services.web.ports[0].mode`. Root is `""`. */
+/** `services.web.environment["x.dotted"]` or `services.web.ports[0].mode`. Root is `""`. */
 export const formatValidationIssuePath = (path: ValidationIssuePath): string => {
   let text = "";
   for (const segment of path) {
-    text =
-      typeof segment === "number"
-        ? `${text}[${segment}]`
-        : text.length === 0
-          ? segment
-          : `${text}.${segment}`;
+    if (typeof segment === "number") text += `[${segment}]`;
+    else if (PLAIN_KEY.test(segment)) text += text === "" ? segment : `.${segment}`;
+    else text += `[${JSON.stringify(segment)}]`;
   }
   return text;
 };

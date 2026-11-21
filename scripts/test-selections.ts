@@ -134,13 +134,19 @@ export const TEST_SELECTIONS = [
   },
   {
     id: "providers-lando",
-    paths: ["plugins/provider-lando/test/*.integration.test.ts"],
+    paths: [
+      "plugins/provider-lando/test/*.integration.test.ts",
+      "container-runtime/test/dependency-environments.integration.test.ts",
+    ],
     jobs: live,
     needs: "Live managed Podman runtime; some cases require native opt-ins",
   },
   {
     id: "providers-docker",
-    paths: ["plugins/provider-docker/test/*.integration.test.ts"],
+    paths: [
+      "plugins/provider-docker/test/*.integration.test.ts",
+      "container-runtime/test/dependency-environments.integration.test.ts",
+    ],
     jobs: live,
     needs: "LANDO_TEST_DOCKER_SOCKET",
   },

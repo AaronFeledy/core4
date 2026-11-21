@@ -1,0 +1,48 @@
+{
+  "apiVersion": "v4",
+  "command": "app:info",
+  "ok": true,
+  "result": {
+    "app": "php-demo",
+    "services": [
+      {
+        "app": "php-demo",
+        "service": "app",
+        "api": 4,
+        "type": "php:8.3",
+        "provider": "lando",
+        "primary": true,
+        "status": "running",
+        "connections": [
+          {
+            "host": "app",
+            "endpoint": { "port": 443, "transport": "tcp", "names": ["app-https"], "primary": false },
+            "binding": "assigned",
+            "port": 443,
+            "url": "https://app",
+            "alternateUrls": [],
+            "state": "active",
+            "scope": "app",
+            "source": "listener",
+            "protocol": "https"
+          },
+          {
+            "host": "app.php-demo.lndo.site",
+            "endpoint": { "port": 443, "transport": "tcp", "names": ["app-https"], "primary": false },
+            "scope": "host",
+            "source": "route",
+            "protocol": "https",
+            "pathPrefix": "",
+            "binding": "assigned",
+            "port": 38443,
+            "url": "https://app.php-demo.lndo.site:38443",
+            "alternateUrls": [],
+            "state": "active"
+          }
+        ]
+      }
+    ]
+  },
+  "warnings": [],
+  "deprecations": []
+}

@@ -160,6 +160,7 @@ test("lint warns rather than failing when provider capabilities cannot be resolv
       { rule: "landofile.capability", severity: "warning", path: ["provider"] },
     ]);
     expect(result.violations[0]?.message).toContain("lando start");
+    expect(result.skipped).toMatchObject([{ stage: "planning", reason: "capabilities-undeclared" }]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

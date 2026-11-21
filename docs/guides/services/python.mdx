@@ -125,34 +125,39 @@ If host ports 80 or 443 are taken, `lando info` shows fallback ports such as `:8
     </Step>
   </Scenario>
 
-## Install deps with pip or uv
+## Run tools in your project's environment
 
-Lando installs `uv` in the stock Python service image, so it stays available after a restart or rebuild. Declare tooling in the Landofile (see the FastAPI example above), then install your project dependencies into `/app/.venv`. That path is a service-owned overlay: it is not synced to the host, and a host `.venv` is hidden inside the container. Restart and a plain `lando destroy` keep it. `lando destroy --volumes` or `--purge` removes it.
+On the stock Python service, put `:python-local` before a project tool in your Landofile. For a uv project with `pytest` in its dependencies or default dependency group, add this task:
 
-```sh
-lando uv --version
-lando uv venv /app/.venv
-lando uv pip install --python /app/.venv/bin/python -r requirements.txt
-lando exec app -- /app/.venv/bin/python --version
+```yaml
+tooling:
+  pytest:
+    service: app
+    cmd: [":python-local", "pytest"]
+    wrapper: true
 ```
 
-`lando pip install` into the image works for a quick try, but a rebuild drops those packages. Use `appMount.includes: [.venv]` if you want the host tree, for example for IDE autocomplete. A nested venv such as `backend/.venv` needs its own exclude to get a service-owned overlay. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
+From your app directory, run `lando start` and then `lando pytest -q`. The launcher searches for `pyproject.toml` from the command's working directory up to the app mount root, or up to the filesystem root when the command runs outside the mount. When it finds one, it runs the command through `uv run --` in that working directory, so uv creates and syncs the project environment first. Plain `uv run` can create or update `uv.lock`, from tooling and service commands alike. To reject a missing or stale lockfile instead, run `lando exec app -- uv run --locked -- pytest -q`.
 
-Need a one-shot system install with uv instead of a venv?
+### Install from `requirements.txt`
 
-```sh
-lando exec app -- uv pip install --system -r requirements.txt
-```
+On a fresh clone, run `lando start` from the app directory. Stock Python prepares an active virtual environment at `/app/.venv` (or `.venv` under your app mount) and installs `requirements.txt` before the Python services start. Without that file, Lando still prepares the environment. For `pyproject.toml` projects, use `:python-local` as above; the prepare job does not sync those projects.
+
+Run `lando restart` after changing dependencies while the app is running. A `lando start` that keeps every consumer running leaves the environment alone. Unchanged inputs need no package index access. Local `-r` and `-c` files inside the app are tracked, but changes to the contents of editable or local packages aren't. Installation is additive; removing a line doesn't uninstall the package. Use `pip freeze --local` to record only project-installed packages.
+
+Services such as `web` and `worker` share one environment when their Python toolchain and image build, app mount source and target, user, and platform match. A change to those inputs can select a fresh store. Ad-hoc installs survive restarts, rebuilds, and a plain `lando destroy` as long as the environment stays compatible. Lando repairs an invalid venv before installing requirements again; ad-hoc packages aren't restored in that case.
+
+`lando start` and `lando info` show `python-env` as a completed job, with a suffix on each job name if the app has multiple Python environments. If installation fails, the services that use it cannot start. Run `lando logs -s python-env` (or use the suffixed job name), fix `requirements.txt`, and retry `lando start`.
+
+A custom image, replacement `build.context`, `appMount: false`, an app mount target containing `:`, or any authored mount at the venv path skips both preparation and activation. An authored named volume is yours to populate and activate. `appMount.includes: [.venv]` also opts out and exposes the host tree, which may not run in the container. Scratch apps skip dependency environment preparation.
+
+Login shells keep the service's `PATH`, including an authored `environment.PATH` that leaves the venv off it. The prepare job uses a shared uv download cache; `uv` commands you run yourself use uv's normal cache in the service home.
+
+Without a project manifest, `:python-local` uses the app-root `.venv` if it has an executable interpreter, and otherwise runs the command directly. An unreadable manifest or a broken interpreter link fails rather than falling back. Lando has no command to reset just the dependency environment. `lando destroy --volumes` also deletes other app volumes, such as databases.
 
 ## Serve FastAPI
 
-The idle container lets you install dependencies before starting the server. The following commands assume your `requirements.txt` includes FastAPI and Uvicorn and your app root contains `main.py` with an ASGI object named `app`. Run Uvicorn once in the foreground:
-
-```sh
-lando exec app -- /app/.venv/bin/uvicorn main:app
-```
-
-Or set it as the service command and restart so Lando starts Uvicorn with the service:
+Declare `fastapi` and `uvicorn` as project dependencies in `pyproject.toml`, and put `main.py` with an ASGI object named `app` in your app root. Set `command` in the Landofile so Lando starts Uvicorn through the project environment:
 
 ```yaml
 services:
@@ -161,21 +166,32 @@ services:
     framework: fastapi
     primary: true
     port: 8000
-    command:
-      - /app/.venv/bin/uvicorn
-      - main:app
+    command: [":python-local", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ```sh
-lando restart
+lando start
 lando info
 ```
 
 Open the URL `lando info` prints. A tiny `main.py` that returns JSON is enough to prove the route.
 
+<Scenario id="python-local" render={false} reason="Check Python launcher lowering without fetching dependencies">
+  <Step name="start-with-a-launcher-command">
+    <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: python-launcher\nservices:\n  app:\n    type: python:3.12\n    primary: true\n    command: [\":python-local\", \"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\ntooling:\n  pytest:\n    service: app\n    cmd: [\":python-local\", \"pytest\"]\n    wrapper: true\n"));
+lastRun = yield* context.runCli("lando start --format=json");
+expect(lastRun.exitCode).toBe(0);`} displayCode={`lando start --format=json`} />
+  </Step>
+  <Step name="forward-pytest-arguments">
+    <Run runtime="library" code={`lastRun = yield* context.runCli("lando --format=json pytest -q tests");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"service":"app"[\s\S]*"stdout":"python -I -S -c [\s\S]* pytest -q tests\\n"/);`} displayCode={`lando --format=json pytest -q tests`} />
+  </Step>
+</Scenario>
+
 ## Django and Flask
 
-Same service type. Swap the framework and bind the server you actually run:
+Same service type. Swap the framework and start the server you run through the project environment:
 
 ```yaml
 services:
@@ -183,6 +199,7 @@ services:
     type: "python:3.12"
     framework: django
     primary: true
+    command: [":python-local", "python", "manage.py", "runserver", "0.0.0.0:8000"]
 ```
 
 ```yaml
@@ -191,16 +208,14 @@ services:
     type: "python:3.12"
     framework: flask
     primary: true
+    command: [":python-local", "flask", "run"]
 ```
 
-```sh
-lando exec app -- /app/.venv/bin/python manage.py runserver 0.0.0.0:8000
-lando exec app -- /app/.venv/bin/gunicorn app:app
-```
+The `flask` preset sets `FLASK_RUN_HOST=0.0.0.0` and `FLASK_RUN_PORT` from `port`, so `flask run` binds where Lando routes traffic. For Gunicorn, use `[":python-local", "gunicorn", "app:app", "--bind", "0.0.0.0:5000"]`.
 
 ## Pin an image
 
-Slim is the default. Use the full image when wheels need build tools. A custom `image:` or a Dockerfile selected by `build.context` owns its toolchain, including `uv`; Lando only installs `uv` for the stock `python:3.12-slim` image:
+Slim is the default. Use the full image when wheels need build tools. A custom `image:` or a Dockerfile selected by `build.context` owns its toolchain. Only the stock image gets Lando's `uv` install and `:python-local`; on a replacement image, invoke the tools your image provides directly:
 
 ```yaml
 services:
@@ -209,4 +224,54 @@ services:
     image: python:3.12
 ```
 
+  <Scenario id="project-environment-plan" render={false} reason="Check the planned project-environment volume without starting a container">
+    <Step name="plan">
+      <UseFixture name="project-environment" />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/app/\\.venv\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+  <Scenario id="project-environment-live" layer="e2e" render={false} reason="Check venv activation, package persistence, and both login PATH choices">
+    <Step name="start-and-install">
+      <UseFixture name="project-environment" />
+      <Run command="lando start --format=json" />
+      <Verify command={`lando exec app --format=json -- python -c 'import sys; print(sys.prefix)'`} expect={{ stdout: { regex: "/app/\\.venv" } }} />
+      <Verify command={`lando exec app --format=json -- python -c 'import idna; print(idna.__file__)'`} expect={{ stdout: { regex: "/app/\\.venv/[^\"]*/idna/__init__\\.py" } }} />
+      <Verify command={`lando exec custom-path --format=json -- /app/.venv/bin/python -c 'import idna; print(idna.__file__)'`} expect={{ stdout: { regex: "/app/\\.venv/[^\"]*/idna/__init__\\.py" } }} />
+    </Step>
+    <Step name="change-included-requirements-and-repair">
+      <Run command={`lando exec app -- sh -c 'printf "%s\\n" packaging==25.0 >> /app/base-requirements.txt'`} />
+      <Run command="lando restart -s app --format=json" />
+      <Verify command={`lando exec app --format=json -- python -c 'import packaging; print(packaging.__version__)'`} expect={{ stdout: { regex: "25\\.0" } }} />
+      <Run command="lando exec app -- rm /app/.venv/pyvenv.cfg" />
+      <Run command="lando restart --format=json" />
+      <Verify command={`lando exec app --format=json -- python -c 'import packaging; print(packaging.__version__)'`} expect={{ stdout: { regex: "25\\.0" } }} />
+      <Run command="lando exec app -- python -m pip install six==1.17.0" />
+    </Step>
+    <Step name="rebuild-and-check-login">
+      <Run command="lando rebuild -y --format=json" />
+      <Verify command={`lando exec app --format=json -- python -c 'import six; print(six.__file__)'`} expect={{ stdout: { regex: "/app/\\.venv/[^\"]*/six\\.py" } }} />
+      <Verify command={`lando exec app --format=json -- bash -lc 'command -v python'`} expect={{ stdout: { regex: "/app/\\.venv/bin/python" } }} />
+      <Verify command={`lando exec custom-path --format=json -- bash -lc 'command -v python; printenv PATH'`} expect={{ stdout: { regex: "/usr/local/bin/python[\\s\\S]*/usr/local/bin:/usr/bin:/bin" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+  <Scenario id="project-environment-first-failure-logs" layer="e2e" render={false} reason="Read the prepare job output after the first apply fails">
+    <Step name="diagnose-first-failure">
+      <UseFixture name="project-environment-invalid-requirements" />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "\"_tag\":\"ServiceStartError\"[^\n]*\"service\":\"python-env\"" } }} />
+      <Verify command="lando logs -s python-env --format=json" expect={{ stdout: { regex: "\"service\":\"python-env\"[^\n]*No solution found when resolving dependencies" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
 </Guide>

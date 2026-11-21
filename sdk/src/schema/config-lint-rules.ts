@@ -50,7 +50,7 @@ export const CONFIG_LINT_RULES = {
     stages: ["fragment", "effective", "planning"],
     severities: ["error"],
     summary:
-      "Unknown keys, wrong literal types, and missing required fields in authored files, effective configuration, or the final plan; unsupported planning operations.",
+      "Unknown keys, invalid service keys, wrong literal types, and missing required fields in authored files, effective configuration, or the final plan; unsupported planning operations.",
     examplePaths: ["services.web.imgae"],
   },
   "landofile.compose-rejection": {
@@ -90,8 +90,8 @@ export const CONFIG_LINT_RULES = {
     stages: ["resolve", "planning"],
     severities: ["error"],
     summary:
-      "No two services claim the same name on one network, ignoring case; no two services would share a container name; and no authored name takes Lando's container-name shape `lando-<app>--<service>`.",
-    examplePaths: ["services.api.hostnames[0]"],
+      "Derived internal service names must fit within 253 characters. Network names must not collide across services, ignoring case. Container names must be unique, and the shape `lando-<app>--<service>` is reserved.",
+    examplePaths: ["services.web", "services.api.hostnames[0]"],
   },
   "landofile.route": {
     stages: ["resolve", "planning"],
@@ -124,16 +124,14 @@ export const CONFIG_LINT_RULES = {
   "landofile.healthcheck": {
     stages: ["resolve", "planning"],
     severities: ["error"],
-    summary:
-      "An authored healthcheck `kind: http` or `kind: tcp`, or a final healthcheck execution target, which the healthcheck runner does not support.",
-    examplePaths: ["services.web.healthcheck.kind"],
+    summary: "Invalid native healthcheck policy, such as a missing HTTP URL, TCP listener port, or command.",
+    examplePaths: ["services.web.healthcheck.url", "services.web.healthcheck.port"],
   },
   "landofile.readiness": {
     stages: ["resolve", "planning"],
     severities: ["error"],
-    summary:
-      "An authored readiness `kind: http` or `kind: tcp`, or a final readiness execution target, which the healthcheck runner does not support.",
-    examplePaths: ["services.web.readiness.kind"],
+    summary: "Invalid startup readiness policy, such as a missing HTTP URL, TCP listener port, or command.",
+    examplePaths: ["services.web.readiness.url", "services.web.readiness.port"],
   },
   "landofile.event": {
     stages: ["resolve", "planning"],

@@ -139,7 +139,7 @@ export const compileSourceOptions = (
     if ("drop" in option) continue;
     if ("disposition" in option) {
       if (option.prompt?.type !== undefined && option.prompt.type !== "secret")
-        return Result.fail(recipeSourceFailure(source.id, "secret-invalid", `options.${name}.prompt`));
+        return Result.fail(recipeSourceFailure(source.id, "secret-invalid", ["options", name, "prompt"]));
       prompts.push({
         ...(option.prompt?.deprecated === undefined ? {} : { deprecated: option.prompt.deprecated }),
         name,
@@ -150,15 +150,15 @@ export const compileSourceOptions = (
       continue;
     }
     if (!validDescriptor(option.type))
-      return Result.fail(recipeSourceFailure(source.id, "option-descriptor", `options.${name}.type`));
+      return Result.fail(recipeSourceFailure(source.id, "option-descriptor", ["options", name, "type"]));
     if (option.default !== undefined && !optionValueMatchesDescriptor(option.type, option.default))
-      return Result.fail(recipeSourceFailure(source.id, "option-default", `options.${name}.default`));
+      return Result.fail(recipeSourceFailure(source.id, "option-default", ["options", name, "default"]));
     Object.defineProperty(optionTypes, name, { value: option.type, enumerable: true });
     if (option.default !== undefined)
       Object.defineProperty(defaults, name, { value: option.default, enumerable: true });
     if (option.prompt === undefined) continue;
     if (!presentationMatches(option.prompt, option.type))
-      return Result.fail(recipeSourceFailure(source.id, "option-descriptor", `options.${name}.prompt`));
+      return Result.fail(recipeSourceFailure(source.id, "option-descriptor", ["options", name, "prompt"]));
     const choices = option.prompt.choices ?? promptChoices(option.type);
     const { validationMessage, ...presentation } = option.prompt;
     prompts.push({

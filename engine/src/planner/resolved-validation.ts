@@ -1,6 +1,6 @@
 import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { type NormalizedRoute, normalizeRoute } from "@lando/landofile/route-normalize";
-import { getLandofileValueSource } from "@lando/landofile/validation";
+import { getLandofileValueSource, pathHasPrefix, probeTargetIsBlocked } from "@lando/landofile/validation";
 import {
   type ConfigLintRuleId,
   DomainName,
@@ -15,10 +15,10 @@ import {
   authoredProbeTargetError,
   landoAuthoredNetworkName,
 } from "@lando/sdk/schema";
-import { Iterable, Result, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { dnsNameIssues } from "./dns-name-validation.ts";
 import { hostReadinessShellIssues } from "./host-shell-issues.ts";
-import { deferredSiteKey } from "./landofile-scopes.ts";
+import { pathIsBlocked } from "./landofile-scopes.ts";
 import { appNetworkName } from "./naming.ts";
 import { httpsAlternative, httpsRouteCoverageGap } from "./route-coverage.ts";
 
@@ -40,7 +40,8 @@ export const validateResolvedLandofile = (input: {
   readonly landofile: LandofileShape;
   readonly provenance?: LandofileProvenance | undefined;
   readonly landofilePath: string;
-  readonly blocked: ReadonlySet<string>;
+  readonly blocked?: readonly ValidationIssuePath[] | undefined;
+  readonly loadBlocked?: readonly ValidationIssuePath[] | undefined;
   readonly appSlug?: string;
 }) => {
   const { landofile, blocked } = input;
@@ -49,12 +50,11 @@ export const validateResolvedLandofile = (input: {
     if (!isBlocked(path)) issues.push({ path, rule: "landofile.network", message, suggestion });
   };
   const routes = new Map<string, ReadonlyArray<NormalizedRoute> | undefined>();
-  const isBlocked = (path: ValidationIssuePath) => {
-    const key = deferredSiteKey(path);
-    // Keys are JSON arrays, so a descendant site repeats this key's elements followed by a comma.
-    const descendant = `${key.slice(0, -1)},`;
-    return Iterable.some(blocked, (site) => path.length === 0 || site === key || site.startsWith(descendant));
-  };
+  const isLoadBlocked = (path: ValidationIssuePath) => pathIsBlocked(input.loadBlocked, path);
+  // Compare paths, not their containing entry, so a deferred route field doesn't hide siblings.
+  const isBlocked = (path: ValidationIssuePath) => isLoadBlocked(path) || pathIsBlocked(blocked, path);
+  const isDeferredAncestor = (path: ValidationIssuePath) =>
+    blocked?.some((site) => pathHasPrefix(path, site)) ?? false;
   // Certificate coverage depends only on the hostname and scheme, so another failing or unresolved field doesn't hide it.
   const certificateCoverageIssue = (
     entry: RouteInput,
@@ -79,6 +79,7 @@ export const validateResolvedLandofile = (input: {
     const normalized: NormalizedRoute[] = [];
     for (const [index, entry] of (entries ?? []).entries()) {
       const path = [...prefix, index];
+      if (isLoadBlocked(path) || isDeferredAncestor(path)) continue;
       const source = getLandofileValueSource(input.provenance, path);
       const result = normalizeRoute(entry, {
         path,
@@ -98,6 +99,8 @@ export const validateResolvedLandofile = (input: {
   const bridgeName = input.appSlug === undefined ? undefined : appNetworkName(input.appSlug);
   for (const [key, network] of Object.entries(landofile.networks ?? {})) {
     const path = ["networks", key];
+    // A blocked network entry is treated as declared for membership and skipped here.
+    if (isLoadBlocked(path)) continue;
     if (key === "default")
       networkIssue(
         path,
@@ -110,6 +113,7 @@ export const validateResolvedLandofile = (input: {
         `Invalid network key ${JSON.stringify(key)}.`,
         "Start network keys with a letter or digit and use only letters, digits, underscores, dots, and hyphens.",
       );
+    if (blocked !== undefined && isBlocked([...path, "external"])) continue;
     if (network.external === true && network.driver !== undefined)
       networkIssue(
         [...path, "driver"],
@@ -141,11 +145,24 @@ export const validateResolvedLandofile = (input: {
       );
   }
   const joined = new Set(
-    Object.values(landofile.services ?? {}).flatMap((service) => Object.keys(service.networks ?? {})),
+    blocked === undefined && input.loadBlocked === undefined
+      ? Object.values(landofile.services ?? {}).flatMap((service) => Object.keys(service.networks ?? {}))
+      : Object.entries(landofile.services ?? {}).flatMap(([name, service]) =>
+          Object.keys(service.networks ?? {}).filter((key) => {
+            const path = ["services", name, "networks", key];
+            return !isLoadBlocked(path) && !isDeferredAncestor(path);
+          }),
+        ),
   );
   const physicalNames = new Map<string, string>();
   for (const [key, network] of Object.entries(landofile.networks ?? {})) {
-    if (!joined.has(key) || input.appSlug === undefined) continue;
+    if (!joined.has(key) || input.appSlug === undefined || isLoadBlocked(["networks", key])) continue;
+    if (
+      blocked !== undefined &&
+      (isBlocked(["networks", key, "external"]) ||
+        (network.external === true && isBlocked(["networks", key, "name"])))
+    )
+      continue;
     const name =
       network.external === true ? (network.name ?? key) : landoAuthoredNetworkName(input.appSlug, key);
     const other = physicalNames.get(name);
@@ -157,7 +174,9 @@ export const validateResolvedLandofile = (input: {
       );
     else physicalNames.set(name, key);
   }
-  issues.push(...dnsNameIssues({ landofile, isBlocked, appSlug: input.appSlug }));
+  issues.push(
+    ...dnsNameIssues({ landofile, isBlocked, isLoadBlocked, isDeferredAncestor, appSlug: input.appSlug }),
+  );
   for (const [name, service] of Object.entries(landofile.services ?? {})) {
     for (const hostname of Object.keys(service.extra_hosts ?? {})) {
       const path = ["services", name, "extra_hosts", hostname];
@@ -172,14 +191,19 @@ export const validateResolvedLandofile = (input: {
         });
     }
     for (const key of Object.keys(service.networks ?? {})) {
-      if (key !== "default" && !Object.hasOwn(landofile.networks ?? {}, key))
+      if (
+        key !== "default" &&
+        !Object.hasOwn(landofile.networks ?? {}, key) &&
+        !isLoadBlocked(["networks", key]) &&
+        !isDeferredAncestor(["networks", key])
+      )
         networkIssue(
           ["services", name, "networks", key],
           `Service ${name} joins undeclared network ${key}.`,
           `Declare ${key} under top-level networks:, or remove the service attachment.`,
         );
     }
-    const proxy = landofile.proxy?.[ServiceName.make(name)];
+    const proxy = isLoadBlocked(["proxy", name]) ? undefined : landofile.proxy?.[ServiceName.make(name)];
     const serviceRoutes = checkRoutes(service.routes, ["services", name, "routes"]);
     const proxyRoutes = checkRoutes(proxy, ["proxy", name]);
     routes.set(
@@ -202,37 +226,34 @@ export const validateResolvedLandofile = (input: {
     for (const role of ["healthcheck", "readiness"] as const) {
       const healthcheck = service[role];
       if (healthcheck === undefined || healthcheck === false) continue;
-      const invalid = authoredProbeTargetError(healthcheck, ServiceName.make(name), role);
+      const probePath: ValidationIssuePath = ["services", name, role];
+      // A blocked probe field (for example readiness.command) drops findings at the probe and below.
+      if (isLoadBlocked(probePath)) continue;
+      const invalid =
+        blocked !== undefined && probeTargetIsBlocked(probePath, isBlocked)
+          ? undefined
+          : authoredProbeTargetError(healthcheck, ServiceName.make(name), role);
       if (invalid !== undefined)
         issues.push({
-          path: ["services", name, role],
+          path: probePath,
           rule: `${role}.execution-target`,
           message: invalid.message,
           suggestion: invalid.remediation,
         });
-      switch (healthcheck.kind) {
-        case "http":
-        case "tcp":
-          issues.push({
-            path: ["services", name, role, "kind"],
-            rule: `landofile.${role}`,
-            message: `Authored ${role} kind ${healthcheck.kind} is not supported by the healthcheck runner.`,
-            suggestion: `Use kind: command with a probe command, or ${role}: false to disable the probe.`,
-          });
-          break;
-        case "command":
-        case "none":
-        case undefined:
-          break;
-      }
-      if (role === "readiness" && healthcheck.target === "host" && typeof healthcheck.command === "string") {
+      if (
+        role === "readiness" &&
+        healthcheck.target === "host" &&
+        typeof healthcheck.command === "string" &&
+        (blocked === undefined ||
+          (!isBlocked([...probePath, "target"]) && !isBlocked([...probePath, "kind"])))
+      ) {
         issues.push(...hostReadinessShellIssues(input.provenance, name, healthcheck.command, isBlocked));
       }
     }
   }
   // Proxy entries need validation even when no service with that name was declared.
   for (const [name, entries] of Object.entries(landofile.proxy ?? {})) {
-    if (routes.has(name)) continue;
+    if (routes.has(name) || isLoadBlocked(["proxy", name])) continue;
     const normalized = checkRoutes(entries, ["proxy", name]);
     routes.set(name, normalized);
     for (const route of normalized) {

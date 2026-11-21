@@ -17,7 +17,7 @@ lando start
 
 The named init creates `mean-demo/`. Change into it before app commands. `--yes` accepts initialization without prompts; it applies to `lando init`, not `lando start`.
 
-First start installs the Express dependencies in `api`, serves the scaffold on port `3000`, and starts `database`. Open the URL `lando info` prints to see `Hello from Lando`. If host ports 80 or 443 are already taken, those URLs may use fallback ports such as `:8080` and `:8443`.
+When `api` starts, it installs the dependencies in `package.json` with npm and then runs the `start` script, `node server.js`, which serves the scaffold on port `3000`. `database` starts alongside it. That install runs each time the `api` process starts, so a dependency you add to `package.json` arrives with the next `lando restart`. If it fails, the server never starts and `lando logs --service api` shows the npm error. Open the URL `lando info` prints to see `Hello from Lando`. If host ports 80 or 443 are already taken, those URLs may use fallback ports such as `:8080` and `:8443`.
 
 ## See what the recipe writes
 
@@ -25,11 +25,11 @@ Init writes `.lando.yml`, `package.json`, and `server.js`. The Express scaffold 
 
 | Piece | What you get |
 | --- | --- |
-| `api` | `node:lts` (or `node:22` when you pass `--answer=node=22`), port `3000`, `MONGO_URL` pointed at `database` |
+| `api` | `node:lts` (or `node:22` when you pass `--answer=node=22`), port `3000`, command `[":node-install-run", "start"]`, `MONGO_URL` pointed at `database` |
 | `database` | `type: mongodb` |
 | `cache` (optional) | `type: redis` plus `REDIS_URL` when you pass `--answer=redis=true` |
 | Tooling | `lando node` against `api`. The `api` service adds `lando npm` and `lando npx` |
-| Scaffold | `package.json` with Express, `server.js` starter |
+| Scaffold | `package.json` with Express and a `start` script, `server.js` starter |
 
 Routes land on `{{ app.name }}.{{ proxy.defaultDomain }}` with both HTTP and HTTPS.
 
@@ -44,10 +44,11 @@ Routes land on `{{ app.name }}.{{ proxy.defaultDomain }}` with both HTTP and HTT
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"command\":\\s*\"npm install --no-audit --no-fund && exec node server\\.js\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"command\":\\s*\\[\\s*\":node-install-run\",\\s*\"start\"\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mongodb\"" } }} />
       <Verify command="lando help npm --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"api\"[\\s\\S]*\"program\":\\s*\"npm\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
+      <Verify file="{{appName}}/package.json" expect={{ regex: "\"start\":\\s*\"node server\\.js\"" }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -85,6 +86,8 @@ lando npm --version
 lando node --version
 lando npm install mongodb
 ```
+
+`lando npm install` adds the package right away, without waiting for a restart. The `start` script and the install both follow the package manager `package.json` declares, so a `packageManager` entry for pnpm or Yarn switches `api` to it. See [Use your project's package manager](../services/node.mdx#use-your-projects-package-manager).
 
 ## Talk to MongoDB
 

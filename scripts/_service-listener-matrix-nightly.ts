@@ -1,5 +1,6 @@
 import { CONTAINER_HELPER_JOB_ID, containerHelperDownloadStep } from "./_container-helper-workflow.ts";
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
+import { pinnedAction } from "./action-pins.ts";
 import { landoManagedPodmanTeardownCommands, linuxGuideE2eProviderSetupSteps } from "./build-ci-workflow.ts";
 import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
 import { testSelectionCommand } from "./test-selections.ts";
@@ -14,11 +15,11 @@ export const serviceListenerMatrixNightlyJob = `
       LANDO_TEST_LISTENER_MATRIX_MSSQL: "1"
       LANDO_TEST_MINIO_IMAGE: localhost/lando-listener-minio:matrix-qa
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 ${isolateLandoRootsStep}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ${pinnedAction("oven-sh/setup-bun")}
         with:
           bun-version-file: .bun-version
 
@@ -60,7 +61,7 @@ ${landoManagedPodmanTeardownCommands}
 
       - name: Upload listener matrix diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: service-listener-matrix-linux-x64
           path: |

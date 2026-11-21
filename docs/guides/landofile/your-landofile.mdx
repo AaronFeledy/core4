@@ -49,7 +49,7 @@ MySQL and Postgres already wait on their own probe. To wait on your app, set `re
 
 ## Add a hostname
 
-Most apps skip `routes:`. Default hostnames look like `app.your-landofile-demo.lndo.site`. Authored routes replace the default hostname, so list every name you want:
+Choose a [DNS name for each service key](../subsystems/service-dns.mdx), even if you don't give the service a route. Most apps skip `routes:`. Lando joins the [service part and app slug](./app-name-edge-cases.mdx) with the proxy domain, giving a hostname like `app.your-landofile-demo.lndo.site`. Authored routes replace the default hostname, so list every name you want:
 
 ```yaml
 services:
@@ -290,11 +290,22 @@ lando app:config unset services.web.port
 lando app:config edit
 ```
 
+Selectors match get, describe, and lint: bare keys such as `services.web.port` and `tooling.2fa.cmd`, indexes such as `tooling.test.cmds[0]`, and JSON-quoted brackets for keys that need them. Paste a path that lint or describe prints straight into the command. Quote the whole selector in the shell when it contains brackets:
+
+```sh
+lando app:config set 'services.web.environment["x.dotted"]' 1
+lando app:config get 'services.web.environment["x.dotted"]' --format=json
+lando app:config unset 'services.web.environment["x.dotted"]'
+```
+
+`[0]` indexes an array entry. `["0"]` names the string key `"0"`. A malformed selector fails with `LandofileWriteValidationError` before any write; its `path` field is the raw string you typed, not a parsed array.
+
 To see what a key accepts before you set it, describe it. `describe` reads the Landofile schema, not your app, so it works from any directory:
 
 ```sh
 lando app:config describe services.web.port
 lando app:config describe services.web
+lando app:config describe 'services.web.environment["x.dotted"]'
 ```
 
 The first line says what the key takes, for example `` `services.web.port` takes an integer from 1 to 65535. ``, followed by its description and any default. Describing a mapping such as `services.web` also lists its keys. When `set` rejects a value, its remediation names the same accepted type.
@@ -415,6 +426,27 @@ lando info
       <Verify errorTag="LandofileParseError" expect={{ regex: "block mapping" }} />
     </Step>
     <Step name="cleanup-flow-mapping">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="quoted-key-selector-round-trip" render>
+    <Step name="scaffold-selector-app">
+      <UseFixture name="selector-quoted-key" />
+    </Step>
+    <Step name="set-and-read-dotted-env-key">
+      <Run command={`lando app:config set 'services.web.environment["x.dotted"]' one --format=json`} />
+      <Verify command={`lando app:config get 'services.web.environment["x.dotted"]' --format=json`} expect={{ stdout: { regex: "\"value\":\\s*\"one\"" } }} />
+      <Verify command={`lando app:config describe 'services.web.environment["x.dotted"]' --format=json`} expect={{ stdout: { regex: "x\\.dotted" } }} />
+      <Verify command={`lando app:config get 'tooling.test.cmds[0]' --format=json`} expect={{ stdout: { regex: "echo first" } }} />
+      <Verify command={`lando app:config get 'services.web.environment["0"]' --format=json`} expect={{ stdout: { regex: "\"value\":\\s*\"zero-key\"" } }} />
+      <Verify command="lando app:config get tooling.2fa.cmd --format=json" expect={{ stdout: { regex: "two-factor|echo two-factor" } }} />
+    </Step>
+    <Step name="reject-malformed-selector">
+      <Run command="lando app:config set 'services.web.ports[x]' 1 --format=json" expectExit={1} />
+      <Verify errorTag="LandofileWriteValidationError" expect={{ regex: "not a valid config path" }} />
+      <Verify command="lando app:config set 'services.web.ports[x]' 1 --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\"services\\.web\\.ports\\[x\\]\"" } }} />
+    </Step>
+    <Step name="cleanup-selector-app">
       <Cleanup />
     </Step>
   </Scenario>

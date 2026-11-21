@@ -162,7 +162,7 @@ export const resolveTree: (
         Effect.catch((error) => {
           if (ctx.recorder === undefined || !Schema.is(LandofileLoadFailure)(error))
             return Effect.fail(error);
-          ctx.recorder.record(error);
+          ctx.recorder.record(error, { kind: "missing-content" });
           ctx.walk.complete = false;
           return Effect.void;
         }),

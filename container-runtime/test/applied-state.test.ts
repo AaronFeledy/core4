@@ -113,6 +113,21 @@ const v1PlanBase = {
 };
 
 describe("applied plan state layouts", () => {
+  test("reads v8 application listener authority without inventing keep-alive intent", () => {
+    const encoded = Schema.encodeSync(AppPlan)(legacyPlan());
+    const service = Object.values(encoded.services)[0];
+    if (service === undefined) throw new Error("The historical plan fixture must contain a service.");
+    const listenerAuthority = {
+      owner: "application",
+      daemon: "Node.js",
+      port: 3000,
+      variables: ["PORT"],
+    } as const;
+    const raw = { ...encoded, services: { [service.name]: { ...service, listenerAuthority } } };
+    expect(migrateAppliedPlan(raw, 8)?.services[ServiceName.make(service.name)]?.listenerAuthority).toEqual(
+      listenerAuthority,
+    );
+  });
   for (const layout of ["per-app", "record"] as const) {
     test.each([true, false, undefined, "off"])(
       `${layout} migrates v2 init %s without changing ownership`,

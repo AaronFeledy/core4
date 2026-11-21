@@ -1,0 +1,14 @@
+{
+  "provenance": {
+    "commit": "3227a52021aa5de3bfe9582a9062e792c98960d8",
+    "sources": {
+      "sdk/src/schema/hostname.ts": "624c8589049e79a6427e43301bd5899324cc6d8e",
+      "sdk/src/schema/landofile.ts": "d892fe2fe5a9c2d10208cd145fdb56c23755b6b7",
+      "sdk/src/schema/landofile-authoring-wire.ts": "42e34cea50e13c89303d7b7ecffc7ef72de9f72d",
+      "sdk/src/schema/property-name-check.ts": "ef5e99f58c0bdd0a6885f5b2419fd2f640a2aea4"
+    }
+  },
+  "propertyNames": {
+    "pattern": "^(?=.{1,253}$)[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?(?:\\.[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*(?![\\s\\S])"
+  }
+}

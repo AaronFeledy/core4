@@ -157,7 +157,7 @@ export type ScanPlan = typeof ScanPlan.Type;
 // ============================================================================
 // HTTP app check results
 // ============================================================================
-const ScanVerdictSchema = Schema.Literals(["ready", "app-error", "service-error", "lando-error"]);
+const ScanVerdictSchema = Schema.Literals(["ready", "expected", "app-error", "service-error", "lando-error"]);
 export type ScanVerdict = typeof ScanVerdictSchema.Type;
 
 export const CheckResult = Schema.Struct({
@@ -165,7 +165,9 @@ export const CheckResult = Schema.Struct({
   kind: Schema.Literal("http").annotate({ description: "Observation kind." }),
   service: ServiceName.annotate({ description: "Service that owns the checked endpoint." }),
   url: Schema.String.annotate({ description: "Checked host-facing URL." }),
-  verdict: ScanVerdictSchema.annotate({ description: "Readiness and ownership of the observation." }),
+  verdict: ScanVerdictSchema.annotate({
+    description: "Readiness and ownership of the observation; expected is neutral and has a user next step.",
+  }),
   statusCode: Schema.optionalKey(Schema.Int).annotate({ description: "Observed HTTP response status." }),
   message: Schema.optionalKey(Schema.String).annotate({ description: "Redacted result summary." }),
   detail: Schema.optionalKey(Schema.String).annotate({ description: "Redacted diagnostic detail." }),

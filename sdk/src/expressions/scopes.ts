@@ -164,13 +164,36 @@ export const expressionScopeMembers = (
   ast: ExpressionTemplate | ExpressionNode,
   scope: string,
 ): { readonly members: ReadonlySet<string>; readonly analyzable: boolean } => {
-  const members = new Set<string>();
+  const { paths, analyzable } = expressionScopeMemberPaths(ast, scope);
+  return { members: new Set(paths.map(([name]) => name)), analyzable };
+};
+
+const staticSegment = (segment: PathSegment | undefined): string | undefined => {
+  if (segment?.type === "prop") return segment.name;
+  if (segment?.type === "key") return segment.key;
+  if (
+    segment?.type === "dynamic" &&
+    segment.expr.kind === "Literal" &&
+    typeof segment.expr.value === "string"
+  )
+    return segment.expr.value;
+  return undefined;
+};
+
+export const expressionScopeRoots = (ast: ExpressionTemplate | ExpressionNode): ReadonlySet<string> =>
+  analyzeExpressionDependencies(ast, "inert").scopes;
+
+/** Reads of a scope's first two members; an unknown second member is not a URL-only read. */
+export const expressionScopeMemberPaths = (
+  ast: ExpressionTemplate | ExpressionNode,
+  scope: string,
+): { readonly paths: readonly (readonly [string, string | undefined])[]; readonly analyzable: boolean } => {
+  const paths: (readonly [string, string | undefined])[] = [];
   let analyzable = true;
   const visitPath = (head: string, segments: ReadonlyArray<PathSegment>): void => {
     if (head !== scope) return;
-    const first = segments[0];
-    if (first?.type === "prop") members.add(first.name);
-    else if (first?.type === "key") members.add(first.key);
+    const first = staticSegment(segments[0]);
+    if (first !== undefined) paths.push([first, staticSegment(segments[1])]);
     else analyzable = false;
   };
   const visit = (node: ExpressionNode): void => {
@@ -182,8 +205,9 @@ export const expressionScopeMembers = (
         for (const segment of node.segments) if (segment.type === "dynamic") visit(segment.expr);
         return;
       case "Access":
-        if (node.target.kind === "Path" && node.target.head === scope && node.target.segments.length === 0) {
-          visitPath(scope, node.segments);
+        if (node.target.kind === "Path" && node.target.head === scope) {
+          visitPath(scope, [...node.target.segments, ...node.segments]);
+          for (const segment of node.target.segments) if (segment.type === "dynamic") visit(segment.expr);
         } else {
           visit(node.target);
         }
@@ -212,5 +236,5 @@ export const expressionScopeMembers = (
   } else {
     visit(ast);
   }
-  return { members, analyzable };
+  return { paths, analyzable };
 };

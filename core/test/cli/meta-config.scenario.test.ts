@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { ConfigResultSchema, config } from "@lando/engine/operations/config";
@@ -9,9 +9,48 @@ import { Effect, Layer, Schema } from "effect";
 
 import { metaConfigSpec } from "../../src/cli/command-specs/meta/config.ts";
 import { renderConfigResult } from "../../src/cli/commands/config.ts";
+import { GlobalConfigResultSchema } from "../../src/cli/commands/meta/global-config-result.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 
 const cliEntry = resolve(import.meta.dirname, "../../bin/lando.ts");
+
+test.each([
+  {},
+  { subcommand: "get" },
+  { subcommand: "get", key: "runtime", changed: true },
+  { subcommand: "get", key: "runtime", filePath: "/global/.lando.yml" },
+])("global config result rejects malformed reads: %j", (input) => {
+  expect(Schema.decodeUnknownResult(GlobalConfigResultSchema)(input)._tag).toBe("Failure");
+});
+
+test.each(["json", "table"])(
+  "global get redacts a value from a shadowed secret assignment in %s",
+  async (format) => {
+    await withTempEnv({}, async (dir) => {
+      const root = join(dir, "data", "global");
+      const canary = "opaque-global-canary-626";
+      await mkdir(root, { recursive: true });
+      await writeFile(
+        join(root, ".lando.dist.yml"),
+        `services:\n  web:\n    image: nginx\n    environment:\n      - API_TOKEN=${canary}\n`,
+      );
+      await writeFile(
+        join(root, ".lando.yml"),
+        `services:\n  web:\n    environment:\n      LABEL: ${canary}\n`,
+      );
+      const key = "services.web.environment.LABEL";
+      const result = await runCli(["global:config", "get", key, `--format=${format}`], dir);
+
+      expect(result.exitCode).toBe(0);
+      if (format === "json") {
+        expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, result: { subcommand: "get", key } });
+        expect(JSON.parse(result.stdout).result).toEqual({ subcommand: "get", key, value: "[redacted]" });
+      } else {
+        expect(result.stdout.trim()).toBe("[redacted]");
+      }
+    });
+  },
+);
 
 const runCli = async (
   args: ReadonlyArray<string>,
@@ -221,7 +260,7 @@ describe("meta:config command", () => {
 
   test.each([
     ["meta:config", "meta:config", "view, get, set, unset, edit, validate, describe, telemetry, translate"],
-    ["global:config", "meta:global:config", "view, set, unset, edit, validate, describe"],
+    ["global:config", "meta:global:config", "view, get, set, unset, edit, validate, describe"],
   ])(
     "CLI %s rejects a mistyped subcommand with exit 2",
     async (command, target, choices) => {

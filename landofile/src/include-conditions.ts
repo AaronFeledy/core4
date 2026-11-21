@@ -25,6 +25,7 @@ import type { LandofileLoadPolicy, LandofileLoadSource } from "./load-expression
 import { createLoadFailureRecorder, finishLoadStage, loadPathBlocked } from "./load-failures.ts";
 import { type LandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
 import { type AuthoredDocument, type AuthoredOrigin, normalizeReferencedFiles } from "./provenance.ts";
+import { routeUrlSiteError } from "./route-url-expression.ts";
 import { unsupportedSecretReferenceError } from "./unsupported-secret-reference.ts";
 
 export interface IncludeMaterializationContext {
@@ -122,8 +123,13 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
             expression: target.value.when,
             remediation: "Use a whole-value boolean expression over recipe and env.",
           }),
-          source,
+          { kind: "missing-content", source },
         );
+        continue;
+      }
+      const routeError = routeUrlSiteError(parsed.success, source);
+      if (routeError !== undefined) {
+        recorder.record(routeError, { kind: "missing-content", source });
         continue;
       }
       if (scope.environmentRecorder !== undefined)
@@ -132,10 +138,10 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
         segment.kind === "SecretRefSegment" ? [segment.name] : [],
       );
       if (references.length > 0) {
-        recorder.record(
-          unsupportedSecretReferenceError({ source, references, value: target.value.when }),
+        recorder.record(unsupportedSecretReferenceError({ source, references, value: target.value.when }), {
+          kind: "missing-content",
           source,
-        );
+        });
         continue;
       }
       scope.pendingSites.push({
@@ -191,7 +197,7 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
           expression: String(entry.when),
           remediation: "Use a boolean or a whole-value boolean expression over recipe and env.",
         }),
-        source,
+        { kind: "missing-content", source },
       );
       continue;
     }
