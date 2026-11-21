@@ -442,7 +442,7 @@ expect(violations).toContainEqual(expect.objectContaining({
       <Cleanup />
     </Step>
   </Scenario>
-  <Scenario id="service-port-launcher-and-peer-environment" render={false} reason="Check standalone argv, probe interpolation, and a numeric peer environment value without containers.">
+  <Scenario id="service-port-launcher-and-peer-environment" render={false} reason="Check lint and cache refresh without containers; the planner test reads this same fixture and asserts the exact argv, probe command, and peer environment value.">
     <Step name="scaffold-service-port">
       <UseFixture name="expressions-service-port" />
     </Step>

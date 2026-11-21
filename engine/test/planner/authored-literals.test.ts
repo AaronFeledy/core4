@@ -267,21 +267,16 @@ test("recomputes committed digests on the cache-hit path", () =>
     }
   }));
 
-test("caches concrete self-port launchers and probes and misses after a port edit", () =>
+test("plans and caches the expressions guide's argv, probe and peer environment values", () =>
   withRoot(async (root) => {
+    const fixture = await Bun.file(
+      new URL(
+        "../../../docs/guides/expressions/fixtures/expressions-service-port/.lando.yml",
+        import.meta.url,
+      ),
+    ).text();
     const write = (port: number) =>
-      writeFile(
-        join(root, ".lando.yml"),
-        `name: port-cache
-services:
-  cache:
-    type: redis
-    port: ${port}
-    command: [redis-server, --port, "{{ service.port }}"]
-    healthcheck:
-      test: [CMD, redis-cli, -p, "{{ service.port }}", ping]
-`,
-      );
+      writeFile(join(root, ".lando.yml"), fixture.replace("port: 6380", `port: ${port}`));
     const read = PlanCache.readCachedAppPlan;
     const hits: boolean[] = [];
     const lookup = spyOn(PlanCache, "readCachedAppPlan").mockImplementation((input) =>
@@ -308,8 +303,9 @@ services:
       ] as const) {
         expect(plan.services[name]).toMatchObject({
           command: ["redis-server", "--port", port],
-          healthcheck: { command: ["redis-cli", "-p", port, "ping"] },
+          healthcheck: { command: `redis-cli -p ${port} ping` },
         });
+        expect(plan.services[ServiceName.make("web")]?.environment.DB_PORT).toBe("5432");
       }
     } finally {
       lookup.mockRestore();

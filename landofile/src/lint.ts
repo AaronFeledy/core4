@@ -273,6 +273,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
         : [],
     ),
   );
+  for (const { source } of deferredRefusals) rejectedExpressionSources.add(canonicalJson(source));
   const unique = mergeLintFindings(
     violations.filter(
       ({ rule, source }) =>

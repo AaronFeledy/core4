@@ -18,6 +18,19 @@ const diagnostics = (schema: Schema.ConstraintDecoder<unknown, never>, value: un
 };
 
 test.each([
+  ["shape", LandofileAuthoringShape],
+  ["fragment", LandofileAuthoringFragment],
+  ["native fragment", LandofileAuthoringFragmentNative],
+] as const)("enforces self-port admission in the %s decoder", (_name, schema) => {
+  const input = { services: { cache: { environment: { PORT: "{{ service.port }}" } } } };
+  expect(diagnostics(schema, input).map(({ path }) => path)).toEqual([
+    ["services", "cache", "environment", "PORT"],
+  ]);
+  const valid = { services: { cache: { command: ["redis-server", "--port", "{{ service.port }}"] } } };
+  expect(Schema.decodeUnknownResult(schema)(valid, options)._tag).toBe("Success");
+});
+
+test.each([
   ["missing assignment", ["FOO"]],
   ["unsafe key", ["__proto__=x"]],
   ["null value", { FOO: null }],
