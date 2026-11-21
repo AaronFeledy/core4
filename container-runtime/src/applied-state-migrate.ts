@@ -14,8 +14,8 @@ import { migrateAppliedInit } from "./applied-init-migrate.ts";
 import { migrateAppliedNames } from "./applied-names-migrate.ts";
 import { visitAppliedNetworkVocabulary } from "./applied-network-vocabulary.ts";
 
-/** Durable applied-plan frame version with canonical endpoint and route-filter kinds. */
-export const APPLIED_STATE_VERSION = 8;
+/** Durable applied-plan frame version: kind discriminators plus optional keepAlive intent. */
+export const APPLIED_STATE_VERSION = 9;
 
 const APP_MOUNT_KEY = "app-mount";
 
@@ -254,7 +254,7 @@ const migrateV1PlanRaw = (raw: unknown): unknown | null => {
 };
 
 const isMigratableVersion = (version: number): boolean =>
-  Number.isInteger(version) && version >= 1 && version <= 7;
+  Number.isInteger(version) && version >= 1 && version < APPLIED_STATE_VERSION;
 const isAppId = Schema.is(Schema.toEncoded(AppId));
 const decodePlan = Schema.decodeUnknownOption(AppPlan);
 
@@ -274,7 +274,7 @@ export const migrateAppliedPlanWithCoordinate = (
   const initialized =
     fromVersion >= 3 ? raw : migrateAppliedInit(fromVersion === 1 ? migrateV1PlanRaw(raw) : raw);
   const transformed = fromVersion >= 4 ? initialized : migrateAppliedNames(initialized);
-  const migrated = visitAppliedNetworkVocabulary(transformed, true);
+  const migrated = visitAppliedNetworkVocabulary(transformed, fromVersion < 8);
   if (typeof migrated === "string") return migrated;
   return Option.getOrElse(decodePlan(migrated), () => "plan");
 };

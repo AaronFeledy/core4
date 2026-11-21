@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { AppId as AppIdSchema, ServiceName } from "@lando/sdk/schema";
+import { AppId as AppIdSchema, PortNumber, ServiceName } from "@lando/sdk/schema";
 import { runScannerContract } from "@lando/sdk/test";
 import { Effect, Exit, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
 import { makeUrlScanner } from "../../../src/subsystems/scanner/live.ts";
 import * as scanModule from "../../../src/subsystems/scanner/scan-target.ts";
+import { web as servicePlan } from "../../operations/start-progress-topology-support.ts";
 import {
   appId,
   drive,
@@ -166,30 +167,100 @@ describe("makeUrlScanner probe behavior", () => {
     });
   });
 
-  test("okCodes extends the accepted statuses beyond 2xx", async () => {
-    const redirectHttp = requestSequence([httpStatus(301)]);
-    const redirectSource = endpointsOf([publishedEndpoint(web, "http", 8080)]);
-    const yellowRedirect = await drive(
-      makeUrlScanner(
-        { http: redirectHttp.http, listEndpoints: redirectSource.listEndpoints },
-        { retry: 1 },
-      ).scan(appId),
-    );
-    expect(yellowRedirect.endpoints[0]?.outcome).toBe("yellow");
-    expect(yellowRedirect.endpoints[0]?.statusCode).toBe(301);
+  test.each([
+    ["/admin/", [], "ready"],
+    ["https://localhost:8443/admin/", [], "ready"],
+    ["https://localhost/admin/", [], "app-error"],
+    ["http://localhost:8443/admin/", [], "app-error"],
+    ["//production.example/admin/", [], "app-error"],
+    ["https://[", [], "app-error"],
+    [undefined, [], "app-error"],
+    ["https://production.example/admin/", [302], "ready"],
+  ] as const)(
+    "classifies Location %s with okCodes %j as %s without following",
+    async (location, okCodes, verdict) => {
+      const http = requestSequence([httpStatus(302, location === undefined ? {} : { location })]);
+      const scanner = makeUrlScanner(
+        { http: http.http, listEndpoints: () => Effect.succeed([]) },
+        { okCodes },
+      );
+      const url = "https://localhost:8443/";
+      const result = await drive(scanner.scan(appId, { urls: [{ service: web, url }] }));
+      expect(result.endpoints[0]).toMatchObject({ statusCode: 302, verdict });
+      expect(http.requests).toEqual([{ url, method: "GET", redirect: "manual", callerId: "url-scanner" }]);
+    },
+  );
 
-    const okHttp = requestSequence([httpStatus(301)]);
-    const okSource = endpointsOf([publishedEndpoint(web, "http", 8080)]);
-    const green = await drive(
-      makeUrlScanner(
-        { http: okHttp.http, listEndpoints: okSource.listEndpoints },
-        { retry: 1, okCodes: [301] },
-      ).scan(appId),
-    );
-    expect(green.endpoints[0]?.outcome).toBe("green");
-    expect(green.endpoints[0]?.statusCode).toBe(301);
-    expect(green.endpoints[0]?.detail).toBeUndefined();
-  });
+  test.each(["/admin/", "//user:credential@production.example/admin/"])(
+    "redacts Location %s in attempts and results",
+    async (target) => {
+      const http = requestSequence([httpStatus(302, { location: `${target}?token=query-secret` })]);
+      const scanner = makeUrlScanner({ http: http.http, listEndpoints: () => Effect.succeed([]) });
+      const attempts: string[] = [];
+      const result = await drive(
+        scanner.scan(appId, {
+          urls: [{ service: web, url: "https://localhost:8443/" }],
+          onAttempt: (attempt) =>
+            Effect.sync(() => {
+              attempts.push(attempt.detail ?? "");
+            }),
+        }),
+      );
+      expect(attempts).toEqual([expect.stringContaining("/admin/")]);
+      expect(result.endpoints[0]?.detail).toBe(attempts[0]);
+      expect(JSON.stringify([result, attempts])).not.toMatch(/credential|query-secret/u);
+    },
+  );
+
+  test.each([
+    [true, 502, undefined, 8080, [], "expected", 1],
+    [true, 504, "upstream-unreachable", 8080, [], "expected", 1],
+    [true, 502, undefined, 8080, [502], "ready", 1],
+    [true, 404, "no-route", 8080, [], "lando-error", 3],
+    [true, 404, "no-route", 8080, [404], "lando-error", 3],
+    [true, 504, "upstream-unreachable", 8080, [504], "expected", 1],
+    [false, 502, undefined, 8080, [], "service-error", 3],
+    [true, 502, undefined, 9000, [], "service-error", 3],
+    [false, 504, "upstream-unreachable", 8080, [], "lando-error", 3],
+  ] as const)(
+    "classifies keepAlive %s, HTTP %s, marker %s, listener %s, okCodes %j as %s",
+    async (keepAlive, status, routerMarker, port, okCodes, verdict, count) => {
+      const http = requestSequence([
+        httpStatus(status, routerMarker === undefined ? {} : { "x-lando-router": routerMarker }),
+      ]);
+      const service = {
+        ...servicePlan,
+        listenerAuthority: {
+          owner: "application",
+          port: PortNumber.make(8080),
+          daemon: "Node.js",
+          variables: ["PORT"],
+          ...(keepAlive ? { keepAlive } : {}),
+        },
+      } as const;
+      const scanner = makeUrlScanner(
+        {
+          http: http.http,
+          listEndpoints: () =>
+            Effect.succeed([{ ...publishedEndpoint(web, "http", port), servicePlan: service }]),
+        },
+        { okCodes },
+      );
+      const retries: boolean[] = [];
+      const run = await runExitUnderClock(
+        scanner.scan(appId, {
+          onAttempt: (attempt) =>
+            Effect.sync(() => {
+              retries.push(attempt.willRetry ?? false);
+            }),
+        }),
+        "10 seconds",
+      );
+      expect(successOf(run.exit).endpoints[0]?.verdict).toBe(verdict);
+      expect(http.requests).toHaveLength(count);
+      expect(retries).toEqual(count === 1 ? [false] : [true, true, false]);
+    },
+  );
 
   test("redacts transport failures before they leave the scanner", async () => {
     const http = requestSequence([httpFailure(`proxy saw ${secret}`)]);

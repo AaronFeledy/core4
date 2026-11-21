@@ -5,9 +5,10 @@ import { type ProbeOutcome, ProbeTimeoutError, runProbe } from "@lando/sdk/probe
 import type { AppId, AppPlan, ScanPlan, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ScanAttempt, ScanEndpoint, ScanVerdict } from "@lando/sdk/services";
-import { Clock, Duration, Effect, Ref } from "effect";
+import { Clock, Duration, Effect, Predicate, Ref } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import type * as HttpClientError from "effect/http/HttpClientError";
+import { type AttemptStatus, type ScanClassification, classify } from "./classify.ts";
 import type { ScanSourceEndpoint } from "./connection-targets.ts";
 
 export { type ScanSourceEndpoint, publishedHostPort, scanTargets } from "./connection-targets.ts";
@@ -60,18 +61,13 @@ export interface UrlScannerDeps {
   readonly onAttempt?: (attempt: ScanAttempt) => Effect.Effect<void>;
 }
 
-type AttemptStatus =
-  | { readonly _tag: "response"; readonly status: number; readonly routerMarker?: string }
-  | { readonly _tag: "transport"; readonly message: string }
-  | { readonly _tag: "timeout" };
-
 export interface ScanTarget {
   readonly service: ServiceName;
   readonly url: string;
+  readonly idlePort?: number;
 }
 
-const isAccepted = (status: number, okCodes: ReadonlyArray<number>): boolean =>
-  (status >= 200 && status < 300) || okCodes.includes(status);
+const retries = (verdict: ScanVerdict): boolean => verdict === "lando-error" || verdict === "service-error";
 
 /** Bun appends a developer hint to fetch transport errors; it means nothing to a Lando user. */
 const BUN_FETCH_HINT =
@@ -95,7 +91,7 @@ const makeAttempt = Effect.fnUntraced(function* (
     readonly status: Ref.Ref<AttemptStatus>;
     readonly attempts: Ref.Ref<number>;
     readonly redactor: Redactor;
-    readonly verdict: Ref.Ref<ScanVerdict>;
+    readonly classification: Ref.Ref<ScanClassification>;
     readonly startedAt: number;
   },
 ): Effect.fn.Return<ProbeOutcome> {
@@ -112,10 +108,13 @@ const makeAttempt = Effect.fnUntraced(function* (
             }),
             Effect.map((response): AttemptStatus => {
               const routerMarker = response.headers["x-lando-router"];
+              const location =
+                response.status >= 300 && response.status < 400 ? response.headers.location : undefined;
               return {
                 _tag: "response",
                 status: response.status,
                 ...(routerMarker === undefined ? {} : { routerMarker }),
+                ...(location === undefined ? {} : { location }),
               };
             }),
           ),
@@ -130,13 +129,19 @@ const makeAttempt = Effect.fnUntraced(function* (
     yield* Ref.set(status, { _tag: "timeout" });
   } else if (completed._tag === "Failure") {
     const message = transportMessage(completed.failure);
-    yield* Ref.set(status, { _tag: "transport", message });
+    const { reason } = completed.failure;
+    const refused =
+      reason._tag === "TransportError" &&
+      Predicate.hasProperty(reason.cause, "code") &&
+      reason.cause.code === "ECONNREFUSED";
+    yield* Ref.set(status, { _tag: "transport", message, refused });
   } else {
     yield* Ref.set(status, completed.success);
   }
   const finalStatus = yield* Ref.get(status);
-  const verdict = classify(finalStatus, config.okCodes);
-  yield* Ref.set(state.verdict, verdict);
+  const classification = classify(finalStatus, config.okCodes, { ...target, redactor: state.redactor });
+  const { verdict, detail } = classification;
+  yield* Ref.set(state.classification, classification);
   const outcome = finalStatus._tag === "response" ? (verdict === "ready" ? "green" : "yellow") : "red";
   const attempt = yield* Ref.updateAndGet(state.attempts, (count) => count + 1);
   const observedAt = yield* Clock.currentTimeMillis;
@@ -145,38 +150,25 @@ const makeAttempt = Effect.fnUntraced(function* (
     const maxAttempts = Math.max(1, config.retry);
     yield* Effect.suspend(() =>
       onAttempt({
-        ...target,
+        service: target.service,
+        url: target.url,
         attempt,
         maxAttempts,
         outcome,
         verdict,
         willRetry:
-          (verdict === "lando-error" || verdict === "service-error") &&
+          retries(verdict) &&
           attempt < maxAttempts &&
           (config.deadlineMs === undefined ||
             observedAt + config.delaySeconds * 1000 < state.startedAt + config.deadlineMs),
         ...(finalStatus._tag === "response" ? { statusCode: finalStatus.status } : {}),
-        detail: state.redactor.redactString(redDetail(finalStatus, timeoutMs)),
+        detail: detail ?? state.redactor.redactString(redDetail(finalStatus, timeoutMs)),
       }),
     ).pipe(Effect.catchCause(() => Effect.void));
   }
-  // runProbe stops only on green. Final app answers stop it without losing their real verdict.
-  return verdict === "ready" || verdict === "app-error" ? "green" : outcome;
+  // runProbe stops only on green. Keep the classified verdict and observed outcome separate.
+  return retries(verdict) ? outcome : "green";
 });
-
-const classify = (status: AttemptStatus, okCodes: ReadonlyArray<number>): ScanVerdict => {
-  switch (status._tag) {
-    case "transport":
-    case "timeout":
-      return "lando-error";
-    case "response":
-      if (status.routerMarker !== undefined) return "lando-error";
-      if (isAccepted(status.status, okCodes)) return "ready";
-      // 502 and 504 are gateway statuses a web server sends when it cannot reach the app
-      // runtime; a 503 is usually the app itself (maintenance mode), so it stays app-owned.
-      return status.status === 502 || status.status === 504 ? "service-error" : "app-error";
-  }
-};
 
 const probeRunError = (url: string, cause: unknown, redactor: Redactor): ScannerError =>
   new ScannerError({
@@ -211,7 +203,7 @@ export const scanTarget = Effect.fnUntraced(function* (
     message: "URL probe did not run",
   });
   const attempts = yield* Ref.make(0);
-  const verdictRef = yield* Ref.make<ScanVerdict>("lando-error");
+  const classification = yield* Ref.make<ScanClassification>({ verdict: "lando-error" });
   const startedAt = yield* Clock.currentTimeMillis;
 
   const result = yield* runProbe(
@@ -228,7 +220,7 @@ export const scanTarget = Effect.fnUntraced(function* (
         failure: () => "red",
       },
     },
-    makeAttempt(deps, config, { target, status, attempts, redactor, verdict: verdictRef, startedAt }),
+    makeAttempt(deps, config, { target, status, attempts, redactor, classification, startedAt }),
   ).pipe(mapFailures((cause) => probeRunError(target.url, cause, redactor)));
   const finalStatus = yield* Ref.get(status);
   const statusCode = finalStatus._tag === "response" ? finalStatus.status : undefined;
@@ -236,7 +228,12 @@ export const scanTarget = Effect.fnUntraced(function* (
   const deadline =
     result.lastError instanceof ProbeTimeoutError ||
     (result.outcome !== "green" && config.deadlineMs !== undefined && result.elapsedMs >= config.deadlineMs);
-  const verdict = deadline ? "lando-error" : yield* Ref.get(verdictRef);
+  const observed = yield* Ref.get(classification);
+  const verdict = deadline ? "lando-error" : observed.verdict;
+  const detail = deadline
+    ? `deadline exceeded after ${result.elapsedMs}ms`
+    : (observed.detail ??
+      (verdict === "ready" ? undefined : redactor.redactString(redDetail(finalStatus, result.elapsedMs))));
   const response = !deadline && finalStatus._tag === "response";
   return {
     service: target.service,
@@ -248,14 +245,6 @@ export const scanTarget = Effect.fnUntraced(function* (
       ? { routerMarker: redactor.redactString(finalStatus.routerMarker) }
       : {}),
     outcome: response ? (verdict === "ready" ? "green" : "yellow") : "red",
-    ...(verdict === "ready"
-      ? {}
-      : {
-          detail: redactor.redactString(
-            deadline || (config.deadlineMs !== undefined && result.elapsedMs >= config.deadlineMs)
-              ? `deadline exceeded after ${result.elapsedMs}ms`
-              : redDetail(finalStatus, result.elapsedMs),
-          ),
-        }),
+    ...(detail === undefined ? {} : { detail }),
   };
 });
