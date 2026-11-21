@@ -1,7 +1,7 @@
 import { JsonSchema, Predicate } from "effect";
 
 import { GlobalConfig } from "./config.ts";
-import { jsonSchemaDocument, withSchemaDeprecations } from "./json-schema-deprecations.ts";
+import { getJsonSchemaWithDeprecations } from "./json-schema-deprecations.ts";
 import { repairLandofileExtensions } from "./json-schema-extensions.ts";
 import { LandofileAuthoringShape } from "./landofile-authoring.ts";
 import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
@@ -33,13 +33,15 @@ const LANDOFILE_YAML_TAGS = {
 export const getEditorJsonSchema = (name: "LandofileShape" | "GlobalConfig"): JsonSchema.JsonSchema => {
   const schema = { LandofileShape: LandofileAuthoringShape, GlobalConfig }[name];
   const document = JsonSchema.toDocumentDraft07(
-    jsonSchemaDocument(schema, { onExcessProperty: "error", generateDescriptions: true }),
+    JsonSchema.fromSchemaDraft2020_12(
+      getJsonSchemaWithDeprecations(schema, { onExcessProperty: "error", generateDescriptions: true }),
+    ),
   );
-  const artifact = withSchemaDeprecations(schema, {
+  const artifact = {
     $schema: JsonSchema.META_SCHEMA_URI_DRAFT_07,
     ...document.schema,
     ...(Object.keys(document.definitions).length === 0 ? {} : { definitions: document.definitions }),
-  });
+  };
   if (name !== "LandofileShape") return artifact;
   repairLandofileExtensions(artifact);
   const definitions = artifact.definitions;
