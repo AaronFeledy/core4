@@ -7070,11 +7070,7 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.events.additionalProperties",
-    "justification": "Compiled event steps inherit the corrected environment input grammar. Version 11 removes transient event intent from historical applied records before decoding (#2199).",
-    "persistedState": {
-      "store": "applied-state",
-      "version": 11
-    }
+    "justification": "Desired plans carry compiled event environments as descriptor maps. Provider applied payloads do not include events."
   },
   {
     "surface": "schema:AppPlan",
@@ -7154,21 +7150,13 @@
     "surface": "schema:EventStepPlan",
     "changeKind": "unsupported-construct",
     "path": "$.step.anyOf",
-    "justification": "Compiled event steps inherit the corrected environment input grammar. Version 11 removes transient event intent from historical applied records before decoding (#2199).",
-    "persistedState": {
-      "store": "applied-state",
-      "version": 11
-    }
+    "justification": "Compiled actions retain the invocation variants but use canonical environment descriptors instead of authored Compose syntax."
   },
   {
     "surface": "schema:EventsPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.additionalProperties",
-    "justification": "Compiled event steps inherit the corrected environment input grammar. Version 11 removes transient event intent from historical applied records before decoding (#2199).",
-    "persistedState": {
-      "store": "applied-state",
-      "version": 11
-    }
+    "justification": "Event entries carry compiled steps in desired plans only; they are not stored in provider applied state."
   },
   {
     "surface": "schema:IdentityScopedLandofile",

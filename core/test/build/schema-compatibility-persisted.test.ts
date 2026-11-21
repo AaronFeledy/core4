@@ -29,7 +29,7 @@ const exception = {
   justification: "Applied-state v4 migrates historical names.",
 } as const;
 
-test("covers every published ref in the real AppPlan and tunnel schema documents", async () => {
+test("covers every published ref in the real AppliedAppPlan and tunnel schema documents", async () => {
   const artifacts = await loadWorkingSchemaArtifacts(resolve(import.meta.dir, "../../.."));
   const schemas = new Map(
     [...artifacts]
@@ -38,7 +38,7 @@ test("covers every published ref in the real AppPlan and tunnel schema documents
   );
   const stores = buildPersistedSurfaceStores(schemas, new Set(schemas.keys()));
   for (const [root, store] of [
-    ["AppPlan", "applied-state"],
+    ["AppliedAppPlan", "applied-state"],
     ["TunnelSession", "tunnel-registry"],
   ] as const) {
     const schema = schemas.get(root);
@@ -68,8 +68,8 @@ test("covers every published ref in the real AppPlan and tunnel schema documents
 
 test("keeps removed baseline ref targets classified as persisted", () => {
   const stores = buildPersistedSurfaceStores(
-    new Map([["AppPlan", {}]]),
-    new Set(["AppPlan", "HistoricalOnly"]),
+    new Map([["AppliedAppPlan", {}]]),
+    new Set(["AppliedAppPlan", "HistoricalOnly"]),
     new Map([["AppPlan", { $ref: "#/$defs/HistoricalOnly", $defs: { HistoricalOnly: { type: "string" } } }]]),
   );
   expect(stores.get("schema:HistoricalOnly")).toEqual(new Set(["applied-state"]));
@@ -77,8 +77,8 @@ test("keeps removed baseline ref targets classified as persisted", () => {
 
 test("discovers published definitions with numeric suffixes and excludes unrelated surfaces", () => {
   const stores = buildPersistedSurfaceStores(
-    new Map([["AppPlan", { $ref: "#/$defs/Custom_1", $defs: { Custom_1: { type: "string" } } }]]),
-    new Set(["AppPlan", "Custom", "Unrelated"]),
+    new Map([["AppliedAppPlan", { $ref: "#/$defs/Custom_1", $defs: { Custom_1: { type: "string" } } }]]),
+    new Set(["AppliedAppPlan", "Custom", "Unrelated"]),
   );
   expect(stores.get("schema:Custom")).toEqual(new Set(["applied-state"]));
   expect(stores.has("schema:Unrelated")).toBe(false);
@@ -92,14 +92,64 @@ test("discovers inline published schemas without requiring a reference or an inv
   };
   const stores = buildPersistedSurfaceStores(
     new Map<string, JsonSchema>([
-      ["AppPlan", { type: "object", properties: { nested: inline } }],
+      ["AppliedAppPlan", { type: "object", properties: { nested: inline } }],
       ["NewInlineContract", inline],
       ["UnrelatedStringBrand", { type: "string" }],
     ]),
-    new Set(["AppPlan", "NewInlineContract", "UnrelatedStringBrand"]),
+    new Set(["AppliedAppPlan", "NewInlineContract", "UnrelatedStringBrand"]),
   );
   expect(stores.get("schema:NewInlineContract")).toEqual(new Set(["applied-state"]));
   expect(stores.has("schema:UnrelatedStringBrand")).toBe(false);
+});
+
+test.each([
+  { name: "event-only change needs no new applied-state migration", id: "EventStepPlan", accepted: true },
+  {
+    name: "narrowing a field still stored in applied state requires a migration",
+    id: "RealizedField",
+    accepted: false,
+  },
+])("$name", ({ id, accepted }) => {
+  const oldField = { type: "string" };
+  const narrowField = { type: "string", const: "kept" };
+  const realized = { $ref: "#/$defs/RealizedField" };
+  const before = new Map<string, JsonSchema>([
+    [
+      "AppPlan",
+      {
+        properties: { events: { $ref: "#/$defs/EventStepPlan" }, realized },
+        $defs: { EventStepPlan: oldField, RealizedField: oldField },
+      },
+    ],
+  ]);
+  const after = new Map<string, JsonSchema>([
+    [
+      "AppliedAppPlan",
+      {
+        properties: { realized },
+        $defs: { RealizedField: narrowField },
+      },
+    ],
+  ]);
+  const findings = classifySchemaChange(oldField, narrowField, "input");
+  const surface = `schema:${id}`;
+  const stores = buildPersistedSurfaceStores(
+    after,
+    new Set(["AppliedAppPlan", "EventStepPlan", "RealizedField"]),
+    before,
+  );
+  const result = acceptCompatibilityExceptions(
+    surface,
+    findings,
+    findings.map(({ changeKind, path }) => ({
+      surface,
+      changeKind,
+      path,
+      justification: "Fixture narrowing.",
+    })),
+    { persistedStoresBySurface: stores, storeVersions, baseStoreVersions: { "applied-state": 4 } },
+  );
+  expect(result.map((finding) => finding.accepted)).toEqual([accepted]);
 });
 
 test("parses persisted migration metadata without dropping it", () => {
