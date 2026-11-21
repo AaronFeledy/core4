@@ -10,6 +10,7 @@ import { type DestroyOptions, EventService, type ProviderError } from "@lando/sd
 import { DateTime, Effect, Option, Schema } from "effect";
 import { removeRuntimeContainer } from "./container-removal.ts";
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
+import { planInventoryVolumeDeletions } from "./inventory-volume-deletions.ts";
 import {
   Observations,
   networkLabelsDecision,
@@ -17,16 +18,7 @@ import {
   serviceContainerOwnershipProblem,
 } from "./native-ownership.ts";
 import { type makeResourceOwnershipStore, ownershipFailure } from "./resource-ownership.ts";
-import {
-  PlanfulVolumeCoverage,
-  type VolumeDeletionCandidate,
-  deleteVolumeSnapshot,
-  matchesSharedCache,
-  skippedVolume,
-  snapshotVolumeDeletion,
-} from "./teardown-volumes.ts";
-import { STORAGE_SCOPE_LABEL, volumeClassFromLabels } from "./volume-classes.ts";
-import { volumeOwnershipLabels } from "./volume-ownership.ts";
+import { PlanfulVolumeCoverage, deleteVolumeSnapshot } from "./teardown-volumes.ts";
 
 export { privateNetworkLabels } from "./native-ownership.ts";
 
@@ -55,72 +47,16 @@ export const makeOwnedResourcesCleanup = (input: {
       return order[left.kind] - order[right.kind];
     });
     const volumeRuntime = { ...input, request };
-    const candidates: VolumeDeletionCandidate[] = [];
-    const volumeRecords = [];
-    let unverifiedAppVolume = false;
-    for (const resource of resources) {
-      if (resource.kind !== "volume") continue;
-      if (options.appIds !== undefined && !options.appIds.includes(resource.appId)) continue;
-      const shared = resource.volumeScope === "global" && resource.volumeClass === "cache";
-      if (coverage?.provider === resource.providerId && (shared || coverage.app === resource.appId)) continue;
-      if (
-        !(resource.volumeClass === "cache"
-          ? options.purgeCaches
-          : resource.volumeScope !== "global" && options.volumes)
-      )
-        continue;
-      const store = { name: resource.nativeName, scope: resource.volumeScope, kind: resource.volumeClass };
-      const expected = volumeOwnershipLabels(
-        { id: resource.appId, provider: resource.providerId, root },
-        store,
-      );
-      const volume = {
-        appId: resource.appId,
-        name: resource.nativeName,
-        volumeClass: resource.volumeClass,
-        shared,
-        matches: (labels: Readonly<Record<string, string>>) =>
-          shared
-            ? matchesSharedCache(resource.providerId, resource.nativeName, labels)
-            : labels["dev.lando.app"] === resource.appId &&
-              labels[STORAGE_SCOPE_LABEL] === resource.volumeScope &&
-              volumeClassFromLabels(labels) === resource.volumeClass &&
-              Object.entries(expected).every(([key, value]) => labels[key] === value),
-      };
-      const readable = yield* (input.checkAppliedState?.(resource.appId) ?? Effect.void).pipe(
-        Effect.as(true),
-        Effect.catchIf(
-          (error) => shared || error.operation === "applied-state.read",
-          (error) =>
-            Effect.sync(() => {
-              skipped.push(skippedVolume(volume, error.message));
-              return false;
-            }),
-        ),
-      );
-      if (!readable) continue;
-      const observed = yield* snapshotVolumeDeletion(volumeRuntime, volume).pipe(
-        Effect.catchIf(
-          () => shared,
-          () => Effect.succeed({ kind: "unverified" } as const),
-        ),
-      );
-      switch (observed.kind) {
-        case "absent":
-          if (shared) yield* input.store.retire(root, resource).pipe(Effect.catch(() => Effect.void));
-          else yield* input.store.retire(root, resource);
-          break;
-        case "candidate":
-          if (!candidates.some((candidate) => candidate.key === observed.candidate.key))
-            candidates.push(observed.candidate);
-          volumeRecords.push(resource);
-          break;
-        case "unverified":
-          if (shared) skipped.push(skippedVolume(volume, "shared cache ownership could not be verified"));
-          else unverifiedAppVolume = true;
-          break;
-      }
-    }
+    const { candidates, volumeRecords, unverifiedAppVolume } = yield* planInventoryVolumeDeletions({
+      root,
+      resources,
+      options,
+      coverage,
+      runtime: volumeRuntime,
+      store: input.store,
+      skipped,
+      ...(input.checkAppliedState === undefined ? {} : { checkAppliedState: input.checkAppliedState }),
+    });
     for (const resource of resources) {
       if (resource.kind === "volume") continue;
       if (options.appIds !== undefined && !options.appIds.includes(resource.appId)) continue;
