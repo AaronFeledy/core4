@@ -549,7 +549,7 @@ export const AppliedAppPlan = Schema.Struct(appliedPlanFields).annotate({
   identifier: "AppliedAppPlan",
   description: "Provider realization without invocation-time event hooks.",
 });
-export type AppliedAppPlan = typeof AppliedAppPlan.Type;
+export type AppliedAppPlan = typeof AppliedAppPlan.Type & { readonly events?: never };
 
 export const CurrentExecutableAppPlan = Schema.Struct({
   ...appliedPlanFields,

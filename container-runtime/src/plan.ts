@@ -36,13 +36,15 @@ export interface MergeAppliedPlanOptions {
 }
 
 /** Retain earlier service metadata when a provider applies only a subset of the app. */
+const appliedWithoutEvents = (plan: AppPlan): plan is AppliedAppPlan => !("events" in plan);
+
 export const mergeAppliedPlan = (
   previous: AppPlan | undefined,
   desired: AppPlan,
   options: MergeAppliedPlanOptions = {},
 ): AppliedAppPlan => {
   const { events: _events, ...projected } = desired;
-  const incoming: AppliedAppPlan = "events" in desired ? projected : desired;
+  const incoming = appliedWithoutEvents(desired) ? desired : projected;
   if (options.complete === true || previous === undefined || previous.id !== incoming.id) return incoming;
   const carried = Object.entries(previous.services).filter(([name]) => !(name in incoming.services));
   // Carried routes are appended when the incoming plan does not name them, so an

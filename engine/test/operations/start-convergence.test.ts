@@ -5,6 +5,7 @@ import { rememberAppliedPlan } from "@lando/container-runtime/provider-assembly"
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
+  type AppliedAppPlan,
   PortablePath,
   ServiceName,
   type ServicePlan,
@@ -77,7 +78,8 @@ const observedAdminer = (
 
 /** The provider record as a fresh read sees it after every successful apply. */
 const appliedRecord = (initial: AppPlan) => {
-  let persisted: AppPlan | undefined = initial;
+  const { events: _events, ...realized } = initial;
+  let persisted: AppliedAppPlan | undefined = realized;
   const cache = makeAppliedPlanCache({
     providerId: plan.provider,
     providerName: "test",

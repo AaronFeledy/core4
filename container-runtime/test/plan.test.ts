@@ -203,8 +203,8 @@ describe("container plan helpers", () => {
       [ServiceName.make("database")]: oldService,
       [ServiceName.make("web")]: changedService,
     });
-    expect(mergeAppliedPlan(undefined, incoming)).toBe(incoming);
-    expect(mergeAppliedPlan(undefined, incoming, { complete: true })).toBe(incoming);
+    expect(incoming).toBe(mergeAppliedPlan(undefined, incoming));
+    expect(incoming).toBe(mergeAppliedPlan(undefined, incoming, { complete: true }));
   });
 
   test("converts env records and mount read-only suffixes", () => {

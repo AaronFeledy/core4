@@ -47,9 +47,7 @@ export const openAppliedPlansRecord = (stateStore: Pick<PluginStateStore, "open"
  * provider state: lifecycle operations resolve them from the current Landofile,
  * so a record never carries hooks that could run stale.
  */
-const appliedPlanRecord = Effect.fnUntraced(function* (
-  plan: AppPlan,
-): Effect.fn.Return<AppliedAppPlan & { readonly events?: never }> {
+const appliedPlanRecord = Effect.fnUntraced(function* (plan: AppPlan): Effect.fn.Return<AppliedAppPlan> {
   const sanitizer = yield* Effect.serviceOption(AppPlanSanitizer);
   const { events: _events, ...applied } = Option.isSome(sanitizer)
     ? sanitizer.value.sanitizeForPersistence(plan)
