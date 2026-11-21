@@ -10,13 +10,12 @@ import { ADVISORY_LOCK_SUFFIX, resolveOperationLockTimeoutMs } from "@lando/stat
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
+import { APP_LOCK_HOLDERS_ENV, isSelfOrAncestorPid } from "../../src/operations/app-lock-borrow.ts";
 import {
-  APP_LOCK_HOLDERS_ENV,
   appMutationLockIdentity,
   appMutationLockKey,
   canonicalAppRoot,
   canonicalAppRootSync,
-  isSelfOrAncestorPid,
   withAppMutationLock,
 } from "../../src/operations/app-mutation-lock.ts";
 import { startAppForTarget } from "../../src/operations/start.ts";
