@@ -52,7 +52,7 @@ import {
   CRUN_OOM_SCORE_ADJ_SUBSTRING,
   failureMentionsAttachConnectionReset,
   failureMentionsCrunOomScoreAdj,
-  mentionsCrunOomScoreAdj,
+  isCrunOomScoreAdjErrorText,
 } from "./oci-runtime-floor.ts";
 
 const textDecoder = new TextDecoder();
@@ -543,7 +543,7 @@ export const execStream = (
         let pendingDiagnostic: { readonly kind: "stderr"; readonly chunk: Uint8Array } | undefined;
         let sawCrunOomScoreAdj = false;
         const noteCrunOomScoreAdj = (text: string): void => {
-          if (mentionsCrunOomScoreAdj(text)) sawCrunOomScoreAdj = true;
+          if (isCrunOomScoreAdjErrorText(text)) sawCrunOomScoreAdj = true;
         };
         let signalResponseStarted: () => void = () => undefined;
         const responseStarted = new Promise<void>((resolve) => {
@@ -833,7 +833,7 @@ export const exec = Effect.fn("RuntimeProvider.exec")(function* (
     service !== undefined &&
     exitCode !== undefined &&
     exitCode !== 0 &&
-    mentionsCrunOomScoreAdj(`${stdout}${stderr}`)
+    isCrunOomScoreAdjErrorText(`${stdout}${stderr}`)
   ) {
     return yield* Effect.fail(
       crunOomScoreAdjExecFailure(

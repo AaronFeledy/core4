@@ -241,7 +241,13 @@ export const evaluateLibpodCrunExecCompatibility = (
   );
 };
 
-export const mentionsCrunOomScoreAdj = (text: string): boolean => text.includes(CRUN_OOM_SCORE_ADJ_SUBSTRING);
+/**
+ * The crun exec failure, not a bare `oom_score_adj` token such as an
+ * `ls /proc/self` listing. Matches wrapping text that still carries both
+ * `write to /proc/self/oom_score_adj` and `Permission denied`.
+ */
+export const isCrunOomScoreAdjErrorText = (text: string): boolean =>
+  text.includes("write to /proc/self/oom_score_adj") && text.includes("Permission denied");
 
 export const mentionsAttachConnectionReset = (text: string): boolean =>
   text.includes(ATTACH_CONNECTION_RESET_SUBSTRING);
@@ -261,7 +267,7 @@ const textFromUnknown = (value: unknown, depth = 0): string => {
 };
 
 export const failureMentionsCrunOomScoreAdj = (...parts: ReadonlyArray<unknown>): boolean =>
-  parts.some((part) => mentionsCrunOomScoreAdj(typeof part === "string" ? part : textFromUnknown(part)));
+  parts.some((part) => isCrunOomScoreAdjErrorText(typeof part === "string" ? part : textFromUnknown(part)));
 
 export const failureMentionsAttachConnectionReset = (...parts: ReadonlyArray<unknown>): boolean =>
   parts.some((part) =>

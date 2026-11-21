@@ -20,6 +20,7 @@ import {
   CRUN_OOM_SCORE_ADJ_SUBSTRING,
   failureMentionsAttachConnectionReset,
   failureMentionsCrunOomScoreAdj,
+  isCrunOomScoreAdjErrorText,
 } from "../src/podman/oci-runtime-floor.ts";
 import { ContainerTransportError } from "../src/transport.ts";
 import { installNonCompensatingExecUmask } from "./support/exec-umask.ts";
@@ -153,17 +154,42 @@ const runExec = (api: EngineHttpApi) =>
     exec(plan, target, { command: ["true"], stdinStream: oneChunkStdin() }, { api, ctx }).pipe(Effect.flip),
   );
 
+const PROC_SELF_LISTING = "attr\nfd\noom_score_adj\nstatus\n";
+const LS_NOPE = "ls: /nope: No such file or directory\n";
+const CRUN_OOM_SCORE_ADJ_ERROR = "crun: write to /proc/self/oom_score_adj: Permission denied\n";
+
+const collectExecStream = async (
+  api: EngineHttpApi,
+  command: { readonly command: string[]; readonly tty?: true },
+) => {
+  const chunks = await Effect.runPromise(
+    Stream.runCollect(execStream(plan, target, command, { api, ctx })).pipe(Effect.scoped),
+  );
+  const decoder = new TextDecoder();
+  let stdout = "";
+  let stderr = "";
+  let exitCode: number | undefined;
+  for (const chunk of chunks) {
+    if ("exitCode" in chunk) exitCode = chunk.exitCode;
+    else if (chunk.kind === "stdout") stdout += decoder.decode(chunk.chunk);
+    else stderr += decoder.decode(chunk.chunk);
+  }
+  return { exitCode, stdout, stderr };
+};
+
 describe("crun oom_score_adj exec classification", () => {
-  test("matches the substring in wrapping text, not one exact message", () => {
-    expect(failureMentionsCrunOomScoreAdj("crun: write to /proc/self/oom_score_adj: Permission denied")).toBe(
-      true,
-    );
+  test("matches wrapping crun error text, not a bare oom_score_adj token", () => {
+    expect(isCrunOomScoreAdjErrorText(CRUN_OOM_SCORE_ADJ_ERROR)).toBe(true);
+    expect(failureMentionsCrunOomScoreAdj(CRUN_OOM_SCORE_ADJ_ERROR)).toBe(true);
     expect(
       failureMentionsCrunOomScoreAdj(
         "Error: OCI runtime error: crun: write to /proc/self/oom_score_adj: Permission denied\n",
       ),
     ).toBe(true);
-    expect(failureMentionsCrunOomScoreAdj(`wrapper ${CRUN_OOM_SCORE_ADJ_SUBSTRING} tail`)).toBe(true);
+    expect(failureMentionsCrunOomScoreAdj(`wrapper ${CRUN_OOM_SCORE_ADJ_SUBSTRING} tail`)).toBe(false);
+    expect(failureMentionsCrunOomScoreAdj("write to /proc/self/oom_score_adj")).toBe(false);
+    expect(failureMentionsCrunOomScoreAdj(PROC_SELF_LISTING)).toBe(false);
+    expect(failureMentionsCrunOomScoreAdj(`${PROC_SELF_LISTING}${LS_NOPE}`)).toBe(false);
   });
 
   test("an attach connection reset by peer alone is not a crun failure", () => {
@@ -178,7 +204,7 @@ describe("crun oom_score_adj exec classification", () => {
 
   test("maps a stderr substring to the typed crun remediation", async () => {
     const api = makeExecApi({
-      frames: [attachFrame(2, "crun: write to /proc/self/oom_score_adj: Permission denied\n")],
+      frames: [attachFrame(2, CRUN_OOM_SCORE_ADJ_ERROR)],
       error: resetFailure,
     });
 
@@ -208,7 +234,7 @@ describe("crun oom_score_adj exec classification", () => {
       remediation: "Install or start the `lando` provider and confirm it can perform `podman-api`.",
     });
     const api = makeExecApi({
-      frames: [attachFrame(2, "OCI runtime attempted write to /proc/self/oom_score_adj\n")],
+      frames: [attachFrame(2, "OCI runtime error: write to /proc/self/oom_score_adj: Permission denied\n")],
       error: wrapped,
     });
 
@@ -222,7 +248,7 @@ describe("crun oom_score_adj exec classification", () => {
 
   test("does not recover a companion reset as a successful attach-reset exec", async () => {
     const api = makeExecApi({
-      frames: [attachFrame(2, "crun: write to /proc/self/oom_score_adj: Permission denied\n")],
+      frames: [attachFrame(2, CRUN_OOM_SCORE_ADJ_ERROR)],
       error: resetFailure,
       inspect: "finished",
     });
@@ -234,9 +260,9 @@ describe("crun oom_score_adj exec classification", () => {
     expect(error.remediation).toBe(CRUN_OOM_SCORE_ADJ_REMEDIATION);
   });
 
-  test("classifies a non-zero exit whose stderr mentions oom_score_adj", async () => {
+  test("classifies a non-zero exit with the crun error line", async () => {
     const api = makeExecApi({
-      frames: [attachFrame(2, "crun: write to /proc/self/oom_score_adj: Permission denied\n")],
+      frames: [attachFrame(2, CRUN_OOM_SCORE_ADJ_ERROR)],
       inspectExitCode: 127,
     });
 
@@ -250,33 +276,54 @@ describe("crun oom_score_adj exec classification", () => {
   });
 
   test("does not classify a successful exec whose stdout mentions oom_score_adj", async () => {
-    const listing = "attr\nfd\noom_score_adj\nstatus\n";
     const api = makeExecApi({
-      frames: [attachFrame(1, listing)],
+      frames: [attachFrame(1, PROC_SELF_LISTING)],
       inspectExitCode: 0,
     });
+    const command = { command: ["ls", "/proc/self"] };
 
-    const result = await Effect.runPromise(
-      exec(plan, target, { command: ["ls", "/proc/self"] }, { api, ctx }),
-    );
+    const result = await Effect.runPromise(exec(plan, target, command, { api, ctx }));
+    expect(result).toEqual({ exitCode: 0, stdout: PROC_SELF_LISTING, stderr: "" });
 
-    expect(result).toEqual({ exitCode: 0, stdout: listing, stderr: "" });
+    const streamed = await collectExecStream(api, command);
+    expect(streamed).toEqual({ exitCode: 0, stdout: PROC_SELF_LISTING, stderr: "" });
+  });
 
-    const chunks = await Effect.runPromise(
-      Stream.runCollect(execStream(plan, target, { command: ["ls", "/proc/self"] }, { api, ctx })).pipe(
-        Effect.scoped,
-      ),
-    );
-    const decoder = new TextDecoder();
-    let stdout = "";
-    let observedExit: number | undefined;
-    for (const chunk of chunks) {
-      if ("exitCode" in chunk) observedExit = chunk.exitCode;
-      else if (chunk.kind === "stdout") stdout += decoder.decode(chunk.chunk);
-    }
+  test.each([
+    {
+      name: "stdout",
+      frames: [attachFrame(1, PROC_SELF_LISTING), attachFrame(2, LS_NOPE)],
+      tty: false,
+      stdout: PROC_SELF_LISTING,
+      stderr: LS_NOPE,
+    },
+    {
+      name: "stderr",
+      frames: [attachFrame(2, `${PROC_SELF_LISTING}${LS_NOPE}`)],
+      tty: false,
+      stdout: "",
+      stderr: `${PROC_SELF_LISTING}${LS_NOPE}`,
+    },
+    {
+      name: "tty",
+      frames: [new TextEncoder().encode(`${PROC_SELF_LISTING}${LS_NOPE}`)],
+      tty: true,
+      stdout: `${PROC_SELF_LISTING}${LS_NOPE}`,
+      stderr: "",
+    },
+  ])("does not classify a listing-only non-zero ls /proc/self on $name", async (input) => {
+    const api = makeExecApi({ frames: input.frames, inspectExitCode: 2 });
+    const command =
+      input.tty === true
+        ? { command: ["ls", "/proc/self", "/nope"], tty: true as const }
+        : { command: ["ls", "/proc/self", "/nope"] };
 
-    expect(stdout).toContain(CRUN_OOM_SCORE_ADJ_SUBSTRING);
-    expect(observedExit).toBe(0);
+    const result = await Effect.runPromise(exec(plan, target, command, { api, ctx }));
+    expect(result).toEqual({ exitCode: 2, stdout: input.stdout, stderr: input.stderr });
+    expect(`${result.stdout}${result.stderr}`).toContain(CRUN_OOM_SCORE_ADJ_SUBSTRING);
+
+    const streamed = await collectExecStream(api, command);
+    expect(streamed).toEqual({ exitCode: 2, stdout: input.stdout, stderr: input.stderr });
   });
 
   test("classifies an HTTP start body that mentions the substring", async () => {
@@ -286,7 +333,7 @@ describe("crun oom_score_adj exec classification", () => {
       message: "Container runtime stream request failed with HTTP 500.",
       details: {
         status: 500,
-        body: "crun: write to /proc/self/oom_score_adj: Permission denied",
+        body: CRUN_OOM_SCORE_ADJ_ERROR.trim(),
       },
       remediation: "Run lando doctor.",
     });
