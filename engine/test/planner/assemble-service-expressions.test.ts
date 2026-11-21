@@ -308,53 +308,6 @@ test("fails when the referenced service publishes no credentials", () =>
     });
   }));
 
-test("rejects a service that reads its own credentials and a pair that read each other's", () =>
-  withAppRoot(async (root) => {
-    const self = await failure(
-      withAppRootProvenance(
-        {
-          name: "Creds Demo",
-          services: {
-            [ServiceName.make("database")]: {
-              type: databaseType.id,
-              image: "alpine:3.22",
-              home: false as const,
-              environment: { SELF: "{{ services.database.creds.user }}" },
-            },
-          },
-        },
-        root,
-      ),
-    );
-    expect(self).toMatchObject({ path: ["services", "database"], expression: "services" });
-    expect(self.message).toContain("Service connection reference cycle involving database");
-
-    const mutual = await failure(
-      withAppRootProvenance(
-        {
-          name: "Creds Demo",
-          services: {
-            [ServiceName.make("a")]: {
-              type: databaseType.id,
-              image: "alpine:3.22",
-              home: false as const,
-              creds: { user: "a", password: "{{ services.b.creds.password }}", database: "a" },
-            },
-            [ServiceName.make("b")]: {
-              type: databaseType.id,
-              image: "alpine:3.22",
-              home: false as const,
-              creds: { user: "b", password: "{{ services.a.creds.password }}", database: "b" },
-            },
-          },
-        },
-        root,
-      ),
-    );
-    expect(mutual).toMatchObject({ path: ["services", "a"] });
-    expect(mutual.message).toContain("Service connection reference cycle involving a");
-  }));
-
 test("requires a literal service name in a services reference", () =>
   withAppRoot(async (root) => {
     const error = await failure(

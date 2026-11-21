@@ -63,19 +63,20 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     };
     unavailable.set(name, [...(unavailable.get(name) ?? []), reason]);
   }
-  const order = yield* Effect.fromResult(
-    orderServicesByCredsReferences({
-      landofile,
-      deferredSites: input.deferredSites.filter(
-        ({ path }) => path[0] !== "services" || typeof path[1] !== "string" || !unavailable.has(path[1]),
-      ),
-      landofilePath: input.landofilePath,
-    }),
-  );
+  const order = yield* orderServicesByCredsReferences({
+    landofile,
+    deferredSites: input.deferredSites.filter(
+      ({ path }) => path[0] !== "services" || typeof path[1] !== "string" || !unavailable.has(path[1]),
+    ),
+    landofilePath: input.landofilePath,
+    pluginRegistry: input.pluginRegistry,
+  });
   for (const name of order.order) {
     if (unavailable.has(name)) continue;
     const causes = [
-      ...new Set([...(order.references.get(name) ?? [])].flatMap((ref) => unavailable.get(ref) ?? [])),
+      ...new Set(
+        [...(order.references.get(name)?.keys() ?? [])].flatMap((ref) => unavailable.get(ref) ?? []),
+      ),
     ];
     if (causes.length > 0) {
       unavailable.set(name, causes);

@@ -6,6 +6,7 @@ import { ServiceConfig, type ValidationIssuePath } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { type DeferredExpressionSites, materializeServiceScopeSites } from "./landofile-scopes.ts";
+import { plannedPortFor } from "./self-read-hint.ts";
 
 export const materializeServicePort = Effect.fnUntraced(function* (input: {
   readonly service: ServiceConfig;
@@ -21,14 +22,8 @@ export const materializeServicePort = Effect.fnUntraced(function* (input: {
   );
   const first = sites[0];
   if (first === undefined) return service;
-  const { port, via, framework, type } = service;
   const select = serviceType.plannedPort;
-  const planned = select?.({
-    ...(port === undefined ? {} : { port }),
-    ...(via === undefined ? {} : { via }),
-    ...(framework === undefined ? {} : { framework }),
-    ...(type === undefined ? {} : { type }),
-  });
+  const planned = plannedPortFor(select, service);
   if (planned === undefined) {
     return yield* Effect.fail(
       new ConfigExpressionError({

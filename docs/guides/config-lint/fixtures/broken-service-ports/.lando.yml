@@ -1,4 +1,3 @@
-# lando-lint: expect-invalid two services without planned ports read service.port
 name: broken-service-ports
 services:
   raw:

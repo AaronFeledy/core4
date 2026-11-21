@@ -1,4 +1,4 @@
-import { compiledValueError, consumeSites } from "@lando/landofile/compiled-sites";
+import { compiledValueError, consumeSites, siteExpression } from "@lando/landofile/compiled-sites";
 import { provenanceOf } from "@lando/landofile/provenance";
 import {
   PLAN_IDENTITY_EXPRESSION_SCOPES,
@@ -18,12 +18,15 @@ import {
   type LoadScopedLandofile,
   type ParsedPendingSite,
   type PortNumber,
+  ServiceName,
   ServiceScopedLandofile,
   type ValidationIssuePath,
 } from "@lando/sdk/schema";
-import { Effect, Result, Schema } from "effect";
+import type { PluginRegistry } from "@lando/sdk/services";
+import { type Context, Effect, Result, Schema } from "effect";
 import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { normalizeAppSlug } from "./naming.ts";
+import { ownPortReplacement } from "./self-read-hint.ts";
 import { type ServiceExpressionFacts, serviceExpressionFacts } from "./service-credential-facts.ts";
 
 export interface MaterializeLandofileScopesInput {
@@ -161,8 +164,8 @@ export const referencedServices = (
   pathPrefix: ValidationIssuePath,
   sites: DeferredExpressionSites,
   filePath: string,
-): Result.Result<ReadonlySet<string>, ConfigExpressionError> => {
-  const references = new Set<string>();
+): Result.Result<ReadonlyMap<string, ParsedPendingSite>, ConfigExpressionError> => {
+  const references = new Map<string, ParsedPendingSite>();
   for (const site of sites) {
     if (!pathHasPrefix(site.path, pathPrefix)) continue;
     const members = expressionScopeMembers(site.template, "services");
@@ -171,47 +174,75 @@ export const referencedServices = (
         new ConfigExpressionError({
           message: "A services.<name> reference must name the service literally.",
           path: site.path,
-          expression: JSON.stringify(site.template),
-          filePath,
+          expression: siteExpression(site),
+          source: site.source,
+          filePath: "file" in site.source ? site.source.file : filePath,
           remediation: "Write the service name directly, for example services.database.creds.user.",
         }),
       );
-    for (const member of members.members) references.add(member);
+    for (const member of members.members) if (!references.has(member)) references.set(member, site);
   }
   return Result.succeed(references);
 };
 
-export const orderServicesByCredsReferences = (input: {
+export const orderServicesByCredsReferences = Effect.fnUntraced(function* (input: {
   readonly landofile: LandofileShape;
   readonly deferredSites: DeferredExpressionSites;
   readonly landofilePath: string;
-}): Result.Result<
-  { readonly order: readonly string[]; readonly references: ReadonlyMap<string, ReadonlySet<string>> },
-  ConfigExpressionError
-> => {
+  readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
+}) {
   const names = Object.keys(input.landofile.services ?? {});
   const declared = new Set(names);
-  const pending = new Map<string, Set<string>>();
+  const pending = new Map<string, ReadonlyMap<string, ParsedPendingSite>>();
   for (const name of names) {
-    const references = referencedServices(["services", name], input.deferredSites, input.landofilePath);
-    if (Result.isFailure(references)) return Result.fail(references.failure);
-    pending.set(name, new Set([...references.success].filter((reference) => declared.has(reference))));
+    const references = yield* Effect.fromResult(
+      referencedServices(["services", name], input.deferredSites, input.landofilePath),
+    );
+    const self = references.get(name);
+    if (self !== undefined) {
+      const replacement = yield* ownPortReplacement({ ...input, name, site: self });
+      return yield* Effect.fail(
+        new ConfigExpressionError({
+          message: `Service ${name} cannot read its own published facts.`,
+          path: self.path,
+          source: self.source,
+          expression: siteExpression(self, input.landofile.services?.[ServiceName.make(name)], 2),
+          filePath: "file" in self.source ? self.source.file : input.landofilePath,
+          remediation: replacement
+            ? "Use {{ service.port }} for the planned listen port."
+            : "Remove the self-reference; a service's published facts are only available after it resolves.",
+        }),
+      );
+    }
+    pending.set(name, new Map([...references].filter(([reference]) => declared.has(reference))));
   }
   const order: string[] = [];
   const resolved = new Set<string>();
   while (order.length < names.length) {
     const next = names.find(
       (name) =>
-        !resolved.has(name) && [...(pending.get(name) ?? [])].every((reference) => resolved.has(reference)),
+        !resolved.has(name) &&
+        [...(pending.get(name)?.keys() ?? [])].every((reference) => resolved.has(reference)),
     );
     if (next === undefined) {
-      const stuck = names.find((name) => !resolved.has(name)) ?? "";
-      return Result.fail(
+      const chain = new Map<string, ParsedPendingSite>();
+      let current = names.find((name) => !resolved.has(name));
+      while (current !== undefined && !chain.has(current)) {
+        const edge = [...(pending.get(current) ?? [])].find(([reference]) => !resolved.has(reference));
+        if (edge === undefined) break;
+        chain.set(current, edge[1]);
+        current = edge[0];
+      }
+      const members = [...chain.keys()];
+      const first = current === undefined ? undefined : chain.get(current);
+      const cycle = current === undefined ? members : members.slice(members.indexOf(current));
+      return yield* Effect.fail(
         new ConfigExpressionError({
-          message: `Service connection reference cycle involving ${stuck}.`,
-          path: ["services", stuck],
-          expression: "services",
-          filePath: input.landofilePath,
+          message: `Service connection reference cycle involving ${cycle.join(", ")}.`,
+          path: first?.path ?? ["services"],
+          expression: first === undefined ? "services" : siteExpression(first, input.landofile),
+          filePath: first !== undefined && "file" in first.source ? first.source.file : input.landofilePath,
+          ...(first === undefined ? {} : { source: first.source }),
           remediation: "Break the service connection reference cycle.",
         }),
       );
@@ -219,5 +250,5 @@ export const orderServicesByCredsReferences = (input: {
     order.push(next);
     resolved.add(next);
   }
-  return Result.succeed({ order, references: pending });
-};
+  return { order, references: pending };
+});

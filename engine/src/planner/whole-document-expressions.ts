@@ -30,7 +30,7 @@ export const pendingAfterSeeds = (
       blocked.push(site);
       continue;
     }
-    const unavailable = [...references.success].flatMap((name) => seeds.unavailable.get(name) ?? []);
+    const unavailable = [...references.success.keys()].flatMap((name) => seeds.unavailable.get(name) ?? []);
     if (unavailable.length === 0) {
       available.push(site);
       continue;

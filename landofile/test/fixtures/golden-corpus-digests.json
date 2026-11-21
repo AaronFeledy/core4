@@ -440,6 +440,10 @@
       "digest": "2df2c11ea20f8e6b241c35d70ab3979caedf1bf063c5a10f9c57d6588f2734ef"
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-own-port-read",
+      "digest": "babdc1923cc8b573016e9956b0077dd31231ae7350b269eb6fd1626c7f9f2d62"
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-plan-time-typed-field",
       "invalid": {
         "status": "invalid",

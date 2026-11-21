@@ -162,7 +162,9 @@ lando app:config:lint --format=json
 lando app:cache:refresh
 ```
 
-A service cannot read its own `services.<name>.creds`, and two services cannot each read the other's. Both cases fail the plan as a cycle because credentials exist only after the service resolves.
+A service can't read its own published facts, such as `services.cache.creds.user` inside `cache`. Lando points to the field that reads the fact. If an allowed command, entrypoint, or container probe reads `{{ services.cache.port }}` and `cache` has a planned port, Lando suggests `{{ service.port }}` instead. Use that expression for the service's own listen port. It isn't available in fields such as `environment:` or in configurations with no planned listener.
+
+Services also can't read one another's published facts in a cycle. Lando names the services in the cycle so you can remove one of those reads.
 
 Values from `env_file:` are never interpolated. `${NAME}` stays literal, and lint warns if it appears in an unquoted or double-quoted value. Single quotes suppress that warning; they do not enable interpolation. To read a host variable, put `NAME: "{{ env.NAME }}"` under the service's `environment:` instead. See [Quote env file values](./env-overrides.mdx#quote-env-file-values) for the escaping rules.
 
@@ -449,6 +451,14 @@ expect(violations).toContainEqual(expect.objectContaining({
     <Step name="plan-service-port">
       <Run command="lando app:cache:refresh --format=json" />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="own-published-port-hint" render={false} reason="Check the planned port replacement at the self-read site">
+    <Step name="report-own-port-read">
+      <UseFixture name="expressions-own-port-read" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="ConfigExpressionError" expect={{ regex: "\"path\":\\s*\\[\"services\",\"cache\",\"command\",2\\]" }} />
+      <Verify errorTag="ConfigExpressionError" expect={{ regex: "\\{\\{ service\\.port \\}\\}" }} />
     </Step>
   </Scenario>
   <Scenario id="service-port-misuse" render={false} reason="Verify that lint and planning report the same unsupported environment field.">
