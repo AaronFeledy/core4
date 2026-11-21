@@ -125,8 +125,8 @@ export const projectAuthoringInput = (
     }
     return artifact;
   }
-  repairTemplateLiteralExtensionRecords(artifact);
   repairLandofileExtensions(artifact);
+  repairTemplateLiteralExtensionRecords(artifact, { compactUnrestrictedValues: true });
   dropDecodedInputDescriptors(artifact);
   if (Predicate.isObject(definitions) && Predicate.isObject(definitions.ToolingTaskInputAuthoring)) {
     constrainTaskStrings(definitions.ToolingTaskInputAuthoring);

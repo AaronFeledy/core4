@@ -121,7 +121,7 @@ function openExtensionRecord(
 ): JsonSchema.JsonSchema {
   const patterns = Object.entries(patternProperties);
   for (const [, value] of patterns) {
-    expect(Predicate.isObject(value)).toBe(true);
+    expect(value === true || Predicate.isObject(value)).toBe(true);
     if (Predicate.isObject(value)) {
       expect(Object.keys(value).filter((key) => !["$id", "title", "description"].includes(key))).toEqual([]);
     }
