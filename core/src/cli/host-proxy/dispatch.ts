@@ -13,7 +13,7 @@ import type {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Effect, Exit, Schema } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 import { OpenAppResultSchema, openForPlan } from "../commands/open";
 import { collectOpenConnections } from "../commands/open-connections";
@@ -50,17 +50,19 @@ export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
           if (Exit.isSuccess(outcome)) {
             return { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 };
           }
+          const failure = failureOutcomeFromCause(outcome.cause, normalizeDefect);
           return {
-            outcome: outcome.cause.reasons.every(Cause.isInterruptReason)
-              ? {
-                  _tag: "failure" as const,
-                  additionalErrors: [],
-                  error: {
-                    _tag: "HostProxyDispatchError",
-                    message: Cause.pretty(outcome.cause),
-                  },
-                }
-              : failureOutcomeFromCause(outcome.cause, normalizeDefect),
+            outcome:
+              failure.kind === "none"
+                ? {
+                    _tag: "failure" as const,
+                    additionalErrors: [],
+                    error: {
+                      _tag: "HostProxyDispatchError",
+                      message: "Host-proxy command did not complete.",
+                    },
+                  }
+                : failure,
             exitCode: 1,
           };
         });
