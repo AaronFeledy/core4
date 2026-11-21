@@ -30,11 +30,17 @@ export type ToolingEventName = typeof ToolingEventName.Type;
 export const LandofileEventName = Schema.Union([AppLifecycleEventName, ToolingEventName]);
 export type LandofileEventName = typeof LandofileEventName.Type;
 
-const EventStepCondition = Schema.Union([Schema.String, Schema.Boolean]);
+const EVENT_STEP_IF_DESCRIPTION =
+  "Boolean or whole-value expression checked when the step runs at invocation time, not at Landofile load. Applies to lifecycle and tooling event steps.";
+
+const EventStepCondition = Schema.Union([
+  Schema.String.annotate({ description: EVENT_STEP_IF_DESCRIPTION }),
+  Schema.Boolean.annotate({ description: EVENT_STEP_IF_DESCRIPTION }),
+]).annotate({ description: EVENT_STEP_IF_DESCRIPTION });
 
 const EventStepTail = {
   ignoreError: Schema.optionalKey(Schema.Boolean),
-  if: Schema.optionalKey(EventStepCondition),
+  if: Schema.optionalKey(EventStepCondition).annotateKey({ description: EVENT_STEP_IF_DESCRIPTION }),
   silent: Schema.optionalKey(Schema.Boolean),
 };
 
