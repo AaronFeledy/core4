@@ -83,6 +83,17 @@ describe("StartAppResult", () => {
     }
   });
 
+  test("preserves servicesStayedDown when present and when absent", () => {
+    for (const servicesStayedDown of [undefined, [], ["redis"]]) {
+      const value = {
+        app: "demo",
+        servicesStarted: [startedService],
+        ...(servicesStayedDown === undefined ? {} : { servicesStayedDown }),
+      };
+      expect(roundTrip(StartAppResult, value)).toStrictEqual(value);
+    }
+  });
+
   test("rejects excess properties", () => {
     expect(
       Result.isFailure(

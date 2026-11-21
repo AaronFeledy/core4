@@ -67,6 +67,7 @@ import {
   PreStartEvent,
   PreStopEvent,
 } from "./lifecycle.ts";
+import { LockWaitEvent } from "./lock.ts";
 import {
   ManagedFileConflictDetectedEvent,
   ManagedFileSkippedEvent,
@@ -226,6 +227,7 @@ export const LandoEvent = Schema.Union([
   MessageInfoEvent,
   MessageWarnEvent,
   MessageErrorEvent,
+  LockWaitEvent,
   PaintBannerEvent,
   NotifyDesktopEvent,
   CodeSnippetEvent,

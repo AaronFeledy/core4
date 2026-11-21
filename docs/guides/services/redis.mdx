@@ -104,8 +104,26 @@ services:
 
 Lando passes `--port 6380` to `redis-server`, with or without persistence or password authentication. Other services connect to `cache:6380`. Redis has no daemon-native port environment variable.
 
-If you author `command:`, include `--port 6380` yourself; Lando never appends
-it to a command you wrote. An authored `entrypoint:` still receives Lando's
+To add daemon flags without replacing Lando's launcher, use
+[`extraArgs:`](./extra-args.mdx):
+
+```yaml
+services:
+  cache:
+    type: redis
+    port: 6380
+    extraArgs:
+      - --maxmemory
+      - 10mb
+```
+
+Lando keeps `--port`, `persist:`, and `creds.password` handling, then appends
+your list. Do not put `--port` in `extraArgs:`; set `port:` instead.
+
+If you replace the process with `command:`, use
+`[redis-server, --port, "{{ service.port }}"]`. Lando never appends the flag.
+The [port expression](../landofile/expressions.mdx#your-services-own-port)
+supplies its value. An authored `entrypoint:` still receives Lando's
 `redis-server` command, port included. The managed `creds.password` and `persist:`
 options can't be combined with an authored `command:` or `entrypoint:`.
 If startup fails with an authored command, Lando includes a hint naming

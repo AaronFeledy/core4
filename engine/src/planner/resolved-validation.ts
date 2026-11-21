@@ -1,6 +1,7 @@
 import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { type NormalizedRoute, normalizeRoute } from "@lando/landofile/route-normalize";
 import { getLandofileValueSource, pathHasPrefix, probeTargetIsBlocked } from "@lando/landofile/validation";
+import type { ConfigExpressionError } from "@lando/sdk/errors";
 import {
   type ConfigLintRuleId,
   DomainName,
@@ -23,6 +24,14 @@ import { appNetworkName } from "./naming.ts";
 import { httpsAlternative, httpsRouteCoverageGap } from "./route-coverage.ts";
 
 export type PlannerIssue = ValidationIssue & { readonly rule: ConfigLintRuleId };
+
+export const expressionPlannerIssue = (error: ConfigExpressionError): PlannerIssue => ({
+  rule: "landofile.expression",
+  path: error.path,
+  message: error.message,
+  suggestion: error.remediation,
+  ...(error.source === undefined ? {} : { source: error.source }),
+});
 
 export const attributePlannerIssue = (
   provenance: LandofileProvenance | undefined,

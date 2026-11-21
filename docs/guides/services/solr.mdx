@@ -114,7 +114,10 @@ The copy runs as the planned `user:`, so the same ownership rule as [precreating
 
 If you also set `command:` on the service, yours wins. Your command owns core
 creation, config copying, Solr's listen port, and startup mode. Lando never
-appends `-p` or other flags to a command you wrote. An authored `entrypoint:`
+appends `-p` or other flags to a command you wrote. Use
+`[solr-foreground, -p, "{{ service.port }}"]` to pass the
+[planned port](../landofile/expressions.mdx#your-services-own-port).
+An authored `entrypoint:`
 still receives Lando's Solr command, port included.
 
 ## Change the port
@@ -129,8 +132,7 @@ services:
 ```
 
 Lando starts Solr with `-p 8984`, including when it precreates cores. Other
-services connect to `search:8984`. If you author `command:`, pass `-p 8984`
-yourself.
+services connect to `search:8984`.
 If startup fails with an authored command, Lando includes a hint naming
 `-p 8984`.
 

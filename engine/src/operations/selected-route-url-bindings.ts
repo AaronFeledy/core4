@@ -22,7 +22,7 @@ export const refuseRetainedRouteConsumers = Effect.fn("Activation.refuseRetained
     readonly retained: ReturnType<typeof retainedRouteReferences>;
     readonly runtimePlan: AppPlan;
     readonly proof: PreparedRouteUrls | undefined;
-    readonly operation: "restart" | "rebuild";
+    readonly operation: "start" | "restart" | "rebuild";
   }) {
     const affected = new Set<string>();
     const reasons: string[] = [];

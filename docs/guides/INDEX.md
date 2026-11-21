@@ -155,6 +155,7 @@ the PRD-owned guides above.
 | - | - | postgres service type | `docs/guides/services/postgres.mdx` | Shipped |
 | - | - | pgvector vector search on Postgres 18 | `docs/guides/services/postgres-pgvector.mdx` | Shipped |
 | - | - | redis service type | `docs/guides/services/redis.mdx` | Shipped |
+| - | - | append daemon flags with `extraArgs` | `docs/guides/services/extra-args.mdx` | Shipped |
 | - | - | nginx service type | `docs/guides/services/nginx.mdx` | Shipped |
 | - | - | apache service type | `docs/guides/services/apache.mdx` | Shipped |
 

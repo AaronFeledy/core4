@@ -96,7 +96,7 @@ If you are looking for a public surface or policy:
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
 | Bundled providers (managed init helper ownership, `0.1.7` bridge, existing-runtime rescue) and multi-provider non-goal | 05 | §5.8 + §5.9 |
-| Service bases and common service schema | 06 | §6.1 + §6.2 |
+| Service bases and common service schema, including `extraArgs` | 06 | §6.1 + §6.2 |
 | Native container init: one authored `init` key, canonical `ServicePlan.init`, base default, opt-out, `serviceInit` capability, and signal guarantees | 06 | §6.2.1 |
 | Scheduled jobs: per-service `schedule`, cadence, timezone, identity, sidecar grouping and naming, scheduler acquisition, and the `schedule:list` / `schedule:run` commands | 01 + 06 + 08 + 11 | §1.4 + §6.2.2 + §8.2.8 + §10.14 |
 | Artifact build contract | 06 | §6.3 |
@@ -112,7 +112,7 @@ If you are looking for a public surface or policy:
 | Certificates and trust injection | 06 | §6.8 |
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
-| `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
+| `ServiceType` (including planned primary listen-port selection), `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
 | Provider-independent service/app endpoint declarations (`EndpointDeclaration.Encoded`, strict decode once, tagged feature failures), effective numeric route declarations before application, finalization replay from original inputs, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
 | Read-only service-type resolution metadata in app-feature declaration and application | 06 | §6.11.4 |
 | Generated companion services: `addClonedService`, `AppFeatureCloneError`, shared and non-inherited parent facts, naming, provenance, selection, and removal | 06 | §6.11.4 + §6.11.5 |
@@ -130,7 +130,7 @@ If you are looking for a public surface or policy:
 | MinIO console ports and effective Mailpit/MailHog secondary listeners | 06 | §6.12.1 |
 | Explicit MinIO BYO image/build and typed mail wildcard-bind reachability | 06 | §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, owner-scoped results and transcripts, app-step settlement, container-bound app-step reuse, and errors | 06 + 05 + 12 | §6.13 + §5.3 + §12.1 |
-| Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
+| Whole-app and selected start, convergence, failure warning, restart, rebuild, and physical-volume lock policy | 06 | §6.15 |
 | Early conditional non-root low-port warning without runtime probing | 06 | §6.15 |
 | User-app admission order, single admission for whole-app restart and rebuild, and the activation applier | 06 + 11 | §6.15 + §10.3 |
 | Pathless console aliases, pipe selection, file followers, and PHP Apache/FPM routing | 06 | §6.10 + §6.14 |
@@ -139,11 +139,13 @@ If you are looking for a public surface or policy:
 | Six-layer Landofile merge, endpoint alias and filter-kind identities, form and kind replacement, empty-list clearing, and effective-only route listener derivation | 07 | §7.2 |
 | Compilation carrier and evaluation stages | 07 | §7.2.1 |
 | External file loading, expressions, and templates | 07 | §7.3 |
+| Landofile self-port scope, planner text rendering, and deferred list-form `extra_hosts` | 07 | §7.3.1 |
+| Landofile self port, public service URL bindings, and activation evidence | 06 + 07 + 12 + 19 | §6.11 + §7.3.1 + §12.1 + §21.9 |
 | Top-level Landofile and Compose-subset keys, per-folder data identity, and rename reconciliation | 07 | §7.4 |
 | Config translation contracts, diagnostics, and Lando 3 proxy selector lowering | 07 | §7.4.1 |
 | Translation sources, `translate:` refresh, and drift | 07 | §7.4.2 |
 | Global config keys, root defaults, and pure path resolution | 07 | §7.5 + §7.5.1 |
-| Environment override naming | 07 | §7.6 |
+| Environment override naming and operation-lock timeout | 07 + 12 | §7.6 + §12.7.1 |
 | Includes, fragments, lockfile, cache, and security | 07 | §7.7 |
 | Project host approval for host code and host exposure | 07 | §7.9 |
 | Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
@@ -199,7 +201,7 @@ If you are looking for a public surface or policy:
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | Endpoint-scoped URL scan defaults, explicit override precedence and global disable policy | 06 + 11 | §6.6 + §10.5.3 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
-| Accelerated-start journal, resume, and stop/destroy from any phase | 11 | §10.6.3 + §5.3.1 |
+| Scope-aware accelerated-start journal, resume, and stop/destroy from any phase | 11 + 05 | §10.6.3 + §5.3.1 |
 | Setup and host integration | 11 | §10.8 |
 | Doctor diagnostics and resilience | 11 | §10.9 |
 | Host-proxy protocol and errors | 11 | §10.10 |
@@ -221,10 +223,10 @@ If you are looking for a public surface or policy:
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |
 | Durable resource-ownership manifest | 12 | §12.4.2 |
 | Hot-path caches, compiled decoder targets, and offline-state policies | 12 | §12.5 + §12.6 |
-| `StateStore`, buckets, app/worker locks, consumers, and plugin access | 12 | §12.7 |
+| `StateStore`, buckets, kernel lock modes and waits, app/worker locks, consumers, and plugin access | 12 | §12.7 |
 | Source store: layout, integrity, publication and leases, offline reuse, and `meta:sources:gc` | 12 | §12.8 |
 | Test and contract-suite layers | 13 | §13.1 |
-| Schema, documentation, type, and PR gates, including merge-gate job results and automatic reruns after runner loss | 13 | §13.2 + §13.4 |
+| Schema, documentation, type, native-lock, and PR gates, including merge-gate job results and automatic reruns after runner loss | 13 | §13.2 + §13.4 |
 | Distribution forms, CI matrix, and release channels | 13 | §13.5 + §13.7 |
 | Startup and TTY renderer process-exit overhead gates | 13 | §13.6 |
 | Boundary gate policy | 13 | §13.8 |

@@ -26,7 +26,7 @@ type UserStart = Readiness & {
 };
 type Selected = Readiness & {
   readonly routeUrls?: PreparedRouteUrls | undefined;
-  readonly policy: "selected";
+  readonly policy: "selected" | "selected-start";
   readonly selectedPlan: AppPlan;
   /** The composed table whose routes are published, including unselected applied routes. */
   readonly routePlan: AppPlan;
@@ -78,7 +78,7 @@ const userStart = Effect.fn("StartupCompletion.userStart")(function* (request: U
   return yield* waitForServiceReadiness(request);
 });
 const selected = Effect.fn("StartupCompletion.selected")(function* (request: Selected) {
-  yield* startFileSyncSessions(request.selectedPlan, request.events);
+  if (request.policy === "selected") yield* startFileSyncSessions(request.selectedPlan, request.events);
   yield* withBuildProvider(
     withActivationObservations(
       request.builds.buildApp(request.selectedPlan, {
@@ -117,6 +117,7 @@ export function completeStartup<E>(request: UserStart | Selected | EnsureGlobal 
     case "user-start":
       return userStart(request);
     case "selected":
+    case "selected-start":
       return selected(request);
     case "ensure-global":
       return waitForServiceReadiness(request);

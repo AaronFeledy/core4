@@ -129,7 +129,12 @@ services:
 ```
 
 Run `lando start`, then `lando info` to inspect the service. The image keeps its
-own entrypoint. Shell build hooks and CA trust-store installation still require
+own entrypoint unless you override it. If you write a `command:` that takes a
+listen port, set `port:` and pass [`{{ service.port }}`](../landofile/expressions.mdx#your-services-own-port)
+as the value for your daemon's port flag. On `type: lando` and `type: compose`,
+`port:` alone does not open or publish a port, add a route, or create a probe.
+
+Shell build hooks and CA trust-store installation still require
 the corresponding tools inside the image; leave them unconfigured for a
 shell-less image. If your host injects custom CAs, set
 `security.inheritNetworkCa: false` on that service. Use `type: compose` to skip

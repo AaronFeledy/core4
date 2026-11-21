@@ -36,8 +36,8 @@ test("the default state layer uses its runner for Windows advisory-lock ACLs", a
         Effect.provide(StateStoreLayer.layerWithPrivateFileAccess.pipe(Layer.provide(privateFileAccess))),
       ),
     );
-    // Then lock creation, private data publication, and lock release all run the ACL scripts
-    expect(worker.requests.map(({ operation }) => operation)).toEqual(["enforce", "enforce", "verify"]);
+    // Lock access is verified before publishing private data.
+    expect(worker.requests.map(({ operation }) => operation)).toEqual(["enforce", "verify", "enforce"]);
     expect(worker.spawnCount()).toBe(1);
   } finally {
     await rm(root, { recursive: true, force: true });

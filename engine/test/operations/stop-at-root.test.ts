@@ -384,7 +384,7 @@ describe("stopAppAtRoot", () => {
         EventService.of({
           publish: (event) =>
             Effect.suspend(() => {
-              if (Schema.is(LandoEventSchema)(event) && event._tag === "message.warn")
+              if (Schema.is(LandoEventSchema)(event) && event._tag === "lock.wait")
                 return Deferred.succeed(waiting, undefined).pipe(Effect.asVoid);
               return Effect.void;
             }),

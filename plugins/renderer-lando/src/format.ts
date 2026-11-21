@@ -1,5 +1,5 @@
 import { type TerminalPalette, terminalPalette } from "@lando/renderer/palette";
-import { renderPlainLine } from "@lando/sdk/renderer";
+import { formatLockWaitNotice, isLockWaitEvent, renderPlainLine } from "@lando/sdk/renderer";
 import type { LandoEvent } from "@lando/sdk/services";
 import { truncateToWidth, wrapWordsToWidth } from "./terminal-width.ts";
 
@@ -47,5 +47,8 @@ export const renderLandoLine = (
       terminalPalette(color),
     );
   }
+  // Reminders stay one quiet line; only the first notice of a wait gets a box.
+  if (isTTY && isLockWaitEvent(event) && !event.reminder)
+    return renderNotice(formatLockWaitNotice(event), "warn", terminalColumns, terminalPalette(color));
   return renderPlainLine(event);
 };

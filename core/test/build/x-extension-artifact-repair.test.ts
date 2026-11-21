@@ -38,6 +38,7 @@ import { evolveHistoricalContainerUser } from "./x-extension-container-user-proo
 import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { includeWhenDelta } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
@@ -128,8 +129,10 @@ const historicalLandofile = (): JsonSchema =>
   );
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalRouteText(
-    evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historicalLandofile(), "bare")),
+  evolveHistoricalExtraArgs(
+    evolveHistoricalRouteText(
+      evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historicalLandofile(), "bare")),
+    ),
   );
 
 describe("closed x-* extension artifact repair", () => {

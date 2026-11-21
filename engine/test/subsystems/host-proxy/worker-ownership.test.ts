@@ -44,7 +44,9 @@ for (const state of ["absent", "untrusted"] as const) {
       const lockPath = enforced[0];
       if (lockPath === undefined) throw new TypeError("Missing worker lock path");
       expect(dirname(lockPath)).toBe(join(root, "operation-locks"));
-      expect(await readdir(dirname(lockPath))).toEqual([]);
+      const sentinel = Bun.file(lockPath);
+      expect(await sentinel.exists()).toBe(process.platform === "win32");
+      if (process.platform === "win32") expect(await sentinel.text()).toBe("");
       expect(await readdir(makeLandoPaths({ userDataRoot: root }).hostProxyRunRoot)).toEqual([]);
     } finally {
       await rm(root, { recursive: true, force: true });
