@@ -232,6 +232,26 @@ test.each([
   ]);
 });
 
+test.each([
+  [{}, { verdict: "compatible", changeKind: "union-widened", path: "$.additionalProperties.anyOf" }],
+  [
+    { pattern: "^y$" },
+    { verdict: "unknown", changeKind: "unsupported-keyword", path: "$.additionalProperties" },
+  ],
+] as const)(
+  "checks all constraints on an enum branch replacing a record value (%j)",
+  (constraints, expected) => {
+    const before = { type: "object", additionalProperties: { type: "string", enum: ["x"] } };
+    const after = {
+      type: "object",
+      additionalProperties: {
+        anyOf: [{ type: "number" }, { type: "string", enum: ["x", "y"], ...constraints }],
+      },
+    };
+    expect(classifySchemaChange(before, after, "input")).toMatchObject([expected]);
+  },
+);
+
 test("proves an outer anyOf widening through a preserved arm's nested union", () => {
   const wrap = (members: typeof oldMembers | typeof newMembers): JsonSchema => ({
     anyOf: [{ type: "null" }, { type: "object", additionalProperties: { anyOf: members } }],
