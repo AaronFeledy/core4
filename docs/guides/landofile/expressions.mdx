@@ -200,7 +200,19 @@ services:
 
 The command gets `6380` as one argument, and the healthcheck uses the same port. Change `port:` to update both, or omit it to use Redis's default of `6379`. The expression supplies the value, not the flag or the server configuration.
 
-Use `service.port` in `command:`, `entrypoint:`, or a command in a container `healthcheck:` or `readiness:` probe. It does not refer to a published host port. It is not available in host readiness, `environment:`, build steps, events, or tooling, or on types or modes without a declared primary listener, such as raw Compose, untyped `lando` services, and PHP in CLI mode. Run `lando app:config:lint --format=json` to locate an unsupported use.
+Use `service.port` in `command:`, `entrypoint:`, or a command in a container `healthcheck:` or `readiness:` probe. It does not refer to a published host port. It is not available in host readiness, `environment:`, build steps, events, or tooling. Some modes, such as PHP in CLI mode, have no planned listen port.
+
+On raw `type: lando` and `type: compose` services, set `port:` yourself. You can omit `type:` on a custom image when neither the image nor the service name selects a registered type. For example, if your image provides `api-server`:
+
+```yaml
+services:
+  api:
+    image: ghcr.io/acme/api:1.4
+    port: 8080
+    command: [api-server, --listen, "0.0.0.0:{{ service.port }}"]
+```
+
+Lando passes `0.0.0.0:8080` as one argument. On a raw service, `port:` only supplies the expression value. It does not configure the daemon, declare an endpoint, publish a port, add a route, or create a probe. If you leave out `port:`, there is no default. Run `lando app:config:lint --format=json` from the app directory to locate the argument that reads the missing value.
 
 For a **different** service's database port, use its name. For example, `DB_PORT: "{{ services.db.port }}"` passes PostgreSQL's `5432` as text if `db` uses the default. Finite numbers from plan-time expressions render as text at text fields, whether the expression is the whole value or part of a longer string.
 
@@ -459,6 +471,51 @@ expect(violations).toContainEqual(expect.objectContaining({
       <Run command="lando app:cache:refresh --format=json" expectExit={1} />
       <Verify errorTag="ConfigExpressionError" expect={{ regex: "\"path\":\\s*\\[\"services\",\"cache\",\"command\",2\\]" }} />
       <Verify errorTag="ConfigExpressionError" expect={{ regex: "\\{\\{ service\\.port \\}\\}" }} />
+      </Step>
+    </Scenario>
+  <Scenario id="raw-service-port-launcher" render={false} reason="Assert the planned argv without pulling or running the custom image.">
+    <Step name="plan-raw-service-port">
+      <Run runtime="library" displayCode="Plan the custom-image service" code={`{
+yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), [
+  "name: raw-port-demo",
+  "services:",
+  "  api:",
+  "    image: ghcr.io/acme/api:1.4",
+  "    port: 8080",
+  '    command: [api-server, --listen, "0.0.0.0:{{ service.port }}"]',
+].join("\n")));
+const runtime = yield* LandoCore.openLandoRuntime({
+  cwd: context.testDir,
+  config: {
+    userConfRoot: join(context.testDir, "conf"),
+    userDataRoot: join(context.testDir, "data"),
+    userCacheRoot: join(context.testDir, "cache"),
+  },
+  plugins: { policy: "bundled-only" },
+});
+const app = yield* runtime.app();
+const plan = yield* app.plan;
+const api = Object.values(plan.services).find(({ name }) => name === "api");
+expect(api?.command).toEqual(["api-server", "--listen", "0.0.0.0:8080"]);
+}`} />
+    </Step>
+  </Scenario>
+  <Scenario id="raw-service-port-missing" render={false} reason="Check lint exit status and reading site when a raw service omits port.">
+    <Step name="lint-raw-service-without-port">
+      <Run runtime="library" displayCode="lando app:config:lint --format=json" code={`{
+yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), [
+  "name: raw-port-demo",
+  "services:",
+  "  api:",
+  "    image: ghcr.io/acme/api:1.4",
+  '    command: [api-server, --listen, "0.0.0.0:{{ service.port }}"]',
+].join("\n")));
+const lint = yield* context.runCli("lando app:config:lint --format=json");
+expect(lint.exitCode, lint.stdout).toBe(1);
+expect(JSON.parse(lint.stdout).result.violations).toMatchObject([
+  { rule: "landofile.expression", path: ["services", "api", "command", 2] },
+]);
+}`} />
     </Step>
   </Scenario>
   <Scenario id="service-port-misuse" render={false} reason="Verify that lint and planning report the same unsupported environment field.">
