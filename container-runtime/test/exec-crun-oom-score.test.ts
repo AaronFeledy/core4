@@ -157,6 +157,8 @@ const runExec = (api: EngineHttpApi) =>
 const PROC_SELF_LISTING = "attr\nfd\noom_score_adj\nstatus\n";
 const LS_NOPE = "ls: /nope: No such file or directory\n";
 const CRUN_OOM_SCORE_ADJ_ERROR = "crun: write to /proc/self/oom_score_adj: Permission denied\n";
+const WRITE_PHRASE = "write to /proc/self/oom_score_adj\n";
+const MKDIR_DENIED = "mkdir: /root/foo: Permission denied\n";
 
 const collectExecStream = async (
   api: EngineHttpApi,
@@ -190,6 +192,8 @@ describe("crun oom_score_adj exec classification", () => {
     expect(failureMentionsCrunOomScoreAdj("write to /proc/self/oom_score_adj")).toBe(false);
     expect(failureMentionsCrunOomScoreAdj(PROC_SELF_LISTING)).toBe(false);
     expect(failureMentionsCrunOomScoreAdj(`${PROC_SELF_LISTING}${LS_NOPE}`)).toBe(false);
+    expect(isCrunOomScoreAdjErrorText(`${WRITE_PHRASE}${MKDIR_DENIED}`)).toBe(false);
+    expect(failureMentionsCrunOomScoreAdj(`${WRITE_PHRASE}${MKDIR_DENIED}`)).toBe(false);
   });
 
   test("an attach connection reset by peer alone is not a crun failure", () => {
@@ -324,6 +328,41 @@ describe("crun oom_score_adj exec classification", () => {
 
     const streamed = await collectExecStream(api, command);
     expect(streamed).toEqual({ exitCode: 2, stdout: input.stdout, stderr: input.stderr });
+  });
+
+  test.each([
+    {
+      name: "stdout and stderr",
+      frames: [attachFrame(1, WRITE_PHRASE), attachFrame(2, MKDIR_DENIED)],
+      tty: false,
+      stdout: WRITE_PHRASE,
+      stderr: MKDIR_DENIED,
+    },
+    {
+      name: "two stdout frames",
+      frames: [attachFrame(1, WRITE_PHRASE), attachFrame(1, MKDIR_DENIED)],
+      tty: false,
+      stdout: `${WRITE_PHRASE}${MKDIR_DENIED}`,
+      stderr: "",
+    },
+    {
+      name: "two TTY chunks",
+      frames: [new TextEncoder().encode(WRITE_PHRASE), new TextEncoder().encode(MKDIR_DENIED)],
+      tty: true,
+      stdout: `${WRITE_PHRASE}${MKDIR_DENIED}`,
+      stderr: "",
+    },
+  ])("does not classify split write and Permission denied phrases on $name", async (input) => {
+    const api = makeExecApi({ frames: input.frames, inspectExitCode: 1 });
+    const command =
+      input.tty === true
+        ? { command: ["mkdir", "/root/foo"], tty: true as const }
+        : { command: ["mkdir", "/root/foo"] };
+
+    const result = await Effect.runPromise(exec(plan, target, command, { api, ctx }));
+    expect(result).toEqual({ exitCode: 1, stdout: input.stdout, stderr: input.stderr });
+    expect(`${result.stdout}${result.stderr}`).toContain("write to /proc/self/oom_score_adj");
+    expect(`${result.stdout}${result.stderr}`).toContain("Permission denied");
   });
 
   test("classifies an HTTP start body that mentions the substring", async () => {

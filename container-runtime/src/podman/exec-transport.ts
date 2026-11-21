@@ -833,7 +833,7 @@ export const exec = Effect.fn("RuntimeProvider.exec")(function* (
     service !== undefined &&
     exitCode !== undefined &&
     exitCode !== 0 &&
-    isCrunOomScoreAdjErrorText(`${stdout}${stderr}`)
+    (isCrunOomScoreAdjErrorText(stdout) || isCrunOomScoreAdjErrorText(stderr))
   ) {
     return yield* Effect.fail(
       crunOomScoreAdjExecFailure(
