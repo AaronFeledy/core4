@@ -102,10 +102,18 @@ describe("authoring JSON Schema publication", () => {
         additionalProperties: { anyOf: values },
         propertyNames:
           field === "environment" ? { pattern: expect.any(String) } : { not: { const: "__proto__" } },
+        ...(field === "environment" ? { allOf: [{ propertyNames: { pattern: expect.any(String) } }] } : {}),
       },
       {
         type: "array",
-        items: field === "environment" ? { type: "string", pattern: expect.any(String) } : { type: "string" },
+        items:
+          field === "environment"
+            ? {
+                type: "string",
+                pattern: expect.any(String),
+                allOf: [{ pattern: expect.any(String) }, { pattern: expect.any(String) }],
+              }
+            : { type: "string" },
       },
     ]);
   });

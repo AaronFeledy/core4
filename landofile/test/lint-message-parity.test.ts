@@ -11,12 +11,12 @@ import { validationErrorFromCause } from "../src/validation.ts";
 const TOOLING_TASK_EXPECTATION = "Expected false, a non-empty command string, or a tooling task object";
 
 test.each([
-  ["    - FOO", 0],
-  ["    - __proto__=x", 0],
-  ["    - =value", 0],
-  ['    "": value', ""],
-  ["    FOO: null", "FOO"],
-] as const)("merges located environment diagnostics for #2194: %s", async (value, key) => {
+  ["    - FOO", 0, /host.*FOO.*KEY=value.*env\.FOO/i],
+  ["    - __proto__=x", 0, /__proto__.*reserved/i],
+  ["    - =value", 0, /^(?!.*__proto__).*names cannot be empty/i],
+  ['    "": value', "", /^(?!.*__proto__).*names cannot be empty/i],
+  ["    FOO: null", "FOO", /FOO.*concrete/i],
+] as const)("merges located environment diagnostics for #2194: %s", async (value, key, message) => {
   for (const [prefix, path] of [
     ["tooling:\n  task:\n    cmd: echo ok\n    env:", ["tooling", "task", "env"]],
     ["services:\n  web:\n    environment:", ["services", "web", "environment"]],
@@ -26,10 +26,24 @@ test.each([
       expect.objectContaining({
         path: [...path, key],
         rule: "landofile.validation",
+        message: expect.stringMatching(message),
         scopes: ["fragment", "effective"],
       }),
     ]);
   }
+});
+
+test.each(["dockerfileInline", "typoBuildKey"])("reports unsupported build key %s once", async (key) => {
+  const { result } = await lintLayers({
+    ".lando.yml": `name: lint-parity\nservices:\n  web:\n    type: compose\n    image: alpine\n    build:\n      ${key}: FROM alpine\n`,
+  });
+  expect(result.violations).toEqual([
+    expect.objectContaining({
+      rule: "landofile.validation",
+      path: ["services", "web", "build", key],
+      message: expect.stringMatching(/Unsupported Compose build key/),
+    }),
+  ]);
 });
 
 const producer = [

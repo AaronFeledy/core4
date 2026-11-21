@@ -12,21 +12,44 @@ export const propertyNameRecordProjection = (ast: SchemaAST.AST): SchemaAST.AST 
 /** Check raw names independently: Effect's object filters normally run only after the values decode. */
 export const propertyNameCheckedRecord = <A, I>(
   record: Schema.Codec<A, I>,
-  check: SchemaAST.Filter<unknown>,
+  ...checks: [SchemaAST.Filter<unknown>, ...SchemaAST.Filter<unknown>[]]
 ): Schema.Codec<A, I> => {
-  const projection = record.check(check).ast;
+  const projection = record.check(...checks).ast;
   return Schema.make<Schema.Codec<A, I>>(
     new SchemaAST.Declaration(
       [record.ast],
       ([body = record.ast]) => {
         const decode = decodeUnknownEffect(Schema.make<Schema.Codec<A, I>>(body));
         return (input, _ast, options) => {
-          const keyIssue = options.disableChecks ? undefined : check.run(input, body, options);
-          if (keyIssue === undefined) return decode(input, options);
-          if (options.errors !== "all") return Effect.fail(keyIssue);
+          const keyIssues = [];
+          if (!options.disableChecks)
+            for (const check of checks) {
+              const issue = check.run(input, body, options);
+              if (issue === undefined) continue;
+              if (options.errors !== "all") return Effect.fail(issue);
+              keyIssues.push(issue);
+            }
+          const [first, ...rest] = keyIssues;
+          if (first === undefined) return decode(input, options);
           return Effect.matchEffect(decode(input, options), {
-            onFailure: (bodyIssue) => Effect.fail(new SchemaIssue.Composite(body, [keyIssue, bodyIssue])),
-            onSuccess: () => Effect.fail(keyIssue),
+            onFailure: (bodyIssue) => {
+              const children = bodyIssue._tag === "Composite" ? bodyIssue.issues : [bodyIssue];
+              const independent = children.filter((issue) => {
+                if (
+                  issue._tag !== "Pointer" ||
+                  issue.issue._tag !== "UnexpectedKey" ||
+                  issue.path.length !== 1
+                )
+                  return true;
+                const [key] = issue.path;
+                return (
+                  key === undefined ||
+                  !checks.some((check) => check.run({ [key]: undefined }, body, options) !== undefined)
+                );
+              });
+              return Effect.fail(new SchemaIssue.Composite(body, [first, ...rest, ...independent]));
+            },
+            onSuccess: () => Effect.fail(new SchemaIssue.Composite(body, [first, ...rest])),
           });
         };
       },

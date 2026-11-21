@@ -174,19 +174,20 @@ const propertyNameChecks = (check: AST.Check<unknown>): ReadonlyArray<AST.Check<
 };
 
 export const authoringJsonContainer = (source: AST.AST, runtime: AST.AST): AST.AST | undefined => {
-  const [first, ...rest] = (source.checks ?? []).flatMap(propertyNameChecks);
-  const indexed = [first, ...rest].find(
-    (check) => check?.annotations?.["lando/indexed-property-names"] === true,
-  );
-  if (indexed?._tag === "Filter") {
+  const checks = (source.checks ?? []).flatMap(propertyNameChecks);
+  const isIndexed = (check: AST.Check<unknown>): check is AST.Filter<unknown> =>
+    check._tag === "Filter" && check.annotations?.["lando/indexed-property-names"] === true;
+  const [indexed, ...otherIndexed] = checks.filter(isIndexed);
+  if (indexed !== undefined) {
     const schema = Schema.make<Schema.Codec<unknown>>(runtime);
-    const [check, ...others] =
-      first === indexed
-        ? rest
-        : [...(first === undefined ? [] : [first]), ...rest.filter((check) => check !== indexed)];
-    return propertyNameCheckedRecord(check === undefined ? schema : schema.check(check, ...others), indexed)
-      .ast;
+    const [check, ...others] = checks.filter((entry) => !isIndexed(entry));
+    return propertyNameCheckedRecord(
+      check === undefined ? schema : schema.check(check, ...others),
+      indexed,
+      ...otherIndexed,
+    ).ast;
   }
+  const [first, ...rest] = checks;
   const keyChecks: AST.Checks | undefined = first === undefined ? undefined : [first, ...rest];
   const container =
     keyChecks === undefined ? runtime : Schema.make<Schema.Codec<unknown>>(runtime).check(...keyChecks).ast;

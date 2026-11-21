@@ -16,6 +16,7 @@ import {
   schemaIssueLeaves,
 } from "@lando/sdk/schema";
 import { Result, type SchemaIssue } from "effect";
+import { eligibleBindingPath } from "./secret-reference.ts";
 
 const SERVICE_KEYS = [...Object.keys(ServiceConfig.fields), "working_dir", "env_file", "depends_on"];
 const MISPLACED_COMPOSE_SURFACE_REMEDIATION = {
@@ -164,9 +165,16 @@ export const landofileIssuesFromSchema = (
     input: parsed,
   }).map((leaf) => {
     const suggestion = suggestionForLeaf(leaf, parsed);
+    const path = leaf.path.map((segment) => (typeof segment === "number" ? segment : String(segment)));
+    const key = path.at(-1);
+    const parent = unwrapOverride(valueAtPath(parsed, path.slice(0, -1)));
+    const message =
+      typeof key === "string" && eligibleBindingPath(path) && isPlainRecord(parent) && parent[key] === null
+        ? `For environment key ${JSON.stringify(key)}, supply a concrete value; use an empty string for an empty value.`
+        : leaf.message;
     return {
-      path: leaf.path.map((segment) => (typeof segment === "number" ? segment : String(segment))),
-      message: leaf.message,
+      path,
+      message,
       ...(leaf.kind === undefined ? {} : { kind: leaf.kind }),
       ...(suggestion === undefined ? {} : { suggestion }),
     };

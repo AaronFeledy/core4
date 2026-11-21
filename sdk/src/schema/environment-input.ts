@@ -5,16 +5,24 @@ import { indexedPropertyNameCheck, propertyNameCheckedRecord } from "./property-
 const DESCRIPTION =
   "Environment variables as a map (KEY: value) or a Compose-style KEY=value list. Names must be nonempty and cannot be __proto__. Bare entries and null values are rejected.";
 
-const nameCheck = indexedPropertyNameCheck(
-  /^(?!__proto__(?![\s\S]))[\s\S]/u,
-  'The key "__proto__" is reserved and cannot be used in an environment map. Environment names cannot be empty.',
-);
+const emptyName = "Environment names cannot be empty.";
+const reservedName =
+  'The key "__proto__" is reserved and cannot be used in an environment map. Choose another name.';
 
 export const EnvironmentAssignment = Schema.String.check(
-  Schema.isPattern(/^(?!__proto__=)[^=]+=/u, {
-    message:
-      'Expected KEY=value with a nonempty, nonreserved environment name. The name "__proto__" is reserved.',
-  }),
+  Schema.makeFilter<string>(
+    (entry) => {
+      if (entry.includes("=")) return undefined;
+      const name = JSON.stringify(entry);
+      const explicit = /^[A-Za-z_][A-Za-z0-9_]*$/u.test(entry)
+        ? ` To use a host value, write ${entry}: "{{ env.${entry} }}" in the map.`
+        : ' To use a host value, use a whole-value expression such as KEY: "{{ env.KEY }}" in the map.';
+      return `Lando does not pass host variables through by name (${name}). Use KEY=value or the map form.${explicit}`;
+    },
+    { toJsonSchema: () => ({ pattern: /=/u.source }) },
+  ),
+  Schema.isPattern(/^(?!=)/u, { message: emptyName }),
+  Schema.isPattern(/^(?!__proto__=)/u, { message: reservedName }),
 );
 
 const EnvironmentMapInput = propertyNameCheckedRecord(
@@ -24,7 +32,8 @@ const EnvironmentMapInput = propertyNameCheckedRecord(
       message: "Supply a concrete environment value; host-environment interpolation is unsupported.",
     }),
   ).annotate({ expected: "a map or a list of KEY=VALUE strings" }),
-  nameCheck,
+  indexedPropertyNameCheck(/^[\s\S]/u, emptyName),
+  indexedPropertyNameCheck(/^(?!__proto__(?![\s\S]))/u, reservedName),
 );
 
 export const ComposeEnvironmentInput = Schema.Union([

@@ -70,11 +70,12 @@ for (const name of ["LandofileAuthoringFragment", "LandofileAuthoringFragmentWir
         } else if (Array.isArray(node)) nodes.push(...node);
       }
       // Then the map excludes exactly the runtime-reserved property name.
-      expect(constraints).toContainEqual(
-        field === "environment"
-          ? { pattern: "^(?!__proto__(?![\\s\\S]))[\\s\\S]" }
-          : { not: { const: "__proto__" } },
-      );
+      if (field === "environment") {
+        expect(constraints).toContainEqual({ pattern: "^[\\s\\S]" });
+        expect(constraints).toContainEqual({ pattern: "^(?!__proto__(?![\\s\\S]))" });
+      } else {
+        expect(constraints).toContainEqual({ not: { const: "__proto__" } });
+      }
     },
   );
 }
