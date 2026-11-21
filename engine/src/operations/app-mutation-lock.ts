@@ -1,30 +1,29 @@
-import { readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
-import { AppLockTimeoutError, StateStoreError, isErrnoCode } from "@lando/sdk/errors";
-import { MessageWarnEvent } from "@lando/sdk/events";
+import { AppLockTimeoutError, StateStoreError } from "@lando/sdk/errors";
+import { formatWaitDuration } from "@lando/sdk/renderer";
 import { AbsolutePath, type AppRef } from "@lando/sdk/schema";
-import { EventService, PathsService } from "@lando/sdk/services";
-import { acquireAdvisoryLockAt, peekAdvisoryLockRecord } from "@lando/state-store/lock";
+import { PathsService } from "@lando/sdk/services";
+import {
+  ADVISORY_LOCK_SUFFIX,
+  LockHolder,
+  acquireAdvisoryLockAt,
+  resolveOperationLockTimeoutMs,
+} from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Context, DateTime, Effect } from "effect";
+import { Context, Effect } from "effect";
 import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
+import { installHolderEnv, isBorrowedOwner } from "./app-lock-borrow.ts";
+
+export { APP_LOCK_HOLDERS_ENV } from "./app-lock-borrow.ts";
+
 import { PinnedAppRoot } from "./app-root-identity.ts";
 
 export { canonicalAppRoot } from "./app-root-identity.ts";
-
-/**
- * Finite wait for another process that holds this app's mutate lock.
- * Override with {@link APP_LOCK_TIMEOUT_ENV} (milliseconds). Fail-immediately
- * is worse UX; unbounded wait is worse for CI.
- */
-export const DEFAULT_APP_LOCK_TIMEOUT_MS = 120_000;
-export const APP_LOCK_TIMEOUT_ENV = "LANDO_APP_LOCK_TIMEOUT_MS";
-export const APP_LOCK_HOLDERS_ENV = "LANDO_APP_LOCK_HOLDERS";
-export const APP_LOCK_WAIT_MESSAGE = "another Lando command holds the app lock";
 
 export const HeldAppLockKeys = Context.Reference<ReadonlySet<string>>("@lando/engine/HeldAppLockKeys", {
   defaultValue: (): ReadonlySet<string> => new Set(),
@@ -36,14 +35,6 @@ const HeldGlobalAppRoot = Context.Reference<string | undefined>("@lando/engine/H
 
 /** Used by the global coordinator to reject actual-root to policy lock-order upgrades. */
 export const heldGlobalAppMutationRoot = HeldGlobalAppRoot;
-
-export const resolveAppLockTimeoutMs = (env: NodeJS.ProcessEnv = process.env): number => {
-  const raw = env[APP_LOCK_TIMEOUT_ENV];
-  if (raw === undefined || raw === "") return DEFAULT_APP_LOCK_TIMEOUT_MS;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_APP_LOCK_TIMEOUT_MS;
-  return Math.floor(parsed);
-};
 
 /**
  * Stable operation-locks key: user app roots survive renames; scratch and global
@@ -58,127 +49,48 @@ export const appMutationLockKey = (
   kind: AppRef["kind"] = appId === "global" || appId === "global-policy" ? "global" : "user",
 ): string => `app-${sha256Hex(kind === "user" ? canonicalRoot : `${appId}\0${canonicalRoot}`)}`;
 
-const parseHolderEntries = (raw: string | undefined): ReadonlyArray<readonly [string, string]> => {
-  if (raw === undefined || raw === "") return [];
-  return raw.split(",").flatMap((entry) => {
-    const separator = entry.indexOf(":");
-    if (separator <= 0) return [];
-    const key = entry.slice(0, separator);
-    const token = entry.slice(separator + 1);
-    return key === "" || token === "" ? [] : ([[key, token]] as const);
-  });
-};
-
-const serializeHolderEntries = (entries: ReadonlyArray<readonly [string, string]>): string =>
-  entries.map(([key, token]) => `${key}:${token}`).join(",");
-
-const installHolderEnv = (key: string, token: string): (() => void) => {
-  const previous = process.env[APP_LOCK_HOLDERS_ENV];
-  const next = serializeHolderEntries([
-    ...parseHolderEntries(previous).filter(([held]) => held !== key),
-    [key, token],
-  ]);
-  process.env[APP_LOCK_HOLDERS_ENV] = next;
-  return () => {
-    if (previous === undefined) delete process.env[APP_LOCK_HOLDERS_ENV];
-    else process.env[APP_LOCK_HOLDERS_ENV] = previous;
-  };
-};
-
-const parentPidOf = (pid: number): number | undefined => {
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    const close = stat.lastIndexOf(")");
-    if (close === -1) return undefined;
-    const ppid = Number(stat.slice(close + 2).split(" ")[1]);
-    return Number.isInteger(ppid) && ppid > 0 ? ppid : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-export const isSelfOrAncestorPid = (holderPid: number, pid = process.pid, ppid = process.ppid): boolean => {
-  if (holderPid === pid) return true;
-  let current = ppid;
-  const seen = new Set<number>([pid]);
-  while (current > 1 && !seen.has(current)) {
-    if (current === holderPid) return true;
-    seen.add(current);
-    const parent = parentPidOf(current);
-    if (parent === undefined) break;
-    current = parent;
-  }
-  return false;
-};
-
-/** Child of the lock holder, not another fiber in the same process. */
-export const isAncestorPid = (holderPid: number, pid = process.pid, ppid = process.ppid): boolean =>
-  holderPid !== pid && isSelfOrAncestorPid(holderPid, pid, ppid);
-
-const borrowedMutationOwner = (
-  key: string,
-  lockPath: string,
-): Effect.Effect<number | undefined, StateStoreError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const record = await peekAdvisoryLockRecord(lockPath);
-      if (record === null) return undefined;
-      // Same PID is another fiber in this process: wait on the file lock.
-      // Nested same-process acquires are context-reference no-ops before this check.
-      if (record.pid === process.pid) return undefined;
-      try {
-        process.kill(record.pid, 0);
-      } catch (cause) {
-        if (isErrnoCode(cause, "ESRCH")) return undefined;
-      }
-      return isAncestorPid(record.pid) ||
-        parseHolderEntries(process.env[APP_LOCK_HOLDERS_ENV]).some(
-          ([held, token]) => held === key && token === record.token,
-        )
-        ? record.pid
-        : undefined;
-    },
-    catch: (cause) =>
-      new StateStoreError({
-        reason: "io",
-        operation: "readAppMutationOwner",
-        path: lockPath,
-        cause,
-        remediation: "Restore access to the app mutation lock and retry.",
-      }),
-  });
-
-const announceWait = Effect.fnUntraced(
-  function* () {
-    const events = yield* Effect.serviceOption(EventService);
-    if (events._tag === "None") return;
-    yield* events.value.publish(
-      MessageWarnEvent.make({
-        body: APP_LOCK_WAIT_MESSAGE,
-        timestamp: DateTime.nowUnsafe(),
-      }),
-    );
-  },
-  Effect.catch(() => Effect.void),
-);
-
-const timeoutError = (appId: string, timeoutMs: number, cause?: unknown): AppLockTimeoutError =>
+const timeoutError = (appId: string, timeoutMs: number, cause: StateStoreError): AppLockTimeoutError =>
   new AppLockTimeoutError({
-    message: APP_LOCK_WAIT_MESSAGE,
+    message: cause.message ?? `Gave up after ${formatWaitDuration(timeoutMs)} waiting for app ${appId}.`,
     app: appId,
     timeoutMs,
-    remediation: `Wait for the other command to finish, then retry. Set ${APP_LOCK_TIMEOUT_ENV} (milliseconds) to wait longer.`,
-    ...(cause === undefined ? {} : { cause }),
+    remediation: cause.remediation,
+    cause,
   });
+
+const mapAppLockFailure = (
+  appId: string,
+  lockPath: string,
+  timeoutMs: number,
+  cause: StateStoreError,
+): StateStoreError | AppLockTimeoutError => {
+  if (cause.lockFailure === "timeout") return timeoutError(appId, cause.timeoutMs ?? timeoutMs, cause);
+  if (cause.lockFailure === "refused")
+    return new StateStoreError({
+      reason: "lock",
+      lockFailure: "refused",
+      operation: "nestedAppMutation",
+      message: cause.message,
+      path: lockPath,
+      ...(cause.ownerPid === undefined ? {} : { ownerPid: cause.ownerPid }),
+      ...(cause.resource === undefined ? {} : { resource: cause.resource }),
+      cause: { app: appId, ownerPid: cause.ownerPid },
+      remediation:
+        "This child command cannot borrow its parent command's app mutation lock. Run nested mutations in the parent process, or run this command after the parent finishes.",
+    });
+  return cause;
+};
 
 export const appLockTarget = (app: {
   readonly id: unknown;
+  readonly name?: unknown;
   readonly root: unknown;
   readonly identity?: { readonly appRoot?: unknown } | undefined;
   readonly kind?: AppRef["kind"];
   readonly extensions?: Readonly<Record<string, unknown>>;
-}): { readonly id: string; readonly root: string; readonly kind: AppRef["kind"] } => ({
+}): AppLockSubject & { readonly kind: AppRef["kind"] } => ({
   id: String(app.id),
+  ...(typeof app.name === "string" ? { name: app.name } : {}),
   root: String(app.identity?.appRoot ?? app.root),
   kind:
     app.kind ??
@@ -242,18 +154,29 @@ export const appMutationLockIdentity = (app: {
     })),
   );
 
+/** The app a mutation lock serializes; `name` labels wait notices and defaults to the folder name. */
+export interface AppLockSubject {
+  readonly id: string;
+  readonly root: string;
+  readonly kind?: AppRef["kind"];
+  readonly name?: string;
+}
+
+const isGlobalLock = (app: AppLockSubject): boolean =>
+  app.kind === "global" || app.id === "global" || app.id === "global-policy";
+
 /**
  * Acquire one per-app advisory file lock around a mutating operation.
  *
  * Same-process nesting reuses the context-held key. A child command recognized
- * through ancestry or an inherited holder token refuses borrowed ownership;
- * waiting on a live parent would deadlock when that parent awaits its child.
+ * through ancestry or an inherited holder token refuses borrowed ownership only
+ * when the kernel lock is contended; an uncontended child acquires normally.
  *
  * Confirmation prompts belong outside this wrapper. The lock is the mutate
  * phase only.
  */
 export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
-  app: { readonly id: string; readonly root: string; readonly kind?: AppRef["kind"] },
+  app: AppLockSubject,
   body: Effect.Effect<A, E, R>,
   options: { readonly lockRoot?: string } = {},
 ): Effect.fn.Return<
@@ -285,7 +208,12 @@ export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
         remediation: "Global app mutation locks must use the canonical runtime root's lock directory.",
       }),
     );
+  // Global services are shared, so their lock keeps the label of the app that needed them.
+  const outerHolder = yield* LockHolder;
+  const name = app.name ?? (app.kind === "scratch" ? String(app.id) : basename(canonicalRoot));
+  const holder = isGlobalLock(app) ? outerHolder : { ...outerHolder, app: name };
   const provided = body.pipe(
+    Effect.provideService(LockHolder, holder),
     Effect.provideService(PinnedAppRoot, { requestedRoot: app.root, canonicalRoot }),
     Effect.provideService(HeldAppLockKeys, new Set([...held, key])),
     Effect.provideService(HeldGlobalAppRoot, app.id === "global" ? canonicalRoot : heldGlobalRoot),
@@ -305,36 +233,33 @@ export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
     key,
     "app-mutate",
   );
-  const lockPath = `${resolved.file}.lock`;
-  const borrowed = yield* borrowedMutationOwner(key, lockPath);
-  if (borrowed !== undefined)
-    return yield* Effect.fail(
-      new StateStoreError({
-        reason: "lock",
-        operation: "nestedAppMutation",
-        path: lockPath,
-        cause: { app: String(app.id), ownerPid: borrowed },
-        remediation:
-          "This child command cannot borrow its parent command's app mutation lock. Run nested mutations in the parent process, or run this command after the parent finishes.",
-      }),
-    );
+  const lockPath = `${resolved.file}${ADVISORY_LOCK_SUFFIX}`;
+  const appId = String(app.id);
+  const timeoutMs = resolveOperationLockTimeoutMs();
+  const resource = isGlobalLock(app) ? "Lando's global services" : `app ${name}`;
 
-  const timeoutMs = resolveAppLockTimeoutMs();
-  return yield* Effect.acquireUseRelease(
-    acquireAdvisoryLockAt(lockPath, "app-mutate", {
-      timeoutMs,
-      onWait: announceWait(),
-      privateFileAccess,
-    }).pipe(
-      Effect.map((lock) => ({ lock, restore: installHolderEnv(key, lock.token) })),
-      mapFailures((cause) =>
-        cause instanceof StateStoreError && cause.reason === "lock"
-          ? timeoutError(String(app.id), timeoutMs, cause)
-          : cause,
-      ),
-    ),
-    () =>
-      appMutationLockIdentity(app).pipe(
+  return yield* Effect.scoped(
+    Effect.gen(function* () {
+      const lock = yield* acquireAdvisoryLockAt(lockPath, "app-mutate", {
+        privateFileAccess,
+        wait: "operation",
+        timeoutMs,
+        resource,
+        appLock: !isGlobalLock(app),
+        refuseOnContention: (record) => Effect.sync(() => isBorrowedOwner(key, record)),
+      }).pipe(
+        Effect.provideService(LockHolder, holder),
+        mapFailures((cause) => mapAppLockFailure(appId, lockPath, timeoutMs, cause)),
+      );
+
+      // Install/restore the holder env under acquireRelease so interrupt cannot
+      // leave a half-written process.env entry or skip cleanup.
+      yield* Effect.acquireRelease(
+        Effect.sync(() => installHolderEnv(key, lock.token)),
+        (restore) => Effect.sync(restore),
+      );
+
+      return yield* appMutationLockIdentity(app).pipe(
         Effect.flatMap(
           (current): Effect.Effect<A, E | StateStoreError, never> =>
             current.key === key
@@ -348,8 +273,8 @@ export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
                   }),
                 ),
         ),
-      ),
-    ({ lock, restore }) => Effect.sync(restore).pipe(Effect.andThen(lock.release)),
+      );
+    }),
   );
 });
 

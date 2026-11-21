@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AppId, ProviderId } from "@lando/sdk/schema";
 import { type RuntimeProviderShape, ScratchAppService } from "@lando/sdk/services";
 import { Deferred, Effect, Exit, Fiber, Scope } from "effect";
-import { APP_LOCK_WAIT_MESSAGE, withAppMutationLock } from "../../src/operations/app-mutation-lock.ts";
+import { withAppMutationLock } from "../../src/operations/app-mutation-lock.ts";
 import { scratchGcCandidates } from "../../src/scratch-app/gc-candidates.ts";
 import { BuildOwner } from "../../src/services/build-owner.ts";
 import { makeBuildTranscriptAppDir } from "../../src/services/build-transcript.ts";
@@ -89,7 +89,7 @@ test("#2292 explicit destroy waits for acquisition through mark-running", async 
     {
       registration: Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(release))),
       onEvent: (event) => {
-        if (event._tag === "message.warn" && event.body === APP_LOCK_WAIT_MESSAGE) waiting.resolve();
+        if (event._tag === "lock.wait" && event.subject === "app") waiting.resolve();
       },
     },
   );
@@ -142,7 +142,7 @@ test("#2292 gc rechecks a candidate that becomes running while waiting", async (
     },
     {
       onEvent: (event) => {
-        if (event._tag === "message.warn" && event.body === APP_LOCK_WAIT_MESSAGE) waiting.resolve();
+        if (event._tag === "lock.wait" && event.subject === "app") waiting.resolve();
       },
     },
   );
@@ -185,7 +185,7 @@ test("#2292 scope-close cleanup reacquires the scratch instance lock", async () 
     },
     {
       onEvent: (event) => {
-        if (event._tag === "message.warn" && event.body === APP_LOCK_WAIT_MESSAGE) waiting.resolve();
+        if (event._tag === "lock.wait" && event.subject === "app") waiting.resolve();
       },
     },
   );

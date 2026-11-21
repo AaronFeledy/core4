@@ -50,6 +50,24 @@ export const TEST_SELECTIONS = [
     jobs: [{ workflow: "ci.yml", job: "static-checks-platform" }],
   },
   {
+    id: "native-lock",
+    paths: [
+      "state-store/test/state/native-lock.test.ts",
+      "state-store/test/state/native-lock-errors.test.ts",
+      "state-store/test/state/native-lock-reliability.test.ts",
+    ],
+    unit: "exclude",
+    jobs: [{ workflow: "ci.yml", job: "static-checks-platform" }],
+    needs: "Kernel advisory locks across processes on every OS",
+  },
+  {
+    id: "compiled-native-lock",
+    paths: ["state-store/test/state/native-lock-compiled.test.ts"],
+    unit: "exclude",
+    jobs: builds,
+    needs: "Compiled advisory-lock holder fixture (bun build --compile)",
+  },
+  {
     id: "process-signals",
     paths: ["core/test/cli/process-signals.test.ts"],
     jobs: [{ workflow: "ci.yml", job: "process-signal-tests-darwin" }],

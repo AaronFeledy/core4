@@ -94,6 +94,9 @@ ${setupBunSteps}
       - name: Host Bun Shell dialect conformance
         run: ${testSelectionCommand("shell-dialect")}
 
+      - name: Native advisory lock (two-process)
+        run: ${testSelectionCommand("native-lock")}
+
       - name: Lint
         run: bun run lint
 
@@ -270,6 +273,9 @@ ${renderSmokeCommands(platform)}
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
         run: ${testSelectionCommand("compiled-renderer-output")}
+
+      - name: Verify compiled two-process native lock
+        run: ${testSelectionCommand("compiled-native-lock")}
 
       - name: Upload ${platform.id} binary
         if: always()
