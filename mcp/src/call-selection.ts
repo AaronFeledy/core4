@@ -83,11 +83,12 @@ export const selectCallOwner = Effect.fnUntraced(function* (
     ),
   );
   if (leased._tag === "Failure") {
-    if (Cause.hasInterruptsOnly(leased.cause)) return yield* Effect.interrupt;
+    const outcome = failureOutcomeFromCause(leased.cause, normalizeDefect);
+    if (outcome.kind === "none" && Cause.hasInterruptsOnly(leased.cause)) return yield* Effect.interrupt;
     return {
       _tag: "OwnerFailed",
       commandId: toolId,
-      outcome: failureOutcomeFromCause(leased.cause, normalizeDefect),
+      outcome,
     };
   }
   const { generation, publication } = leased.value;

@@ -332,10 +332,10 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
     yield* emitPost("failure", "Interrupted");
     return yield* Effect.interrupt;
   }
-  const failure = Cause.findErrorOption(exit.cause);
-  if (Option.isSome(failure)) {
-    yield* emitPost("failure", failure.value._tag);
-    return yield* Effect.fail(failure.value);
+  const failure = failureOutcomeFromCause(exit.cause, normalizeDefect);
+  if (failure.kind === "typed" && failure.source === "fail" && failure.additionalErrors.length === 0) {
+    yield* emitPost("failure", failure.error._tag);
+    return yield* Effect.failCause(exit.cause);
   }
   const logger = yield* Effect.serviceOption(Logger);
   if (Option.isSome(logger)) {
@@ -343,5 +343,5 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
       .debug("MCP command defect", { cause: deps.redactor.redactString(Cause.pretty(exit.cause)) })
       .pipe(Effect.ignore);
   }
-  return yield* failureResult(commandId, failureOutcomeFromCause(exit.cause, normalizeDefect));
+  return yield* failureResult(commandId, failure);
 }, Effect.uninterruptible);
