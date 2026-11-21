@@ -1,5 +1,11 @@
 import { canonicalJson } from "@lando/sdk/digest";
-import type { AppPlan, InternalEndpoint, PublishedEndpoint, ServicePlan } from "@lando/sdk/schema";
+import type {
+  AppPlan,
+  AppliedAppPlan,
+  InternalEndpoint,
+  PublishedEndpoint,
+  ServicePlan,
+} from "@lando/sdk/schema";
 import { containerMountIntent } from "./container-mounts.ts";
 import { serviceContainerName } from "./container-name.ts";
 import { ContainerPlanError } from "./container-plan-error.ts";
@@ -32,9 +38,11 @@ export interface MergeAppliedPlanOptions {
 /** Retain earlier service metadata when a provider applies only a subset of the app. */
 export const mergeAppliedPlan = (
   previous: AppPlan | undefined,
-  incoming: AppPlan,
+  desired: AppPlan,
   options: MergeAppliedPlanOptions = {},
-): AppPlan => {
+): AppliedAppPlan => {
+  const { events: _events, ...projected } = desired;
+  const incoming: AppliedAppPlan = "events" in desired ? projected : desired;
   if (options.complete === true || previous === undefined || previous.id !== incoming.id) return incoming;
   const carried = Object.entries(previous.services).filter(([name]) => !(name in incoming.services));
   // Carried routes are appended when the incoming plan does not name them, so an

@@ -1,7 +1,7 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import type { AppId, AppPlan as AppPlanShape, AppliedStateInventory } from "@lando/sdk/schema";
+import type { AppId, AppPlan, AppliedAppPlan, AppliedStateInventory } from "@lando/sdk/schema";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 
@@ -47,7 +47,9 @@ export const openAppliedPlansRecord = (stateStore: Pick<PluginStateStore, "open"
  * provider state: lifecycle operations resolve them from the current Landofile,
  * so a record never carries hooks that could run stale.
  */
-const appliedPlanRecord = Effect.fnUntraced(function* (plan: AppPlanShape) {
+const appliedPlanRecord = Effect.fnUntraced(function* (
+  plan: AppPlan,
+): Effect.fn.Return<AppliedAppPlan & { readonly events?: never }> {
   const sanitizer = yield* Effect.serviceOption(AppPlanSanitizer);
   const { events: _events, ...applied } = Option.isSome(sanitizer)
     ? sanitizer.value.sanitizeForPersistence(plan)
@@ -60,15 +62,15 @@ interface AppliedPlanOperations {
   readonly loadAppliedPlanStrict: (
     stateStore: PluginStateStore,
     appId: AppId,
-  ) => Effect.Effect<AppPlanShape | undefined, ProviderUnavailableError>;
+  ) => Effect.Effect<AppliedAppPlan | undefined, ProviderUnavailableError>;
   readonly persistAppliedPlan: (
     stateStore: PluginStateStore,
-    plan: AppPlanShape,
+    plan: AppPlan,
   ) => Effect.Effect<string, ProviderUnavailableError>;
   readonly loadAppliedPlan: (
     stateStore: PluginStateStore,
     appId: AppId,
-  ) => Effect.Effect<AppPlanShape | undefined, never>;
+  ) => Effect.Effect<AppliedAppPlan | undefined, never>;
   readonly removeAppliedPlan: (
     stateStore: PluginStateStore,
     appId: AppId,
@@ -79,7 +81,7 @@ export interface PerAppAppliedPlanStore extends AppliedPlanOperations {
   readonly listObservedPlans: (
     stateStore: PluginStateStore,
     stateDir: string,
-  ) => Effect.Effect<ReadonlyArray<AppPlanShape>>;
+  ) => Effect.Effect<ReadonlyArray<AppliedAppPlan>>;
   readonly listAppliedPlans: (
     stateStore: PluginStateStore,
     stateDir: string,
@@ -87,7 +89,7 @@ export interface PerAppAppliedPlanStore extends AppliedPlanOperations {
 }
 
 export interface RecordAppliedPlanStore extends AppliedPlanOperations {
-  readonly listObservedPlans: (stateStore: PluginStateStore) => Effect.Effect<ReadonlyArray<AppPlanShape>>;
+  readonly listObservedPlans: (stateStore: PluginStateStore) => Effect.Effect<ReadonlyArray<AppliedAppPlan>>;
   readonly listAppliedPlans: (
     stateStore: PluginStateStore,
   ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError>;

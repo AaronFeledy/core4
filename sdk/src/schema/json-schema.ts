@@ -163,6 +163,7 @@ import {
 } from "./agent-forwarding.ts";
 import {
   AppPlan,
+  AppliedAppPlan,
   CurrentExecutableAppPlan,
   FileSyncPlan,
   ServiceHomePlan,
@@ -752,6 +753,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   BuildPlan,
   BuildStep,
   AppPlan,
+  AppliedAppPlan,
   ProviderSetupPlan,
   ServicePlan,
   ServiceHomePlan,

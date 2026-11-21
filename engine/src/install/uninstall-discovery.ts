@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { AppId, AppPlan } from "@lando/sdk/schema";
+import { AppId } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import type { DiscoveredApp } from "../operations/uninstall.ts";
 import { artifactBuildStoreKey } from "../services/build-artifact-name.ts";
@@ -19,7 +19,7 @@ import {
 import { assertUninstallSyncSafe } from "./uninstall-sync-preflight.ts";
 
 const AppliedPlanRecord = Schema.fromJsonString(
-  Schema.Struct({ version: Schema.Literal(1), data: Schema.Record(AppId, AppPlan) }),
+  Schema.Struct({ version: Schema.Literal(1), data: Schema.Record(AppId, Schema.Struct({ id: AppId })) }),
 );
 
 const assertNoRecordedUserApps = async (userDataRoot: string): Promise<void> => {

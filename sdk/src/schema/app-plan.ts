@@ -543,8 +543,17 @@ export const AppPlan = Schema.Struct({
 });
 export type AppPlan = typeof AppPlan.Type;
 
+const { events: eventPlanField, ...appliedPlanFields } = AppPlan.fields;
+
+export const AppliedAppPlan = Schema.Struct(appliedPlanFields).annotate({
+  identifier: "AppliedAppPlan",
+  description: "Provider realization without invocation-time event hooks.",
+});
+export type AppliedAppPlan = typeof AppliedAppPlan.Type;
+
 export const CurrentExecutableAppPlan = Schema.Struct({
-  ...AppPlan.fields,
+  ...appliedPlanFields,
+  events: eventPlanField,
   valueModel: Schema.Literal(1).annotate({
     description: "Required current descriptor model marker; never defaulted during decoding.",
   }),

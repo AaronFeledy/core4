@@ -2,8 +2,7 @@ import { isAbsolute, resolve, win32 } from "node:path";
 import { isPlainRecord } from "@lando/sdk/landofile";
 import {
   AppId,
-  AppPlan,
-  type AppPlan as AppPlanShape,
+  AppliedAppPlan,
   type MountPlan,
   PortablePath,
   duplicateMountTarget,
@@ -256,7 +255,7 @@ const migrateV1PlanRaw = (raw: unknown): unknown | null => {
 const isMigratableVersion = (version: number): boolean =>
   Number.isInteger(version) && version >= 1 && version < APPLIED_STATE_VERSION;
 const isAppId = Schema.is(Schema.toEncoded(AppId));
-const decodePlan = Schema.decodeUnknownOption(AppPlan);
+const decodePlan = Schema.decodeUnknownOption(AppliedAppPlan);
 
 /**
  * State-store `onVersionMismatch` migrator for a single applied `AppPlan`.
@@ -266,7 +265,7 @@ const decodePlan = Schema.decodeUnknownOption(AppPlan);
 export const migrateAppliedPlanWithCoordinate = (
   raw: unknown,
   fromVersion: number,
-): AppPlanShape | string => {
+): AppliedAppPlan | string => {
   if (!isMigratableVersion(fromVersion)) return "version";
   // v4 records predate the exclusive SQLite branch, v5 records predate the optional service
   // pullPolicy, and v6 records predate the optional project-user plan fields. v8 predates keepAlive
@@ -282,7 +281,7 @@ export const migrateAppliedPlanWithCoordinate = (
   return Option.getOrElse(decodePlan(applied), () => "plan");
 };
 
-export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppPlanShape | null => {
+export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppliedAppPlan | null => {
   const result = migrateAppliedPlanWithCoordinate(raw, fromVersion);
   return typeof result === "string" ? null : result;
 };
@@ -293,10 +292,10 @@ export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppPlanSh
 export const migrateAppliedPlansRecordWithCoordinate = (
   raw: unknown,
   fromVersion: number,
-): Readonly<Record<string, AppPlanShape>> | string => {
+): Readonly<Record<string, AppliedAppPlan>> | string => {
   if (!isMigratableVersion(fromVersion)) return "version";
   if (!isPlainRecord(raw)) return "apps";
-  const next: [string, AppPlanShape][] = [];
+  const next: [string, AppliedAppPlan][] = [];
   for (const [index, [id, plan]] of Object.entries(raw).entries()) {
     if (!isAppId(id)) return `apps[${index}].id`;
     const migrated = migrateAppliedPlanWithCoordinate(plan, fromVersion);

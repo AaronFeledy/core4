@@ -1295,6 +1295,7 @@
       "AppRemoteEntry",
       "AppRemoteMutationResult",
       "AppRouteOwner",
+      "AppliedAppPlan",
       "AppliedStateInventory",
       "ArchiveFormat",
       "ArtifactBuildSpec",

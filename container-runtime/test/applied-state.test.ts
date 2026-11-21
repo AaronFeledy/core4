@@ -12,6 +12,7 @@ import {
   AbsolutePath,
   AppId,
   AppPlan,
+  AppliedAppPlan,
   MountPlan,
   ProviderId,
   ServiceName,
@@ -20,6 +21,7 @@ import {
 import type { StateBucket } from "@lando/sdk/services";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
+import { AppliedPlan, AppliedPlans } from "../src/applied-state-codec.ts";
 import {
   migrateAppliedPlanWithCoordinate,
   migrateAppliedPlansRecordWithCoordinate,
@@ -125,7 +127,7 @@ describe("applied plan state layouts", () => {
     };
     const migrated = migrateAppliedPlan(raw, 10);
     expect(migrated).toMatchObject({ id: plan.id, services: plan.services });
-    expect(migrated?.events).toBeUndefined();
+    expect(migrated).not.toHaveProperty("events");
   });
   test("reads v8 application listener authority without inventing keep-alive intent", () => {
     const encoded = Schema.encodeSync(AppPlan)(legacyPlan());
@@ -589,6 +591,21 @@ describe("applied plan records", () => {
     extensions: {},
   };
   const { events: _events, ...record } = plan;
+
+  test.each(["per-app", "record"] as const)("reads legitimate v11 %s writer bytes", (layout) => {
+    const historicalWriterValue = Schema.encodeSync(AppPlan)(record);
+    const bytes = JSON.stringify(
+      layout === "per-app" ? historicalWriterValue : { [plan.id]: historicalWriterValue },
+    );
+    const raw: unknown = JSON.parse(bytes);
+    const decoded =
+      layout === "per-app"
+        ? Schema.decodeUnknownSync(AppliedPlan)(raw)
+        : Schema.decodeUnknownSync(AppliedPlans)(raw)[plan.id];
+    expect(APPLIED_STATE_VERSION).toBe(11);
+    expect(decoded).toEqual(Schema.decodeUnknownSync(AppliedAppPlan)(historicalWriterValue));
+    expect(decoded).toEqual(record);
+  });
   const writingStateStore = (written: unknown[]): PluginStateStore => ({
     open: <A, I>(_spec: PluginStateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
       Effect.succeed({
