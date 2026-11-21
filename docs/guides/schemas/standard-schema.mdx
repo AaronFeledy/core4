@@ -82,7 +82,9 @@ literal, and an expression field comes back as a parsed
 expressions](../landofile/expressions.mdx#whole-value-expressions-keep-their-type).
 
 `LandofileStandardJSONSchema` describes that same input. Its draft-07
-document is the editor schema byte for byte. At a typed field it accepts the
+document is the editor schema byte for byte. It checks environment entry syntax
+and accepts typed expressions inside build blocks. See the
+[authored and resolved examples](./json-schema-artifacts.mdx). At a typed field it accepts the
 literal or one whole `{{ ... }}`, with `{{-` / `-}}` trim markers allowed
 inside the braces. Surrounding text is not whole. JSON Schema can't parse the
 expression, so that document doesn't check scopes or helper types. A valid

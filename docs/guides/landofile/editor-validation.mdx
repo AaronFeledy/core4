@@ -79,6 +79,11 @@ ranges, enums, required fields, and service names. A key under `services:`
 must use dot-separated DNS labels of at most 63 characters each and 253
 characters overall. Letters, digits, underscores, and interior hyphens are allowed.
 
+For service `environment:` and tooling or event `env:`, use a map with concrete
+values or a list of `KEY=value` strings. Use `KEY=` or `KEY: ""` for an empty
+value. The editor flags a bare list entry, a `null` value, an empty name, or the
+reserved name `__proto__`.
+
 It checks the file as you wrote it, so expressions pass where Lando accepts
 them. A boolean, number, list, or object field takes the literal or one
 whole-value `{{ ... }}`: `primary: "{{ recipe.primary }}"` and
