@@ -198,7 +198,7 @@ describe("meta:plugin:link command", () => {
   });
 
   test("rejects a manifest name that targets the mutation lock", async () => {
-    const pluginRoot = await makePluginRoot(".lando-plugin-mutation.lock", "managed-lock");
+    const pluginRoot = await makePluginRoot(".lando-plugin-mutation.lck", "managed-lock");
 
     const exit = await runPluginLinkExit({ cwd: pluginRoot, cacheRoot });
 
@@ -206,9 +206,9 @@ describe("meta:plugin:link command", () => {
     if (exit._tag === "Failure") {
       const cause = JSON.stringify(exit.cause);
       expect(cause).toContain("PluginManifestError");
-      expect(cause).toContain("reserved plugins root entry .lando-plugin-mutation.lock");
+      expect(cause).toContain("reserved plugins root entry .lando-plugin-mutation.lck");
     }
-    expect(await exists(join(userDataRoot, "plugins", ".lando-plugin-mutation.lock"))).toBe(false);
+    expect(await exists(join(userDataRoot, "plugins", ".lando-plugin-mutation.lck"))).toBe(false);
   });
 
   test("refuses stale linked state when registry records a non-linked plugin", async () => {

@@ -648,21 +648,26 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           remediation: "Restore Lando's private plugin state store before changing global services.",
         }),
       );
-    return stateStore.withLock("windows-published-lifecycle", body, { timeoutMs: 120_000 }).pipe(
-      Effect.catchTag("StateStoreError", (cause) =>
-        Effect.fail(
-          new ProviderUnavailableError({
-            providerId,
-            operation,
-            message:
-              "Could not complete the managed Windows published-service operation under its lifecycle lock.",
-            remediation:
-              "Wait for the other global service operation to finish, then retry. If the wait persists, inspect the managed Podman machine and global services.",
-            cause,
-          }),
+    return stateStore
+      .withLock("windows-published-lifecycle", body, {
+        wait: "operation",
+        resource: "Windows port publishing",
+      })
+      .pipe(
+        Effect.catchTag("StateStoreError", (cause) =>
+          Effect.fail(
+            new ProviderUnavailableError({
+              providerId,
+              operation,
+              message:
+                "Could not complete the managed Windows published-service operation under its lifecycle lock.",
+              remediation:
+                "Wait for the other global service operation to finish, then retry. If the wait persists, inspect the managed Podman machine and global services.",
+              cause,
+            }),
+          ),
         ),
-      ),
-    );
+      );
   };
   const withGlobalPublishedLifecycle = <A, E>(
     appId: string,
