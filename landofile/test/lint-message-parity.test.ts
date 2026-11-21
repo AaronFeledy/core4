@@ -2,7 +2,9 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type ConfigLintViolation, LandofileShape } from "@lando/sdk/schema";
+import { encodeCommandResult } from "@lando/sdk/command-result";
+import { ConfigLintResult, type ConfigLintViolation, LandofileShape } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Result, Schema } from "effect";
 import { lintLandofile, mergeLintFindings } from "../src/lint.ts";
 import { violationsFromSchema } from "../src/lint-violations.ts";
@@ -11,12 +13,14 @@ import { validationErrorFromCause } from "../src/validation.ts";
 const TOOLING_TASK_EXPECTATION = "Expected false, a non-empty command string, or a tooling task object";
 
 test.each([
-  ["    - FOO", 0, /host.*FOO.*KEY=value.*env\.FOO/i],
-  ["    - __proto__=x", 0, /__proto__.*reserved/i],
-  ["    - =value", 0, /^(?!.*__proto__).*names cannot be empty/i],
-  ['    "": value', "", /^(?!.*__proto__).*names cannot be empty/i],
-  ["    FOO: null", "FOO", /FOO.*concrete/i],
-] as const)("merges located environment diagnostics for #2194: %s", async (value, key, message) => {
+  ["    - FOO", 0, "environment.bare-entry", "FOO={{ env.FOO }}"],
+  ["    - FOO-BAR", 0, "environment.bare-entry", "FOO-BAR="],
+  ["    - constructor", 0, "environment.bare-entry", "constructor="],
+  ["    - __proto__=x", 0, "environment.reserved-name", "KEY=value"],
+  ["    - =value", 0, "environment.empty-name", "KEY=value"],
+  ['    "": value', "", "environment.empty-name", "KEY: value"],
+  ["    FOO: null", "FOO", "environment.null-value", 'FOO: ""'],
+] as const)("merges located environment diagnostics for #2194: %s", async (value, key, reason, fix) => {
   for (const [prefix, path] of [
     ["tooling:\n  task:\n    cmd: echo ok\n    env:", ["tooling", "task", "env"]],
     ["services:\n  web:\n    environment:", ["services", "web", "environment"]],
@@ -26,11 +30,26 @@ test.each([
       expect.objectContaining({
         path: [...path, key],
         rule: "landofile.validation",
-        message: expect.stringMatching(message),
+        reason,
+        suggestion: expect.stringContaining(fix),
         scopes: ["fragment", "effective"],
       }),
     ]);
   }
+});
+
+test("merges a null environment defect through an authored override", async () => {
+  const { result } = await lintLayers({
+    ".lando.yml": "name: lint-parity\nservices:\n  web:\n    environment: !override\n      FOO: null\n",
+  });
+  expect(result.violations).toEqual([
+    expect.objectContaining({
+      reason: "environment.null-value",
+      path: ["services", "web", "environment", "FOO"],
+      suggestion: expect.stringContaining('FOO: ""'),
+      scopes: ["fragment", "effective"],
+    }),
+  ]);
 });
 
 test.each(["dockerfileInline", "typoBuildKey"])("reports unsupported build key %s once", async (key) => {
@@ -41,7 +60,8 @@ test.each(["dockerfileInline", "typoBuildKey"])("reports unsupported build key %
     expect.objectContaining({
       rule: "landofile.validation",
       path: ["services", "web", "build", key],
-      message: expect.stringMatching(/Unsupported Compose build key/),
+      reason: "build.unsupported-key",
+      scopes: ["fragment", "effective"],
     }),
   ]);
 });
@@ -65,6 +85,35 @@ const lintLayers = async (layers: Readonly<Record<string, string>>) => {
     await rm(cwd, { recursive: true, force: true });
   }
 };
+
+test("serializes a deduplicated lint finding with its repair", async () => {
+  const { result } = await lintLayers({
+    ".lando.yml": "name: lint-parity\nservices:\n  web:\n    environment: [FOO]\n",
+  });
+  const json = await Effect.runPromise(
+    encodeCommandResult({
+      command: "app:config:lint",
+      resultSchema: ConfigLintResult,
+      outcome: { _tag: "success", value: result },
+      redactor: createRedactor("secrets", { values: [] }),
+    }),
+  );
+  expect(JSON.parse(json)).toMatchObject({
+    ok: true,
+    result: {
+      valid: false,
+      violations: [
+        expect.objectContaining({
+          rule: "landofile.validation",
+          reason: "environment.bare-entry",
+          path: ["services", "web", "environment", 0],
+          scopes: ["fragment", "effective"],
+          suggestion: expect.stringContaining("FOO={{ env.FOO }}"),
+        }),
+      ],
+    },
+  });
+});
 
 test("keeps an independent sibling failure next to an invalid environment entry", async () => {
   const { result } = await lintLayers({
