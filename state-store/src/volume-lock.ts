@@ -99,7 +99,6 @@ const assertNestedLockOrder = (
     if (highest === undefined || compareRequests(highest, candidate) < 0) highest = candidate;
   }
   if (highest === undefined) return Effect.void;
-  // Nested work may only add keys that sort strictly after every held (tier, key).
   if (compareRequests(highest, firstMissing) < 0) return Effect.void;
   return Effect.die(
     new Error(
