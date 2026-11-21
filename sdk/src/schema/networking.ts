@@ -416,6 +416,11 @@ export const ProviderCapabilities = Schema.Struct({
   }),
   copyMounts: Schema.Boolean,
   copyOnWriteAppRoot: Schema.Boolean,
+  serializesVolumeCopyUp: Schema.optionalKey(Schema.Boolean).annotate({
+    title: "Serializes Volume Copy-Up",
+    description:
+      "Whether the provider serializes first-mount image copy-up into a named volume. Omission means serialization is not guaranteed.",
+  }),
   volumeSnapshot: Schema.Literals(["native", "none"]),
   volumeArchive: Schema.optionalKey(Schema.Boolean).annotate({
     description:

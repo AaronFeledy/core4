@@ -4,7 +4,12 @@ import {
   volumeClassFromLabels,
 } from "@lando/container-runtime/volume-classes";
 import { orDieWithRole } from "@lando/sdk/command-result";
-import type { AppLockTimeoutError, AppResolveError, StateStoreError } from "@lando/sdk/errors";
+import {
+  type AppLockTimeoutError,
+  type AppResolveError,
+  ProviderUnavailableError,
+  type StateStoreError,
+} from "@lando/sdk/errors";
 import type {
   AbsolutePath,
   AppPlan,
@@ -20,8 +25,10 @@ import {
   type ProviderError,
   type ProviderSelectionError,
   RuntimeProviderRegistry,
+  StateStore,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { withPhysicalVolumeLocks } from "@lando/state-store/volume-lock";
 import { DateTime, Effect, Option } from "effect";
 
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
@@ -114,15 +121,43 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
               if (removal.kind === "removed") services.push(String(service.service));
             }
             if (!removeVolumes) return;
-            for (const volume of group.volumes) {
-              const generation = volume.identity?.generation;
-              if (generation === undefined) continue;
+            const candidates = group.volumes.flatMap((volume) => {
+              if (volume.identity === undefined) return [];
               const volumeClass = volumeClassFromLabels(volume.labels);
-              if (volumeClass === "data" && isGlobalScopedVolume(volume.labels)) continue;
-              if (!volumeClasses.includes(volumeClass)) continue;
-              yield* provider.removeVolume(volume.ref, generation);
-              volumesRemoved[volumeClass] += 1;
-            }
+              if (volumeClass === "data" && isGlobalScopedVolume(volume.labels)) return [];
+              return volumeClasses.includes(volumeClass)
+                ? [{ ref: volume.ref, identity: volume.identity, volumeClass }]
+                : [];
+            });
+            if (candidates.length === 0) return;
+            const state = yield* Effect.serviceOption(StateStore);
+            if (Option.isNone(state))
+              return yield* new ProviderUnavailableError({
+                providerId: provider.id,
+                operation: "destroy",
+                message: "Orphan volume removal requires the physical volume lock service.",
+                remediation: "Retry with the normal Lando runtime bootstrap.",
+              });
+            yield* withPhysicalVolumeLocks(
+              state.value,
+              candidates.map(({ identity }) => ({
+                key: identity.coordinationKey,
+                name: identity.nativeName,
+                resource: `volume ${identity.nativeName}`,
+              })),
+              Effect.forEach(
+                candidates,
+                ({ ref, identity, volumeClass }) =>
+                  provider.removeVolume(ref, identity.generation).pipe(
+                    Effect.tap(() =>
+                      Effect.sync(() => {
+                        volumesRemoved[volumeClass] += 1;
+                      }),
+                    ),
+                  ),
+                { discard: true },
+              ),
+            );
           }).pipe(
             Effect.tapError((error) =>
               Effect.sync(() => {

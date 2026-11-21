@@ -1,10 +1,17 @@
 import { expect, test } from "bun:test";
 import { sha256Hex } from "@lando/sdk/digest";
 import { CaError } from "@lando/sdk/errors";
-import { type AppPlan, ServiceName, type VolumeIdentity } from "@lando/sdk/schema";
+import {
+  AppId,
+  type AppPlan,
+  ServiceName,
+  type VolumeIdentity,
+  landoServiceStoreName,
+} from "@lando/sdk/schema";
 import { EnvironmentValueResolver, StateStore } from "@lando/sdk/services";
 import { TEST_CERTIFICATES, TestRuntimeProvider } from "@lando/sdk/test";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
+import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
 import { Effect } from "effect";
 import { applyActivation } from "../../src/lifecycle/activation-apply.ts";
 import { HostMountPoints } from "../../src/lifecycle/host-mount-points.ts";
@@ -59,6 +66,7 @@ test("activation stamps both prepared binds without changing recorded or complet
         completionPlan,
       }).pipe(
         Effect.provideService(EnvironmentValueResolver, unusedResolver),
+        Effect.provideService(StateStore, makeTestStateStore().service),
         Effect.provide(HostMountPoints.layer),
       ),
     );
@@ -109,6 +117,7 @@ test.each(refusalCases)(
               }),
           }),
           Effect.provide(HostMountPoints.layer),
+          Effect.provideService(StateStore, makeTestStateStore().service),
           Effect.flip,
         ),
       );
@@ -195,6 +204,7 @@ test("activation opens and closes a lazy session around admission and provider a
       beforeApply: Effect.sync(() => void calls.push("before")),
     }).pipe(
       Effect.provideService(EnvironmentValueResolver, resolver),
+      Effect.provideService(StateStore, makeTestStateStore().service),
       Effect.provideService(HostMountPoints, hostMountPoints),
     ),
   );
@@ -216,6 +226,7 @@ test("activation uses a supplied environment session without opening another", a
   await Effect.runPromise(
     applyActivation({ provider, plan, certificates, reconcile: false, environment: session }).pipe(
       Effect.provideService(EnvironmentValueResolver, unusedResolver),
+      Effect.provideService(StateStore, makeTestStateStore().service),
       Effect.provide(HostMountPoints.layer),
     ),
   );
@@ -267,6 +278,7 @@ test.each([true, false])("requires a route proof before apply (prepared: %j)", a
       });
     }).pipe(
       Effect.provideService(EnvironmentValueResolver, unusedResolver),
+      Effect.provideService(StateStore, makeTestStateStore().service),
       Effect.provide(HostMountPoints.layer),
       Effect.result,
     ),
@@ -315,46 +327,63 @@ test("route URL preparation rejects a selectable router without authority suppor
   });
 });
 
-test("activation records a provider-created volume as eligible for initialization", async () => {
-  const plan = { ...basePlan([]), stores: [{ name: "data", scope: "app" as const, kind: "data" as const }] };
-  const { certificates } = await Effect.runPromise(prepareServiceCertificates(plan));
-  const stateStore = makeTestStateStore();
-  const identity: VolumeIdentity = {
-    coordinationKey: "daemon/data",
-    nativeName: "data",
-    generation: "first",
-    ownerRoot: plan.root,
-    origin: "created",
-  };
-  const provider = await Effect.runPromise(
-    prepareProvider({
-      ...TestRuntimeProvider,
-      locateVolume: () =>
-        Effect.succeed({
-          coordinationKey: identity.coordinationKey,
-          nativeName: identity.nativeName,
-          identity,
-        }),
-      apply: (_plan, options) =>
-        Effect.gen(function* () {
-          if (options.onVolumeCreated === undefined) return yield* Effect.die("Missing creation recorder");
-          yield* options.onVolumeCreated(identity);
-          return { changed: true };
-        }),
-    }),
-  );
+// The global app's plugin-declared stores (for example the SSH agent's) carry no global-app name,
+// so the global plan, not the name, must rank them above the user app's held keys.
+test.each([
+  { label: "derived global-app name", nativeName: landoServiceStoreName("global", "database", "data") },
+  { label: "plugin-declared name", nativeName: "lando-ssh-agent" },
+])(
+  "nested global apply records a creation receipt under a lexically later user data hold ($label)",
+  async ({ nativeName }) => {
+    const plan = {
+      ...basePlan([]),
+      id: AppId.make("global"),
+      stores: [{ name: nativeName, scope: "service" as const, kind: "data" as const }],
+    };
+    const { certificates } = await Effect.runPromise(prepareServiceCertificates(plan));
+    const stateStore = makeTestStateStore();
+    const identity: VolumeIdentity = {
+      coordinationKey: JSON.stringify(["endpoint:test", nativeName]),
+      nativeName,
+      generation: "first",
+      ownerRoot: plan.root,
+      origin: "created",
+    };
+    const provider = await Effect.runPromise(
+      prepareProvider({
+        ...TestRuntimeProvider,
+        locateVolume: () =>
+          Effect.succeed({
+            coordinationKey: identity.coordinationKey,
+            nativeName: identity.nativeName,
+            identity,
+          }),
+        apply: (_plan, options) =>
+          Effect.gen(function* () {
+            if (options.onVolumeCreated === undefined) return yield* Effect.die("Missing creation recorder");
+            yield* options.onVolumeCreated(identity);
+            return { changed: true };
+          }),
+      }),
+    );
 
-  await Effect.runPromise(
-    applyActivation({ provider, plan, certificates, reconcile: false, environment: session }).pipe(
-      Effect.provideService(StateStore, stateStore.service),
-      Effect.provideService(EnvironmentValueResolver, unusedResolver),
-      Effect.provide(HostMountPoints.layer),
-    ),
-  );
+    const userStore = landoServiceStoreName("zeta", "database", "data");
+    await Effect.runPromise(
+      withPhysicalVolumeLock(
+        stateStore.service,
+        { key: JSON.stringify(["endpoint:test", userStore]), name: userStore },
+        applyActivation({ provider, plan, certificates, reconcile: false, environment: session }).pipe(
+          Effect.provideService(StateStore, stateStore.service),
+          Effect.provideService(EnvironmentValueResolver, unusedResolver),
+          Effect.provide(HostMountPoints.layer),
+        ),
+      ),
+    );
 
-  const initialization = await Effect.runPromise(volumeInitialization(stateStore.service, identity));
-  expect(await Effect.runPromise(initialization.begin("seed"))).toBe(true);
-});
+    const initialization = await Effect.runPromise(volumeInitialization(stateStore.service, identity));
+    expect(await Effect.runPromise(initialization.begin("seed"))).toBe(true);
+  },
+);
 
 test("activation preserves a before-apply failure and never calls the provider", async () => {
   const plan = basePlan([]);
@@ -373,6 +402,7 @@ test("activation preserves a before-apply failure and never calls the provider",
       beforeApply: Effect.fail(new CaError({ caId: "admission", message: "Refused", remediation: "Retry." })),
     }).pipe(
       Effect.provideService(EnvironmentValueResolver, unusedResolver),
+      Effect.provideService(StateStore, makeTestStateStore().service),
       Effect.provide(HostMountPoints.layer),
       Effect.flip,
     ),

@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makePodmanApiClient } from "@lando/provider-lando";
 import { ContainerHelperUnavailableError, causeMessage } from "@lando/sdk/errors";
 import {
@@ -406,7 +407,9 @@ describe("provider-lando live container-file logs", () => {
         expect(helperProcesses.trim()).toBe("");
       } finally {
         await Effect.runPromise(
-          provider.destroy({ app: plan.id, plan }, { volumes: true, removeState: false }),
+          provider
+            .destroy({ app: plan.id, plan }, { volumes: true, removeState: false })
+            .pipe(Effect.provide(makeTestStateStore().layer)),
         );
         await rm(appRoot, { recursive: true, force: true });
       }
@@ -465,7 +468,9 @@ describe("provider-lando live container-file logs", () => {
         ).toBe("");
       } finally {
         await Effect.runPromise(
-          provider.destroy({ app: plan.id, plan }, { volumes: true, removeState: false }),
+          provider
+            .destroy({ app: plan.id, plan }, { volumes: true, removeState: false })
+            .pipe(Effect.provide(makeTestStateStore().layer)),
         );
         await rm(appRoot, { recursive: true, force: true });
       }

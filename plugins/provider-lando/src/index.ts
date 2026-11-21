@@ -1859,6 +1859,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               const physicalPlan = yield* physicalNetworkPlan(plan);
               const result = yield* runtimeBringDown(physicalPlan, {
                 ...(podmanApi === undefined ? {} : { api: podmanApi }),
+                ...(socketPath === undefined
+                  ? {}
+                  : { endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath }),
                 ctx: LANDO_CTX,
                 volumes: destroyOptions.volumes,
                 ...(destroyOptions.purgeCaches === undefined
@@ -1872,6 +1875,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                 kind: "destroyed" as const,
                 volumesRemoved: result.volumesRemoved,
                 shutdownObservations: result.shutdownObservations,
+                ...(result.skipped === undefined ? {} : { skipped: result.skipped }),
               };
             }),
           ),

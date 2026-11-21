@@ -1,6 +1,7 @@
+import { hasExactVolumeTeardown } from "@lando/container-runtime/provider-assembly";
 import { RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { cachePolicyForTeardown, withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
 import { executeLockedTeardown } from "./destroy-execute-locked.ts";
 import type { TeardownPlan } from "./destroy-plan.ts";
@@ -11,12 +12,15 @@ export const executeTeardown = Effect.fn("AppOperation.executeTeardown")(functio
     const registry = yield* RuntimeProviderRegistry;
     if (target === undefined) return yield* executeLockedTeardown(plan);
     const provider = yield* registry.select(target.plan);
+    if (hasExactVolumeTeardown(provider) && (plan.options.volumes || plan.options.purgeCaches))
+      return yield* executeLockedTeardown(plan);
     const stateStore = yield* StateStore;
     return yield* withPlanVolumeCoordination({
       plan: target.plan,
       additionalPlans: plan.applied === undefined ? [] : [plan.applied.plan],
       provider,
       stateStore,
+      cachePolicy: cachePolicyForTeardown(plan.options),
       body: () => executeLockedTeardown(plan),
     });
   });

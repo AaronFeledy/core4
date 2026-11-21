@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createServer as createHttpServer } from "node:http";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeDockerApiClient } from "@lando/provider-docker";
 import { AbsolutePath, AppId, type AppPlan } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
@@ -160,7 +161,13 @@ describe("provider-docker RuntimeProvider contract", () => {
         expect(result).toEqual({ exitCode: 0, stdout: "alias-ok\n", stderr: "" });
         expect(server.authorization()).toBe(`Bearer ${token}`);
       } finally {
-        await Effect.runPromise(Effect.result(provider.destroy({ app: aliasPlan.id }, { volumes: true })));
+        await Effect.runPromise(
+          Effect.result(
+            provider
+              .destroy({ app: aliasPlan.id }, { volumes: true })
+              .pipe(Effect.provide(makeTestStateStore().layer)),
+          ),
+        );
         await server.close();
       }
     },

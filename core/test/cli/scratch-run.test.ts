@@ -259,7 +259,12 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     snapshotVolume: () => die("snapshotVolume"),
     removeVolumeSnapshot: () => die("removeVolumeSnapshot"),
     restoreVolume: () => die("restoreVolume"),
-    locateVolume: () => die("locateVolume"),
+    locateVolume: ({ store }) =>
+      Effect.succeed({
+        coordinationKey: JSON.stringify(["endpoint:scratch-test", store]),
+        nativeName: store,
+        presence: "absent",
+      }),
     listVolumes: () => Effect.succeed([]),
     removeVolume: () => die("removeVolume"),
     copyToService: () => die("copyToService"),

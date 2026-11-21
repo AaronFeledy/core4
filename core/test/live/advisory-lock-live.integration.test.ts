@@ -36,20 +36,45 @@ const prerequisite =
 const HOLDING = ".lock-live-holding";
 const RELEASE = "lock-live-release.fifo";
 
-const landofile = (name: string) =>
+const PARK = ".lock-live-park";
+
+/**
+ * An Alpine app whose build step parks on the FIFO when `.lock-live-park` exists. With `cache`,
+ * it also mounts a global cache store named from that key, so two apps can share one cache.
+ */
+const landofile = (name: string, cache?: string) =>
   [
     `name: ${name}`,
     "router:",
     "  enabled: false",
     "services:",
+    // A plain image plans no shared caches of its own, so cleanup never purges one other apps use.
     "  cli:",
-    "    type: php:8.3",
-    "    via: cli",
+    "    type: compose",
+    "    image: alpine:3.20",
+    "    command: sleep infinity",
+    ...(cache === undefined
+      ? []
+      : [
+          "    storage:",
+          "      - store: lock-live",
+          "        target: /var/cache/lock-live",
+          "        kind: cache",
+          `        key: ${cache}`,
+        ]),
     "    build:",
     "      app:",
-    `        - "touch /app/${HOLDING} && cat /app/${RELEASE} > /dev/null"`,
+    `        - "if [ -e /app/${PARK} ]; then touch /app/${HOLDING} && cat /app/${RELEASE} > /dev/null; fi"`,
     "",
   ].join("\n");
+
+/** Write an app into `dir` that parks its next start's build step until {@link release}. */
+const parkedApp = (dir: string, name: string, cache?: string) =>
+  Effect.promise(async () => {
+    await Bun.write(join(dir, ".lando.yml"), landofile(name, cache));
+    await Bun.write(join(dir, PARK), "");
+    await Bun.$`mkfifo ${join(dir, RELEASE)}`.quiet();
+  });
 
 const LockRecord = Schema.fromJsonString(
   Schema.Struct({
@@ -131,8 +156,7 @@ describe.serial("live advisory app locks", () => {
           (ctx) =>
             Effect.gen(function* () {
               const name = `lock-live-${crypto.randomUUID().slice(0, 8)}`;
-              yield* Effect.promise(() => Bun.write(join(ctx.testDir, ".lando.yml"), landofile(name)));
-              yield* Effect.promise(() => Bun.$`mkfifo ${join(ctx.testDir, RELEASE)}`.quiet());
+              yield* parkedApp(ctx.testDir, name);
               yield* Effect.addFinalizer(() =>
                 release(ctx.testDir).pipe(
                   Effect.andThen(ctx.runCli(["destroy", "-y", "--volumes", "--format=json"])),
@@ -193,5 +217,187 @@ describe.serial("live advisory app locks", () => {
       );
     },
     900_000,
+  );
+
+  test.skipIf(prerequisite !== undefined)(
+    "two apps that share a present global cache start while the other is still starting",
+    async () => {
+      const cache = `lock-live-${crypto.randomUUID().slice(0, 8)}`;
+      const scenario = (id: string) => ({ guideId: "advisory-lock-live", scenarioId: id, render: false });
+      await Effect.runPromise(
+        ScenarioContextFactory.e2e(scenario("cache-alpha"), (alpha) =>
+          ScenarioContextFactory.e2e(scenario("cache-beta"), (beta) =>
+            Effect.gen(function* () {
+              yield* parkedApp(alpha.testDir, `${cache}-alpha`, cache);
+              yield* Effect.promise(() =>
+                Bun.write(join(beta.testDir, ".lando.yml"), landofile(`${cache}-beta`, cache)),
+              );
+              // Beta created the cache, so it purges it last, after alpha is gone.
+              yield* Effect.addFinalizer(() =>
+                beta
+                  .runCli(["destroy", "-y", "--volumes", "--purge-caches", "--format=json"])
+                  .pipe(Effect.ignore),
+              );
+              yield* Effect.addFinalizer(() =>
+                release(alpha.testDir).pipe(
+                  Effect.andThen(alpha.runCli(["destroy", "-y", "--volumes", "--format=json"])),
+                  Effect.ignore,
+                ),
+              );
+
+              // Given beta started first and created the shared cache.
+              const created = yield* beta.runCli(["start", "--format=json"]);
+              expect(created.exitCode, created.stderr).toBe(0);
+
+              // And alpha is parked in its build step with the cache mounted.
+              const parked = yield* Effect.forkChild(alpha.runCli(["start", "--format=json"]));
+              yield* waitForFile(alpha.testDir, HOLDING);
+
+              // When beta restarts while alpha is still starting, it does not wait for alpha.
+              const restarted = yield* envFor(
+                "LANDO_LOCK_TIMEOUT_MS",
+                "60000",
+                beta.runCli(["restart", "--format=json"]),
+              );
+              expect(restarted.exitCode, restarted.stdout).toBe(0);
+              expect(lockWaits(restarted)).toEqual([]);
+
+              // Then alpha finishes once released.
+              yield* release(alpha.testDir);
+              const finished = yield* Fiber.join(parked);
+              expect(finished.exitCode, finished.stdout).toBe(0);
+            }),
+          ),
+        ),
+      );
+    },
+    1_200_000,
+  );
+
+  test.skipIf(prerequisite !== undefined)(
+    "a second app starts while the first is still building on a cache it just created",
+    async () => {
+      const cache = `lock-live-${crypto.randomUUID().slice(0, 8)}`;
+      const scenario = (id: string) => ({ guideId: "advisory-lock-live", scenarioId: id, render: false });
+      await Effect.runPromise(
+        ScenarioContextFactory.e2e(scenario("cold-alpha"), (alpha) =>
+          ScenarioContextFactory.e2e(scenario("cold-beta"), (beta) =>
+            Effect.gen(function* () {
+              yield* parkedApp(alpha.testDir, `${cache}-alpha`, cache);
+              yield* Effect.promise(() =>
+                Bun.write(join(beta.testDir, ".lando.yml"), landofile(`${cache}-beta`, cache)),
+              );
+              yield* Effect.addFinalizer(() =>
+                alpha
+                  .runCli(["destroy", "-y", "--volumes", "--purge-caches", "--format=json"])
+                  .pipe(Effect.ignore),
+              );
+              yield* Effect.addFinalizer(() =>
+                release(alpha.testDir).pipe(
+                  Effect.andThen(beta.runCli(["destroy", "-y", "--volumes", "--format=json"])),
+                  Effect.ignore,
+                ),
+              );
+
+              // Given alpha created the cache and is parked in its build step, after apply.
+              const parked = yield* Effect.forkChild(alpha.runCli(["start", "--format=json"]));
+              yield* waitForFile(alpha.testDir, HOLDING);
+
+              // When beta starts on the same cache, it does not wait for alpha's start to finish.
+              const started = yield* envFor(
+                "LANDO_LOCK_TIMEOUT_MS",
+                "60000",
+                beta.runCli(["start", "--format=json"]),
+              );
+              expect(started.exitCode, started.stdout).toBe(0);
+              expect(lockWaits(started)).toEqual([]);
+
+              // Then alpha finishes once released.
+              yield* release(alpha.testDir);
+              const finished = yield* Fiber.join(parked);
+              expect(finished.exitCode, finished.stdout).toBe(0);
+            }),
+          ),
+        ),
+      );
+    },
+    1_200_000,
+  );
+
+  test.skipIf(prerequisite !== undefined)(
+    "any app that uses a shared cache purges it once no container uses it",
+    async () => {
+      const cache = `lock-live-${crypto.randomUUID().slice(0, 8)}`;
+      const scenario = (id: string) => ({ guideId: "advisory-lock-live", scenarioId: id, render: false });
+      const Destroyed = Schema.fromJsonString(
+        Schema.Struct({
+          ok: Schema.Literal(true),
+          result: Schema.Struct({
+            cacheVolumesRemoved: Schema.Boolean,
+            skipped: Schema.optional(
+              Schema.Array(Schema.Struct({ resource: Schema.String, reason: Schema.String })),
+            ),
+          }),
+        }),
+      );
+      await Effect.runPromise(
+        ScenarioContextFactory.e2e(scenario("purge-alpha"), (alpha) =>
+          ScenarioContextFactory.e2e(scenario("purge-beta"), (beta) =>
+            Effect.gen(function* () {
+              for (const [ctx, name] of [
+                [alpha, `${cache}-alpha`],
+                [beta, `${cache}-beta`],
+              ] as const)
+                yield* Effect.promise(() =>
+                  Bun.write(join(ctx.testDir, ".lando.yml"), landofile(name, cache)),
+                );
+              yield* Effect.addFinalizer(() =>
+                alpha
+                  .runCli(["destroy", "-y", "--volumes", "--purge-caches", "--format=json"])
+                  .pipe(Effect.ignore),
+              );
+
+              // Given alpha created the cache and its container still uses it.
+              const created = yield* alpha.runCli(["start", "--format=json"]);
+              expect(created.exitCode, created.stdout).toBe(0);
+              const started = yield* beta.runCli(["start", "--format=json"]);
+              expect(started.exitCode, started.stdout).toBe(0);
+              const store = `lando-cache-${cache}`;
+
+              // When beta purges while alpha runs, the cache is kept and reported, and teardown succeeds.
+              const kept = yield* beta.runCli([
+                "destroy",
+                "-y",
+                "--volumes",
+                "--purge-caches",
+                "--format=json",
+              ]);
+              expect(kept.exitCode, kept.stdout).toBe(0);
+              expect(Schema.decodeUnknownSync(Destroyed)(kept.stdout).result.skipped).toContainEqual(
+                expect.objectContaining({ resource: store, reason: "in use" }),
+              );
+
+              // When alpha is gone, beta, which never created the cache, removes it.
+              const gone = yield* alpha.runCli(["destroy", "-y", "--volumes", "--format=json"]);
+              expect(gone.exitCode, gone.stdout).toBe(0);
+              const restarted = yield* beta.runCli(["start", "--format=json"]);
+              expect(restarted.exitCode, restarted.stdout).toBe(0);
+              const purged = yield* beta.runCli([
+                "destroy",
+                "-y",
+                "--volumes",
+                "--purge-caches",
+                "--format=json",
+              ]);
+              expect(purged.exitCode, purged.stdout).toBe(0);
+              const result = Schema.decodeUnknownSync(Destroyed)(purged.stdout).result;
+              expect(result.cacheVolumesRemoved).toBe(true);
+              expect(result.skipped ?? []).not.toContainEqual(expect.objectContaining({ resource: store }));
+            }),
+          ),
+        ),
+      );
+    },
+    1_200_000,
   );
 });

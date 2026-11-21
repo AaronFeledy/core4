@@ -49,6 +49,7 @@ const OPTIONAL_FIELDS = [
   "composeServiceFields",
   "fileSyncTargets",
   "hostProxy",
+  "serializesVolumeCopyUp",
   "serviceInit",
   "volumeArchive",
 ] as const;
@@ -171,7 +172,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the documented capability fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(41);
+    expect(actual).toHaveLength(42);
   });
 
   test("defaults architectureEmulation to false when omitted", () => {
