@@ -50,7 +50,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
-const missingDependency = "    dependsOn:\n      - missing\n";
+const missingDependency = "    depends_on:\n      - missing\n";
 const webService = "services:\n  web:\n    image: nginx\n";
 
 test("refresh reports both authored files when default routes collide across layers", async () => {
@@ -94,7 +94,7 @@ test.each([
     sourceFile: ".lando.ts",
     layers: {
       ".lando.ts":
-        'export default { name: "attributed", services: { web: { image: "nginx", dependsOn: ["missing"] } } };\n',
+        'export default { name: "attributed", services: { web: { image: "nginx", depends_on: ["missing"] } } };\n',
     },
   },
 ])("refresh and lint locate a planner failure in $sourceFile", async ({ layers, sourceFile }) => {
@@ -150,7 +150,7 @@ describe("renderConfigLintResult", () => {
         {
           rule: "env-file.literal",
           severity: "warning",
-          path: ["env_file", 0],
+          path: ["serviceDefaults", "env_file", 0],
           message: "Double-quoted value for PATH decodes differently from its raw text.",
           suggestion: "Quote the value with single quotes to keep the raw text.",
           line: 1,
@@ -385,7 +385,7 @@ describe("lando app:config:lint (source dispatch)", () => {
 
   test.each(["text", "json"])("env-file warnings exit successfully in %s output", async (format) => {
     await withTempCwd(async (dir) => {
-      await writeFile(join(dir, ".lando.yml"), "name: env-warning\nenv_file: runtime.env\n");
+      await writeFile(join(dir, ".lando.yml"), "name: env-warning\nserviceDefaults:\n  env_file: runtime.env\n");
       await writeFile(join(dir, "runtime.env"), 'PATH="C:\\new"\n');
       const result = await runCli(["app:config:lint", ...(format === "text" ? [] : ["--format=json"])], dir);
       expect(result.exitCode).toBe(0);
@@ -401,7 +401,7 @@ describe("lando app:config:lint (source dispatch)", () => {
 
   test.each(["NAME\n", undefined])("env-file errors fail the JSON lint verdict (%s)", async (content) => {
     await withTempCwd(async (dir) => {
-      await writeFile(join(dir, ".lando.yml"), "name: env-error\nenv_file: runtime.env\n");
+      await writeFile(join(dir, ".lando.yml"), "name: env-error\nserviceDefaults:\n  env_file: runtime.env\n");
       if (content !== undefined) await writeFile(join(dir, "runtime.env"), content);
       const result = await runCli(["app:config:lint", "--format=json"], dir);
       expect(result.exitCode).toBe(1);

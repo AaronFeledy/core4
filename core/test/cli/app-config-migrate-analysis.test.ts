@@ -51,7 +51,7 @@ describe("service rename reference rewrite", () => {
     };
     const database = { type: "{{ recipe.database }}" };
     const document = {
-      services: { appserver: { dependsOn: ["database"] }, database },
+      services: { appserver: { depends_on: ["database"] }, database },
       routes: { "http://db.lndo.site": { service: "database" } },
       events: { "post-start": [{ service: "database" }] },
     };
@@ -60,7 +60,7 @@ describe("service rename reference rewrite", () => {
       document,
       renderedOld: document,
       renderedNew: {
-        services: { appserver: { dependsOn: ["db"] }, db: database },
+        services: { appserver: { depends_on: ["db"] }, db: database },
         routes: { "http://db.lndo.site": { service: "db" } },
         events: { "post-start": [{ service: "db" }] },
       },
@@ -72,7 +72,7 @@ describe("service rename reference rewrite", () => {
     expect(renamed.document).toMatchObject({
       routes: { "http://db.lndo.site": { service: "db" } },
       events: { "post-start": [{ service: "db" }] },
-      services: { appserver: { dependsOn: ["db"] } },
+      services: { appserver: { depends_on: ["db"] } },
     });
   });
 });
@@ -181,7 +181,7 @@ describe("pure recipe migration analysis", () => {
     expect(getAtPath(result.document, "services.database")).toBeUndefined();
     expect(getAtPath(result.document, "services.db")).toEqual({ type: "{{ recipe.database }}" });
     expect(getAtPath(result.document, "recipe.services.database")).toBe("db");
-    expect(getAtPath(result.document, "services.appserver.dependsOn")).toEqual(["db"]);
+    expect(getAtPath(result.document, "services.appserver.depends_on")).toEqual(["db"]);
     expect(getAtPath(result.document, "tooling.mysql.service")).toBe("db");
     expect(result.committed).toEqual(input.target.identity);
   });
@@ -212,7 +212,7 @@ describe("pure recipe migration analysis", () => {
     expect(getAtPath(result.document, "services.db")).toEqual({ type: "redis:7" });
     expect(getAtPath(result.document, "services.database")).toEqual({ type: "{{ recipe.database }}" });
     expect(getAtPath(result.document, "recipe.services")).toBeUndefined();
-    expect(getAtPath(result.document, "services.appserver.dependsOn")).toEqual(["database"]);
+    expect(getAtPath(result.document, "services.appserver.depends_on")).toEqual(["database"]);
     expect(getAtPath(result.document, "tooling.mysql.service")).toBe("database");
   });
 
@@ -271,7 +271,7 @@ describe("pure recipe migration analysis", () => {
     expect(result.edges.map(statuses)).toEqual(["satisfied", "blocking"]);
     expect(result.committed).toEqual(input.migrations[0].to);
     expect(getAtPath(result.document, "recipe.version")).toBe("1.1.0");
-    expect(getAtPath(result.document, "services.appserver.dependsOn")).toEqual(["database"]);
+    expect(getAtPath(result.document, "services.appserver.depends_on")).toEqual(["database"]);
     expect(getAtPath(result.document, "tooling.mysql.service")).toBe("database");
   });
 
@@ -285,7 +285,7 @@ describe("pure recipe migration analysis", () => {
     expect(result.committed).toEqual(input.migrations[0].to);
     expect(getAtPath(result.document, "recipe.version")).toBe("1.1.0");
     expect(getAtPath(result.document, "services.db")).toEqual({ type: "redis:7" });
-    expect(getAtPath(result.document, "services.appserver.dependsOn")).toEqual(["database"]);
+    expect(getAtPath(result.document, "services.appserver.depends_on")).toEqual(["database"]);
   });
 
   test("blocks when an option-default hunk disagrees with the new snapshot defaults", () => {
