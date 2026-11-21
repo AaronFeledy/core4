@@ -1,7 +1,6 @@
 ---
 id: symfony
 provider: test
-timeout: 900000
 tags: [recipe, symfony, php]
 ---
 
@@ -83,7 +82,7 @@ Pass a version or constraint as the second argument, and `--no-scripts` to skip 
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
     </Step>
   </Scenario>
-  <Scenario id="install-path" layer="e2e" render={false} reason="Live Symfony installation and welcome page verification">
+  <Scenario id="install-path" layer="e2e" timeout={900000} render={false} reason="Live Symfony installation and welcome page verification">
     <Step name="init">
       <Run command="lando init --recipe symfony --name=symfony-install --yes" />
     </Step>

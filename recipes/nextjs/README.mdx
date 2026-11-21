@@ -1,7 +1,6 @@
 ---
 id: nextjs
 provider: test
-timeout: 900000
 tags: [recipe, nextjs, node]
 ---
 
@@ -173,7 +172,7 @@ These tooling commands run inside the `web` service. The Landofile declares the 
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*\"database\":\\s*\\{)" } }} />
     </Step>
   </Scenario>
-  <Scenario id="install-path" layer="e2e" render={false} reason="Live scaffold and HTTP verification">
+  <Scenario id="install-path" layer="e2e" timeout={900000} render={false} reason="Live scaffold and HTTP verification">
     <Step name="init">
       <Run command="lando init --recipe nextjs --name=nextjs-install --yes" />
     </Step>

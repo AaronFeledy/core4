@@ -1,7 +1,7 @@
 ---
 id: e2e-smoke-scenarios
 provider: test
-timeout: 60000
+timeout: 180000
 tags: [docs, authoring, e2e]
 ---
 
@@ -24,7 +24,7 @@ Set the layer and tag on the scenario, not the guide, unless every scenario
 on the page needs a real provider:
 
 ```mdx
-<Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>
+<Scenario id="real-provider-loop" layer="e2e" timeout={300000} tags={["@smoke"]} render>
   <Step name="start">
     <UseFixture name="app-lifecycle-demo" />
     <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: { regex: "complete" } }} />
@@ -35,6 +35,10 @@ on the page needs a real provider:
   </Step>
 </Scenario>
 ```
+
+If a live scenario needs more time to pull images or start containers, set
+`timeout` on that scenario, in milliseconds. Other scenarios keep the guide's
+timeout, which defaults to `60000`.
 
 Rules the generator and linter enforce:
 
@@ -63,6 +67,46 @@ prints on stderr, which are written for people and change without notice:
 
 A second `lando start` changes nothing on a running app, so the step only
 repeats the check.
+
+## Request a page through the router
+
+Use `<Fetch>` when you need to check a specific page, header, or redirect,
+rather than the readiness verdict from `lando start`. Run it in an e2e scenario
+after `lando start`. The `{{route:web}}` token in the example uses the `web`
+service's assigned router URL, including any fallback port. HTTPS requests
+verify the router certificate against the CA that `lando setup` installed.
+
+```mdx
+<Step name="request-homepage">
+  <Fetch url="{{route:web}}/" expect={{ status: 200, headers: { "Content-Type": { regex: "^text/html" } }, body: { regex: "Hello from the router" } }} />
+</Step>
+```
+
+<Guide>
+  <Scenario id="request-router-page" layer="e2e" render>
+    <Hidden reason="Start the fixture site for the request example">
+      <Step name="start-static-site">
+        <UseFixture name="router-page" />
+        <Run command="lando start --format=json" />
+      </Step>
+    </Hidden>
+    <Step name="request-homepage">
+      <Fetch url="{{route:web}}/" expect={{ status: 200, headers: { "Content-Type": { regex: "^text/html" } }, body: { regex: "Hello from the router" } }} />
+    </Step>
+    <Hidden reason="Clean up the fixture site after the request example">
+      <Step name="destroy-site">
+        <Cleanup />
+        <Run command="lando destroy -y --volumes --format=json" />
+      </Step>
+    </Hidden>
+  </Scenario>
+  <Scenario id="prepare-router-page" render={false} reason="Check the request fixture plans a routed static site without a live provider">
+    <Step name="plan-static-site">
+      <UseFixture name="router-page" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+</Guide>
 
 ## Pin a known limitation
 

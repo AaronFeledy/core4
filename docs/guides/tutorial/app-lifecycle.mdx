@@ -1,7 +1,6 @@
 ---
 id: app-lifecycle
 provider: test
-timeout: 300000
 tags: [docs, tutorial, lifecycle]
 ---
 
@@ -109,7 +108,7 @@ lando restart -s app
 lando exec app -- printenv GREETING
 ```
 
-  <Scenario id="restart-one-service" layer="e2e" render>
+  <Scenario id="restart-one-service" layer="e2e" timeout={300000} render>
     <Step name="start">
       <UseFixture name="app-lifecycle-demo" />
       <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" } }} />
@@ -152,7 +151,7 @@ If the removed service was the last one that used `lando` from inside a containe
 
 Lando removes a container only when its labels prove it belongs to this app. If a container for a removed service carries labels that say otherwise, such as another provider's, `lando start` stops before removing anything and names that container. Inspect it with your container runtime and remove it yourself if it is a leftover, then run `lando start` again.
 
-  <Scenario id="remove-a-service" layer="e2e" render>
+  <Scenario id="remove-a-service" layer="e2e" timeout={300000} render>
     <Step name="start">
       <UseFixture name="app-lifecycle-demo" />
       <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" } }} />
@@ -296,7 +295,7 @@ The same loop, end to end, against the default `lando` provider. `start`
 reports the app ready, `info` shows both services `running`, `stop` names what
 it stopped. Results stay on stdout; progress goes to stderr:
 
-  <Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>
+  <Scenario id="real-provider-loop" layer="e2e" timeout={300000} tags={["@smoke"]} render>
     <Step name="start">
       <UseFixture name="app-lifecycle-demo" />
       <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: { regex: "complete" } }} />

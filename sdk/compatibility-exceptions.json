@@ -938,6 +938,12 @@
     "justification": "The derived authoring schema admits HTTP and TCP readiness objects. A supplied port must be an integer from 1 to 65535, regardless of the probe kind. Disabled probes still need no target."
   },
   {
+    "surface": "schema:PublicTranscript",
+    "changeKind": "enum-widened",
+    "path": "$.frames.items.kind",
+    "justification": "The Fetch guide component adds a fetch frame containing the request line and expected status. Existing frame kinds remain valid; public transcript consumers must also handle fetch."
+  },
+  {
     "surface": "schema:DotnetServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.healthcheck.anyOf",

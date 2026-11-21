@@ -255,9 +255,8 @@ describe("CI selection", () => {
       await writeFile(join(cwd, "docs", filename), "docs");
       git("add", ".");
       git("commit", "-m", "docs");
-      expect(selectCi({ event: "pull_request", base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe(
-        "docs",
-      );
+      for (const event of ["pull_request", "merge_group"])
+        expect(selectCi({ event, base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe("docs");
       git("mv", "runtime.ts", "docs/moved.md");
       git("commit", "-m", "move runtime to docs");
       expect(selectCi({ event: "pull_request", base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe(

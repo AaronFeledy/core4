@@ -9,6 +9,7 @@ const COMPONENT_NAMES = [
   "Step",
   "Run",
   "Verify",
+  "Fetch",
   "Inspect",
   "Hidden",
   "Cleanup",
@@ -68,7 +69,7 @@ describe("guide component vocabulary", () => {
 
   test("CONTEXT_COMPONENT_NAMES lists exactly the remark context inject targets", async () => {
     // Given: the independent expected set of context-bearing wrappers.
-    const expected = ["Step", "Run", "Verify", "Inspect", "Cleanup", "Inline", "Tab"] as const;
+    const expected = ["Step", "Run", "Verify", "Fetch", "Inspect", "Cleanup", "Inline", "Tab"] as const;
 
     // When: the shared constant is inspected.
     // Then: it matches exactly and every entry resolves to an existing vocabulary .astro file.

@@ -439,38 +439,66 @@ test.each([false, true])("verifies ownership again after a create conflict (fore
   expect(inspections).toBe(2);
 });
 
-test("reconnects all after-create attachments after a host-port retry", async () => {
-  // Given
-  const web = networkPlan.services[ServiceName.make("web")];
-  if (web === undefined) throw new TypeError("Missing web fixture");
-  const plan: AppPlan = {
-    ...networkPlan,
-    services: {
-      [web.name]: {
-        ...web,
-        endpoints: [
-          {
-            kind: "published" as const,
-            port: 80,
-            protocol: "http",
-            publication: { bindAddress: "127.0.0.1" },
-          },
-        ],
+test.each([libpodLifecycleDialect, dockerLifecycleDialect])(
+  "$engine attaches all aliases before each start, including host-port recovery",
+  async (dialect) => {
+    // Given
+    const web = networkPlan.services[ServiceName.make("web")];
+    if (web === undefined) throw new TypeError("Missing web fixture");
+    const plan: AppPlan = {
+      ...networkPlan,
+      services: {
+        [web.name]: {
+          ...web,
+          endpoints: [
+            {
+              kind: "published" as const,
+              port: 80,
+              protocol: "http",
+              publication: { bindAddress: "127.0.0.1" },
+            },
+          ],
+        },
       },
-    },
-  };
-  const fake = networkApi({ retryStart: true });
-  // When
-  await Effect.runPromise(
-    bringUp(plan, {
-      api: fake.api,
-      ctx,
-      dialect: dockerLifecycleDialect,
-      platform: "linux",
-      probeBind: () => Effect.succeed({ kind: "success" }),
-    }),
-  );
-  // Then
-  expect(fake.requests.filter((request) => request.path.startsWith("/containers/create?"))).toHaveLength(2);
-  expect(fake.requests.filter((request) => request.path.endsWith("/connect"))).toHaveLength(6);
-});
+    };
+    const fake = networkApi({ retryStart: true });
+    // When
+    await Effect.runPromise(
+      bringUp(plan, {
+        api: fake.api,
+        ctx,
+        dialect,
+        platform: "linux",
+        probeBind: () => Effect.succeed({ kind: "success" }),
+      }),
+    );
+    // Then
+    const attachmentsAtStart: Array<Record<string, unknown>> = [];
+    let attachments: Record<string, unknown> = {};
+    for (const { path, body } of fake.requests) {
+      if (path.startsWith("/containers/create?")) {
+        const created = field(field(body, "NetworkingConfig"), "EndpointsConfig");
+        attachments = Object.fromEntries(
+          Object.keys(endpoints).flatMap((name) => {
+            const endpoint = field(created, name);
+            return endpoint === undefined ? [] : [[name, field(endpoint, "Aliases")]];
+          }),
+        );
+      } else if (
+        path.startsWith("/networks/") &&
+        path.endsWith("/connect") &&
+        field(body, "Container") === "lando-networks--web"
+      ) {
+        const name = decodeURIComponent(path.slice("/networks/".length, -"/connect".length));
+        attachments[name] = field(field(body, "EndpointConfig"), "Aliases");
+      } else if (path === "/containers/lando-networks--web/start") {
+        attachmentsAtStart.push({ ...attachments });
+      }
+    }
+    const expected = Object.fromEntries(
+      Object.entries(endpoints).map(([name, { Aliases }]) => [name, Aliases]),
+    );
+    expect(attachmentsAtStart).toEqual([expected, expected]);
+    expect(fake.requests.filter(({ path }) => path.startsWith("/containers/create?"))).toHaveLength(2);
+  },
+);
