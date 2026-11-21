@@ -91,7 +91,7 @@ describe("drupal-cms decomposition", () => {
           allowOverride: true,
           uploadDirs: ["sites/*/files"],
           port: 80,
-          dependsOn: ["database"],
+          depends_on: ["database"],
           mounts: [
             { source: `./${DRUPAL_CMS_PHP_INI_PATH}`, target: DRUPAL_CMS_PHP_INI_TARGET, readOnly: true },
           ],

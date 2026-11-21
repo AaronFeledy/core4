@@ -180,7 +180,7 @@ Both cold startup and warm reuse MUST read prior applied state strictly; an unre
 
 User and scratch activation MUST close the race between a successful global ensure and their own build/apply. After build, the final activation boundary installs its required-id reservation before the final `ensureRunning`, then verifies fresh admission before its actual provider-apply and route-publication body. The reservation remains active through that body. A consumer cannot apply or publish against a dependency disabled since its earlier ensure or adopt a resource while policy cleanup is handing it off. The disable preflight, policy-mutation claim, and this final admission check form one safety contract; consumer scanning alone is insufficient.
 
-Direct Landofile `dependsOn` syntax for global services is not part of this contract (§14.2).
+Direct Landofile `depends_on` syntax for global services is not part of this contract (§14.2).
 
 The §10.4 SSH sidecar is not declared through `requires.globalServices`. The SSH overlay ensures the sidecar best-effort through `SshService.setup`, only when its agent does not answer, and its failure never aborts user-app start. The bundled sidecar's `setup` calls `ensureRunning`, so that start emits its own `pre-global-start`/`post-global-start` pair (`triggeredBy: "ensure-running"`).
 
@@ -332,7 +332,7 @@ This surface also uses the shared `CommandAliasConflictError` and `ConfigExpress
 - Multi-host shared global apps are not supported.
 - The global root is not independently relocatable; changing `<userDataRoot>` relocates it (§7.5).
 - Independent per-app global-provider overrides and multiple providers within the global app are unsupported. Global placement follows §20.1.
-- Explicit Landofile `dependsOn: ["global:<service>"]` is not a contract; only `AppFeature.requires.globalServices` applies.
+- Explicit Landofile `depends_on: ["global:<service>"]` is not a contract; only `AppFeature.requires.globalServices` applies.
 - Users cannot promote user-app services into the global app.
 - Plugins MUST NOT register canonical ids under `meta:global:*`; they MAY operate on the global app through commands in their own namespaces.
 - `globalServices:` contributions are not sandboxed; isolation is cooperative (§10.9.1).

@@ -81,7 +81,7 @@ describe("drupal decomposition", () => {
           allowOverride: true,
           uploadDirs: ["sites/*/files"],
           port: 80,
-          dependsOn: ["database"],
+          depends_on: ["database"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "{{ recipe.database }}" },
@@ -114,7 +114,7 @@ describe("drupal decomposition", () => {
       via: "fpm",
       webroot: "{{ recipe.webroot }}",
       composer: "{{ recipe.composer }}",
-      dependsOn: ["database"],
+      depends_on: ["database"],
     });
     expect(authoring.services.edge).toEqual({
       type: "nginx",

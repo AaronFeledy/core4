@@ -63,7 +63,7 @@ lando app:config:lint --format=json
 lando app:config --format=json
 ```
 
-In the resolved config, `mailpit` has `"type": "compose"`, its bind source is `./mailstack/data`, and `envFile` is `./mailstack/.env.mail`, both rebased onto the app root. Run `lando start` once for the whole app instead of a separate `docker compose up`.
+In the resolved config, `mailpit` has `"type": "compose"`, its bind source is `./mailstack/data`, and `env_file` is `./mailstack/.env.mail`, both rebased onto the app root. Run `lando start` once for the whole app instead of a separate `docker compose up`.
 
 ## Join the stack's network
 
@@ -193,7 +193,7 @@ Lint also reports provider capability problems under `landofile.capability`, suc
     <Step name="inspect-resolved-config">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"mailpit\":\\s*\\{\\s*\"type\":\\s*\"compose\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"envFile\":\\s*\\[\\s*\"\\./mailstack/\\.env\\.mail\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"env_file\":\\s*\\[\\s*\"\\./mailstack/\\.env\\.mail\"\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"source\":\\s*\"\\./mailstack/data\",\\s*\"target\":\\s*\"/data\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"volume\",\\s*\"source\":\\s*\"pgdata\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/data\"[\\s\\S]*?\"appMount\":\\s*false" } }} />

@@ -7,7 +7,7 @@ services:
     type: php:8.3
     framework: none
     port: 80
-    dependsOn:
+    depends_on:
       - database
       - database-legacy
   database:

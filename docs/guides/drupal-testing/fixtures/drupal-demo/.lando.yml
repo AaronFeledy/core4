@@ -6,7 +6,7 @@ services:
     allowOverride: true
     port: 80
     primary: true
-    dependsOn:
+    depends_on:
       - database
     environment:
       SIMPLETEST_BASE_URL: http://appserver

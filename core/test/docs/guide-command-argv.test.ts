@@ -54,7 +54,10 @@ describe("guideCommandArgv", () => {
     ['lando x "`id`"', { reason: "shell-syntax", index: 9, character: "`" }],
     ["lando x *.php", { reason: "shell-syntax", index: 8, character: "*" }],
     ["lando list --jq=[.result]", { reason: "shell-syntax", index: 16, character: "[" }],
-    ['lando config set appEnv {"A":"b"}', { reason: "shell-syntax", index: 24, character: "{" }],
+    [
+      'lando config set serviceDefaults.environment {"A":"b"}',
+      { reason: "shell-syntax", index: 48, character: "{" },
+    ],
     ["lando x db.ping()", { reason: "shell-syntax", index: 15, character: "(" }],
     ["lando x !", { reason: "shell-syntax", index: 8, character: "!" }],
     ["lando x ~/app", { reason: "shell-syntax", index: 8, character: "~" }],

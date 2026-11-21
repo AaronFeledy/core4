@@ -18,7 +18,7 @@ lando init --recipe laravel --name=reverb-demo --yes --answer=worker=true
 cd reverb-demo
 ```
 
-`--answer=worker=true` adds a queue `worker` service and shares `vendor/` between `appserver` and `worker`, so both boot against the same Composer install. Before the first start, open `.lando.yml`. Change the `command` and `dependsOn` of `worker`, and add `APP_URL` to `appserver` and `worker`, next to any `environment` keys they already have:
+`--answer=worker=true` adds a queue `worker` service and shares `vendor/` between `appserver` and `worker`, so both boot against the same Composer install. Before the first start, open `.lando.yml`. Change the `command` and `depends_on` of `worker`, and add `APP_URL` to `appserver` and `worker`, next to any `environment` keys they already have:
 
 ```yaml
 services:
@@ -29,7 +29,7 @@ services:
     command: php artisan queue:listen
     environment:
       APP_URL: "{{ services.appserver.url }}"
-    dependsOn:
+    depends_on:
       database:
         condition: service_healthy
 ```
@@ -128,7 +128,7 @@ services:
       target: /app
       includes:
         - vendor
-    dependsOn:
+    depends_on:
       database:
         condition: service_healthy
     routes:

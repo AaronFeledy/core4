@@ -100,8 +100,8 @@ describe("drupal-contrib decomposition", () => {
           framework: "drupal",
           webroot: "/app/web",
           composer: "{{ recipe.composer }}",
-          workingDirectory: contribDir,
-          dependsOn: ["database", "chrome"],
+          working_dir: contribDir,
+          depends_on: ["database", "chrome"],
           appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
           mounts: ["site:/app"],
           environment: {

@@ -30,7 +30,7 @@ The unreleased structured diagnostic coordinates replace `RouteInputError.key` w
 
 Endpoint and route-filter discriminators use `kind` on authored input, plans, and applied state (`EndpointPlan.kind`, `RouteFilter.kind`, `RouteFilterKind`). The unreleased spellings have no live aliases or deprecation cycle. Plugin `declareEndpoints` returns `EndpointDeclaration.Encoded` values; only plugin HTTP(S) objects accept authored `scan` (§6.11.0). The endpoint shorthand alias grammar does not narrow object names (§6.6). Applied-state v7 migrates to the v8 shape on read. See §5.5.2 for current reader versions and later migrations. The executable app-plan and scratch plan caches MUST reject older frames (§12.1).
 
-The unreleased authored `build.dockerfileInline` alias is removed without a deprecation cycle or a compatibility adapter. `build.dockerfile_inline` is the one authored spelling and `dockerfileInline` remains the decoded field (§6.3).
+The unreleased authored `build.dockerfileInline` alias is removed without a deprecation cycle or a compatibility adapter. `build.dockerfile_inline` is the one authored spelling and `dockerfileInline` remains the decoded field (§6.3). Unreleased camelCase service aliases `working_dir`, `env_file`, and `depends_on`, top-level Landofile `env_file` (moved to `serviceDefaults.env_file`), global `serviceDefaults.environment`/`serviceDefaults.labels` (moved to `serviceDefaults.environment`/`serviceDefaults.labels`), PHP `dbClient` (now `dbClient`), and Lando health `startIntervalSeconds` (now numeric `startIntervalSeconds`) are removed the same way: one authored spelling, no compatibility decode of the old key (§6.2, §7.5, §16/§18.1).
 
 ### 18.2 The `DeprecationNotice` schema
 
