@@ -71,6 +71,7 @@ const lockRequestsFor = (
   volumes.map((volume) => ({
     key: volume.locator.coordinationKey,
     name: volume.locator.nativeName,
+    ...(volume.tier === undefined ? {} : { tier: volume.tier }),
     mode: volumeLockModeFor(volume.store, volume.locator, sharedCaches),
     resource: `volume ${volume.locator.nativeName}`,
   }));

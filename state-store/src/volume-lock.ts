@@ -1,5 +1,5 @@
 import type { StateStoreError } from "@lando/sdk/errors";
-import { physicalVolumeLockTier } from "@lando/sdk/schema";
+import { type PhysicalVolumeLockTier, physicalVolumeLockTier } from "@lando/sdk/schema";
 import { type StateLockOptions, type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import { Clock, Context, Effect } from "effect";
 
@@ -11,6 +11,7 @@ export type VolumeLockMode = "exclusive" | "shared";
 export type HeldVolumeLock = {
   readonly mode: VolumeLockMode;
   readonly name: string;
+  readonly tier: PhysicalVolumeLockTier;
 };
 
 /**
@@ -28,11 +29,15 @@ export const heldVolumeLocks: Context.Reference<ReadonlyMap<string, HeldVolumeLo
 /**
  * Request a physical-volume advisory lock. `key` is the coordination identity;
  * `name` is the native volume name used for tier classification and wait notices.
+ * `tier` overrides the name's tier for volumes whose owner, not their name, decides it:
+ * the global app's plugin-declared stores (for example `lando-ssh-agent`) rank as
+ * global-app volumes. Every caller that locks such a volume derives the same tier.
  * Callers always supply a request object (never a bare string).
  */
 export type VolumeLockRequest = {
   readonly key: string;
   readonly name: string;
+  readonly tier?: PhysicalVolumeLockTier;
   readonly mode?: VolumeLockMode;
   readonly resource?: string;
 };
@@ -44,7 +49,8 @@ const modeOf = (request: VolumeLockRequest): VolumeLockMode => request.mode ?? "
 const resourceOf = (request: VolumeLockRequest): string =>
   (request.resource ?? `volume ${request.name}`).slice(0, 512);
 
-const tierOf = (request: Pick<VolumeLockRequest, "name">): number => physicalVolumeLockTier(request.name);
+const tierOf = (request: Pick<VolumeLockRequest, "name" | "tier">): PhysicalVolumeLockTier =>
+  request.tier ?? physicalVolumeLockTier(request.name);
 
 /** Sort key: tier ascending, then coordination key. */
 const compareRequests = (left: VolumeLockRequest, right: VolumeLockRequest): number => {
@@ -95,7 +101,7 @@ const assertNestedLockOrder = (
   if (firstMissing === undefined || held.size === 0) return Effect.void;
   let highest: VolumeLockRequest | undefined;
   for (const [key, value] of held) {
-    const candidate: VolumeLockRequest = { key, name: value.name, mode: "exclusive" };
+    const candidate: VolumeLockRequest = { key, name: value.name, tier: value.tier, mode: "exclusive" };
     if (highest === undefined || compareRequests(highest, candidate) < 0) highest = candidate;
   }
   if (highest === undefined) return Effect.void;
@@ -118,6 +124,7 @@ const withHeld = (
   next.set(request.key, {
     mode: current?.mode === "exclusive" ? "exclusive" : mode,
     name: current?.name ?? request.name,
+    tier: current?.tier ?? tierOf(request),
   });
   return next;
 };

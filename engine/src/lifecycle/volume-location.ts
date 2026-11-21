@@ -1,6 +1,6 @@
 import { VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, DataStorePlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
-import { planDataId } from "@lando/sdk/schema";
+import { PHYSICAL_VOLUME_LOCK_TIER, type PhysicalVolumeLockTier, planDataId } from "@lando/sdk/schema";
 import type { ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 
@@ -12,10 +12,23 @@ export type LocatedPlanVolume = {
   readonly ref: VolumeRef;
   readonly store: DataStorePlan;
   readonly locator: VolumeLocator;
+  readonly tier?: PhysicalVolumeLockTier;
 };
 
 export const isGlobalCache = (store: Pick<DataStorePlan, "scope" | "kind">): boolean =>
   store.scope === "global" && store.kind === "cache";
+
+/**
+ * The global app's stores rank above every user app's volumes. Plugins name them freely (for
+ * example `lando-ssh-agent`), so their owner, not their name, decides the tier. A user start
+ * already holds its own keys when it starts global services, and nothing takes a global-app key
+ * and then a user key, so this order cannot invert.
+ */
+export const volumeLockTierFor = (
+  plan: Pick<AppPlan, "id">,
+  store: Pick<DataStorePlan, "scope" | "kind">,
+): PhysicalVolumeLockTier | undefined =>
+  String(plan.id) === "global" && !isGlobalCache(store) ? PHYSICAL_VOLUME_LOCK_TIER.globalApp : undefined;
 
 export const coordinationFailure = (providerId: string, message: string) =>
   new VolumeOperationError({
@@ -95,7 +108,8 @@ const locatePlanVolumes = (
         Effect.flatMap((locator) => {
           const mismatch = ownerRootMismatch(plan, provider.id, store, locator);
           if (mismatch !== undefined) return Effect.fail(mismatch);
-          return Effect.succeed({ ref, store, locator });
+          const tier = volumeLockTierFor(plan, store);
+          return Effect.succeed({ ref, store, locator, ...(tier === undefined ? {} : { tier }) });
         }),
       );
     },
