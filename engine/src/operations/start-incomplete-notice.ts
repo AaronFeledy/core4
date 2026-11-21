@@ -26,7 +26,7 @@ const listed = (names: ReadonlyArray<string>): string => (names.length === 0 ? "
 
 export type IncompleteStartVerb = "start" | "restart" | "rebuild";
 
-/** The command the user ran. `services` is set only for a selected restart or rebuild. */
+/** The command the user ran. `services` is set only for a selected start, restart, or rebuild. */
 export interface IncompleteStartCommand {
   readonly verb: IncompleteStartVerb;
   readonly services?: readonly string[];

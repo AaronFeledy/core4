@@ -26,7 +26,7 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
 ) {
   const desired = yield* fileSyncBundle(target.plan);
   // An interrupted replacement must resume its recorded identity, never supersede it.
-  if ((yield* readPendingAcceleratedStart(target.app, target.plan)) !== null) return;
+  if ((yield* readPendingAcceleratedStart(target.app)) !== null) return;
   const registry = yield* RuntimeProviderRegistry;
   yield* requireFileSyncProvider(desired, provider);
   if (provider.inspectAppliedFileSync === undefined) return;

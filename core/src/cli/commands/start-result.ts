@@ -160,6 +160,15 @@ export const buildStartSummary = (
         rows,
         ...(rows.length === 0 ? { notes: ["No services were started."] } : {}),
       },
+      ...(result.servicesStayedDown === undefined || result.servicesStayedDown.length === 0
+        ? []
+        : [
+            {
+              title: "Stayed down",
+              rows: result.servicesStayedDown.map((name) => ({ label: name })),
+              notes: ["Run `lando start` to start them."],
+            },
+          ]),
     ],
   };
 };
@@ -174,10 +183,13 @@ const renderPlainStartAppResult = (result: StartAppResult): string => {
   const ready = result.servicesStarted.every((service) =>
     ["running", "healthy", "ready", "completed"].includes(service.state),
   );
-  return [
-    lifecycleLine(ready ? "ready" : "started", result.app, services),
-    ...expectedCheckMessages(result.checks),
-  ].join("\n");
+  const started = lifecycleLine(ready ? "ready" : "started", result.app, services);
+  const stayedDown = result.servicesStayedDown;
+  const summary =
+    stayedDown === undefined || stayedDown.length === 0
+      ? started
+      : `${started}; stayed down: ${stayedDown.join(", ")}`;
+  return [summary, ...expectedCheckMessages(result.checks)].join("\n");
 };
 
 export const renderStartAppResult = (result: StartAppResult, ctx?: RenderContext): string => {

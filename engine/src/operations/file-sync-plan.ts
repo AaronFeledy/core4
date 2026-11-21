@@ -60,6 +60,28 @@ export const guardOrdinaryFileSyncFallback = Effect.fnUntraced(function* (
   );
 });
 
+export const preflightSelectedStartFileSync = Effect.fnUntraced(function* (plan: AppPlan, applied?: AppPlan) {
+  const saved = applied?.fileSync ?? [];
+  const selected = saved.filter(({ session }) => Object.hasOwn(plan.services, session.service));
+  const priorEngine = saved[0]?.engineId;
+  if (
+    (selected.length > 0 &&
+      !fileSyncPriorIsCompatibleWithDesired(
+        plan,
+        selected.map(({ session }) => session),
+      )) ||
+    (priorEngine !== undefined && plan.fileSync.some(({ engineId }) => engineId !== priorEngine))
+  ) {
+    return yield* Effect.fail(
+      new FileSyncStartError({
+        engineId: priorEngine ?? "unknown",
+        message: "A selected start cannot change or retire existing accelerated file-sync mounts.",
+        remediation: "Run `lando start` to reconcile the app's accelerated mounts.",
+      }),
+    );
+  }
+});
+
 export const withOrdinaryMounts = (plan: AppPlan): AppPlan => ({
   ...plan,
   services: Object.fromEntries(
