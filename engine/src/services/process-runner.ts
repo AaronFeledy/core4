@@ -1,6 +1,6 @@
 import { RedactionService } from "@lando/redaction/service";
 import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
-import { identityRedactor } from "@lando/sdk/command-result";
+import { identityRedactor, orDieWithRole } from "@lando/sdk/command-result";
 import { FileIoError, ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
 import { REDACTED, isSecretFieldName } from "@lando/sdk/secrets";
 import {
@@ -184,7 +184,11 @@ const scopedProcessStream = (
               catch: onError,
             }),
             (child) =>
-              Effect.promise(child.close).pipe(Effect.interruptible, Effect.timeout(1500), Effect.orDie),
+              Effect.promise(child.close).pipe(
+                Effect.interruptible,
+                Effect.timeout(1500),
+                orDieWithRole("cleanup"),
+              ),
           );
           return Stream.fromAsyncIterable(child.iterable, onError);
         }),
