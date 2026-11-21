@@ -140,6 +140,7 @@ If you are looking for a public surface or policy:
 | Compilation carrier and evaluation stages | 07 | §7.2.1 |
 | External file loading, expressions, and templates | 07 | §7.3 |
 | Landofile self-port scope, planner text rendering, and deferred list-form `extra_hosts` | 07 | §7.3.1 |
+| Landofile self port, public service URL bindings, and activation evidence | 06 + 07 + 12 + 19 | §6.11 + §7.3.1 + §12.1 + §21.9 |
 | Top-level Landofile and Compose-subset keys, per-folder data identity, and rename reconciliation | 07 | §7.4 |
 | Config translation contracts, diagnostics, and Lando 3 proxy selector lowering | 07 | §7.4.1 |
 | Translation sources, `translate:` refresh, and drift | 07 | §7.4.2 |
