@@ -171,7 +171,28 @@ test("undecodable tools/call parameters stay protocol errors", async () => {
         const client = yield* startServer();
         return yield* client.request("tools/call", { arguments: {} });
       }),
-    ).pipe(Effect.provide(layer)),
+    ).pipe(Effect.provide(layer), Effect.timeout("3 seconds")),
   );
   expect(response).toMatchObject({ error: { code: -32602 } });
+  expect(response.error).not.toHaveProperty("_tag");
+});
+
+test("ignores Effect RPC control notifications and continues serving MCP requests", async () => {
+  const observed = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* startServer();
+        const before = (yield* client.messages).length;
+        for (const method of ["@effect/rpc/Ping", "@effect/rpc/Eof"]) {
+          yield* client.send({ jsonrpc: "2.0", method });
+        }
+        const ping = yield* (yield* client.sendRequest("ping", {}, "ping-after-controls")).response;
+        yield* client.close;
+        yield* Fiber.join(client.fiber);
+        return { ping, messages: (yield* client.messages).slice(before) };
+      }),
+    ).pipe(Effect.provide(layer), Effect.timeout("3 seconds")),
+  );
+  expect(observed.ping).toEqual({ jsonrpc: "2.0", id: "ping-after-controls", result: {} });
+  expect(observed.messages).toEqual([observed.ping]);
 });
