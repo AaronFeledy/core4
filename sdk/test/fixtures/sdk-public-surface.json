@@ -118,7 +118,7 @@
     "setListenerAuthority(authority: ListenerAuthority): void",
     "setCerts(certs: CertificatePlan): void",
     "setEntrypoint(entrypoint: CommandSpec): void",
-    "setCommand(command: CommandSpec): void",
+    "setCommand(command: CommandSpec, options?: LauncherCommandOptions): void",
     "setInit(init: boolean): void",
     "setArtifact(artifact: ArtifactRef | ArtifactBuildSpec): void",
     "setUser(user: string): void",

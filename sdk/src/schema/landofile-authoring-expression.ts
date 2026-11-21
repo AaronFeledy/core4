@@ -45,7 +45,7 @@ export const AuthoringExpression = Schema.Struct({
   }),
   scopes: Schema.Array(Schema.String).annotate({
     description:
-      "Sorted unique context scope heads referenced by the template. The service scope exposes only service.port at service command, entrypoint, and container probe command sites.",
+      "Sorted unique context scope heads referenced by the template. The service scope exposes only service.port at service command, entrypoint, extraArgs, and container probe command sites.",
   }),
 }).annotate({
   identifier: "AuthoringExpression",

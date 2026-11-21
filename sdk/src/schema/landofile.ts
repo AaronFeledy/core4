@@ -653,6 +653,13 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     command: executionSiteKey(Schema.optionalKey(CommandSpec), "service-command").annotate({
       description: "Command executed when the service starts.",
     }),
+    extraArgs: executionSiteKey(
+      Schema.optionalKey(Schema.Array(Schema.String)),
+      "service-extra-args",
+    ).annotate({
+      description:
+        "Arguments appended to a supported service's default launcher. Each list item is one argument.",
+    }),
     entrypoint: executionSiteKey(Schema.optionalKey(CommandSpec), "service-entrypoint").annotate({
       description: "Entrypoint used to launch the service container.",
     }),

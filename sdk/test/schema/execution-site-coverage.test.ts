@@ -119,6 +119,7 @@ test("every authored command string has execution semantics", () => {
 test.each([
   [["services", "web", "command"], "service-command", []],
   [["services", "web", "command", 0], "service-command", [0]],
+  [["services", "web", "extraArgs", 0], "service-extra-args", [0]],
   [["services", "web", "entrypoint"], "service-entrypoint", []],
   [["services", "web", "entrypoint", 0], "service-entrypoint", [0]],
   [["services", "web", "healthcheck"], "healthcheck", []],

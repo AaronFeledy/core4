@@ -9,6 +9,7 @@ export const SchemaExecutionSiteAnnotationId = "lando/schema/ExecutionSite" as c
 
 export const ExecutionSite = Schema.Literals([
   "service-command",
+  "service-extra-args",
   "service-entrypoint",
   "healthcheck",
   "schedule-job",

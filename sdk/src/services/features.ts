@@ -219,8 +219,8 @@ export interface ServiceFeatureContext {
   setCerts(certs: CertificatePlan): void;
   /** Set the service entrypoint. */
   setEntrypoint(entrypoint: CommandSpec): void;
-  /** Set the default command. */
-  setCommand(command: CommandSpec): void;
+  /** Set the default command. An argv launcher can opt into appending materialized extraArgs. */
+  setCommand(command: CommandSpec, options?: LauncherCommandOptions): void;
   /** Set native container init intent. Authored init takes precedence. */
   setInit(init: boolean): void;
   /** Set the artifact (image ref or build spec). */
@@ -229,6 +229,13 @@ export interface ServiceFeatureContext {
   setUser(user: string): void;
   /** Set the working directory. */
   setWorkingDirectory(path: PortablePath): void;
+}
+
+export interface LauncherCommandOptions {
+  /** Pure validation of the authored suffix. Return the first reserved argument, if any. */
+  readonly extraArgs: (
+    args: readonly string[],
+  ) => { readonly index: number; readonly remediation: string } | undefined;
 }
 
 /**

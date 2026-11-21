@@ -68,7 +68,12 @@ export const servicePortExpression = (template: ExpressionTemplate, path: Readon
   if (self.members.size !== 1 || !self.members.has("port")) return "unsupported-member";
   if (path[0] !== "services") return "unsupported-site";
   const match = executionSiteAt(path);
-  if (match?.site === "service-command" || match?.site === "service-entrypoint") return "supported";
+  if (
+    match?.site === "service-command" ||
+    match?.site === "service-entrypoint" ||
+    match?.site === "service-extra-args"
+  )
+    return "supported";
   if (match?.site !== "healthcheck") return "unsupported-site";
   const [field, index] = match.relativePath;
   // Compose reserves the first test element for its probe mode marker.
