@@ -121,7 +121,11 @@ test.skipIf(liveSocket === undefined)(
           expect(result).toMatchObject({ exitCode: 0, stdout: token, stderr: "" });
         }
       } finally {
-        await Effect.runPromise(provider.destroy({ app: plan.id, plan }, { volumes: true }));
+        await Effect.runPromise(
+          provider
+            .destroy({ app: plan.id, plan }, { volumes: true })
+            .pipe(Effect.provide(makeTestStateStore().layer)),
+        );
       }
     } finally {
       listener.stop(true);

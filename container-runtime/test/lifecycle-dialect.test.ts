@@ -424,6 +424,7 @@ describe("lifecycle dialect", () => {
           if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
             return { status: 200, body: "[]" };
           }
+          if (request.path === "/volumes") return { status: 200, body: '{"Volumes":[]}' };
           return { status: 404, body: "{}" };
         }),
     };

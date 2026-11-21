@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
+import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect } from "effect";
 import { tarStream } from "../../src/build-context.ts";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../../src/dialect.ts";
@@ -169,8 +170,11 @@ export const runStorageLifecycle = async (
       HostConfig: { NetworkMode: "none", Binds: [`${thirdAnonymous}:/ephemeral`] },
     },
   });
+  // Volume deletion holds the physical-volume lock, which the runtime's StateStore provides.
   await Effect.runPromise(
-    bringDown({ ...plan, stores: [...plan.stores, foreignStore] }, { ...options, volumes: true }),
+    bringDown({ ...plan, stores: [...plan.stores, foreignStore] }, { ...options, volumes: true }).pipe(
+      Effect.provide(makeTestStateStore().layer),
+    ),
   );
   await volumeStatus(retained, 404);
   await volumeStatus(foreign, 200);

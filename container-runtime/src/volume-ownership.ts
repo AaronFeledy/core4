@@ -3,7 +3,8 @@
  *
  * Two labels carry ownership, and they are not interchangeable:
  *
- * - `dev.lando.volume-owner` records the canonical app root verbatim. It is
+ * - `dev.lando.volume-owner` records the canonical app root verbatim for app
+ *   storage, or the reserved logical owner for global caches. It is
  *   authoritative for ownership PROOF — the planful volume delete gate in
  *   `@lando/provider-docker`, create-race detection in `volumeCreationFact`,
  *   adoption and witness checks in `volume-observation.ts` /
@@ -11,15 +12,14 @@
  *   against a root they already hold.
  * - `dev.lando.volume-selector` packs provider, app, owner key, and volume
  *   class into ONE value. It is authoritative for SELECTION — bring-down's
- *   local match and the daemon-side prune filter. Ownership has to be complete
+ *   local match and scoped volume filters. Ownership has to be complete
  *   inside a single value because the daemon ORs the values listed under one
  *   label key, so splitting ownership across keys would broaden a prune.
  *
- * The invariant: the selector's owner key is derived from the same canonical
- * root the owner label records, `appIdentityKey("owner", appRoot)` — the
+ * The invariant: the selector's owner key is derived from the same owner the
+ * proof label records, `appIdentityKey("owner", owner)` — for an app root, the
  * derivation the planner uses to stamp `AppPlan.identity`. Both labels are
- * emitted together by {@link volumeOwnershipLabels} and every reader resolves
- * ownership through {@link planAppIdentity}, so the pair cannot drift.
+ * emitted together by {@link volumeOwnershipLabels}, so the pair cannot drift.
  *
  * A plan that carries no `identity` is migrated here, at read time, from
  * `plan.root`: the planner assigns `root` from `identity.appRoot`, so the
@@ -45,11 +45,29 @@ import {
 } from "./podman/volume-prune.ts";
 import { volumeClassForStore, volumeClassFromLabels } from "./volume-classes.ts";
 
-/** Canonical app root, written verbatim; the ownership proof readers compare against. */
+/** Canonical app root or reserved global-cache owner. */
 export const VOLUME_OWNER_LABEL = "dev.lando.volume-owner";
 
 /** Ownership-complete selection value; the only label a prune filter may select on. */
 export const VOLUME_SELECTOR_LABEL = "dev.lando.volume-selector";
+
+// Reserved logical owner, not an app directory. Endpoint locality comes from the daemon.
+const GLOBAL_CACHE_OWNER = "/.lando/global-cache";
+const GLOBAL_CACHE_APP = "@global-cache";
+
+export const isGlobalCacheStore = (store: Pick<AppPlan["stores"][number], "scope" | "kind">) =>
+  store.scope === "global" && store.kind === "cache";
+
+export const sharedCacheOwnershipLabels = (providerId: string) => ({
+  [VOLUME_OWNER_LABEL]: GLOBAL_CACHE_OWNER,
+  [VOLUME_SELECTOR_LABEL]: volumeSelectorValue({
+    providerId,
+    appId: GLOBAL_CACHE_APP,
+    ownerKey: appIdentityKey("owner", GLOBAL_CACHE_OWNER),
+    volumeClass: "cache",
+    scope: "global",
+  }),
+});
 
 export const coherentVolumeOwnership = (
   labels: Readonly<Record<string, string>>,
@@ -59,6 +77,11 @@ export const coherentVolumeOwnership = (
   const app = labels["dev.lando.app"];
   const scope = labels["dev.lando.scope"];
   const kind = labels["dev.lando.storage-kind"];
+  if (scope === "global" && kind === "cache")
+    return (
+      Boolean(labels["dev.lando.store"] && labels["dev.lando.volume-instance"]) &&
+      Object.entries(sharedCacheOwnershipLabels(providerId)).every(([key, value]) => labels[key] === value)
+    );
   if (
     !root ||
     !isOwnershipRoot(root) ||
@@ -90,6 +113,7 @@ export const volumeOwnershipLabels = (
   plan: Pick<AppPlan, "id" | "provider" | "root" | "identity">,
   store: AppPlan["stores"][number],
 ): Readonly<Record<string, string>> => {
+  if (isGlobalCacheStore(store)) return sharedCacheOwnershipLabels(plan.provider);
   const ownership = planAppIdentity(plan);
   return {
     [VOLUME_OWNER_LABEL]: ownership.appRoot,

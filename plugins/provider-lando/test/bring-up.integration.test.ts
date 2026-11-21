@@ -13,6 +13,7 @@ import {
 } from "@lando/container-runtime/testing/exec-supervision";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makePodmanApiClient } from "@lando/provider-lando";
 import type { ServiceStartError } from "@lando/sdk/errors";
 import {
@@ -521,8 +522,8 @@ describe("provider-lando bringUp", () => {
         "dev.lando.scope": "global",
         "dev.lando.storage-kind": "cache",
         "dev.lando.store": "lando-cache-npm",
-        "dev.lando.volume-selector": "lando:bringupapp:creation-owner:cache",
-        "dev.lando.volume-owner": "/canonical/creation-root",
+        "dev.lando.volume-selector": expect.stringMatching(/^lando:@global-cache:[a-f0-9]+:cache:global$/u),
+        "dev.lando.volume-owner": "/.lando/global-cache",
         "dev.lando.volume-instance": expect.stringMatching(/^[0-9a-f-]{36}$/u),
       },
     });
@@ -1026,7 +1027,13 @@ describe("provider-lando bringUp", () => {
         expect(result).toEqual({ exitCode: 0, stdout: "alias-ok\n", stderr: "" });
         expect(server.authorization()).toBe(`Bearer ${token}`);
       } finally {
-        await Effect.runPromise(Effect.result(provider.destroy({ app: aliasPlan.id }, { volumes: true })));
+        await Effect.runPromise(
+          Effect.result(
+            provider
+              .destroy({ app: aliasPlan.id }, { volumes: true })
+              .pipe(Effect.provide(makeTestStateStore().layer)),
+          ),
+        );
         await server.close();
       }
     },

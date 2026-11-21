@@ -1,7 +1,9 @@
+import { hasExactVolumeTeardown } from "@lando/container-runtime/provider-assembly";
 import { AppResolveError, FileSyncStartError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import {
   type AppPlan,
+  type OwnedResourcesCleanupResult,
   type ServiceShutdownObservation,
   type VolumeRemovalCounts,
   addVolumeRemovalCounts,
@@ -34,6 +36,7 @@ export type RetirementReceipt = {
   readonly appIds: readonly string[];
   readonly servicesRemoved: readonly string[];
   readonly volumesRemoved: VolumeRemovalCounts;
+  readonly skipped?: OwnedResourcesCleanupResult["skipped"];
   readonly shutdownObservations?: readonly ServiceShutdownObservation[];
 };
 
@@ -118,62 +121,73 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
       const servicesRemoved = new Set<string>();
       let volumesRemoved: VolumeRemovalCounts = { ...noVolumesRemoved };
       const observations: Array<readonly ServiceShutdownObservation[] | undefined> = [];
+      const skipped: NonNullable<OwnedResourcesCleanupResult["skipped"]>[number][] = [];
       for (const { old, app, disposal } of prepared) {
-        yield* withPlanVolumeCoordination({
-          plan: old,
-          provider,
-          stateStore,
-          cachePolicy: cachePolicyForTeardown(execution),
-          body: Effect.fnUntraced(function* () {
-            yield* disposal.quiesceRetained;
-            const quiesced = yield* disposal.dispose;
-            observations.push(quiesced.shutdownObservations);
-            yield* cleanupAppWorkers(app);
-            const outcome = yield* provider.destroy(
-              { app: old.id, plan: old },
-              {
-                volumes: execution.volumes === true,
-                purgeCaches: execution.purgeCaches === true,
-                removeState: true,
-              },
-            );
-            observations.push(outcome.shutdownObservations);
-            switch (outcome.kind) {
-              case "destroyed":
-                for (const service of Object.values(old.services).reverse())
-                  servicesRemoved.add(service.name);
-                volumesRemoved = addVolumeRemovalCounts(volumesRemoved, outcome.volumesRemoved);
-                break;
-              case "no-op":
-                break;
-              default: {
-                const unreachable: never = outcome;
-                return unreachable;
-              }
+        const body = Effect.gen(function* () {
+          yield* disposal.quiesceRetained;
+          const quiesced = yield* disposal.dispose;
+          observations.push(quiesced.shutdownObservations);
+          yield* cleanupAppWorkers(app);
+          const outcome = yield* provider.destroy(
+            { app: old.id, plan: old },
+            {
+              volumes: execution.volumes === true,
+              purgeCaches: execution.purgeCaches === true,
+              removeState: true,
+            },
+          );
+          observations.push(outcome.shutdownObservations);
+          switch (outcome.kind) {
+            case "destroyed":
+              skipped.push(...(outcome.skipped ?? []));
+              for (const service of Object.values(old.services).reverse()) servicesRemoved.add(service.name);
+              volumesRemoved = addVolumeRemovalCounts(volumesRemoved, outcome.volumesRemoved);
+              break;
+            case "no-op":
+              break;
+            default: {
+              const unreachable: never = outcome;
+              return unreachable;
             }
-            yield* disposal.complete;
-            const carriesData = planDataId(old) === planDataId(target.plan);
-            const retained = carriesData
-              ? []
-              : old.stores
-                  .filter((store) => store.kind === "data" && store.scope !== "global")
-                  .map((store) => store.name);
-            yield* events.publish(
-              MessageWarnEvent.make({
-                body:
-                  execution.narration === "teardown"
-                    ? `Retired ${old.name}: ${outcome.kind === "destroyed" ? "removed its containers and networks" : "no runtime resources remained"}; ${outcome.kind === "destroyed" && outcome.volumesRemoved.data > 0 ? "removed its named data volumes" : "kept its named data volumes"}${outcome.kind === "destroyed" && outcome.volumesRemoved.cache > 0 ? " and removed its cache volumes" : ""}.`
-                    : carriesData
-                      ? `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name}. Its data carries over to ${target.plan.name}.`
-                      : `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name} and kept its named volumes: ${retained.length === 0 ? "none" : retained.join(", ")}.`,
-                timestamp: DateTime.nowUnsafe(),
-              }),
-            );
-          }),
+          }
+          yield* disposal.complete;
+          const carriesData = planDataId(old) === planDataId(target.plan);
+          const retained = carriesData
+            ? []
+            : old.stores
+                .filter((store) => store.kind === "data" && store.scope !== "global")
+                .map((store) => store.name);
+          yield* events.publish(
+            MessageWarnEvent.make({
+              body:
+                execution.narration === "teardown"
+                  ? `Retired ${old.name}: ${outcome.kind === "destroyed" ? "removed its containers and networks" : "no runtime resources remained"}; ${outcome.kind === "destroyed" && outcome.volumesRemoved.data > 0 ? "removed its named data volumes" : "kept its named data volumes"}${outcome.kind === "destroyed" && outcome.volumesRemoved.cache > 0 ? " and removed its cache volumes" : ""}.`
+                  : carriesData
+                    ? `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name}. Its data carries over to ${target.plan.name}.`
+                    : `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name} and kept its named volumes: ${retained.length === 0 ? "none" : retained.join(", ")}.`,
+              timestamp: DateTime.nowUnsafe(),
+            }),
+          );
         });
+        if (hasExactVolumeTeardown(provider) && (execution.volumes || execution.purgeCaches)) {
+          yield* body.pipe(Effect.provideService(StateStore, stateStore));
+        } else {
+          yield* withPlanVolumeCoordination({
+            plan: old,
+            provider,
+            stateStore,
+            cachePolicy: cachePolicyForTeardown(execution),
+            body: () => body,
+          });
+        }
       }
       return withShutdownObservations(
-        { appIds: superseded.map((plan) => plan.id), servicesRemoved: [...servicesRemoved], volumesRemoved },
+        {
+          appIds: superseded.map((plan) => plan.id),
+          servicesRemoved: [...servicesRemoved],
+          volumesRemoved,
+          ...(skipped.length === 0 ? {} : { skipped }),
+        },
         ...observations,
       ) satisfies RetirementReceipt;
     }).pipe(Effect.provide(context));
