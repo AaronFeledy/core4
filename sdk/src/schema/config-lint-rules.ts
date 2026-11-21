@@ -24,6 +24,14 @@ export const ConfigLintRuleDescriptor = Schema.Struct({
   examplePaths: Schema.NonEmptyArray(Schema.String).annotate({
     description: "Representative paths, written the way `lando app:config:lint` prints them.",
   }),
+  reasons: Schema.optionalKey(
+    Schema.NonEmptyArray(
+      Schema.Struct({
+        id: Schema.String.annotate({ description: "Stable cause id within the rule." }),
+        summary: Schema.String.annotate({ description: "What triggers this reason." }),
+      }),
+    ),
+  ).annotate({ description: "Documented machine-readable causes within the rule, not an exhaustive enum." }),
 }).annotate({
   identifier: "ConfigLintRuleDescriptor",
   title: "Config lint rule descriptor",
@@ -52,6 +60,25 @@ export const CONFIG_LINT_RULES = {
     summary:
       "Unknown keys, invalid service keys, wrong literal types, and missing required fields in authored files, effective configuration, or the final plan; unsupported planning operations.",
     examplePaths: ["services.web.imgae"],
+    reasons: [
+      { id: "environment.bare-entry", summary: "An environment list entry has no `=`." },
+      { id: "environment.empty-name", summary: "An environment map key or assignment name is empty." },
+      {
+        id: "environment.reserved-name",
+        summary: "An environment map key or assignment name is `__proto__`.",
+      },
+      { id: "environment.null-value", summary: "An environment map entry has a null value." },
+      { id: "build.unsupported-key", summary: "The build object contains an unsupported key." },
+      {
+        id: "build.mixed-families",
+        summary: "The build object combines Compose image-build and Lando build-script keys.",
+      },
+      {
+        id: "build.dockerfile-conflict",
+        summary: "The build object sets both `dockerfile` and `dockerfile_inline`.",
+      },
+      { id: "build.empty", summary: "The build object has no keys." },
+    ],
   },
   "landofile.compose-rejection": {
     stages: ["fragment"],
