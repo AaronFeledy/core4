@@ -1,5 +1,6 @@
 import { isPlainRecord } from "@lando/sdk/landofile";
 import type { ParsedPendingSite, ValidationIssuePath } from "@lando/sdk/schema";
+import { extraHostDestination, extraHostListPath, extraHostTemplates } from "./extra-host-sites.ts";
 
 const child = (value: unknown, key: string | number): unknown =>
   Array.isArray(value) && typeof key === "number"
@@ -46,6 +47,19 @@ export const decodedPendingSites = (
       }
       const key = remaining.shift();
       if (key === undefined) break;
+      if (
+        typeof key === "number" &&
+        extraHostListPath(site.path) &&
+        field === "extra_hosts" &&
+        Array.isArray(input) &&
+        isPlainRecord(output)
+      ) {
+        const destination = extraHostDestination(input, key, output);
+        const address = extraHostTemplates(site.template)?.address;
+        return destination === undefined || address === undefined
+          ? []
+          : [{ ...site, path: [...path, ...destination], template: address }];
+      }
       if (field === "dependsOn" && isPlainRecord(input) && Array.isArray(output)) {
         const index = Object.keys(input).indexOf(String(key));
         if (index < 0) return [];
