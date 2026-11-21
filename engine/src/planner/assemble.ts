@@ -403,8 +403,11 @@ function* assemblePlan(
   });
   // Validation never touches the persisted plan; neither does a plan built from unknown plugin code.
   const planCache = input.mode !== "validate" && plugins.cacheable ? cacheService : undefined;
-  const global = input.kind === "global";
-  const routeUrlContext = { filePath: landofilePath, enabled: routerEnabled, global };
+  const routeUrlContext = {
+    filePath: landofilePath,
+    enabled: routerEnabled,
+    global: input.kind === "global",
+  };
   if (planCache !== undefined) {
     const cached = yield* readCachedAppPlan({
       cacheRoot,

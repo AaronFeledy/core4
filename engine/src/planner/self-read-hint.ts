@@ -78,9 +78,10 @@ export const ownPortReplacement = Effect.fnUntraced(function* (input: {
     )
   )
     return false;
-  const loaded = yield* loadServiceTypeWithVersion(input.pluginRegistry, serviceTypeFor(name, service, input.registeredServiceTypeIds)).pipe(
-    Effect.result,
-  );
+  const loaded = yield* loadServiceTypeWithVersion(
+    input.pluginRegistry,
+    serviceTypeFor(name, service, input.registeredServiceTypeIds),
+  ).pipe(Effect.result);
   if (Result.isFailure(loaded)) return false;
   const { serviceType, version } = loaded.success;
   if (version !== undefined && !serviceType.versions?.includes(version)) return false;
