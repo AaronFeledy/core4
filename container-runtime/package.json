@@ -86,6 +86,7 @@
     "./podman/discover": "./src/podman/discover.ts",
     "./podman/exec": "./src/podman/exec.ts",
     "./podman/exec-umask": "./src/podman/exec-umask.ts",
+    "./podman/oci-runtime-floor": "./src/podman/oci-runtime-floor.ts",
     "./testing/exec-umask": "./test/support/exec-umask.ts",
     "./testing/exec-supervision": "./test/support/exec-supervision.ts",
     "./podman/logs": "./src/podman/logs.ts",

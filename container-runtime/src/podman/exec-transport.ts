@@ -45,6 +45,15 @@ import {
   shellProbeOutcome,
   wrapExecCommand,
 } from "./exec-umask.ts";
+import {
+  ATTACH_CONNECTION_RESET_SUBSTRING,
+  CRUN_OOM_SCORE_ADJ_ISSUE_URL,
+  CRUN_OOM_SCORE_ADJ_REMEDIATION,
+  CRUN_OOM_SCORE_ADJ_SUBSTRING,
+  failureMentionsAttachConnectionReset,
+  failureMentionsCrunOomScoreAdj,
+  mentionsCrunOomScoreAdj,
+} from "./oci-runtime-floor.ts";
 
 const textDecoder = new TextDecoder();
 
@@ -86,9 +95,17 @@ interface ExecSession {
 
 const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
+const DEFAULT_EXEC_REMEDIATION =
+  "Confirm the target service is running and the exec command is valid inside that container, then retry.";
+
 const execFailure = (
-  session: ExecSession,
-  failure: { readonly message: string; readonly details: unknown; readonly cause?: unknown },
+  session: Pick<ExecSession, "ctx" | "service">,
+  failure: {
+    readonly message: string;
+    readonly details: unknown;
+    readonly cause?: unknown;
+    readonly remediation?: string;
+  },
 ) =>
   new ServiceExecError({
     providerId: session.ctx.providerId,
@@ -97,8 +114,18 @@ const execFailure = (
     message: failure.message,
     details: redactDetails(failure.details, redactorFor(session.ctx)),
     ...(failure.cause === undefined ? {} : { cause: failure.cause }),
-    remediation:
-      "Confirm the target service is running and the exec command is valid inside that container, then retry.",
+    remediation: failure.remediation ?? DEFAULT_EXEC_REMEDIATION,
+  });
+
+export const crunOomScoreAdjExecFailure = (
+  session: Pick<ExecSession, "ctx" | "service">,
+  failure: { readonly details?: unknown; readonly cause?: unknown } = {},
+) =>
+  execFailure(session, {
+    message: `OCI runtime crun failed exec by writing /proc/self/${CRUN_OOM_SCORE_ADJ_SUBSTRING} (${CRUN_OOM_SCORE_ADJ_ISSUE_URL}).`,
+    details: failure.details ?? { reason: CRUN_OOM_SCORE_ADJ_SUBSTRING },
+    ...(failure.cause === undefined ? {} : { cause: failure.cause }),
+    remediation: CRUN_OOM_SCORE_ADJ_REMEDIATION,
   });
 
 const execStartHttpStatus = (error: ExecError): number | undefined => {
@@ -114,6 +141,9 @@ const execStartHttpStatus = (error: ExecError): number | undefined => {
 };
 
 const execStartFailure = (session: ExecSession, target: ExecTarget, error: ExecError): ExecError => {
+  if (failureMentionsCrunOomScoreAdj(error)) {
+    return crunOomScoreAdjExecFailure(session, { cause: error, details: { stage: "exec-start" } });
+  }
   const status = execStartHttpStatus(error);
   if (status === undefined) return error;
   const requestedUser = target.user;
@@ -511,6 +541,10 @@ export const execStream = (
         let responseHeadArrived = false;
         let recoveredExitCode: number | undefined;
         let pendingDiagnostic: { readonly kind: "stderr"; readonly chunk: Uint8Array } | undefined;
+        let sawCrunOomScoreAdj = false;
+        const noteCrunOomScoreAdj = (text: string): void => {
+          if (mentionsCrunOomScoreAdj(text)) sawCrunOomScoreAdj = true;
+        };
         let signalResponseStarted: () => void = () => undefined;
         const responseStarted = new Promise<void>((resolve) => {
           signalResponseStarted = resolve;
@@ -558,7 +592,10 @@ export const execStream = (
           ),
           mapStreamFailures((error) => execStartFailure(session, target, error)),
           command.tty === true
-            ? Stream.map((chunk): ExecChunk => ({ kind: "stdout", chunk }))
+            ? Stream.map((chunk): ExecChunk => {
+                noteCrunOomScoreAdj(textDecoder.decode(chunk));
+                return { kind: "stdout", chunk };
+              })
             : options.validateAttach !== undefined
               ? Stream.drain
               : Stream.flatMap((chunk) =>
@@ -568,11 +605,13 @@ export const execStream = (
                       pendingDiagnostic = undefined;
                       const output = { kind: frame.stream, chunk: frame.payload };
                       const text = textDecoder.decode(frame.payload);
+                      noteCrunOomScoreAdj(text);
                       // Delay only the daemon's exact attach-copy frame until completion is proven.
                       if (
                         hasStdin &&
                         frame.stream === "stderr" &&
-                        PODMAN_ATTACH_STDIN_COPY_ERROR.test(text)
+                        PODMAN_ATTACH_STDIN_COPY_ERROR.test(text) &&
+                        !sawCrunOomScoreAdj
                       ) {
                         pendingDiagnostic = { kind: "stderr", chunk: frame.payload };
                         return previous === undefined ? [] : [previous];
@@ -591,6 +630,23 @@ export const execStream = (
           Stream.catch((error) =>
             Stream.unwrap(
               Effect.gen(function* () {
+                const pending = pendingDiagnostic;
+                const pendingText = pending === undefined ? "" : textDecoder.decode(pending.chunk);
+                if (sawCrunOomScoreAdj || failureMentionsCrunOomScoreAdj(error, pendingText)) {
+                  pendingDiagnostic = undefined;
+                  return Stream.fail(
+                    crunOomScoreAdjExecFailure(session, {
+                      cause: error,
+                      details: {
+                        execId,
+                        reason: CRUN_OOM_SCORE_ADJ_SUBSTRING,
+                        ...(failureMentionsAttachConnectionReset(error, pendingText)
+                          ? { companion: ATTACH_CONNECTION_RESET_SUBSTRING }
+                          : {}),
+                      },
+                    }),
+                  );
+                }
                 const cause = error.cause;
                 if (
                   hasStdin &&
@@ -609,7 +665,6 @@ export const execStream = (
                     return Stream.empty;
                   }
                 }
-                const pending = pendingDiagnostic;
                 pendingDiagnostic = undefined;
                 return pending === undefined
                   ? Stream.fail(error)
@@ -654,13 +709,20 @@ export const execStream = (
                     Stream.catch((error) =>
                       Stream.fromEffect(Ref.get(completedExitCode)).pipe(
                         Stream.flatMap((exitCode) =>
-                          exitCode !== undefined &&
-                          completionAbort.signal.aborted &&
-                          error instanceof ProviderUnavailableError &&
-                          error.cause instanceof DOMException &&
-                          error.cause.name === "AbortError"
-                            ? Stream.empty
-                            : Stream.fail(error),
+                          sawCrunOomScoreAdj || failureMentionsCrunOomScoreAdj(error)
+                            ? Stream.fail(
+                                crunOomScoreAdjExecFailure(session, {
+                                  cause: error,
+                                  details: { execId, reason: CRUN_OOM_SCORE_ADJ_SUBSTRING },
+                                }),
+                              )
+                            : exitCode !== undefined &&
+                                completionAbort.signal.aborted &&
+                                error instanceof ProviderUnavailableError &&
+                                error.cause instanceof DOMException &&
+                                error.cause.name === "AbortError"
+                              ? Stream.empty
+                              : Stream.fail(error),
                         ),
                       ),
                     ),
@@ -710,7 +772,19 @@ export const execStream = (
                             )
                           : inspectExec(session, execId),
                     ),
-                    Effect.map((exitCode) => ({ exitCode })),
+                    Effect.flatMap((exitCode) =>
+                      sawCrunOomScoreAdj
+                        ? Effect.fail(
+                            crunOomScoreAdjExecFailure(session, {
+                              details: {
+                                execId,
+                                reason: CRUN_OOM_SCORE_ADJ_SUBSTRING,
+                                exitCode,
+                              },
+                            }),
+                          )
+                        : Effect.succeed({ exitCode }),
+                    ),
                   ),
                 ),
               ),
@@ -749,6 +823,15 @@ export const exec = Effect.fn("RuntimeProvider.exec")(function* (
 
   // A signal-cut stream is cancellation, not a broken exec.
   if (exitCode === undefined && command.signal?.aborted === true) return yield* Effect.interrupt;
+  const service = plan.services[target.service];
+  if (service !== undefined && mentionsCrunOomScoreAdj(`${stdout}${stderr}`)) {
+    return yield* Effect.fail(
+      crunOomScoreAdjExecFailure(
+        { ctx: options.ctx, service },
+        { details: { reason: CRUN_OOM_SCORE_ADJ_SUBSTRING, exitCode } },
+      ),
+    );
+  }
   if (exitCode === undefined)
     return yield* Effect.fail(
       new ServiceExecError({
