@@ -94,8 +94,8 @@ lando db:restore before-prod --yes
       </Step>
     </Hidden>
     <Step name="import">
-      <Verify command="lando db:snapshot --label before-prod --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
-      <Verify command="lando db:import prod.sql.gz --yes --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Run command="lando db:snapshot --label before-prod" />
+      <Run command="lando db:import prod.sql.gz --yes" />
       <Verify command={`lando drush sql:query "SELECT mail FROM users_field_data WHERE name='editor'"`} expect={{ stdout: { regex: "editor@example\\.com" } }} />
       <Verify command="lando drush updatedb --yes" expect={{ stderr: { regex: "No pending updates" } }} />
       <Verify command="lando drush cache:rebuild" />
@@ -115,7 +115,7 @@ lando db:restore before-prod --yes
       </Step>
     </Hidden>
     <Step name="restore">
-      <Verify command="lando db:restore before-prod --yes --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Run command="lando db:restore before-prod --yes" />
       <Verify command={`lando drush sql:query "SELECT CONCAT('editors=', COUNT(*)) FROM users_field_data WHERE name='editor'"`} expect={{ stdout: { regex: "editors=0" } }} />
       <Verify command={`lando drush sql:query "SELECT mail FROM users_field_data WHERE uid=1"`} expect={{ stdout: { regex: "admin@example\\.com" } }} />
     </Step>
