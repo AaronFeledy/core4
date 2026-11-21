@@ -252,7 +252,7 @@ describe("config lint text findings", () => {
     const violation: ConfigLintViolation = {
       rule: "landofile.validation",
       severity: "error",
-      path: ["services", "web", "workingDirectory"],
+      path: ["services", "web", "working_dir"],
       message: "Expected string",
       line: 7,
       column: 5,

@@ -40,12 +40,12 @@ test.each([1, 100, 1000])("untracked mapping merge allocates no provenance maps 
 test("untracked keyed and directive paths allocate no provenance maps", () => {
   // Given
   const left = {
-    dependsOn: { database: { condition: "service_started" } },
+    depends_on: { database: { condition: "service_started" } },
     routes: [{ hostname: "web.test", scheme: "both", endpoint: 80 }],
     environment: { OLD: "old" },
   };
   const right = {
-    dependsOn: [{ service: "cache" }],
+    depends_on: ["cache"],
     routes: [{ hostname: "web.test", scheme: "http", endpoint: 8080 }],
     environment: override({ OLD: reset(), NEW: "new" }),
   };
@@ -69,7 +69,10 @@ test("untracked keyed and directive paths allocate no provenance maps", () => {
   // Then
   expect(constructions).toBe(0);
   expect(result).toEqual({
-    dependsOn: [{ service: "database", condition: "service_started" }, { service: "cache" }],
+    depends_on: {
+      database: { condition: "service_started" },
+      cache: { condition: "service_started" },
+    },
     routes: [
       { hostname: "web.test", scheme: "http", endpoint: 8080 },
       { hostname: "web.test", scheme: "https", endpoint: 80 },

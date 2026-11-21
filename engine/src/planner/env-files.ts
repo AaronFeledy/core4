@@ -110,11 +110,11 @@ export const loadServiceEnvFiles = (input: {
 > =>
   loadEnvFiles({
     appRoot: input.appRoot,
-    envFiles: input.service.envFile ?? [],
+    envFiles: input.service.env_file ?? [],
     fileSystem: input.fileSystem,
     owner: `Service ${input.serviceName}`,
     readContext: `for service ${input.serviceName}`,
-    issuePath: ["services", input.serviceName, "envFile"],
+    issuePath: ["services", input.serviceName, "env_file"],
   }).pipe(
     Effect.map(({ environment, inputs }) => ({
       environment: { ...environment, ...(input.service.environment ?? {}) },

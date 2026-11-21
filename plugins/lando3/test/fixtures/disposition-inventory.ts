@@ -197,7 +197,6 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
   },
   ...(
     [
-      ["env_file", "[.env]", [".env"]],
       ["volumes", "{data: null}", { data: {} }],
       ["networks", "{net: null}", { net: {} }],
       ["x-vars", "[test]", ["test"]],
@@ -473,7 +472,7 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
       output(
         service("type: node:22, scanner: {okCodes: [200], retry: 2, timeout: 1000, path: health}"),
         ["services", "s", "scanner"],
-        { okCodes: [200], retries: 2, timeout: 3000, path: "/health" },
+        { okCodes: [200], retries: 2, timeoutMs: 3000, path: "/health" },
       ),
     ],
   },
@@ -715,7 +714,7 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
     [
       ["image", "'nginx:1.27'", "image", "nginx:1.27"],
       ["primary", "true", "primary", true],
-      ["working_dir", "/tmp", "workingDirectory", "/tmp"],
+      ["working_dir", "/tmp", "working_dir", "/tmp"],
       ["hostnames", "[example.test]", "hostnames", ["example.test"]],
       ["certs", "false", "certs", false],
       ["labels", "{team: dev}", "labels", { team: "dev" }],

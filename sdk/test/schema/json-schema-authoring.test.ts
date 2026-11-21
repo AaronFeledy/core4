@@ -32,12 +32,12 @@ describe("authoring JSON Schema publication", () => {
   test.each([
     ["environment", '{"__proto__":"value"}'],
     ["labels", '{"__proto__":"value"}'],
-    ["dependsOn", '{"__proto__":{"condition":"service_started"}}'],
+    ["depends_on", '{"__proto__":{"condition":"service_started"}}'],
     ["sysctls", '{"__proto__":{"nested":true}}'],
     ["extra_hosts", '{"__proto__":{"nested":true}}'],
     ["environment", '{"__proto__":{"nested":true}}'],
     ["labels", '{"__proto__":{"nested":true}}'],
-    ["dependsOn", '{"__proto__":{"condition":false}}'],
+    ["depends_on", '{"__proto__":{"condition":false}}'],
     ["environment", '{"invalid":{},"__proto__":{"nested":true}}'],
   ])("rejects JSON-owned reserved keys in %s", (field, json) => {
     // Given an own reserved property from JSON, not a prototype-setting literal.
@@ -66,7 +66,7 @@ describe("authoring JSON Schema publication", () => {
     const schema = getJsonSchema("ServiceConfigInput");
     // Then the map branch excludes the same reserved key as runtime decoding.
     expect(schema).toHaveProperty(
-      "properties.dependsOn.anyOf",
+      "properties.depends_on.anyOf",
       expect.arrayContaining([
         expect.objectContaining({ type: "object", propertyNames: { not: { const: "__proto__" } } }),
       ]),

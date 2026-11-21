@@ -107,7 +107,7 @@ describe("buildBugReport: envelope extraction", () => {
         remediation: "Set a portable path.",
         issues: [
           {
-            path: ["services", "web", "workingDirectory"],
+            path: ["services", "web", "working_dir"],
             message: "Expected string.",
             source: {
               file: "/app/.lando.local.yml",

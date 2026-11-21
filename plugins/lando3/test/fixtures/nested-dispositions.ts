@@ -60,7 +60,7 @@ export const nestedDispositions: readonly DispositionEntry[] = [
     output(
       catalog("scanner: {okCodes: [200], timeout: 1000, retry: 2, path: health}"),
       ["services", "s", "scanner"],
-      { okCodes: [200], timeout: 3000, retries: 2, path: "/health" },
+      { okCodes: [200], timeoutMs: 3000, retries: 2, path: "/health" },
     ),
   ),
   {

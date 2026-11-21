@@ -295,7 +295,6 @@ const COMPOSE_DEPENDS_ON_DESCRIPTION =
 const ComposeDependsOnInput = Schema.Union([
   layerMerge(Schema.Array(Schema.String), DEPENDENCY_MERGE),
   layerMerge(ServiceDependencyInputRecord, DEPENDENCY_MERGE),
-  layerMerge(Schema.Array(ServiceDependency), DEPENDENCY_MERGE),
 ])
   .annotate({ description: COMPOSE_DEPENDS_ON_DESCRIPTION })
   .pipe(
@@ -304,9 +303,7 @@ const ComposeDependsOnInput = Schema.Union([
       SchemaTransformation.transformEffect({
         decode: (input) => {
           if (Array.isArray(input)) {
-            return Effect.succeed(
-              input.map((entry) => (typeof entry === "string" ? { service: entry } : entry)),
-            );
+            return Effect.succeed(input.map((service) => ({ service })));
           }
           return Effect.succeed(Object.entries(input).map(([service, spec]) => ({ service, ...spec })));
         },
@@ -678,7 +675,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         'In-container identity that owns files written to the app mount. Accepts false, a numeric "<uid>:<gid>" pair, or the project user name the service type declares. Omitted, a numeric or matching authored user is used, then the service type default.',
     }),
-    workingDirectory: Schema.optionalKey(PortablePath).annotate({
+    working_dir: Schema.optionalKey(PortablePath).annotate({
       description: "Container working directory for service processes.",
     }),
     bucket: Schema.optionalKey(Schema.String).annotate({
@@ -762,7 +759,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         'PHP database client selection: "auto" detects database service families, false installs none, or "<family>:<version>" forces one client.',
     }),
     environment: Schema.optionalKey(ComposeEnvironmentInput),
-    envFile: Schema.optionalKey(ComposeEnvFileInput),
+    env_file: Schema.optionalKey(ComposeEnvFileInput),
     labels: Schema.optionalKey(ComposeLabelsInput),
 
     ...ComposeServiceKnobFields,
@@ -842,7 +839,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     security: Schema.optionalKey(ServiceSecurityField).annotate({
       description: SERVICE_SECURITY_DESCRIPTION,
     }),
-    dependsOn: Schema.optionalKey(ComposeDependsOnInput),
+    depends_on: Schema.optionalKey(ComposeDependsOnInput),
 
     providers: Schema.optionalKey(ProviderExtensionConfig).annotate({
       description: "Provider-specific service configuration keyed by provider id.",
@@ -856,74 +853,14 @@ export const ServiceConfig = Object.assign(ServiceConfigWithExtensions, {
 });
 export type ServiceConfig = typeof ServiceConfig.Type;
 
-/**
- * ServiceConfigInput — the accepted authoring surface: every {@link ServiceConfig}
- * key plus the Compose cross-key spellings (`working_dir`, `env_file`,
- * `depends_on`) and service security CA aliases. Used as the decode boundary
- * for `services.<name>:`.
- */
-export const ServiceConfigInput = Schema.StructWithRest(
-  Schema.Struct(ServiceConfig.schema.fields).mapFields((fields) => ({
-    ...fields,
-    working_dir: Schema.optionalKey(PortablePath).annotate({
-      description: "Compose alias for the canonical workingDirectory service field.",
-    }),
-    env_file: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])).annotate({
-      description: "Compose alias for the canonical envFile service field; accepts one path or a path list.",
-    }),
-    depends_on: Schema.optionalKey(
-      layerMerge(
-        Schema.Union([
-          layerMerge(Schema.Array(Schema.String), DEPENDENCY_MERGE),
-          layerMerge(ServiceDependencyInputRecord, DEPENDENCY_MERGE),
-        ]),
-        DEPENDENCY_MERGE,
-      ),
-    ).annotate({
-      description:
-        "Compose alias for the canonical dependsOn service field; accepts a service-name list or condition map.",
-    }),
-  })),
-  [ExtensionRecord],
-)
-  .pipe(Schema.toEncoded)
-  .annotate({
-    identifier: "ServiceConfigInput",
-    title: "Service Config Input",
-    description:
-      "Accepted Landofile service authoring surface with canonical keys, Compose cross-key aliases, and service security CA aliases.",
-  });
+export const ServiceConfigInput = ServiceConfig.pipe(Schema.toEncoded).annotate({
+  identifier: "ServiceConfigInput",
+  title: "Service Config Input",
+  description: "Accepted Landofile service authoring fields.",
+});
 export type ServiceConfigInput = typeof ServiceConfigInput.Type;
 
-/**
- * ServiceConfigDecode — canonicalizes Compose cross-key spellings to their Lando
- * aliases, with the Lando key winning when both are present, then hands off to
- * {@link ServiceConfig} for per-key form canonicalization. Its input is the
- * encoded {@link ServiceConfig} surface plus the Compose spellings, so the
- * per-field transforms run once, inside {@link ServiceConfig}.
- */
-export const SERVICE_CONFIG_ALIASES = [
-  ["working_dir", "workingDirectory"],
-  ["env_file", "envFile"],
-  ["depends_on", "dependsOn"],
-] as const;
-
-const ServiceConfigDecode = ServiceConfigInput.pipe(
-  Schema.decodeTo(
-    ServiceConfig,
-    SchemaTransformation.transformEffect({
-      decode: (input) => {
-        const canonical: Record<string, unknown> = { ...input };
-        for (const [alias, key] of SERVICE_CONFIG_ALIASES) {
-          if (!Object.hasOwn(input, key) && Object.hasOwn(input, alias)) canonical[key] = input[alias];
-          delete canonical[alias];
-        }
-        return Effect.succeed(canonical);
-      },
-      encode: (encoded) => Effect.succeed(encoded),
-    }),
-  ),
-);
+const ServiceConfigDecode = ServiceConfigInput.pipe(Schema.decodeTo(ServiceConfig));
 
 /**
  * ToolingVarSh — `vars.<name>: { sh: <command> }`. Captured once after input

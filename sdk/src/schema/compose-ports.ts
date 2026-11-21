@@ -11,7 +11,6 @@ const PORT_MERGE = {
   whenUnkeyed: "replace",
   onMatch: "merge",
 } as const;
-const Forbidden = Schema.optionalKey(Schema.Never);
 const DecimalPortToken = /^[0-9]{1,5}$/;
 
 export const ComposePortEntry = Schema.Struct({
@@ -31,18 +30,8 @@ const ComposePortLongInput = Schema.Struct({
   protocol: Schema.optionalKey(PortProtocol),
   name: Schema.optionalKey(Schema.String),
   app_protocol: Schema.optionalKey(Schema.String),
-  hostIp: Forbidden,
-  appProtocol: Forbidden,
   mode: Schema.optionalKey(Schema.Never).annotate({ description: "Compose ports.mode is unsupported." }),
 });
-
-const ComposePortCanonicalInput = ComposePortEntry.pipe(
-  Schema.fieldsAssign({
-    host_ip: Forbidden,
-    app_protocol: Forbidden,
-    mode: Schema.optionalKey(Schema.Never).annotate({ description: "Compose ports.mode is unsupported." }),
-  }),
-);
 
 const decodePort = (value: string | number): PortNumber | undefined => {
   if (typeof value === "string" && !DecimalPortToken.test(value)) return undefined;
@@ -133,12 +122,7 @@ const parseShortPort = (value: string): Result.Result<ReadonlyArray<ComposePortE
   );
 };
 
-const ComposePortInput = Schema.Union([
-  Schema.String,
-  Schema.Number,
-  ComposePortLongInput,
-  ComposePortCanonicalInput,
-]);
+const ComposePortInput = Schema.Union([Schema.String, Schema.Number, ComposePortLongInput]);
 
 // JSON Schema publishes the encoded side, so both sides of each field carry the description.
 const COMPOSE_PORTS_DESCRIPTION =
@@ -182,8 +166,7 @@ export const ComposePortsField = layerMerge(Schema.Array(ComposePortInput), PORT
             if (entry.published !== undefined && published === undefined) {
               return fail(entry.published, "Expected a published port number from 1 through 65535.");
             }
-            const hostIp = entry.hostIp ?? entry.host_ip;
-            const appProtocol = entry.appProtocol ?? entry.app_protocol;
+            const { host_ip: hostIp, app_protocol: appProtocol } = entry;
             entries.push({
               target: entry.target,
               ...(published === undefined ? {} : { published }),

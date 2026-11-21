@@ -32,9 +32,6 @@ const ComposeVolumeLongInput = Schema.Struct({
   volume: Schema.optionalKey(ComposeVolumeOptions),
   bind: Schema.optionalKey(ComposeVolumeBind),
   tmpfs: Schema.optionalKey(ComposeVolumeTmpfs),
-  readOnly: Forbidden,
-  subpath: Forbidden,
-  createHostPath: Forbidden,
   consistency: Forbidden,
   image: Forbidden,
 });
@@ -49,16 +46,6 @@ const ComposeVolumeEntry = Schema.Struct({
   tmpfs: Schema.optionalKey(ComposeVolumeTmpfs),
 });
 export type ComposeVolumeEntry = typeof ComposeVolumeEntry.Type;
-
-const ComposeVolumeCanonicalInput = ComposeVolumeEntry.pipe(
-  Schema.fieldsAssign({
-    read_only: Forbidden,
-    volume: Forbidden,
-    bind: Forbidden,
-    consistency: Forbidden,
-    image: Forbidden,
-  }),
-);
 
 const isPathLikeSource = (source: string): boolean =>
   source.startsWith(".") ||
@@ -135,18 +122,16 @@ export const parseShortVolume = (spec: string): ComposeVolumeEntry => {
   return { type: "volume", source, target, readOnly };
 };
 
-const decodeLongVolume = (
-  input: typeof ComposeVolumeLongInput.Type | typeof ComposeVolumeCanonicalInput.Type,
-): ComposeVolumeEntry => {
+const decodeLongVolume = (input: typeof ComposeVolumeLongInput.Type): ComposeVolumeEntry => {
   const type =
     input.type ?? (input.source !== undefined && isPathLikeSource(input.source) ? "bind" : "volume");
-  const createHostPath = input.createHostPath ?? input.bind?.create_host_path;
-  const subpath = input.subpath ?? input.volume?.subpath;
+  const createHostPath = input.bind?.create_host_path;
+  const subpath = input.volume?.subpath;
   return {
     type,
     ...(input.source === undefined ? {} : { source: input.source }),
     target: input.target,
-    readOnly: input.readOnly ?? input.read_only ?? false,
+    readOnly: input.read_only ?? false,
     ...(subpath === undefined ? {} : { subpath }),
     ...(type === "bind"
       ? { createHostPath: createHostPath ?? true }
@@ -157,16 +142,13 @@ const decodeLongVolume = (
   };
 };
 
-const longVolumeFailure = (
-  input: typeof ComposeVolumeLongInput.Type | typeof ComposeVolumeCanonicalInput.Type,
-): string | undefined => {
+const longVolumeFailure = (input: typeof ComposeVolumeLongInput.Type): string | undefined => {
   const type =
     input.type ?? (input.source !== undefined && isPathLikeSource(input.source) ? "bind" : "volume");
   switch (type) {
     case "bind":
       if (input.source === undefined) return 'Compose volume type "bind" requires source.';
       if (input.volume !== undefined) return 'Compose volume type "bind" must not define volume options.';
-      if (input.subpath !== undefined) return 'Compose volume type "bind" must not define volume subpath.';
       if (input.tmpfs !== undefined) return 'Compose volume type "bind" must not define tmpfs options.';
       return undefined;
     case "volume":
@@ -174,17 +156,12 @@ const longVolumeFailure = (
         return 'Compose volume type "volume" must not define a path-like source.';
       }
       if (input.bind !== undefined) return 'Compose volume type "volume" must not define bind options.';
-      if (input.createHostPath !== undefined)
-        return 'Compose volume type "volume" must not define bind path creation.';
       if (input.tmpfs !== undefined) return 'Compose volume type "volume" must not define tmpfs options.';
       return undefined;
     case "tmpfs":
       if (input.source !== undefined) return 'Compose volume type "tmpfs" must not define source.';
       if (input.bind !== undefined) return 'Compose volume type "tmpfs" must not define bind options.';
-      if (input.createHostPath !== undefined)
-        return 'Compose volume type "tmpfs" must not define bind path creation.';
       if (input.volume !== undefined) return 'Compose volume type "tmpfs" must not define volume options.';
-      if (input.subpath !== undefined) return 'Compose volume type "tmpfs" must not define volume subpath.';
       return undefined;
   }
 };
@@ -204,7 +181,7 @@ const encodeLongVolume = (entry: ComposeVolumeEntry): typeof ComposeVolumeLongIn
 });
 
 export const ComposeVolumesField = Schema.Array(
-  Schema.Union([Schema.String, ComposeVolumeLongInput, ComposeVolumeCanonicalInput]).pipe(
+  Schema.Union([Schema.String, ComposeVolumeLongInput]).pipe(
     Schema.decodeTo(
       ComposeVolumeEntry,
       SchemaTransformation.transformEffect({

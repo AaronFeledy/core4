@@ -313,7 +313,7 @@ describe("API-4 service lowering", () => {
     expect(result.patch).toEqual({
       type: "lando",
       user: "www",
-      workingDirectory: "/app",
+      working_dir: "/app",
       primary: true,
       hostnames: ["app.test"],
       labels: { x: "y" },

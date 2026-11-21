@@ -46,21 +46,26 @@ test.each(["cmds", "filters", "entries"])("replaces opaque extension arrays name
 });
 
 test.each([
-  { left: ["a", "b"], right: { a: { condition: "service_healthy" } } },
+  {
+    left: ["a", "b"],
+    right: { a: { condition: "service_healthy" } },
+    expected: { a: { condition: "service_healthy" }, b: { condition: "service_started" } },
+  },
   {
     left: { a: { condition: "service_started" }, b: { condition: "service_started" } },
-    right: [{ service: "a", condition: "service_healthy" }],
+    right: ["a"],
+    expected: { a: { condition: "service_started" }, b: { condition: "service_started" } },
   },
-  { left: [{ service: "a" }, { service: "b" }], right: ["a", "c"] },
-])("projects every dependency spelling across layers %j", ({ left, right }) => {
-  const result = mergeValues(ServiceConfig, left, right, ["dependsOn"]);
-  const expected =
-    Array.isArray(right) && right.includes("c")
-      ? [{ service: "a" }, { service: "b" }, { service: "c" }]
-      : [
-          { service: "a", condition: "service_healthy" },
-          { service: "b", ...(Array.isArray(left) ? {} : { condition: "service_started" }) },
-        ];
+  {
+    left: ["a", "b"],
+    right: ["a", "c"],
+    expected: ["a", "b", "c"],
+  },
+])("projects every dependency spelling across layers %j", ({ left, right, expected }) => {
+  // Given authored Compose dependency spellings (string list or condition map).
+  // When layers merge under depends_on.
+  const result = mergeValues(ServiceConfig, left, right, ["depends_on"]);
+  // Then the merged document stays valid authored Compose input.
   expect(result).toEqual(expected);
 });
 
@@ -71,7 +76,7 @@ test("resolves authored depends_on from the root codec", () => {
       "web",
       "depends_on",
     ]),
-  ).toEqual([{ service: "a" }, { service: "b", condition: "service_healthy" }]);
+  ).toEqual({ a: { condition: "service_started" }, b: { condition: "service_healthy" } });
 });
 
 test("logs match the same default basename id as schema decoding", () => {

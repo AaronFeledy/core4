@@ -104,9 +104,9 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
     });
   });
 
-  describe("dependsOn", () => {
+  describe("depends_on", () => {
     test("string list canonicalizes to structured entries", () => {
-      expect(decodeService({ dependsOn: ["database", "cache"] }).dependsOn).toEqual([
+      expect(decodeService({ depends_on: ["database", "cache"] }).depends_on).toEqual([
         { service: "database" },
         { service: "cache" },
       ]);
@@ -115,17 +115,17 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
     test("condition-map form canonicalizes, preserving condition/required/restart", () => {
       expect(
         decodeService({
-          dependsOn: {
+          depends_on: {
             database: { condition: "service_healthy", required: false, restart: true },
           },
-        }).dependsOn,
+        }).depends_on,
       ).toEqual([{ service: "database", condition: "service_healthy", required: false, restart: true }]);
     });
 
     test.each(["service_started", "service_healthy", "service_completed_successfully"] as const)(
       "condition-map accepts %s",
       (condition) => {
-        expect(decodeService({ dependsOn: { database: { condition } } }).dependsOn).toEqual([
+        expect(decodeService({ depends_on: { database: { condition } } }).depends_on).toEqual([
           { service: "database", condition },
         ]);
       },
@@ -133,42 +133,42 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
 
     test("condition-map rejects an entry without condition", () => {
       expect(
-        Result.isFailure(Schema.decodeUnknownResult(ServiceConfig)({ dependsOn: { database: {} } })),
+        Result.isFailure(Schema.decodeUnknownResult(ServiceConfig)({ depends_on: { database: {} } })),
       ).toBe(true);
     });
 
     test("encoding a non-bare dependency defaults its condition", () => {
       expect(
-        Schema.encodeSync(ServiceConfig)({ dependsOn: [{ service: "database", required: false }] }),
+        Schema.encodeSync(ServiceConfig)({ depends_on: [{ service: "database", required: false }] }),
       ).toEqual({
-        dependsOn: { database: { condition: "service_started", required: false } },
+        depends_on: { database: { condition: "service_started", required: false } },
       });
     });
 
     test("reserved __proto__ map key is rejected on decode", () => {
       expectReservedKeyRejection(
         Schema.decodeUnknownResult(ServiceConfig)({
-          dependsOn: reservedKeyRecord({ condition: "service_started" }),
+          depends_on: reservedKeyRecord({ condition: "service_started" }),
         }),
       );
     });
 
     test("reserved __proto__ service is rejected on dependency-map encode", () => {
       const result = Schema.encodeResult(ServiceConfig)({
-        dependsOn: [{ service: "__proto__", condition: "service_healthy" }],
+        depends_on: [{ service: "__proto__", condition: "service_healthy" }],
       });
       expect(Result.isFailure(result)).toBe(true);
       if (Result.isFailure(result)) expect(String(result.failure)).toContain("__proto__");
     });
   });
 
-  describe("envFile", () => {
+  describe("env_file", () => {
     test("string form canonicalizes to a list", () => {
-      expect(decodeService({ envFile: "./.env" }).envFile).toEqual(["./.env"]);
+      expect(decodeService({ env_file: "./.env" }).env_file).toEqual(["./.env"]);
     });
 
     test("list form is preserved", () => {
-      expect(decodeService({ envFile: ["./.env", "./.env.local"] }).envFile).toEqual([
+      expect(decodeService({ env_file: ["./.env", "./.env.local"] }).env_file).toEqual([
         "./.env",
         "./.env.local",
       ]);
@@ -186,7 +186,19 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
     };
 
     // When
-    const decoded = decodeService(input);
+    const decoded = decodeService({
+      ports: [{ target: 80, host_ip: "127.0.0.1", app_protocol: "http" }],
+      volumes: [
+        {
+          type: "volume",
+          source: "data",
+          target: "/var/lib/data",
+          read_only: true,
+          volume: { subpath: "app" },
+        },
+        { type: "bind", source: "./src", target: "/app", read_only: true, bind: { create_host_path: false } },
+      ],
+    });
 
     // Then
     expect(decoded).toEqual(input);
@@ -197,35 +209,23 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
       expect(decodeAuthored({ expose: ["3000-3001", 9229] }).expose).toEqual([3000, 3001, 9229]);
     });
 
-    test("working_dir decodes to workingDirectory", () => {
-      expect(decodeAuthored({ working_dir: "/app" }).workingDirectory).toBe(PortablePath.make("/app"));
+    test("working_dir decodes to working_dir", () => {
+      expect(decodeAuthored({ working_dir: "/app" }).working_dir).toBe(PortablePath.make("/app"));
     });
 
-    test("workingDirectory wins over working_dir when both present", () => {
-      expect(decodeAuthored({ working_dir: "/compose", workingDirectory: "/lando" }).workingDirectory).toBe(
-        PortablePath.make("/lando"),
-      );
-    });
-
-    test("depends_on string-list decodes to structured dependsOn", () => {
-      expect(decodeAuthored({ depends_on: ["database"] }).dependsOn).toEqual([{ service: "database" }]);
+    test("depends_on string-list decodes to structured depends_on", () => {
+      expect(decodeAuthored({ depends_on: ["database"] }).depends_on).toEqual([{ service: "database" }]);
     });
 
     test("depends_on condition-map decodes and preserves condition", () => {
       expect(
         decodeAuthored({ depends_on: { database: { condition: "service_completed_successfully" } } })
-          .dependsOn,
+          .depends_on,
       ).toEqual([{ service: "database", condition: "service_completed_successfully" }]);
     });
 
-    test("dependsOn wins over depends_on when both present", () => {
-      expect(decodeAuthored({ depends_on: ["compose"], dependsOn: ["lando"] }).dependsOn).toEqual([
-        { service: "lando" },
-      ]);
-    });
-
-    test("env_file decodes to envFile", () => {
-      expect(decodeAuthored({ env_file: ["./.env"] }).envFile).toEqual(["./.env"]);
+    test("env_file decodes to env_file", () => {
+      expect(decodeAuthored({ env_file: ["./.env"] }).env_file).toEqual(["./.env"]);
     });
   });
 
@@ -307,14 +307,7 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
       const properties = schema.properties ?? schema.$defs?.ServiceConfigInput?.properties ?? {};
 
       expect(Object.keys(properties)).toEqual(
-        expect.arrayContaining([
-          "workingDirectory",
-          "envFile",
-          "dependsOn",
-          "working_dir",
-          "env_file",
-          "depends_on",
-        ]),
+        expect.arrayContaining(["working_dir", "env_file", "depends_on"]),
       );
     });
 

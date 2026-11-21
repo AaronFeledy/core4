@@ -38,7 +38,7 @@ export const mergeComposeExtension = <S extends Pick<ServicePlan, "extensions">>
           ? undefined
           : `${healthcheck.startIntervalSeconds}s`;
   const hasDependencyRestart =
-    service.dependsOn?.some((dependency) => dependency.restart !== undefined) ?? false;
+    service.depends_on?.some((dependency) => dependency.restart !== undefined) ?? false;
   const authoredExtensions = Object.entries(service).filter(([key]) => key.startsWith("x-"));
   if (
     service.labels === undefined &&
@@ -64,7 +64,7 @@ export const mergeComposeExtension = <S extends Pick<ServicePlan, "extensions">>
   }
   if (hasDependencyRestart) {
     const dependsOn = Predicate.isObject(compose.depends_on) ? { ...compose.depends_on } : {};
-    for (const dependency of service.dependsOn ?? []) {
+    for (const dependency of service.depends_on ?? []) {
       if (dependency.restart === undefined) continue;
       const existing = dependsOn[dependency.service];
       dependsOn[dependency.service] = {

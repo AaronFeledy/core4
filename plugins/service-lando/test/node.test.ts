@@ -282,7 +282,7 @@ describe("node:22 ServiceType", () => {
     const plan = await composeNodePlan(node22ServiceType, {
       type: "node:22",
       entrypoint: ["docker-entrypoint.sh"],
-      dependsOn: ["database"],
+      depends_on: ["database"],
     });
 
     expect(plan.entrypoint).toEqual(["docker-entrypoint.sh"]);

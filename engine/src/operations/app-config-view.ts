@@ -8,7 +8,7 @@ import {
 import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { encodeLandofileSourceValue } from "@lando/sdk/landofile";
-import { LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
+import { LandofileShape, LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { getAtPath } from "../config-write/dot-path.ts";
@@ -171,7 +171,19 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
         redactionTokens,
       };
       if (selector === undefined) return { source, ...metadata, landofile };
-      const selected = getAtPath(landofile, selector);
+      const encoded = yield* Schema.encodeEffect(LandofileShape)(landofile, {
+        onExcessProperty: "error",
+      }).pipe(
+        mapFailures(
+          (cause) =>
+            new ConfigError({
+              message: "Cannot encode the resolved Landofile for inspection.",
+              cause,
+              remediation: "Run `lando app:config:lint` to check the Landofile and its sources.",
+            }),
+        ),
+      );
+      const selected = getAtPath(encoded, selector);
       return {
         source,
         ...metadata,

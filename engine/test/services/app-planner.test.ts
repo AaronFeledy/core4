@@ -117,7 +117,7 @@ const landofileFixture: LandofileShape = {
       image: "node:lts",
       ports: [{ target: 3000, published: 3000, protocol: "tcp" }],
       environment: { NODE_ENV: "development" },
-      dependsOn: [{ service: "db" }],
+      depends_on: [{ service: "db" }],
     },
     [ServiceName.make("db")]: {
       home: false,
@@ -695,7 +695,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   }
 
-  for (const scanner of [{ path: "/ready", okCodes: [204], retries: 0, timeout: 7000 }, false] as const) {
+  for (const scanner of [{ path: "/ready", okCodes: [204], retries: 0, timeoutMs: 7000 }, false] as const) {
     test(`records resolved scanner when authored as ${scanner === false ? "false" : "an object"}`, async () => {
       // Given
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -2021,7 +2021,9 @@ describe("AppPlannerLayer.layer", () => {
       );
       const cachedLandofile: LandofileShape = {
         name: "cached-app",
-        services: { [ServiceName.make("web")]: { type: "cached-type", home: false, envFile: ["cache.env"] } },
+        services: {
+          [ServiceName.make("web")]: { type: "cached-type", home: false, env_file: ["cache.env"] },
+        },
       };
 
       try {
@@ -2812,7 +2814,7 @@ describe("AppPlannerLayer.layer", () => {
       name: "authored-dependencies",
       runtime: 4,
       services: {
-        web: { type: "appmount-only", home: false, dependsOn: ["db"] },
+        web: { type: "appmount-only", home: false, depends_on: ["db"] },
         db: { type: "appmount-only", home: false },
       },
     });
@@ -2832,7 +2834,11 @@ describe("AppPlannerLayer.layer", () => {
       name: "authored-dependency-restart",
       runtime: 4,
       services: {
-        web: { type: "appmount-only", home: false, dependsOn: [{ service: "db", restart: false }] },
+        web: {
+          type: "appmount-only",
+          home: false,
+          depends_on: { db: { condition: "service_started", restart: false } },
+        },
         db: { type: "appmount-only", home: false },
       },
     });
@@ -4434,12 +4440,6 @@ describe("AppPlannerLayer.layer", () => {
     expect(servicePlan?.healthcheck).not.toHaveProperty("startIntervalSeconds");
   });
 
-  test("preserves Compose labels and healthcheck start_interval together", async () => {
-    // Given
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "compose-healthcheck-and-labels",
-      runtime: 4,
-      services: {
   test("emits Lando startIntervalSeconds as native start_interval without plan field", async () => {
     // Given
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -4497,6 +4497,12 @@ describe("AppPlannerLayer.layer", () => {
     expect(servicePlan?.readiness).not.toHaveProperty("startIntervalSeconds");
   });
 
+  test("preserves Compose labels and healthcheck start_interval together", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "compose-healthcheck-and-labels",
+      runtime: 4,
+      services: {
         web: {
           image: "node:lts",
           home: false,
@@ -5330,7 +5336,7 @@ describe("AppPlannerLayer.layer", () => {
         web: {
           type: "appmount-only",
           home: false,
-          dependsOn: [{ service: "db", condition: "service_started", required: true }],
+          depends_on: { db: { condition: "service_started", required: true } },
         },
       },
     });
@@ -5344,7 +5350,7 @@ describe("AppPlannerLayer.layer", () => {
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
       expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-        "services.web.dependsOn",
+        "services.web.depends_on",
       ]);
       expect(failure.message).toContain(
         "Service web depends on missing service db with condition service_started.",
@@ -5362,13 +5368,7 @@ describe("AppPlannerLayer.layer", () => {
         web: {
           type: "appmount-only",
           home: false,
-          dependsOn: [
-            {
-              service: "db",
-              condition: "service_completed_successfully",
-              required: false,
-            },
-          ],
+          depends_on: { db: { condition: "service_completed_successfully", required: false } },
         },
       },
     });
@@ -5395,7 +5395,7 @@ describe("AppPlannerLayer.layer", () => {
         web: {
           type: "appmount-only",
           home: false,
-          dependsOn: [{ service: "db", condition: "service_healthy", required: true }],
+          depends_on: { db: { condition: "service_healthy", required: true } },
         },
         db: { type: "appmount-only", home: false },
       },
@@ -5410,7 +5410,7 @@ describe("AppPlannerLayer.layer", () => {
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
       expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-        "services.web.dependsOn",
+        "services.web.depends_on",
       ]);
       expect(failure.message).toContain(
         "Service web depends on service db with condition service_healthy, but service db has no enabled readiness probe.",
@@ -5427,7 +5427,7 @@ describe("AppPlannerLayer.layer", () => {
         web: {
           type: "appmount-only",
           home: false,
-          dependsOn: [{ service: "db", condition: "service_healthy", required: false }],
+          depends_on: { db: { condition: "service_healthy", required: false } },
         },
         db: { type: "appmount-only", home: false, healthcheck: { disable: true } },
       },
@@ -5442,7 +5442,7 @@ describe("AppPlannerLayer.layer", () => {
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
       expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-        "services.web.dependsOn",
+        "services.web.depends_on",
       ]);
       expect(failure.message).toContain(
         "Service web depends on service db with condition service_healthy, but service db has no enabled readiness probe.",
@@ -5462,18 +5462,12 @@ describe("AppPlannerLayer.layer", () => {
         web: {
           type: "appmount-only",
           home: false,
-          dependsOn: [{ service: "db", condition: "service_started", required: true }],
+          depends_on: { db: { condition: "service_started", required: true } },
         },
         db: {
           type: "appmount-only",
           home: false,
-          dependsOn: [
-            {
-              service: "web",
-              condition: "service_completed_successfully",
-              required: false,
-            },
-          ],
+          depends_on: { web: { condition: "service_completed_successfully", required: false } },
         },
       },
     });
@@ -5487,7 +5481,7 @@ describe("AppPlannerLayer.layer", () => {
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
       expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-        "services.db.dependsOn",
+        "services.db.depends_on",
       ]);
       expect(failure.message).toContain(
         "web --[service_started]--> db --[service_completed_successfully]--> web",
@@ -5507,7 +5501,7 @@ describe("AppPlannerLayer.layer", () => {
         web: {
           type: "appmount-only",
           home: false,
-          dependsOn: [{ service: "web", condition: "service_started", required: true }],
+          depends_on: { web: { condition: "service_started", required: true } },
         },
       },
     });
@@ -5521,7 +5515,7 @@ describe("AppPlannerLayer.layer", () => {
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
       expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-        "services.web.dependsOn",
+        "services.web.depends_on",
       ]);
       expect(failure.message).toContain("web --[service_started]--> web");
       expect(failure.message).toContain(
@@ -5566,13 +5560,7 @@ describe("AppPlannerLayer.layer", () => {
             ...validPlan.services,
             [ServiceName.make("web")]: {
               ...web,
-              dependsOn: [
-                {
-                  service: ServiceName.make("db"),
-                  condition: "service_started",
-                  required: true,
-                },
-              ],
+              dependsOn: [{ service: ServiceName.make("db"), condition: "service_started", required: true }],
             },
           },
         };
@@ -5599,7 +5587,7 @@ describe("AppPlannerLayer.layer", () => {
         if (failure instanceof LandofileValidationError) {
           expect(failure._tag).toBe("LandofileValidationError");
           expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-            "services.web.dependsOn",
+            "services.web.depends_on",
           ]);
           expect(failure.message).toContain(
             "Service web depends on missing service db with condition service_started.",

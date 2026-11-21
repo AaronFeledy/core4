@@ -89,7 +89,6 @@ export const composeIncludeDefaults = (
             {
               volumes: (value) => mapList(value, volume),
               env_file: envFiles,
-              envFile: envFiles,
               build,
               devices: (value) =>
                 mapList(value, (entry) =>

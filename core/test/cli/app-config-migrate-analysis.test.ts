@@ -195,7 +195,7 @@ describe("pure recipe migration analysis", () => {
     expect(result.committed).toEqual(input.target.identity);
     expect(getAtPath(result.document, "services.appserver")).toBeUndefined();
     expect(getAtPath(result.document, "services.web.port")).toBe(8080);
-    expect(getAtPath(result.document, "services.web.dependsOn")).toEqual(["db"]);
+    expect(getAtPath(result.document, "services.web.depends_on")).toEqual(["db"]);
     expect(getAtPath(result.document, "recipe.services")).toEqual({ appserver: "web", database: "db" });
     expect(getAtPath(result.document, "tooling.php.service")).toBe("web");
   });

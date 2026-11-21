@@ -191,7 +191,7 @@ describe("localstack ServiceType", () => {
       environment: { DEBUG: "1", GATEWAY_LISTEN: "0.0.0.0:4566" },
       command: ["localstack", "start"],
       entrypoint: ["/usr/bin/env"],
-      workingDirectory: "/var/lib/localstack",
+      working_dir: "/var/lib/localstack",
       user: "1000:1000",
     });
 

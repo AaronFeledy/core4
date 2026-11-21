@@ -87,19 +87,14 @@ test.each([
 });
 
 test.each([
-  [{ workingDirectory: "/lower" }, { working_dir: "/alias" }, { workingDirectory: "/alias" }],
+  [{ working_dir: "/lower" }, { working_dir: "/higher" }, { working_dir: "/higher" }],
+  [{ env_file: ["lower.env"] }, { env_file: ["higher.env"] }, { env_file: ["higher.env"] }],
   [
-    { workingDirectory: "/lower" },
-    { working_dir: "/alias", workingDirectory: "/canonical" },
-    { workingDirectory: "/canonical" },
-  ],
-  [{ envFile: ["lower.env"] }, { env_file: ["higher.env"] }, { envFile: ["higher.env"] }],
-  [
-    { dependsOn: ["db"] },
+    { depends_on: ["db"] },
     { depends_on: ["cache"] },
-    { dependsOn: [{ service: "db" }, { service: "cache" }] },
+    { depends_on: [{ service: "db" }, { service: "cache" }] },
   ],
-])("canonicalizes only service aliases before merging (%#)", async (lower, higher, expected) => {
+])("merges Compose service keys before decoding (%#)", async (lower, higher, expected) => {
   const result = await Effect.runPromise(load(lower, higher));
   expect(result.document.services?.[ServiceName.make("web")]).toMatchObject(expected);
 });

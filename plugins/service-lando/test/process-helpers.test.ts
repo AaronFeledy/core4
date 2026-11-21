@@ -8,12 +8,12 @@ const processDraft = (normalizedConfig: ServiceConfig) => {
   const draft: {
     command: CommandSpec;
     entrypoint: CommandSpec;
-    workingDirectory: PortablePath;
+    working_dir: PortablePath;
     user: string;
   } = {
     command: ["default-command"],
     entrypoint: ["default-entrypoint"],
-    workingDirectory: PortablePath.make("/default"),
+    working_dir: PortablePath.make("/default"),
     user: "default-user",
   };
   const calls: string[] = [];
@@ -28,7 +28,7 @@ const processDraft = (normalizedConfig: ServiceConfig) => {
       calls.push("entrypoint");
     },
     setWorkingDirectory(value) {
-      draft.workingDirectory = value;
+      draft.working_dir = value;
       calls.push("workingDirectory");
     },
     setUser(value) {
@@ -44,7 +44,7 @@ describe("applyAuthoredProcessFields", () => {
     const authored = {
       command: ["authored-command"],
       entrypoint: ["authored-entrypoint"],
-      workingDirectory: PortablePath.make("/authored"),
+      working_dir: PortablePath.make("/authored"),
       user: "authored-user",
     };
     const { ctx, draft } = processDraft(authored);
@@ -70,7 +70,7 @@ describe("applyAuthoredProcessFields", () => {
       const { ctx, draft, calls } = processDraft({
         command,
         entrypoint: command,
-        workingDirectory: PortablePath.make(""),
+        working_dir: PortablePath.make(""),
         user: "",
       });
 
@@ -78,7 +78,7 @@ describe("applyAuthoredProcessFields", () => {
 
       expect(draft.command).toEqual(command);
       expect(draft.entrypoint).toEqual(command);
-      expect(draft.workingDirectory).toBe(PortablePath.make(""));
+      expect(draft.working_dir).toBe(PortablePath.make(""));
       expect(draft.user).toBe("");
       expect(calls).toEqual(["command", "entrypoint", "workingDirectory", "user"]);
     },
@@ -88,7 +88,7 @@ describe("applyAuthoredProcessFields", () => {
     const { ctx, draft, calls } = processDraft({
       command: ["authored-command"],
       entrypoint: ["authored-entrypoint"],
-      workingDirectory: PortablePath.make("/authored"),
+      working_dir: PortablePath.make("/authored"),
       user: "authored-user",
     });
 
@@ -96,6 +96,6 @@ describe("applyAuthoredProcessFields", () => {
 
     expect(calls).toEqual(["user", "entrypoint"]);
     expect(draft.command).toEqual(["default-command"]);
-    expect(draft.workingDirectory).toBe(PortablePath.make("/default"));
+    expect(draft.working_dir).toBe(PortablePath.make("/default"));
   });
 });

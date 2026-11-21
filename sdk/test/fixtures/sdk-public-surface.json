@@ -1824,7 +1824,6 @@
       "RouterPortPair",
       "RouterServiceContribution",
       "RunProps",
-      "SERVICE_CONFIG_ALIASES",
       "SNAPSHOT_INFO_VERSION",
       "SSH_AGENT_SOCKET_NAME",
       "STOCK_TAG_REFRESH_AFTER_MS",

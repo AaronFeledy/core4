@@ -78,7 +78,7 @@ export const renameMigrationService = (
     }
     if (typeof value !== "string") return;
     const path = dotPath(segments);
-    const isReference = segments.includes("dependsOn") || segments.at(-1) === "service";
+    const isReference = segments.includes("depends_on") || segments.at(-1) === "service";
     if (!isReference && !value.includes("{{")) return;
     const nextSegments =
       path === hunk.old || path.startsWith(`${hunk.old}.`)
@@ -135,7 +135,7 @@ export const renameAfterStateMatches = (
     if (typeof value !== "string") return;
     const path = dotPath(segments);
     if (path === hunk.old || path.startsWith(`${hunk.old}.`)) return;
-    const isReference = segments.includes("dependsOn") || segments.at(-1) === "service";
+    const isReference = segments.includes("depends_on") || segments.at(-1) === "service";
     if (!isReference && !value.includes("{{")) return;
     const next = getBySegments(context.renderedNew, segments);
     const mappedSegments =

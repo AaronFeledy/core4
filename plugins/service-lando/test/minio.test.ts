@@ -263,7 +263,7 @@ describe("minio ServiceType", () => {
       type: "minio",
       command: ["server", "/data", "--address", ":19000"],
       entrypoint: ["/bin/sh", "-c"],
-      workingDirectory: "/data",
+      working_dir: "/data",
       user: "1000:1000",
     });
 

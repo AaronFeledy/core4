@@ -102,7 +102,7 @@ test.each([
     for (const [file, content] of Object.entries(layers)) await writeFile(join(dir, file), content);
 
     const file = join(dir, sourceFile);
-    const path = ["services", "web", "dependsOn"];
+    const path = ["services", "web", "depends_on"];
     const issue = { path, source: { file, path } };
     const refresh = await runCli(["app:cache:refresh", "--format=json"], dir);
     expect(refresh.exitCode).toBe(1);

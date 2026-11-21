@@ -434,7 +434,7 @@ test("never interpolates values that arrive through env files, even when they eq
             type: appType.id,
             image: "alpine:3.22",
             home: false as const,
-            envFile: ["web.env"],
+            env_file: ["web.env"],
             environment: { DATABASE_URL },
           },
           [ServiceName.make("database")]: {

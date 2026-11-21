@@ -157,6 +157,30 @@ class OverlayMerge<Source> {
           });
           merged = [...retained, ...appended.map((node) => this.materialize(node))];
         }
+        if (merged !== undefined && rule.descriptor.identity === "dependency-service") {
+          // Keyed matching uses structured entries internally, but the merged
+          // document still has to be valid authored Compose input.
+          const dependencies = merged.flatMap((node) => {
+            if (!isPlainRecord(node.value) || typeof node.value.service !== "string") return [];
+            const { service, ...spec } = node.value;
+            return [{ service, spec, origins: node.origins }];
+          });
+          if (Array.isArray(left.value) && Array.isArray(right.value))
+            return this.result(
+              right,
+              dependencies.map(({ service }) => service),
+              this.tracked ? new Map(dependencies.map(({ origins }, index) => [index, origins])) : undefined,
+            );
+          return this.result(
+            right,
+            Object.fromEntries(
+              dependencies.map(({ service, spec }) => [service, { condition: "service_started", ...spec }]),
+            ),
+            this.tracked
+              ? new Map(dependencies.map(({ service, origins }) => [service, origins]))
+              : undefined,
+          );
+        }
         if (merged !== undefined)
           return this.result(
             right,

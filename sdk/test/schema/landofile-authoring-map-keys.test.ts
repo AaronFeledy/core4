@@ -31,7 +31,7 @@ for (const [view, document] of documents) {
         onEnter: importableNode,
       }).ast,
     );
-    for (const field of ["environment", "labels", "sysctls", "extra_hosts", "dependsOn", "depends_on"]) {
+    for (const field of ["environment", "labels", "sysctls", "extra_hosts", "depends_on"]) {
       test.each(["SAFE", "__proto__suffix", "constructor", "toString", "__proto__"])(
         `${field} preserves expressions while restricting key %s`,
         (key) => {
@@ -51,7 +51,7 @@ for (const [view, document] of documents) {
 }
 
 for (const name of ["LandofileAuthoringFragment", "LandofileAuthoringFragmentWire"] as const) {
-  test.each(["environment", "labels", "sysctls", "extra_hosts", "dependsOn", "depends_on"])(
+  test.each(["environment", "labels", "sysctls", "extra_hosts", "depends_on"])(
     `${name} retains the runtime key constraint on %s`,
     (field) => {
       // Given the published partial input schema, including directive envelopes.

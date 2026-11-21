@@ -155,7 +155,7 @@ export const lowerApi4Service = (
   }
   if (service.working_dir !== undefined) {
     cursor.take(["working_dir"]);
-    patch.workingDirectory = service.working_dir;
+    patch.working_dir = service.working_dir;
     rewrite(["working_dir"]);
   }
   if (service.environment !== undefined) {

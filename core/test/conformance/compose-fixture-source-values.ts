@@ -135,14 +135,14 @@ export const normalizedSourceValue = (request: {
       return valueAt(grant, relativePath.replace(/^configs\[\d+\]\./u, ""));
     }
     case "dependencies": {
-      if (match.matrixPath === "depends_on") return service.dependsOn;
+      if (match.matrixPath === "depends_on") return service.depends_on;
       const dependencyName = relativePath.split(".")[1];
-      const dependency = service.dependsOn?.find((candidate) => candidate.service === dependencyName);
+      const dependency = service.depends_on?.find((candidate) => candidate.service === dependencyName);
       if (match.matrixPath === "depends_on.*") return dependency;
       return valueAt(dependency, match.matrixPath.slice("depends_on.*.".length));
     }
     case "environment":
-      if (match.matrixPath === "env_file") return service.envFile;
+      if (match.matrixPath === "env_file") return service.env_file;
       if (match.matrixPath === "environment") return service.environment;
       return requiredMapEntry(service.environment, relativePath.slice("environment.".length), match);
     case "healthcheck": {
@@ -188,7 +188,7 @@ export const normalizedSourceValue = (request: {
 export const preservedSourceValue = (match: ComposeDispositionMatch, service: ServiceConfig): unknown => {
   if (match.matrixPath === "depends_on.*.restart") {
     const dependencyName = serviceDocumentPath(match).split(".")[1];
-    return service.dependsOn?.find((candidate) => candidate.service === dependencyName)?.restart;
+    return service.depends_on?.find((candidate) => candidate.service === dependencyName)?.restart;
   }
   if (match.matrixPath === "healthcheck.start_interval")
     return service.healthcheck === false ? undefined : service.healthcheck?.start_interval;

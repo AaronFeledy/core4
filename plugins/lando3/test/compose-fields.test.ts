@@ -92,14 +92,13 @@ describe("Compose field lowering", () => {
     const result = lowerComposeFields(input, ctx, options);
     // Then
     const { depends_on, ...rest } = input;
-    expect(result.patch).toEqual({ ...rest, build: { context: "./php" }, dependsOn: depends_on });
+    expect(result.patch).toEqual({ ...rest, build: { context: "./php" }, depends_on });
     expect(result.blocked).toBeUndefined();
     expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
       { kind: "rewritten", keyPath: [...ctx.keyPath, "overrides", "build"] },
       { kind: "needs-review", keyPath: [...ctx.keyPath, "overrides", "platform"] },
       { kind: "needs-review", keyPath: [...ctx.keyPath, "overrides", "logging"] },
       { kind: "needs-review", keyPath: [...ctx.keyPath, "overrides", "restart"] },
-      { kind: "rewritten", keyPath: [...ctx.keyPath, "overrides", "depends_on"] },
       { kind: "needs-review", keyPath: [...ctx.keyPath, "overrides", "extra_hosts"] },
     ]);
     expect(result.diagnostics.every((entry) => Boolean(entry.remediation))).toBe(true);
@@ -157,19 +156,18 @@ describe("Compose field lowering", () => {
     expect(result.diagnostics).toHaveLength(key === "labels" ? 2 : 1);
   });
 
-  test.each([
-    ["working_dir", "workingDirectory"],
-    ["env_file", "envFile"],
-  ])("renames %s when normalized", (key, target) => {
-    // Given
-    const input = { [key]: "/tmp" };
-    // When
-    const result = lowerComposeFields(input, ctx, { basePath: [] });
-    // Then
-    expect(result.patch).toEqual({ [target]: "/tmp" });
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]).toMatchObject({ kind: "rewritten", keyPath: [...ctx.keyPath, key] });
-  });
+  test.each(["working_dir", "env_file", "depends_on"] as const)(
+    "keeps canonical %s when normalized",
+    (key) => {
+      // Given
+      const input = { [key]: key === "depends_on" ? ["db"] : "/tmp" };
+      // When
+      const result = lowerComposeFields(input, ctx, { basePath: [] });
+      // Then Compose keys already match ServiceConfig and stay unrenamed.
+      expect(result.patch).toEqual(input);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
 
   test("normalizes build fields when a build mapping is supplied", () => {
     // Given

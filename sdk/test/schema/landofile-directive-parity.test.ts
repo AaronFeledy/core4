@@ -26,14 +26,24 @@ const imported = SchemaRepresentation.fromJsonSchemaDocument(JsonSchema.fromSche
 });
 
 test.each([
-  { ports: [80, "8080:80"], accepted: true },
-  { ports: [{ target: 80, published: "8080", host_ip: "127.0.0.1", protocol: "tcp" }], accepted: true },
-  { ports: [{ target: 80, published: 8080, hostIp: "127.0.0.1", protocol: "tcp" }], accepted: true },
-  { ports: null, accepted: false },
-  { ports: [null], accepted: false },
-  { ports: [{ target: null }], accepted: false },
-  { ports: [{ target: -1 }], accepted: false },
-])("published override ports agree with the decoder (%#)", ({ ports, accepted }) => {
+  { ports: [80, "8080:80"], decoder: true, published: true },
+  {
+    ports: [{ target: 80, published: "8080", host_ip: "127.0.0.1", protocol: "tcp" }],
+    decoder: true,
+    published: true,
+  },
+  // Runtime Type camelCase is rejected by the authoring decoder under excess rejection;
+  // the published JSON Schema projection still admits additional long-form properties.
+  {
+    ports: [{ target: 80, published: 8080, hostIp: "127.0.0.1", protocol: "tcp" }],
+    decoder: false,
+    published: true,
+  },
+  { ports: null, decoder: false, published: false },
+  { ports: [null], decoder: false, published: false },
+  { ports: [{ target: null }], decoder: false, published: false },
+  { ports: [{ target: -1 }], decoder: false, published: false },
+])("published override ports agree with the decoder (%#)", ({ ports, decoder, published }) => {
   const input = {
     services: {
       _tag: "LandofileOverride",
@@ -48,6 +58,6 @@ test.each([
   const decoded = Schema.decodeUnknownResult(LandofileAuthoringFragment)(input, {
     onExcessProperty: "error",
   });
-  expect(Result.isSuccess(decoded)).toBe(accepted);
-  expect(Schema.is(imported)(input.services.value.web.value.ports)).toBe(accepted);
+  expect(Result.isSuccess(decoded)).toBe(decoder);
+  expect(Schema.is(imported)(input.services.value.web.value.ports)).toBe(published);
 });
