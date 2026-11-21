@@ -36,11 +36,8 @@ export const hostReadinessPortSite = (
     const [section, name, field] = site.path;
     if (section !== "services" || typeof name !== "string" || field !== "readiness") return false;
     const service = services[name];
-    return (
-      isPlainRecord(service) &&
-      isPlainRecord(service.readiness) &&
-      service.readiness.target === "host" &&
-      expressionScopeMembers(site.template, "service").members.has("port")
-    );
+    if (!isPlainRecord(service) || !isPlainRecord(service.readiness) || service.readiness.target !== "host")
+      return false;
+    return expressionScopeMembers(site.template, "service").members.has("port");
   });
 };

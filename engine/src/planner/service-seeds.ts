@@ -23,7 +23,6 @@ import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
 import {
   type DeferredExpressionSites,
   type ServiceCredsScope,
-  materializeServicePort,
   materializeServiceScopeSites,
   orderServicesByCredsReferences,
   serviceScopeContext,
@@ -34,6 +33,7 @@ import { loadAuthorizedServiceProjectFiles } from "./node-authoring.ts";
 import { type PlannerIssue, attributePlannerIssue } from "./resolved-validation.ts";
 import { validateServiceSeed } from "./seed-validation.ts";
 import { serviceExpressionFacts } from "./service-credential-facts.ts";
+import { materializeServicePort } from "./service-port-scope.ts";
 import {
   loadServiceTypeWithVersion,
   resolvePinnedArtifactTag,
@@ -87,14 +87,11 @@ const resolveSeed = Effect.fnUntraced(function* (
     readonly context: ExpressionContext;
   },
 ) {
-  const { name } = seed;
+  const { name, service: scopedService, sites, context } = seed;
   const { pluginRegistry, fileSystem, appRoot, appName, appDefaults, registeredServiceTypeIds } = input;
-  const serviceTypeId = serviceTypeFor(name, seed.service);
-  if (
-    seed.service.image !== undefined &&
-    seed.service.build !== undefined &&
-    isComposeBuild(seed.service.build)
-  ) {
+  const serviceTypeId = serviceTypeFor(name, scopedService);
+  const { image, build } = scopedService;
+  if (image !== undefined && build !== undefined && isComposeBuild(build)) {
     return yield* Effect.fail(
       new LandofileValidationError({
         message: `Service ${name} must declare exactly one of image or a Compose build, not both. Remove image or replace build with a Lando build-script block.`,
@@ -126,7 +123,9 @@ const resolveSeed = Effect.fnUntraced(function* (
   }
   const resolvedArtifactTag = yield* resolvePinnedArtifactTag(appRoot, name, serviceType, version);
   const service = yield* materializeServicePort({
-    ...seed,
+    service: scopedService,
+    sites,
+    context,
     serviceType,
     pathPrefix: ["services", name],
     landofilePath: input.landofilePath,

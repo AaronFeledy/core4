@@ -200,7 +200,12 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   const hostPortSite = hostReadinessPortSite(assembled.value, effectiveSites);
   if (hostPortSite !== undefined)
     recorder.record(servicePortSiteError(hostPortSite.source, "host-readiness"));
-  const extraHosts = prepareDeferredExtraHosts(assembled.value, effectiveSites, { ...scope, file });
+  const extraHosts = prepareDeferredExtraHosts(assembled.value, effectiveSites, {
+    file,
+    env: scope.env,
+    recipe: scope.recipe,
+    recorder,
+  });
   const load =
     context.rootDocuments === undefined
       ? finishLoadStage(file, recorder)

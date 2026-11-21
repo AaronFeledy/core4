@@ -113,7 +113,7 @@ export const phpPlannedPort = ({
   port,
 }: Pick<ServiceConfig, "via" | "port">): PortNumber | undefined => {
   const mode = via ?? "apache";
-  return mode === "apache" || mode === "fpm" ? phpServingMode(mode, port).listener?.port : undefined;
+  return mode === "apache" || mode === "fpm" ? phpListenPort(mode, port) : undefined;
 };
 
 /** CLI has no listener. Apache must retain whether its port was explicitly authored. */

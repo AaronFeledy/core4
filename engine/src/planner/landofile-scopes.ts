@@ -1,4 +1,4 @@
-import { compiledValueError, consumeSites, siteExpression } from "@lando/landofile/compiled-sites";
+import { compiledValueError, consumeSites } from "@lando/landofile/compiled-sites";
 import { provenanceOf } from "@lando/landofile/provenance";
 import {
   PLAN_IDENTITY_EXPRESSION_SCOPES,
@@ -18,11 +18,9 @@ import {
   type LoadScopedLandofile,
   type ParsedPendingSite,
   type PortNumber,
-  ServiceConfig,
   ServiceScopedLandofile,
   type ValidationIssuePath,
 } from "@lando/sdk/schema";
-import type { ServiceType } from "@lando/sdk/services";
 import { Effect, Result, Schema } from "effect";
 import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { normalizeAppSlug } from "./naming.ts";
@@ -111,77 +109,20 @@ export const materializeServiceScopeSites = Effect.fn("Landofile.serviceSites")(
   readonly context: ExpressionContext;
   readonly selfPort?: PortNumber;
 }) {
+  const { selfPort, context } = input;
+  const hasSelfPort = selfPort !== undefined;
   const sites = input.deferredSites.filter((site) => pathHasPrefix(site.path, input.pathPrefix));
   const result = yield* Effect.fromResult(
     consumeSites({
       document: input.value,
       pendingSites: sites,
-      context:
-        input.selfPort === undefined
-          ? input.context
-          : { ...input.context, service: { port: input.selfPort } },
-      scopes:
-        input.selfPort === undefined
-          ? PLAN_SERVICE_EXPRESSION_SCOPES
-          : [...PLAN_SERVICE_EXPRESSION_SCOPES, "service"],
+      context: hasSelfPort ? { ...context, service: { port: selfPort } } : context,
+      scopes: hasSelfPort ? [...PLAN_SERVICE_EXPRESSION_SCOPES, "service"] : PLAN_SERVICE_EXPRESSION_SCOPES,
       renderText: true,
       pathPrefix: input.pathPrefix,
     }),
   );
   return result;
-});
-
-export const materializeServicePort = Effect.fnUntraced(function* (input: {
-  readonly service: ServiceConfig;
-  readonly serviceType: ServiceType;
-  readonly sites: DeferredExpressionSites;
-  readonly context: ExpressionContext;
-  readonly pathPrefix: ValidationIssuePath;
-  readonly landofilePath: string;
-}) {
-  const sites = input.sites.filter((site) =>
-    expressionScopeMembers(site.template, "service").members.has("port"),
-  );
-  const first = sites[0];
-  if (first === undefined) return input.service;
-  const { port, via, framework, type } = input.service;
-  const select = input.serviceType.plannedPort;
-  const planned = select?.({
-    ...(port === undefined ? {} : { port }),
-    ...(via === undefined ? {} : { via }),
-    ...(framework === undefined ? {} : { framework }),
-    ...(type === undefined ? {} : { type }),
-  });
-  if (planned === undefined) {
-    return yield* Effect.fail(
-      new ConfigExpressionError({
-        message: `Service type ${input.serviceType.id} declares no planned listen port for service.port in this configuration.`,
-        path: first.path,
-        source: first.source,
-        expression: siteExpression(first, input.service, input.pathPrefix.length),
-        filePath: "file" in first.source ? first.source.file : input.landofilePath,
-        remediation:
-          select === undefined
-            ? "Use a literal port or choose a service type that declares a planned listen port."
-            : "Choose a configuration with a listener and set port: if needed, or remove the service.port expression.",
-      }),
-    );
-  }
-  const { document } = yield* materializeServiceScopeSites({
-    ...input,
-    value: input.service,
-    deferredSites: sites,
-    selfPort: planned,
-  });
-  return yield* Schema.decodeUnknownEffect(Schema.toType(ServiceConfig))(document).pipe(
-    mapFailures((cause) =>
-      compiledValueError(cause, {
-        filePath: input.landofilePath,
-        pendingSites: sites,
-        pathPrefix: input.pathPrefix,
-      }),
-    ),
-  );
 });
 
 export const serviceCredsScopeForPlan = (plan: AppPlan): ServiceCredsScope =>

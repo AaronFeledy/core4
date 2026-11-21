@@ -5,12 +5,7 @@ import {
   expressionInterpolationsTouchOnlyScopes,
   expressionTouchesOnlyScopes,
 } from "@lando/sdk/expressions";
-import {
-  HostAliasName,
-  type ParsedPendingSite,
-  type ValidationIssuePath,
-  type ValidationIssueSource,
-} from "@lando/sdk/schema";
+import { HostAliasName, type ParsedPendingSite, type ValidationIssuePath } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 import { consumeSites, replaceSiteValue } from "./compiled-sites.ts";
 import { type LoadFailureRecorder, loadPathBlocked } from "./load-failures.ts";
@@ -75,17 +70,6 @@ export const compileExtraHostParts = (
   };
 };
 
-const missingExtraHostSeparator = (file: string, source: ValidationIssueSource) => {
-  const message = "A deferred extra_hosts entry needs a literal hostname/address separator.";
-  const suggestion = "Put HOST= or HOST: before the address expression.";
-  return new LandofileValidationError({
-    file,
-    message,
-    remediation: suggestion,
-    issues: [{ rule: "unsupported-expression", path: source.path, source, message, suggestion }],
-  });
-};
-
 type PreparedExtraHost = { readonly host: string; readonly address: ExpressionTemplate };
 export type PreparedExtraHosts = ReadonlyMap<string, PreparedExtraHost>;
 
@@ -106,10 +90,18 @@ export const prepareDeferredExtraHosts = (
     if (parts === undefined || loadPathBlocked(scope.recorder, site.source)) continue;
     const file = "file" in site.source ? site.source.file : scope.file;
     if (parts === "missing-separator") {
-      scope.recorder.record(missingExtraHostSeparator(file, site.source), {
-        kind: "local",
-        source: site.source,
-      });
+      const { source } = site;
+      const message = "A deferred extra_hosts entry needs a literal hostname/address separator.";
+      const suggestion = "Put HOST= or HOST: before the address expression.";
+      scope.recorder.record(
+        new LandofileValidationError({
+          file,
+          message,
+          remediation: suggestion,
+          issues: [{ rule: "unsupported-expression", path: source.path, source, message, suggestion }],
+        }),
+        { kind: "local", source },
+      );
       continue;
     }
     const evaluated = consumeSites({

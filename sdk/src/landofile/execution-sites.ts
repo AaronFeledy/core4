@@ -42,7 +42,6 @@ const branches = (candidate: Candidate, index: number): ReadonlyArray<Candidate>
   }
 };
 
-/** Resolve the execution semantics of an authored string path. */
 export const executionSiteAt = (path: ReadonlyArray<string | number>): ExecutionSiteMatch | undefined => {
   let candidates = branches({ ast: LandofileShape.ast, match: undefined }, -1);
   for (const [index, key] of path.entries()) {
@@ -62,25 +61,19 @@ export const executionSiteAt = (path: ReadonlyArray<string | number>): Execution
   return { site: match.site, relativePath: path.slice(match.index + 1) };
 };
 
-/** Only process text, excluding Compose's probe mode marker and other probe fields. */
-const servicePortExpressionSite = (path: ReadonlyArray<string | number>): boolean => {
-  if (path[0] !== "services") return false;
-  const match = executionSiteAt(path);
-  if (match?.site === "service-command" || match?.site === "service-entrypoint") return true;
-  if (match?.site !== "healthcheck") return false;
-  const [field, index] = match.relativePath;
-  return (
-    field === undefined ||
-    typeof field === "number" ||
-    field === "command" ||
-    (field === "test" && index !== 0)
-  );
-};
-
 export const servicePortExpression = (template: ExpressionTemplate, path: ReadonlyArray<string | number>) => {
   const self = expressionScopeMembers(template, "service", "direct-property");
   if (!self.analyzable) return "unsupported-member";
   if (self.members.size === 0) return "absent";
   if (self.members.size !== 1 || !self.members.has("port")) return "unsupported-member";
-  return servicePortExpressionSite(path) ? "supported" : "unsupported-site";
+  if (path[0] !== "services") return "unsupported-site";
+  const match = executionSiteAt(path);
+  if (match?.site === "service-command" || match?.site === "service-entrypoint") return "supported";
+  if (match?.site !== "healthcheck") return "unsupported-site";
+  const [field, index] = match.relativePath;
+  // Compose reserves the first test element for its probe mode marker.
+  if (field === "test") return index === 0 ? "unsupported-site" : "supported";
+  return field === undefined || typeof field === "number" || field === "command"
+    ? "supported"
+    : "unsupported-site";
 };

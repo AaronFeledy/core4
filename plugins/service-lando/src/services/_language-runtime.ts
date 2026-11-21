@@ -1,4 +1,3 @@
-import type { ServiceConfig } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
   ServiceFeatureDefinition,
@@ -76,9 +75,6 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
       `Set framework to one of: ${spec.frameworks.join(", ")} (got ${raw}).`,
     );
   };
-  const selectPort = (service: Pick<ServiceConfig, "port">, framework: F) =>
-    plannedPort(service, spec.presets[framework]);
-
   const validateVersion = (declaredType: string | undefined, fallback: V): V => {
     const prefix = `${spec.language}:`;
     if (declaredType === undefined || !declaredType.startsWith(prefix)) return fallback;
@@ -141,7 +137,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     base: "lando",
     plannedPort: (service) => {
       const framework = frameworkFor(service.framework);
-      return framework === undefined ? undefined : selectPort(service, framework);
+      return framework === undefined ? undefined : plannedPort(service, spec.presets[framework]);
     },
     versions: spec.versions,
     artifacts: spec.artifacts,
@@ -152,7 +148,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
         const resolvedVersion = validateVersion(input.service.type, version);
         const framework = validateFramework(input.service.framework);
         const preset = spec.presets[framework];
-        const endpointPort = selectPort(input.service, framework);
+        const endpointPort = plannedPort(input.service, preset);
         const webroot =
           spec.includeWebrootInFeatureConfig && input.service.appMount !== false
             ? {
