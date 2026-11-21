@@ -62,6 +62,14 @@ Record per-PR macOS and Windows performance results as advisory. Treat nightly p
 
 Finish the report with separate conclusions for **selected CI** and **broader acceptance**, each using the outcome vocabulary above. List every outstanding mandatory or applicable conditional row and its blocker or next action. Broader acceptance is `pass` only when all required evidence is current and passing; absent evidence must remain visible even when selected CI passes.
 
+### Reproduce the problem first
+
+A fix starts from a failure you've seen on current `main`. Reproduce it in an isolated temp app with the command a user would run, and put the command, its output, and the provider in the PR description or in the issue it closes. Reviewers can then check the fix against the failure, not a description of it.
+
+Before you rework a PR that has been open for a while, rebase it onto current `main` and reproduce the failure again. `main` may already have fixed the problem or changed the code the PR patches. If the failure no longer reproduces, close the PR with the evidence or rework it into what is still needed.
+
+A documentation change that works around Lando behavior needs the same proof. Link an open issue that reproduces the failure, and add the hidden tripwire step described in [Pin a known limitation](../guides/authoring/e2e-smoke-scenarios.mdx#pin-a-known-limitation), so the fix fails the scenario and the workaround gets removed. If the failure does not reproduce, drop the workaround.
+
 ## Choose the CI tier
 
 Pull requests select the highest profile needed by their changed paths:
@@ -624,6 +632,8 @@ Provider integration also runs as platform-specific jobs (`provider-integration-
 ## Lint guide YAML and negative fixtures
 
 Run `bun run lint:guides` to validate identifiable Landofile fences and fixture files.
+It also checks [app install coverage](./guide-authoring.md#exercise-every-app-install-you-teach)
+and [same-page container command coverage](./guide-authoring.md#run-every-container-command-you-show).
 Full `.lando.yml` documents keep full authoring requirements, including native
 `!reset` and `!override` placement checks. `.lando.*.yml` files are fragments.
 Unrelated YAML, such as Actions workflows, Kubernetes resources, recipe manifests,

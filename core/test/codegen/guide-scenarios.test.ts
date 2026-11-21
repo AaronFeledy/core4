@@ -9,6 +9,7 @@ import {
   buildGuideScenarioTests,
   discoverGuideMdxFiles,
   emitGuideScenarioTests,
+  emitPublicTranscripts,
   parseGuideScenarioAst,
   publicTranscriptVariantSuffix,
   resolveHostGuidePlatform,
@@ -280,7 +281,7 @@ describe("build-guide-scenarios MDX walker", () => {
     }
   });
 
-  test("e2e tests carry the frontmatter timeout and force skip for skipped variants", async () => {
+  test("e2e tests use the scenario or guide timeout for both Bun and the cleanup deadline", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-guide-e2e-skip-"));
     try {
       await mkdir(join(root, "docs/guides"), { recursive: true });
@@ -304,6 +305,11 @@ describe("build-guide-scenarios MDX walker", () => {
           '    <Step name="version">',
           '      <Run command="version" />',
           "    </Step>",
+          '    <Step name="cleanup"><Cleanup /></Step>',
+          "  </Scenario>",
+          '  <Scenario id="slow-path" timeout={900000}>',
+          '    <Step name="version"><Run command="version" /></Step>',
+          '    <Step name="cleanup"><Cleanup /></Step>',
           "  </Scenario>",
           "</Guide>",
           "",
@@ -315,12 +321,16 @@ describe("build-guide-scenarios MDX walker", () => {
       const dir = join(root, "test/scenarios/generated/guides/e2e-variant");
       const skipped = await Bun.file(join(dir, "provider-path.default=alpha.test.ts")).text();
       const gated = await Bun.file(join(dir, "provider-path.default=beta.test.ts")).text();
+      const overridden = await Bun.file(join(dir, "slow-path.default=beta.test.ts")).text();
 
       expect(skipped).toContain("test.skip(");
       expect(skipped).not.toContain("e2eGateEnabled ? test : test.skip");
       expect(gated).toContain("(e2eGateEnabled ? test : test.skip)");
       expect(skipped).toContain("}, 120000);");
       expect(gated).toContain("}, 120000);");
+      expect(gated).toContain("}, 90000);");
+      expect(overridden).toContain("}, 900000);");
+      expect(overridden).toContain("}, 780000);");
     } finally {
       await rm(root, { force: true, recursive: true });
     }
@@ -529,7 +539,7 @@ describe("build-guide-scenarios MDX walker", () => {
     }
   });
 
-  test("variant platforms override guide platforms for generation-time platform skips", async () => {
+  test("platform skips and headers use variant platforms before scenario platforms before guide platforms", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-guide-platform-variant-"));
     try {
       await mkdir(join(root, "docs/guides"), { recursive: true });
@@ -545,10 +555,13 @@ describe("build-guide-scenarios MDX walker", () => {
         "---",
         "",
         "<Guide>",
-        '  <Scenario id="main">',
+        '  <Scenario id="main" platforms={["darwin"]}>',
         '    <Step name="run">',
         '      <Run command="version" />',
         "    </Step>",
+        "  </Scenario>",
+        '  <Scenario id="inherited">',
+        '    <Step name="run"><Run command="version" /></Step>',
         "  </Scenario>",
         "</Guide>",
         "",
@@ -565,12 +578,61 @@ describe("build-guide-scenarios MDX walker", () => {
       const beta = await Bun.file(
         join(root, "test/scenarios/generated/guides/variant-platform-guide/main.default=beta.test.ts"),
       ).text();
+      const inherited = await Bun.file(
+        join(root, "test/scenarios/generated/guides/variant-platform-guide/inherited.default=alpha.test.ts"),
+      ).text();
       expect(alpha).toContain(
-        'test.skip("variant-platform-guide:main (default=alpha) (skipped on win32: requires platform [linux])"',
+        'test.skip("variant-platform-guide:main (default=alpha) (skipped on win32: requires platform [darwin])"',
       );
-      expect(alpha).toContain("// @platforms: linux");
+      expect(alpha).toContain("// @platforms: darwin");
       expect(beta).toContain('test("variant-platform-guide:main (default=beta)"');
       expect(beta).toContain("// @platforms: win32");
+      expect(inherited).toContain("// @platforms: linux");
+      expect(inherited).toContain('test.skip("variant-platform-guide:inherited (default=alpha)');
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("skip headers use variant skip before scenario skip before guide skip and omit public transcripts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-skip-precedence-"));
+    try {
+      const baseSource = await fixture("multi-scenario/multi.mdx");
+      const source = baseSource
+        .replace(
+          "id: multi-guide",
+          [
+            "id: multi-guide",
+            "skip:",
+            "  reason: guide skip",
+            "tabs: [alpha, beta]",
+            "variants:",
+            "  beta:",
+            "    skip:",
+            "      reason: variant skip",
+          ].join("\n"),
+        )
+        .replace('id="reader-path"', 'id="reader-path" skip={{ reason: "scenario skip" }}');
+      const ast = parseGuideScenarioAst("docs/guides/multi.mdx", source);
+      await emitGuideScenarioTests([ast], root);
+
+      const dir = join(root, "test/scenarios/generated/guides/multi-guide");
+      for (const [scenario, cell, reason] of [
+        ["reader-path", "alpha", "scenario skip"],
+        ["reader-path", "beta", "variant skip"],
+        ["hidden-regression", "alpha", "guide skip"],
+      ]) {
+        const text = await Bun.file(join(dir, `${scenario}.default=${cell}.test.ts`)).text();
+        expect(text).toContain(`// @variant-skip: ${reason}\n`);
+        expect(text).toContain(`test.skip("multi-guide:${scenario} (default=${cell})"`);
+      }
+      const unskipped = parseGuideScenarioAst(
+        "docs/guides/unskipped.mdx",
+        baseSource.replace("id: multi-guide", "id: unskipped-guide"),
+      );
+      expect(await emitPublicTranscripts([ast, unskipped], root)).toEqual([
+        "dist/transcripts/public/guides/unskipped-guide/reader-path.json",
+      ]);
     } finally {
       await rm(root, { force: true, recursive: true });
     }

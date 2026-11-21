@@ -5,6 +5,7 @@ import type {
   InlineProps,
   InspectProps,
   RunProps,
+  ScenarioProps,
   UseFixtureProps,
   VariableProps,
   VerifyProps,
@@ -75,13 +76,8 @@ export type GuideScenarioBodyItem =
   | GuideTabsBlock
   | GuideHiddenBlock
   | GuideSkipBlock;
-export interface GuideScenarioNode {
+export interface GuideScenarioNode extends ScenarioProps {
   readonly source?: MdxNode;
-  readonly id: string;
-  readonly render: boolean;
-  readonly reason?: string;
-  readonly layer?: "scenario" | "e2e";
-  readonly tags?: ReadonlyArray<string>;
   readonly line: number;
   readonly steps: ReadonlyArray<GuideStepNode>;
   readonly body: ReadonlyArray<GuideScenarioBodyItem>;
@@ -107,7 +103,9 @@ export interface GuideScenarioAst extends ParsedGuide {
   readonly cells: ReadonlyArray<{ readonly scenarioId: string; readonly resolved: ResolvedScenario }>;
 }
 export interface ResolvedScenario {
+  /** A skipped cell without axes still has a variant so emitters see the skip. */
   readonly variant: GuideVariant | undefined;
+  readonly platforms: GuideFrontmatter["platforms"];
   readonly steps: ReadonlyArray<GuideStepNode>;
   readonly publicSteps: ReadonlyArray<GuideStepNode>;
   readonly variables: ReadonlyMap<string, VariableProps>;
