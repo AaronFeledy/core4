@@ -1,15 +1,14 @@
-import { readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
-import { AppLockTimeoutError, StateStoreError, isErrnoCode } from "@lando/sdk/errors";
+import { AppLockTimeoutError, StateStoreError } from "@lando/sdk/errors";
 import { formatWaitDuration } from "@lando/sdk/renderer";
 import { AbsolutePath, type AppRef } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 import {
   ADVISORY_LOCK_SUFFIX,
-  type AdvisoryLockRecord,
   LockHolder,
   acquireAdvisoryLockAt,
   resolveOperationLockTimeoutMs,
@@ -18,11 +17,13 @@ import { resolveStatePath } from "@lando/state-store/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Context, Effect } from "effect";
 import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
+import { installHolderEnv, isBorrowedOwner } from "./app-lock-borrow.ts";
+
+export { APP_LOCK_HOLDERS_ENV } from "./app-lock-borrow.ts";
+
 import { PinnedAppRoot } from "./app-root-identity.ts";
 
 export { canonicalAppRoot } from "./app-root-identity.ts";
-
-export const APP_LOCK_HOLDERS_ENV = "LANDO_APP_LOCK_HOLDERS";
 
 export const HeldAppLockKeys = Context.Reference<ReadonlySet<string>>("@lando/engine/HeldAppLockKeys", {
   defaultValue: (): ReadonlySet<string> => new Set(),
@@ -47,83 +48,6 @@ export const appMutationLockKey = (
   canonicalRoot: string,
   kind: AppRef["kind"] = appId === "global" || appId === "global-policy" ? "global" : "user",
 ): string => `app-${sha256Hex(kind === "user" ? canonicalRoot : `${appId}\0${canonicalRoot}`)}`;
-
-const parseHolderEntries = (raw: string | undefined): ReadonlyArray<readonly [string, string]> => {
-  if (raw === undefined || raw === "") return [];
-  return raw.split(",").flatMap((entry) => {
-    const separator = entry.indexOf(":");
-    if (separator <= 0) return [];
-    const key = entry.slice(0, separator);
-    const token = entry.slice(separator + 1);
-    return key === "" || token === "" ? [] : ([[key, token]] as const);
-  });
-};
-
-const serializeHolderEntries = (entries: ReadonlyArray<readonly [string, string]>): string =>
-  entries.map(([key, token]) => `${key}:${token}`).join(",");
-
-const installHolderEnv = (key: string, token: string): (() => void) => {
-  const previous = process.env[APP_LOCK_HOLDERS_ENV];
-  const next = serializeHolderEntries([
-    ...parseHolderEntries(previous).filter(([held]) => held !== key),
-    [key, token],
-  ]);
-  process.env[APP_LOCK_HOLDERS_ENV] = next;
-  return () => {
-    if (previous === undefined) delete process.env[APP_LOCK_HOLDERS_ENV];
-    else process.env[APP_LOCK_HOLDERS_ENV] = previous;
-  };
-};
-
-const parentPidOf = (pid: number): number | undefined => {
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    const close = stat.lastIndexOf(")");
-    if (close === -1) return undefined;
-    const ppid = Number(stat.slice(close + 2).split(" ")[1]);
-    return Number.isInteger(ppid) && ppid > 0 ? ppid : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-export const isSelfOrAncestorPid = (holderPid: number, pid = process.pid, ppid = process.ppid): boolean => {
-  if (holderPid === pid) return true;
-  let current = ppid;
-  const seen = new Set<number>([pid]);
-  while (current > 1 && !seen.has(current)) {
-    if (current === holderPid) return true;
-    seen.add(current);
-    const parent = parentPidOf(current);
-    if (parent === undefined) break;
-    current = parent;
-  }
-  return false;
-};
-
-/** Child of the lock holder, not another fiber in the same process. */
-export const isAncestorPid = (holderPid: number, pid = process.pid, ppid = process.ppid): boolean =>
-  holderPid !== pid && isSelfOrAncestorPid(holderPid, pid, ppid);
-
-/**
- * True when a contended lock's diagnostic record names a live ancestor or an
- * inherited holder token for this key. Same-process fiber contention and dead
- * holders must wait (or acquire), never refuse as nested borrow.
- */
-const isBorrowedOwner = (key: string, record: AdvisoryLockRecord): boolean => {
-  if (record.pid === process.pid) return false;
-  try {
-    process.kill(record.pid, 0);
-  } catch (cause) {
-    if (isErrnoCode(cause, "ESRCH")) return false;
-  }
-  return (
-    isAncestorPid(record.pid) ||
-    parseHolderEntries(process.env[APP_LOCK_HOLDERS_ENV]).some(
-      ([held, token]) => held === key && token === record.token,
-    )
-  );
-};
 
 const timeoutError = (appId: string, timeoutMs: number, cause: StateStoreError): AppLockTimeoutError =>
   new AppLockTimeoutError({
