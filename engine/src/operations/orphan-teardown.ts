@@ -3,6 +3,7 @@ import {
   teardownVolumeClasses,
   volumeClassFromLabels,
 } from "@lando/container-runtime/volume-classes";
+import { orDieWithRole } from "@lando/sdk/command-result";
 import type { AppLockTimeoutError, AppResolveError, StateStoreError } from "@lando/sdk/errors";
 import type {
   AbsolutePath,
@@ -144,7 +145,7 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
                       body: `Skipped resources for app ${group.appId}: ${error.message}`,
                       timestamp: now(),
                     })
-                    .pipe(Effect.orDie);
+                    .pipe(orDieWithRole("cleanup"));
               }),
           ),
         );

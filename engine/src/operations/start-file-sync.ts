@@ -1,4 +1,5 @@
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { orDieWithRole } from "@lando/sdk/command-result";
 
 import { FileSyncDriftError, FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, FileSyncSessionRef } from "@lando/sdk/schema";
@@ -207,7 +208,7 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                       yield* engine.resumeSession(existingSession.ref);
                       if (managed !== undefined && engine.sessionsPersistAcrossProcesses !== true) {
                         yield* Effect.addFinalizer(() =>
-                          engine.pauseSession(existingSession.ref).pipe(Effect.orDie),
+                          engine.pauseSession(existingSession.ref).pipe(orDieWithRole("cleanup")),
                         ).pipe(Effect.provideService(Scope.Scope, managed.scope));
                         markManagedFileSyncRef(managed, existingSession.ref);
                       }
@@ -223,7 +224,7 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                   yield* Effect.uninterruptibleMask(() =>
                     Effect.gen(function* () {
                       yield* Effect.addFinalizer(() =>
-                        engine.terminateSession(existingSession.ref).pipe(Effect.orDie),
+                        engine.terminateSession(existingSession.ref).pipe(orDieWithRole("cleanup")),
                       ).pipe(Effect.provideService(Scope.Scope, managed.scope));
                       markManagedFileSyncRef(managed, existingSession.ref);
                     }),
