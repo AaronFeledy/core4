@@ -16,6 +16,12 @@ import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
+  PORT_EXTRA_ARGS_REMEDIATION,
+  catalogDbExtraArgsRemediation,
+  extraArgsCommandOptions,
+  isNonCatalogArtifact,
+} from "./_extra-args.ts";
+import {
   addEnvRecord,
   commandHealthcheck,
   rootIdentity,
@@ -110,12 +116,26 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
 
   applyAuthoredProcessFields(ctx);
 
-  if (
-    addServerConfigMount(ctx, MYSQL_CONFIG_TARGET) &&
-    service.command === undefined &&
-    service.entrypoint === undefined
-  ) {
-    ctx.setCommand(["mysqld", `--port=${port}`]);
+  const catalogImages = Object.values(MYSQL_ARTIFACTS);
+  const custom = isNonCatalogArtifact(service, catalogImages);
+  const processOwned = service.command !== undefined || service.entrypoint !== undefined;
+  const serverConfig = addServerConfigMount(ctx, MYSQL_CONFIG_TARGET);
+  const hasExtraArgs = (service.extraArgs?.length ?? 0) > 0;
+  if (!processOwned && (serverConfig || (!custom && hasExtraArgs))) {
+    ctx.setCommand(
+      ["mysqld", `--port=${port}`],
+      custom
+        ? undefined
+        : extraArgsCommandOptions([
+            { form: "long", name: "port", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
+            { form: "short", name: "P", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
+            {
+              form: "long-prefix",
+              prefix: "defaults-",
+              remediation: "Set config.server instead of --defaults-* in extraArgs.",
+            },
+          ]),
+    );
   }
 };
 
@@ -158,6 +178,10 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
   name: "mysql",
   base: "lando",
   plannedPort: selectPort,
+  extraArgsRemediation: catalogDbExtraArgsRemediation(
+    Object.values(MYSQL_ARTIFACTS),
+    "Put MySQL flags in command:, set config.server for a config file, or remove extraArgs.",
+  ),
   versions: MYSQL_VERSIONS,
   artifacts: MYSQL_ARTIFACTS,
   identity: rootIdentity(),
