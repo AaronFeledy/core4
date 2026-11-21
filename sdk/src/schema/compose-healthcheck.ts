@@ -38,7 +38,7 @@ const ComposeHealthcheckAccepted = Schema.Struct({
   timeoutSeconds: Schema.optionalKey(TimeoutSeconds),
   retries: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])),
   startPeriodSeconds: Schema.optionalKey(IntervalSeconds),
-  startInterval: Schema.optionalKey(Schema.String),
+  startIntervalSeconds: Schema.optionalKey(IntervalSeconds),
   test: Schema.optionalKey(ComposeTest),
   disable: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.String])),
   interval: Schema.optionalKey(Schema.String),
@@ -58,11 +58,15 @@ const HealthcheckCanonicalBase = Schema.Struct({
   timeoutSeconds: Schema.optionalKey(TimeoutSeconds),
   retries: Schema.optionalKey(ProbeRetries),
   startPeriodSeconds: Schema.optionalKey(IntervalSeconds),
+  startIntervalSeconds: Schema.optionalKey(IntervalSeconds).annotate({
+    description:
+      "Seconds between healthcheck attempts during the start period for native container healthchecks.",
+  }),
 });
 
 const HealthcheckCanonicalObject = HealthcheckCanonicalBase.pipe(
   Schema.fieldsAssign({
-    startInterval: Schema.optionalKey(Schema.String).annotate({
+    start_interval: Schema.optionalKey(Schema.String).annotate({
       description: "Raw Compose start_interval duration preserved losslessly for runtime extensions.",
     }),
   }),
@@ -161,7 +165,8 @@ const decodeHealthcheck = (input: AcceptedHealthcheck): typeof ComposeHealthchec
     "port" in input ||
     "intervalSeconds" in input ||
     "timeoutSeconds" in input ||
-    "startPeriodSeconds" in input;
+    "startPeriodSeconds" in input ||
+    "startIntervalSeconds" in input;
   const disabled = input.kind === "none" || (!landoWins && normalizeDisable(input.disable) === true);
   const test = landoWins && !disabled ? {} : normalizeTest(input.test);
   if (disabled) {
@@ -176,8 +181,9 @@ const decodeHealthcheck = (input: AcceptedHealthcheck): typeof ComposeHealthchec
   const command = input.command ?? (test === false ? undefined : test.command);
   if (command !== undefined) validateCommand(command);
   const retries = normalizeRetries(input.retries);
-  const startInterval = input.startInterval ?? input.start_interval;
-  if (startInterval !== undefined) parseComposeDuration(startInterval);
+  const startIntervalSeconds = input.startIntervalSeconds;
+  const composeStartInterval = input.start_interval;
+  if (composeStartInterval !== undefined) parseComposeDuration(composeStartInterval);
   const intervalSeconds = landoWins
     ? input.intervalSeconds
     : input.interval === undefined
@@ -198,11 +204,14 @@ const decodeHealthcheck = (input: AcceptedHealthcheck): typeof ComposeHealthchec
       { message: "Probe timeout must be greater than zero." },
       timeoutSeconds,
     );
+  // Lando startIntervalSeconds and Compose start_interval stay separate: the
+  // numeric field never rewrites the lossless Compose duration string.
   const shared = {
     ...(input.target === undefined ? {} : { target: input.target }),
     ...(input.user === undefined ? {} : { user: input.user }),
     ...(retries === undefined ? {} : { retries }),
-    ...(startInterval === undefined ? {} : { startInterval }),
+    ...(startIntervalSeconds === undefined ? {} : { startIntervalSeconds }),
+    ...(composeStartInterval === undefined ? {} : { start_interval: composeStartInterval }),
     ...(intervalSeconds === undefined ? {} : { intervalSeconds }),
     ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }),
     ...(startPeriodSeconds === undefined ? {} : { startPeriodSeconds }),
@@ -241,7 +250,8 @@ const encodeHealthcheck = (
   ...(input.timeoutSeconds === undefined ? {} : { timeoutSeconds: input.timeoutSeconds }),
   ...(input.retries === undefined ? {} : { retries: input.retries }),
   ...(input.startPeriodSeconds === undefined ? {} : { startPeriodSeconds: input.startPeriodSeconds }),
-  ...(input.startInterval === undefined ? {} : { start_interval: input.startInterval }),
+  ...(input.startIntervalSeconds === undefined ? {} : { startIntervalSeconds: input.startIntervalSeconds }),
+  ...(input.start_interval === undefined ? {} : { start_interval: input.start_interval }),
 });
 
 const EMPTY_HEALTHCHECK_COMMAND =

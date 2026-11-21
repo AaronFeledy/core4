@@ -531,6 +531,20 @@ describe("container plan helpers", () => {
     });
   });
 
+  test("applies extension start_interval as native StartInterval nanoseconds", () => {
+    // Given a planned healthcheck with compose start_interval from Lando startIntervalSeconds.
+    const withStartInterval = {
+      ...service,
+      extensions: { compose: { healthcheck: { start_interval: "2s" } } },
+    };
+    // When
+    const body = containerCreateBodyFragment(plan, withStartInterval);
+    // Then
+    expect(body.Healthcheck).toMatchObject({
+      StartInterval: 2_000_000_000,
+    });
+  });
+
   test.each(["web", "web_1", "a".repeat(70)])("uses the container name as hostname for %s", (name) => {
     // Given a planned service, including keys requiring a hashed physical name.
     const selected = { ...service, name: ServiceName.make(name) };

@@ -94,9 +94,9 @@ const lowerScanner = (
   if (timeout !== undefined && timeout > 0) {
     // Lando 3 bounded each attempt; Lando 4 bounds the whole probe, retries included.
     const attempts = (retries ?? DEFAULT_RETRIES) + 1;
-    scanner.timeout = Math.min(timeout * attempts, MAX_TIMEOUT_MS);
+    scanner.timeoutMs = Math.min(timeout * attempts, MAX_TIMEOUT_MS);
   } else if (value.timeout !== undefined) {
-    drop(["timeout"], "Scanner timeout must be a positive integer.", "Set scanner.timeout by hand.");
+    drop(["timeout"], "Scanner timeout must be a positive integer.", "Set scanner.timeoutMs by hand.");
   }
   if (value.maxRedirects !== undefined) {
     drop(
@@ -105,7 +105,7 @@ const lowerScanner = (
       "Add the redirect status codes the service returns to scanner.okCodes instead.",
     );
   }
-  if (retries !== undefined || typeof scanner.timeout === "number") {
+  if (retries !== undefined || typeof scanner.timeoutMs === "number") {
     diagnostics.push(
       (timeout !== undefined || (retry !== undefined && retry > MAX_RETRIES)
         ? needsReviewServiceKey
@@ -113,7 +113,7 @@ const lowerScanner = (
         ctx,
         relative: ["scanner"],
         message: `Rewrote scanner retry as retries${retry !== undefined && retry > MAX_RETRIES ? ` capped at ${MAX_RETRIES}` : ""} and the per-attempt timeout as one deadline covering every attempt.`,
-        remediation: "Review scanner.retries and scanner.timeout in the generated service.",
+        remediation: "Review scanner.retries and scanner.timeoutMs in the generated service.",
       }),
     );
   }

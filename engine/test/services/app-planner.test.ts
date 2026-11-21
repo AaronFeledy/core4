@@ -4440,6 +4440,63 @@ describe("AppPlannerLayer.layer", () => {
       name: "compose-healthcheck-and-labels",
       runtime: 4,
       services: {
+  test("emits Lando startIntervalSeconds as native start_interval without plan field", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "lando-start-interval-seconds",
+      runtime: 4,
+      services: {
+        web: {
+          image: "node:lts",
+          home: false,
+          healthcheck: {
+            command: ["true"],
+            startIntervalSeconds: 2,
+          },
+        },
+      },
+    });
+
+    // When
+    const appPlan = await plan(landofile, composePreservedPathCapabilities);
+
+    // Then native emission is extension-only; HealthcheckPlan stays free of the field.
+    const servicePlan = appPlan.services[ServiceName.make("web")];
+    expect(servicePlan?.extensions).toMatchObject({
+      compose: { healthcheck: { start_interval: "2s" } },
+    });
+    expect(servicePlan?.healthcheck).not.toHaveProperty("startInterval");
+    expect(servicePlan?.healthcheck).not.toHaveProperty("startIntervalSeconds");
+    expect(servicePlan?.healthcheck).not.toHaveProperty("start_interval");
+  });
+
+  test("does not emit readiness startIntervalSeconds as native start_interval", async () => {
+    // Given readiness is Lando-run, not a container healthcheck.
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "readiness-start-interval-seconds",
+      runtime: 4,
+      services: {
+        web: {
+          image: "node:lts",
+          home: false,
+          readiness: {
+            command: ["true"],
+            startIntervalSeconds: 2,
+          },
+        },
+      },
+    });
+
+    // When
+    const appPlan = await plan(landofile, composePreservedPathCapabilities);
+
+    // Then readiness never feeds the native healthcheck extension.
+    const servicePlan = appPlan.services[ServiceName.make("web")];
+    expect(servicePlan?.extensions.compose).toBeUndefined();
+    expect(servicePlan?.readiness).toMatchObject({ kind: "command", command: ["true"] });
+    expect(servicePlan?.readiness).not.toHaveProperty("startIntervalSeconds");
+  });
+
         web: {
           image: "node:lts",
           home: false,

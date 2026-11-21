@@ -26,7 +26,17 @@ export const mergeComposeExtension = <S extends Pick<ServicePlan, "extensions">>
   servicePlan: S,
   service: ServiceConfig,
 ): S => {
-  const startInterval = service.healthcheck === false ? undefined : service.healthcheck?.startInterval;
+  // Native start_interval comes only from healthcheck (not readiness): Compose
+  // start_interval stays lossless; Lando startIntervalSeconds becomes "<n>s".
+  const healthcheck = service.healthcheck === false ? undefined : service.healthcheck;
+  const startInterval =
+    healthcheck === undefined
+      ? undefined
+      : healthcheck.start_interval !== undefined
+        ? healthcheck.start_interval
+        : healthcheck.startIntervalSeconds === undefined
+          ? undefined
+          : `${healthcheck.startIntervalSeconds}s`;
   const hasDependencyRestart =
     service.dependsOn?.some((dependency) => dependency.restart !== undefined) ?? false;
   const authoredExtensions = Object.entries(service).filter(([key]) => key.startsWith("x-"));

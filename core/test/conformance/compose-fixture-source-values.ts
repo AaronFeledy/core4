@@ -191,7 +191,7 @@ export const preservedSourceValue = (match: ComposeDispositionMatch, service: Se
     return service.dependsOn?.find((candidate) => candidate.service === dependencyName)?.restart;
   }
   if (match.matrixPath === "healthcheck.start_interval")
-    return service.healthcheck === false ? undefined : service.healthcheck?.startInterval;
+    return service.healthcheck === false ? undefined : service.healthcheck?.start_interval;
   if (match.matrixPath.startsWith("volumes.tmpfs")) {
     const volume = service.volumes?.[matchedIndex(match, "volumes")];
     if (match.matrixPath === "volumes.tmpfs") return volume?.tmpfs;
