@@ -64,6 +64,9 @@ const runAdoption = ({
                     Name: volume.name,
                     Labels: {
                       ...volumeOwnershipLabels(previous, volume),
+                      "dev.lando.app": previous.id,
+                      "dev.lando.scope": "app",
+                      "dev.lando.store": volume.name,
                       "dev.lando.volume-instance": "generation-1",
                       ...(peer ? { [LANDO_DATA_ROOT_LABEL]: "/roots/peer" } : {}),
                     },

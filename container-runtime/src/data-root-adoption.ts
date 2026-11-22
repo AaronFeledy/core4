@@ -3,12 +3,18 @@ import { type AppPlan, LANDO_DATA_ROOT_LABEL, planAppIdentity } from "@lando/sdk
 import type { ProviderError } from "@lando/sdk/services";
 import { Effect, Option, Schema } from "effect";
 import type { EngineHttpRequest, EngineHttpResponse } from "./engine-api.ts";
-import { VOLUME_INSTANCE_LABEL } from "./labels.ts";
-import { decodeNativeObservation, networkOwnershipLabels, ownsServiceContainer } from "./native-ownership.ts";
+import { APP_LABEL, STORE_LABEL, VOLUME_INSTANCE_LABEL } from "./labels.ts";
+import {
+  decodeNativeObservation,
+  matchesPrivateNetworkLabels,
+  networkOwnershipLabels,
+  ownsServiceContainer,
+} from "./native-ownership.ts";
 import { NativeVolumeSchema } from "./native-volume-identity.ts";
 import type { makeResourceOwnershipStore } from "./resource-ownership.ts";
 import { type AdoptionBatch, resourcesForPlan } from "./resource-ownership-inventory.ts";
-import { volumeOwnershipLabels } from "./volume-ownership.ts";
+import { STORAGE_SCOPE_LABEL, volumeClassFromLabels } from "./volume-classes.ts";
+import { isGlobalCacheStore, volumeOwnershipLabels } from "./volume-ownership.ts";
 
 type AdoptionInput = {
   readonly request: (request: EngineHttpRequest) => Effect.Effect<EngineHttpResponse, ProviderError>;
@@ -74,6 +80,14 @@ export const adoptLegacyDataRoot = Effect.fn("DataRootAdoption.adopt")(function*
       if (Option.isNone(parsed) || parsed.value.Name !== nativeName || namedStore === undefined) continue;
       const labels = parsed.value.Labels ?? {};
       if (labels[LANDO_DATA_ROOT_LABEL] !== undefined) continue;
+      if (isGlobalCacheStore(namedStore)) continue;
+      if (
+        labels[APP_LABEL] !== candidate.appId ||
+        labels[STORE_LABEL] !== nativeName ||
+        labels[STORAGE_SCOPE_LABEL] !== candidate.volumeScope ||
+        volumeClassFromLabels(labels) !== candidate.volumeClass
+      )
+        continue;
       if (
         !Object.entries(volumeOwnershipLabels(previous, namedStore)).every(
           ([key, value]) => labels[key] === value,
@@ -114,7 +128,7 @@ export const adoptLegacyDataRoot = Effect.fn("DataRootAdoption.adopt")(function*
     const proven =
       candidate.kind === "container"
         ? ownsServiceContainer(previous, { service: candidate.service, containerId: nativeId, labels })
-        : Object.entries(networkOwnershipLabels(previous)).every(([key, value]) => labels[key] === value);
+        : matchesPrivateNetworkLabels(labels, networkOwnershipLabels(previous));
     if (proven) {
       receipts.push({ ...receipt, kind: candidate.kind, nativeId });
     }
