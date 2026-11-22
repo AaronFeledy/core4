@@ -62,7 +62,7 @@ Each prints `200`. Anything else means Drupal didn't render the page, so check `
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando drush`, `lando composer`, `lando phpcs`, `lando phpcbf`, `lando phpstan`, `lando drupal-cms-scaffold`, and `lando drupal-cms-install` on `appserver`, plus `lando mariadb` from the database service |
 
-Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, or `--answer=database=postgres:16` when you want those instead. `--answer=php=8.6` uses the PHP 8.6 release-candidate image; Xdebug isn't available there yet.
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, or `--answer=database=postgres:16` when you want those instead.
 
 Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). Both webserver choices set `uploadDirs: [sites/*/files]` on the service serving PHP to keep code out of Drupal's uploads. For `mysql:8.0`, use `lando mysql` instead of `lando mariadb`. For `postgres:16`, use `lando psql` instead of `lando mariadb`.
 
@@ -160,7 +160,7 @@ lando start
 lando xdebug status
 ```
 
-Xdebug connects to your IDE on port `9003`. Map `/app` in the container to your project root. `lando xdebug on` and `lando xdebug off` toggle it without another rebuild. PHP 8.6 has no Xdebug build yet, so `xdebug: true` fails to plan on an `--answer=php=8.6` app.
+Xdebug connects to your IDE on port `9003`. Map `/app` in the container to your project root. `lando xdebug on` and `lando xdebug off` toggle it without another rebuild.
 
 ## Capture outgoing mail
 

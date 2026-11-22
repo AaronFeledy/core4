@@ -31,7 +31,7 @@ export const resolveEffectiveTooling = (input: ToolingComposition) => {
   const { landofile } = input;
   const beforeDefaults = toolingBeforeDefaults(input);
   const tasks = compileEffectiveTooling(input);
-  const contributors = toolingContributors(input.services);
+  const contributors = toolingContributors(input);
   const originAt = (path: ValidationIssuePath): ToolingOrigin => {
     const source = getLandofileValueSource(input.provenance, path);
     return source === undefined ? UNKNOWN_TOOLING_ORIGIN : { _tag: "Known", source };

@@ -23,9 +23,13 @@ lando xdebug off
 lando xdebug status
 ```
 
-`xdebug: true` plans on `php:8.1` through `php:8.5`. The shipped pin is 3.5.3 and stops at 8.5, so `php:8.6` fails at plan time.
+`xdebug: true` works on every PHP version Lando ships. `php:8.1` through `php:8.5` build Xdebug 3.5.3. `php:8.6` builds the Xdebug 3.6.0alpha1 pre-release, because no stable Xdebug release supports PHP 8.6 yet.
+
+The first line of `lando xdebug status`, `on`, and `off` shows the loaded version and mode, such as `Xdebug 3.6.0alpha1 enabled (debug)` on `php:8.6`.
 
 `xdebug: true` enables mode `debug`. A string such as `xdebug: "debug,develop"` sets `xdebug.mode` to that list. `xdebug: false` (the default) installs nothing. Setting `XDEBUG_MODE` in `environment:` does not add the extension.
+
+If more than one PHP service enables Xdebug, `lando xdebug` targets the primary service if it has Xdebug enabled. Otherwise, it targets the first Xdebug-enabled service by name.
 
 ## Listen in PhpStorm
 
@@ -117,6 +121,15 @@ lando config unset debugger.host
       <Run command="lando destroy -y" />
     </Step>
   </Scenario>
+  <Scenario id="primary-xdebug-target" render={false} reason="Primary Xdebug target regression">
+    <Step name="scaffold">
+      <UseFixture name="xdebug-primary" />
+    </Step>
+    <Step name="verify-planned-target">
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando help xdebug --format=json");
+expect(JSON.parse(lastRun.stdout).result.target.runs.targets).toEqual([{ kind: "service", name: "web86" }]);`} displayCode={`lando help xdebug --format=json`} />
+    </Step>
+  </Scenario>
   <Scenario id="invalid-mode-fails" render={false} reason="Unknown xdebug: values must fail closed at plan time with remediation.">
     <Step name="scaffold">
       <UseFixture name="xdebug-invalid" />
@@ -124,6 +137,37 @@ lando config unset debugger.host
     <Step name="refresh">
       <Run command="lando app:cache:refresh" expectExit={1} />
       <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported Xdebug mode" }} />
+    </Step>
+  </Scenario>
+  <Scenario id="extension-loads-on-php-8-6" layer="e2e" timeout={900000} render={false} reason="Build the PHP 8.6 Xdebug pin on the stock image and prove the extension loads">
+    <Step name="start">
+      <UseFixture name="xdebug-php86" />
+      <Run command="lando start" />
+    </Step>
+    <Step name="verify-extension">
+      <Verify command={`lando exec app -- php -r 'echo phpversion("xdebug"), PHP_EOL;'`} expect={{ stdout: { regex: "3\\.6\\.0alpha1" } }} />
+      <Verify command="lando xdebug status" expect={{ stdout: { regex: "Xdebug 3\\.6\\.0alpha1 enabled \\(debug\\)" } }} />
+    </Step>
+    <Step name="toggle">
+      <Verify command="lando xdebug off" expect={{ stdout: { regex: "Xdebug 3\\.6\\.0alpha1 disabled" } }} />
+      <Verify command="lando xdebug on" expect={{ stdout: { regex: "Xdebug 3\\.6\\.0alpha1 enabled \\(debug\\)" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+  <Scenario id="status-without-extension" layer="e2e" timeout={600000} render={false} reason="A custom image without the Xdebug extension gets a one-line status failure instead of client diagnostics">
+    <Step name="start">
+      <UseFixture name="xdebug-custom-image" />
+      <Run command="lando start" />
+    </Step>
+    <Step name="status">
+      <Verify command="lando xdebug status" expectExit={1} expect={{ stdout: { regex: "Xdebug not installed\\. Install the extension in your image\\.(?![\\s\\S]*Client:)" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 </Guide>

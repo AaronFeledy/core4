@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { phpXdebugTooling } from "../src/services/php-xdebug.ts";
 
+const phpAvailable = Bun.which("php") === "/usr/bin/php";
+
 const runStatus = async (options: {
   readonly host?: string;
   readonly address?: string;
@@ -14,9 +16,20 @@ const runStatus = async (options: {
   readonly realPhp?: boolean;
   readonly port?: number | string;
   readonly slowDns?: boolean;
+  readonly xdebugVersion?: string;
 }) => {
   const root = await mkdtemp(join(tmpdir(), "lando-xdebug-"));
   try {
+    const statusPhp = phpAvailable
+      ? `exec /usr/bin/php -n -r 'namespace TestXdebug;
+    function phpversion($extension) { return getenv("TEST_XDEBUG_VERSION") ?: false; }
+    function xdebug_info($category) {
+      $ini = getenv("TEST_INI");
+      $mode = file_exists($ini) ? parse_ini_file($ini, false, INI_SCANNER_RAW)["xdebug.mode"] : "debug";
+      return $mode === "off" ? [] : explode(",", $mode);
+    }
+    '"$2"`
+      : ":";
     const scripts = {
       php: `#!/bin/sh
 case "$2" in
@@ -25,7 +38,7 @@ case "$2" in
     ${options.realPhp ? 'exec /usr/bin/php "$@"' : 'printf "Listener: %s\\n" "$PROBE_RESULT"; [ "$PROBE_RESULT" = "TCP listener reachable" ]'} ;;
   *xdebug.client_host*) printf '%s' "$CLIENT_HOST" ;;
   *xdebug.client_port*) printf '%s' "$CLIENT_PORT" ;;
-  *) printf 'Xdebug enabled (debug)\\n' ;;
+  *) ${statusPhp} ;;
 esac`,
       getent: `#!/bin/sh
 if [ "$1" = -s ]; then shift 2; else
@@ -66,6 +79,7 @@ esac
           ...process.env,
           PATH: `${root}:${process.env.PATH}`,
           TEST_INI: join(root, "xdebug.ini"),
+          TEST_XDEBUG_VERSION: options.xdebugVersion ?? "3.6.0alpha1",
           PROBE_ARGV: join(root, "argv"),
           PROBE_RESULT: options.result ?? "TCP connection failed (Connection refused)",
           CLIENT_HOST: options.host ?? "debugger.lando.internal",
@@ -122,13 +136,33 @@ test("status reports TCP reachability without claiming DBGp acceptance", async (
 });
 
 for (const command of ["on", "off", "implicit"]) {
-  test(`${command} prints status without a listener probe`, async () => {
+  test(`${command} skips the listener probe`, async () => {
     // Given / When
     const result = await runStatus({ command, slowDns: true });
     // Then
     expect(result.exit).toBe(0);
-    expect(result.output).toContain("Xdebug enabled (debug)");
     expect(result.output).not.toContain("Listener:");
+    expect(result.argv).toBeUndefined();
+  });
+}
+
+test.skipIf(!phpAvailable).each([
+  ["status", "3.6.0alpha1", "Xdebug 3.6.0alpha1 enabled (debug)"],
+  ["on", "3.5.3", "Xdebug 3.5.3 enabled (debug)"],
+  ["off", "3.5.3", "Xdebug 3.5.3 disabled"],
+])("%s reports the loaded Xdebug version %s", async (command, xdebugVersion, line) => {
+  const result = await runStatus({ command, xdebugVersion });
+  expect(result.exit).toBe(0);
+  expect(result.stderr).toBe("");
+  expect(result.output.split("\n").slice(0, 2)).toEqual([line, "Client: debugger.lando.internal:9003"]);
+  expect(result.output.includes("Listener:")).toBe(command === "status");
+});
+
+for (const command of ["status", "on", "off"]) {
+  test.skipIf(!phpAvailable)(`${command} fails with one line when the extension is not loaded`, async () => {
+    const result = await runStatus({ command, xdebugVersion: "" });
+    expect(result.exit).toBe(1);
+    expect(result.output.trim()).toBe("Xdebug not installed. Install the extension in your image.");
     expect(result.argv).toBeUndefined();
   });
 }
@@ -181,7 +215,6 @@ test("empty client host uses the generic listening hint", async () => {
   expect(result.output).toContain("Check that your IDE is listening");
 });
 
-const phpAvailable = Bun.which("php") === "/usr/bin/php";
 for (const host of ["127.0.0.1", "::1", "[::1]"]) {
   test.skipIf(!phpAvailable)(`real PHP connects and closes a TCP listener at ${host}`, async () => {
     // Given
