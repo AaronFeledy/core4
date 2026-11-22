@@ -262,7 +262,7 @@ describe("physical volume lifecycle coordination", () => {
   });
 
   test.each([false, true])(
-    "startup accepts an unlabeled volume only with its inventory member (%s)",
+    "startup accepts an unlabeled volume only with a verified receipt (%s)",
     async (recorded) => {
       const scoped: AppPlan = {
         ...plan,
@@ -274,6 +274,7 @@ describe("physical volume lifecycle coordination", () => {
         coordinationKey: coordinationKey(nativeName),
         nativeName,
         presence: "present",
+        labels: { "dev.lando.volume-instance": "one" },
         identity: {
           coordinationKey: coordinationKey(nativeName),
           nativeName,
@@ -304,7 +305,12 @@ describe("physical volume lifecycle coordination", () => {
                 providerId: plan.provider,
                 appIds: [plan.id],
                 members: [
-                  { kind: "volume", nativeName: recorded ? nativeName : "another-volume", appId: plan.id },
+                  {
+                    kind: "volume",
+                    nativeName,
+                    appId: plan.id,
+                    ...(recorded ? { dataRoot: AbsolutePath.make(root), volumeInstance: "one" } : {}),
+                  },
                 ],
               }),
           }),

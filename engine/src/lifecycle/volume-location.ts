@@ -1,9 +1,10 @@
-import { matchesDataRoot } from "@lando/container-runtime/native-ownership";
 import {
-  historicalInventoryVolume,
-  historicalVolume,
-  ownedVolumeLockTier,
-} from "@lando/container-runtime/volume-ownership";
+  type AdoptionReceipt,
+  adoptionReceiptsFromSummary,
+  dataRootRefusal,
+  decideDataRootOwnership,
+} from "@lando/container-runtime/native-ownership";
+import { ownedVolumeLockTier } from "@lando/container-runtime/volume-ownership";
 import { mapFailures } from "@lando/sdk/command-result";
 import { VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, DataStorePlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
@@ -83,25 +84,29 @@ const ownerRootMismatch = (
   plan: AppPlan,
   providerId: string,
   store: DataStorePlan,
-  evidence: { readonly locator: VolumeLocator; readonly historical: boolean },
+  evidence: { readonly locator: VolumeLocator; readonly receipts: readonly AdoptionReceipt[] },
 ): VolumeOperationError | undefined => {
-  const { locator, historical } = evidence;
+  const { locator, receipts } = evidence;
   const expected = plan.identity?.dataRoot;
-  const owner = locator.presence === "absent" ? undefined : locator.labels?.[LANDO_DATA_ROOT_LABEL];
+  const labels = locator.presence === "absent" ? undefined : locator.labels;
+  const resource = {
+    kind: "volume",
+    nativeName: locator.nativeName,
+    labels,
+    volumeInstance: labels?.["dev.lando.volume-instance"],
+  } as const;
   if (
     !isGlobalCache(store) &&
     locator.presence === "present" &&
-    !matchesDataRoot(owner, expected, historical)
+    (expected === undefined
+      ? locator.labels?.[LANDO_DATA_ROOT_LABEL] !== undefined
+      : decideDataRootOwnership(resource, { dataRoot: expected, receipts }) !== "owned")
   ) {
     return new VolumeOperationError({
       providerId,
       operation: "coordinateVolume",
       store: store.name,
-      message: `Cannot verify data-root ownership of volume ${locator.nativeName}.`,
-      remediation:
-        owner === undefined
-          ? "Export the volume data before recreating the store, then restore the data."
-          : `Use the Lando installation with data root ${owner} to manage this volume.`,
+      ...dataRootRefusal(resource),
     });
   }
   if (
@@ -132,39 +137,22 @@ const locatePlanVolumes = (
       return provider.locateVolume(ref).pipe(
         Effect.flatMap(
           Effect.fnUntraced(function* (locator) {
-            let historical = false;
+            let receipts: readonly AdoptionReceipt[] = [];
             if (
               locator.presence === "present" &&
               locator.labels?.[LANDO_DATA_ROOT_LABEL] === undefined &&
               plan.identity?.dataRoot !== undefined &&
-              !isGlobalCache(store) &&
-              locator.identity?.ownerRoot === plan.root
+              !isGlobalCache(store)
             ) {
               const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
-              if (Option.isSome(registry)) {
-                const records = yield* registry.value
-                  .appliedPlansFor(plan.root, plan.provider)
+              if (Option.isSome(registry) && registry.value.resourceOwnership !== undefined) {
+                const ownership = yield* registry.value
+                  .resourceOwnership(plan.provider, plan.root)
                   .pipe(mapFailures((cause) => coordinationFailure(provider.id, cause.message)));
-                historical = records.some((record) => historicalVolume(record, plan, locator.nativeName));
-                if (!historical && registry.value.resourceOwnership !== undefined) {
-                  const ownership = yield* registry.value
-                    .resourceOwnership(plan.provider, plan.root)
-                    .pipe(mapFailures((cause) => coordinationFailure(provider.id, cause.message)));
-                  historical = historicalInventoryVolume(
-                    ownership?.members?.map((member) => ({
-                      kind: member.kind,
-                      nativeName: member.nativeName,
-                      appId: member.appId,
-                      appRoot: ownership.appRoot,
-                      providerId: ownership.providerId,
-                    })),
-                    plan,
-                    locator.nativeName,
-                  );
-                }
+                receipts = adoptionReceiptsFromSummary(ownership);
               }
             }
-            const mismatch = ownerRootMismatch(plan, provider.id, store, { locator, historical });
+            const mismatch = ownerRootMismatch(plan, provider.id, store, { locator, receipts });
             if (mismatch !== undefined) return yield* mismatch;
             const tier = volumeLockTierFor(plan, store);
             return { ref, store, locator, ...(tier === undefined ? {} : { tier }) };
