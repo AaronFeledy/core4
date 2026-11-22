@@ -355,6 +355,13 @@ describe("lando init — canonical common-stack recipes", () => {
           const actualToolingIds = Object.keys(tooling).sort();
           const expectedToolingIds = [...canonical.expectedTooling].sort();
           expect(actualToolingIds).toEqual(expectedToolingIds);
+          if (canonical.recipe === "drupal" || canonical.recipe === "drupal-cms") {
+            const phpcs = Array.isArray(tooling.phpcs?.cmds) ? tooling.phpcs.cmds[0] : undefined;
+            expect(phpcs).toContain("$LANDO_APP_ROOT/vendor/bin/phpcs");
+            expect(phpcs).toContain("$LANDO_WEBROOT/modules/custom");
+            expect(phpcs).not.toContain("{{ recipe.webroot }}");
+            expect(phpcs).not.toContain("${");
+          }
         }
       });
     });

@@ -31,27 +31,6 @@ export const composerTool = {
   wrapper: true,
 } as const;
 
-export const phpcsTool = {
-  service: "appserver",
-  description: "Run PHP_CodeSniffer inside the appserver service.",
-  cmds: ["vendor/bin/phpcs"],
-  wrapper: true,
-} as const;
-
-export const phpcbfTool = {
-  service: "appserver",
-  description: "Run phpcbf inside the appserver service.",
-  cmds: ["vendor/bin/phpcbf"],
-  wrapper: true,
-} as const;
-
-export const phpstanTool = {
-  service: "appserver",
-  description: "Run PHPStan inside the appserver service.",
-  cmds: ["vendor/bin/phpstan"],
-  wrapper: true,
-} as const;
-
 /**
  * Creates a Composer project in the mounted app root. The PHP image installs
  * `lando-create-project` whenever Composer is enabled, so the recipe only names

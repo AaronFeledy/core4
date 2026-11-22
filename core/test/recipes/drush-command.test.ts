@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
+import { SITE_DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -18,6 +18,8 @@ const runDrush = async (input: {
   const root = await mkdtemp(join(tmpdir(), "lando-drush-uri-"));
   roots.push(root);
   await mkdir(join(root, "vendor", "bin"), { recursive: true });
+  const cwd = join(root, "web", "modules");
+  await mkdir(cwd, { recursive: true });
   const lando = join(root, "lando");
   const drush = join(root, "vendor", "bin", "drush");
   await writeFile(
@@ -38,12 +40,13 @@ printf '%s\\n' '{"ok":true,"result":{"targets":[{"url":"https://site.lndo.site:4
   const env: Record<string, string> = {
     ...process.env,
     PATH: `${root}:${process.env.PATH ?? ""}`,
+    LANDO_APP_ROOT: root,
     TEST_LANDO_CALLBACK: input.callback ?? "success",
   };
   Reflect.deleteProperty(env, "DRUSH_OPTIONS_URI");
   if (input.uri !== undefined) env.DRUSH_OPTIONS_URI = input.uri;
-  const proc = Bun.spawn(["sh", "-c", DRUSH_TOOLING_COMMAND, "lando-tooling", ...input.args], {
-    cwd: root,
+  const proc = Bun.spawn(["sh", "-c", SITE_DRUSH_TOOLING_COMMAND, "lando-tooling", ...input.args], {
+    cwd,
     env,
     stdout: "pipe",
     stderr: "pipe",
@@ -57,7 +60,7 @@ printf '%s\\n' '{"ok":true,"result":{"targets":[{"url":"https://site.lndo.site:4
 };
 
 (process.platform === "win32" ? describe.skip : describe)("generated Drush tooling URI", () => {
-  test("uses the live routed HTTPS URL and forwards arguments unchanged", async () => {
+  test("runs from a subdirectory with the live routed HTTPS URL and unchanged argv", async () => {
     const result = await runDrush({ args: ["user:login", "--no-browser"] });
     expect(result).toEqual({
       stdout: "URI=https://site.lndo.site:4444\nARG=user:login\nARG=--no-browser\n",

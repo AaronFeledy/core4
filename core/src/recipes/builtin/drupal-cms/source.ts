@@ -1,19 +1,7 @@
 import type { RecipeSource } from "@lando/sdk/schema";
-import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
-import {
-  PHPCBF_TOOLING_COMMAND,
-  PHPCS_TOOLING_COMMAND,
-  PHPSTAN_TOOLING_COMMAND,
-} from "../php-quality-command.ts";
-import {
-  composerTool,
-  drupalOptions,
-  drupalWebVariants,
-  phpAppserver,
-  phpcbfTool,
-  phpcsTool,
-  phpstanTool,
-} from "../source-php.ts";
+import { SITE_DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
+import { siteQualityTooling } from "../php-quality-command.ts";
+import { composerTool, drupalOptions, drupalWebVariants, phpAppserver } from "../source-php.ts";
 import { DRUPAL_CMS_GIT_ARTIFACT, drupalCmsInstallCommand } from "./commands.ts";
 import { DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET } from "./php-config.ts";
 
@@ -41,13 +29,11 @@ export const source = {
       drush: {
         service: "appserver",
         description: "Run Drush inside the appserver service.",
-        cmds: [DRUSH_TOOLING_COMMAND],
+        cmds: [SITE_DRUSH_TOOLING_COMMAND],
         wrapper: true,
       },
       composer: composerTool,
-      phpcs: { ...phpcsTool, cmds: [PHPCS_TOOLING_COMMAND] },
-      phpcbf: { ...phpcbfTool, cmds: [PHPCBF_TOOLING_COMMAND] },
-      phpstan: { ...phpstanTool, cmds: [PHPSTAN_TOOLING_COMMAND] },
+      ...siteQualityTooling,
       "drupal-cms-scaffold": {
         service: "appserver",
         description: "Scaffold Drupal CMS 2 and project-local Drush into the mounted app root.",

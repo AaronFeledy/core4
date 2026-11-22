@@ -23,7 +23,8 @@ const {
   manifest,
 } = bundledRecipe("drupal-contrib");
 
-import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
+import { CONTRIB_DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
+import { contribQualityTooling } from "../../src/recipes/builtin/php-quality-command.ts";
 
 const defaults = { ...drupalContribDefaults };
 const alternatives = {
@@ -124,7 +125,7 @@ describe("drupal-contrib decomposition", () => {
       Object.entries(tooling).map(([name, { description: _description, ...task }]) => [name, task]),
     );
     expect(machine).toEqual({
-      drush: { service: "appserver", cmds: [DRUSH_TOOLING_COMMAND], wrapper: true, dir: contribDir },
+      drush: { service: "appserver", cmds: [CONTRIB_DRUSH_TOOLING_COMMAND], wrapper: true, dir: contribDir },
       composer: { service: "appserver", cmds: ["composer"], wrapper: true, dir: contribDir },
       "drupal-contrib-sync": {
         service: "appserver",
@@ -138,9 +139,9 @@ describe("drupal-contrib decomposition", () => {
         cmd: ["/app/vendor/bin/phpunit", "-c", "/app/web/core"],
         wrapper: true,
       },
-      phpcs: { service: "appserver", cmd: ["/app/vendor/bin/phpcs"], wrapper: true },
-      phpcbf: { service: "appserver", cmd: ["/app/vendor/bin/phpcbf"], wrapper: true },
-      phpstan: { service: "appserver", cmd: ["/app/vendor/bin/phpstan"], wrapper: true },
+      phpcs: { service: "appserver", cmds: contribQualityTooling.phpcs.cmds, wrapper: true },
+      phpcbf: { service: "appserver", cmds: contribQualityTooling.phpcbf.cmds, wrapper: true },
+      phpstan: { service: "appserver", cmds: contribQualityTooling.phpstan.cmds, wrapper: true },
     });
   });
 

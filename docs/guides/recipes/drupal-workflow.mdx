@@ -126,53 +126,41 @@ Drush gets `status --format=json` and prints its own JSON. Lando's flags go befo
 
 ## Lint PHP
 
-`lando phpcs`, `lando phpcbf`, and `lando phpstan` run in `appserver`. The
-recipe does not install the binaries. Require `drupal/coder` for phpcs and
-phpcbf, or `phpstan/phpstan` or `drupal/core-dev` for phpstan, then
-`lando composer install`. A missing binary prints that package name and exits.
+`lando phpcs`, `lando phpcbf`, and `lando phpstan` run in `appserver`. The recipe doesn't add the tools to your project, so require Drupal Coder first. It brings PHP_CodeSniffer with the Drupal and DrupalPractice standards:
 
-A no-arg `lando phpcs` or `lando phpcbf` never selects the Drupal standard.
-After you require `drupal/coder`, PHP_CodeSniffer still uses its default
-standard unless the project has a `phpcs.xml` or `phpcs.xml.dist`, or you pass
-`--standard=Drupal`. Commit a ruleset that names Drupal and DrupalPractice and
-the custom module and theme paths:
+```sh
+lando composer require --dev drupal/coder
+lando phpcs
+lando phpcbf
+```
+
+`lando phpcs` checks `web/modules/custom`, `web/themes/custom`, and `web/profiles/custom` (whichever exist) against Drupal and DrupalPractice. When none of them exist yet, it says so and exits. It includes Drupal's file types, such as `.module`, `.theme`, `.install`, and `.info.yml`, and skips `node_modules` and `vendor`. `lando phpcbf` fixes what it can with the same defaults. Both return PHP_CodeSniffer's own exit status, so you can script them.
+
+You can run them from any directory in the app. Paths you pass are relative to where you run the command, for example `lando phpcs src` from inside a module, and replace the default directories. Pass `--standard=` to use a different standard for one run.
+
+To pick your own standards, sniffs, or paths, commit a ruleset to the app root. It's the same file PHP_CodeSniffer reads outside Lando, such as in CI. PHP_CodeSniffer finds `phpcs.xml.dist` (or `phpcs.xml`, `.phpcs.xml`, `.phpcs.xml.dist`) in your directory or a parent, and Lando then passes your arguments through unchanged:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <ruleset name="drupal-demo">
   <rule ref="Drupal"/>
   <rule ref="DrupalPractice"/>
+  <arg name="extensions" value="engine,inc,info,install,module,php,profile,test,theme,yml"/>
+  <exclude-pattern>*/node_modules/*</exclude-pattern>
   <file>web/modules/custom</file>
-  <file>web/themes/custom</file>
 </ruleset>
 ```
 
-Until that file is in the app root, pass the standard yourself:
+For PHPStan, require it with the Drupal extension and its installer, then run it:
 
 ```sh
-lando composer require --dev drupal/coder
-lando phpcs --standard=Drupal,DrupalPractice
-lando phpcbf --standard=Drupal,DrupalPractice
-```
-
-A committed `phpcs.xml` or `phpcs.xml.dist` makes bare `lando phpcs` and
-`lando phpcbf` use that ruleset.
-
-With no arguments, phpcs and phpcbf add `web/modules/custom` and
-`web/themes/custom` when those directories exist (the same paths under a custom
-webroot). When neither directory exists, the no-arg run passes no paths, so a
-project ruleset's files apply, and otherwise the tool's own no-arg behavior or
-error runs.
-
-`lando phpstan` with no arguments runs `analyse` on those same existing custom
-paths. When neither directory exists, it runs `phpstan analyse` with no paths,
-which relies on `phpstan.neon` or `phpstan.neon.dist`. Pass your own arguments
-when you want a different target.
-
-```sh
-lando composer require --dev drupal/core-dev
+lando composer require --dev phpstan/phpstan mglaman/phpstan-drupal phpstan/extension-installer
 lando phpstan
 ```
+
+With no arguments, `lando phpstan` runs `phpstan analyse` with the nearest `phpstan.neon`, `phpstan.neon.dist`, or `phpstan.dist.neon` in your directory or a parent. Without one, it analyses the same custom directories at PHPStan's default level 0. Arguments go to PHPStan unchanged, for example `lando phpstan analyse --level=2 web/modules/custom`.
+
+If a tool isn't installed, the task prints the `lando composer require` command that adds it and exits without running anything.
 
 ## Run Drupal cron on a schedule
 
@@ -322,6 +310,49 @@ lando exec appserver -- php -v
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"nginx\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres:16\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"backend\":\\s*\"appserver\"" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="lint-php" layer="e2e" timeout={1200000} render={false} reason="Run the Lint PHP commands against a custom module">
+    <Step name="init">
+      <UseFixture name="drupal-lint" />
+      <Run command="lando init . --recipe drupal --name=drupal-lint --yes" />
+    </Step>
+    <Step name="scaffold">
+      <Run command="lando start" />
+      <Run command="lando drupal-scaffold" />
+    </Step>
+    <Hidden reason="A missing tool names the package that provides it">
+      <Step name="missing-coder">
+        <Verify command="lando phpcs" expectExit={1} expect={{ stderr: { regex: "Run lando composer require --dev drupal/coder" } }} />
+      </Step>
+    </Hidden>
+    <Step name="install-coder">
+      <Run command="lando composer require --dev drupal/coder" />
+    </Step>
+    <Hidden reason="With no custom code yet, phpcs says so instead of linting nothing">
+      <Step name="no-custom-code">
+        <Verify command="lando phpcs" expectExit={1} expect={{ stderr: { regex: "No custom code to check" } }} />
+      </Step>
+    </Hidden>
+    <Hidden reason="Move the fixture module into the scaffolded site, as a reader adds custom code">
+      <Step name="add-module">
+        <Run command="lando exec appserver -- mkdir -p web/modules/custom" />
+        <Run command="lando exec appserver -- mv hello web/modules/custom/hello" />
+      </Step>
+    </Hidden>
+    <Step name="lint">
+      <Verify command="lando phpcs" expectExit={1} expect={{ stdout: { regex: "hello\\.module[\\s\\S]*expected 2 spaces, found 4" } }} />
+      <Run command="lando phpcbf" />
+      <Verify command="lando phpcs" />
+    </Step>
+    <Step name="phpstan">
+      <Run command="lando composer require --dev phpstan/phpstan mglaman/phpstan-drupal phpstan/extension-installer" />
+      <Verify command="lando phpstan" expect={{ stdout: { regex: "No errors" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 </Guide>

@@ -30,29 +30,19 @@ version supports every PHP version. Choose a version supported by your project.
 
 ## Generated tooling
 
-- `lando drush …`: Drush.
+- `lando drush …`: Drush from the app's `vendor/bin`, from any directory in the app.
 - `lando composer …`: Composer inside the appserver.
-- `lando phpcs …` / `lando phpcbf …`: PHP_CodeSniffer. Require `drupal/coder`;
-  Lando does not install it. A no-arg run never selects the Drupal standard.
-  Commit a `phpcs.xml` or `phpcs.xml.dist`, or pass `--standard=Drupal`. Until
-  a ruleset is committed, run `lando phpcs --standard=Drupal,DrupalPractice`.
-  With no arguments, lints `web/modules/custom` and `web/themes/custom` when
-  those directories exist (or the same paths under a custom webroot). When
-  neither exists, the no-arg run passes no paths, so a project ruleset's files
-  apply, and otherwise the tool's own no-arg behavior or error runs.
-
-  ```xml
-  <?xml version="1.0" encoding="UTF-8"?>
-  <ruleset name="drupal">
-    <rule ref="Drupal"/>
-    <rule ref="DrupalPractice"/>
-    <file>web/modules/custom</file>
-    <file>web/themes/custom</file>
-  </ruleset>
-  ```
-
-- `lando phpstan …`: PHPStan. Require `phpstan/phpstan` or `drupal/core-dev`;
-  Lando does not install it. With no arguments, runs `analyse` on those same
-  custom paths when they exist. With no paths, `phpstan analyse` relies on
-  `phpstan.neon` or `phpstan.neon.dist`.
+- `lando phpcs …` / `lando phpcbf …`: PHP_CodeSniffer from the app's
+  `vendor/bin`; require `drupal/coder` to install it. Without a project ruleset
+  (`phpcs.xml.dist`, `phpcs.xml`, `.phpcs.xml`, or `.phpcs.xml.dist` in the
+  current directory or a parent), Lando adds `--standard=Drupal,DrupalPractice`,
+  Drupal's file extensions, and `--ignore=*/node_modules/*,*/vendor/*`, and with
+  no arguments checks whichever of `modules/custom`, `themes/custom`, and
+  `profiles/custom` exist under the webroot. A ruleset or an explicit
+  `--standard=` passes the arguments through unchanged.
+- `lando phpstan …`: PHPStan from the app's `vendor/bin`; require
+  `phpstan/phpstan`, `mglaman/phpstan-drupal`, and `phpstan/extension-installer`.
+  With no arguments it runs `analyse` with the nearest PHPStan config in the
+  current directory or a parent, or else on the same custom directories.
+  Arguments pass through unchanged.
 - `lando drupal-scaffold`: Scaffold pinned Drupal 11 and project-local Drush, with recovery on retry.

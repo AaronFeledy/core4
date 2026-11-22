@@ -15,13 +15,8 @@ const {
   manifest,
 } = bundledRecipe("drupal");
 
-import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
-import {
-  PHPCBF_TOOLING_COMMAND,
-  PHPCS_TOOLING_COMMAND,
-  PHPSTAN_TOOLING_COMMAND,
-} from "../../src/recipes/builtin/php-quality-command.ts";
-import { phpcbfTool, phpcsTool, phpstanTool } from "../../src/recipes/builtin/source-php.ts";
+import { SITE_DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
+import { siteQualityTooling } from "../../src/recipes/builtin/php-quality-command.ts";
 
 const defaults = { ...drupalDefaults };
 const alternatives = {
@@ -96,7 +91,7 @@ describe("drupal decomposition", () => {
         drush: {
           service: "appserver",
           description: "Run Drush inside the appserver service.",
-          cmds: [DRUSH_TOOLING_COMMAND],
+          cmds: [SITE_DRUSH_TOOLING_COMMAND],
           wrapper: true,
         },
         composer: {
@@ -105,9 +100,7 @@ describe("drupal decomposition", () => {
           cmds: ["composer"],
           wrapper: true,
         },
-        phpcs: { ...phpcsTool, cmds: [PHPCS_TOOLING_COMMAND] },
-        phpcbf: { ...phpcbfTool, cmds: [PHPCBF_TOOLING_COMMAND] },
-        phpstan: { ...phpstanTool, cmds: [PHPSTAN_TOOLING_COMMAND] },
+        ...siteQualityTooling,
         "drupal-scaffold": scaffoldTooling,
       },
     });

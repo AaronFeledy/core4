@@ -32,13 +32,8 @@ const {
   manifest,
 } = bundledRecipe("drupal-cms");
 
-import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
-import {
-  PHPCBF_TOOLING_COMMAND,
-  PHPCS_TOOLING_COMMAND,
-  PHPSTAN_TOOLING_COMMAND,
-} from "../../src/recipes/builtin/php-quality-command.ts";
-import { phpcbfTool, phpcsTool, phpstanTool } from "../../src/recipes/builtin/source-php.ts";
+import { SITE_DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
+import { siteQualityTooling } from "../../src/recipes/builtin/php-quality-command.ts";
 import { makeRecipeConfigTranslator } from "../../src/recipes/config-translator.ts";
 
 const defaults = { ...drupalCmsDefaults };
@@ -114,7 +109,7 @@ describe("drupal-cms decomposition", () => {
         drush: {
           service: "appserver",
           description: "Run Drush inside the appserver service.",
-          cmds: [DRUSH_TOOLING_COMMAND],
+          cmds: [SITE_DRUSH_TOOLING_COMMAND],
           wrapper: true,
         },
         composer: {
@@ -123,9 +118,7 @@ describe("drupal-cms decomposition", () => {
           cmds: ["composer"],
           wrapper: true,
         },
-        phpcs: { ...phpcsTool, cmds: [PHPCS_TOOLING_COMMAND] },
-        phpcbf: { ...phpcbfTool, cmds: [PHPCBF_TOOLING_COMMAND] },
-        phpstan: { ...phpstanTool, cmds: [PHPSTAN_TOOLING_COMMAND] },
+        ...siteQualityTooling,
         "drupal-cms-scaffold": {
           service: "appserver",
           description: "Scaffold Drupal CMS 2 and project-local Drush into the mounted app root.",

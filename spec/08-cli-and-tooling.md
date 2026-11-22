@@ -772,8 +772,8 @@ Recipes run nothing. The `postInit` key with its `gitInit`, `command`, and `bun`
 | Recipe | Stack |
 |---|---|
 | `wordpress` | WordPress, PHP, MariaDB, optional Redis; appserver `uploadDirs: [wp-content/uploads]` |
-| `drupal` | Drupal, PHP, MariaDB or PostgreSQL, Drush; Apache appserver or nginx edge defaults to `uploadDirs: [sites/*/files]` |
-| `drupal-cms` | Drupal CMS starter on `drupal`; shares both webserver upload protection defaults |
+| `drupal` | Drupal, PHP, MariaDB or PostgreSQL; project-local Drush, Drupal Coder (`phpcs`, `phpcbf`), and PHPStan (`phpstan`) tasks; Apache appserver or nginx edge defaults to `uploadDirs: [sites/*/files]` |
+| `drupal-cms` | Drupal CMS starter on `drupal`; shares its Drush, Drupal Coder, and PHPStan tasks and both webserver upload protection defaults |
 | `drupal-contrib` | Drupal module, theme, or profile checkout bind-mounted at `web/<type>s/custom/<project>` in an app-scoped `site` volume at `/app` that the nginx `edge` mounts read-only; a `post-start` task keeps the site in sync; Chrome and SIMPLETEST configuration; PHPUnit, Drupal Coder, and PHPStan tasks that run from the invoking directory |
 | `laravel` | Laravel, PHP, SQL, Redis, optional worker; appserver `uploadDirs: [storage]` beneath webroot `public` |
 | `symfony` | Symfony, PHP, PostgreSQL or MariaDB, Redis |
@@ -785,6 +785,8 @@ Recipes run nothing. The `postInit` key with its `gitInit`, `command`, and `bun`
 | `toolbox` | Disposable version-pinned CLI service with non-interactive defaults |
 | `rails` | Rails, PostgreSQL or SQLite, Redis; `rake` uses `:ruby-local`, while `rails` stays a bare executable |
 | `eleventy` | Node builder and static web service; scaffolds `package.json` with a local Eleventy dependency and serves via `[:node-install-run, start]` |
+
+The three Drupal recipes run Drush and the quality tools from the site's `vendor/bin` (`$LANDO_APP_ROOT/vendor/bin` for `drupal` and `drupal-cms`, `/app/vendor/bin` for `drupal-contrib`), so every task works from any directory in the app; only contrib's `drush` and `composer` set `dir: /app`. The quality tasks install nothing: a missing binary fails with exit 1 and names the command that provides it, and a tool that runs keeps its own exit status. `phpcs` and `phpcbf` forward their arguments unchanged when PHP_CodeSniffer would discover a `.phpcs.xml`, `phpcs.xml`, `.phpcs.xml.dist`, or `phpcs.xml.dist` in the invoking directory or an ancestor, or when an argument sets `--standard=`. Otherwise they add `--standard=Drupal,DrupalPractice`, plus `--extensions=engine,inc,info,install,module,php,profile,test,theme,yml` and `--ignore=*/node_modules/*,*/vendor/*` unless the invocation sets that option. `phpstan` forwards any arguments unchanged; with none it runs `analyse --configuration=<path>` for the nearest PHPStan config in the invoking directory or an ancestor (`.phpstan.neon`, `phpstan.neon`, `.phpstan.neon.dist`, `phpstan.neon.dist`, `.phpstan.dist.neon`, `phpstan.dist.neon`), or else `analyse` on the default targets at PHPStan's default level. With no arguments and no project config, the site recipes target the existing `modules/custom`, `themes/custom`, and `profiles/custom` directories under `LANDO_WEBROOT`, and `drupal-contrib` targets the extension root (`LANDO_APP_ROOT`); an empty target set fails with exit 1 and says what to pass or add.
 
 Bundled recipes are authored as `RecipeSource` values, compiled at codegen through the same source compiler as external recipes into inert generated manifests and a cold catalog, and ship `README.mdx` under `recipes/<id>/`. Generated artifacts contain no callable logic and no handwritten snapshot, digest, or fragment twins. The set MAY grow in a minor release; removal requires a major version and `DeprecationNotice` (§18). Generated Landofiles MUST be YAML.
 

@@ -73,8 +73,11 @@ lando phpcs
 lando phpstan analyse
 ```
 
-Without a PHP_CodeSniffer config, name the standard and path:
-`lando phpcs --standard=Drupal,DrupalPractice .`.
+Without a PHP_CodeSniffer ruleset, `lando phpcs` and `lando phpcbf` check the
+extension root against Drupal and DrupalPractice, including Drupal's file types
+such as `.module` and `.info.yml`, and skip `node_modules` and `vendor`. Without
+a PHPStan config, a bare `lando phpstan` analyses the extension root at PHPStan's
+default level 0.
 
 ## Add a dependency to your extension
 
@@ -261,6 +264,13 @@ service, site sync, and tooling. They do not download Drupal:
       <Verify command="lando phpcs" />
       <Verify command="lando phpstan analyse --no-progress" />
     </Step>
+    <Hidden reason="Without a ruleset, phpcs checks the extension root against Drupal and DrupalPractice">
+      <Step name="lint-without-ruleset">
+        <Run command="lando exec appserver -- mv phpcs.xml.dist phpcs.xml.off" />
+        <Verify command="lando phpcs" />
+        <Run command="lando exec appserver -- mv phpcs.xml.off phpcs.xml.dist" />
+      </Step>
+    </Hidden>
     <Step name="install-site">
       <Run command="lando drush site:install standard --db-url=mysql://lando:lando@database/contrib-journey --site-name=Example --account-name=admin --account-mail=admin@example.com -y" />
       <Verify command="lando drush status --field=bootstrap" expect={{ stdout: { regex: "Successful" } }} />
