@@ -1,3 +1,4 @@
+import { VOLUME_INSTANCE_LABEL } from "@lando/container-runtime/labels";
 import {
   type AdoptionReceipt,
   adoptionReceiptsFromSummary,
@@ -93,7 +94,7 @@ const ownerRootMismatch = (
     kind: "volume",
     nativeName: locator.nativeName,
     labels,
-    volumeInstance: labels?.["dev.lando.volume-instance"],
+    volumeInstance: labels?.[VOLUME_INSTANCE_LABEL],
   } as const;
   if (
     !isGlobalCache(store) &&

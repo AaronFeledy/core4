@@ -30,6 +30,7 @@ export const withProviderErrorRedaction = (
     suspend,
     quiesceForFileSync,
     listVolumeSnapshots,
+    adoptDataRoot,
     inspectResourceNames,
     observeVolume,
     adoptVolume,
@@ -115,14 +116,9 @@ export const withProviderErrorRedaction = (
     ) => effect(runtime.restoreVolume(spec, options)),
     listVolumes: (filter) => effect(runtime.listVolumes(filter)),
     locateVolume: (ref) => effect(runtime.locateVolume(ref)),
-    ...(runtime.adoptDataRoot === undefined
+    ...(adoptDataRoot === undefined
       ? {}
-      : {
-          adoptDataRoot: (
-            plan: Parameters<NonNullable<RuntimeProviderShape["adoptDataRoot"]>>[0],
-            witness: Parameters<NonNullable<RuntimeProviderShape["adoptDataRoot"]>>[1],
-          ) => effect(runtime.adoptDataRoot?.(plan, witness) ?? Effect.void),
-        }),
+      : { adoptDataRoot: (plan, witness) => effect(adoptDataRoot.call(runtime, plan, witness)) }),
     ...(inspectResourceNames === undefined
       ? {}
       : { inspectResourceNames: (query) => effect(inspectResourceNames.call(runtime, query)) }),

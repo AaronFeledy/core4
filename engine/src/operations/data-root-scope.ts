@@ -1,3 +1,4 @@
+import { VOLUME_INSTANCE_LABEL } from "@lando/container-runtime/labels";
 import { type AdoptionReceipt, decideDataRootOwnership } from "@lando/container-runtime/native-ownership";
 import { type AppPlan, LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
 import { PathsService, type ProviderRuntimeSnapshot, type ServiceRuntimeInfo } from "@lando/sdk/services";
@@ -58,7 +59,7 @@ export const scopeRuntimeSnapshot = <
           kind: "volume",
           nativeName: identity.nativeName,
           labels: volume.labels,
-          volumeInstance: volume.labels?.["dev.lando.volume-instance"],
+          volumeInstance: volume.labels?.[VOLUME_INSTANCE_LABEL],
         },
         {
           dataRoot,

@@ -61,27 +61,28 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
         const gpg = check.details.gpg;
         if (gpg === undefined) return [];
         const ready = gpg.upstream.reachable && gpg.keyringExported;
-        const finding: DoctorFinding = {
-          name: "gpg-agent",
-          status: ready ? "pass" : "warn",
-          severity: ready ? "info" : "warn",
-          recovery: "manual",
-          context: {
-            subsystem: "gpg-agent",
-            upstreamReachable: String(gpg.upstream.reachable),
-            keyringExported: String(gpg.keyringExported),
+        return [
+          {
+            name: "gpg-agent",
+            status: ready ? "pass" : "warn",
+            severity: ready ? "info" : "warn",
+            recovery: "manual",
+            context: {
+              subsystem: "gpg-agent",
+              upstreamReachable: String(gpg.upstream.reachable),
+              keyringExported: String(gpg.keyringExported),
+            },
+            solutions: ready
+              ? []
+              : [
+                  {
+                    kind: "manual",
+                    description:
+                      "Restore your host GPG agent and public keyring export, then rerun `lando doctor`.",
+                  },
+                ],
           },
-          solutions: ready
-            ? []
-            : [
-                {
-                  kind: "manual",
-                  description:
-                    "Restore your host GPG agent and public keyring export, then rerun `lando doctor`.",
-                },
-              ],
-        };
-        return [finding];
+        ];
       }),
       ...hostDnsChecks,
     ],

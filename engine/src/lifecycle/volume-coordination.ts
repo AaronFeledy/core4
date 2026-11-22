@@ -191,7 +191,6 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
   }
 });
 
-/** Launch work must prepare the runtime before volume discovery acquires its locks. */
 export const adoptPlanDataRoot = (
   provider: Pick<RuntimeProviderShape, "id" | "adoptDataRoot">,
   plan: AppPlan,
@@ -213,6 +212,7 @@ export const adoptPlanDataRoot = (
     ),
   ) ?? Effect.void;
 
+/** Launch work must prepare the runtime before volume discovery acquires its locks. */
 export const withLaunchVolumeCoordination = Effect.fn("Lifecycle.withLaunchVolumeCoordination")(function* <
   A,
   E,

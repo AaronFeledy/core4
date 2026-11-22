@@ -10,6 +10,7 @@ import {
 import type { EventService, ProviderError } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 
+import type { AdoptionReceipt } from "../data-root-ownership.ts";
 import type { LifecycleDialect } from "../dialect.ts";
 import type {
   EngineHttpApi,
@@ -57,8 +58,7 @@ export interface BringDownOptions {
   /** Test seam for owner-aware helper reclamation. */
   readonly helperReclaim?: HelperReclaimOptions;
   readonly purgeCaches?: boolean;
-  readonly recordedPlan?: AppPlan | undefined;
-  readonly adoptionReceipts?: readonly import("../data-root-ownership.ts").AdoptionReceipt[];
+  readonly adoptionReceipts?: readonly AdoptionReceipt[];
 }
 
 interface BringDownDeps {

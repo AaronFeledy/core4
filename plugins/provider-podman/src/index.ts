@@ -877,7 +877,6 @@ const assembleRuntimeProvider = (
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
         const adoptionReceipts = yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
-          previousPlan: previous,
           adoptionReceipts,
           ...(applyOptions.executeReadinessAttempt === undefined
             ? {}
@@ -910,7 +909,6 @@ const assembleRuntimeProvider = (
         if (plan === undefined) return DESTROY_NO_OP;
         const { shutdownObservations, volumesRemoved, skipped } = yield* bringDown(plan, {
           adoptionReceipts: yield* planState.ownership.receiptsFor(plan),
-          recordedPlan: previous,
           api: podmanApi,
           endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
           ctx: PODMAN_CTX,

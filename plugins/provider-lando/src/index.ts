@@ -1796,7 +1796,6 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             String(plan.id),
             "apply",
             runtimeBringUp(physicalPlan, {
-              previousPlan: previousPhysicalPlan,
               adoptionReceipts,
               ...(applyOptions.executeReadinessAttempt === undefined
                 ? {}
@@ -1852,7 +1851,6 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               const physicalPlan = yield* physicalNetworkPlan(plan);
               return yield* runtimeBringDown(physicalPlan, {
                 adoptionReceipts: yield* planState.ownership.receiptsFor(physicalPlan),
-                recordedPlan: physicalPlan,
                 ...(podmanApi === undefined ? {} : { api: podmanApi }),
                 ctx: LANDO_CTX,
                 volumes: false,
@@ -1872,10 +1870,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               const plan = yield* freshPlanForTeardown(target, false);
               if (plan === undefined) return DESTROY_NO_OP;
               const physicalPlan = yield* physicalNetworkPlan(plan);
-              const recorded = yield* appliedPlans.resolveMutationPlan(target.app);
               const result = yield* runtimeBringDown(physicalPlan, {
                 adoptionReceipts: yield* planState.ownership.receiptsFor(physicalPlan),
-                recordedPlan: recorded === undefined ? undefined : yield* physicalNetworkPlan(recorded),
                 ...(podmanApi === undefined ? {} : { api: podmanApi }),
                 ...(socketPath === undefined
                   ? {}

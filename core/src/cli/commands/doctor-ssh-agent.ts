@@ -154,7 +154,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
           : {}),
       } satisfies Details["upstream"]),
     ),
-  ) as Effect.Effect<Details["upstream"], never, PathsService>;
+  );
   let upstream = yield* inspect;
   const fixContext: Record<string, string> = {};
   const sidecarSkipped = intent.mode === "sidecar" && input.idleProvider !== undefined;

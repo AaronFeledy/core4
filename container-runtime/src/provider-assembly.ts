@@ -7,6 +7,7 @@ import {
   type DestroyOptions,
   EventService,
   PathsService,
+  type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { type AppliedPlanCacheOptions, makeAppliedPlanCache } from "./applied-plan-cache.ts";
@@ -24,7 +25,6 @@ export { PlanfulVolumeCoverage } from "./teardown-volumes.ts";
 export const hasExactVolumeTeardown = (provider: object): boolean =>
   "exactVolumeTeardown" in provider && provider.exactVolumeTeardown === true;
 
-import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { type ProviderDataPlaneOptions, makeProviderDataPlane } from "./data-plane.ts";
 import type { ProviderErrorContext } from "./engine-api.ts";
 import { type EmitComposeOptions, composePath, emitCompose, renderCompose } from "./podman/compose.ts";

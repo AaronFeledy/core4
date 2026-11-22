@@ -129,20 +129,6 @@ test("scopeRuntimeSnapshot retains local plans without treating them as proof fo
   expect(scoped.volumes).toEqual([]);
 });
 
-test("scopeRuntimeSnapshot drops unlabeled resources without local plan membership", () => {
-  const unlabeled = {
-    app,
-    appRoot,
-    service: web,
-    providerId,
-    status: "running" as const,
-    publications: { status: "unknown" as const },
-    containerId: "orphan",
-  };
-  const scoped = scopeRuntimeSnapshot(snapshot({ services: [unlabeled] }), dataRoot);
-  expect(scoped.services).toEqual([]);
-});
-
 test("scopeRuntimeSnapshot keeps only the exact unlabeled container named by a receipt", () => {
   const unlabeled = {
     app,

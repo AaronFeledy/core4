@@ -121,6 +121,21 @@ const lockRequestTier = async (name: string, tier: PhysicalVolumeLockTier | unde
   );
 };
 
+const tierCases = [
+  {
+    label: "plugin explicit global",
+    plan: globalPlan,
+    store: pluginStore,
+    expected: PHYSICAL_VOLUME_LOCK_TIER.globalApp,
+  },
+  {
+    label: "dependency environment",
+    plan: appPlan,
+    store: dependencyStore,
+    expected: PHYSICAL_VOLUME_LOCK_TIER.default,
+  },
+] as const;
+
 describe("volume lock tier parity", () => {
   test("plugin explicit global store needs plan-owned tier, not the name classifier", () => {
     // Name alone ranks as ordinary storage; the global app owner promotes it.
@@ -129,28 +144,7 @@ describe("volume lock tier parity", () => {
     expect(ownedVolumeLockTier(appPlan.id, false)).toBeUndefined();
   });
 
-  test("dependency-environment stores stay on the default tier for user apps", () => {
-    expect(physicalVolumeLockTier(dependencyStore.name)).toBe(PHYSICAL_VOLUME_LOCK_TIER.default);
-    expect(ownedVolumeLockTier(appPlan.id, false)).toBeUndefined();
-    expect(effectiveTier(dependencyStore.name, ownedVolumeLockTier(appPlan.id, false))).toBe(
-      PHYSICAL_VOLUME_LOCK_TIER.default,
-    );
-  });
-
-  test.each([
-    {
-      label: "plugin explicit global",
-      plan: globalPlan,
-      store: pluginStore,
-      expected: PHYSICAL_VOLUME_LOCK_TIER.globalApp,
-    },
-    {
-      label: "dependency environment",
-      plan: appPlan,
-      store: dependencyStore,
-      expected: PHYSICAL_VOLUME_LOCK_TIER.default,
-    },
-  ] as const)(
+  test.each(tierCases)(
     "planful deletion candidates lock $label at the activation tier",
     async ({ plan, store, expected }) => {
       const runtime = runtimeFor(plan, store);
@@ -166,20 +160,7 @@ describe("volume lock tier parity", () => {
     },
   );
 
-  test.each([
-    {
-      label: "plugin explicit global",
-      plan: globalPlan,
-      store: pluginStore,
-      expected: PHYSICAL_VOLUME_LOCK_TIER.globalApp,
-    },
-    {
-      label: "dependency environment",
-      plan: appPlan,
-      store: dependencyStore,
-      expected: PHYSICAL_VOLUME_LOCK_TIER.default,
-    },
-  ] as const)(
+  test.each(tierCases)(
     "recorded inventory deletion locks $label at the same tier as planful deletion",
     async ({ plan, store, expected }) => {
       const runtime = runtimeFor(plan, store);

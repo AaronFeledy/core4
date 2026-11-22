@@ -60,7 +60,7 @@ import {
 } from "../healthcheck-attempt.ts";
 import { inspectImageUser } from "../image-build-user.ts";
 import { isProducedArtifact, producedImageMissing } from "../image-ensure.ts";
-import { PROVIDER_LABEL } from "../labels.ts";
+import { PROVIDER_LABEL, VOLUME_INSTANCE_LABEL } from "../labels.ts";
 import { listenerAuthorityAction, listenerDiagnostic } from "../listener-diagnostic.ts";
 import { observeTcpListener } from "../listener-observation.ts";
 import {
@@ -201,8 +201,6 @@ export type StartFailureRemediation = (input: {
 }) => string | undefined;
 
 export interface BringUpOptions {
-  readonly previousPlan?: AppPlan | undefined;
-  /** Inventory-only ownership rows when no previous applied plan remains. */
   readonly adoptionReceipts?: readonly AdoptionReceipt[];
   readonly executeReadinessAttempt?: ApplyOptions["executeReadinessAttempt"];
   readonly api?: EngineHttpApi;
@@ -508,20 +506,19 @@ const ensureNetwork = (
       deps.options.ctx,
     );
   }
-  return request(deps, { method: "GET", path: `/networks/${encodeURIComponent(name)}` })
-    .pipe(
-      Effect.flatMap((inspectResponse) => {
-        if (inspectResponse.status === 200) return Effect.void;
-        return create().pipe(
-          Effect.flatMap((response) =>
-            response.status === 200 || response.status === 201 || response.status === 409
-              ? Effect.void
-              : Effect.fail(createFailure(response)),
-          ),
-        );
-      }),
-    )
-    .pipe(Effect.as(undefined));
+  return request(deps, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
+    Effect.flatMap((inspectResponse) => {
+      if (inspectResponse.status === 200) return Effect.void;
+      return create().pipe(
+        Effect.flatMap((response) =>
+          response.status === 200 || response.status === 201 || response.status === 409
+            ? Effect.void
+            : Effect.fail(createFailure(response)),
+        ),
+      );
+    }),
+    Effect.as(undefined),
+  );
 };
 
 export const podmanVolumeCreationLabels = (
@@ -574,7 +571,7 @@ const ensureVolume = (
               kind: "volume",
               nativeName: store.name,
               labels: actual,
-              volumeInstance: actual["dev.lando.volume-instance"],
+              volumeInstance: actual[VOLUME_INSTANCE_LABEL],
             } as const;
             const ownership = decideDataRootOwnership(resource, {
               dataRoot: plan.identity.dataRoot,
@@ -1014,13 +1011,17 @@ const startService = Effect.fnUntraced(function* (
   );
 
   const inspected = inspectedBeforeSchedule ?? (yield* inspectContainer(deps, name));
-  const expected: Readonly<Record<string, string>> = containerOwnershipLabels(plan, service.name);
   const existingId = inspected.exists
-    ? yield* verifiedNativeId(JSON.stringify(inspected.body), expected, deps.options.ctx, {
-        kind: "container",
-        name,
-        receipts: deps.options.adoptionReceipts ?? [],
-      })
+    ? yield* verifiedNativeId(
+        JSON.stringify(inspected.body),
+        containerOwnershipLabels(plan, service.name),
+        deps.options.ctx,
+        {
+          kind: "container",
+          name,
+          receipts: deps.options.adoptionReceipts ?? [],
+        },
+      )
     : undefined;
   const needsDataRootLabel =
     plan.identity?.dataRoot !== undefined && inspected.labels?.[LANDO_DATA_ROOT_LABEL] === undefined;

@@ -306,25 +306,24 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
   if (selected === undefined) {
     // Only a provider that recorded state for this root fails teardown with its status failure;
     // another installed provider that cannot be observed simply contributes no evidence.
-    const observed = yield* Effect.forEach(providers, (provider) =>
+    const receipts = ownershipHints.flatMap(adoptionReceiptsFromSummary);
+    const evidence = yield* Effect.forEach(providers, (provider) =>
       runtimeEvidence(
         provider,
         teardown ? { includeUnplanned: true } : {},
         teardown && ownershipHints.some((hint) => hint.providerId === provider.id),
+      ).pipe(
+        Effect.map((snapshot) =>
+          dataRoot === undefined
+            ? snapshot
+            : scopeRuntimeSnapshot(
+                snapshot,
+                dataRoot,
+                receipts.filter((receipt) => receipt.providerId === provider.id),
+              ),
+        ),
       ),
     );
-    const receipts = ownershipHints.flatMap(adoptionReceiptsFromSummary);
-    const evidence = observed.map((snapshot, index) => {
-      const provider = providers[index];
-      const providerId = provider?.id ?? "";
-      return dataRoot === undefined
-        ? snapshot
-        : scopeRuntimeSnapshot(
-            snapshot,
-            dataRoot,
-            receipts.filter((receipt) => receipt.providerId === providerId),
-          );
-    });
     yield* refuseContradictoryOrphans({ root: lookupRoot, providers, evidence, isProtected });
     const groups = groupOrphans(lookupRoot, providers, evidence).filter(
       (group) => belongsToApp(group.providerId, group.appId) && !isProtected(group.providerId, group.appId),

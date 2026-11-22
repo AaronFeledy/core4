@@ -1,3 +1,4 @@
+import { ownsAppliedGlobalService } from "@lando/container-runtime/applied-global-service";
 import type { GlobalAppError, ProxyApplyError } from "@lando/sdk/errors";
 import { type AppPlan, isActiveRunStatus } from "@lando/sdk/schema";
 import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
@@ -50,5 +51,3 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
     }),
   );
 });
-
-import { ownsAppliedGlobalService } from "@lando/container-runtime/applied-global-service";

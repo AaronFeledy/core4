@@ -3,6 +3,7 @@ import { type AbsolutePath, type AppId, LANDO_DATA_ROOT_LABEL, planAppIdentity }
 import type { DestroyOptions } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
+import { VOLUME_INSTANCE_LABEL } from "./labels.ts";
 import type { makeResourceOwnershipStore } from "./resource-ownership.ts";
 import { ownershipFailure } from "./resource-ownership-inventory.ts";
 import {
@@ -101,7 +102,7 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
                     kind: "volume",
                     nativeName: resource.nativeName,
                     labels,
-                    volumeInstance: labels["dev.lando.volume-instance"],
+                    volumeInstance: labels[VOLUME_INSTANCE_LABEL],
                   },
                   { dataRoot, receipts: input.receipts },
                 ) === "owned") &&

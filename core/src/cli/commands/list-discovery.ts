@@ -7,6 +7,7 @@ import {
   PROVIDER_LABEL,
   SCRATCH_LABEL,
   SERVICE_LABEL,
+  VOLUME_INSTANCE_LABEL,
   VOLUME_OWNER_LABEL,
 } from "@lando/container-runtime/labels";
 import { type AdoptionReceipt, decideDataRootOwnership } from "@lando/container-runtime/native-ownership";
@@ -463,7 +464,7 @@ export const discoverRunningAppsEvidenceFromSockets = async (
               kind,
               nativeName: typeof name === "string" ? name.replace(/^\//u, "") : "",
               nativeId: typeof resource.Id === "string" ? resource.Id : undefined,
-              volumeInstance: labels["dev.lando.volume-instance"],
+              volumeInstance: labels[VOLUME_INSTANCE_LABEL],
               labels,
             },
             { dataRoot: canonical, receipts },

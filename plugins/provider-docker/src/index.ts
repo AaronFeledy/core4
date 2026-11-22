@@ -679,7 +679,6 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
         const adoptionReceipts = yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
-          previousPlan: previous,
           adoptionReceipts,
           ...(applyOptions.executeReadinessAttempt === undefined
             ? {}
@@ -712,38 +711,33 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       cleanupOwnedResources: planState.cleanupOwnedResources,
       destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
         return yield* appliedPlans.resolveMutationPlan(target.app).pipe(
-          Effect.flatMap((previous) => {
-            const plan = target.plan ?? previous;
-            return plan === undefined
+          Effect.map((previous) => target.plan ?? previous),
+          Effect.flatMap((plan) =>
+            plan === undefined
               ? Effect.succeed(DESTROY_NO_OP)
-              : planState.ownership
-                  .receiptsFor(plan)
-                  .pipe(
-                    Effect.flatMap((adoptionReceipts) =>
-                      bringDown(plan, {
-                        adoptionReceipts,
-                        recordedPlan: previous,
-                        api: dockerApi,
-                        endpointNamespace: resolvedDockerHost,
-                        ctx: DOCKER_CTX,
-                        dialect: dockerLifecycleDialect,
-                        volumes: destroyOptions.volumes,
-                        ...(destroyOptions.purgeCaches === undefined
-                          ? {}
-                          : { purgeCaches: destroyOptions.purgeCaches }),
-                      }),
-                    ),
-                  )
-                  .pipe(
-                    Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
-                    Effect.map(({ shutdownObservations, volumesRemoved, skipped }) => ({
-                      kind: "destroyed" as const,
-                      volumesRemoved,
-                      shutdownObservations,
-                      ...(skipped === undefined ? {} : { skipped }),
-                    })),
-                  );
-          }),
+              : planState.ownership.receiptsFor(plan).pipe(
+                  Effect.flatMap((adoptionReceipts) =>
+                    bringDown(plan, {
+                      adoptionReceipts,
+                      api: dockerApi,
+                      endpointNamespace: resolvedDockerHost,
+                      ctx: DOCKER_CTX,
+                      dialect: dockerLifecycleDialect,
+                      volumes: destroyOptions.volumes,
+                      ...(destroyOptions.purgeCaches === undefined
+                        ? {}
+                        : { purgeCaches: destroyOptions.purgeCaches }),
+                    }),
+                  ),
+                  Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
+                  Effect.map(({ shutdownObservations, volumesRemoved, skipped }) => ({
+                    kind: "destroyed" as const,
+                    volumesRemoved,
+                    shutdownObservations,
+                    ...(skipped === undefined ? {} : { skipped }),
+                  })),
+                ),
+          ),
         );
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>

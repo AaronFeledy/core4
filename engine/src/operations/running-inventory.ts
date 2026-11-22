@@ -1,7 +1,7 @@
 import { SCRATCH_LABEL } from "@lando/container-runtime/labels";
 import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import { AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, LANDO_DATA_ROOT_LABEL, ProviderId } from "@lando/sdk/schema";
 import {
   GlobalAppService,
   type ProviderRuntimeSnapshot,
@@ -273,7 +273,7 @@ export const readRunningInventory = Effect.fnUntraced(function* () {
         Effect.gen(function* () {
           const roots = new Set(
             snapshot.services.flatMap((service) =>
-              service.appRoot !== undefined && service.labels?.["dev.lando.data-root"] === undefined
+              service.appRoot !== undefined && service.labels?.[LANDO_DATA_ROOT_LABEL] === undefined
                 ? [service.appRoot]
                 : [],
             ),

@@ -87,7 +87,6 @@ test.each([false, true])(
     };
     const result = await Effect.runPromise(
       bringUp(desired, {
-        previousPlan: old,
         adoptionReceipts: recorded
           ? [
               {
@@ -324,7 +323,7 @@ test("v1 inventory upgrades and destroys the legacy app without touching peer-ro
       yield* inventory.prepare(desired, old);
       const adoptionReceipts =
         (yield* inventory.load(old.root))?.adoptions?.flatMap((batch) => batch.receipts) ?? [];
-      return yield* bringUp(desired, { previousPlan: old, ctx, api, adoptionReceipts });
+      return yield* bringUp(desired, { ctx, api, adoptionReceipts });
     }),
   );
   expect(result.createdVolumes).toEqual([]);
@@ -343,7 +342,6 @@ test("v1 inventory upgrades and destroys the legacy app without touching peer-ro
   const adopted = await Effect.runPromise(inventory.load(old.root));
   const receipt = await Effect.runPromise(
     bringDown(desired, {
-      recordedPlan: desired,
       adoptionReceipts: adopted?.adoptions?.flatMap((batch) => batch.receipts) ?? [],
       ctx,
       api,

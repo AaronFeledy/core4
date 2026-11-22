@@ -10,15 +10,6 @@ import {
 import { Effect, Option, Schema } from "effect";
 import { dataRootLabels } from "./data-root-labels.ts";
 import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
-
-export { ownsSharedCrossAppNetwork } from "./data-root-labels.ts";
-export type { AdoptionReceipt } from "./data-root-ownership.ts";
-export {
-  adoptionReceiptsFromSummary,
-  dataRootRefusal,
-  decideDataRootOwnership,
-} from "./data-root-ownership.ts";
-
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
 import {
   APP_LABEL,
@@ -31,6 +22,13 @@ import {
 import { isOwnershipRoot } from "./ownership-root.ts";
 import { serviceContainerOwnershipProblem } from "./service-container-ownership.ts";
 
+export { ownsSharedCrossAppNetwork } from "./data-root-labels.ts";
+export {
+  type AdoptionReceipt,
+  adoptionReceiptsFromSummary,
+  dataRootRefusal,
+  decideDataRootOwnership,
+} from "./data-root-ownership.ts";
 export {
   type ServiceContainerIdentity,
   serviceContainerOwnershipLabels,
