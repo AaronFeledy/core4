@@ -16,7 +16,7 @@ export const source = {
         type: "node:lts",
         primary: true,
         build: { artifact: HUGO_BUILD_ARTIFACT },
-        command: "hugo server --bind 0.0.0.0 --port 1313",
+        command: "hugo server --bind 0.0.0.0 --port {{ service.port }}",
         port: 1313,
       },
       web: staticWebService("public"),

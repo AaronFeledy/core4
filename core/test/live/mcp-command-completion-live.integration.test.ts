@@ -204,7 +204,7 @@ suite("compiled CLI managed MCP command completion", () => {
         child.kill(signal);
         const exitCode = await within(child.exited, "idle CLI shutdown", 5_000);
         const milliseconds = performance.now() - started;
-        for (;;) {
+        while (true) {
           const next = await reader.read();
           if (next.done) break;
           stdout += decoder.decode(next.value, { stream: true });

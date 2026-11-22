@@ -88,6 +88,8 @@ Compose-vendor, Tomcat, Node release, and nightly automation MUST share failure-
 
 Compose-vendor, Tomcat, and Node release maintenance automation MUST own the rolling PR's title and, in the body, only the report that ends at the first line starting with `<!-- maintenance-report:end -->` and starts at the nearest preceding line starting with `<!-- maintenance-report:start -->`, preserving reviewer text outside that section; a body without such a pair MUST be replaced by the marked report. It MUST NOT force-push the rolling branch. Compose-vendor automation MUST run the coverage gate while building its proposal report and lead with the result, including the gate output and the steps to fix it when the gate fails. It MUST NOT classify keys automatically or block or fail the proposal because the coverage gate fails.
 
+Workflow generators MUST take every action from `.github/actions/pins.yml`, which holds one line per action pinning a full commit SHA labeled with its exact release (`owner/repo@<sha> # vX.Y.Z`), and MUST emit that text unchanged. Renovate then moves a pin in that file and in the committed workflows with identical text, so `codegen:check` stays clean without a regeneration step. Runner labels, job containers, and action inputs remain generator-owned, and the dependency updater MUST NOT edit them.
+
 Pin manifests and generated workflows remain committed. Pure build products are derived and need not be Git sources of truth. `bun run codegen` runs the catalog in dependency order; `bun run codegen:check` is the pure-drift gate. Semantic gates such as schema compatibility, guide coverage, public transcripts, and boundaries remain separate.
 
 ### 17.3 Asset embedding

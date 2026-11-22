@@ -104,7 +104,8 @@ describe("minio ServiceType", () => {
     });
     // Then both executable outputs follow the feature declaration.
     expect(plan.command).toEqual([
-      "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :19002",
+      'mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :19002 "$@"',
+      "minio",
     ]);
     expect(plan.endpoints).toContainEqual({
       kind: "internal",
@@ -120,7 +121,8 @@ describe("minio ServiceType", () => {
     const plan = await planMinioService({ type: "minio", port: 9001, consolePort: 19001 });
     // Then
     expect(plan.command).toEqual([
-      "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9001 --console-address :19001",
+      'mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9001 --console-address :19001 "$@"',
+      "minio",
     ]);
     expect(plan.endpoints).toEqual([
       {
@@ -175,7 +177,8 @@ describe("minio ServiceType", () => {
     expect(plan.artifact).toEqual({ kind: "ref", ref: FIXTURE_IMAGE });
     expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
     expect(plan.command).toEqual([
-      "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :9001",
+      'mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :9001 "$@"',
+      "minio",
     ]);
     expect(plan.endpoints).toEqual([
       {
@@ -230,7 +233,8 @@ describe("minio ServiceType", () => {
     const plan = await planMinioService({ type: "minio", port: 19000 });
 
     expect(plan.command).toEqual([
-      "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :19000 --console-address :9001",
+      'mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :19000 --console-address :9001 "$@"',
+      "minio",
     ]);
     expect(plan.endpoints).toEqual([
       {

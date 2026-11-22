@@ -119,14 +119,12 @@ describe("workflow performance rendering", () => {
               expect.objectContaining({
                 name: "Log in to Docker Hub",
                 if: "env.WORKFLOW_PERF_DOCKER_HUB_LOGIN == 'true'",
-                uses: "docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567",
-                env: { DOCKER_CONFIG: `\${{ runner.temp }}/workflow-performance-${cell.id}-registry` },
-                with: {
-                  registry: "docker.io",
-                  username: "${{ secrets.DOCKERHUB_USERNAME }}",
-                  password: "${{ secrets.DOCKERHUB_TOKEN }}",
-                  logout: true,
+                env: {
+                  DOCKER_CONFIG: `\${{ runner.temp }}/workflow-performance-${cell.id}-registry`,
+                  DOCKERHUB_USERNAME: "${{ secrets.DOCKERHUB_USERNAME }}",
+                  DOCKERHUB_TOKEN: "${{ secrets.DOCKERHUB_TOKEN }}",
                 },
+                run: 'printf \'%s\' "$DOCKERHUB_TOKEN" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin',
               }),
               expect.objectContaining({
                 name: "Run workflow performance samples",

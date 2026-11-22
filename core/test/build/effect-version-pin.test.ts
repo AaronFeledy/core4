@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { scanModuleEdges } from "../../../scripts/module-edge-scan.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const EFFECT_VERSION = "4.0.0";
+const EFFECT_VERSION = "4.1.4";
 const DEPENDENCY_FIELDS = [
   "dependencies",
   "devDependencies",

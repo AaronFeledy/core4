@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, resolve } from "node:path";
 import * as Schema from "effect/Schema";
-
+import { pinnedAction } from "../../../scripts/action-pins.ts";
 import { CI_PLATFORMS, releaseBinaryFileName } from "../../../scripts/ci-platforms";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -424,7 +424,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain(`    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
         with:
           fetch-depth: 0`);
       expect(workflow).toContain("- name: Check schema compatibility");
@@ -618,7 +618,7 @@ describe("ci workflow codegen", () => {
       for (const hostKey of ["linux-x64", "linux-arm64"]) {
         const job = workflow.split(`\n  runtime-bundle-${hostKey}:\n`)[1]?.split(/^ {2}[a-z]/m)[0] ?? "";
         expect(job).toContain("id: runtime-bundle-cache");
-        expect(job).toContain("uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9");
+        expect(job).toContain(`uses: ${pinnedAction("actions/cache")}`);
         expect(job).toContain("key: ${{ steps.runtime-bundle-key.outputs.key }}");
         expect(job).toContain(`bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey} --cache-key`);
         expect(job).toContain("if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'");

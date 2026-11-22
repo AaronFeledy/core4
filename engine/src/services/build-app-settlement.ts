@@ -1,4 +1,4 @@
-import { annotateFailureRole, mergeFailure } from "@lando/sdk/command-result";
+import { annotateFailureRole, failureOutcomeFromCause, mergeFailure } from "@lando/sdk/command-result";
 import { BuildPhaseFailedError } from "@lando/sdk/errors";
 import {
   TaskCompleteEvent,
@@ -101,8 +101,14 @@ export const makeAppBuildSettlement = (input: AppBuildInput, steps: readonly App
         ),
       );
   });
-  const failedDisposition = (appStep: AppStep, cause: Cause.Cause<BuildAppError>) =>
-    failedAppStepDisposition(appStep, cause, performance.now() - began);
+  const failedDisposition = (appStep: AppStep, cause: Cause.Cause<BuildAppError>) => {
+    const disposition = failedAppStepDisposition(appStep, cause, performance.now() - began);
+    const failure = failureOutcomeFromCause(cause);
+    const error = failure.error;
+    return failure.kind === "typed" && failure.source === "elected" && error instanceof Error
+      ? { ...disposition, summary: error.message }
+      : disposition;
+  };
   const skip = Effect.fnUntraced(function* (appStep: AppStep, cached: boolean) {
     yield* input.events.publish({
       _tag: "build-step-skip",

@@ -44,7 +44,8 @@ export const AuthoringExpression = Schema.Struct({
     description: "Parsed expression template, never evaluated during authoring validation.",
   }),
   scopes: Schema.Array(Schema.String).annotate({
-    description: "Sorted unique context scope heads referenced by the template.",
+    description:
+      "Sorted unique context scope heads referenced by the template. The service scope exposes only service.port at service command, entrypoint, extraArgs, and container probe command sites.",
   }),
 }).annotate({
   identifier: "AuthoringExpression",
@@ -253,7 +254,7 @@ export const authoringExpressionSlot = (
           if (
             expectedType !== "string" &&
             expectedType !== "unknown" &&
-            analysis.scopes.some((head) => ["app", "proxy", "services"].includes(head))
+            analysis.scopes.some((head) => ["app", "proxy", "services", "service"].includes(head))
           )
             return fail("Planner scopes require a string site.");
           if (analysis.scopes.some((head) => !allowedScopes.has(head)))

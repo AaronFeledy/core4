@@ -179,8 +179,7 @@ const probeHealthy = Effect.fnUntraced(function* <E, R>(
   handlers: ServiceStartHandlers<E, R>,
 ): Effect.fn.Return<GateProbeResult, E | ProviderError, R> {
   const healthcheck = effectiveReadiness(service);
-  if (healthcheck === undefined || healthcheck.kind !== "command" || healthcheck.command === undefined)
-    return { ok: false };
+  if (healthcheck === undefined || healthcheck.kind === "none") return { ok: false };
 
   const command = Effect.gen(function* (): Effect.fn.Return<Attempt, ProviderError, R> {
     const result = yield* Effect.exit(handlers.execHealthcheck(service, healthcheck));

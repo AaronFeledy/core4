@@ -10,7 +10,7 @@ import {
   plan as destroyPlan,
   makeHarness as makeDestroyHarness,
 } from "./destroy-progress-topology-support.ts";
-import { makeHarness, plan } from "./start-progress-topology-support.ts";
+import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const exited = (
   partial: Pick<ServiceShutdownObservation, "appId" | "service"> &
@@ -63,6 +63,43 @@ test("stop preserves provider destroy shutdownObservations on the public receipt
   // Then the public stop receipt carries the provider observations unchanged.
   expect(result.shutdownObservations).toEqual(observed);
   expect(result.servicesStopped).toEqual(["web"]);
+});
+
+test("stop leaves services whose container was already gone out of servicesStopped", async () => {
+  // Given a two-service app where the runtime reports worker's container already absent.
+  const worker = { ...web, name: ServiceName.make("worker"), primary: false };
+  const twoServices = { ...plan, services: { ...plan.services, [worker.name]: worker } };
+  const observed: ServiceShutdownObservation[] = [
+    exited({ appId: twoServices.id, service: ServiceName.make("web"), containerId: "web-1" }),
+    {
+      appId: twoServices.id,
+      providerId: ProviderId.make("lando"),
+      service: worker.name,
+      status: "unknown",
+      reason: "container-absent",
+    },
+  ];
+  const harness = makeHarness({
+    resolveAppliedPlan: () => Effect.succeed(twoServices),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "applied", plan: twoServices }),
+    selectProvider: () =>
+      Effect.succeed(
+        stopProvider(() =>
+          Effect.succeed({
+            kind: "destroyed" as const,
+            volumesRemoved: { data: 0, cache: 0 },
+            shutdownObservations: observed,
+          }),
+        ),
+      ),
+  });
+  // When stop tears the applied plan down.
+  const result = await Effect.runPromise(
+    stopAppForTarget({}, targetFor(twoServices)).pipe(Effect.provide(harness.layer)),
+  );
+  // Then only the container the runtime actually stopped is reported, and the facts stay intact.
+  expect(result.servicesStopped).toEqual(["web"]);
+  expect(result.shutdownObservations).toEqual(observed);
 });
 
 test("stop omits shutdownObservations when the provider contributes none", async () => {

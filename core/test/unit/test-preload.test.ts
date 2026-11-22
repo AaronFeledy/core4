@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -9,7 +9,8 @@ const rootEnvKeys = [
   "LANDO_USER_CONF_ROOT",
   "LANDO_SYSTEM_PLUGIN_ROOT",
 ] as const;
-const preload = resolve(import.meta.dirname, "../../../scripts/test-preload.ts");
+const repoRoot = resolve(import.meta.dirname, "../../..");
+const preload = join(repoRoot, "scripts/test-preload.ts");
 const dumpRoots = `console.log(${JSON.stringify(rootEnvKeys)}.map(key => process.env[key] ?? "<unset>").join("\\n"));`;
 const tempRoots = new Set<string>();
 
@@ -39,6 +40,42 @@ process.stdout.write(child.stdout); process.exit(child.exitCode);`,
 afterEach(() => {
   for (const root of tempRoots) rmSync(root, { recursive: true, force: true });
   tempRoots.clear();
+});
+
+describe("test preload symlink resolution", () => {
+  test.each([
+    { value: undefined, allowed: true },
+    { value: "", allowed: true },
+    { value: "0", allowed: true },
+    { value: "1", allowed: false },
+    { value: "true", allowed: false },
+  ])("matches CI with NODE_PRESERVE_SYMLINKS=$value", async ({ value, allowed }) => {
+    const root = mkdtempSync(join(tmpdir(), "lando-test-symlinks-"));
+    tempRoots.add(root);
+    const smokeTest = join(root, "smoke.test.ts");
+    const marker = "symlink preload smoke test ran";
+    await Bun.write(
+      smokeTest,
+      `import { test } from "bun:test"; test("smoke", () => { process.stdout.write(${JSON.stringify(marker)}); });`,
+    );
+
+    const { NODE_PRESERVE_SYMLINKS: _preserveSymlinks, ...env } = process.env;
+    if (value !== undefined) env.NODE_PRESERVE_SYMLINKS = value;
+    const child = Bun.spawnSync([process.execPath, "test", smokeTest], {
+      cwd: repoRoot,
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const stderr = child.stderr.toString();
+    expect(child.exitCode, stderr).toBe(allowed ? 0 : 1);
+    const smokeOutput = child.stdout
+      .toString()
+      .split(/\r?\n/)
+      .filter((line) => line === marker);
+    expect(smokeOutput).toEqual(allowed ? [marker] : []);
+  });
 });
 
 describe("test preload roots", () => {

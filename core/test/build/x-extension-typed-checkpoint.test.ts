@@ -17,7 +17,8 @@ import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-ext
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
-import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
@@ -67,7 +68,12 @@ const projected = evolveHistoricalSchedule(
     ),
   ),
 );
-const expected = evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(projected, "wire"), "services");
+const expected = evolveHistoricalExtraArgs(
+  evolveHistoricalRouteText(
+    evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(projected, "wire"), "services"),
+    "authoring",
+  ),
+);
 
 const mutateFirst = (value: JsonValue, change: (schema: JsonSchema) => JsonSchema | undefined): JsonValue => {
   if (isJsonObject(value)) {

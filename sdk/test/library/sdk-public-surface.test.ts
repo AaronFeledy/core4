@@ -146,6 +146,14 @@ describe("SDK public-surface snapshot", () => {
       normalizeSignature(publicSurface.featureEffectiveValidation),
     );
   });
+  test("matches the optional service type planned-port selector signature", () => {
+    const member = interfaces
+      .get("ServiceType")
+      ?.members.find((entry) => entry.name?.getText() === "plannedPort");
+    expect(normalizeSignature(member?.getText() ?? "")).toBe(
+      normalizeSignature(publicSurface.serviceTypePlannedPort),
+    );
+  });
   test("matches every Landofile service failure tag", () => {
     const tags = {
       ComposeKeyRejectedError: true,

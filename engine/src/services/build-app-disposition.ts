@@ -1,5 +1,5 @@
 import type { ScheduleOutcome } from "@lando/container-runtime/dependency-schedule";
-import { primaryFailureReason } from "@lando/sdk/command-result";
+import { failureOutcomeFromCause, taggedErrorJson } from "@lando/sdk/command-result";
 import { BuildStepFailedError, type EventError } from "@lando/sdk/errors";
 import type { AbsolutePath, CommandWarning } from "@lando/sdk/schema";
 import type { BuildAppError, StateBucket } from "@lando/sdk/services";
@@ -44,8 +44,8 @@ export const failedAppStepDisposition = (
   cause: Cause.Cause<BuildAppError>,
   durationMs: number,
 ): AppStepDisposition => {
-  const reason = primaryFailureReason(cause);
-  const detail = reason !== undefined && Cause.isFailReason(reason) ? reason.error.message : undefined;
+  const failure = failureOutcomeFromCause(cause);
+  const detail = failure.kind === "typed" ? taggedErrorJson(failure.error).message : undefined;
   return {
     outcome: "failed",
     summary: detail ?? `${appStep.step.id} ${Cause.hasInterruptsOnly(cause) ? "interrupted" : "failed"}`,

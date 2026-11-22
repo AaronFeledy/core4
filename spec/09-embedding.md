@@ -145,7 +145,7 @@ App lifecycle hosts SHOULD use `App` methods. `@lando/core/cli` is the stable co
 
 `meta:setup`, `apps:init`, `meta:events:follow`, `meta:shellenv`, and `meta:uninstall` are not exported as command functions. Hosts compose their underlying services, provide `InteractionService` for init, subscribe to `EventService`, or keep installation concerns outside the runtime as applicable.
 
-The optional `invokeOperation` helper from `@lando/core/cli/operations` returns `{ ok: false, error, additionalErrors }` when §8.11.1's annotation-based projection selects a typed primary failure. `additionalErrors` is always present, possibly empty, with `{ role, error }` entries. These values remain host-owned, without serialization or automatic redaction; `renderError` receives only the primary failure. Projected defects and interruption-only causes propagate as defects with the original Cause attached.
+The optional `invokeOperation` helper from `@lando/core/cli/operations` returns `{ ok: false, error, additionalErrors }` when §8.11.1's annotation-based projection selects a typed primary failure. `additionalErrors` is always present, possibly empty, with `{ role, error }` entries. These values remain host-owned, without serialization or automatic redaction; `renderError` receives only the primary failure. An elected typed primary (§8.11.1), which the runtime turned into a defect because cleanup or a sibling also failed, is returned only when the caller's optional `isError` guard accepts it, so `error` and `renderError` never receive an unproven value. Projected defects and unaccepted elected primaries propagate as defects with the original Cause attached; interruption-only causes stay interruptions.
 
 ### 16.8 Testing
 

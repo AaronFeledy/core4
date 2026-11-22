@@ -84,7 +84,7 @@ const acceleratedPlan = (root: AbsolutePath, sessionRoot: AbsolutePath): AppPlan
             readOnly: false,
             realization: "accelerated",
             excludes: ["node_modules", "vendor"],
-            includes: ["vendor"],
+            includes: ["vendor", "./.git/"],
             mountKey: "app-mount",
           },
         ],

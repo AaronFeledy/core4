@@ -1,4 +1,4 @@
-import { redactProviderError } from "@lando/redaction/provider-error";
+import { isProviderError, redactProviderError } from "@lando/redaction/provider-error";
 import { mapDefectCause, mapStreamFailures } from "@lando/sdk/command-result";
 import type { SecretStoreError } from "@lando/sdk/errors";
 import type { AppPlan, BuildStep } from "@lando/sdk/schema";
@@ -61,7 +61,13 @@ export const runAppBuildStep = Effect.fn("BuildOrchestrator.runAppBuildStep")(fu
         isSecretStoreError(failure) ? failure : redactProviderError(failure, input.redaction.redactor),
       ),
       Stream.catchCause((cause) =>
-        Stream.failCause(mapDefectCause(cause, (defect) => input.redaction.redactor.redactValue(defect))),
+        Stream.failCause(
+          mapDefectCause(cause, (defect) => {
+            if (!isProviderError(defect)) return input.redaction.redactor.redactValue(defect);
+            if (isSecretStoreError(defect)) return defect;
+            return redactProviderError(defect, input.redaction.redactor);
+          }),
+        ),
       ),
       Stream.catchCause((cause) => {
         const reason = cause.reasons[0];

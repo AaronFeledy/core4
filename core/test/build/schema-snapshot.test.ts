@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { JsonSchemaName } from "@lando/sdk/schema";
@@ -67,15 +67,19 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
     ];
   };
   const unexplained = new Map(nullNodes(document, "$"));
+  const resolveRef = (ref: string): unknown => {
+    let resolved: unknown = document;
+    for (const segment of ref.slice(2).split("/")) {
+      const key = decodeURIComponent(segment).replace(/~1/g, "/").replace(/~0/g, "~");
+      resolved = Predicate.isObject(resolved) ? resolved[key] : undefined;
+    }
+    return resolved;
+  };
   const visit = (ast: AST.AST, target: unknown, path: string): void => {
     if (!Predicate.isObject(target) || !hasNullOrRef(target)) return;
     if (typeof target.$ref === "string") {
       expect(target.$ref.startsWith("#/"), path).toBe(true);
-      let resolved: unknown = document;
-      for (const segment of target.$ref.slice(2).split("/")) {
-        const key = decodeURIComponent(segment).replace(/~1/g, "/").replace(/~0/g, "~");
-        resolved = Predicate.isObject(resolved) ? resolved[key] : undefined;
-      }
+      const resolved = resolveRef(target.$ref);
       expect(Predicate.isObject(resolved), `${path}: unresolved ${target.$ref}`).toBe(true);
       visit(ast, resolved, `${path}(${target.$ref})`);
       return;
@@ -106,17 +110,76 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
     } else if (AST.isUnion(ast)) {
       const branches = target.anyOf ?? target.oneOf;
       // Effect retains Never as { not: {} }; only optional Undefined disappears.
-      const members = ast.types.filter((member) => !(AST.isOptional(ast) && AST.isUndefined(member)));
+      const unionMembers = (union: AST.Union): readonly AST.AST[] =>
+        union.types.filter((member) => !(AST.isOptional(union) && AST.isUndefined(member)));
+      const members = unionMembers(ast);
       const onlyMember = members.length === 1 ? members[0] : undefined;
       if (onlyMember !== undefined) {
         visit(onlyMember, target, path);
         return;
       }
       if (Array.isArray(branches)) {
-        expect(branches.length, `${path}: union alignment`).toBe(members.length);
-        members.forEach((member, index) => {
+        // Effect splices a nested union's alternatives into the parent anyOf, in place, unless it
+        // emits that union as one schema: a named `$ref`, an annotated union, or a collapsed one.
+        // The encoded AST no longer carries those names, so the emitted branch picks which reading
+        // to try first, and an alignment must account for every branch exactly once.
+        const unionBehind = (member: AST.AST): AST.Union | undefined => {
+          let current = member;
+          // A JSON codec can resolve to another declaration; stop once a step makes no progress.
+          for (const passed = new Set<AST.AST>(); !passed.has(current); ) {
+            passed.add(current);
+            if (AST.isSuspend(current)) current = current.thunk();
+            else if (current.encoding !== undefined) current = AST.toEncoded(current);
+            else if (AST.isDeclaration(current) && current.annotations?.toCodecJson !== undefined)
+              current = AST.toEncoded(Schema.toCodecJson(Schema.make(current)).ast);
+            else return AST.isUnion(current) ? current : undefined;
+          }
+          return undefined;
+        };
+        const wholeUnion = (branch: unknown, refs: ReadonlySet<string> = new Set()): boolean => {
+          if (!Predicate.isObject(branch)) return false;
+          if (typeof branch.$ref === "string")
+            return (
+              !refs.has(branch.$ref) && wholeUnion(resolveRef(branch.$ref), new Set(refs).add(branch.$ref))
+            );
+          return Array.isArray(branch.anyOf) || Array.isArray(branch.enum) || "const" in branch;
+        };
+        // The queue is a shared linked list, so each (queue position, branch) pair is solved once.
+        interface Queue {
+          readonly member: AST.AST;
+          readonly rest: Queue | undefined;
+        }
+        type Alignment = ReadonlyArray<readonly [AST.AST, number]> | undefined;
+        const solved = new WeakMap<Queue, Map<number, Alignment>>();
+        const enqueue = (list: readonly AST.AST[], rest: Queue | undefined): Queue | undefined =>
+          list.reduceRight<Queue | undefined>((tail, member) => ({ member, rest: tail }), rest);
+        const align = (queue: Queue | undefined, at: number): Alignment => {
+          if (queue === undefined) return at === branches.length ? [] : undefined;
+          if (at >= branches.length) return undefined;
+          const memo = solved.get(queue) ?? new Map<number, Alignment>();
+          solved.set(queue, memo);
+          if (memo.has(at)) return memo.get(at);
+          const { member, rest } = queue;
+          const whole = (): Alignment => {
+            const tail = align(rest, at + 1);
+            return tail === undefined ? undefined : [[member, at] as const, ...tail];
+          };
+          const union = unionBehind(member);
+          const split = (): Alignment =>
+            union === undefined ? undefined : align(enqueue(unionMembers(union), rest), at);
+          const result =
+            union === undefined
+              ? whole()
+              : wholeUnion(branches[at])
+                ? (whole() ?? split())
+                : (split() ?? whole());
+          memo.set(at, result);
+          return result;
+        };
+        const aligned = align(enqueue(members, undefined), 0);
+        expect(aligned, `${path}: union alignment`).toBeDefined();
+        for (const [member, index] of aligned ?? [])
           visit(member, branches[index], `${path}.anyOf[${index}]`);
-        });
       } else {
         // Collapsed literal unions have no child schemas to inspect.
         expect(
@@ -151,17 +214,16 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
   return [...unexplained.values()];
 };
 
-// Generate once because the output is deterministic, every derived family is
-// inspected below, and each invocation costs about two seconds.
-let generatorRan = false;
+// Generation can take 5–9 seconds on slower runners. Bound both the child
+// and the hook/test that owns it without raising the suite's default timeout.
+const generatorTimeoutMs = 15_000;
+const generatorTestTimeoutMs = 20_000;
 const runGenerator = (): void => {
-  if (generatorRan) {
-    return;
-  }
   const proc = Bun.spawnSync([process.execPath, generatorPath], {
     cwd: repoRoot,
     stdout: "pipe",
     stderr: "pipe",
+    timeout: generatorTimeoutMs,
   });
 
   expect({
@@ -169,13 +231,13 @@ const runGenerator = (): void => {
     stdout: proc.stdout.toString(),
     stderr: proc.stderr.toString(),
   }).toMatchObject({ exitCode: 0 });
-  generatorRan = true;
 };
 
 describe("schema snapshot artifact-set gate", () => {
+  beforeAll(runGenerator, generatorTestTimeoutMs);
+
   test("authored-input artifacts advertise null only where the encoded source accepts it", async () => {
     // Given the emitted authored-input artifact families, including registered lockfiles.
-    runGenerator();
     const names = JSON_SCHEMA_NAMES.filter(
       (name) =>
         /^(LandofileShape|LandofileAuthoring(?:Shape|Fragment)(?:Wire)?|GlobalConfig|PluginManifest|RecipeManifest|IncludeEntry|ToolingIncludeShape)$/.test(
@@ -263,7 +325,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("bundled plugin manifest fixture freezes every in-binary plugin manifest", async () => {
-    runGenerator();
     const bundledPluginManifests = JSON.parse(
       await readFile(bundledPluginManifestsPath, "utf8"),
     ) as ReadonlyArray<{ readonly name: string }>;
@@ -272,7 +333,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("command schema index freezes a result schema for every canonical command id", async () => {
-    runGenerator();
     const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
       Record<string, string>
     >;
@@ -297,8 +357,6 @@ describe("schema snapshot artifact-set gate", () => {
   test(
     "public registry drives schema names and metadata index",
     async () => {
-      runGenerator();
-
       const generated = JSON.parse(
         await readFile(metadataIndexPath, "utf8"),
       ) as typeof publicSchemaMetadataIndex;
@@ -645,8 +703,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("generator writes generated schema reference docs", async () => {
-    runGenerator();
-
     const generated = await Bun.file(deprecationNoticeReferencePath).text();
     const expected = renderPublicSchemaReferencePages().find(
       (entry) => entry.id === "DeprecationNotice",
@@ -780,8 +836,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("generator emits the deprecation notice schema artifact", async () => {
-    runGenerator();
-
     const artifact = JSON.parse(await readFile(deprecationNoticeArtifactPath, "utf8")) as Record<
       string,
       unknown
@@ -791,8 +845,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("generator emits a draft 2020-12 schema artifact for every public SDK schema", async () => {
-    runGenerator();
-
     for (const schemaName of JSON_SCHEMA_NAMES) {
       const artifact = JSON.parse(await readFile(schemaArtifactPath(schemaName), "utf8")) as Record<
         string,
@@ -804,7 +856,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("derived schema artifact paths are ignored while the generator-owned fixture remains visible", async () => {
-    runGenerator();
     const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
       Record<string, string>
     >;
@@ -867,33 +918,29 @@ describe("schema snapshot artifact-set gate", () => {
     });
   });
 
-  test("generator is deterministic and idempotent across the schema artifact set", async () => {
-    runGenerator();
-    const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
-      Record<string, string>
-    >;
-    const generatedPaths = [
-      "sdk/test/fixtures/bundled-plugin-manifests.json",
-      "dist/schemas/index.json",
-      ...JSON_SCHEMA_NAMES.map((schemaName) => `dist/schemas/${schemaArtifactFilename(schemaName)}`),
-      "dist/command-schemas/index.json",
-      ...Object.values(commandSchemaIndex),
-    ].sort();
-    const before = await Promise.all(
-      generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
-    );
+  test(
+    "generator is deterministic and idempotent across the schema artifact set",
+    async () => {
+      const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
+        Record<string, string>
+      >;
+      const generatedPaths = [
+        "sdk/test/fixtures/bundled-plugin-manifests.json",
+        "dist/schemas/index.json",
+        ...JSON_SCHEMA_NAMES.map((schemaName) => `dist/schemas/${schemaArtifactFilename(schemaName)}`),
+        "dist/command-schemas/index.json",
+        ...Object.values(commandSchemaIndex),
+      ].sort();
+      const before = await Promise.all(
+        generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
+      );
 
-    const secondRun = Bun.spawnSync([process.execPath, generatorPath], {
-      cwd: repoRoot,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    expect({ exitCode: secondRun.exitCode, stderr: secondRun.stderr.toString() }).toMatchObject({
-      exitCode: 0,
-    });
-    const after = await Promise.all(
-      generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
-    );
-    expect(after).toEqual(before);
-  });
+      runGenerator();
+      const after = await Promise.all(
+        generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
+      );
+      expect(after).toEqual(before);
+    },
+    generatorTestTimeoutMs,
+  );
 });

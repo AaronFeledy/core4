@@ -24,6 +24,7 @@ export const withRuntimeShutdownReceipt = (
         }
         return result;
       }),
+      { wait: "operation", resource: "the Lando container runtime" },
     )
     .pipe(Effect.catch(() => (completed === undefined ? teardown : Effect.succeed(completed))));
 };

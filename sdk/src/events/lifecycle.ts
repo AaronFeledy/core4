@@ -22,6 +22,10 @@ export const PreStartEvent = Schema.TaggedStruct("pre-start", {
   app: AppRef,
   plan: AppPlan,
   triggeredBy: Schema.String,
+  services: Schema.optionalKey(Schema.Array(ServiceName)).annotate({
+    description:
+      "Execution services for a scoped start, including prerequisites and companions. Omitted for a whole-app start.",
+  }),
   timestamp: Timestamp,
 });
 export type PreStartEvent = typeof PreStartEvent.Type;
@@ -30,6 +34,10 @@ export const PostStartEvent = Schema.TaggedStruct("post-start", {
   scope: Schema.Literal("app"),
   app: AppRef,
   plan: AppPlan,
+  services: Schema.optionalKey(Schema.Array(ServiceName)).annotate({
+    description:
+      "Execution services for a scoped start, including prerequisites and companions. Omitted for a whole-app start.",
+  }),
   timestamp: Timestamp,
 });
 export type PostStartEvent = typeof PostStartEvent.Type;

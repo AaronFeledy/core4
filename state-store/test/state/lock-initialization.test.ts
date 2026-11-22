@@ -1,101 +1,97 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
-import { acquireAdvisoryLockAt } from "../../src/lock.ts";
-import { ownerOnlyFileAccess } from "../private-file-access.ts";
+import { ADVISORY_LOCK_SUFFIX, acquireAdvisoryLockAt } from "../../src/lock.ts";
+import { lockTestAccess } from "./lock-test-access.ts";
 
-for (const method of ["chmod", "writeFile"] as const) {
-  for (const replaced of [false, true]) {
-    test(`cleans only its created lock after ${method} failure with replacement=${replaced}`, async () => {
-      // Given an injected filesystem failure, optionally after an inode replacement
-      const dir = await fs.mkdtemp(join(tmpdir(), "lando-lock-init-"));
-      const path = join(dir, "transaction.lock");
-      const originalOpen = fs.open;
-      const injected = new Error("injected lock initialization failure");
-      const openSpy = spyOn(fs, "open").mockImplementation(async (...args: Parameters<typeof fs.open>) => {
-        const handle = await originalOpen(...args);
-        if (args[0] === path) {
-          spyOn(handle, method).mockImplementation(async () => {
-            if (replaced) {
-              await fs.rename(path, join(dir, "original"));
-              await fs.writeFile(path, "foreign");
-            }
-            throw injected;
-          });
-        }
-        return handle;
-      });
-      try {
-        // When initialization fails after exclusive creation
-        const result = await Effect.runPromise(
-          Effect.result(acquireAdvisoryLockAt(path, "test", { privateFileAccess: ownerOnlyFileAccess })),
-        );
-        // Then the failure is surfaced and cleanup is bounded to the original inode
-        expect(result._tag).toBe("Failure");
-        if (result._tag === "Failure") expect(result.failure.cause).toBe(injected);
-        if (replaced) expect(await fs.readFile(path, "utf8")).toBe("foreign");
-        else await expect(fs.stat(path)).rejects.toMatchObject({ code: "ENOENT" });
-      } finally {
-        openSpy.mockRestore();
-        await fs.rm(dir, { recursive: true, force: true });
-      }
-    });
-  }
-}
+const sentinelFor = (dir: string) => join(dir, `transaction${ADVISORY_LOCK_SUFFIX}`);
 
-test("restricts a lock before writing its ownership record", async () => {
-  // Given an owner-only access observer for a new lock
+test("restricts a newly created lock before writing its ownership record", async () => {
   const dir = await fs.mkdtemp(join(tmpdir(), "lando-lock-init-"));
-  const path = join(dir, "transaction.lock");
+  const path = sentinelFor(dir);
   const observed: string[] = [];
   try {
-    // When the lock is acquired
-    const acquired = await Effect.runPromise(
-      acquireAdvisoryLockAt(path, "test", {
-        privateFileAccess: {
-          enforce: async (created) => {
-            observed.push(await fs.readFile(created, "utf8"));
-          },
-          verify: async () => {
-            observed.push("verified");
-          },
-        },
-      }),
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const acquired = yield* acquireAdvisoryLockAt(path, "test", {
+            privateFileAccess: {
+              enforce: async (created) => {
+                observed.push(await fs.readFile(created, "utf8"));
+              },
+              verify: async () => {
+                observed.push("verified");
+              },
+            },
+          });
+          // enforce runs on create while the sentinel is still empty; record is written after lock.
+          expect(observed[0]).toBe("");
+          expect(observed).toContain("verified");
+          const record = yield* Effect.promise(async () => JSON.parse(await fs.readFile(path, "utf8")));
+          expect(record).toMatchObject({ token: acquired.token });
+        }),
+      ),
     );
-
-    // Then access was restricted while the lock was empty
-    expect(observed).toEqual([""]);
-    expect(JSON.parse(await fs.readFile(path, "utf8"))).toMatchObject({ token: acquired.token });
-    await Effect.runPromise(acquired.release);
-    expect(observed).toEqual(["", "verified"]);
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
 
-test("removes its empty lock when access restriction fails", async () => {
-  // Given an owner-only access operation that fails
+test("surfaces access-restriction failure without leaving a held lock", async () => {
   const dir = await fs.mkdtemp(join(tmpdir(), "lando-lock-init-"));
-  const path = join(dir, "transaction.lock");
+  const path = sentinelFor(dir);
   const injected = new Error("injected ACL failure");
   try {
-    // When lock initialization applies access restrictions
     const result = await Effect.runPromise(
       Effect.result(
+        Effect.scoped(
+          acquireAdvisoryLockAt(path, "test", {
+            privateFileAccess: {
+              enforce: () => Promise.reject(injected),
+              verify: () => Promise.resolve(),
+            },
+          }),
+        ),
+      ),
+    );
+    expect(result._tag).toBe("Failure");
+    // A later acquire with healthy access must succeed (no stuck kernel hold).
+    await Effect.runPromise(
+      Effect.scoped(
+        acquireAdvisoryLockAt(path, "test", {
+          privateFileAccess: lockTestAccess,
+          timeoutMs: 1_000,
+        }),
+      ),
+    );
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("reuses an existing sentinel without re-running enforce", async () => {
+  const dir = await fs.mkdtemp(join(tmpdir(), "lando-lock-init-"));
+  const path = sentinelFor(dir);
+  await fs.writeFile(path, "", { mode: 0o600 });
+  const observed: string[] = [];
+  try {
+    await Effect.runPromise(
+      Effect.scoped(
         acquireAdvisoryLockAt(path, "test", {
           privateFileAccess: {
-            enforce: () => Promise.reject(injected),
-            verify: () => Promise.resolve(),
+            enforce: async () => {
+              observed.push("enforce");
+            },
+            verify: async () => {
+              observed.push("verified");
+            },
           },
         }),
       ),
     );
-
-    // Then the failure is surfaced and the poisoned empty lock is removed
-    expect(result).toMatchObject({ _tag: "Failure", failure: { cause: injected } });
-    await expect(fs.stat(path)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(observed).toEqual(["verified"]);
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }

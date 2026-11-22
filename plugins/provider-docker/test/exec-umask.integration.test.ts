@@ -274,7 +274,11 @@ describe("docker exec umask mode", () => {
         expect(mode.exitCode).toBe(0);
         expect(mode.stdout.trim()).toBe("644");
       } finally {
-        await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
+        await Effect.runPromise(
+          provider
+            .destroy({ app: appId }, { volumes: true })
+            .pipe(Effect.provide(makeTestStateStore().layer)),
+        );
       }
     },
     60_000,

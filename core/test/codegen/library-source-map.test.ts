@@ -52,7 +52,13 @@ describe("library-mode guide scenario source maps", () => {
       const rewritten = rewriteScenarioSourceMappedOutput(proc.stderr.toString(), { repoRoot });
       expect(rewritten).toContain(`${guidePath}:9`);
       expect(rewritten).toContain("library-source-map-guide:fails");
-      expect(rewritten).not.toContain(`${written[0]}:9`);
+      // The generated file's own line 9 must not survive; :90-:99 are other generated lines.
+      expect(
+        rewritten
+          .split(`${written[0]}:9`)
+          .slice(1)
+          .every((rest) => /^\d/.test(rest)),
+      ).toBe(true);
     } finally {
       await rm(root, { force: true, recursive: true });
     }

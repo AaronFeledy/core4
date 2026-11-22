@@ -437,7 +437,7 @@ describe("runServiceStartSchedule", () => {
     expect(result).toEqual({ _tag: "Settled", changed: true, blocked: [] });
   });
 
-  test("fails closed for a non-command service_healthy gate", async () => {
+  test("starts a dependent service after its HTTP readiness gate passes", async () => {
     // Given
     const plan = planOf([
       service("db", { healthcheck: { ...commandHealthcheck, kind: "http", url: "http://localhost" } }),
@@ -449,11 +449,11 @@ describe("runServiceStartSchedule", () => {
     const result = await Effect.runPromise(runServiceStartSchedule(plan, recordingHandlers(calls)));
 
     // Then
-    expect(calls).toEqual(["start:db"]);
+    expect(calls).toEqual(["start:db", "health:db", "start:web"]);
     expect(result).toEqual({
       _tag: "Settled",
       changed: true,
-      blocked: [{ service: "web", unmetGate: "db:healthy", dependency: "db" }],
+      blocked: [],
     });
   });
 

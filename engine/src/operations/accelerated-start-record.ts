@@ -1,6 +1,6 @@
 import { sha256Hex } from "@lando/sdk/digest";
 import { FileSyncStartError } from "@lando/sdk/errors";
-import type { PreparedFileSyncTarget } from "@lando/sdk/schema";
+import { type PreparedFileSyncTarget, ServiceName } from "@lando/sdk/schema";
 import { defineTransitions } from "@lando/sdk/transitions";
 import { Schema } from "effect";
 
@@ -8,8 +8,7 @@ const PendingStartPhase = Schema.Literals(["preparing", "sessions-ready", "apply
 
 /**
  * One attempt's steps. A resumed attempt replays its start steps, so a step whose
- * effect already holds is settled. Only `lando stop` and `lando destroy` abandon an
- * open attempt; `lando start` completes only after the provider applied the plan.
+ * effect already holds is settled. Stop keeps the attempt; destroy abandons it after disposal.
  */
 export const pendingStartTransitions = defineTransitions<
   typeof PendingStartPhase.Type | "absent" | "foreign"
@@ -41,6 +40,8 @@ export const PendingStart = Schema.Struct({
   providerId: Schema.String,
   engineId: Schema.String,
   mountPlanDigest: Schema.String,
+  // Missing denotes whole-app scope, including records written before selected start.
+  services: Schema.optionalKey(Schema.Array(ServiceName)),
   phase: PendingStartPhase,
   targets: Schema.Array(
     Schema.Struct({
@@ -85,6 +86,8 @@ export const pendingStartBucketSpec = (key: string) =>
     },
   }) as const;
 export const digest = (value: unknown): string => sha256Hex(JSON.stringify(value));
+export const recordedStartCommand = (record: PendingStart): string =>
+  ["lando start", ...(record.services ?? []).map((service) => `-s ${service}`)].join(" ");
 export const journalRecovery = (path?: string) =>
   `Run \`lando start\` (or \`lando restart\` or \`lando rebuild\`) in the app root to finish the attempt. \`lando stop\` and \`lando destroy\` also work from any phase.${path === undefined ? "" : ` Journal: \`${path}\`.`}`;
 
@@ -94,6 +97,7 @@ export const sameStartIdentity = (previous: PendingStart, planned: PendingStart)
   previous.mountPlanDigest === planned.mountPlanDigest &&
   previous.appId === planned.appId &&
   previous.appRoot === planned.appRoot &&
+  digest(previous.services ?? null) === digest(planned.services ?? null) &&
   digest(previous.targets) === digest(planned.targets) &&
   digest(previous.sessions) === digest(planned.sessions);
 

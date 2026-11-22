@@ -64,7 +64,7 @@ import { isOwnerRouteFileName } from "./route-file-metadata.ts";
 import { requireOwnedRouteFile } from "./route-file-ownership.ts";
 import { invalidateAcknowledgement, routeReloadLockKey } from "./route-reload-state.ts";
 import { advertisedRouterBindAddress, normalizeRouterBindAddress } from "./router-bind-address.ts";
-import { type AuthorityPorts, DEFAULT_AUTHORITY_PORTS } from "./routing.ts";
+import { type AuthorityPorts, DEFAULT_AUTHORITY_PORTS, authoritiesFor } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
 import { isSocketProxyInstalled, stopSockets } from "./socket-proxy-install.ts";
 import { liveSocketProxy } from "./socket-proxy-setup.ts";
@@ -85,7 +85,6 @@ const ROUTER_IDENTITY = {
   id: TRAEFIK_PROXY_ID,
   capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
 };
-const ROUTE_RELOAD_LOCK_WAIT_MS = 120_000;
 const TRAEFIK_DYNAMIC_CONFIG_SOURCE = "./proxy-traefik/dynamic";
 
 const observeWatcherStartup = Effect.fn("TraefikRouter.observeWatcherStartup")(function* (
@@ -287,7 +286,8 @@ export const makeTraefikRouterService = (
   let defaultDomain: string | undefined;
   const guardRouterMutation = <A, E>(operation: Effect.Effect<A, E>) =>
     dependencies.stateStore.withLock(routeReloadLockKey(), operation, {
-      timeoutMs: ROUTE_RELOAD_LOCK_WAIT_MS,
+      wait: "operation",
+      resource: "the router configuration",
     });
 
   const acquire = Effect.fn("TraefikRouter.acquirePorts")(function* (config: ProxyConfig) {
@@ -305,6 +305,18 @@ export const makeTraefikRouterService = (
     ...RouterService.of({
       ...ROUTER_IDENTITY,
       observeRoutes: makeRouteObserver(dependencies, pendingReload),
+      routeAuthorities: Effect.fn("RouterService.routeAuthorities")(function* (routes) {
+        const acquisition = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+        return authoritiesFor(
+          routes,
+          acquisition === undefined
+            ? DEFAULT_AUTHORITY_PORTS
+            : {
+                http: acquisition.httpPort,
+                https: acquisition.httpsPort,
+              },
+        );
+      }),
       prepare: Effect.fn("RouterService.prepare")(
         (config) =>
           guardRouterMutation(

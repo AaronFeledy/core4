@@ -10,7 +10,12 @@ export class VerifiedStreamError extends Schema.TaggedError<VerifiedStreamError>
   expectedSizeBytes: Schema.optionalKey(Schema.Number),
   actualSizeBytes: Schema.optionalKey(Schema.Number),
   cause: Schema.optionalKey(Schema.Unknown),
-}) {}
+}) {
+  readonly remediation =
+    this.reason === "persist"
+      ? "Check the destination, available disk space, and write permissions before retrying."
+      : "Check the expected integrity metadata and obtain a complete copy from the source.";
+}
 
 export const persistenceError = (message: string, path: string, cause: unknown): VerifiedStreamError =>
   cause instanceof VerifiedStreamError

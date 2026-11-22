@@ -1,6 +1,7 @@
 import { ServiceNotFoundError } from "@lando/sdk/errors";
 import { type AppPlan, ServiceName, clonedServiceParent } from "@lando/sdk/schema";
 import { Effect, Graph } from "effect";
+import { withDependencyEnvironmentJobs } from "../planner/dependency-environments.ts";
 
 const uniqueRequested = (requested: ReadonlyArray<ServiceName>): ReadonlyArray<ServiceName> => [
   ...new Map(requested.map((name) => [String(name), name])).values(),
@@ -40,16 +41,6 @@ const validateRequested = (
   return missing === undefined ? Effect.succeed(unique) : Effect.fail(unknownService(plan, missing, unique));
 };
 
-/** A requested parent brings its generated companions into the same selected rebuild. */
-const withCompanions = (plan: AppPlan, requested: ReadonlyArray<ServiceName>): ReadonlyArray<ServiceName> => {
-  const named = new Set(requested.map(String));
-  const companions = Object.values(plan.services).flatMap((service) => {
-    const parent = clonedServiceParent(service);
-    return parent !== undefined && named.has(parent) ? [service.name] : [];
-  });
-  return uniqueRequested([...requested, ...companions]);
-};
-
 export const selectInfoPlan = (
   plan: AppPlan,
   requested: ReadonlyArray<ServiceName> | undefined,
@@ -67,13 +58,19 @@ export const selectInfoPlan = (
     ),
   );
 
+export const selectRestartPlan = (plan: AppPlan, requested: ReadonlyArray<ServiceName> | undefined) =>
+  validateRequested(plan, requested).pipe(
+    Effect.map((names) =>
+      names.length === 0 ? plan : filteredPlan(plan, withDependencyEnvironmentJobs(plan.services, names)),
+    ),
+  );
+
 export const selectRebuildPlan = (
   plan: AppPlan,
   requested: ReadonlyArray<ServiceName> | undefined,
 ): Effect.Effect<AppPlan, ServiceNotFoundError> =>
   validateRequested(plan, requested).pipe(
-    Effect.map((validated) => {
-      const unique = withCompanions(plan, validated);
+    Effect.map((unique) => {
       if (unique.length === 0) return plan;
       const indices = new Map<string, Graph.NodeIndex>();
       const graph = Graph.directed<string, void>((mutable) => {
@@ -89,17 +86,23 @@ export const selectRebuildPlan = (
           }
         }
       });
-      const closure = new Set(
-        Graph.indices(
-          Graph.dfs(graph, {
-            start: unique.flatMap((name) => {
-              const index = indices.get(String(name));
-              return index === undefined ? [] : [index];
-            }),
-            direction: "incoming",
-          }),
-        ),
-      );
+      // Dependencies and generated companions close over each other, so selecting a recorded
+      // execution set again yields the same set.
+      const closure = new Set<Graph.NodeIndex>();
+      const queue = [...unique];
+      const companions = new Map<string, ServiceName[]>();
+      for (const service of Object.values(plan.services)) {
+        const parent = clonedServiceParent(service);
+        if (parent !== undefined) companions.set(parent, [...(companions.get(parent) ?? []), service.name]);
+      }
+      for (const name of queue) {
+        const index = indices.get(name);
+        if (index === undefined || closure.has(index)) continue;
+        closure.add(index);
+        queue.push(...(companions.get(name) ?? []));
+        const service = plan.services[name];
+        if (service !== undefined) queue.push(...service.dependsOn.map((entry) => entry.service));
+      }
       const pending = Graph.beginMutation(graph);
       for (const index of indices.values()) {
         if (!closure.has(index)) Graph.removeNode(pending, index);

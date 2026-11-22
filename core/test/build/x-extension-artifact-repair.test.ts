@@ -37,12 +37,17 @@ import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
-import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { includeWhenDelta } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
-import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
+import {
+  CURRENT_SERVICE_PORT,
+  evolveHistoricalProbePort,
+  evolveHistoricalServicePort,
+} from "./x-extension-port-proof.ts";
 import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
@@ -91,13 +96,15 @@ const historicalLandofile = (): JsonSchema =>
                             evolveHistoricalServicePort(
                               evolveHistoricalTimestamps(
                                 evolveHistoricalContainerUser(
-                                  evolveHistoricalReadiness(
-                                    evolveHistoricalShorthand(
-                                      evolveHistoricalNetworks(
-                                        evolveHistoricalNativeInit(
-                                          evolveHistoricalProjectUser(repairedLandofile(), "plain"),
+                                  evolveHistoricalProbePort(
+                                    evolveHistoricalReadiness(
+                                      evolveHistoricalShorthand(
+                                        evolveHistoricalNetworks(
+                                          evolveHistoricalNativeInit(
+                                            evolveHistoricalProjectUser(repairedLandofile(), "plain"),
+                                          ),
+                                          "bare",
                                         ),
-                                        "bare",
                                       ),
                                     ),
                                   ),
@@ -122,7 +129,11 @@ const historicalLandofile = (): JsonSchema =>
   );
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historicalLandofile(), "bare"));
+  evolveHistoricalExtraArgs(
+    evolveHistoricalRouteText(
+      evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historicalLandofile(), "bare")),
+    ),
+  );
 
 describe("closed x-* extension artifact repair", () => {
   test("pins the independently reviewed tooling sensitivity delta and source provenance", async () => {
