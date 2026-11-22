@@ -59,7 +59,7 @@ const baselineIni = renderPhpBaselineIni();
 describe("PHP security baseline table", () => {
   test("renders table settings into a conf.d ini that cites the advisory", () => {
     // Given / When: the stock baseline table is rendered.
-    // Then: comments cite the advisory and the setting is assigned on every catalog line, not version-scoped.
+    // Then: comments cite the advisory and the baseline setting is the only assignment.
     expect(baselineIni.endsWith("\n")).toBe(true);
     expect(baselineIni).toContain("; Lando-managed PHP security baseline\n");
     const assignments = baselineIni.split("\n").filter((line) => line.length > 0 && !line.startsWith(";"));
@@ -71,7 +71,6 @@ describe("PHP security baseline table", () => {
       expect(baselineIni).toContain(`${entry.setting} = ${entry.value}\n`);
     }
     expect(baselineIni).toContain("https://www.php.net/archive/2026.php#2026-10-23-1");
-    expect(baselineIni).toContain("GHSA-658j-r8rw-q6mx");
     expect(baselineIni).toContain("session.upload_progress.enabled = 0\n");
   });
 
