@@ -11,7 +11,7 @@ import { Effect, Option, Schema } from "effect";
 import { dataRootLabels } from "./data-root-labels.ts";
 import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
 
-export { matchesDataRoot, ownsSharedCrossAppNetwork } from "./data-root-labels.ts";
+export { ownsSharedCrossAppNetwork } from "./data-root-labels.ts";
 export type { AdoptionReceipt } from "./data-root-ownership.ts";
 export {
   adoptionReceiptsFromSummary,

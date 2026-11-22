@@ -772,7 +772,7 @@ describe("apps:list host-wide discovery", () => {
     });
   });
 
-  test("keeps unlabeled pre-upgrade running apps that are recorded and ignores peer data-roots", async () => {
+  test("socket discovery does not treat applied plans as proof for an unlabeled container", async () => {
     await withTempRoot(async (userDataRoot) => {
       const paths = makeLandoPaths({ userDataRoot });
       const appliedDir = join(paths.pluginStateDir("@lando/provider-podman"), "applied-plans");
@@ -822,12 +822,25 @@ describe("apps:list host-wide discovery", () => {
       });
       try {
         const discovered = await discoverRunningAppsFromSockets(userDataRoot, [socketPath]);
-        expect(discovered.map(({ appId, providerId, appRoot }) => [appId, providerId, appRoot])).toEqual([
-          ["legacy", "podman", appRoot],
-        ]);
+        expect(discovered).toEqual([]);
         const result = await runList(userDataRoot, {
           discoverContainersEvidence: async (root) =>
-            discoverRunningAppsEvidenceFromSockets(root, [socketPath]),
+            discoverRunningAppsEvidenceFromSockets(root, [socketPath], {
+              readReceipts: async (providerId, receiptRoot) =>
+                providerId === "podman" && receiptRoot === appRoot
+                  ? [
+                      {
+                        kind: "container",
+                        nativeId: "legacy-web",
+                        nativeName: landoServiceContainerName("legacy", "web"),
+                        dataRoot: root,
+                        providerId,
+                        appRoot,
+                        appId: "legacy",
+                      },
+                    ]
+                  : [],
+            }),
         });
         expect(result.apps).toMatchObject([{ appId: "legacy", status: "active", appRoot }]);
         expect(result.apps.map((app) => app.appId)).not.toContain("peer");

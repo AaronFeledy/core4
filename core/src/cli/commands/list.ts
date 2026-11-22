@@ -1,12 +1,17 @@
 import { access } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
+import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
+import { makeResourceOwnershipStore } from "@lando/container-runtime/provider-assembly";
 import { withAppMutationLock } from "@lando/engine/operations/app-mutation-lock";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { makeLandoPaths } from "@lando/paths";
 import { hasC0OrDel, hyperlink } from "@lando/renderer/console-layout";
 import type { AppLockTimeoutError, CacheError, LandoCommandError, StateStoreError } from "@lando/sdk/errors";
+import { AbsolutePath } from "@lando/sdk/schema";
 import type { FileSystem, LandoPaths, StateStoreShape } from "@lando/sdk/services";
 import { ConfigService, PathsService, ProcessRunner, StateStore } from "@lando/sdk/services";
+import { makePluginStateStore } from "@lando/state-store/plugin";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
@@ -129,6 +134,8 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   const configService = yield* ConfigService;
   const invocation = yield* CliInvocation;
   const processRunner = yield* Effect.serviceOption(ProcessRunner);
+  const stateStore = yield* Effect.serviceOption(StateStore);
+  const privateFileAccess = yield* Effect.serviceOption(PrivateFileAccessService);
   const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
   if (userDataRoot === undefined) return { apps: [] };
 
@@ -172,6 +179,26 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
         {
           ...(options.includeScratch === true ? { includeScratch: true } : {}),
           env: invocation.env,
+          ...(stateStore._tag === "Some" && privateFileAccess._tag === "Some"
+            ? {
+                readReceipts: async (providerId: string, root: AbsolutePath) => {
+                  const paths = makeLandoPaths({ userDataRoot });
+                  const pluginStore = makePluginStateStore(
+                    stateStore.value,
+                    AbsolutePath.make(paths.pluginStateDir(`@lando/provider-${providerId}`)),
+                    privateFileAccess.value,
+                  );
+                  return Effect.runPromise(
+                    makeResourceOwnershipStore(providerId, pluginStore)
+                      .summary(root)
+                      .pipe(
+                        Effect.map(adoptionReceiptsFromSummary),
+                        Effect.catch(() => Effect.succeed([])),
+                      ),
+                  );
+                },
+              }
+            : {}),
           ...(processRunner._tag === "Some" ? { processRunner: processRunner.value } : {}),
         },
       );

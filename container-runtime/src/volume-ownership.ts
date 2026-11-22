@@ -43,7 +43,7 @@ import {
   planDataId,
 } from "@lando/sdk/schema";
 
-import { dataRootLabels, matchesDataRoot } from "./data-root-labels.ts";
+import { dataRootLabels } from "./data-root-labels.ts";
 import { isOwnershipRoot } from "./ownership-root.ts";
 import {
   type VolumeFilterMap,
@@ -184,36 +184,3 @@ export const planVolumeFilters = (
     ownerKey: planAppIdentity(plan).ownerKey,
     volumeClasses,
   });
-
-export const historicalVolume = (previous: AppPlan | undefined, plan: AppPlan, name: string): boolean =>
-  previous !== undefined &&
-  previous.root === plan.root &&
-  previous.provider === plan.provider &&
-  matchesDataRoot(previous.identity?.dataRoot, plan.identity?.dataRoot, true) &&
-  planDataId(previous) === planDataId(plan) &&
-  previous.stores.some((store) => store.name === name);
-
-/** Inventory-only proof: a recorded volume member under the same provider/root/app. */
-export const historicalInventoryVolume = (
-  inventory:
-    | ReadonlyArray<{
-        readonly kind: string;
-        readonly nativeName: string;
-        readonly appId: string;
-        readonly appRoot: string;
-        readonly providerId: string;
-        readonly dataRoot?: string;
-      }>
-    | undefined,
-  plan: AppPlan,
-  name: string,
-): boolean =>
-  inventory?.some(
-    (resource) =>
-      resource.kind === "volume" &&
-      resource.nativeName === name &&
-      resource.appRoot === plan.root &&
-      resource.providerId === plan.provider &&
-      resource.appId === planDataId(plan) &&
-      matchesDataRoot(resource.dataRoot, plan.identity?.dataRoot, true),
-  ) === true;

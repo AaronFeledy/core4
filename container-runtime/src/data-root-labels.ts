@@ -8,12 +8,6 @@ import {
 export const dataRootLabels = (dataRoot: string | undefined): Readonly<Record<string, string>> =>
   dataRoot === undefined ? {} : { [LANDO_DATA_ROOT_LABEL]: dataRoot };
 
-export const matchesDataRoot = (
-  observed: string | undefined,
-  expected: string | undefined,
-  recorded: boolean,
-): boolean => (observed === undefined ? recorded || expected === undefined : observed === expected);
-
 export const sharedNetworkLabels = (dataRoot: string): Readonly<Record<string, string>> => ({
   ...dataRootLabels(dataRoot),
   [LANDO_NETWORK_ROLE_LABEL]: LANDO_SHARED_NETWORK_ROLE,

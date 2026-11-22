@@ -9,11 +9,11 @@ import {
   SERVICE_LABEL,
   VOLUME_OWNER_LABEL,
 } from "@lando/container-runtime/labels";
-import { matchesDataRoot, serviceContainerOwnershipLabels } from "@lando/container-runtime/native-ownership";
+import { type AdoptionReceipt, decideDataRootOwnership } from "@lando/container-runtime/native-ownership";
 
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { makeLandoPaths, sameRealpath } from "@lando/paths";
-import { LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
+import { AbsolutePath, LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 import type { Context } from "effect";
 import { Predicate } from "effect";
@@ -406,11 +406,14 @@ export const discoverRunningAppsEvidenceFromSockets = async (
     readonly platform?: NodeJS.Platform;
     readonly env?: Readonly<Record<string, string | undefined>>;
     readonly processRunner?: Pick<Context.Service.Shape<typeof ProcessRunner>, "run">;
+    readonly readReceipts?: (
+      providerId: string,
+      appRoot: AbsolutePath,
+    ) => Promise<readonly AdoptionReceipt[]>;
   } = {},
 ): Promise<AppsDiscoveryEvidence> => {
   const paths = makeLandoPaths({ userDataRoot });
-  // Pre-upgrade containers lack dev.lando.data-root; keep them only when this root still records the app.
-  const recorded = await readAppliedPlansFromUserData(userDataRoot);
+  const dataRoot = paths.roots.userDataRoot;
   const discoveredApps: AppsListEntry[] = [];
   const listedProviders = new Set<string>();
   const owned = new Map<string, OwnedAppResource>();
@@ -437,34 +440,49 @@ export const discoverRunningAppsEvidenceFromSockets = async (
       if (!Array.isArray(containers) || (volumes !== null && !Array.isArray(volumes)))
         throw new TypeError("Container runtime returned an invalid resource inventory.");
       let socketProvider: string | undefined;
+      const receiptsByRoot = new Map<string, readonly AdoptionReceipt[]>();
+      const belongsHere = async (resource: unknown, kind: "container" | "volume") => {
+        if (!Predicate.isObject(resource)) return false;
+        const labels = stringLabels(resource.Labels);
+        const label = labels[LANDO_DATA_ROOT_LABEL];
+        const canonical = label !== undefined && sameRealpath(label, dataRoot) ? label : dataRoot;
+        const root = labels[kind === "container" ? APP_ROOT_LABEL : VOLUME_OWNER_LABEL];
+        let receipts: readonly AdoptionReceipt[] = [];
+        if (label === undefined && root !== undefined && options.readReceipts !== undefined) {
+          socketProvider ??= await providerIdOnSocket(socket, userDataRoot);
+          if (labels[PROVIDER_LABEL] !== undefined && labels[PROVIDER_LABEL] !== socketProvider) return false;
+          receipts =
+            receiptsByRoot.get(root) ?? (await options.readReceipts(socketProvider, AbsolutePath.make(root)));
+          receiptsByRoot.set(root, receipts);
+        }
+        const name =
+          kind === "volume" ? resource.Name : Array.isArray(resource.Names) ? resource.Names[0] : undefined;
+        return (
+          decideDataRootOwnership(
+            {
+              kind,
+              nativeName: typeof name === "string" ? name.replace(/^\//u, "") : "",
+              nativeId: typeof resource.Id === "string" ? resource.Id : undefined,
+              volumeInstance: labels["dev.lando.volume-instance"],
+              labels,
+            },
+            { dataRoot: canonical, receipts },
+          ) === "owned"
+        );
+      };
       const localContainers = [];
       for (const resource of containers) {
-        if (!Predicate.isObject(resource)) continue;
-        const labels = stringLabels(resource.Labels);
-        const owner = labels[LANDO_DATA_ROOT_LABEL];
-        if (owner !== undefined) {
-          if (sameRealpath(owner, paths.roots.userDataRoot)) localContainers.push(resource);
-          continue;
-        }
-        const service = labels[SERVICE_LABEL];
-        if (service === undefined) continue;
-        const matches = recorded.filter(
-          (entry) =>
-            entry.services.includes(service) &&
-            serviceContainerOwnershipLabels(labels, {
-              app: entry.appId,
-              appRoot: entry.appRoot,
-              service,
-              providerId: entry.providerId,
-            }),
+        if (!(await belongsHere(resource, "container"))) continue;
+        const labels = Predicate.isObject(resource) ? stringLabels(resource.Labels) : {};
+        localContainers.push(
+          socketProvider !== undefined && labels[PROVIDER_LABEL] === undefined
+            ? { ...resource, Labels: { ...labels, [PROVIDER_LABEL]: socketProvider } }
+            : resource,
         );
-        if (matches.length === 0) continue;
-        const labeledProvider = labels[PROVIDER_LABEL];
-        if (labeledProvider === undefined) socketProvider ??= await providerIdOnSocket(socket, userDataRoot);
-        const record = matches.find((entry) => entry.providerId === (labeledProvider ?? socketProvider));
-        if (record !== undefined && matchesDataRoot(owner, paths.roots.userDataRoot, true))
-          localContainers.push({ ...resource, Labels: { ...labels, [PROVIDER_LABEL]: record.providerId } });
       }
+      const localVolumes = [];
+      for (const resource of volumes ?? [])
+        if (await belongsHere(resource, "volume")) localVolumes.push(resource);
       const apps = appsFromContainerList(localContainers, {
         ...(options.includeScratch === true ? { includeScratch: true } : {}),
       });
@@ -474,11 +492,7 @@ export const discoverRunningAppsEvidenceFromSockets = async (
         options.includeScratch === true,
       );
       const volumeEvidence = labeledResourceEvidence(
-        volumes?.filter((resource) => {
-          if (!Predicate.isObject(resource)) return false;
-          const owner = stringLabels(resource.Labels)[LANDO_DATA_ROOT_LABEL];
-          return owner !== undefined && sameRealpath(owner, paths.roots.userDataRoot);
-        }),
+        localVolumes,
         VOLUME_OWNER_LABEL,
         options.includeScratch === true,
       );
