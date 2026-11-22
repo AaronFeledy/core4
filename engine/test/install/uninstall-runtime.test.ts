@@ -51,7 +51,6 @@ const fixture = (script: string) => {
   const runtime: UninstallRuntime = {
     cmd: process.execPath,
     providerId: "lando",
-    managed: true,
     managedSpawn: "linux",
     runtimeDir,
     argsPrefix: ["--eval", script, "--", "prefix marker"],
@@ -159,7 +158,6 @@ test("connection spawn strips redirects and never applies Linux config overlay",
   const runtime: UninstallRuntime = {
     cmd: process.execPath,
     providerId: "lando",
-    managed: true,
     managedSpawn: "connection",
     argsPrefix: ["--eval", inspectScript, "--", "conn"],
   };
@@ -198,9 +196,9 @@ test("uninstallRuntimes uses connection spawn on darwin and win32, linux only on
     ["lando"],
     ["lando"],
   ]);
-  const managedLinux = linux.find((r) => r.managed);
-  const managedDarwin = darwin.find((r) => r.managed);
-  const managedWin = win32.find((r) => r.managed);
+  const [managedLinux] = linux;
+  const [managedDarwin] = darwin;
+  const [managedWin] = win32;
   if (managedLinux === undefined || managedDarwin === undefined || managedWin === undefined)
     throw new Error("managed runtime fixture missing");
   expect(managedLinux.managedSpawn).toBe("linux");

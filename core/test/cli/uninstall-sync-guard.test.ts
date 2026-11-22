@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
 import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
-import { makeCleanupDiscoveredApps } from "@lando/engine/install/uninstall-discovery";
+import { makePrepareUninstallCleanup } from "@lando/engine/install/uninstall-discovery";
 import type { ProviderPurgeHook } from "@lando/sdk/plugins";
 import { Effect } from "effect";
 
@@ -63,7 +63,9 @@ const withRuntime = async (scenario: Scenario) => {
       return { stdout: scenario === "unlabeled-volume" ? "cms-app-app-mount" : "" };
     return { stdout: "" };
   };
-  return { root, data, calls, probes, run: makeCleanupDiscoveredApps(data, exec, "win32") };
+  const run = async () =>
+    (await makePrepareUninstallCleanup([], exec, "win32")(data, join(root, "cache"))).cleanup();
+  return { root, data, calls, probes, run };
 };
 
 const destructive = (call: string[]): boolean =>
@@ -129,13 +131,7 @@ test.each(["current", "peer"] as const)(
         { ...input, endpoint: "fixture-vm", pluginId: "@lando/provider-lando" },
       );
     };
-    const cleanup = makeCleanupDiscoveredApps(
-      data,
-      async () => {
-        throw new Error("Reused VM must not use lando-root or verify whole storage");
-      },
-      "win32",
-      {},
+    const prepare = makePrepareUninstallCleanup(
       [
         { providerId: "lando", purge },
         {
@@ -147,13 +143,18 @@ test.each(["current", "peer"] as const)(
             }),
         },
       ],
+      async () => {
+        throw new Error("Reused VM must not use lando-root or verify whole storage");
+      },
+      "win32",
     );
+    const cleanup = async () => (await prepare(data, join(root, "cache"))).cleanup();
     try {
       if (syncOwner === "current")
-        await expect(cleanup([], join(root, "cache"))).rejects.toThrow(
+        await expect(cleanup()).rejects.toThrow(
           "Accelerated sync helper or volume exists for this data root",
         );
-      else await cleanup([], join(root, "cache"));
+      else await cleanup();
       expect(ownedPresent).toBe(syncOwner === "current");
       expect(order).toEqual(
         syncOwner === "current"
@@ -180,7 +181,7 @@ describe("uninstall purge sync guard", () => {
       try {
         let failure: unknown;
         try {
-          await fixture.run([]);
+          await fixture.run();
         } catch (cause) {
           failure = cause;
         }
@@ -205,7 +206,7 @@ describe("uninstall purge sync guard", () => {
   test("sweeps ordinary Lando resources after a clean preflight", async () => {
     const fixture = await withRuntime("ordinary");
     try {
-      await fixture.run([]);
+      await fixture.run();
       expect(fixture.calls.some((call) => call.includes("prune"))).toBe(false);
       expect(fixture.calls.some((call) => call.includes("network") && call.includes("ls"))).toBe(true);
       expect(fixture.calls.some((call) => call.includes("--connection") && call.includes("lando-root"))).toBe(
@@ -272,7 +273,9 @@ describe("uninstall purge sync guard", () => {
         return { stdout: "" };
       };
       // When: purge sweeps the runtime through injected execution only.
-      await makeCleanupDiscoveredApps(fixture.data, exec, "linux")([]);
+      await (
+        await makePrepareUninstallCleanup([], exec, "linux")(fixture.data, join(fixture.root, "cache"))
+      ).cleanup();
       // Then: candidate labels discover only; inspected exact IDs authorize removal.
       expect(calls.filter((call) => call.includes("inspect") || call.includes("rm"))).toEqual([
         [...prefix, "container", "inspect", "current-id"],
@@ -300,7 +303,7 @@ describe("uninstall purge sync guard", () => {
         writeFileSync(join(plans, "app.json"), body);
         let failure: unknown;
         try {
-          await fixture.run([]);
+          await fixture.run();
         } catch (cause) {
           failure = cause;
         }
@@ -321,7 +324,7 @@ describe("uninstall purge sync guard", () => {
         writeFileSync(join(sessions, "mutagen.json"), body);
         let failure: unknown;
         try {
-          await fixture.run([]);
+          await fixture.run();
         } catch (cause) {
           failure = cause;
         }
@@ -343,7 +346,9 @@ describe("uninstall purge sync guard", () => {
       };
       let failure: unknown;
       try {
-        await makeCleanupDiscoveredApps(fixture.data, exec, "win32")([]);
+        await (
+          await makePrepareUninstallCleanup([], exec, "win32")(fixture.data, join(fixture.root, "cache"))
+        ).cleanup();
       } catch (cause) {
         failure = cause;
       }
@@ -361,7 +366,6 @@ describe("uninstall purge sync guard", () => {
       const exec = async (file: string, args: ReadonlyArray<string>) => {
         calls.push([...args]);
         if (args[0] === "machine") return { stdout: '[{"Created":"2026-09-23T00:00:00Z"}]' };
-        if (file === "podman") throw absentRuntime();
         if (args.includes("--version")) return { stdout: "podman" };
         if (file.startsWith(fixture.data) && args.includes("label=dev.lando.sync.kind=helper"))
           return { stdout: "late-helper-id" };
@@ -369,7 +373,9 @@ describe("uninstall purge sync guard", () => {
       };
       let failure: unknown;
       try {
-        await makeCleanupDiscoveredApps(fixture.data, exec, "win32")([]);
+        await (
+          await makePrepareUninstallCleanup([], exec, "win32")(fixture.data, join(fixture.root, "cache"))
+        ).cleanup();
       } catch (cause) {
         failure = cause;
       }

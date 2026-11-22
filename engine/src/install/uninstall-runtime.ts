@@ -36,7 +36,6 @@ type ManagedUninstallSpawn = "linux" | "connection";
 export type UninstallRuntime = {
   readonly cmd: string;
   readonly providerId: string;
-  readonly managed: boolean;
   readonly argsPrefix: readonly string[];
   /**
    * Managed overlay only (persisted launch identity shape). Never a process.env
@@ -45,7 +44,7 @@ export type UninstallRuntime = {
    */
   readonly env?: Readonly<Record<string, string>>;
   readonly runtimeDir?: string;
-  readonly managedSpawn?: ManagedUninstallSpawn;
+  readonly managedSpawn: ManagedUninstallSpawn;
 };
 
 export type UninstallRuntimeSeams = {
@@ -75,7 +74,6 @@ const spawnEnvForRuntime = (
   runtime: UninstallRuntime,
   seams: UninstallRuntimeSeams,
 ): NodeJS.ProcessEnv | undefined => {
-  if (!runtime.managed) return undefined;
   const hostEnv = seams.hostEnv ?? process.env;
   // Machine connections must not receive the Linux XDG/config overlay.
   if (runtime.managedSpawn === "connection") {
@@ -124,7 +122,7 @@ const prepareManagedLinuxRuntime = async (
 };
 
 /**
- * Unmanaged/connection paths call exec synchronously so callers that gate on the
+ * Connection paths call exec synchronously so callers that gate on the
  * first probe still observe the call before the next microtask.
  */
 export const runUninstallRuntime = (
@@ -140,7 +138,7 @@ export const runUninstallRuntime = (
       ...(env === undefined ? {} : { env }),
     });
   };
-  if (runtime.managed && runtime.managedSpawn === "linux" && runtime.runtimeDir !== undefined) {
+  if (runtime.managedSpawn === "linux" && runtime.runtimeDir !== undefined) {
     return prepareManagedLinuxRuntime(runtime, seams).then(run);
   }
   return run(runtime);
@@ -156,7 +154,6 @@ export const uninstallRuntimes = (
   const managedBase = {
     cmd: join(paths.runtimeBinDir, platform === "win32" ? "podman.exe" : "podman"),
     providerId: "lando" as const,
-    managed: true as const,
     managedSpawn,
   };
   return [
@@ -218,7 +215,6 @@ export const availableUninstallRuntimes = async (input: {
       }
       // Missing managed tree: probe without prepare so absence does not require XDG.
       if (
-        runtime.managed &&
         runtime.managedSpawn === "linux" &&
         runtime.runtimeDir !== undefined &&
         !(await pathExists(runtime.runtimeDir))
@@ -228,7 +224,7 @@ export const availableUninstallRuntimes = async (input: {
         continue;
       }
       await runUninstallRuntime(input.exec, runtime, { args: ["--version"], timeout: 2_000 }, seams);
-      if (runtime.managed && runtime.managedSpawn === "linux" && runtime.runtimeDir !== undefined) {
+      if (runtime.managedSpawn === "linux" && runtime.runtimeDir !== undefined) {
         runtime = await prepareManagedLinuxRuntime(runtime, seams);
       }
       available.push(runtime);

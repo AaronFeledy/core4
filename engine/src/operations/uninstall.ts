@@ -949,13 +949,14 @@ const executeUninstall = async (
       // Discovery succeeded: re-list for a fresh snapshot, then sweep leftover
       // Lando containers, networks, and volumes even when no app is running.
       try {
-        const apps =
-          options.listDiscoveredApps === undefined
-            ? []
-            : await options.listDiscoveredApps(userDataRoot, userCacheRoot);
         const detail =
           resourceCleanup === undefined
-            ? await options.cleanupDiscoveredApps?.(apps, userCacheRoot)
+            ? await options.cleanupDiscoveredApps?.(
+                options.listDiscoveredApps === undefined
+                  ? []
+                  : await options.listDiscoveredApps(userDataRoot, userCacheRoot),
+                userCacheRoot,
+              )
             : await resourceCleanup.cleanup();
         executed.push({ ...step, outcome: "completed", detail: detail || step.detail });
       } catch (cause) {

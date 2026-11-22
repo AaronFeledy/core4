@@ -1,4 +1,4 @@
-import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
+import { normalizeHostPlatform } from "@lando/paths";
 import { causeMessage } from "@lando/sdk/errors";
 import type { LandoPluginModule, ProviderPurgeHook, ProviderPurgeResult } from "@lando/sdk/plugins";
 import { Effect, Result } from "effect";
@@ -131,17 +131,3 @@ export const makePrepareUninstallCleanup =
       },
     };
   };
-
-export const makeCleanupDiscoveredApps =
-  (
-    userDataRoot = makeLandoPaths().roots.userDataRoot,
-    exec: RuntimeExec = defaultRuntimeExec,
-    platform: NodeJS.Platform = process.platform,
-    seams: UninstallRuntimeSeams = {},
-    hooks: readonly UninstallProviderHook[] = [],
-  ) =>
-  async (
-    _apps: readonly DiscoveredApp[],
-    userCacheRoot = makeLandoPaths().roots.userCacheRoot,
-  ): Promise<string> =>
-    (await makePrepareUninstallCleanup(hooks, exec, platform, seams)(userDataRoot, userCacheRoot)).cleanup();
