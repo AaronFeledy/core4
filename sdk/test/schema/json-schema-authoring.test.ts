@@ -77,14 +77,10 @@ describe("authoring JSON Schema publication", () => {
     [
       "environment",
       [
-        {
-          anyOf: [
-            { type: "string" },
-            { $ref: expect.stringMatching(/^#\/\$defs\/SecretRef(?:_\d+)?$/) },
-            { $ref: expect.stringMatching(/^#\/\$defs\/BoundText(?:_\d+)?$/) },
-            { $ref: expect.stringMatching(/^#\/\$defs\/RouteText(?:_\d+)?$/) },
-          ],
-        },
+        { type: "string" },
+        { $ref: expect.stringMatching(/^#\/\$defs\/SecretRef(?:_\d+)?$/) },
+        { $ref: expect.stringMatching(/^#\/\$defs\/BoundText(?:_\d+)?$/) },
+        { $ref: expect.stringMatching(/^#\/\$defs\/RouteText(?:_\d+)?$/) },
         { type: "number" },
         { type: "boolean" },
       ],
