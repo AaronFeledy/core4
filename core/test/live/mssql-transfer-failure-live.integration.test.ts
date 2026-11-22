@@ -27,7 +27,7 @@ for (const version of ["2019", "2022"] as const) {
     async () => {
       const fixture = await databaseTransferFixture(`mssql-${version}-failure`);
       const { root, name, marker, invalidBackup, lando } = fixture;
-      const admin = ["sqlcmd", "--", "-b", "-r1", "-d", "master", "-Q"] as const;
+      const admin = ["sqlcmd", "--", "-b", "-r1", "-h", "-1", "-W", "-d", "master", "-Q"] as const;
       try {
         // Given a real backup and a full automatic-recovery retention budget.
         await Bun.write(join(root, ".lando.yml"), mssqlTransferLandofile(fixture, version));
