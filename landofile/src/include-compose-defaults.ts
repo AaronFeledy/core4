@@ -109,11 +109,11 @@ export const composeIncludeDefaults = (
     document.serviceDefaults !== null &&
     !Array.isArray(document.serviceDefaults) &&
     "env_file" in document.serviceDefaults &&
-    (document.serviceDefaults as { env_file?: unknown }).env_file !== undefined
+    document.serviceDefaults.env_file !== undefined
       ? {
           serviceDefaults: {
-            ...(document.serviceDefaults as Record<string, unknown>),
-            env_file: envFiles((document.serviceDefaults as { env_file: unknown }).env_file),
+            ...document.serviceDefaults,
+            env_file: envFiles(document.serviceDefaults.env_file),
           },
         }
       : {}),

@@ -183,7 +183,7 @@ export const lowerTopLevel = (document: Record<string, unknown>, ctx: TopLevelCo
           typeof fragment.serviceDefaults === "object" &&
           fragment.serviceDefaults !== null &&
           !Array.isArray(fragment.serviceDefaults)
-            ? (fragment.serviceDefaults as Record<string, unknown>)
+            ? fragment.serviceDefaults
             : {};
         fragment.serviceDefaults = { ...existing, env_file: value };
         break;
