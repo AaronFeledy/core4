@@ -13,15 +13,40 @@ export type EventCommandInputValue = typeof EventCommandInputValue.Type;
 
 export const EventForSelector = Schema.Union([
   Schema.Array(ToolingVarLiteral),
-  Schema.Struct({ var: Schema.String, matrix: forbidden, sources: forbidden, generates: forbidden }),
   Schema.Struct({
-    var: forbidden,
-    matrix: Schema.Record(Schema.String, Schema.Array(ToolingVarLiteral)),
+    var: Schema.String.annotateKey({
+      description: "Name of a tooling variable whose list value supplies the for-loop items.",
+    }),
+    matrix: forbidden,
     sources: forbidden,
     generates: forbidden,
   }),
-  Schema.Struct({ var: forbidden, matrix: forbidden, sources: Schema.Literal(true), generates: forbidden }),
-  Schema.Struct({ var: forbidden, matrix: forbidden, sources: forbidden, generates: Schema.Literal(true) }),
+  Schema.Struct({
+    var: forbidden,
+    matrix: Schema.Record(Schema.String, Schema.Array(ToolingVarLiteral)).annotateKey({
+      description: "Named axes of literal values; the step runs once per Cartesian combination.",
+    }),
+    sources: forbidden,
+    generates: forbidden,
+  }),
+  Schema.Struct({
+    var: forbidden,
+    matrix: forbidden,
+    sources: Schema.Literal(true).annotateKey({
+      description:
+        "Select values from task sources. Unavailable on root Landofile event steps; use a literal, variable, or matrix selector there.",
+    }),
+    generates: forbidden,
+  }),
+  Schema.Struct({
+    var: forbidden,
+    matrix: forbidden,
+    sources: forbidden,
+    generates: Schema.Literal(true).annotateKey({
+      description:
+        "Select values from task generates. Unavailable on root Landofile event steps; use a literal, variable, or matrix selector there.",
+    }),
+  }),
 ]).annotate({
   identifier: "EventForSelector",
   description: "Literal or task-derived values selected for an event step loop.",

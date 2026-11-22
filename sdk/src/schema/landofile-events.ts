@@ -39,38 +39,61 @@ const EventStepCondition = Schema.Union([
 ]).annotate({ description: EVENT_STEP_IF_DESCRIPTION });
 
 const EventStepTail = {
-  ignoreError: Schema.optionalKey(Schema.Boolean),
+  ignoreError: Schema.optionalKey(Schema.Boolean).annotateKey({
+    description:
+      "When true, a non-zero exit or step failure is ignored and the remaining steps still run. Boundary errors still fail the event.",
+  }),
   if: Schema.optionalKey(EventStepCondition).annotateKey({ description: EVENT_STEP_IF_DESCRIPTION }),
-  silent: Schema.optionalKey(Schema.Boolean),
+  silent: Schema.optionalKey(Schema.Boolean).annotateKey({
+    description:
+      "When true, step output is not presented to the user; the step still runs and can still fail.",
+  }),
 };
 
 const EventCmdFields = {
-  service: Schema.optionalKey(Schema.String),
-  dir: Schema.optionalKey(PortablePath),
+  service: Schema.optionalKey(Schema.String).annotateKey({
+    description:
+      "Service that runs this cmd step, or :host for the host Bun Shell. Omitted uses the app primary service.",
+  }),
+  dir: Schema.optionalKey(PortablePath).annotateKey({
+    description: "Working directory for this cmd step inside the target service or on the host.",
+  }),
   env: Schema.optionalKey(ToolingEnvironment),
-  user: Schema.optionalKey(Schema.String),
+  user: Schema.optionalKey(Schema.String).annotateKey({
+    description: "User this cmd step runs as inside the target service.",
+  }),
 };
 
 const EventCommandFields = {
   flags: executionSiteKey(
     Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
     "event-lando-command",
-  ),
+  ).annotateKey({
+    description: "Named flags passed to the canonical Lando command for this step.",
+  }),
   args: executionSiteKey(
     Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
     "event-lando-command",
-  ),
-  raw: executionSiteKey(Schema.optionalKey(Schema.Array(Schema.String)), "event-lando-command"),
+  ).annotateKey({
+    description: "Named positional arguments passed to the canonical Lando command for this step.",
+  }),
+  raw: executionSiteKey(Schema.optionalKey(Schema.Array(Schema.String)), "event-lando-command").annotateKey({
+    description: "Extra argv tokens appended to the canonical Lando command for this step.",
+  }),
 };
 
 const EventTaskFields = {
-  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)),
+  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)).annotateKey({
+    description: "Literal variable overrides supplied to the tooling task for this step only.",
+  }),
 };
 
 export const EventCommandStep = Schema.Struct({
   cmd: Forbidden,
   task: Forbidden,
-  command: executionSiteKey(Schema.String, "event-lando-command"),
+  command: executionSiteKey(Schema.String, "event-lando-command").annotateKey({
+    description: "Canonical Lando command id or alias to run for this step.",
+  }),
   defer: Forbidden,
   for: Forbidden,
   ...EventCommandFields,
@@ -83,7 +106,9 @@ export type EventCommandStep = typeof EventCommandStep.Type;
 
 export const EventTaskStep = Schema.Struct({
   cmd: Forbidden,
-  task: executionSiteKey(Schema.String, "event-lando-command"),
+  task: executionSiteKey(Schema.String, "event-lando-command").annotateKey({
+    description: "Name of the Landofile tooling task to run for this step.",
+  }),
   command: Forbidden,
   defer: Forbidden,
   for: Forbidden,
@@ -96,7 +121,9 @@ export const EventTaskStep = Schema.Struct({
 export type EventTaskStep = typeof EventTaskStep.Type;
 
 export const EventCmdStep = Schema.Struct({
-  cmd: executionSiteKey(Schema.String, "event-step"),
+  cmd: executionSiteKey(Schema.String, "event-step").annotateKey({
+    description: "Shell command to run in the target service or on the host.",
+  }),
   task: Forbidden,
   command: Forbidden,
   defer: Forbidden,
@@ -113,17 +140,24 @@ const EventDeferredCmdShorthand = Schema.Struct({
   cmd: Forbidden,
   task: Forbidden,
   command: Forbidden,
-  defer: executionSiteKey(Schema.String, "event-step"),
+  defer: executionSiteKey(Schema.String, "event-step").annotateKey({
+    description:
+      "Shell command registered for LIFO finalization after the rest of this event's steps finish.",
+  }),
   for: Forbidden,
   ...EventCmdFields,
   ...EventStepTail,
 });
 
 const EventDeferredCmdStep = Schema.Struct({
-  cmd: executionSiteKey(Schema.String, "event-step"),
+  cmd: executionSiteKey(Schema.String, "event-step").annotateKey({
+    description: "Shell command run during LIFO finalization for this deferred cmd step.",
+  }),
   task: Forbidden,
   command: Forbidden,
-  defer: Schema.Literal(true),
+  defer: Schema.Literal(true).annotateKey({
+    description: "When true, runs this cmd step during LIFO finalization instead of inline.",
+  }),
   for: Forbidden,
   ...EventCmdFields,
   ...EventStepTail,
@@ -131,9 +165,13 @@ const EventDeferredCmdStep = Schema.Struct({
 
 const EventDeferredTaskStep = Schema.Struct({
   cmd: Forbidden,
-  task: executionSiteKey(Schema.String, "event-lando-command"),
+  task: executionSiteKey(Schema.String, "event-lando-command").annotateKey({
+    description: "Tooling task run during LIFO finalization for this deferred task step.",
+  }),
   command: Forbidden,
-  defer: Schema.Literal(true),
+  defer: Schema.Literal(true).annotateKey({
+    description: "When true, runs this task step during LIFO finalization instead of inline.",
+  }),
   for: Forbidden,
   ...EventTaskFields,
   ...EventStepTail,
@@ -142,8 +180,12 @@ const EventDeferredTaskStep = Schema.Struct({
 const EventDeferredCommandStep = Schema.Struct({
   cmd: Forbidden,
   task: Forbidden,
-  command: executionSiteKey(Schema.String, "event-lando-command"),
-  defer: Schema.Literal(true),
+  command: executionSiteKey(Schema.String, "event-lando-command").annotateKey({
+    description: "Canonical Lando command run during LIFO finalization for this deferred command step.",
+  }),
+  defer: Schema.Literal(true).annotateKey({
+    description: "When true, runs this command step during LIFO finalization instead of inline.",
+  }),
   for: Forbidden,
   ...EventCommandFields,
   ...EventStepTail,
@@ -161,7 +203,9 @@ export const EventDeferStep = Schema.Union([
 export type EventDeferStep = typeof EventDeferStep.Type;
 
 const EventForCmdStep = Schema.Struct({
-  cmd: executionSiteKey(Schema.String, "event-step"),
+  cmd: executionSiteKey(Schema.String, "event-step").annotateKey({
+    description: "Shell command repeated once per selected for-loop value.",
+  }),
   task: Forbidden,
   command: Forbidden,
   defer: Forbidden,
@@ -172,7 +216,9 @@ const EventForCmdStep = Schema.Struct({
 
 const EventForTaskStep = Schema.Struct({
   cmd: Forbidden,
-  task: executionSiteKey(Schema.String, "event-lando-command"),
+  task: executionSiteKey(Schema.String, "event-lando-command").annotateKey({
+    description: "Tooling task repeated once per selected for-loop value.",
+  }),
   command: Forbidden,
   defer: Forbidden,
   for: EventForSelector,
@@ -183,7 +229,9 @@ const EventForTaskStep = Schema.Struct({
 const EventForCommandStep = Schema.Struct({
   cmd: Forbidden,
   task: Forbidden,
-  command: executionSiteKey(Schema.String, "event-lando-command"),
+  command: executionSiteKey(Schema.String, "event-lando-command").annotateKey({
+    description: "Canonical Lando command repeated once per selected for-loop value.",
+  }),
   defer: Forbidden,
   for: EventForSelector,
   ...EventCommandFields,
@@ -194,7 +242,10 @@ const EventForDeferredCmdStep = Schema.Struct({
   cmd: Forbidden,
   task: Forbidden,
   command: Forbidden,
-  defer: executionSiteKey(Schema.String, "event-step"),
+  defer: executionSiteKey(Schema.String, "event-step").annotateKey({
+    description:
+      "Shell command deferred for LIFO finalization and repeated once per selected for-loop value.",
+  }),
   for: EventForSelector,
   ...EventCmdFields,
   ...EventStepTail,
@@ -227,20 +278,25 @@ export const EventStep = Schema.Union([
   .pipe(Schema.annotateEncoded({ landoAuthoredInput: "EventStep" }));
 export type EventStep = typeof EventStep.Type;
 
+const lifecycleEventSteps = (when: string) =>
+  Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)).annotateKey({
+    description: `Ordered event steps run ${when}.`,
+  });
+
 export const LandofileEvents = Schema.StructWithRest(
   Schema.Struct({
-    "pre-init": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "post-init": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "pre-start": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "post-start": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "pre-stop": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "post-stop": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "pre-restart": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "post-restart": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "pre-rebuild": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "post-rebuild": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "pre-destroy": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "post-destroy": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
+    "pre-init": lifecycleEventSteps("before app init"),
+    "post-init": lifecycleEventSteps("after app init"),
+    "pre-start": lifecycleEventSteps("before app start"),
+    "post-start": lifecycleEventSteps("after app start"),
+    "pre-stop": lifecycleEventSteps("before app stop"),
+    "post-stop": lifecycleEventSteps("after app stop"),
+    "pre-restart": lifecycleEventSteps("before app restart"),
+    "post-restart": lifecycleEventSteps("after app restart"),
+    "pre-rebuild": lifecycleEventSteps("before app rebuild"),
+    "post-rebuild": lifecycleEventSteps("after app rebuild"),
+    "pre-destroy": lifecycleEventSteps("before app destroy"),
+    "post-destroy": lifecycleEventSteps("after app destroy"),
   }),
   [Schema.Record(Schema.String, layerMerge(Schema.Array(EventStep), REPLACE))],
 ).annotate({
