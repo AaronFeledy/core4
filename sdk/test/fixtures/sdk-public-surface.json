@@ -533,6 +533,10 @@
       "detectCollisions:(appIds:ReadonlyArray<AppId>) => Effect.Effect<ReadonlyArray<PortCollision>,ScannerError|PortCollisionError>",
       "id:string",
       "scan:(appId:AppId,options?:{ plan?:AppPlan;urls?:ReadonlyArray<{ service:ServiceName;url:string;endpoint?:EndpointRef;}>;/** Observe completed attempts without affecting probe verdicts;detail is redacted and expected is final. */ onAttempt?:(attempt:ScanAttempt) => Effect.Effect<void>;}) => Effect.Effect<ScanResult,ScannerError>"
+    ],
+    "UserAppResolver": [
+      "current:Effect.Effect<LoadScopedLandofile,UserLandofileError>",
+      "load:(root:AbsolutePath) => Effect.Effect<LoadScopedLandofile,UserLandofileError>"
     ]
   },
   "subpathExports": {
@@ -2253,6 +2257,7 @@
       "TunnelService",
       "UpdateService",
       "UrlScanner",
+      "UserAppResolver",
       "markDeprecated",
       "physicalVolumeLockKey"
     ],

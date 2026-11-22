@@ -20,6 +20,7 @@ A plugin has a `package.json` with `name` and `version`, a manifest with `api: 4
 - Plugin entries SHOULD use ESM; Bun-loadable TypeScript and build outputs are accepted, and CommonJS is supported only through loader interop.
 - Plugins run with host permissions; there is no sandbox.
 - Plugins receive `LandoPluginContext`, never internal core objects.
+- App-scoped commands that load a user Landofile MUST use `UserAppResolver` from `@lando/sdk/services`, rather than raw `LandofileService.discover` (§7.1). They use the SDK planning and provider ports separately when they need them.
 - Contributions MAY return Effect Layers, plain values, or factories; the loader normalizes them to Layers.
 - Public contributions MUST be declared under `provides:`. Manifest validation, compatibility checks, and module containment occur before import.
 - Module top levels SHOULD remain cheap and side-effect-light. Lazy import limits execution timing but cannot detect arbitrary JavaScript side effects.

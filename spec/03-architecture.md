@@ -33,7 +33,7 @@ Levels form a chain `none` → `minimal` → `plugins` → `commands`; `tooling`
 | `none` | Command-base depth with no prebuilt runtime; dispatcher-routed commands receive the internal runtime-factory and captured-config-source ports but no decoded configuration or minimal runtime; the static fast-path subset skips dispatcher and Effect entirely and constructs no services | none |
 | `minimal` | Host configuration and safe local primitives | eager: `PathsService`, `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `StateStore`, `EventService`, `DeprecationService`, `RedactionService`, `TemplateEngineRegistry`, `TemplateRenderer`, `HttpClient`, `Downloader`; lazy: `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `InteractionService`, `ManagedFileService`, `ExecutionSessionService` |
 | `plugins` | Plugin discovery, manifest validation, and contribution graph | `minimal` + eager `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`; lazy `PrivilegeService`; plugin implementations register here |
-| `commands` | Complete native command registry and command-cache refresh | `plugins` + `CommandRegistry` |
+| `commands` | Complete native command registry and command-cache refresh | `plugins` + `CommandRegistry` and `UserAppResolver` |
 | `tooling` | Command services plus cache-only `ToolingProgram` and app-plan access | `commands` + lazy selected `ToolingEngine`; no live provider or full planner |
 | `provider` | Provider selection and provider-dependent subsystems | `commands` + eager `RuntimeProviderRegistry`, engine-private `FileSyncResolver`; lazy `CertificateAuthority` and `DataMover`; `RouterService` is selected at bootstrap, where an unselectable router becomes the unavailable router (§10.2) and a selected implementation's layer-build failure is a bootstrap failure |
 | `global` | Global-app lifecycle (§20) | `provider` + eager `GlobalAppService` and global-root `LandofileService`; lazy `BuildOrchestrator`, `HealthcheckRunner`, `CheckRunner` |
@@ -76,6 +76,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 |---|---|
 | `ConfigService` | Global config, environment overrides, and staged expression resolution (§7) |
 | `LandofileService` | Discover, parse, merge, and validate Landofiles (§7) |
+| `UserAppResolver` | Load the current or exact-root user Landofile with user-app admission checks (§7.1) |
 | `PluginRegistry` | Load manifests and assemble the contribution graph (§9) |
 | `CommandRegistry` | Register and resolve canonical built-in, plugin, and tooling commands (§8) |
 | `ConfigTranslatorRegistry` | Select plugin-contributed external config translators (§4, §7) |

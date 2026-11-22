@@ -68,6 +68,7 @@ import type {
   StateStore,
   Telemetry,
   ToolingEngine,
+  UserAppResolver,
 } from "@lando/sdk/services";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -155,7 +156,7 @@ type PluginRuntimeServices =
   | ConfigTranslatorRegistry
   | PluginContributionGraph
   | BuiltInCommandCatalog;
-type CommandRuntimeServices = PluginRuntimeServices | LandofileService | CommandRegistry;
+type CommandRuntimeServices = PluginRuntimeServices | LandofileService | UserAppResolver | CommandRegistry;
 type ToolingRuntimeServices = CommandRuntimeServices;
 type ProviderRuntimeServices =
   | CommandRuntimeServices
@@ -172,6 +173,7 @@ type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner | BuildOrchest
 type ScratchRuntimeServices =
   | ProviderRuntimeServices
   | LandofileService
+  | UserAppResolver
   | AppPlanner
   | BuildOrchestrator
   | RouterService
@@ -183,6 +185,7 @@ export type AppRuntimeServices =
   | ProviderRuntimeServices
   | BuildOrchestrator
   | LandofileService
+  | UserAppResolver
   | CommandRegistry
   | AppPlanner
   | EventService

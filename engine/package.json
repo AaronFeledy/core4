@@ -234,6 +234,7 @@
     "./services/shell-quote": "./src/services/shell-quote.ts",
     "./services/shell-runner": "./src/services/shell-runner.ts",
     "./services/tooling-engine": "./src/services/tooling-engine.ts",
+    "./services/user-app-resolver": "./src/services/user-app-resolver.ts",
     "./subsystems/certs/api": "./src/subsystems/certs/api.ts",
     "./subsystems/debugger-host": "./src/subsystems/debugger-host.ts",
     "./subsystems/detached-worker/process": "./src/subsystems/detached-worker/process.ts",
