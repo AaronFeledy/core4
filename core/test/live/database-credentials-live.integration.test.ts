@@ -92,7 +92,7 @@ for (const provider of providers)
           LANDO_SYSTEM_PLUGIN_ROOT: join(directory, "system-plugins"),
           LANDO_PROVIDER: provider.id,
           LANDO_CONFIG__default_provider_id: provider.id,
-          LANDO_TEST_PODMAN_SOCKET: provider.id === "podman" ? provider.socketPath : undefined,
+          LANDO_TEST_PODMAN_SOCKET: undefined,
           DOCKER_HOST: `unix://${provider.socketPath}`,
           LANDO_TELEMETRY_ENABLED: "false",
         };
