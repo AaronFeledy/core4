@@ -9,7 +9,11 @@ import {
 } from "./schema-compatibility/classifier.ts";
 import { loadCompatibilityExceptions } from "./schema-compatibility/exceptions.ts";
 import type { JsonSchema } from "./schema-compatibility/model.ts";
-import { buildPersistedSurfaceStores, readPersistedStoreVersions } from "./schema-compatibility/persisted.ts";
+import {
+  buildPersistedSurfaceStores,
+  legacyAppliedPayload,
+  readPersistedStoreVersions,
+} from "./schema-compatibility/persisted.ts";
 import { loadBasePersistedStoreVersions } from "./schema-compatibility/store-versions.ts";
 import {
   SCHEMA_ARTIFACT_FAMILIES,
@@ -154,11 +158,18 @@ export const checkSchemaCompatibility = async (
     new Set([...afterRoots.keys(), ...beforeRoots.keys()]),
     beforeRoots,
   );
-  const findings = compareArtifactSets(
-    before.artifacts,
-    comparableArtifacts(after, before.unavailableFamilies),
-    { exceptions, persistedStoresBySurface, storeVersions, baseStoreVersions },
-  );
+  const baseline = new Map(before.artifacts);
+  const legacy = baseline.get("schema:AppPlan");
+  if (legacy !== undefined && !baseline.has("schema:AppliedAppPlan")) {
+    const surface = "schema:AppliedAppPlan";
+    baseline.set(surface, { ...legacy, surface, schema: legacyAppliedPayload(legacy.schema) });
+  }
+  const findings = compareArtifactSets(baseline, comparableArtifacts(after, before.unavailableFamilies), {
+    exceptions,
+    persistedStoresBySurface,
+    storeVersions,
+    baseStoreVersions,
+  });
   return {
     baseRef,
     findings,

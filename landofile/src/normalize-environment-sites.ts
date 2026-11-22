@@ -1,5 +1,6 @@
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
+  EnvironmentAssignment,
   type ValueWithOrigins,
   isLandofileOverride,
   isLandofileReset,
@@ -15,6 +16,8 @@ import type { PreparedOverlay } from "./pipeline/prepare.ts";
 import type { AuthoredOrigin } from "./provenance.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
 import { landofileIssuesFromSchema } from "./validation-suggestions.ts";
+
+const isEnvironmentAssignment = Schema.is(EnvironmentAssignment);
 
 export const normalizeEnvironmentSites = (
   input: PreparedOverlay & { readonly recorder?: LoadFailureRecorder | undefined },
@@ -34,6 +37,7 @@ export const normalizeEnvironmentSites = (
       return { value: override(payload.value), origins: payload.origins };
     }
     if (Array.isArray(value) && keyValueEntryPath([...path, 0])) {
+      const environment = eligibleBindingPath([...path, 0]);
       const children = new Map<string | number, typeof origins>();
       const values: [string, string][] = [];
       // One canonical environment diagnostic per list; only the invalid entries stop later
@@ -47,8 +51,11 @@ export const normalizeEnvironmentSites = (
           values.push([item, ""]);
           continue;
         }
-        if (typeof item !== "string" || equal < 0 || item.slice(0, equal) === "__proto__") {
-          if (eligibleBindingPath([...path, index])) {
+        if (
+          typeof item !== "string" ||
+          (environment ? !isEnvironmentAssignment(item) : equal < 0 || item.slice(0, equal) === "__proto__")
+        ) {
+          if (environment) {
             canonical ??= canonicalEnvironmentError(input, value, path, origins.source.file);
             if (canonical !== false) {
               if (input.recorder === undefined) throw canonical;

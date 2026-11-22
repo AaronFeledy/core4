@@ -91,6 +91,9 @@ test("lint reports build argument secrets as load failures with safe runtime gui
   const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }, inputs()));
   // Then
   expect(snapshot.result.valid).toBe(false);
+  expect(
+    snapshot.result.violations.find((issue) => issue.reason === "unsupported-secret-reference")?.suggestion,
+  ).not.toContain("{{ env.");
   expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
     {
       path,
@@ -355,19 +358,34 @@ test("retires successful env and lando sites instead of publishing them as pendi
   expect(compiled.document["x-value"]).toBe("ready");
 });
 
-test("retains prior include failures when an environment list cannot normalize", async () => {
-  await writeFile(
-    join(root, ".lando.yml"),
-    "name: aggregate\nincludes: [./a.yml, ./b.yml]\nservices:\n  web:\n    environment: [BARE]\n",
-  );
-  const error = await failure();
-  if (error._tag !== "LandofileLoadError") throw error;
-  expect(error.failures.map((entry) => entry._tag)).toEqual([
-    "LandofileValidationError",
-    "LandofileIncludeError",
-    "LandofileIncludeError",
-  ]);
-});
+test.each([false, true])(
+  "retains environment diagnostics with aggregate load error: %s",
+  async (aggregate) => {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: aggregate\n${aggregate ? "includes: [./a.yml, ./b.yml]\n" : ""}services:\n  web:\n    environment: [BARE]\n`,
+    );
+    const error = await failure();
+    const validation = {
+      _tag: "LandofileValidationError",
+      issues: [
+        expect.objectContaining({
+          path: ["services", "web", "environment", 0],
+          reason: "environment.bare-entry",
+          suggestion: expect.stringContaining("BARE={{ env.BARE }}"),
+        }),
+      ],
+    };
+    expect(error).toMatchObject(
+      aggregate
+        ? {
+            _tag: "LandofileLoadError",
+            failures: [validation, { _tag: "LandofileIncludeError" }, { _tag: "LandofileIncludeError" }],
+          }
+        : validation,
+    );
+  },
+);
 
 test("records a corrupt shared lock once and still visits local siblings in every layer", async () => {
   await writeFile(join(root, ".lando.yml"), "name: aggregate\nincludes: [./a.yml]\n");

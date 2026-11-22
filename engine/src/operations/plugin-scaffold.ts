@@ -155,7 +155,7 @@ const renderIndexTs = (input: PluginScaffoldInput): string => {
 };
 
 const renderConfigTs = (): string =>
-  `import { Effect, Schema } from "effect";\n\nexport const Config = Schema.Struct({\n  enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),\n});\n\nexport type Config = typeof Config.Type;\n`;
+  `import { withDefaultKey } from "@lando/sdk/schema";\nimport { Schema } from "effect";\n\nexport const Config = Schema.Struct({\n  enabled: Schema.Boolean.pipe(withDefaultKey(true, { description: "Enable the plugin feature." })),\n});\n\nexport type Config = typeof Config.Type;\n`;
 
 const renderServiceTs = (name: string): string =>
   `import { Context, Effect, Layer } from "effect";

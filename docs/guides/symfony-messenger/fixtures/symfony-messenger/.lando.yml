@@ -30,7 +30,7 @@ services:
       target: /app
       includes:
         - vendor
-    dependsOn:
+    depends_on:
       - database
       - cache
     routes:
@@ -52,7 +52,7 @@ services:
       target: /app
       includes:
         - vendor
-    dependsOn:
+    depends_on:
       database:
         condition: service_healthy
 tooling:

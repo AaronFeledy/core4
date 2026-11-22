@@ -21,3 +21,7 @@ Generated Starlight MDX pages live in the reference tree declared by
 `docs/reference/schemas/*.mdx`. Titles, descriptions, required fields,
 accepted values, examples, defaults, and deprecation callouts are all
 derived from schema annotations and Effect Schema AST nodes, not hand-written.
+The description and default columns report what the published JSON Schema
+declares. Use `withDefaultKey(value, { description })` for a static public
+decoding default. A fallback applied later by the planner or provider isn't a
+schema default.

@@ -1,7 +1,7 @@
-import { Effect, Schema } from "effect";
-
+import { Schema } from "effect";
 import { CertificateAuthorityContribution } from "./certificate-authority-contribution.ts";
 import { CommandContribution } from "./command-contribution.ts";
+import { withDefaultKey } from "./default-key.ts";
 
 export { CommandContribution } from "./command-contribution.ts";
 
@@ -358,7 +358,9 @@ export const PluginManifest = Schema.Struct({
   name: PluginName,
   version: Schema.String,
   api: Schema.Literal(4),
-  bootstrap: BootstrapLevel.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "app" as const))),
+  bootstrap: BootstrapLevel.pipe(
+    withDefaultKey("app", { description: "Default bootstrap level for the plugin." }),
+  ),
   description: Schema.optionalKey(Schema.String),
   enabled: Schema.optionalKey(Schema.Boolean),
   bundled: Schema.optionalKey(Schema.Boolean),

@@ -1,0 +1,6 @@
+# lando-lint: expect-invalid key.renamed
+name: diagnostic-reason
+services:
+  web:
+    image: alpine
+    workingDirectory: /srv

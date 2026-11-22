@@ -172,9 +172,16 @@ const deriveTree = (ast: AST.AST, options: DeriveAuthoringOptions, semantic: boo
       case "Objects": {
         const annotations = authoringAnnotations(node, options.partial);
         const object = new AST.Objects(
-          node.propertySignatures.map(
-            (property) => new AST.PropertySignature(property.name, member(property.type)),
-          ),
+          node.propertySignatures.map((property) => {
+            // Native fragment fields are optional. Derive their value parsers only for present keys.
+            const type =
+              options.nativeDirectives && options.partial
+                ? Schema.optionalKey(
+                    Schema.suspend(() => Schema.make<Schema.Codec<unknown>>(member(property.type))),
+                  ).ast
+                : member(property.type);
+            return new AST.PropertySignature(property.name, type);
+          }),
           node.indexSignatures.map(
             (index) =>
               new AST.IndexSignature(

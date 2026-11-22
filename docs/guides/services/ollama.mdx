@@ -43,7 +43,7 @@ services:
     type: "node:22"
     primary: true
     endpoints: []
-    dependsOn:
+    depends_on:
       ollama:
         condition: service_healthy
 tooling:
@@ -227,7 +227,7 @@ lando logs --service ollama --tail 100
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"host_ip\":\\s*\"127\\.0\\.0\\.1\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"source\":\\s*\"ollama-models\",\\s*\"target\":\\s*\"/root/\\.ollama\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"healthcheck\":\\s*\\{[^}]*\"command\":\\s*\\[\\s*\"ollama\"\\s*,\\s*\"list\"\\s*\\]" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dependsOn\":\\s*\\{\\s*\"ollama\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"depends_on\":\\s*\\{\\s*\"ollama\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"router\":\\s*\\{\\s*\"enabled\":\\s*false" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\\[\\s*\"ollama\"\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />

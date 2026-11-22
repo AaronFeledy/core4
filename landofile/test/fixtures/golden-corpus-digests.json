@@ -34,7 +34,7 @@
     },
     {
       "fixture": "docs/guides/backdrop-workflow/fixtures/backdrop-dev",
-      "digest": "31e168807f676196f4589e0b6751b2ca8234ed14d2b3bafbbe4b64b1c46888e1"
+      "digest": "667f239361896ac252d75ee35ffed7d81873006ebd4fcc4aace1e3ff48d45e73"
     },
     {
       "fixture": "docs/guides/build-steps/fixtures/build-steps-demo",
@@ -168,6 +168,38 @@
       "digest": "50cfaef061d6c024852a68862d5b81f427f16da90b7f48427c537df1e103268c"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/build-dockerfile-conflict",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/build-empty",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/build-mixed-families",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/build-unsupported-key",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/canonical-working-dir",
+      "digest": "828e5c3d75c224fc3a4e590960de927d7222b93164f28f82aa6bd64064753355"
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-demo",
       "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
     },
@@ -213,6 +245,48 @@
       }
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/environment-bare-entry",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/environment-empty-name",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/environment-null-value",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/environment-reserved-name",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/key-renamed-dockerfile-inline",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/key-renamed-working-directory",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/malformed-endpoint",
       "invalid": {
         "status": "invalid",
@@ -244,6 +318,10 @@
         "status": "invalid",
         "tag": "LandofileLoadError"
       }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/valid-environment-and-build-args",
+      "digest": "790598b83c4fed4ab5d8c3d024d6adff6baa6192b2c669bad1cb9d35006e0baa"
     },
     {
       "fixture": "docs/guides/config-lint/fixtures/wrong-filter-prefix",
@@ -378,11 +456,11 @@
     },
     {
       "fixture": "docs/guides/drupal-multisite/fixtures/drupal-multisite-demo",
-      "digest": "330a6a9ddcac1bcfe29fd177ba94e24dc39ee6142b7d8b146c59c078609e4151"
+      "digest": "adbe341526645ae5dd9452612ae4a3c4e7d4c3e879d7a9f9b512ce2d1a341d5f"
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/bind-mounted-config",
-      "digest": "339799015c1f259eb5159a3cacdf81c658d917e7a79bd30c09d70d20db191f11"
+      "digest": "3e39b8a2e2c089d0a555f2329585223dfb753e56b7a05a34394eb1b0bde3f4dd"
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/database-image-pin",
@@ -390,11 +468,11 @@
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/drush-uri-webroot",
-      "digest": "880ff790bad7f2332b1ef3833ea451fce4e4d6a945ef0d969fad05e61bccee09"
+      "digest": "933f2c3627af48cc22f4a86e7a6ffa305822b8b7099a9cf3fe9ca44a3f8f217c"
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/php-version-override",
-      "digest": "d6642faaf752386a1ffaeaa8ee950cf7d0141a7f76b5362bd168e02b00f059e8"
+      "digest": "26f6eb592a45e04f3c4d797bcb7d7340ebd70661aaddc9ca97c15034d1336002"
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/two-database-services",
@@ -402,7 +480,7 @@
     },
     {
       "fixture": "docs/guides/drupal-testing/fixtures/drupal-demo",
-      "digest": "0d7b9912bf42f0346a978661ed27a698cd02f2b45613868fffa1f3342cfa188e"
+      "digest": "e943469b0246b93eb9560b2e813c24fa04fae471b3e511cd3534459f8803fa26"
     },
     {
       "fixture": "docs/guides/e2e-smoke-scenarios/fixtures/router-page",
@@ -425,7 +503,7 @@
     },
     {
       "fixture": "docs/guides/env-overrides/fixtures/top-level-env-file",
-      "digest": "5f9d3b1b360c8bf4aac495c2e0a3bffb8ca64d11cf51b0a7882b993a92716238"
+      "digest": "75b32dee254425bbebe34f352ba97f2bbbea2eb86455b6e80500e621cab1f2bf"
     },
     {
       "fixture": "docs/guides/events/fixtures/events-demo",
@@ -552,7 +630,7 @@
     },
     {
       "fixture": "docs/guides/fastapi-workflow/fixtures/venv-and-env",
-      "digest": "bc7a0874dc96356ac8a08275646995ac255a2776f2f3cb3e4fa140814d436b32"
+      "digest": "537ab88131383995790ce40ad25fd7972820cd4321076cafdb6ed1ef30cf843d"
     },
     {
       "fixture": "docs/guides/file-sync-excludes/fixtures/excludes-demo",
@@ -671,27 +749,27 @@
     },
     {
       "fixture": "docs/guides/keycloak/fixtures/keycloak-demo",
-      "digest": "0f7dedc03ec3b2c7ded4f91b8e78cf3ea59b39af6d787fe88f2fb0c66db21bd7"
+      "digest": "ca0413b1f195d42477428777418e34e7a144f187ae793cb3f9b294841698bb96"
     },
     {
       "fixture": "docs/guides/lamp-stack-variants/fixtures/bind-mounted-config",
-      "digest": "dceb65a8d94e5674423067fbcd4a3e5dee47b1846dfa05cba7cdfc21850967df"
+      "digest": "8ed7ee5275061b62f363564cb83168f9266252d653d05817c26c63f50c28a7db"
     },
     {
       "fixture": "docs/guides/lamp-stack-variants/fixtures/multiple-database-services",
-      "digest": "01f5165682ec14e8f7817e842d3ee9713d6999c6448f6d816b21cf969b5ca336"
+      "digest": "bfd0b048fff65c142c71df659d63cf6c07c01f4c1bca3962c4fa03fec91bdcf4"
     },
     {
       "fixture": "docs/guides/lamp-stack-variants/fixtures/mysql-replacement",
-      "digest": "2f6a7eb20f284ee3117844e19c686dfe6d0e5cd4e69994895e625007fcaf92fc"
+      "digest": "021ca614aff6df233c94ee9f495fc24caffcd0a7d44f692bac8b0d92408f35db"
     },
     {
       "fixture": "docs/guides/lamp-stack-variants/fixtures/postgres-replacement",
-      "digest": "86f68b723c1a8293e7bf009d3935a2b44f2b0e9d16ab6420c086701cf5fb6ee3"
+      "digest": "bbf9d35fa7e1ba9022df9ec2ab26ed0568d00eadf002fc86a6a8f3bdf42d3cc7"
     },
     {
       "fixture": "docs/guides/lamp-stack-variants/fixtures/tooling-aliases",
-      "digest": "823f98a0e2fa82e145b6fd2328f69069cf35614f5a2a222de6aa4c2b97582daf"
+      "digest": "71034bdfa7292ffc301cad5d2872c33eb1dcc70fa7708d377e534a72baf9a69e"
     },
     {
       "fixture": "docs/guides/lando3-transition-options/fixtures/scoped-services",
@@ -699,15 +777,15 @@
     },
     {
       "fixture": "docs/guides/laravel-horizon/fixtures/laravel-horizon",
-      "digest": "292b39c9fa0c0fb60a2863d8378dc3fb0aa7bef386219a3dd2ac5d6d9db57d4c"
+      "digest": "fc1ae9c33c5c3bbe5b074a003897e2cbeb977bc5c00763d66103c8325e5426e5"
     },
     {
       "fixture": "docs/guides/laravel-reverb/fixtures/laravel-reverb",
-      "digest": "002e6962c7da72aa5433697bad246a66fdd4ab35330b9eaa7699e97bcba300b8"
+      "digest": "040d06f957a733ef342cedccb2aef5cf1da0f35dc4c0db865661cc389ae75cdc"
     },
     {
       "fixture": "docs/guides/laravel-vite/fixtures/laravel-vite",
-      "digest": "849fdf75636d71f522b3e6397c62ad7b63e495be101212f3c2aff3f6f6fbb485"
+      "digest": "00ea8ef5a37c7d63bda4f69e73303cbc39f28e7adfedaa33c9dca66347bec41e"
     },
     {
       "fixture": "docs/guides/locale/fixtures/locale-demo",
@@ -787,7 +865,7 @@
     },
     {
       "fixture": "docs/guides/mailpit/fixtures/selected-php",
-      "digest": "9e0d728afa636d94ce8083aed0027c684db2a9fcf0acefc58f1c41241e2bde86"
+      "digest": "aac14db9bc89a3d6f7ea6ee3e0f5d479799a3485a8c0fc79bb3e5f5032892a11"
     },
     {
       "fixture": "docs/guides/mailpit/fixtures/smtp-ui-collision",
@@ -822,7 +900,7 @@
     },
     {
       "fixture": "docs/guides/migrating-recipes/fixtures/includes-app",
-      "digest": "8b1d72147986314f015f682af820435f1ca03e36bc28191c1321cd8dd6d88be2"
+      "digest": "e25c865726e0a0179448dd4ca475449c821fc5f84d75b1d123c48db9563a992d"
     },
     {
       "fixture": "docs/guides/migrating-recipes/fixtures/programmatic-app",
@@ -934,11 +1012,11 @@
     },
     {
       "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-demo",
-      "digest": "9b0b92839e7af967212c367cac9dcca5f34cbfa8ce9948a0790898bb08cfb759"
+      "digest": "e1c970304aa7f411ae1b5689119ce49c8331f1ba1a2d75f3f1f489b229ed9c0b"
     },
     {
       "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-serve",
-      "digest": "bbfa1c381801fdf696ae8291f17648f2a201728d3d3a1af715ea0899c09daaba"
+      "digest": "54d9d70156f8a71ce995ecb1bf7f7e799c897b306803dd707f6ca113b9789a7b"
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-child",
@@ -946,7 +1024,7 @@
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-drupal",
-      "digest": "a4f5c338cb3cc1cc308f37494a298beea3ab52820cb33f9ab7e96e4c35d6af88"
+      "digest": "495c01efff9afd56bba631ea5ca029c55975dd2e1bd819d33fa31f4fef538937"
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-infer",
@@ -1089,19 +1167,19 @@
     },
     {
       "fixture": "docs/guides/php-customization/fixtures/db-client-auto",
-      "digest": "b4443bb3b06f5b31ea9b5045c339cbce57e5131e1e6a805e5171a3323a6eb07f"
+      "digest": "0055b31e5d5fd243b2360c04117c44cf22fcf4ae6029561e59898c884dcb89b8"
     },
     {
       "fixture": "docs/guides/php-customization/fixtures/db-client-disabled",
-      "digest": "f097d8ed9ff2db9df4ef4ab9a709074f37be0dac9db398409db895a4ed892a49"
+      "digest": "3ce156f4a3bc99c900edde3add21b9f226715bce7ff4c3bdfd30274d6b6b06ee"
     },
     {
       "fixture": "docs/guides/php-customization/fixtures/db-client-explicit",
-      "digest": "66444cc40052e17dfcfeaff397ceea9c45d769fdbaf448bf1ff7286747ebf61f"
+      "digest": "f5b201776ea78ecfac2498d97a1e7ff5050caf28d13bcfee267bba03dd834859"
     },
     {
       "fixture": "docs/guides/php-customization/fixtures/db-client-invalid",
-      "digest": "5474223c2077a06039f420a87422fee6e8912f396437412310541b075779b4cc"
+      "digest": "8058705ea5f86c8bdc82e0ca257ee0cd5a447f94c7e8c4f77f429ba21297b376"
     },
     {
       "fixture": "docs/guides/php-customization/fixtures/extra-extension-pie",
@@ -1189,7 +1267,7 @@
     },
     {
       "fixture": "docs/guides/planetscale/fixtures/planetscale-demo",
-      "digest": "75de5295d6f89ecf6538bb1f980e508abe9159d1c0d27010a33ad69b5a673bc5"
+      "digest": "67f1d33b089dbc8540cc76df45d398c27cc104b990350d8aa4190bd042888847"
     },
     {
       "fixture": "docs/guides/postgres-pgvector/fixtures/pgvector-demo",
@@ -1296,7 +1374,7 @@
     },
     {
       "fixture": "docs/guides/router-and-scanner/fixtures/router-and-scanner-tuned",
-      "digest": "76beef5676c878b01cf31783f9aa0902dff39ecd06a66234babe55912c4f5402"
+      "digest": "f9dc492815367c2b5a0370c86bb67e24ad35b6163c48caa8d75b41c6190680cd"
     },
     {
       "fixture": "docs/guides/ruby/fixtures/ruby-demo",
@@ -1368,7 +1446,7 @@
     },
     {
       "fixture": "docs/guides/service-dns/fixtures/service-dns-demo",
-      "digest": "9dce88da8079c961c84e858a22f69b68d2335cd5a97db681d6ca26508eb29d9a"
+      "digest": "081fbb9552606b8167a9deb82a037ca4cd634a507a6a13b6f57a27b27f5fed95"
     },
     {
       "fixture": "docs/guides/service-logs/fixtures/declared-source",
@@ -1439,7 +1517,7 @@
     },
     {
       "fixture": "docs/guides/symfony-messenger/fixtures/symfony-messenger",
-      "digest": "cc20ac05f309ce7cc3a4bdc2bd89938cbf7ad151cb086fc976e707015f52092c"
+      "digest": "626d6ba842cfa4a9eedb18a43ea13ee5cb795d660b9ece0043762c360943fbfa"
     },
     {
       "fixture": "docs/guides/task-events/fixtures/bracketed-build",
@@ -1530,7 +1608,7 @@
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/failed-oneshot",
-      "digest": "ea328ad15e201fb3ae68bbbc9eb0c7dff6f47c7eaf34c58c04ebadff2cbbc1cb"
+      "digest": "5f62350e0c696c3fd4d1cfd7b122ea0ad5add4fe239903bcc70fa5263b0a2c9e"
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/host-command-missing",
@@ -1546,7 +1624,7 @@
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/http-tcp",
-      "digest": "3cefec1463169642fb318d2ae35d59e30f201681993505c2a5591f9b565b4e33"
+      "digest": "9cff9a58574feb6ab441051a96c6ae928e782ed6c4b7be6cb10871fd35d9d6c2"
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/mixed-timing-corrected",
@@ -1566,15 +1644,15 @@
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/terminal-dependency",
-      "digest": "09a1d3e97f706e101cc5fcd41977a04b433dfe2992ddf4350e3c84a8d9b66d53"
+      "digest": "9e1f925484dd8798926b6344e8f74ebfcfc5bdadc403c6f275253683df351880"
     },
     {
       "fixture": "docs/guides/wordpress-multisite/fixtures/wp-network",
-      "digest": "e4bbfc4f74462706b4fc5d16758b17e5c8b02d71d1004d679e25e983d56fd1e6"
+      "digest": "9c574a86dcc5f0f4d75881552526ae696d5ca7a2be2c44ab9dd04b45e9e91f07"
     },
     {
       "fixture": "docs/guides/wordpress-vite/fixtures/wordpress-vite",
-      "digest": "62a630dc94b73afb3651df6aed9047c1505f99f8c27706cacbd8a8dc840b0e75"
+      "digest": "2ca78acb2785dab169f9cb64e0c950ba1b2605e82e61a13f7cf09c7a452728c1"
     },
     {
       "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-demo",
@@ -1659,7 +1737,7 @@
         "digest": "085f959213aad951b20bc2130f18c8c9d1f1d4c1c8705814fe436a28ed3b0545"
       },
       "after": {
-        "digest": "623da16f721a84c8143d34081d2198d372be50ed9b6a854bc1a8f4d12c23b5d2"
+        "digest": "3d4264fe44b4e81f4c329d20ce71bcf6047b72a92509866d33971967bc5b81bb"
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     },
@@ -1710,18 +1788,18 @@
         "digest": "3f256ed2c224bc94bc91ee335eb6a8fa1111d4f4bd8d7aa0d391d1ff2e44a585"
       },
       "after": {
-        "digest": "68cef9c7d225c45de38f4fcdc11d02e331e39cedfd079af8b6d8e9db65f64633"
+        "digest": "17d47742abd1de0523d3f77f1647d51c97beedeac6e092c2e90e8650874440ce"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer. Recipe tooling copies now include wrapper: true and the recipe's Drush URL resolution command (#2401). The Drush prelude now runs $LANDO_APP_ROOT/vendor/bin/drush so it works from app subdirectories. Drush now uses the PHP service's :drupal-local launcher instead of the embedded shell prelude."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer. Recipe tooling copies now include wrapper: true and the recipe's Drush URL resolution command (#2401). The Drush prelude now runs $LANDO_APP_ROOT/vendor/bin/drush so it works from app subdirectories. Drush now uses the PHP service's :drupal-local launcher instead of the embedded shell prelude. The canonical authored spelling (dbClient and other Compose key names) changes the encoded document."
     },
     "docs/guides/drupal-stack-overrides/fixtures/two-database-services": {
       "before": {
         "digest": "c5d890ccf5168bac68eb47a4a55d47145d21cd7fee243fe96175b0b2bdf3514e"
       },
       "after": {
-        "digest": "5b2d002d415fa8819454535cadc2ee7afdca16ebb12a2018f1560735fd935be6"
+        "digest": "1ac39a7fb77c0be394ee0573303ca183b74a3c0baa9edc9c93e101c2b12f1d70"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer. Recipe tooling copies now include wrapper: true and the recipe's Drush URL resolution command (#2401). The Drush prelude now runs $LANDO_APP_ROOT/vendor/bin/drush so it works from app subdirectories. Drush now uses the PHP service's :drupal-local launcher instead of the embedded shell prelude."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer. Recipe tooling copies now include wrapper: true and the recipe's Drush URL resolution command (#2401). The Drush prelude now runs $LANDO_APP_ROOT/vendor/bin/drush so it works from app subdirectories. Drush now uses the PHP service's :drupal-local launcher instead of the embedded shell prelude. The canonical authored spelling (dbClient and other Compose key names) changes the encoded document."
     },
     "docs/guides/elasticsearch/fixtures/elasticsearch-demo": {
       "before": {
@@ -1794,9 +1872,9 @@
         "digest": "3df20fd7811e1e9ea9b8a5c766b11eb66788e7ff2453c7ab6b45609052643a74"
       },
       "after": {
-        "digest": "bc62146b254691eb416dadb3b16157a8253d6f3640d4bcb9deaf37c43f1199ad"
+        "digest": "1c12bd56469c71e644744a4ac7a5eaa1974a381031927ff1553f61fe22854e1a"
       },
-      "reason": "The service-selection fixture now explicitly disables routing, so the encoded document includes that authored setting. Service identities, primary selection and dependency edges are unchanged."
+      "reason": "The service-selection fixture now explicitly disables routing, so the encoded document includes that authored setting. Service identities, primary selection and dependency edges are unchanged. The canonical authored spelling changes the encoded document in this track."
     },
     "docs/guides/magento/fixtures/mageos": {
       "before": {
@@ -1836,9 +1914,9 @@
         "digest": "cb069536a4627ca18f8601c497293d1b3ebb4802c1e70aae98184c0ee4ac6d1c"
       },
       "after": {
-        "digest": "c2ed26d8fd69e99f9d8ae23b92ffe12a71a094d9e9fb6effd846556b81aeffee"
+        "digest": "36b96bacdea459b24043bd01356ce980643648a2ebef941b611af4c5de195ac9"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The canonical authored spelling changes the encoded document in this track."
     },
     "docs/guides/networks/fixtures/networks-misdeclared": {
       "before": {
@@ -1872,9 +1950,9 @@
         "digest": "9191a0b49df33e43ab8e9de2cc600a19888178d59c1598f147fbdd2a5444ff56"
       },
       "after": {
-        "digest": "b5045eff7b2f06c1a9804dbde9b7563a4fc4c0d5aa17f43e811afb4950469e4b"
+        "digest": "e2e0c8ae02ba7b30720f9c5cc2e21d8af3bf986309cf317e97303f29cc7bf294"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The canonical authored spelling changes the encoded document in this track."
     },
     "docs/guides/output-streaming/fixtures/stream-container": {
       "before": {
@@ -1965,9 +2043,9 @@
         "digest": "031653c61f162c7c09b55cd0d6a8097da6c5a47538467235c91da55180531e9e"
       },
       "after": {
-        "digest": "9fdf87b9d0a5377cd80ee8c7d1fc01bd6b1e08d61df2e2dd754e34221992945c"
+        "digest": "7aea7855322382b5a277c9a0b0852dc309a0283dd8ae36c45eba04327dd9f356"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false and adds read-only nginx and PHP ini mounts for the large-profile troubleshooting configuration."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false and adds read-only nginx and PHP ini mounts for the large-profile troubleshooting configuration. The canonical authored spelling changes the encoded document in this track."
     }
   }
 }

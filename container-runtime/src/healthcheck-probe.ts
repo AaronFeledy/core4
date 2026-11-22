@@ -24,7 +24,7 @@ export const runHealthcheckPhases = Effect.fn("HealthcheckProbe.run")(function* 
 ) {
   const classify = (value: A): "green" | "red" => (ready(value) ? "green" : "red");
   const startPeriod = plan.startPeriodSeconds ?? 0;
-  const cadence = Math.min(1, Math.max(0.001, plan.intervalSeconds));
+  const cadence = Math.max(0.001, plan.startIntervalSeconds ?? Math.min(1, plan.intervalSeconds));
   const grace =
     startPeriod > 0
       ? yield* runProbeDetailed(

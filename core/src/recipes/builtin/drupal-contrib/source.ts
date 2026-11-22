@@ -27,8 +27,8 @@ const contribAppMount = {
 const contribAppserver = {
   ...phpAppserver("drupal"),
   webroot: contribWebroot,
-  workingDirectory: contribDir,
-  dependsOn: ["database", "chrome"],
+  working_dir: contribDir,
+  depends_on: ["database", "chrome"],
   appMount: contribAppMount,
   mounts: [contribSiteVolume],
   environment: {

@@ -135,7 +135,7 @@ Inspect the effective result with `lando app:config --format=json`. A bad local 
 Compare individual layers with `lando app:config --source raw --format=json`, or inspect their authored composition with `--source merged`. Both can show values that effective validation rejects. See [Inspect each stage of your Landofile](./config-views.mdx). To change a layer from the command line instead of an editor, see [Set, unset, and edit from the CLI](#set-unset-and-edit-from-the-cli).
 
 - Routes match by scheme, case-insensitive hostname, and path prefix in either shorthand or object spelling. Omitted scheme means HTTPS and omitted path means `/`. A `both` route participates in both scheme identities; an HTTPS-only overlay leaves its HTTP route alone. Backends and filters are not route identity.
-- `dependsOn` matches by service, in list, map, or object-entry form. Logs match by `id`, which defaults to the path basename.
+- `depends_on` matches by service, as a list of names or a condition map. Logs match by `id`, which defaults to the path basename.
 - Route filters match by `name`, otherwise by `type`. Named filters never match unnamed ones. Changing a matched filter's type replaces that entry.
 - Endpoints and ports match by exact, case-sensitive `name` only when every entry on both sides is named. Otherwise the list replaces.
 - Every other list replaces, including scalar arrays, tooling `cmds`, event step lists, and opaque extension arrays. A step's `service` is where it runs, not a merge identity.

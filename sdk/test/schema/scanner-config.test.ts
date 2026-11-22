@@ -3,7 +3,7 @@ import * as SDK from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 
 describe("ScannerConfig", () => {
-  test.each([false, {}, { path: "/healthz", okCodes: [200, 301], retries: 3, timeout: 5000 }])(
+  test.each([false, {}, { path: "/healthz", okCodes: [200, 301], retries: 3, timeoutMs: 5000 }])(
     "decodes valid scanner settings %j",
     (input) => {
       // Given valid authored settings, when decoded, then preserve them.
@@ -15,9 +15,9 @@ describe("ScannerConfig", () => {
     { retries: -1 },
     { retries: 21 },
     { retries: 1.5 },
-    { timeout: 0 },
-    { timeout: 600001 },
-    { timeout: 1.5 },
+    { timeoutMs: 0 },
+    { timeoutMs: 600001 },
+    { timeoutMs: 1.5 },
     { okCodes: [600] },
     { okCodes: [99] },
     { okCodes: [200.5] },
@@ -27,7 +27,7 @@ describe("ScannerConfig", () => {
     expect(Result.isFailure(Schema.decodeUnknownResult(SDK.ScannerConfig)(input))).toBe(true);
   });
 
-  test.each([false, {}, { path: "/", okCodes: [100, 599], retries: 20, timeout: 600000 }])(
+  test.each([false, {}, { path: "/", okCodes: [100, 599], retries: 20, timeoutMs: 600000 }])(
     "shares scanner settings between global and service config %j",
     (scanner) => {
       // Given shared authored settings, when each config is decoded, then preserve scanner.

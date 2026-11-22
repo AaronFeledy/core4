@@ -68,7 +68,7 @@ test.each([
     environment:
       - NOT_A_PAIR
 ${badType}`,
-    expected: [["landofile.validation", ["services", "other", "environment"]], unsupportedType],
+    expected: [["landofile.validation", ["services", "other", "environment", 0]], unsupportedType],
   },
   {
     title: "does not evaluate credentials of a service blocked during loading",

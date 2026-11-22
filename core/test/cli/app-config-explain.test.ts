@@ -63,7 +63,7 @@ const landofile = (parts: LandofileParts = {}): string => {
     "services:",
     `  ${service}:`,
     '    composer: "{{ recipe.composer }}"',
-    "    dependsOn:",
+    "    depends_on:",
     "      - database",
     "    framework: none",
     "    port: 80",

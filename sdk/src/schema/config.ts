@@ -5,6 +5,16 @@ import { withDefaultKey } from "./default-key.ts";
 import { BindAddress } from "./endpoint.ts";
 import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { isCoreServiceEnvKey } from "./generated/core-service-env.ts";
+import {
+  APP_DEFAULTS_MAX_PROPERTIES,
+  APP_ENVIRONMENT_KEY,
+  APP_ENVIRONMENT_MAP_KIB,
+  APP_ENVIRONMENT_VALUE_KIB,
+  APP_LABEL_KEY,
+  APP_LABEL_KEY_BYTES,
+  APP_LABEL_MAP_KIB,
+  APP_LABEL_VALUE_KIB,
+} from "./global-config-map-limits.ts";
 import { HostEvents } from "./host-events.ts";
 import { DomainName } from "./hostname.ts";
 import { ScannerConfig } from "./networking.ts";
@@ -18,10 +28,9 @@ const encodedByteLength = (value: string): number => new TextEncoder().encode(va
 const encodedMapByteLength = (value: Readonly<Record<string, string>>): number =>
   encodedByteLength(JSON.stringify(value));
 
-const APP_ENVIRONMENT_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const AppEnvironmentValue = Schema.String.pipe(
   Schema.check(
-    Schema.makeFilter((value) => encodedByteLength(value) <= 32 * 1024, {
+    Schema.makeFilter((value) => encodedByteLength(value) <= APP_ENVIRONMENT_VALUE_KIB * 1024, {
       message: "Global app environment values must not exceed 32 KiB of UTF-8 text",
     }),
   ),
@@ -33,15 +42,15 @@ export const AppEnvironmentDefaults = Schema.Record(Schema.String, AppEnvironmen
       (value) => {
         const keys = Object.keys(value);
         return (
-          keys.length <= 256 &&
+          keys.length <= APP_DEFAULTS_MAX_PROPERTIES &&
           keys.every((key) => APP_ENVIRONMENT_KEY.test(key) && !isCoreServiceEnvKey(key)) &&
-          encodedMapByteLength(value) <= 1024 * 1024
+          encodedMapByteLength(value) <= APP_ENVIRONMENT_MAP_KIB * 1024
         );
       },
       {
         message:
           "Global app environment must use POSIX identifiers, exclude core-owned keys, contain at most 256 entries, and encode to at most 1 MiB",
-        toJsonSchema: () => [{ maxProperties: 256 }, true],
+        toJsonSchema: () => [{ maxProperties: APP_DEFAULTS_MAX_PROPERTIES }, true],
       },
     ),
   ),
@@ -55,13 +64,11 @@ export type AppEnvironmentDefaults = typeof AppEnvironmentDefaults.Type;
 
 const validAppLabelKey = (key: string): boolean => {
   const bytes = encodedByteLength(key);
-  return (
-    bytes >= 1 && bytes <= 253 && !key.includes("\0") && !key.includes("=") && !key.startsWith("dev.lando.")
-  );
+  return bytes <= APP_LABEL_KEY_BYTES && APP_LABEL_KEY.test(key);
 };
 const AppLabelValue = Schema.String.pipe(
   Schema.check(
-    Schema.makeFilter((value) => encodedByteLength(value) <= 4 * 1024, {
+    Schema.makeFilter((value) => encodedByteLength(value) <= APP_LABEL_VALUE_KIB * 1024, {
       message: "Global app label values must not exceed 4 KiB of UTF-8 text",
     }),
   ),
@@ -73,13 +80,15 @@ export const AppLabelDefaults = Schema.Record(Schema.String, AppLabelValue).pipe
       (value) => {
         const keys = Object.keys(value);
         return (
-          keys.length <= 256 && keys.every(validAppLabelKey) && encodedMapByteLength(value) <= 256 * 1024
+          keys.length <= APP_DEFAULTS_MAX_PROPERTIES &&
+          keys.every(validAppLabelKey) &&
+          encodedMapByteLength(value) <= APP_LABEL_MAP_KIB * 1024
         );
       },
       {
         message:
           "Global app labels must use valid non-reserved keys, contain at most 256 entries, and encode to at most 256 KiB",
-        toJsonSchema: () => [{ maxProperties: 256 }, true],
+        toJsonSchema: () => [{ maxProperties: APP_DEFAULTS_MAX_PROPERTIES }, true],
       },
     ),
   ),
@@ -96,14 +105,26 @@ export type AppLabelDefaults = typeof AppLabelDefaults.Type;
  * schema default for their host decision; they stay opt-in at runtime creation.
  */
 export const TelemetryConfig = Schema.Struct({
-  enabled: Schema.Boolean.pipe(withDefaultKey(true)),
+  enabled: Schema.Boolean.pipe(
+    withDefaultKey(true, { description: "Allow the CLI to send usage telemetry. Set false to opt out." }),
+  ),
 });
 export type TelemetryConfig = typeof TelemetryConfig.Type;
 
 export const NetworkProxyConfig = Schema.Struct({
-  http: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  https: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  noProxy: Schema.Array(Schema.String).pipe(withDefaultKey([])),
+  http: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])).annotateKey({
+    description:
+      "Proxy URL for plain HTTP requests. Use null to disable proxying for HTTP instead of using the host environment.",
+  }),
+  https: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])).annotateKey({
+    description:
+      "Proxy URL for HTTPS requests. Use null to disable proxying for HTTPS instead of using the host environment.",
+  }),
+  noProxy: Schema.Array(Schema.String).pipe(
+    withDefaultKey([], {
+      description: "Host and optional port patterns that bypass the HTTP and HTTPS proxies.",
+    }),
+  ),
   /**
    * When true, write the resolved proxy env (`HTTP_PROXY` / `HTTPS_PROXY` /
    * `NO_PROXY`) into `type: lando` service env layers. Default false — proxy
@@ -119,8 +140,17 @@ export const NetworkProxyConfig = Schema.Struct({
 export type NetworkProxyConfig = typeof NetworkProxyConfig.Type;
 
 export const NetworkCaConfig = Schema.Struct({
-  trustHost: Schema.Boolean.pipe(withDefaultKey(true)),
-  certs: Schema.Array(Schema.String).pipe(withDefaultKey([])),
+  trustHost: Schema.Boolean.pipe(
+    withDefaultKey(true, {
+      description:
+        "Include the host's system CA certificates when verifying outbound TLS; false restricts trust to the configured certificates.",
+    }),
+  ),
+  certs: Schema.Array(Schema.String).pipe(
+    withDefaultKey([], {
+      description: "Host paths to readable PEM CA certificate files to trust for outbound TLS.",
+    }),
+  ),
   /**
    * When true (default), install `network.ca.certs` into every `type: lando`
    * service trust store and runtime CA env (`NODE_EXTRA_CA_CERTS`, etc.) so
@@ -137,10 +167,21 @@ export const NetworkCaConfig = Schema.Struct({
 export type NetworkCaConfig = typeof NetworkCaConfig.Type;
 
 export const NetworkConfig = Schema.Struct({
-  proxy: Schema.optionalKey(NetworkProxyConfig),
-  ca: Schema.optionalKey(NetworkCaConfig),
+  proxy: Schema.optionalKey(NetworkProxyConfig).annotateKey({
+    description: "HTTP and HTTPS egress proxy policy for Lando's host-side network requests.",
+  }),
+  ca: Schema.optionalKey(NetworkCaConfig).annotateKey({
+    description:
+      "Certificate authorities used to verify Lando's outbound TLS connections, with optional installation into Lando-managed services.",
+  }),
 });
 export type NetworkConfig = typeof NetworkConfig.Type;
+
+export const FileSyncSetupOptions = Schema.Struct({
+  force: Schema.Boolean,
+  network: Schema.optionalKey(NetworkConfig),
+});
+export type FileSyncSetupOptions = typeof FileSyncSetupOptions.Type;
 
 export const McpConfig = Schema.Struct({
   allow: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
@@ -293,11 +334,25 @@ export const GlobalConfig = Schema.Struct({
   defaultFileSyncEngine: Schema.optionalKey(Schema.String).annotate({
     description: "File-sync engine contribution id, or passthrough to use ordinary binds without sessions.",
   }),
-  appEnv: Schema.optionalKey(AppEnvironmentDefaults).annotate({
-    description: "Environment defaults applied below each user-app service's authored environment.",
-  }),
-  appLabels: Schema.optionalKey(AppLabelDefaults).annotate({
-    description: "Container-label defaults applied below each user-app service's authored labels.",
+  serviceDefaults: Schema.optionalKey(
+    Schema.Struct({
+      environment: Schema.optionalKey(AppEnvironmentDefaults).annotate({
+        description:
+          "Environment defaults applied below each user-app service's authored environment (global serviceDefaults.environment).",
+      }),
+      labels: Schema.optionalKey(AppLabelDefaults).annotate({
+        description:
+          "Container-label defaults applied below each user-app service's authored labels (global serviceDefaults.labels).",
+      }),
+    }).annotate({
+      identifier: "GlobalServiceDefaults",
+      title: "Global Service Defaults",
+      description:
+        "Cross-service defaults applied only to user-app services, below each service's own environment and labels.",
+    }),
+  ).annotate({
+    description:
+      "Cross-service defaults for user apps: environment and labels maps apply below each service's own values.",
   }),
   telemetry: TelemetryConfig.pipe(
     withDefaultKey({ enabled: true }, { description: "CLI telemetry policy." }),
@@ -387,5 +442,5 @@ export const GlobalConfig = Schema.Struct({
   tracing: Schema.optionalKey(TracingConfig).annotate({
     description: "Global tracing export policy (global tracing).",
   }),
-});
+}).pipe(Schema.annotateEncoded({ landoAuthoredInput: "GlobalConfig" }));
 export type GlobalConfig = typeof GlobalConfig.Type;

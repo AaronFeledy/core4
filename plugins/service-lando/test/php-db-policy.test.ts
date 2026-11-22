@@ -54,7 +54,7 @@ test.each([undefined, {}, { [PHP_RUNTIME_POLICY_KEY]: { baseFamily: "private-sec
   "DB clients reject missing/malformed policy before touching earlier senders %j",
   async (resolutionMetadata) => {
     // Given
-    const first = php("first", { db_client: "postgres:16" });
+    const first = php("first", { dbClient: "postgres:16" });
     const second = { ...php("second"), resolutionMetadata };
     // When
     const result = await Effect.runPromise(Effect.result(apply([first, second])));
@@ -73,16 +73,16 @@ test.each([undefined, {}, { [PHP_RUNTIME_POLICY_KEY]: { baseFamily: "private-sec
 test("DB clients honor resolved ownership rather than a contradictory normalized image", async () => {
   // Given
   const stock = {
-    ...php("stock", { db_client: "postgres:16" }),
+    ...php("stock", { dbClient: "postgres:16" }),
     normalizedConfig: Schema.decodeUnknownSync(ServiceConfig)({
       type: "php:8.3",
       image: "acme/php:8",
-      db_client: "postgres:16",
+      dbClient: "postgres:16",
     }),
   };
   const external = {
-    ...php("external", { image: "php:8.2-cli-bullseye", db_client: "postgres:16" }),
-    normalizedConfig: Schema.decodeUnknownSync(ServiceConfig)({ type: "php:8.3", db_client: "postgres:16" }),
+    ...php("external", { image: "php:8.2-cli-bullseye", dbClient: "postgres:16" }),
+    normalizedConfig: Schema.decodeUnknownSync(ServiceConfig)({ type: "php:8.3", dbClient: "postgres:16" }),
   };
   // When
   await Effect.runPromise(apply([stock, external]));
@@ -96,9 +96,9 @@ test.each(["auto", false, "postgres:16"])(
   async (selection) => {
     // Given
     const services = [
-      php("one", { db_client: selection }),
-      php("two", { db_client: selection }),
-      php("three", { image: "acme/php:8", db_client: "auto" }),
+      php("one", { dbClient: selection }),
+      php("two", { dbClient: selection }),
+      php("three", { image: "acme/php:8", dbClient: "auto" }),
     ];
     let reads = 0;
     const database: PhpDraft = {

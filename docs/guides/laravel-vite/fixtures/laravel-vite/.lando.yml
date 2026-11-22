@@ -10,7 +10,7 @@ services:
     port: 80
     environment:
       APP_URL: "{{ services.appserver.url }}"
-    dependsOn:
+    depends_on:
       - database
       - cache
     routes:

@@ -68,7 +68,7 @@ describe("joomla decomposition", () => {
           composer: "{{ recipe.composer }}",
           allowOverride: true,
           port: 80,
-          dependsOn: ["database"],
+          depends_on: ["database"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "{{ recipe.database }}" },

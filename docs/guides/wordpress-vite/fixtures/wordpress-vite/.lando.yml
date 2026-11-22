@@ -7,7 +7,7 @@ services:
     port: 80
     environment:
       VITE_DEV_SERVER_URL: "{{ services.node.url }}"
-    dependsOn:
+    depends_on:
       - database
     routes:
       - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"

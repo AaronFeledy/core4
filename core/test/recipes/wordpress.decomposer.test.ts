@@ -64,7 +64,7 @@ describe("wordpress decomposition", () => {
             framework: "wordpress",
             uploadDirs: ["wp-content/uploads"],
             port: 80,
-            dependsOn: options.redis ? [{ service: "database" }, { service: "cache" }] : ["database"],
+            depends_on: options.redis ? ["database", "cache"] : ["database"],
             routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
           },
           database: { type: "mariadb" },

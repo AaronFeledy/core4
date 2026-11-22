@@ -1,0 +1,7 @@
+# lando-lint: expect-invalid environment.reserved-name
+name: diagnostic-reason
+services:
+  web:
+    image: alpine
+    environment:
+      __proto__: value

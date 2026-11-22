@@ -35,12 +35,14 @@ const runPlan = (
   options: {
     readonly ts?: boolean;
     readonly layers?: boolean;
-    readonly appEnv?: Record<string, string>;
+    readonly environment?: Record<string, string>;
     readonly cache?: boolean;
   } = {},
 ) => {
   const file = join(root, options.ts ? ".lando.ts" : ".lando.yml");
-  const config = Schema.decodeUnknownSync(GlobalConfig)({ appEnv: options.appEnv ?? {} });
+  const config = Schema.decodeUnknownSync(GlobalConfig)({
+    serviceDefaults: { environment: options.environment ?? {} },
+  });
   return Effect.runPromise(
     Effect.gen(function* () {
       const loaded = yield* options.layers
@@ -213,7 +215,7 @@ test("proves canonical credential projections and exact cross-service copies, no
     expect(planRedactionValues(plan).wholeToken).toEqual(["wordpress"]);
   }));
 
-test.each(["local", "shadow", "env_file", "appEnv", "env", "load", "typescript"] as const)(
+test.each(["local", "shadow", "env_file", "serviceDefaults", "env", "load", "typescript"] as const)(
   "keeps %s-only passwords substring-sensitive despite unrelated equal literals",
   (source) =>
     withRoot(async (root) => {
@@ -245,7 +247,7 @@ test.each(["local", "shadow", "env_file", "appEnv", "env", "load", "typescript"]
       const plan = await runPlan(root, {
         ts: source === "typescript",
         layers: source === "local" || source === "shadow",
-        appEnv: source === "appEnv" ? { MYSQL_PASSWORD: "wordpress" } : {},
+        environment: source === "serviceDefaults" ? { MYSQL_PASSWORD: "wordpress" } : {},
       });
       expect(plan.committedLiteralDigests ?? []).not.toContain(sha256Hex("wordpress"));
       expect(planRedactionValues(plan).substring).toContain("wordpress");

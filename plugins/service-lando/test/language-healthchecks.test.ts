@@ -164,7 +164,9 @@ test.each(["node:lts", "python:3.12", "ruby:3.3", "go:1.22", "dotnet"])(
       name: "inherited-listener",
       services: { web: { type, port: 9123, certs: false } },
     });
-    const config = Schema.decodeUnknownSync(GlobalConfig)({ appEnv: { [variable]: "9000" } });
+    const config = Schema.decodeUnknownSync(GlobalConfig)({
+      serviceDefaults: { environment: { [variable]: "9000" } },
+    });
     const dependencies = Layer.mergeAll(
       PluginRegistryLayer.layer,
       BunFileSystem.layer,
@@ -198,7 +200,7 @@ test.each(["app", "service"])("rejects a mismatched Flask listener from a %s env
     await Bun.write(file, "FLASK_RUN_PORT=9000\n");
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "file-listener",
-      ...(owner === "app" ? { env_file: [file] } : {}),
+      ...(owner === "app" ? { serviceDefaults: { env_file: [file] } } : {}),
       services: {
         web: {
           type: "python:3.12",

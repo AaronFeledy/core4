@@ -53,6 +53,10 @@ const landofile = [
   "      database:",
   "        condition: service_healthy",
   "        restart: true",
+  "    ports:",
+  "      - target: 8080",
+  "        published: '18080'",
+  "        host_ip: 127.0.0.1",
   "    environment:",
   "      - NODE_ENV=development",
   "    labels:",
@@ -61,6 +65,14 @@ const landofile = [
   "    type: postgres",
   "",
 ].join("\n");
+
+const resolvedWeb = {
+  working_dir: "/app",
+  environment: { NODE_ENV: "development" },
+  labels: { "com.example.tier": "web" },
+  depends_on: { database: { condition: "service_healthy", restart: true } },
+  ports: [{ target: 8080, published: 18080, host_ip: "127.0.0.1", protocol: "tcp" }],
+};
 
 describe("lando config renders post-normalization Compose spellings", () => {
   test("config get services.web returns canonical resolved values", async () => {
@@ -72,10 +84,13 @@ describe("lando config renders post-normalization Compose spellings", () => {
         string,
         unknown
       >;
-      expect(value.workingDirectory).toBe("/app");
-      expect(value.environment).toEqual({ NODE_ENV: "development" });
-      expect(value.labels).toEqual({ "com.example.tier": "web" });
-      expect(value.dependsOn).toEqual([{ service: "database", condition: "service_healthy", restart: true }]);
+      expect(value.working_dir).toBe(resolvedWeb.working_dir);
+      expect(value.environment).toEqual(resolvedWeb.environment);
+      expect(value.labels).toEqual(resolvedWeb.labels);
+      expect(value.depends_on).toEqual(resolvedWeb.depends_on);
+      expect(value.ports).toEqual(resolvedWeb.ports);
+      expect(value).not.toHaveProperty("workingDirectory");
+      expect(value).not.toHaveProperty("dependsOn");
     });
   });
 
@@ -94,12 +109,9 @@ describe("lando config renders post-normalization Compose spellings", () => {
       await writeFile(join(dir, ".lando.yml"), landofile);
       const result = await runCli(["app", "config", "view", "--format", "yaml"], dir);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("workingDirectory: /app");
-      expect(result.stdout).toContain("NODE_ENV: development");
-      expect(result.stdout).toContain("com.example.tier: web");
-      expect(result.stdout).toContain("condition: service_healthy");
-      expect(result.stdout).not.toContain("working_dir");
-      expect(result.stdout).not.toContain("depends_on");
+      expect(Bun.YAML.parse(result.stdout)).toMatchObject({ services: { web: resolvedWeb } });
+      expect(result.stdout).not.toContain("workingDirectory:");
+      expect(result.stdout).not.toContain("dependsOn:");
       expect(result.stdout).not.toContain("- NODE_ENV=development");
       expect(result.stdout).not.toContain("source: resolved");
       expect(result.stdout.startsWith("app:")).toBe(false);
@@ -111,12 +123,9 @@ describe("lando config renders post-normalization Compose spellings", () => {
       await writeFile(join(dir, ".lando.yml"), landofile);
       const result = await runCli(["app", "config", "--format", "yaml"], dir);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("workingDirectory: /app");
-      expect(result.stdout).toContain("NODE_ENV: development");
-      expect(result.stdout).toContain("com.example.tier: web");
-      expect(result.stdout).toContain("condition: service_healthy");
-      expect(result.stdout).not.toContain("working_dir");
-      expect(result.stdout).not.toContain("depends_on");
+      expect(Bun.YAML.parse(result.stdout)).toMatchObject({ services: { web: resolvedWeb } });
+      expect(result.stdout).not.toContain("workingDirectory:");
+      expect(result.stdout).not.toContain("dependsOn:");
       expect(result.stdout).not.toContain("- NODE_ENV=development");
       expect(result.stdout).not.toContain("source: resolved");
       expect(result.stdout.startsWith("app:")).toBe(false);

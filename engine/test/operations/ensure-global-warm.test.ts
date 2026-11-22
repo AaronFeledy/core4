@@ -154,7 +154,7 @@ const makeFixture = async (directory: string) => {
   };
   await writeFile(
     paths.userLandofile,
-    "services:\n  app:\n    type: compose\n    image: app:v1\n    dependsOn: [dependency]\n  dependency:\n    type: compose\n    image: dep:v1\n",
+    "services:\n  app:\n    type: compose\n    image: app:v1\n    depends_on: [dependency]\n  dependency:\n    type: compose\n    image: dep:v1\n",
   );
   const calls = { generation: 0, planning: 0, build: 0, apply: 0, list: 0, inspect: 0 };
   let debuggerHost: string | undefined;
@@ -342,7 +342,7 @@ const makeFixture = async (directory: string) => {
                       debuggerHost === undefined
                         ? []
                         : [{ hostname: DEBUGGER_HOST_ALIAS, ip: HOST_GATEWAY_TARGET }],
-                    dependsOn: (service.dependsOn ?? []).map((dependency) =>
+                    dependsOn: (service.depends_on ?? []).map((dependency) =>
                       typeof dependency === "string"
                         ? {
                             service: ServiceName.make(dependency),
@@ -513,7 +513,7 @@ for (const change of [
       if (change === "same-size-source")
         await writeFile(
           f.paths.userLandofile,
-          "services:\n  app:\n    type: compose\n    image: app:v2\n    dependsOn: [dependency]\n  dependency:\n    type: compose\n    image: dep:v1\n",
+          "services:\n  app:\n    type: compose\n    image: app:v2\n    depends_on: [dependency]\n  dependency:\n    type: compose\n    image: dep:v1\n",
         );
       if (change === "new-layer")
         await writeFile(join(f.root, ".lando.local.yml"), "services:\n  app:\n    image: app:v2\n");

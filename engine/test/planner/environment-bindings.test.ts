@@ -35,7 +35,9 @@ const serviceType: ServiceType = {
       features: [],
     }),
 };
-const config = Schema.decodeUnknownSync(GlobalConfig)({ appEnv: { GLOBAL: raw, ORDER: "global" } });
+const config = Schema.decodeUnknownSync(GlobalConfig)({
+  serviceDefaults: { environment: { GLOBAL: raw, ORDER: "global" } },
+});
 const configService = ConfigService.of({
   load: Effect.succeed(config),
   get: (key) => Effect.succeed(config[key]),
@@ -74,7 +76,7 @@ const planFile = (file: string, feature?: AppFeatureDefinition) =>
     Effect.provide(BunFileSystem.layer),
   );
 
-test("preserves raw file, appEnv and plugin bytes below authored environment", async () => {
+test("preserves raw file, serviceDefaults.environment and plugin bytes below authored environment", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-raw-environment-"));
   try {
     await writeFile(
@@ -87,7 +89,8 @@ test("preserves raw file, appEnv and plugin bytes below authored environment", a
       file,
       [
         "name: bindings",
-        "env_file: shared.env",
+        "serviceDefaults:",
+        "  env_file: shared.env",
         "services:",
         "  web:",
         "    type: binding-test",

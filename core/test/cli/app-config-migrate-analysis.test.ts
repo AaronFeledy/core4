@@ -3,7 +3,10 @@ import { getAtPath } from "@lando/engine/config-write/dot-path";
 import { selectMigrationPath } from "@lando/sdk/recipes";
 import type { RecipeHunkClassification, RecipeProducer } from "@lando/sdk/schema";
 import { analyzeRecipeMigration } from "../../src/cli/commands/app-config-migrate-analysis.ts";
-import { renameMigrationService } from "../../src/cli/commands/app-config-migrate-rename.ts";
+import {
+  renameAfterStateMatches,
+  renameMigrationService,
+} from "../../src/cli/commands/app-config-migrate-rename.ts";
 import {
   conflictingSecondEdgeFixture,
   customizedOptionLandofile,
@@ -39,19 +42,20 @@ const classifications = (edge: AnalyzedEdge | undefined) =>
   requireEdge(edge).hunks.map((hunk) => hunk.classification);
 
 describe("service rename reference rewrite", () => {
+  const hunk = {
+    id: "rename-database",
+    kind: "rename" as const,
+    layer: "canonical" as const,
+    path: "services.database",
+    old: "services.database",
+    new: "services.db",
+  };
+
   test("rewrites a managed route service field with the new name", () => {
     // Given
-    const hunk = {
-      id: "rename-database",
-      kind: "rename" as const,
-      layer: "canonical" as const,
-      path: "services.database",
-      old: "services.database",
-      new: "services.db",
-    };
     const database = { type: "{{ recipe.database }}" };
     const document = {
-      services: { appserver: { dependsOn: ["database"] }, database },
+      services: { appserver: { depends_on: ["database"] }, database },
       routes: { "http://db.lndo.site": { service: "database" } },
       events: { "post-start": [{ service: "database" }] },
     };
@@ -60,7 +64,7 @@ describe("service rename reference rewrite", () => {
       document,
       renderedOld: document,
       renderedNew: {
-        services: { appserver: { dependsOn: ["db"] }, db: database },
+        services: { appserver: { depends_on: ["db"] }, db: database },
         routes: { "http://db.lndo.site": { service: "db" } },
         events: { "post-start": [{ service: "db" }] },
       },
@@ -72,8 +76,47 @@ describe("service rename reference rewrite", () => {
     expect(renamed.document).toMatchObject({
       routes: { "http://db.lndo.site": { service: "db" } },
       events: { "post-start": [{ service: "db" }] },
-      services: { appserver: { dependsOn: ["db"] } },
+      services: { appserver: { depends_on: ["db"] } },
     });
+  });
+
+  const dependency = { condition: "service_started", required: false, restart: true };
+  const cache = { condition: "service_healthy" };
+  const database = { type: "postgres" };
+  const renderedOld = { services: { appserver: { depends_on: { database: dependency, cache } }, database } };
+  const renderedNew = {
+    services: { appserver: { depends_on: { cache, db: dependency } }, db: database },
+  };
+  const context = { renderedOld, renderedNew, serviceMap: new Map([["appserver", "web"]]) };
+
+  test("renames the managed depends_on key in place without rewriting its options", () => {
+    const document = { services: { web: renderedOld.services.appserver, database } };
+
+    const result = renameMigrationService(hunk, { ...context, document });
+
+    expect(result.kind).toBe("applied");
+    if (result.kind !== "applied") throw new Error("Expected the rename to apply.");
+    expect(getAtPath(result.document, "services.web.depends_on")).toEqual({ db: dependency, cache });
+    expect(Object.keys(getAtPath(result.document, "services.web.depends_on") ?? {})).toEqual(["db", "cache"]);
+  });
+
+  test.each([
+    ["replaced", { other: dependency, cache }],
+    ["edited", { database: { ...dependency, required: true }, cache }],
+    ["colliding", { database: dependency, db: cache, cache }],
+  ])("blocks when a managed depends_on entry is %s", (_change, depends_on) => {
+    const document = { services: { web: { depends_on }, database } };
+
+    expect(renameMigrationService(hunk, { ...context, document })).toEqual({ kind: "blocking" });
+  });
+
+  test("recognizes the renamed depends_on key in an already migrated document", () => {
+    const document = {
+      recipe: { services: { database: "db" } },
+      services: { web: { depends_on: { db: dependency, cache } }, db: database },
+    };
+
+    expect(renameAfterStateMatches(hunk, { ...context, document })).toBe(true);
   });
 });
 
@@ -181,7 +224,7 @@ describe("pure recipe migration analysis", () => {
     expect(getAtPath(result.document, "services.database")).toBeUndefined();
     expect(getAtPath(result.document, "services.db")).toEqual({ type: "{{ recipe.database }}" });
     expect(getAtPath(result.document, "recipe.services.database")).toBe("db");
-    expect(getAtPath(result.document, "services.appserver.dependsOn")).toEqual(["db"]);
+    expect(getAtPath(result.document, "services.appserver.depends_on")).toEqual(["db"]);
     expect(getAtPath(result.document, "tooling.mysql.service")).toBe("db");
     expect(result.committed).toEqual(input.target.identity);
   });
@@ -195,7 +238,7 @@ describe("pure recipe migration analysis", () => {
     expect(result.committed).toEqual(input.target.identity);
     expect(getAtPath(result.document, "services.appserver")).toBeUndefined();
     expect(getAtPath(result.document, "services.web.port")).toBe(8080);
-    expect(getAtPath(result.document, "services.web.dependsOn")).toEqual(["db"]);
+    expect(getAtPath(result.document, "services.web.depends_on")).toEqual(["db"]);
     expect(getAtPath(result.document, "recipe.services")).toEqual({ appserver: "web", database: "db" });
     expect(getAtPath(result.document, "tooling.php.service")).toBe("web");
   });
@@ -212,7 +255,7 @@ describe("pure recipe migration analysis", () => {
     expect(getAtPath(result.document, "services.db")).toEqual({ type: "redis:7" });
     expect(getAtPath(result.document, "services.database")).toEqual({ type: "{{ recipe.database }}" });
     expect(getAtPath(result.document, "recipe.services")).toBeUndefined();
-    expect(getAtPath(result.document, "services.appserver.dependsOn")).toEqual(["database"]);
+    expect(getAtPath(result.document, "services.appserver.depends_on")).toEqual(["database"]);
     expect(getAtPath(result.document, "tooling.mysql.service")).toBe("database");
   });
 
@@ -271,7 +314,7 @@ describe("pure recipe migration analysis", () => {
     expect(result.edges.map(statuses)).toEqual(["satisfied", "blocking"]);
     expect(result.committed).toEqual(input.migrations[0].to);
     expect(getAtPath(result.document, "recipe.version")).toBe("1.1.0");
-    expect(getAtPath(result.document, "services.appserver.dependsOn")).toEqual(["database"]);
+    expect(getAtPath(result.document, "services.appserver.depends_on")).toEqual(["database"]);
     expect(getAtPath(result.document, "tooling.mysql.service")).toBe("database");
   });
 
@@ -285,7 +328,7 @@ describe("pure recipe migration analysis", () => {
     expect(result.committed).toEqual(input.migrations[0].to);
     expect(getAtPath(result.document, "recipe.version")).toBe("1.1.0");
     expect(getAtPath(result.document, "services.db")).toEqual({ type: "redis:7" });
-    expect(getAtPath(result.document, "services.appserver.dependsOn")).toEqual(["database"]);
+    expect(getAtPath(result.document, "services.appserver.depends_on")).toEqual(["database"]);
   });
 
   test("blocks when an option-default hunk disagrees with the new snapshot defaults", () => {

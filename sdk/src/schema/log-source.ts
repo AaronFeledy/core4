@@ -15,7 +15,10 @@ export const RESERVED_LOG_SOURCE_ID = "console";
  * `console` source is reserved and cannot be used by a declared source, so the
  * brand rejects it (and empty ids) at decode time.
  */
-export const LogSourceId = Schema.String.pipe(
+export const LogSourceId = Schema.String.annotate({
+  description:
+    "Unique log source id within the service; `console` is reserved for the implicit engine stream and empty ids are rejected.",
+}).pipe(
   Schema.check(
     Schema.makeFilter((id) => id.length > 0, {
       message: "A log source id must not be empty.",
@@ -64,13 +67,17 @@ const FileLogSource = Schema.Struct({
     description: "How Lando reifies the declared source: build-time redirect or runtime follower.",
   }),
   /** When true, an unavailable source fails planning instead of degrading. */
-  required: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
-    description: "Whether an unavailable source fails planning instead of degrading.",
-  }),
+  required: Schema.Boolean.pipe(
+    withDefaultKey(false, {
+      description: "Whether an unavailable source fails planning instead of degrading.",
+    }),
+  ),
   /** When true, lines carry parseable leading timestamps, enabling `--since`. */
-  timestamps: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
-    description: "Whether lines carry parseable leading timestamps so `--since` filtering can apply.",
-  }),
+  timestamps: Schema.Boolean.pipe(
+    withDefaultKey(false, {
+      description: "Whether lines carry parseable leading timestamps so `--since` filtering can apply.",
+    }),
+  ),
 });
 /** Runtime sources include real files and pathless native console aliases. */
 export const LogSource = Schema.Union([
@@ -106,9 +113,11 @@ const LogSourceInputFields = Schema.Struct({
     }),
   ),
   /** Source id; defaults to the path basename. */
-  id: Schema.optionalKey(LogSourceId).annotate({
-    description: "Optional source id; defaults to the path basename.",
-  }),
+  id: Schema.optionalKey(
+    LogSourceId.annotate({
+      description: "Optional source id; defaults to the path basename when omitted.",
+    }),
+  ),
   timestamps: Schema.Boolean.pipe(
     withDefaultKey(false, {
       description:
@@ -119,6 +128,8 @@ const LogSourceInputFields = Schema.Struct({
   identifier: "LogSourceInput",
   expected: "a log source object with an absolute path",
   message: "Expected a log source object with an absolute path",
+  description:
+    "Declared in-container log file under services.<name>.logs; strategy is follow and required is false after decode.",
 });
 
 /**
@@ -163,5 +174,8 @@ export const LogSourceInput = LogSourceInputFields.pipe(
       },
     }),
   ),
-);
+).annotate({
+  description:
+    "Declared in-container log file under services.<name>.logs; strategy is follow and required is false after decode.",
+});
 export type LogSourceInput = typeof LogSourceInput.Type;

@@ -1,4 +1,5 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
+import { withDefaultKey } from "./default-key.ts";
 
 // ====
 // Subscriber manifest / selector contracts for plugin event handlers.
@@ -52,14 +53,16 @@ export const SubscriberManifestEntry = Schema.Struct({
     Schema.check(Schema.isInt()),
     Schema.check(Schema.isGreaterThanOrEqualTo(100)),
     Schema.check(Schema.isLessThanOrEqualTo(999)),
-  )
-    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 500)))
-    .annotate({
+  ).pipe(
+    withDefaultKey(500, {
       description: "Priority in the plugin default band 100..999 (default 500).",
     }),
-  abortOnError: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
-    description: "When true, subscriber errors at post-* events abort the step (default false).",
-  }),
+  ),
+  abortOnError: Schema.Boolean.pipe(
+    withDefaultKey(false, {
+      description: "When true, subscriber errors at post-* events abort the step (default false).",
+    }),
+  ),
   configKey: Schema.optionalKey(PublishedGlobalConfigKey).annotate({
     description: "Optional published global-config key projected as the factory's second argument.",
   }),

@@ -15,7 +15,7 @@ import {
   schemaArtifactFilename,
   validatePublicSchemaAnnotations,
 } from "@lando/sdk/schema";
-import { Predicate, Schema, SchemaTransformation } from "effect";
+import { Effect, Predicate, Schema, SchemaTransformation } from "effect";
 import * as AST from "effect/SchemaAST";
 import compiledCommands from "../../src/cli/compiled-commands.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
@@ -89,19 +89,11 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
     seen.add(target);
     visited.set(ast, seen);
     if (unexplained.has(target) && Schema.is(Schema.make(ast))(null)) unexplained.delete(target);
-    const projection = ast.annotations?.jsonSchemaProjection;
-    if (Predicate.isObject(projection)) {
-      const explicitPaths = new Set(nullNodes(projection, path).map(([, candidate]) => candidate));
-      for (const [node, candidate] of nullNodes(target, path)) {
-        if (explicitPaths.has(candidate)) unexplained.delete(node);
-      }
-      return;
-    }
     if (Array.isArray(target.allOf)) {
       target.allOf.forEach((branch, index) => {
         visit(ast, branch, `${path}.allOf[${index}]`);
       });
-      return;
+      if (Object.keys(target).every((key) => key === "allOf")) return;
     }
     if (AST.isDeclaration(ast) && ast.annotations?.toCodecJson !== undefined) {
       visit(AST.toEncoded(Schema.toCodecJson(Schema.make(ast)).ast), target, path);
@@ -296,7 +288,9 @@ describe("schema snapshot artifact-set gate", () => {
     const hidden = Schema.Struct({ value: Schema.NullOr(Schema.String) }).annotate({
       identifier: "ReplacedSource",
     });
-    const schema = Schema.Struct({ hidden }).annotate({ jsonSchemaProjection: { type: "string" } });
+    const schema = Schema.declareConstructor<unknown>()([hidden], () => (value) => Effect.succeed(value), {
+      toCodecJson: () => new AST.Link(Schema.String.ast, SchemaTransformation.passthrough()),
+    });
     const artifact = getJsonSchemaWithDeprecations(schema);
     expect(artifact).toMatchObject({ type: "string" });
     expect(artifact.$defs).toBeUndefined();
@@ -400,11 +394,9 @@ describe("schema snapshot artifact-set gate", () => {
     expect(page?.content).toContain(
       "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
     );
-    expect(page?.content).toContain(
-      "| `since` | Yes | `string` | a string matching the RegExp ^(0\\|[1-9]\\d*)\\.(0\\|[1-9]\\d*)\\.(0\\|[1-9]\\d*)$ | — | — | — | — |",
-    );
-    expect(page?.content).toContain(
-      "| `severity` | No | `string` | — | — | `info`, `warn`, `error` | — | — |",
+    expect(page?.content).toMatch(/\| `since` \| Yes \| `string` \| (?!— \|)[^|]+ \|/u);
+    expect(page?.content).toMatch(
+      /\| `severity` \| No \| `string` \| [^|]+ \| `warn` \| `info`, `warn`, `error` \|/u,
     );
 
     const primitivePage = pages.find((entry) => entry.id === "AppId");
@@ -449,15 +441,15 @@ describe("schema snapshot artifact-set gate", () => {
         jsonSchema: {
           type: "object",
           properties: {
-            value: { type: "number", default: 7, enum: [7] },
+            value: { type: "number", allOf: [{ description: "Published value.", default: 7 }], enum: [7] },
             note: { type: "string" },
           },
         },
       },
     );
 
-    expect(rendered).toContain("| `value` | Yes | `number` | Documented value. | `7` | `7` | — | — |");
-    expect(rendered).toContain("| `note` | No | `string` | Optional note. | — | — | — | — |");
+    expect(rendered).toContain("| `value` | Yes | `number` | Published value. | `7` | `7` | — | — |");
+    expect(rendered).toContain("| `note` | No | `string` | — | — | — | — | — |");
   });
 
   test("reference renderer resolves property refs against the full JSON Schema document", () => {
@@ -473,14 +465,19 @@ describe("schema snapshot artifact-set gate", () => {
             value: { $ref: "#/$defs/NamedValue" },
           },
           $defs: {
-            NamedValue: { type: "string", default: "alpha", enum: ["alpha", "beta"] },
+            NamedValue: {
+              type: "string",
+              description: "Published value.",
+              default: "alpha",
+              enum: ["alpha", "beta"],
+            },
           },
         },
       },
     );
 
     expect(rendered).toContain(
-      "| `value` | Yes | `string` | Documented value. | `alpha` | `alpha`, `beta` | — | — |",
+      "| `value` | Yes | `string` | Published value. | `alpha` | `alpha`, `beta` | — | — |",
     );
     expect(rendered).not.toContain('`"alpha"`');
   });
@@ -508,7 +505,7 @@ describe("schema snapshot artifact-set gate", () => {
     );
 
     expect(fieldRendered).toContain(
-      '| `value` | Yes | `string` | Documented value. | — | — | `alpha`, `{"nested":true}` | — |',
+      '| `value` | Yes | `string` | — | — | — | `alpha`, `{"nested":true}` | — |',
     );
     expect(rootRendered).toContain('| `string` | — | — | `root`, `{"nested":true}` |');
     expect(fieldRendered).not.toContain('`"alpha"`');
@@ -555,6 +552,7 @@ describe("schema snapshot artifact-set gate", () => {
           type: "object",
           properties: {
             value: {
+              description: "Published union value.",
               anyOf: [
                 { const: false },
                 { enum: ["ready", "done"] },
@@ -567,7 +565,7 @@ describe("schema snapshot artifact-set gate", () => {
     );
 
     expect(rendered).toContain(
-      "| `value` | Yes | `boolean`, `string`, `object` | Documented union value. | — | `false`, `ready`, `done` | — | — |",
+      "| `value` | Yes | `boolean`, `string`, `object` | Published union value. | — | `false`, `ready`, `done` | — | — |",
     );
   });
 
@@ -619,8 +617,8 @@ describe("schema snapshot artifact-set gate", () => {
     expect(rendered).toContain(
       "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
     );
-    expect(rendered).toContain("| `command` | No | `string` | Command to execute. | — | — | — | — |");
-    expect(rendered).toContain("| `shell` | No | `string` | Shell command to execute. | — | — | — | — |");
+    expect(rendered).toContain("| `command` | No | `string` | — | — | — | — | — |");
+    expect(rendered).toContain("| `shell` | No | `string` | — | — | — | — | — |");
   });
 
   test("reference renderer marks root union fields required only when present and required in every branch", () => {
@@ -662,13 +660,9 @@ describe("schema snapshot artifact-set gate", () => {
       },
     );
 
-    expect(rendered).toContain("| `shared` | No | `string` | Shared field. | — | — | — | — |");
-    expect(rendered).toContain(
-      "| `requiredOnly` | No | `string` | Required variant field. | — | — | — | — |",
-    );
-    expect(rendered).toContain(
-      "| `optionalOnly` | No | `string` | Optional variant field. | — | — | — | — |",
-    );
+    expect(rendered).toContain("| `shared` | No | `string` | — | — | — | — | — |");
+    expect(rendered).toContain("| `requiredOnly` | No | `string` | — | — | — | — | — |");
+    expect(rendered).toContain("| `optionalOnly` | No | `string` | — | — | — | — | — |");
   });
 
   test("reference renderer surfaces deprecated schema and field callouts", () => {

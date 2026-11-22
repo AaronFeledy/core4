@@ -35,7 +35,10 @@ test.each([
   { name: "custom image", config: { image: "python:3.12" }, expected: [] },
   {
     name: "replacement build carrying the catalog tag",
-    config: { image: "python:3.12-slim", build: { context: ".", dockerfileInline: "FROM python:3.12-slim" } },
+    config: {
+      image: "python:3.12-slim",
+      build: { context: ".", dockerfile_inline: "FROM python:3.12-slim" },
+    },
     expected: [],
   },
 ])("declares the expected launchers for $name", async ({ config, expected }) => {
@@ -142,7 +145,7 @@ test("leaves an authored Dockerfile in charge of its Python toolchain", async ()
   // Given
   const dockerfile = "FROM python:3.12-slim\nRUN python -m pip install uv==0.12.23\n";
   // When
-  const service = await planPython({ build: { context: ".", dockerfileInline: dockerfile } });
+  const service = await planPython({ build: { context: ".", dockerfile_inline: dockerfile } });
   // Then
   expect(service.artifact).toMatchObject({ kind: "build", specInline: dockerfile });
   expect(buildStepsFor(service).some((step) => step.id === "service-lando.python:uv")).toBe(false);

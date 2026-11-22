@@ -103,8 +103,10 @@ const expectTokens = (values: LandofileRedactionValues, expected: readonly strin
 
 test("authored collection separates env maps, sensitive leaves and non-secret metadata", () => {
   const document = {
-    appEnv: { stripeSecretKey: "app-env-private" },
-    appLabels: { cacheKey: "app-label-private" },
+    serviceDefaults: {
+      environment: { stripeSecretKey: "app-env-private" },
+      labels: { cacheKey: "app-label-private" },
+    },
     tooling: { task: { env: { stripeSecretKey: "tool-private" } } },
     toolingDefaults: { env: override({ DB_PASS: "default-private" }) },
     services: {
@@ -544,7 +546,7 @@ describe("landofile redaction tiers", () => {
           creds: { password: "wordpress" },
         },
       },
-      appEnv: { API_TOKEN: "app-env-token" },
+      serviceDefaults: { environment: { API_TOKEN: "app-env-token" } },
     };
     const landofileValues = collectLandofileRedactionTokens(landofile);
     expect(landofileValues.substring).toEqual(expect.arrayContaining(["wordpress"]));
@@ -552,7 +554,7 @@ describe("landofile redaction tiers", () => {
 
     const authored = collectAuthoredRedactionTokens({
       ...landofile,
-      appEnv: { API_TOKEN: "app-env-token" },
+      serviceDefaults: { environment: { API_TOKEN: "app-env-token" } },
     });
     expect(authored.substring).toEqual(expect.arrayContaining(["wordpress", "app-env-token"]));
     expect(authored.wholeToken).toEqual([]);

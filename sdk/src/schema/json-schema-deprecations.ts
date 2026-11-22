@@ -348,18 +348,8 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: Traver
   const targetSchema = jsonSchemaTarget(target, context);
   if (alreadyVisited(targetSchema, ast, context)) return;
 
-  const projection = jsonObject(ast.annotations?.jsonSchemaProjection);
   const targetObject = jsonObject(targetSchema);
   queueMergeRule(targetObject, ast, context);
-  if (projection !== undefined && targetObject !== undefined) {
-    context.edits.push(() => {
-      for (const key of Object.keys(targetObject)) delete targetObject[key];
-      Object.assign(targetObject, cloneJson(projection));
-      const description = AST.resolveDescription(ast);
-      if (description !== undefined) targetObject.description = description;
-    });
-    return;
-  }
 
   if (AST.isUnion(ast)) {
     queueDeprecation(targetSchema, getSchemaDeprecation(ast), context);
@@ -509,18 +499,26 @@ const makeJsonInputAst = () => {
           ast.encodingChecks,
         );
         break;
-      case "Arrays":
+      case "Arrays": {
+        // Authoring replaces container checks with semantic replay. Publish opted-in
+        // cardinality checks on the literal array arm, not on the expression alternative.
+        const check = ast.annotations?.["lando/authoring-array-check"];
+        const checks =
+          check instanceof AST.Filter && !ast.checks?.includes(check)
+            ? ([check, ...(ast.checks ?? [])] satisfies AST.Checks)
+            : ast.checks;
         result = new AST.Arrays(
           ast.isMutable,
           ast.elements.map(visit),
           ast.rest.map(visit),
           ast.annotations,
-          ast.checks,
+          checks,
           undefined,
           ast.context,
           ast.encodingChecks,
         );
         break;
+      }
       case "Union":
         result = new AST.Union(
           ast.types.map(visit),
@@ -620,8 +618,8 @@ const jsonSchemaOptions = (
 ): Schema.ToJsonSchemaOptions => {
   return {
     referencePolicy: ({ identifier }) => (identifier === rootIdentifier ? undefined : identifier),
-    includeAnnotationKey: (key) => key === "acceptsImportRef",
     ...options,
+    includeAnnotationKey: (key) => key === "acceptsImportRef" || options.includeAnnotationKey?.(key) === true,
   };
 };
 
@@ -748,26 +746,6 @@ const resolveRootJsonSchemaRef = (jsonSchema: JsonObject): JsonObject => {
 const schemaReferenceJsonObject = (schema: SchemaLike): JsonObject =>
   resolveRootJsonSchemaRef(getJsonSchemaWithDeprecations(schema) as JsonObject);
 
-const fieldDescription = (property: AST.PropertySignature): string | undefined => {
-  const own = property.type.context?.annotations?.description;
-  if (typeof own === "string") return own;
-  const description = schemaDescription(property.type) ?? property.type.annotations?.description;
-  if (typeof description === "string") return description;
-  if (AST.isOptional(property.type)) return undefined;
-  const expected = AST.resolveAt<unknown>("expected")(property.type);
-  if (typeof expected === "string") return expected;
-  switch (property.type._tag) {
-    case "String":
-      return "a string";
-    case "Number":
-      return "a number";
-    case "Boolean":
-      return "a boolean";
-    default:
-      return undefined;
-  }
-};
-
 const unwrapUndefinedUnion = (ast: AST.AST): AST.AST => {
   if (!AST.isUnion(ast)) return ast;
   const nonUndefined = ast.types.filter((member) => member._tag !== "Undefined");
@@ -801,6 +779,36 @@ const unionBranches = (
     if (branchObject === undefined) return [];
     return [resolveLocalSchemaRef(branchObject, root) ?? branchObject];
   });
+};
+
+const descriptionOf = (
+  node: JsonObject,
+  root: JsonObject,
+  seen = new Set<JsonObject>(),
+): string | undefined => {
+  if (seen.has(node)) return undefined;
+  const next = new Set(seen).add(node);
+  if (typeof node.description === "string" && node.description.trim() !== "") return node.description;
+  const ref = jsonObject(localRefTarget(node, root));
+  if (ref !== undefined && ref !== node) {
+    const description = descriptionOf(ref, root, next);
+    if (description !== undefined) return description;
+  }
+  if (Array.isArray(node.allOf)) {
+    for (const branch of node.allOf) {
+      const member = jsonObject(branch);
+      if (member === undefined) continue;
+      const description = descriptionOf(member, root, next);
+      if (description !== undefined) return description;
+    }
+  }
+  const branches = unionBranches(node, root).filter(
+    (branch) => typeof branch.pattern !== "string" || !branch.pattern.includes("\\{\\{"),
+  );
+  const descriptions = branches.map((branch) => descriptionOf(branch, root, next));
+  return descriptions.every((description) => description !== undefined)
+    ? [...new Set(descriptions)].join(" / ") || undefined
+    : undefined;
 };
 
 const uniqueValues = (values: ReadonlyArray<unknown>): ReadonlyArray<unknown> => {
@@ -957,6 +965,38 @@ type SchemaReferenceField = {
   readonly jsonSchemaRoot: JsonObject;
 };
 
+const publishedFieldDescription = (
+  schemas: ReadonlyArray<JsonObject | undefined>,
+  root: JsonObject,
+): string | undefined => {
+  const descriptions = schemas.map((schema) =>
+    schema === undefined ? undefined : descriptionOf(schema, root),
+  );
+  return descriptions.every((description) => description !== undefined)
+    ? [...new Set(descriptions)].join(" / ") || undefined
+    : undefined;
+};
+
+export const publishedFieldMetadata = (schema: SchemaLike, name: string, artifact?: unknown) => {
+  const document = jsonObject(artifact);
+  const root =
+    document === undefined ? schemaReferenceJsonObject(schema) : resolveRootJsonSchemaRef(document);
+  const branches = jsonObject(root.properties) === undefined ? unionBranches(root, root) : [root];
+  const fields = branches.flatMap((branch) => {
+    const property = jsonObject(jsonObject(branch.properties)?.[name]);
+    const forbidden = jsonObject(property?.not);
+    return property === undefined || (forbidden !== undefined && Object.keys(forbidden).length === 0)
+      ? []
+      : [property];
+  });
+  return {
+    description: publishedFieldDescription(fields, root),
+    defaults: fields.map(
+      (field) => jsonSchemaDefault(field) ?? jsonSchemaDefault(resolveLocalSchemaRef(field, root)),
+    ),
+  };
+};
+
 const isRequiredJsonSchemaProperty = (jsonSchema: JsonObject, name: string): boolean =>
   Array.isArray(jsonSchema.required) && jsonSchema.required.includes(name);
 
@@ -1044,7 +1084,7 @@ const renderFieldRows = (fields: ReadonlyArray<SchemaReferenceField>): ReadonlyA
         codeValue(field.name),
         field.required ? "Yes" : "No",
         fieldType(field.property, field.jsonSchemas, field.jsonSchemaRoot),
-        field.property === undefined ? "—" : markdownTextCell(fieldDescription(field.property) ?? "—"),
+        markdownTextCell(publishedFieldDescription(field.jsonSchemas, field.jsonSchemaRoot) ?? "—"),
         defaultValues(field.jsonSchemas, field.jsonSchemaRoot),
         acceptedValues(field.property, field.jsonSchemas, field.jsonSchemaRoot),
         field.property === undefined ? "—" : examples(field.property),

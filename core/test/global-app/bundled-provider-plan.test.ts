@@ -45,7 +45,7 @@ describe("bundled global services on bundled providers", () => {
           providerId,
           loadServiceConfig: bundledFirstGlobalServiceLoader.load,
         });
-        const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        const landofile = Schema.encodeSync(LandofileShape)({
           name: "global",
           runtime: 4,
           provider: providerId,
@@ -56,10 +56,10 @@ describe("bundled global services on bundled providers", () => {
         );
         // When
         const root = process.cwd();
-        const compiled = yield* loadAuthoredDocuments(
-          [{ file: `${root}/.lando.yml`, value: Schema.encodeSync(LandofileShape)(landofile) }],
-          { appRoot: root, file: `${root}/.lando.yml` },
-        );
+        const compiled = yield* loadAuthoredDocuments([{ file: `${root}/.lando.yml`, value: landofile }], {
+          appRoot: root,
+          file: `${root}/.lando.yml`,
+        });
         const plan = yield* (yield* AppPlanner).plan(compiled, capabilities);
         return { contributed, planned: Object.keys(plan.services), plan };
       }).pipe(

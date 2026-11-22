@@ -1,5 +1,5 @@
 import { isPlainRecord } from "@lando/sdk/landofile";
-import { AppId, AppPlan } from "@lando/sdk/schema";
+import { AppId, AppliedAppPlan } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { visitAppliedNetworkVocabulary } from "./applied-network-vocabulary.ts";
 import { AppliedStateMigrationError, appliedStateIssue } from "./applied-state-read.ts";
@@ -27,9 +27,9 @@ const checkedAppliedPayload = (check: (raw: unknown) => string | undefined) =>
     }),
   );
 
-export const AppliedPlan = checkedAppliedPayload(currentPlanIssue).pipe(Schema.decodeTo(AppPlan));
+export const AppliedPlan = checkedAppliedPayload(currentPlanIssue).pipe(Schema.decodeTo(AppliedAppPlan));
 export const AppliedPlans = checkedAppliedPayload(currentMapIssue).pipe(
-  Schema.decodeTo(Schema.Record(AppId, AppPlan)),
+  Schema.decodeTo(Schema.Record(AppId, AppliedAppPlan)),
 );
 
 export const requireMigrated = <A>(result: A | string, fromVersion: number): A => {

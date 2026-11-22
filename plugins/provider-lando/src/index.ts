@@ -1904,7 +1904,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           ),
         logs: (target, logOptions) =>
           Stream.unwrap(
-            (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
+            (target.plan === undefined
+              ? resolvePlan(target.app)
+              : Effect.succeed<AppPlan | undefined>(target.plan)
+            ).pipe(
               Effect.flatMap((plan) =>
                 plan === undefined
                   ? Effect.succeed(Stream.fail(makeNoPlanError(target.app, "logs")))

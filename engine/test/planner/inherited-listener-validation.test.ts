@@ -133,7 +133,7 @@ test.each(["mailpit", "mailhog"])("%s child may repair an intermediate parent co
 
 test.each([
   { image: "example.test/minio:fixture" },
-  { build: { context: ".", dockerfileInline: "FROM example.test/minio:fixture" } },
+  { build: { context: ".", dockerfile_inline: "FROM example.test/minio:fixture" } },
 ])("MinIO inherited features accept explicit artifact intent %j", async (artifact) => {
   // Given an authored artifact and an inherited MinIO feature.
   const planning = planInherited("minio", artifact, (input) =>

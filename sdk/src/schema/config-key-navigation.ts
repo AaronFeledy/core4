@@ -41,6 +41,42 @@ export const conjuncts = (document: JsonSchema.JsonSchema, node: SchemaNode): re
   return expand(node, new Set());
 };
 
+/** Annotations describe a node; differing text in two conjuncts is not a schema conflict. */
+const ANNOTATION_KEYWORDS = new Set(["description", "title", "examples"]);
+
+/**
+ * The most specific description. Effect keeps a base type's description on the node and appends
+ * each later annotation as an `allOf` member, so the last member with a description is the field's.
+ */
+export const primaryDescription = (
+  document: JsonSchema.JsonSchema,
+  node: SchemaNode,
+  seen: ReadonlySet<string> = new Set(),
+): string | undefined => {
+  if (typeof node === "boolean") return undefined;
+  if (Array.isArray(node.allOf))
+    for (const member of [...node.allOf].reverse()) {
+      const child = schemaNode(member);
+      if (typeof child === "object" && typeof child.description === "string") return child.description;
+    }
+  if (typeof node.description === "string") return node.description;
+  if (typeof node.$ref === "string" && !seen.has(node.$ref)) {
+    const target = localReference(document, node.$ref);
+    if (target !== undefined) return primaryDescription(document, target, new Set([...seen, node.$ref]));
+  }
+  // A key reached through a union is described when every arm that describes it agrees.
+  const arms = node.anyOf ?? node.oneOf;
+  if (!Array.isArray(arms)) return undefined;
+  const described = new Set(
+    arms.flatMap((arm) => {
+      const child = schemaNode(arm);
+      const found = child === undefined ? undefined : primaryDescription(document, child, seen);
+      return found === undefined ? [] : [found];
+    }),
+  );
+  return described.size === 1 ? [...described][0] : undefined;
+};
+
 export const conjoin = (nodes: readonly SchemaNode[]): SchemaNode => {
   if (nodes.length === 1) return nodes[0] ?? true;
   const merged: JsonSchema.JsonSchema = {};
@@ -52,8 +88,13 @@ export const conjoin = (nodes: readonly SchemaNode[]): SchemaNode => {
       continue;
     }
     for (const [key, value] of Object.entries(node)) {
-      if (!(key in merged) || JSON.stringify(merged[key]) === JSON.stringify(value)) merged[key] = value;
-      else conflicts.push({ [key]: value });
+      const current = merged[key];
+      if (typeof current === "number" && typeof value === "number" && key === "minimum")
+        merged[key] = Math.max(current, value);
+      else if (typeof current === "number" && typeof value === "number" && key === "maximum")
+        merged[key] = Math.min(current, value);
+      else if (!(key in merged) || JSON.stringify(current) === JSON.stringify(value)) merged[key] = value;
+      else if (!ANNOTATION_KEYWORDS.has(key)) conflicts.push({ [key]: value });
     }
   }
   return conflicts.length === 0 ? merged : { allOf: [merged, ...conflicts] };
