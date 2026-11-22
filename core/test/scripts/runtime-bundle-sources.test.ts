@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
-import { parseRuntimeBundleSources } from "../../../scripts/runtime-bundle-sources.ts";
+import {
+  RUNTIME_BUNDLE_SOURCES_PATH,
+  parseRuntimeBundleSources,
+} from "../../../scripts/runtime-bundle-sources.ts";
 import { fixtureLicense } from "./runtime-bundle-license-fixture.ts";
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
@@ -110,13 +114,13 @@ describe("runtime-bundle source pins", () => {
       expect(byFile.get("copyright")?.sha256).toBe(
         "91b658413f8fa63a40060bb18aac958d407d454c0827c6fe78c003ea10d2018b",
       );
-      // Upstream LGPL-2.1 text for glibc-2.41 (Built-Using glibc (= 2.41-12+deb13u5)).
+      // Upstream LGPL-2.1 text for glibc-2.41 (Built-Using glibc (= 2.41-12+deb13u4)).
       expect(byFile.get("COPYING.LIB")).toEqual({
         file: "COPYING.LIB",
         url: "https://raw.githubusercontent.com/bminor/glibc/glibc-2.41/COPYING.LIB",
         sha256: "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
       });
-      // Debian source/copyright for the currently published Built-Using series (not a placeholder).
+      // ftp-master dropped the u4 copyright URL; u5 is byte-identical (same sha256).
       expect(byFile.get("glibc-copyright")).toEqual({
         file: "glibc-copyright",
         url: "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u5_copyright",
@@ -126,5 +130,10 @@ describe("runtime-bundle source pins", () => {
       expect(catatonit.license.source).toBe(catatonit.source.url);
       expect(catatonit.license.source).not.toBe(catatonit.url);
     }
+    const raw = await readFile(RUNTIME_BUNDLE_SOURCES_PATH, "utf8");
+    expect(raw).toContain("Built-Using glibc (= 2.41-12+deb13u4)");
+    expect(raw).not.toContain("Built-Using glibc (= 2.41-12+deb13u5)");
+    expect(raw).toContain("ftp-master dropped the u4 URL");
+    expect(raw).toContain("byte-identical text, same sha256");
   });
 });

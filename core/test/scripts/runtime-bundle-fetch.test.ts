@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  RUNTIME_BUNDLE_FETCH_ATTEMPTS,
   RuntimeBundleDownloadError,
   debianMetadataCopyrightFallbacks,
   fetchOverHttps,
@@ -142,5 +143,33 @@ describe("Debian metadata copyright fallbacks", () => {
       }),
     ).rejects.toMatchObject({ status: 404, url: pin, name: "RuntimeBundleDownloadError" });
     expect(calls).toEqual([pin, historical]);
+  });
+
+  test("does not fall back to sources.debian.org on a ftp-master 500", async () => {
+    const calls: string[] = [];
+    await expect(
+      fetchOverHttps(pin, {
+        sleep: noSleep,
+        fetchImpl: async (url) => {
+          calls.push(url);
+          return new Response(null, { status: 500 });
+        },
+      }),
+    ).rejects.toMatchObject({ status: 500, url: pin, name: "RuntimeBundleDownloadError" });
+    expect(calls).toEqual(Array.from({ length: RUNTIME_BUNDLE_FETCH_ATTEMPTS }, () => pin));
+  });
+
+  test("does not fall back to sources.debian.org on a ftp-master network error", async () => {
+    const calls: string[] = [];
+    await expect(
+      fetchOverHttps(pin, {
+        sleep: noSleep,
+        fetchImpl: async (url) => {
+          calls.push(url);
+          throw new TypeError("socket hang up");
+        },
+      }),
+    ).rejects.toThrow(/socket hang up/u);
+    expect(calls).toEqual(Array.from({ length: RUNTIME_BUNDLE_FETCH_ATTEMPTS }, () => pin));
   });
 });
