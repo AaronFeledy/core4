@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 
 import { makeCleanupDiscoveredApps } from "@lando/engine/install/uninstall-discovery";
 
@@ -228,7 +229,28 @@ describe("uninstall purge sync guard", () => {
         } catch (cause) {
           failure = cause;
         }
-        expect(String(failure)).toContain("saved plan app.json");
+        expect(String(failure)).toContain(join(plans, "app.json"));
+        expect(fixture.calls.some(destructive)).toBe(false);
+      } finally {
+        rmSync(fixture.root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  test("a newer Windows purge record or ledger preserves the runtime without destructive recovery advice", async () => {
+    for (const [coordinate, version] of [
+      [["provider-lando", "applied-plans", "app.json"], APPLIED_STATE_VERSION + 1],
+      [["file-sync-mutagen", "sessions", "mutagen.json"], 2],
+    ] as const) {
+      const fixture = await withRuntime("ordinary");
+      try {
+        const [plugin, namespace, filename] = coordinate;
+        const dir = join(fixture.data, "plugins", "@lando", plugin, namespace);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, filename), JSON.stringify({ version, data: null }));
+        const result = await fixture.run([]).catch((cause: unknown) => cause);
+        expect(String(result)).toContain("newer Lando");
+        expect(String(result)).not.toContain("lando destroy --volumes");
         expect(fixture.calls.some(destructive)).toBe(false);
       } finally {
         rmSync(fixture.root, { recursive: true, force: true });

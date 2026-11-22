@@ -1,8 +1,12 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { makeAppliedPlanStore, protectedSlotError } from "@lando/container-runtime/applied-state";
 import { makeLandoPaths } from "@lando/paths";
-import { AppPlan } from "@lando/sdk/schema";
-import { Result, Schema } from "effect";
+import { AbsolutePath } from "@lando/sdk/schema";
+import { makePluginStateStore } from "@lando/state-store/plugin";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { makeStateStore } from "@lando/state-store/service";
+import { Effect, Result, Schema } from "effect";
 import { uninstallCleanupFailure } from "./uninstall-cleanup-error.ts";
 import { type RuntimeExec, type UninstallRuntime, runUninstallRuntime } from "./uninstall-runtime.ts";
 
@@ -11,80 +15,37 @@ const missing = (cause: unknown): boolean =>
 
 const assertPersistedSyncSafe = async (userDataRoot: string): Promise<void> => {
   const paths = makeLandoPaths({ userDataRoot });
-  const plans = join(paths.pluginsDir, "@lando", "provider-lando", "applied-plans");
-  let entries: readonly string[];
-  try {
-    entries = await readdir(plans);
-  } catch (cause) {
-    if (!missing(cause))
-      throw uninstallCleanupFailure(
-        "Cannot inspect saved Lando plans before purge; preserve the managed runtime and retry.",
-        cause,
-      );
-    entries = [];
+  const providerId = "lando";
+  const layout = "per-app";
+  const stateDir = AbsolutePath.make(paths.pluginStateDir("@lando/provider-lando"));
+  const inventory = await Effect.runPromise(
+    Effect.gen(function* () {
+      const privateFileAccess = yield* PrivateFileAccessService;
+      const stateStore = makeStateStore({ privateFileAccess, roots: paths.roots });
+      const pluginStore = makePluginStateStore(stateStore, stateDir, privateFileAccess);
+      return yield* makeAppliedPlanStore({ providerId, layout }).listAppliedPlans(pluginStore, stateDir);
+    }).pipe(Effect.provide(PrivateFileAccessService.layer), Effect.result),
+  );
+  if (Result.isFailure(inventory))
+    throw uninstallCleanupFailure(inventory.failure.message, inventory.failure);
+  const issue = inventory.success.unreadable[0];
+  if (issue !== undefined) {
+    const cause = protectedSlotError(providerId, issue);
+    throw uninstallCleanupFailure(
+      cause._tag === "AppliedStateVersionError" ? `${cause.message} ${cause.remediation}` : cause.message,
+      cause,
+    );
   }
-  for (const entry of entries) {
-    if (!entry.endsWith(".json")) continue;
-    try {
-      const envelope: unknown = JSON.parse(await readFile(join(plans, entry), "utf8"));
-      if (
-        typeof envelope !== "object" ||
-        envelope === null ||
-        Array.isArray(envelope) ||
-        (Reflect.get(envelope, "version") !== 1 && Reflect.get(envelope, "version") !== 2)
+  for (const plan of inventory.success.plans) {
+    if (
+      plan.fileSync.length > 0 ||
+      Object.values(plan.services).some((service) =>
+        service.mounts?.some((mount) => mount.type === "bind" && mount.realization === "accelerated"),
       )
-        throw uninstallCleanupFailure("invalid envelope");
-      const plan: unknown = Reflect.get(envelope, "data");
-      if (typeof plan !== "object" || plan === null || Array.isArray(plan))
-        throw uninstallCleanupFailure("invalid plan");
-      const sync = Reflect.get(plan, "fileSync");
-      const services = Reflect.get(plan, "services");
-      const reserved = Reflect.get(plan, "id") === "global" && sync === undefined;
-      if (typeof services !== "object" || services === null || Array.isArray(services))
-        throw uninstallCleanupFailure("invalid services");
-      if (
-        !reserved &&
-        (Result.isFailure(Schema.decodeUnknownResult(AppPlan)(plan)) ||
-          !Array.isArray(sync) ||
-          sync.length > 0)
-      )
-        throw uninstallCleanupFailure("invalid or accelerated plan");
-      for (const service of Object.values(services)) {
-        if (typeof service !== "object" || service === null || Array.isArray(service))
-          throw uninstallCleanupFailure("invalid service");
-        const mounts: unknown = Reflect.get(service, "mounts");
-        // Legacy v1 frames may still carry appMount; reject accelerated there too.
-        const appMount: unknown = Reflect.get(service, "appMount");
-        if (
-          reserved &&
-          ((Array.isArray(mounts) && mounts.length > 0) ||
-            (appMount !== undefined && appMount !== null) ||
-            (mounts !== undefined && !Array.isArray(mounts)))
-        )
-          throw uninstallCleanupFailure("invalid global plan");
-        if (
-          typeof appMount === "object" &&
-          appMount !== null &&
-          Reflect.get(appMount, "realization") === "accelerated"
-        )
-          throw uninstallCleanupFailure("accelerated app mount");
-        if (
-          Array.isArray(mounts) &&
-          mounts.some(
-            (mount) =>
-              typeof mount === "object" &&
-              mount !== null &&
-              Reflect.get(mount, "realization") === "accelerated",
-          )
-        )
-          throw uninstallCleanupFailure("accelerated mount");
-      }
-    } catch (cause) {
+    )
       throw uninstallCleanupFailure(
-        `Cannot safely purge while saved plan ${entry} contains accelerated or unreadable sync state. Run lando stop to flush, then lando destroy --volumes before retrying.`,
-        cause,
+        `Cannot safely purge while saved plan ${plan.id} contains accelerated sync state. Run lando stop to flush, then lando destroy --volumes before retrying.`,
       );
-    }
   }
   const ledger = join(paths.pluginsDir, "@lando", "file-sync-mutagen", "sessions", "mutagen.json");
   let content: string;
@@ -103,6 +64,13 @@ const assertPersistedSyncSafe = async (userDataRoot: string): Promise<void> => {
       data: Schema.Struct({ sessions: Schema.Array(Schema.Unknown) }),
     }),
   );
+  const stamp = Schema.decodeUnknownResult(Schema.fromJsonString(Schema.Struct({ version: Schema.Int })))(
+    content,
+  );
+  if (Result.isSuccess(stamp) && stamp.success.version > 1)
+    throw uninstallCleanupFailure(
+      `Mutagen session state at ${ledger} was written by a newer Lando. Leave the file in place and run a Lando that supports format ${stamp.success.version} before retrying purge.`,
+    );
   const decoded = Schema.decodeUnknownResult(Ledger)(content);
   if (Result.isFailure(decoded) || decoded.success.data.sessions.length > 0)
     throw uninstallCleanupFailure(
