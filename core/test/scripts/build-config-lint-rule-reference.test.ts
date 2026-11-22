@@ -22,7 +22,7 @@ const sampleRules = {
     stages: ["resolve"],
     severities: ["error"],
     summary: "A declared env file is missing or cannot be read.",
-    examplePaths: ["env_file[0]", "services.web.envFile[0]"],
+    examplePaths: ["serviceDefaults.env_file[0]", "services.web.env_file[0]"],
   },
   "landofile.capability": {
     stages: ["resolve"],
