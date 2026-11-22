@@ -1,4 +1,5 @@
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
+import type { SupportedPhpVersion } from "./php-via.ts";
 
 export const PHP_BASELINE_STEP_ID = "service-lando.php:baseline" as const;
 export const PHP_BASELINE_INI_PATH = "/usr/local/etc/php/conf.d/10-lando-baseline.ini";
@@ -6,19 +7,21 @@ export const PHP_BASELINE_INI_PATH = "/usr/local/etc/php/conf.d/10-lando-baselin
 export interface PhpSecurityBaselineEntry {
   readonly setting: string;
   readonly value: string;
-  readonly reason: string;
   readonly advisoryUrl: string;
-  readonly removeWhen: string;
+  /**
+   * Catalog versions whose stock base lacks the fix. Apply to every catalog version:
+   * a stale local base may predate the fix. Delete the entry when no version remains.
+   */
+  readonly unpatchedVersions: readonly [SupportedPhpVersion, ...SupportedPhpVersion[]];
 }
 
 export const PHP_SECURITY_BASELINE: ReadonlyArray<PhpSecurityBaselineEntry> = [
+  // CVE-2026-115560 (GHSA-658j-r8rw-q6mx); patched releases default this to 0; PHP 8.1 is end-of-life with no fix.
   {
     setting: "session.upload_progress.enabled",
     value: "0",
-    reason:
-      "php.net 2026-10-23 advisory for CVE-2026-115560 (GHSA-658j-r8rw-q6mx); PHP 8.1 is end-of-life with no fix, and patched releases default this setting to 0",
     advisoryUrl: "https://www.php.net/archive/2026.php#2026-10-23-1",
-    removeWhen: "8.1 leaves SUPPORTED_PHP_VERSIONS",
+    unpatchedVersions: ["8.1"],
   },
 ];
 
@@ -48,7 +51,6 @@ export const renderPhpBaselineIni = (
 ): string => {
   const lines: Array<string> = ["; Lando-managed PHP security baseline"];
   for (const entry of entries) {
-    lines.push(`; ${commentSafe(entry.reason)}`);
     lines.push(`; Advisory: ${commentSafe(entry.advisoryUrl)}`);
     lines.push(`${settingSafe(entry.setting)} = ${valueSafe(entry.value)}`);
   }
@@ -77,6 +79,6 @@ export const phpBaselineBuildStep = (
     phase: "build",
     command: ["set -eux", phpBaselineIniCommand(content)].join(" && "),
     user: "root",
-    buildKeyInputs: { phpBaseline: { path: PHP_BASELINE_INI_PATH, content, entries } },
+    buildKeyInputs: { phpBaseline: { path: PHP_BASELINE_INI_PATH, content } },
   };
 };
