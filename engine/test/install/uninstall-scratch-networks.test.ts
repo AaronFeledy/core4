@@ -46,7 +46,12 @@ test.each(["complete", "partial-scratch", "wrong-id"] as const)(
       preflightDataRootPurge(
         api,
         { providerId: "podman", env: {}, remediation: "Retry" },
-        { dataRoot: root, buildStore: "fixture", endpoint: "/fixture.sock" },
+        {
+          dataRoot: root,
+          buildStore: "fixture",
+          endpoint: "/fixture.sock",
+          pluginId: "@lando/provider-podman",
+        },
       ),
     );
     if (prepared.kind !== "reachable") throw new Error("Fixture is unreachable");

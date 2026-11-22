@@ -126,7 +126,7 @@ test.each(["current", "peer"] as const)(
       return preflightDataRootPurge(
         api,
         { providerId: "lando", env: {}, remediation: "Retry" },
-        { ...input, endpoint: "fixture-vm" },
+        { ...input, endpoint: "fixture-vm", pluginId: "@lando/provider-lando" },
       );
     };
     const cleanup = makeCleanupDiscoveredApps(

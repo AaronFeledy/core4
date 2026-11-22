@@ -44,7 +44,7 @@ test("descriptor-only discovery reports this root's app without constructing a r
     preflightDataRootPurge(
       api,
       { providerId, remediation: "Retry", env: {} },
-      { ...input, endpoint: "/test/engine.sock" },
+      { ...input, endpoint: "/test/engine.sock", pluginId: "@lando/provider-podman" },
     );
   const descriptor: Pick<LandoPluginModule, "runtimeProviders"> = {
     runtimeProviders: new Map([
@@ -75,7 +75,7 @@ test("skips an unreachable endpoint and still completes cleanup", async () => {
         },
       },
       { providerId: "docker", remediation: "Retry", env: {} },
-      { ...input, endpoint: "/test/unreachable.sock" },
+      { ...input, endpoint: "/test/unreachable.sock", pluginId: "@lando/provider-docker" },
     );
   const prepared = await makePrepareUninstallCleanup([{ providerId: "docker", purge }], missingRuntime)(
     "/uninstall-test-data",

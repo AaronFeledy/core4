@@ -1,72 +1,26 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import {
-  LANDO_DATA_ROOT_LABEL,
-  LANDO_NETWORK_ROLE_LABEL,
-  LANDO_SHARED_CROSS_APP_NETWORK,
-  ProviderId,
-  landoSharedCrossAppNetworkName,
-} from "@lando/sdk/schema";
+import { ProviderId } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { removeRuntimeContainer } from "./container-removal.ts";
+import { makePurgeCandidates, purgeKinds } from "./data-root-purge-candidates.ts";
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { isSuccessStatus } from "./engine-api.ts";
 import { apiResponseFailure, missingApi, missingRequest } from "./engine-errors.ts";
 import { BUILT_ARTIFACT_PREFIX, BUILT_ARTIFACT_STORE_LABEL } from "./image-build.ts";
 import { listContainerArtifacts, normalizeImageRef } from "./image-list.ts";
 import { removeContainerArtifact } from "./image-remove.ts";
-import { APP_LABEL, APP_ROOT_LABEL, PROVIDER_LABEL, VOLUME_INSTANCE_LABEL } from "./labels.ts";
-import {
-  coherentContainerOwnership,
-  coherentPrivateNetworkOwnership,
-  decodeNativeObservation,
-  ownsSharedCrossAppNetwork,
-} from "./native-ownership.ts";
+import { APP_LABEL, APP_ROOT_LABEL, VOLUME_INSTANCE_LABEL } from "./labels.ts";
 import { redactString, redactorFor } from "./redact.ts";
-import { VOLUME_OWNER_LABEL, VOLUME_SELECTOR_LABEL, coherentVolumeOwnership } from "./volume-ownership.ts";
+import { readDataRootAdoptionReceipts } from "./resource-ownership-records.ts";
 
 const operation = "uninstall.purge";
-const kinds = ["container", "network", "volume"] as const;
-type Kind = (typeof kinds)[number];
-type Labels = Readonly<Record<string, string>>;
-type Resource = {
-  readonly kind: Kind;
-  readonly nativeName: string;
-  readonly id: string;
-  readonly labels: Labels;
-};
-
 export type DataRootPurgeOptions = {
   readonly endpoint: string;
   readonly dataRoot: string;
   readonly buildStore: string;
-  readonly owns?: (resource: Resource) => boolean;
+  readonly pluginId: string;
 };
 
-const lists = {
-  container: "/containers/json?all=true&",
-  network: "/networks?",
-  volume: "/volumes?",
-} as const;
-const landoLabels = {
-  container: [LANDO_DATA_ROOT_LABEL, APP_LABEL, "com.lando.app"],
-  network: [LANDO_DATA_ROOT_LABEL, APP_LABEL, "com.lando.app", "dev.lando.network", "dev.lando.owner"],
-  volume: [
-    LANDO_DATA_ROOT_LABEL,
-    APP_LABEL,
-    "com.lando.app",
-    VOLUME_OWNER_LABEL,
-    VOLUME_SELECTOR_LABEL,
-    "dev.lando.volume",
-  ],
-} as const;
-const filters = (value: Readonly<Record<string, readonly string[]>>) =>
-  encodeURIComponent(JSON.stringify(value));
-const Ids = Schema.fromJsonString(Schema.Array(Schema.Struct({ Id: Schema.NonEmptyString })));
-const Volumes = Schema.fromJsonString(
-  Schema.Struct({
-    Volumes: Schema.NullOr(Schema.Array(Schema.Struct({ Name: Schema.NonEmptyString }))),
-  }),
-);
 const Image = Schema.fromJsonString(
   Schema.Struct({
     Id: Schema.NonEmptyString,
@@ -84,6 +38,7 @@ export const preflightDataRootPurge = Effect.fn("DataRootPurge.preflight")(funct
   options: DataRootPurgeOptions,
 ) {
   const endpoint = redactString(options.endpoint, redactorFor(ctx));
+  const ownership = yield* readDataRootAdoptionReceipts(ctx.providerId, options);
   const send = api.request;
   if (!send) return yield* missingApi(ctx, operation);
   const probe = yield* send({ method: "GET", path: "/_ping" }).pipe(
@@ -116,83 +71,21 @@ export const preflightDataRootPurge = Effect.fn("DataRootPurge.preflight")(funct
     }
     return response;
   });
-  const ownedFilter = { label: [`${LANDO_DATA_ROOT_LABEL}=${options.dataRoot}`] };
-  const owns =
-    options.owns ?? ((resource: Resource) => resource.labels[LANDO_DATA_ROOT_LABEL] === options.dataRoot);
-  const list = Effect.fnUntraced(function* (kind: Kind, filter = ownedFilter) {
-    const response = yield* read({ method: "GET", path: `${lists[kind]}filters=${filters(filter)}` });
-    if (kind === "volume") {
-      const body = yield* Schema.decodeUnknownEffect(Volumes)(response.body).pipe(
-        mapFailures(() => invalid("Invalid volume list.")),
-      );
-      return [...new Set((body.Volumes ?? []).map(({ Name }) => Name))];
-    }
-    const body = yield* Schema.decodeUnknownEffect(Ids)(response.body).pipe(
-      mapFailures(() => invalid(`Invalid ${kind} list.`)),
-    );
-    return [...new Set(body.map(({ Id }) => Id))];
-  });
-  const listOtherLandoResources = Effect.fnUntraced(function* (kind: Kind, selected: readonly string[]) {
-    const others = new Set<string>();
-    const scoped = new Set(selected);
-    for (const label of landoLabels[kind]) {
-      const listed = yield* list(kind, { label: [label] }).pipe(Effect.result);
-      if (Result.isSuccess(listed)) for (const id of listed.success) if (!scoped.has(id)) others.add(id);
-    }
-    return [...others];
-  });
-  const inspect = Effect.fnUntraced(function* (kind: Kind, ref: string) {
-    const path = `/${kind}s/${encodeURIComponent(ref)}${kind === "container" ? "/json" : ""}` as const;
-    const response = yield* read({ method: "GET", path }, true);
-    if (response.status === 404) return undefined;
-    const observed = decodeNativeObservation(response.body);
-    const name = observed?.Name ?? observed?.name;
-    const id = kind === "volume" ? name : (observed?.Id ?? observed?.ID ?? observed?.id);
-    if (!observed || id !== ref) return yield* invalid(`Cannot verify exact ${kind} identity ${ref}.`);
-    const labels = observed.Config?.Labels ?? observed.Labels ?? observed.labels ?? {};
-    return {
-      kind,
-      nativeName: name ?? ref,
-      id,
-      labels,
-      attached: Object.keys(observed.Containers ?? {}).length > 0,
-    };
-  });
-  const shared = (resource: Resource) =>
-    resource.nativeName === landoSharedCrossAppNetworkName(options.dataRoot);
-  const coherent = (resource: Resource) => {
-    const { labels } = resource;
-    // A Docker-compatible endpoint can expose objects realized through either host provider.
-    const provider = labels[PROVIDER_LABEL] ?? ctx.providerId;
-    if (provider !== ctx.providerId && provider !== "docker" && provider !== "podman" && provider !== "lando")
-      return false;
-    switch (resource.kind) {
-      case "container":
-        return coherentContainerOwnership(labels, provider);
-      case "network":
-        if (shared(resource)) return ownsSharedCrossAppNetwork(options.dataRoot, resource.nativeName, labels);
-        return (
-          resource.nativeName !== LANDO_SHARED_CROSS_APP_NETWORK &&
-          labels[LANDO_NETWORK_ROLE_LABEL] === undefined &&
-          coherentPrivateNetworkOwnership(labels, provider)
-        );
-      case "volume":
-        return coherentVolumeOwnership(labels, provider);
-    }
-  };
+  const { list, listCandidates, countOutsideScope, inspect, owns, shared, coherent } = makePurgeCandidates(
+    ownership,
+    ctx.providerId,
+    { read, invalid },
+  );
   const imageSelector = { labels: { [BUILT_ARTIFACT_STORE_LABEL]: options.buildStore } };
   const images = listContainerArtifacts(boundedApi, imageSelector, ctx);
-  const syncMarker = (resource: Resource) => resource.labels["dev.lando.sync.kind"];
   const counts = { container: 0, network: 0, volume: 0, image: 0 };
   const apps = new Map<string, { readonly appId: string; readonly appRoot: string }>();
   let syncPresent = false;
-  for (const kind of kinds) {
-    const selected = yield* list(kind);
-    const others = options.owns === undefined ? [] : yield* listOtherLandoResources(kind, selected);
-    for (const ref of [...selected, ...others]) {
+  for (const kind of purgeKinds) {
+    for (const ref of yield* listCandidates(kind)) {
       const found = yield* inspect(kind, ref);
       if (!found || !owns(found)) continue;
-      if (syncMarker(found) !== undefined) syncPresent = true;
+      if (found.labels["dev.lando.sync.kind"] !== undefined) syncPresent = true;
       if (!coherent(found)) continue;
       counts[kind]++;
       const appId = found.labels[APP_LABEL];
@@ -214,13 +107,12 @@ export const preflightDataRootPurge = Effect.fn("DataRootPurge.preflight")(funct
       const result = yield* Effect.result(action);
       if (Result.isFailure(result)) failed.push(`${resource}: ${result.failure.message}`);
     });
-    for (const kind of kinds) {
+    for (const kind of purgeKinds) {
       yield* record(
         `${kind} discovery`,
         Effect.gen(function* () {
-          const candidates = yield* list(kind);
-          const outside = yield* listOtherLandoResources(kind, candidates);
-          if (options.owns === undefined) outsideScope += outside.length;
+          const candidates = yield* listCandidates(kind);
+          outsideScope += yield* countOutsideScope(kind, candidates);
           const bridges: string[] = [];
           const remove = Effect.fnUntraced(function* (ref: string, bridge = false) {
             const resource = `${kind} ${ref}`;
@@ -278,9 +170,6 @@ export const preflightDataRootPurge = Effect.fn("DataRootPurge.preflight")(funct
             if (deleted.status !== 404) removed.push(resource);
           });
           for (const ref of candidates) yield* record(`${kind} ${ref}`, remove(ref));
-          if (options.owns !== undefined) {
-            for (const ref of outside) yield* record(`${kind} ${ref}`, remove(ref));
-          }
           for (const ref of bridges) yield* record(`${kind} ${ref}`, remove(ref, true));
         }),
       );

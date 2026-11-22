@@ -1,20 +1,31 @@
 import { expect, test } from "bun:test";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import {
+  AbsolutePath,
+  AppId,
   LANDO_DATA_ROOT_LABEL,
   LANDO_NETWORK_ROLE_LABEL,
   LANDO_SHARED_NETWORK_ROLE,
+  ProviderId,
   appIdentityKey,
   landoSharedCrossAppNetworkName,
 } from "@lando/sdk/schema";
+import { makePluginStateStore } from "@lando/state-store/plugin";
+import { makeStateStore } from "@lando/state-store/service";
 import { Effect } from "effect";
 import { type DataRootPurgeOptions, preflightDataRootPurge } from "../src/data-root-purge.ts";
 import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
 import { BUILT_ARTIFACT_STORE_LABEL } from "../src/image-build.ts";
 import { volumeSelectorValue } from "../src/podman/volume-prune.ts";
+import { makeResourceOwnershipStore } from "../src/resource-ownership.ts";
 
 const dataRoot = "/installation/a";
 const appRoot = "/project/web";
-const options = { endpoint: "/fake/engine.sock", dataRoot, buildStore: "abcd1234" };
+const pluginId = "@lando/provider-docker";
+const options = { endpoint: "/fake/engine.sock", dataRoot, buildStore: "abcd1234", pluginId };
 const ctx = { providerId: "docker", remediation: "Start the engine and retry.", env: {} };
 const rootLabels = { [LANDO_DATA_ROOT_LABEL]: dataRoot };
 const appLabels = {
@@ -39,20 +50,14 @@ const fixture = ({
     ["owned", { ...appLabels, "dev.lando.service": "web" }],
     ["peer", { ...appLabels, "dev.lando.service": "web", [LANDO_DATA_ROOT_LABEL]: "/installation/b" }],
   ]);
-  if (legacy)
-    containers.set("adopted", {
-      "dev.lando.app": "web",
-      "dev.lando.app-root": appRoot,
-      "dev.lando.service": "web",
-    });
-  const networks = new Map([
+  const networks = new Map<string, { Name: string; Labels: Readonly<Record<string, string>> }>([
     [
       "bridge",
       { Name: bridge, Labels: { ...rootLabels, [LANDO_NETWORK_ROLE_LABEL]: LANDO_SHARED_NETWORK_ROLE } },
     ],
     ["private", { Name: "web-private", Labels: appLabels }],
   ]);
-  const volumes = new Map([
+  const volumes = new Map<string, Readonly<Record<string, string>>>([
     [
       "db",
       {
@@ -70,6 +75,28 @@ const fixture = ({
       },
     ],
   ]);
+  if (legacy) {
+    const { [LANDO_DATA_ROOT_LABEL]: _root, ...labels } = appLabels;
+    const legacyLabels = { ...labels, "dev.lando.provider": "docker" };
+    containers.set("adopted", { ...legacyLabels, "dev.lando.service": "web" });
+    containers.set("replacement", { ...legacyLabels, "dev.lando.service": "web" });
+    networks.set("adopted-net", { Name: "legacy-private", Labels: legacyLabels });
+    const db = volumes.get("db");
+    const { [LANDO_DATA_ROOT_LABEL]: _volumeRoot, ...volumeLabels } = db ?? {};
+    volumes.set("legacy-db", {
+      ...volumeLabels,
+      "dev.lando.provider": "docker",
+      "dev.lando.store": "legacy-db",
+      "dev.lando.volume-selector": volumeSelectorValue({
+        providerId: "docker",
+        appId: "web",
+        ownerKey: appIdentityKey("owner", appRoot),
+        volumeClass: "data",
+      }),
+    });
+    const legacyDb = volumes.get("legacy-db") ?? {};
+    volumes.set("recreated-db", { ...legacyDb, "dev.lando.store": "recreated-db" });
+  }
   const imageTags = new Set(foreign ? [...tags, "my-project:latest"] : tags);
   const actions: string[] = [];
   let volumeReads = 0;
@@ -125,7 +152,11 @@ const fixture = ({
           return json(null, 500);
         }
         if (kind === "containers" && containers.has(ref))
-          return json({ Id: ref, Name: `/${ref}`, Config: { Labels: containers.get(ref) } });
+          return json({
+            Id: ref,
+            Name: ref === "adopted" || ref === "replacement" ? "/legacy-web" : `/${ref}`,
+            Config: { Labels: containers.get(ref) },
+          });
         if (kind === "networks" && networks.has(ref))
           return json({
             Id: ref,
@@ -173,32 +204,86 @@ test("deletes only this root's objects in dependency order, with owned images re
   expect([...containers.keys()]).toEqual(["peer"]);
 });
 
-test("an injected ownership decision can admit an exact legacy object without adopting its peers", async () => {
-  const { api, containers } = fixture({ legacy: true });
-  const result = await sweep(api, {
-    ...options,
-    owns: ({ kind, id, labels }) =>
-      labels[LANDO_DATA_ROOT_LABEL] === dataRoot ||
-      (kind === "container" && id === "adopted" && labels[LANDO_DATA_ROOT_LABEL] === undefined),
-  });
-  expect(result.failed).toEqual([]);
-  expect([...containers.keys()]).toEqual(["peer"]);
-});
+const withInventory = async (run: (opts: typeof options, pluginRoot: string) => Promise<void>) => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "lando-purge-")));
+  try {
+    await run(
+      { ...options, dataRoot: root },
+      makeLandoPaths({ userDataRoot: root }).pluginStateDir(pluginId),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+};
 
-test("a second sweep of the same engine has no removals", async () => {
-  const { api } = fixture();
-  const first = await Effect.runPromise(preflightDataRootPurge(api, ctx, options));
-  const second = await Effect.runPromise(preflightDataRootPurge(api, ctx, options));
-  if (first.kind !== "reachable" || second.kind !== "reachable")
-    throw new Error("Expected both preflights to succeed");
-  await Effect.runPromise(first.sweep());
-  expect(await Effect.runPromise(second.sweep())).toMatchObject({
-    removed: [],
-    retained: [],
-    failed: [],
-    outsideScope: 1,
-  });
-});
+test("purges exactly receipted legacy objects and leaves replacements and peer-labeled objects alone", () =>
+  withInventory(async (opts, pluginRoot) => {
+    const access = { enforce: async () => undefined, verify: async () => undefined };
+    const state = makePluginStateStore(
+      makeStateStore({ privateFileAccess: access }),
+      AbsolutePath.make(pluginRoot),
+      access,
+    );
+    const { api, containers, actions } = fixture({ legacy: true });
+    const owner = {
+      appId: AppId.make("web"),
+      appRoot: AbsolutePath.make(appRoot),
+      providerId: ProviderId.make(ctx.providerId),
+      dataRoot: AbsolutePath.make(opts.dataRoot),
+    };
+    await Effect.runPromise(
+      makeResourceOwnershipStore(ctx.providerId, state).recordAdoption(
+        owner.appRoot,
+        {
+          dataRoot: owner.dataRoot,
+          previousAppId: owner.appId,
+          receipts: [
+            { ...owner, kind: "container", nativeName: "legacy-web", nativeId: "adopted" },
+            { ...owner, kind: "container", nativeName: "peer", nativeId: "peer" },
+            { ...owner, kind: "network", nativeName: "legacy-private", nativeId: "adopted-net" },
+            { ...owner, kind: "volume", nativeName: "legacy-db", volumeInstance: "original" },
+            { ...owner, kind: "volume", nativeName: "recreated-db", volumeInstance: "retired" },
+            { ...owner, kind: "volume", nativeName: "db", volumeInstance: "original" },
+          ],
+        },
+        [],
+      ),
+    );
+
+    const first = await Effect.runPromise(preflightDataRootPurge(api, ctx, opts));
+    const second = await Effect.runPromise(preflightDataRootPurge(api, ctx, opts));
+    if (first.kind !== "reachable" || second.kind !== "reachable")
+      throw new Error("Expected both preflights to succeed");
+    expect(first.counts).toEqual({ container: 1, volume: 1, network: 1, image: 1 });
+    expect(await Effect.runPromise(first.sweep())).toMatchObject({ retained: [], failed: [] });
+    expect(await Effect.runPromise(second.sweep())).toMatchObject({ removed: [], retained: [], failed: [] });
+    expect(actions).toEqual([
+      "stop:adopted",
+      "containers:adopted",
+      "networks:adopted-net",
+      "volumes:legacy-db",
+      ...tags.map((tag) => `images:${tag}`),
+    ]);
+    expect([...containers.keys()]).toEqual(["owned", "peer", "replacement"]);
+  }));
+
+test.each(["corrupt record", "unreadable directory"])(
+  "blocks purge on %s without modifying inventory",
+  (problem) =>
+    withInventory(async (opts, pluginRoot) => {
+      const dir = join(pluginRoot, "resource-ownership");
+      const file = problem === "corrupt record" ? join(dir, `${appIdentityKey("owner", appRoot)}.json`) : dir;
+      await mkdir(problem === "corrupt record" ? dir : pluginRoot, { recursive: true });
+      await Bun.write(file, "not an inventory");
+      const { api, actions } = fixture();
+      await expect(sweep(api, opts)).rejects.toMatchObject({
+        _tag: "ProviderUnavailableError",
+        remediation: expect.stringContaining("Repair the provider plugin state"),
+      });
+      expect(await Bun.file(file).text()).toBe("not an inventory");
+      expect(actions).toEqual([]);
+    }),
+);
 
 test.each([
   [{ attached: true }, "network bridge:", "networks:bridge"],

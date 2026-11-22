@@ -889,7 +889,7 @@ export const plugin = definePlugin({
           return yield* preflightDataRootPurge(
             makeRuntimeDockerApiClient(endpoint, ctx, { env: input.env }),
             ctx,
-            { ...input, endpoint },
+            { ...input, endpoint, pluginId: PLUGIN_NAME },
           );
         }),
         declaredCapabilities: dockerCapabilitiesForPlatform,

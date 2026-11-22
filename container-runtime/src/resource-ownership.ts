@@ -17,6 +17,7 @@ import {
   type AdoptionBatch,
   ResourceOwnershipInventory as Inventory,
   type OwnedResource,
+  RESOURCE_OWNERSHIP_NAMESPACE,
   RESOURCE_OWNERSHIP_VERSION,
   type ResourceInventory,
   legacyResourceDigest,
@@ -34,15 +35,16 @@ export {
 } from "./resource-ownership-inventory.ts";
 
 const keyFor = (resource: OwnedResource) => resource.identityDigest;
+const inventoryKey = (root: AbsolutePath) => `${planAppIdentity({ root }).ownerKey}.json`;
 
 export const makeResourceOwnershipStore = (providerId: string, state?: PluginStateStore) => {
-  const open = (root: AbsolutePath) =>
+  const open = (key: string) =>
     state === undefined
       ? Effect.fail(ownershipFailure(providerId))
       : state
           .open({
-            namespace: "resource-ownership",
-            key: `${planAppIdentity({ root }).ownerKey}.json`,
+            namespace: RESOURCE_OWNERSHIP_NAMESPACE,
+            key,
             schema: Inventory,
             version: RESOURCE_OWNERSHIP_VERSION,
             codec: "json",
@@ -64,14 +66,19 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
             },
           })
           .pipe(mapFailures((cause) => ownershipFailure(providerId, cause)));
-  const load = Effect.fn("ResourceOwnership.load")(function* (root: AbsolutePath) {
-    const bucket = yield* open(root);
+  const loadRecord = Effect.fn("ResourceOwnership.loadRecord")(function* (key: string, root?: AbsolutePath) {
+    const bucket = yield* open(key);
     const value = yield* bucket.get.pipe(mapFailures((cause) => ownershipFailure(providerId, cause)));
     return yield* Effect.try({
-      try: () => (value === null ? undefined : validate(value, root, providerId)),
+      try: () => {
+        if (value === null) return undefined;
+        if (inventoryKey(value.appRoot) !== key) throw ownershipFailure(providerId);
+        return validate(value, root ?? value.appRoot, providerId);
+      },
       catch: (cause) => ownershipFailure(providerId, cause),
     });
   });
+  const load = (root: AbsolutePath) => loadRecord(inventoryKey(root), root);
   const prepare = Effect.fn("ResourceOwnership.prepare")(function* (plan: AppPlan, previous?: AppPlan) {
     const owner = planAppIdentity(plan);
     const root = owner.appRoot;
@@ -113,7 +120,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
         return yield* Effect.fail(ownershipFailure(providerId));
       resources.push(...resourcesForPlan(attempt));
     }
-    const bucket = yield* open(root);
+    const bucket = yield* open(inventoryKey(root));
     yield* bucket
       .modify((current) => {
         if (current !== null) validate(current, root, providerId);
@@ -200,7 +207,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
     root: AbsolutePath,
     resource: OwnedResource,
   ) {
-    const bucket = yield* open(root);
+    const bucket = yield* open(inventoryKey(root));
     yield* bucket
       .modify((current) => {
         if (current === null) throw ownershipFailure(providerId);
@@ -235,7 +242,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
     batch: AdoptionBatch,
     verifiedVolumes: readonly OwnedResource[],
   ) {
-    const bucket = yield* open(root);
+    const bucket = yield* open(inventoryKey(root));
     yield* bucket
       .modify((current) => {
         const existing = current === null ? undefined : validate(current, root, providerId);
@@ -274,6 +281,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
   });
   return {
     load,
+    loadRecord,
     prepare,
     retire,
     recordAdoption,

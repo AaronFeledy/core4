@@ -2063,6 +2063,7 @@ export const plugin = definePlugin({
           return yield* preflightDataRootPurge(makeRuntimePodmanApiClient(endpoint, ctx), ctx, {
             ...input,
             endpoint,
+            pluginId: PLUGIN_NAME,
           });
         }),
         declaredCapabilities: (platform, arch) =>

@@ -66,7 +66,7 @@ export const makePrepareUninstallCleanup =
     const observations = observed.flatMap(({ providerId, result }) => {
       if (Result.isFailure(result)) {
         throw uninstallCleanupFailure(
-          `Cannot inspect ${providerId} resources: ${causeMessage(result.failure)}`,
+          `Cannot inspect ${providerId} resources: ${causeMessage(result.failure)} ${result.failure.remediation.replace(/\.$/u, "")}`,
           result.failure,
         );
       }

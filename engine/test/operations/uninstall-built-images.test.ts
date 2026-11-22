@@ -63,7 +63,7 @@ test.each(["clean", "foreign", "in-use", "failed", "listing-failed", "dry-run", 
       return preflightDataRootPurge(
         api,
         { providerId: "podman", remediation: "Retry", env: {} },
-        { ...input, endpoint: "/fixture.sock" },
+        { ...input, endpoint: "/fixture.sock", pluginId: "@lando/provider-podman" },
       );
     };
     try {
