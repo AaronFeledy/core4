@@ -671,6 +671,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ),
       removeArtifact: (request) => removeContainerArtifact(dockerApi, request, DOCKER_CTX),
       listArtifacts: (selector) => listContainerArtifacts(dockerApi, selector, DOCKER_CTX),
+      adoptDataRoot: Effect.fn("RuntimeProvider.adoptDataRoot")(function* (plan, witness) {
+        if (plan.identity?.dataRoot === undefined) return;
+        yield* planState.ownership.adopt(plan, yield* appliedPlans.resolveMutationPlan(plan.id), witness);
+      }),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);

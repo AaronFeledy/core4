@@ -46,7 +46,11 @@ const ResourceIdentity = Schema.Union([ContainerIdentity, NetworkIdentity, Volum
 export const OwnedResource = Schema.Union([
   Schema.Struct({ ...ContainerIdentity.fields, identityDigest: Schema.String }),
   Schema.Struct({ ...NetworkIdentity.fields, identityDigest: Schema.String }),
-  Schema.Struct({ ...VolumeIdentity.fields, identityDigest: Schema.String }),
+  Schema.Struct({
+    ...VolumeIdentity.fields,
+    identityDigest: Schema.String,
+    volumeInstance: Schema.optionalKey(Schema.String),
+  }),
 ]);
 export type OwnedResource = typeof OwnedResource.Type;
 const ReceiptOwner = {
@@ -173,7 +177,7 @@ export const validate = (inventory: ResourceInventory, root: AbsolutePath, provi
       (resource.kind === "network" &&
         resource.scratchId !== undefined &&
         resource.scratchId !== resource.appId) ||
-      identityDigest !== digest(identity) ||
+      identityDigest !== digest(identity.kind === "volume" ? withoutVolumeInstance(identity) : identity) ||
       !inventory.appIds.includes(resource.appId)
     )
       throw ownershipFailure(providerId);
@@ -191,3 +195,8 @@ export const validate = (inventory: ResourceInventory, root: AbsolutePath, provi
   }
   return inventory;
 };
+
+const withoutVolumeInstance = ({
+  volumeInstance: _witness,
+  ...identity
+}: typeof VolumeIdentity.Type & { readonly volumeInstance?: string }) => identity;

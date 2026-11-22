@@ -869,6 +869,10 @@ const assembleRuntimeProvider = (
       ),
       removeArtifact: (request) => removeContainerArtifact(podmanApi, request, PODMAN_CTX),
       listArtifacts: (selector) => listContainerArtifacts(podmanApi, selector, PODMAN_CTX),
+      adoptDataRoot: Effect.fn("RuntimeProvider.adoptDataRoot")(function* (plan, witness) {
+        if (plan.identity?.dataRoot === undefined) return;
+        yield* planState.ownership.adopt(plan, yield* appliedPlans.resolveMutationPlan(plan.id), witness);
+      }),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);

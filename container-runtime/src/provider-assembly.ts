@@ -1,5 +1,5 @@
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { AppId, AppPlan } from "@lando/sdk/schema";
+import { type AppId, type AppPlan, planAppIdentity } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   type ApplyOptions,
@@ -10,7 +10,9 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { type AppliedPlanCacheOptions, makeAppliedPlanCache } from "./applied-plan-cache.ts";
+import { adoptLegacyDataRoot } from "./data-root-adoption.ts";
 import { refuseOtherAppsResources } from "./foreign-owner.ts";
+import { volumeCoordinationKey } from "./native-volume-identity.ts";
 import { removeOrphanedNetworks } from "./orphaned-networks.ts";
 import { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { makeResourceOwnershipStore } from "./resource-ownership.ts";
@@ -22,6 +24,7 @@ export { PlanfulVolumeCoverage } from "./teardown-volumes.ts";
 export const hasExactVolumeTeardown = (provider: object): boolean =>
   "exactVolumeTeardown" in provider && provider.exactVolumeTeardown === true;
 
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { type ProviderDataPlaneOptions, makeProviderDataPlane } from "./data-plane.ts";
 import type { ProviderErrorContext } from "./engine-api.ts";
 import { type EmitComposeOptions, composePath, emitCompose, renderCompose } from "./podman/compose.ts";
@@ -54,13 +57,42 @@ type ProviderPlanStateOptions = AppliedPlanCacheOptions &
 
 const makeOwnership = (options: ProviderPlanStateOptions) => {
   const store = makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState);
+  const adopt = Effect.fn("ProviderOwnership.adopt")(function* (
+    plan: AppPlan,
+    previous: AppPlan | undefined,
+    witness?: Parameters<NonNullable<RuntimeProviderShape["adoptDataRoot"]>>[1],
+  ) {
+    const api = options.api;
+    if (api?.request === undefined) return;
+    yield* adoptLegacyDataRoot(plan, previous, {
+      request: api.request,
+      store,
+      ...(witness === undefined
+        ? {}
+        : {
+            volumeWitness: (name: string) =>
+              volumeCoordinationKey({ ...options, api, providerId: options.ctx.providerId }, name).pipe(
+                Effect.flatMap((key) => (key === undefined ? Effect.succeed(undefined) : witness(key))),
+              ),
+          }),
+    });
+  });
   return {
     ...store,
-    prepare: (plan: AppPlan, previous?: AppPlan) =>
-      refuseOtherAppsResources(plan, previous, {
+    adopt,
+    prepare: Effect.fn("ProviderOwnership.prepare")(function* (plan: AppPlan, previous?: AppPlan) {
+      yield* refuseOtherAppsResources(plan, previous, {
         ctx: options.ctx,
         ...(options.api === undefined ? {} : { api: options.api }),
-      }).pipe(Effect.andThen(store.prepare(plan, previous))),
+      });
+      yield* adopt(plan, previous);
+      yield* store.prepare(plan, previous);
+      if (plan.identity?.dataRoot === undefined) return [];
+      return (
+        (yield* store.load(planAppIdentity(plan).appRoot))?.adoptions?.flatMap((batch) => batch.receipts) ??
+        []
+      );
+    }),
   };
 };
 

@@ -115,6 +115,14 @@ export const withProviderErrorRedaction = (
     ) => effect(runtime.restoreVolume(spec, options)),
     listVolumes: (filter) => effect(runtime.listVolumes(filter)),
     locateVolume: (ref) => effect(runtime.locateVolume(ref)),
+    ...(runtime.adoptDataRoot === undefined
+      ? {}
+      : {
+          adoptDataRoot: (
+            plan: Parameters<NonNullable<RuntimeProviderShape["adoptDataRoot"]>>[0],
+            witness: Parameters<NonNullable<RuntimeProviderShape["adoptDataRoot"]>>[1],
+          ) => effect(runtime.adoptDataRoot?.(plan, witness) ?? Effect.void),
+        }),
     ...(inspectResourceNames === undefined
       ? {}
       : { inspectResourceNames: (query) => effect(inspectResourceNames.call(runtime, query)) }),

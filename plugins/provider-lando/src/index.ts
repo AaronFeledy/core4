@@ -1775,6 +1775,16 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           podmanApi === undefined
             ? Effect.fail(makeUnavailable("listArtifacts"))
             : listContainerArtifacts(podmanApi, selector, LANDO_CTX),
+        adoptDataRoot: Effect.fn("RuntimeProvider.adoptDataRoot")(function* (plan, witness) {
+          if (plan.identity?.dataRoot === undefined) return;
+          const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
+          if (previous === undefined || previous.identity?.dataRoot !== undefined) return;
+          yield* planState.ownership.adopt(
+            yield* physicalNetworkPlan(plan),
+            yield* physicalNetworkPlan(previous),
+            witness,
+          );
+        }),
         apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
           yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
           const previous = yield* appliedPlans.resolveMutationPlan(plan.id);

@@ -430,6 +430,7 @@
       "listVolumeSnapshots?:() => Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>,ProviderError>",
       "listVolumes:(filter:VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>,ProviderError>",
       "locateVolume:(ref:VolumeRef) => Effect.Effect<VolumeLocator,ProviderError>",
+      "adoptDataRoot?:(plan:AppPlan,volumeWitness:(coordinationKey:string) => Effect.Effect<string|undefined,ProviderError>) => Effect.Effect<void,ProviderError>",
       "logs:(target:LogTarget,options:LogOptions) => Stream.Stream<LogChunk,ProviderError>",
       "matchingPublishPorts?:(containerId:string,ports:ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>,ProviderError>",
       "observeVolume?:(target:ServiceSelector,destination:PortablePath) => Effect.Effect<VolumeInfo,ProviderError>",
