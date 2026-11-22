@@ -1,12 +1,12 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
+import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import { AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type AppPlan,
   type AppRef,
   type AppliedStateInventory,
-  LANDO_DATA_ROOT_LABEL,
   ProviderId,
   type ResourceOwnership,
   appIdentityKey,
@@ -21,14 +21,7 @@ import type {
   RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { Effect } from "effect";
-import {
-  type ScopedOwnershipRecord,
-  belongsToDataRoot,
-  hasScopedOwnershipRecord,
-  planBelongsToDataRoot,
-  recordsFromAppliedPlans,
-  scopedOwnershipRecords,
-} from "../operations/data-root-scope.ts";
+import { localAppliedRecord, scopeRuntimeSnapshot } from "../operations/data-root-scope.ts";
 import { matchesAppPlanIdentity } from "./app-plan-identity.ts";
 import { refuseContradictoryOrphans } from "./orphan-ownership-refusal.ts";
 
@@ -194,7 +187,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
   const lookupRoot = AbsolutePath.make(yield* canonicalPath(root));
   const plans = (yield* Effect.forEach(providers, gatherAppliedPlans))
     .flat()
-    .filter((plan) => dataRoot === undefined || planBelongsToDataRoot(plan, dataRoot));
+    .filter((plan) => dataRoot === undefined || localAppliedRecord(plan, dataRoot));
   const protectedInventories = teardown
     ? []
     : yield* Effect.forEach(providers, (provider) =>
@@ -320,75 +313,17 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
         teardown && ownershipHints.some((hint) => hint.providerId === provider.id),
       ),
     );
-    // Historical unlabeled resources need a member-scoped local record (plan or inventory),
-    // never a blanket ownershipHints presence check.
-    const ownershipRecords: ReadonlyArray<ScopedOwnershipRecord> = [
-      ...recordsFromAppliedPlans(plans),
-      ...scopedOwnershipRecords(
-        ownershipHints.flatMap((hint) => {
-          const members = hint.members;
-          if (members === undefined || members.length === 0) return [];
-          return [
-            {
-              providerId: hint.providerId,
-              root: hint.appRoot,
-              appId: String(hint.appIds[0] ?? ""),
-              members: members.map((member) => ({
-                kind: member.kind,
-                nativeName: member.nativeName,
-                appId: String(member.appId),
-                ...(member.service === undefined ? {} : { service: String(member.service) }),
-              })),
-            },
-          ];
-        }),
-      ),
-    ];
-    const belongsHere = (
-      labels: Readonly<Record<string, string>> | undefined,
-      query: {
-        readonly providerId: string;
-        readonly appRoot: string | undefined;
-        readonly appId: string;
-        readonly kind: "service" | "volume";
-        readonly member: string;
-        readonly nativeId?: string;
-      },
-    ) =>
-      dataRoot === undefined ||
-      belongsToDataRoot(
-        labels?.[LANDO_DATA_ROOT_LABEL],
-        dataRoot,
-        hasScopedOwnershipRecord(ownershipRecords, query),
-      );
+    const receipts = ownershipHints.flatMap(adoptionReceiptsFromSummary);
     const evidence = observed.map((snapshot, index) => {
       const provider = providers[index];
       const providerId = provider?.id ?? "";
-      return {
-        ...snapshot,
-        services: snapshot.services.filter((service) =>
-          belongsHere(service.labels, {
-            providerId: service.providerId,
-            appRoot: service.appRoot,
-            appId: service.app,
-            kind: "service",
-            member: service.service,
-            ...(service.containerId === undefined ? {} : { nativeId: service.containerId }),
-          }),
-        ),
-        volumes: snapshot.volumes.filter((volume) =>
-          volume.identity === undefined
-            ? false
-            : belongsHere(volume.labels, {
-                providerId,
-                appRoot: volume.identity.ownerRoot,
-                appId: volume.ref.app,
-                kind: "volume",
-                member: volume.identity.nativeName,
-                nativeId: volume.identity.nativeName,
-              }),
-        ),
-      };
+      return dataRoot === undefined
+        ? snapshot
+        : scopeRuntimeSnapshot(
+            snapshot,
+            dataRoot,
+            receipts.filter((receipt) => receipt.providerId === providerId),
+          );
     });
     yield* refuseContradictoryOrphans({ root: lookupRoot, providers, evidence, isProtected });
     const groups = groupOrphans(lookupRoot, providers, evidence).filter(

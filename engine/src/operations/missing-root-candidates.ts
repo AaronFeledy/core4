@@ -1,3 +1,4 @@
+import { type AdoptionReceipt, adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import { isGlobalScopedVolume, volumeClassFromLabels } from "@lando/container-runtime/volume-classes";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
 import {
@@ -11,12 +12,7 @@ import { TeardownProvider } from "../providers/app-placement.ts";
 import { acceleratedStartInventory } from "./accelerated-start-inventory.ts";
 import { type PendingStart, digest } from "./accelerated-start-record.ts";
 import { appRootIdentityKey } from "./app-root-identity.ts";
-import {
-  type ScopedOwnershipRecord,
-  currentDataRoot,
-  scopeRuntimeSnapshot,
-  scopedOwnershipRecords,
-} from "./data-root-scope.ts";
+import { currentDataRoot, localAppliedRecord, scopeRuntimeSnapshot } from "./data-root-scope.ts";
 import type { MissingRootScan } from "./missing-app-root-schema.ts";
 
 /** Groups observed and recorded leftovers by the app root whose folder no longer exists. */
@@ -61,8 +57,7 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
   };
   const registry = yield* RuntimeProviderRegistry;
   const dataRoot = yield* currentDataRoot;
-  // Inventory-only member records prove historical unlabeled leftovers for GC.
-  const ownershipRecords: ScopedOwnershipRecord[] = [];
+  const receipts: AdoptionReceipt[] = [];
   const candidateRoots = new Set<string>();
   for (const snapshot of snapshots) {
     for (const plan of snapshot.appliedPlans) {
@@ -81,22 +76,7 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
         const ownership = yield* registry
           .resourceOwnership(snapshot.providerId, AbsolutePath.make(root))
           .pipe(Effect.catch(() => Effect.succeed(undefined)));
-        if (ownership?.members === undefined || ownership.members.length === 0) continue;
-        ownershipRecords.push(
-          ...scopedOwnershipRecords([
-            {
-              providerId: ownership.providerId,
-              root: ownership.appRoot,
-              appId: String(ownership.appIds[0] ?? ""),
-              members: ownership.members.map((member) => ({
-                kind: member.kind,
-                nativeName: member.nativeName,
-                appId: String(member.appId),
-                ...(member.service === undefined ? {} : { service: String(member.service) }),
-              })),
-            },
-          ]),
-        );
+        receipts.push(...adoptionReceiptsFromSummary(ownership));
       }
     }
   }
@@ -104,13 +84,14 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
     scopeRuntimeSnapshot(
       snapshot,
       dataRoot,
-      ownershipRecords.filter((record) => record.providerId === snapshot.providerId),
+      receipts.filter((receipt) => receipt.providerId === snapshot.providerId),
     ),
   )) {
     for (const plan of snapshot.appliedPlans) {
       // Teardown only targets plans by their recorded identity, so report nothing it cannot act on.
       if (
         plan.identity === undefined ||
+        !localAppliedRecord(plan, dataRoot) ||
         plan.id === "global" ||
         plan.extensions["@lando/core/scratch"] !== undefined
       )

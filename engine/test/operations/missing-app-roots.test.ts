@@ -266,13 +266,12 @@ test.each(["none", "plan", "ownership", "unreadable"] as const)(
   },
 );
 
-test("keeps historical unlabeled services proved by a local applied plan", async () => {
+test("keeps the local applied record but does not claim its unlabeled services", async () => {
   const historical = {
     ...plan,
     identity: { appRoot: root, ownerKey: "owner" },
     services: { [String(service.service)]: {} as never },
   };
-  // Mutate: strip the data-root label so only plan membership proves locality.
   const { labels: _omitLabels, ...unlabeled } = service;
   const result = await run([
     snapshot({
@@ -287,12 +286,11 @@ test("keeps historical unlabeled services proved by a local applied plan", async
       ],
     }),
   ]);
-  // Restore path is implicit: fixture constants keep labeled defaults for later tests.
   expect(result).toMatchObject([
     {
       root,
       appliedState: true,
-      services: ["app/web"],
+      services: [],
     },
   ]);
 });
@@ -302,7 +300,7 @@ test("drops unlabeled services without local plan membership under a data root",
   expect(await run([snapshot({ services: [unlabeled] })])).toEqual([]);
 });
 
-test("inventory-only members keep unlabeled missing-root services", async () => {
+test("verified adoption receipts keep unlabeled missing-root services", async () => {
   const { labels: _labels, ...unlabeled } = service;
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -326,12 +324,16 @@ test("inventory-only members keep unlabeled missing-root services", async () => 
                 {
                   kind: "container" as const,
                   nativeName: "observed-container",
+                  nativeId: "observed-container",
+                  dataRoot: AbsolutePath.make(dataRoot),
                   appId: app,
                   service: ServiceName.make("web"),
                 },
               ],
             }),
-          observeRuntime: Effect.succeed([snapshot({ services: [unlabeled] })]),
+          observeRuntime: Effect.succeed([
+            snapshot({ services: [{ ...unlabeled, nativeName: "observed-container" }] }),
+          ]),
         }),
       );
     }).pipe(

@@ -10,11 +10,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ProviderRuntimeSnapshot } from "@lando/sdk/services";
 import { DateTime } from "effect";
-import {
-  belongsToDataRoot,
-  planBelongsToDataRoot,
-  scopeRuntimeSnapshot,
-} from "../../src/operations/data-root-scope.ts";
+import { localAppliedRecord, scopeRuntimeSnapshot } from "../../src/operations/data-root-scope.ts";
 
 const dataRoot = AbsolutePath.make("/data/local");
 const foreignRoot = AbsolutePath.make("/data/foreign");
@@ -64,26 +60,19 @@ const snapshot = (overrides: Partial<ProviderRuntimeSnapshot> = {}): ProviderRun
   ...overrides,
 });
 
-test("belongsToDataRoot treats inventory-only unlabeled records as historical", () => {
-  expect(belongsToDataRoot(undefined, dataRoot, true)).toBe(true);
-  expect(belongsToDataRoot(undefined, dataRoot, false)).toBe(false);
-  expect(belongsToDataRoot(dataRoot, dataRoot, false)).toBe(true);
-  expect(belongsToDataRoot(foreignRoot, dataRoot, true)).toBe(false);
-});
-
-test("planBelongsToDataRoot keeps historical plans without a data root stamp", () => {
+test("localAppliedRecord keeps historical plans without a data root stamp", () => {
   const historical = { ...basePlan(), identity: { appRoot, ownerKey: "owner" } };
   const stamped = basePlan();
   const foreign = {
     ...basePlan(),
     identity: { appRoot, ownerKey: "owner", dataRoot: foreignRoot },
   };
-  expect(planBelongsToDataRoot(historical, dataRoot)).toBe(true);
-  expect(planBelongsToDataRoot(stamped, dataRoot)).toBe(true);
-  expect(planBelongsToDataRoot(foreign, dataRoot)).toBe(false);
+  expect(localAppliedRecord(historical, dataRoot)).toBe(true);
+  expect(localAppliedRecord(stamped, dataRoot)).toBe(true);
+  expect(localAppliedRecord(foreign, dataRoot)).toBe(false);
 });
 
-test("scopeRuntimeSnapshot keeps unlabeled resources proved by a local applied plan", () => {
+test("scopeRuntimeSnapshot retains local plans without treating them as proof for unlabeled resources", () => {
   const historical = { ...basePlan(), identity: { appRoot, ownerKey: "owner" } };
   const unlabeled = {
     app,
@@ -136,8 +125,8 @@ test("scopeRuntimeSnapshot keeps unlabeled resources proved by a local applied p
   });
   const scoped = scopeRuntimeSnapshot(input, dataRoot);
   expect(scoped.appliedPlans).toEqual([historical]);
-  expect(scoped.services.map((service) => service.containerId).sort()).toEqual(["web-1", "web-local"]);
-  expect(scoped.volumes.map((volume) => volume.identity?.nativeName)).toEqual(["data"]);
+  expect(scoped.services.map((service) => service.containerId)).toEqual(["web-local"]);
+  expect(scoped.volumes).toEqual([]);
 });
 
 test("scopeRuntimeSnapshot drops unlabeled resources without local plan membership", () => {
@@ -154,7 +143,7 @@ test("scopeRuntimeSnapshot drops unlabeled resources without local plan membersh
   expect(scoped.services).toEqual([]);
 });
 
-test("scopeRuntimeSnapshot keeps unlabeled resources proved by inventory-only members", () => {
+test("scopeRuntimeSnapshot keeps only the exact unlabeled container named by a receipt", () => {
   const unlabeled = {
     app,
     appRoot,
@@ -163,6 +152,7 @@ test("scopeRuntimeSnapshot keeps unlabeled resources proved by inventory-only me
     status: "running" as const,
     publications: { status: "unknown" as const },
     containerId: "inventory-web",
+    nativeName: "web-native",
   };
   const other = {
     ...unlabeled,
@@ -174,8 +164,9 @@ test("scopeRuntimeSnapshot keeps unlabeled resources proved by inventory-only me
       providerId,
       appRoot,
       appId: app,
-      kind: "service",
-      member: web,
+      kind: "container",
+      nativeName: "web-native",
+      dataRoot,
       nativeId: "inventory-web",
     },
   ]);

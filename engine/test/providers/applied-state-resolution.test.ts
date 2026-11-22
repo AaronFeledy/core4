@@ -907,10 +907,9 @@ describe("exact applied-plan lookup", () => {
   });
 });
 
-test("inventory-only local records keep unlabeled orphans under the historical-proof rule", async () => {
+test("verified adoption receipts retain exact unlabeled orphans for cleanup", async () => {
   const dataRoot = AbsolutePath.make("/tmp/applied-state-local-data");
   const foreign = AbsolutePath.make("/tmp/applied-state-foreign-data");
-  // Ownership labels without a data-root stamp: inventory-only historical local proof.
   const ownershipLabels = {
     "dev.lando.app": "failed-b",
     "dev.lando.app-root": root,
@@ -925,6 +924,7 @@ test("inventory-only local records keep unlabeled orphans under the historical-p
     status: "running" as const,
     publications: { status: "unknown" as const },
     containerId: "inventory-only-web",
+    nativeName: "legacy-web",
     labels: ownershipLabels,
   };
   const foreignLabeled = {
@@ -946,7 +946,9 @@ test("inventory-only local records keep unlabeled orphans under the historical-p
         members: [
           {
             kind: "container" as const,
-            nativeName: "inventory-only-web",
+            nativeName: "legacy-web",
+            nativeId: "inventory-only-web",
+            dataRoot,
             appId: AppId.make("failed-b"),
             service: ServiceName.make("web"),
           },
