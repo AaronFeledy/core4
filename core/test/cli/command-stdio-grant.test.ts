@@ -9,7 +9,11 @@ import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { Renderer } from "@lando/sdk/services";
 import { Cause, type Context, Effect, Exit, Layer, Schema, Stream } from "effect";
 
-import { commandStdioRequest, grantCommandStdio } from "../../src/cli/command-stdio.ts";
+import {
+  commandStdioRequest,
+  commandStdioRequestError,
+  grantCommandStdio,
+} from "../../src/cli/command-stdio.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { pluginOwnedCommandEffect } from "../../src/cli/run-plugin-owned-command.ts";
 
@@ -350,5 +354,45 @@ describe("CommandStdioError exit codes at the renderer boundary", () => {
       },
     );
     expect(codes).toEqual([expected]);
+  });
+});
+
+describe("db:creds:apply stdin grant contract", () => {
+  test("derives a stdin request only for positional - on adminPasswordSource", () => {
+    const spec = {
+      args: {
+        adminPasswordSource: { type: "string", options: ["-"], stdio: "stdin" },
+      },
+    } as const;
+    expect(commandStdioRequest(spec, { adminPasswordSource: "-" })).toEqual({ stdin: true });
+    expect(commandStdioRequest(spec, { adminPasswordSource: "file" })).toEqual({});
+    expect(commandStdioRequest(spec, {})).toEqual({});
+  });
+
+  test("terminal stdin remediation is command-specific and never names db:import", () => {
+    const error = commandStdioRequestError({
+      command: "db:creds:apply",
+      request: { stdin: true },
+      stdoutIsTTY: false,
+      stdinIsTTY: true,
+      resultFormat: "json",
+      rendererMode: "plain",
+    });
+    expect(error).toBeInstanceOf(CommandStdioError);
+    expect(error).toMatchObject({ command: "db:creds:apply", stream: "stdin", reason: "terminal" });
+    expect(String(error?.remediation)).toContain("db:creds:apply --yes -");
+    expect(String(error?.remediation)).not.toContain("db:import");
+  });
+
+  test("db:import terminal remediation still names db:import", () => {
+    const error = commandStdioRequestError({
+      command: "db:import",
+      request: { stdin: true },
+      stdoutIsTTY: false,
+      stdinIsTTY: true,
+      resultFormat: "text",
+      rendererMode: "plain",
+    });
+    expect(String(error?.remediation)).toContain("db:import");
   });
 });

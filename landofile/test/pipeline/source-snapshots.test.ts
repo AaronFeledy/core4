@@ -21,7 +21,7 @@ test("prepares the retained authored snapshot without rereading the changed sour
     // Then
     expect(prepared.value.value).toMatchObject({
       name: "snapshot",
-      services: { web: { workingDirectory: "/original", primary: "wrong" } },
+      services: { web: { working_dir: "/original", primary: "wrong" } },
     });
     expect(prepared.value.provenance.documents).toEqual([
       {

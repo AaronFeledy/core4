@@ -1,6 +1,6 @@
 import { PlanReplanRequiredError } from "@lando/sdk/errors";
 import { ServiceName, clonedServiceParent } from "@lando/sdk/schema";
-import { LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { RuntimeProviderRegistry, UserAppResolver } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { ScheduleJobAmbiguousError, ScheduleJobNotFoundError } from "./errors.ts";
@@ -10,8 +10,8 @@ const resolveScheduleJob = Effect.fn("Schedule.resolveJob")(function* (
   name: string,
   service: string | undefined,
 ) {
-  const landofiles = yield* LandofileService;
-  const landofile = yield* landofiles.discover;
+  const userApps = yield* UserAppResolver;
+  const landofile = yield* userApps.current;
   const jobs = jobsFromLandofile(landofile.document);
   const matches = findScheduleJob(jobs, name, service);
   const job = matches[0];

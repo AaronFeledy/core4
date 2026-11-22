@@ -20,7 +20,7 @@ describe("env file validation issues", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (!Result.isFailure(result)) return;
     const issue = result.failure.issues[0];
-    expect(issue?.path).toEqual(["env_file", 0]);
+    expect(issue?.path).toEqual(["serviceDefaults", "env_file", 0]);
     expect(issue?.message).toContain("Expected KEY=VALUE.");
     expect(issue?.message.startsWith("line ")).toBe(false);
   });

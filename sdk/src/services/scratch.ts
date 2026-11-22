@@ -60,6 +60,9 @@ export interface ScratchAcquireInput {
 export interface ScratchHandle {
   readonly id: string;
   readonly app: AppRef;
+  readonly credentialChanges?: NonNullable<
+    import("../schema/app-results.ts").StartAppResult["credentialChanges"]
+  >;
 }
 
 /**

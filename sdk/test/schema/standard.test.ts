@@ -151,11 +151,26 @@ describe("Standard Schema views", () => {
     }
   });
 
-  test("uses the closed editor input document for Standard JSON Schema", () => {
+  test("keeps YAML registration metadata out of the shared Standard input documents", () => {
     const input = LandofileStandardJSONSchema["~standard"].jsonSchema.input({ target: "draft-07" });
-    expect(input).toEqual(getEditorJsonSchema("LandofileShape"));
+    const { "x-lando-yaml-tags": tags, ...editorInput } = getEditorJsonSchema("LandofileShape");
+    expect(tags).toBeDefined();
+    expect(input).toEqual(editorInput);
     expect(input.additionalProperties).toBe(false);
+    expect(
+      LandofileStandardJSONSchema["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
+    ).not.toHaveProperty("x-lando-yaml-tags");
   });
+
+  test.each([LandofileStandardJSONSchema, GlobalConfigStandardJSONSchema])(
+    "serializes each Standard input draft deterministically",
+    (view) => {
+      for (const target of ["draft-07", "draft-2020-12"] as const) {
+        const { input } = view["~standard"].jsonSchema;
+        expect(JSON.stringify(input({ target }))).toBe(JSON.stringify(input({ target })));
+      }
+    },
+  );
 
   test("imports concrete schema and diagnostic modules rather than the barrel", async () => {
     // Given the subpath source, when collecting its module dependencies.

@@ -33,7 +33,7 @@ export const decodedPendingSites = (
                   ? "command"
                   : typeof field === "number" && (path.at(-2) === "configs" || path.at(-2) === "secrets")
                     ? "source"
-                    : typeof field === "number" && path.at(-2) === "dependsOn"
+                    : typeof field === "number" && path.at(-2) === "depends_on"
                       ? "service"
                       : undefined;
         if (key !== undefined) {
@@ -61,7 +61,7 @@ export const decodedPendingSites = (
           ? []
           : [{ ...site, path: [...path, ...destination], template: entry.address }];
       }
-      if (field === "dependsOn" && isPlainRecord(input) && Array.isArray(output)) {
+      if (field === "depends_on" && isPlainRecord(input) && Array.isArray(output)) {
         const index = Object.keys(input).indexOf(String(key));
         if (index < 0) return [];
         path.push(index);

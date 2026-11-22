@@ -38,5 +38,9 @@ export const HealthcheckPlan = Schema.Struct({
     description:
       "Grace period in seconds: probing starts immediately, but failures during this period do not consume retries.",
   }),
+  startIntervalSeconds: Schema.optionalKey(ProbeIntervalSeconds).annotate({
+    description:
+      "Seconds between startup probe attempts during the grace period, with a minimum delay of 1 ms.",
+  }),
 });
 export type HealthcheckPlan = typeof HealthcheckPlan.Type;

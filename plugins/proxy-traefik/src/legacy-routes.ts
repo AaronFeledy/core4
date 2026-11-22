@@ -1,3 +1,4 @@
+import { orDieWithRole } from "@lando/sdk/command-result";
 import { ProxySetupError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
@@ -46,7 +47,7 @@ export const migrateLegacyRoutes = Effect.fn("TraefikRouter.migrateLegacyRoutes"
     Effect.onError(() =>
       Effect.gen(function* () {
         for (const file of generated) yield* fileSystem.writeAtomic(file.path, file.content);
-      }).pipe(Effect.orDie),
+      }).pipe(orDieWithRole("rollback")),
     ),
   );
 });

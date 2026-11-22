@@ -1,5 +1,6 @@
 import { mkdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
+import { orDieWithRole } from "@lando/sdk/command-result";
 import { Clock, Effect } from "effect";
 import { archiveAcquisition } from "./acquire-archive.ts";
 import { gitAcquisition } from "./acquire-git.ts";
@@ -32,7 +33,7 @@ export const makeSourceStore = (input: SourceStoreOptions): SourceStore => {
       });
       resolvedRoot = canonicalRoot;
       const storage = makeStorage(input, canonicalRoot, { token: crypto.randomUUID(), createdAt });
-      yield* Effect.acquireRelease(storage.initialize, () => storage.release.pipe(Effect.orDie));
+      yield* Effect.acquireRelease(storage.initialize, () => storage.release.pipe(orDieWithRole("cleanup")));
       const archives = archiveAcquisition(input, storage);
       const registeredRoots = new Set<string>();
       return {

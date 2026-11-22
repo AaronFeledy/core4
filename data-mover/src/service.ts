@@ -54,7 +54,11 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { VerifiedStreamError, persistVerifiedStream } from "@lando/sdk/verified-stream";
+import {
+  VerifiedStreamError,
+  mapVerifiedStreamFailures,
+  persistVerifiedStream,
+} from "@lando/sdk/verified-stream";
 import { findRealpathAncestor, resolveStatePath } from "@lando/state-store/paths";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { withPhysicalVolumeLock, withPhysicalVolumeLocks } from "@lando/state-store/volume-lock";
@@ -225,7 +229,7 @@ const webStreamBytesCapped = async (input: CappedWebStreamBytesInput): Promise<U
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
   try {
-    for (;;) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) {
         const output = new Uint8Array(totalBytes);
@@ -881,11 +885,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         body,
         destinationPath: target.path,
         expectedSha256: spec.expectedDigest,
-      }).pipe(
-        mapFailures((error) =>
-          error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
-        ),
-      );
+      }).pipe(mapVerifiedStreamFailures((error) => mapVerifiedError(error, spec)));
       return { accelerated: false, sizeBytes: result.sizeBytes, digest: result.sha256 };
     }
     case "hostArchive": {
@@ -907,11 +907,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           path: target.path,
         }),
         destinationPath: target.path,
-      }).pipe(
-        mapFailures((error) =>
-          error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
-        ),
-      );
+      }).pipe(mapVerifiedStreamFailures((error) => mapVerifiedError(error, spec)));
       return {
         accelerated: false,
         sizeBytes: staged.verified.sizeBytes,

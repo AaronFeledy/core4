@@ -50,7 +50,7 @@ export const adminerServiceFeature: ServiceFeatureDefinition = {
     const port = selectPort(service);
     ctx.setArtifact({ kind: "ref", ref: service.image ?? IMAGE });
     ctx.setHealthcheck(tcpProbe(port, 20));
-    ctx.setWorkingDirectory(PortablePath.make(service.workingDirectory ?? DOCROOT));
+    ctx.setWorkingDirectory(PortablePath.make(service.working_dir ?? DOCROOT));
     if (service.command === undefined) {
       ctx.setCommand([
         "php",

@@ -62,7 +62,7 @@ test.each(["before-narration", "mid-run", "stalled-live-write"] as const)(
       }
       await stderrReader.cancel();
       proc.stdin.end();
-      for (;;) {
+      while (true) {
         const next = await reader.read();
         if (next.done) break;
         chunks.push(next.value);

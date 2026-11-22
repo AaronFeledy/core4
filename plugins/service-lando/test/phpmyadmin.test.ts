@@ -241,7 +241,7 @@ describe("phpmyadmin ServiceType", () => {
 
         expect(resolution.normalizedConfig.environment?.PMA_HOSTS).toBeUndefined();
         expect(resolution.normalizedConfig.environment?.PMA_HOST).toBeUndefined();
-        expect(resolution.normalizedConfig.dependsOn).toBeUndefined();
+        expect(resolution.normalizedConfig.depends_on).toBeUndefined();
       });
 
       test("preserves authored routes", async () => {

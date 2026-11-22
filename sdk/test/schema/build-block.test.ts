@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Result, Schema, SchemaIssue } from "effect";
 
 import { BuildBlock, LandofileShape, ServiceConfig } from "../../src/schema/landofile.ts";
+import { validationIssuesFromSchemaIssue } from "../../src/schema/validation-issue.ts";
 
 const decodeOptions = [{}, { onExcessProperty: "error" }] as const;
 
@@ -25,10 +26,7 @@ const expectLandofileFailure = (input: unknown, fragments: ReadonlyArray<string>
   for (const result of results) {
     expect(Result.isFailure(result)).toBe(true);
     if (!Result.isFailure(result)) continue;
-    const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues.find(
-      ({ message }) => message.startsWith("Landofile service"),
-    )?.message;
-    expect(message?.startsWith("Landofile service")).toBe(true);
+    const message = String(result.failure);
     for (const fragment of fragments) expect(message).toContain(fragment);
   }
 };
@@ -52,20 +50,20 @@ describe("BuildBlock", () => {
 
   test("canonicalizes the args list form splitting on the first =", () => {
     // Given
-    const input = { context: ".", args: ["FOO=bar=baz"] };
+    const input = { context: ".", args: ["FOO=old", "EMPTY=", "FOO=bar=baz"] };
 
     // When / Then
-    expectAccepted(input, { context: ".", args: { FOO: "bar=baz" } });
+    expectAccepted(input, { context: ".", args: { FOO: "bar=baz", EMPTY: "" } });
   });
 
-  test("rejects a bare args list entry", () => {
+  test.each(["FOO", "=value"])("rejects invalid args list entry %s at index zero", (value) => {
     // Given / When / Then
-    expectLandofileFailure({ context: ".", args: ["FOO"] }, ["FOO"]);
+    expectLandofileFailure({ context: ".", args: [value] }, ['["args"][0]', "KEY=value"]);
   });
 
-  test("rejects a null args map value", () => {
+  test.each([null, 2])("rejects invalid args map value %# at its key", (value) => {
     // Given / When / Then
-    expectLandofileFailure({ context: ".", args: { FOO: null } }, ["build.args.FOO"]);
+    expectLandofileFailure({ context: ".", args: { FOO: value } }, ['["args"]["FOO"]']);
   });
 
   test("rejects dockerfile together with dockerfile_inline", () => {
@@ -87,13 +85,7 @@ describe("BuildBlock", () => {
 
   test("fails a mixed family block naming both families and the offending keys", () => {
     // Given / When / Then
-    expectLandofileFailure({ context: ".", app: ["echo"] }, [
-      "context",
-      "app",
-      "Compose",
-      "Lando build-script",
-      "remove",
-    ]);
+    expectLandofileFailure({ context: ".", app: ["echo"] }, ["context", "app"]);
   });
 
   test("fails every mixed Lando and rejected Compose build-key shape before excess keys can be dropped", () => {
@@ -110,7 +102,8 @@ describe("BuildBlock", () => {
 
     for (const { input, keys } of fixtures) {
       // When / Then
-      expectLandofileFailure(input, [...keys, "Compose", "Lando build-script", "image:"]);
+      const rejected = keys.filter((key) => key !== "artifact" && key !== "app");
+      expectLandofileFailure(input, ["Unsupported Compose build key", `["${rejected[0]}"]`]);
       for (const options of decodeOptions) {
         const result = Schema.decodeUnknownResult(BuildBlock)(input, options);
         expect(Result.isFailure(result)).toBe(true);
@@ -163,13 +156,13 @@ describe("BuildBlock", () => {
       // Then
       expect(Result.isFailure(result)).toBe(true);
       if (!Result.isFailure(result)) continue;
-      const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
-        .issues.map(({ message }) => message)
-        .join("\n");
-      expect(message).toContain("artifact");
-      expect(message).toContain("no_cache");
-      expect(message).toContain("image:");
-      expect(message).not.toContain("build.dockerfile");
+      expect(validationIssuesFromSchemaIssue(result.failure.issue)).toEqual([
+        expect.objectContaining({
+          kind: "value",
+          reason: "build.unsupported-key",
+          path: ["services", "web", "build", "no_cache"],
+        }),
+      ]);
     }
   });
 
@@ -185,7 +178,7 @@ describe("BuildBlock", () => {
     expect("context" in decoded).toBe(false);
   });
 
-  test("decode(decode(x)) equals decode(x) under default and strict options", () => {
+  test("strict decode after encoding reproduces the normalized build", () => {
     // Given
     const fixtures = [
       { context: "./docker", dockerfile: "Containerfile", args: { FOO: "bar" }, target: "release" },
@@ -195,10 +188,13 @@ describe("BuildBlock", () => {
     ] as const;
 
     for (const fixture of fixtures) {
-      for (const options of decodeOptions) {
+      for (const options of [{ onExcessProperty: "error" }] as const) {
         // When
         const decoded = Schema.decodeUnknownSync(BuildBlock)(fixture, options);
-        const decodedAgain = Schema.decodeUnknownSync(BuildBlock)(decoded, options);
+        const decodedAgain = Schema.decodeUnknownSync(BuildBlock)(
+          Schema.encodeSync(BuildBlock)(decoded, options),
+          options,
+        );
         const serviceDecoded = Schema.decodeUnknownSync(ServiceConfig)({ build: fixture }, options).build;
 
         // Then

@@ -35,7 +35,7 @@ const expected = {
           "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=16&charset=utf8",
         REDIS_URL: "redis://cache:6379",
       },
-      dependsOn: ["database", "cache"],
+      depends_on: ["database", "cache"],
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
     },
     database: { type: "{{ recipe.database }}" },
@@ -45,7 +45,7 @@ const expected = {
     console: {
       service: "appserver",
       description: "Run the Symfony console inside the appserver service.",
-      cmds: ["php bin/console"],
+      cmd: [":php-local", "bin/console"],
       wrapper: true,
     },
     composer: {

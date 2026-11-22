@@ -61,12 +61,12 @@ Lando derives the port variables from the internal HTTP endpoint, and an explici
 
 Gunicorn reads `PORT` and binds `0.0.0.0`; Uvicorn CLI reads `UVICORN_*`, and `flask run` reads `FLASK_RUN_*`.
 
-Port variables are not independent overrides. If an authored value is malformed or differs from the planned port, planning fails at `services.app.environment.<VAR>`. This includes inherited `appEnv` and env-file values. Set `port:` instead. Host variables are ordinary defaults: your authored host value wins, but a loopback address makes the server unreachable through the proxy.
+Port variables are not independent overrides. If an authored value is malformed or differs from the planned port, planning fails at `services.app.environment.<VAR>`. This includes inherited `serviceDefaults.environment` and env-file values. Set `port:` instead. Host variables are ordinary defaults: your authored host value wins, but a loopback address makes the server unreachable through the proxy.
 
 FastAPI CLI does not read `UVICORN_*`. `fastapi run main.py` binds all interfaces and reads `PORT`; `fastapi dev main.py --host 0.0.0.0` still needs its host argument. Django reads neither the port nor the host from these variables, and Python's built-in `http.server` also needs its port argument. In an authored launcher, use the [port expression](../landofile/expressions.mdx#your-services-own-port) for the value, as in the `http.server` example above.
 
 Python does not interpret `webroot:`. An explicit root fails planning unless
-a composed plugin feature declares and handles it. Set `workingDirectory:`
+a composed plugin feature declares and handles it. Set `working_dir:`
 to move the process, and configure static-file paths in your application or a
 separate webserver.
 

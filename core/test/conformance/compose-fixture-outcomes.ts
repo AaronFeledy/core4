@@ -29,7 +29,7 @@ export const materializeFixtureEnvFiles = async (
 ): Promise<void> => {
   const canonicalRoot = await realpath(appRoot);
   for (const [serviceName, service] of Object.entries(landofile.services ?? {})) {
-    for (const [index, envFile] of (service.envFile ?? []).entries()) {
+    for (const [index, envFile] of (service.env_file ?? []).entries()) {
       const destination = resolve(canonicalRoot, envFile);
       if (!isContainedPath(canonicalRoot, destination)) {
         throw new ComposeFixtureOutcomeError(`Fixture env file escapes app root: ${envFile}`);

@@ -678,7 +678,7 @@ const assembleRuntimeProvider = (
   if (family === "darwin" || family === "win32") {
     // Resolve eagerly so an invalid LANDO_PODMAN_MACHINE surfaces as a typed
     // ProviderUnavailableError instead of throwing synchronously inside the
-    // Effect.mapError below (which would become a Cause.Die defect).
+    // failure mapping below (which would become a Cause.Die defect).
     try {
       desktopMachineName = resolvePodmanDesktopMachine(effectiveEnv);
     } catch (cause) {
@@ -923,7 +923,10 @@ const assembleRuntimeProvider = (
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(
-          (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
+          (target.plan === undefined
+            ? resolvePlan(target.app)
+            : Effect.succeed<AppPlan | undefined>(target.plan)
+          ).pipe(
             Effect.map((plan) => {
               if (plan !== undefined)
                 return logs(plan, target, logOptions, {

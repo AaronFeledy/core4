@@ -21,7 +21,7 @@ If something else owns 80 or 443, Lando falls back to the next free port, starti
 
 ## Scaffold Drupal and project-local Drush
 
-Init only writes the Landofile. Pull `drupal/recommended-project` and project-local Drush into the app root:
+Init only writes the Landofile. Pull `drupal/recommended-project`, project-local Drush, and the PHP lint tools into the app root:
 
 ```sh
 lando drupal-scaffold
@@ -30,7 +30,7 @@ lando composer --version
 lando mariadb -e 'SELECT 1 AS ok;'
 ```
 
-Scaffold runs `composer create-project 'drupal/recommended-project'` into a staging dir, requires `drush/drush`, then moves the project into the app root without overwriting anything already there, and checks for `composer.json`, `vendor/bin/drush`, and `web/`. If a run is interrupted, running it again resumes. On a finished tree it fails on purpose.
+Scaffold runs `composer create-project 'drupal/recommended-project'` into a staging dir, requires `drush/drush`, and adds Drupal Coder and PHPStan with its Drupal extension as dev dependencies. It writes a `phpcs.xml.dist` and a `phpstan.neon.dist` for your custom code, then moves the project into the app root without overwriting anything already there, and checks for `composer.json`, the tools in `vendor/bin`, and `web/`. If a run is interrupted, running it again resumes. On a finished tree it fails on purpose.
 
 ## Install Drupal with Drush
 
@@ -62,7 +62,7 @@ lando open --print
 | --- | --- |
 | `appserver` | `php:8.4`, `framework: drupal`, webroot `web`, Composer `2`, Apache on port `80`, depends on `database` |
 | `database` | `type: mariadb:11.4` |
-| Tooling | `lando drush`, `lando composer`, and `lando drupal-scaffold` on `appserver`, plus `lando mariadb` from the database service |
+| Tooling | `lando drush`, `lando composer`, `lando phpcs`, `lando phpcbf`, `lando phpstan`, and `lando drupal-scaffold` on `appserver`, plus `lando mariadb` from the database service |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, `--answer=database=postgres:16`, or `--answer=drupal=10` when you want those instead. `--answer=php=8.6` uses the PHP 8.6 release-candidate image; Xdebug isn't available there yet.
 
@@ -123,6 +123,27 @@ lando drush status --format=json
 ```
 
 Drush gets `status --format=json` and prints its own JSON. Lando's flags go before the task name: `lando --format=json drush status` returns Lando's result envelope instead.
+
+## Lint PHP
+
+`lando drupal-scaffold` installs Drupal Coder and PHPStan, so `lando phpcs`, `lando phpcbf`, and `lando phpstan` work as soon as the scaffold finishes. Write a custom module under `web/modules/custom`, then check and fix it:
+
+```sh
+lando phpcs
+lando phpcbf
+lando phpstan
+```
+
+The scaffold writes two config files to the app root, and both tools read them on their own, so `vendor/bin/phpcs` in CI and your editor's PHP_CodeSniffer integration get the same results:
+
+- `phpcs.xml.dist` checks `web/modules`, `web/themes`, and `web/profiles` against Drupal and DrupalPractice. It includes Drupal's file types, such as `.module`, `.theme`, and `.info.yml`, and skips `contrib`, `node_modules`, and `vendor`.
+- `phpstan.neon.dist` analyses the same directories at level 1, with the Drupal extension loaded.
+
+Edit either file to change the rules. Until you have custom code, both tools report that they found no files to check. `lando phpcbf` fixes what it can. All three tasks return the tool's own exit status, so you can script them.
+
+You can run them from any directory in the app, and paths you pass stay relative to where you are, for example `lando phpcs src` from inside a module. PHP_CodeSniffer finds `phpcs.xml.dist` in a parent directory itself. PHPStan only looks in the current directory, so the task passes it the nearest `phpstan.neon`, `phpstan.neon.dist`, or `phpstan.dist.neon` when you run `lando phpstan` or `lando phpstan analyse` without your own `--configuration`.
+
+On a project without these files, such as an existing site you set up with `lando init --recipe drupal`, the tasks still lint custom code the Drupal way. With no ruleset, `lando phpcs` and `lando phpcbf` check `web/modules/custom`, `web/themes/custom`, and `web/profiles/custom` against Drupal and DrupalPractice with the same file types. With no PHPStan config, `lando phpstan` analyses those directories at PHPStan's default level 0. If the tools aren't installed there, the task prints the `lando composer require` command that adds them and exits without running anything.
 
 ## Run Drupal cron on a schedule
 
@@ -244,6 +265,9 @@ lando exec appserver -- php -v
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drush\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpcs\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpcbf\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpstan\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-scaffold\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
     </Step>
     <Step name="start">
@@ -271,6 +295,45 @@ lando exec appserver -- php -v
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"nginx\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres:16\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"backend\":\\s*\"appserver\"" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="lint-php" layer="e2e" timeout={1200000} render={false} reason="Lint a custom module with the tools and configs the scaffold installs">
+    <Step name="init">
+      <UseFixture name="drupal-lint" />
+      <Run command="lando init . --recipe drupal --name=drupal-lint --yes" />
+    </Step>
+    <Step name="scaffold">
+      <Run command="lando start" />
+      <Run command="lando drupal-scaffold" />
+      <Verify command="lando exec appserver -- test -f phpcs.xml.dist" />
+      <Verify command="lando exec appserver -- test -f phpstan.neon.dist" />
+    </Step>
+    <Hidden reason="Move the fixture module into the scaffolded site, as a reader adds custom code">
+      <Step name="add-module">
+        <Run command="lando exec appserver -- mkdir -p web/modules/custom" />
+        <Run command="lando exec appserver -- mv hello web/modules/custom/hello" />
+      </Step>
+    </Hidden>
+    <Step name="lint">
+      <Verify command="lando phpcs" expectExit={1} expect={{ stdout: { regex: "hello\\.module[\\s\\S]*expected 2 spaces, found 4" } }} />
+      <Run command="lando phpcbf" />
+      <Verify command="lando phpcs" />
+      <Verify command="lando phpstan" expect={{ stdout: { regex: "No errors" } }} />
+    </Step>
+    <Hidden reason="Without project configs the tasks fall back to Drupal defaults on custom code">
+      <Step name="lint-without-configs">
+        <Run command="lando exec appserver -- mv phpcs.xml.dist phpcs.xml.off" />
+        <Run command="lando exec appserver -- mv phpstan.neon.dist phpstan.neon.off" />
+        <Verify command="lando phpcs" />
+        <Verify command="lando phpstan" expect={{ stdout: { regex: "No errors" } }} />
+        <Run command="lando exec appserver -- mv phpcs.xml.off phpcs.xml.dist" />
+        <Run command="lando exec appserver -- mv phpstan.neon.off phpstan.neon.dist" />
+      </Step>
+    </Hidden>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 </Guide>

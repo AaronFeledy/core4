@@ -12,10 +12,10 @@ import {
 } from "@lando/sdk/schema";
 import {
   type ExecTarget,
-  LandofileService,
   type CommandSpec as ProviderCommandSpec,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  UserAppResolver,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
@@ -132,7 +132,13 @@ const makeRuntime = (
     resolveTeardownEvidence: () => Effect.die("unused"),
   });
   const layer = Layer.mergeAll(
-    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+    Layer.succeed(
+      UserAppResolver,
+      UserAppResolver.of({
+        current: Effect.succeed(landofile),
+        load: () => Effect.succeed(landofile),
+      }),
+    ),
     Layer.succeed(RuntimeProviderRegistry, registry),
   );
   return {

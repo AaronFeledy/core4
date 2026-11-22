@@ -1,4 +1,4 @@
-import { annotateFailureRole, failureDefectCause, mapFailures } from "@lando/sdk/command-result";
+import { mapFailures, orDieWithRole } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
 import type { AppPlan, ContainerHelperTarget } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ExecTarget, ProviderError } from "@lando/sdk/services";
@@ -93,6 +93,8 @@ export const supervisedExecStream = (
       const container = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Container))(
         response.body,
       ).pipe(mapFailures((cause) => failure("container-inspect", cause)));
+      if (target.expectedContainerId !== undefined && container.Id !== target.expectedContainerId)
+        return yield* Effect.fail(failure("container-identity-changed"));
       const run = runObservationFromInspectState(container.State).status;
       if (run === "created" || run === "exited" || run === "dead") return yield* Effect.fail(notRunning(run));
       const helper = yield* resolveContainerHelper(helperTarget).pipe(
@@ -192,7 +194,7 @@ export const supervisedExecStream = (
           yield* Queue.shutdown(input);
           yield* Queue.shutdown(output);
           if (Exit.isFailure(result))
-            return yield* Effect.failCause(failureDefectCause(annotateFailureRole(result.cause, "cleanup")));
+            return yield* Effect.failCause(result.cause).pipe(orDieWithRole("cleanup"));
         }),
       );
       owned.producer = yield* Effect.gen(function* () {

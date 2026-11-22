@@ -172,7 +172,7 @@ test("malformed JSON waits for the stdout lane without interleaving a parse-erro
     .map((line) => JSON.parse(line));
   expect(messages).toEqual([
     JSON.parse(observed.frame),
-    { jsonrpc: "2.0", id: null, error: { _tag: "ParseError", code: -32700, message: "Parse error" } },
+    { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } },
   ]);
   expect(expectMcpTransportFailure(observed.exit)?.message).toBe(
     "MCP stdio received a malformed JSON frame.",

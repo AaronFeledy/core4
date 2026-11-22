@@ -141,7 +141,8 @@ const projectCandidate = Effect.fnUntraced(function* (candidate: GraphCommandCan
 /**
  * Project a contribution graph's selected plugin commands for MCP. Each id keeps exactly the
  * owner the graph selected: a load failure stays that owner's failure instead of exposing a
- * shadowed owner, and never-allowed ids are refused outright. `sessionIds` (built-ins) win.
+ * shadowed owner, and never-allowed ids are refused outright, reported only when the owner
+ * self-allows one. `sessionIds` (built-ins) win.
  */
 export const projectMcpPluginCommands = Effect.fn("Mcp.projectPluginCommands")(function* (
   graph: PluginContributionGraphShape,
@@ -156,16 +157,18 @@ export const projectMcpPluginCommands = Effect.fn("Mcp.projectPluginCommands")(f
     if (sessionIds.has(candidate.id) || commands.has(candidate.id)) continue;
     if (candidate.descriptor.hidden === true) continue;
     if (isMcpNeverAllowed(candidate.id)) {
-      diagnostics.push(
-        mcpPluginDiagnostic(
-          new McpAllowlistConflictError({
-            message: `Plugin command ${candidate.id} (${candidate.pluginName}) can never be exposed through MCP.`,
-            commandId: candidate.id,
-            remediation: `Run \`lando ${candidate.id}\` interactively from a terminal; MCP and --allow cannot expose it.`,
-          }),
-          redactor,
-        ),
-      );
+      if (candidate.descriptor.mcpAllowed === true) {
+        diagnostics.push(
+          mcpPluginDiagnostic(
+            new McpAllowlistConflictError({
+              message: `Plugin command ${candidate.id} (${candidate.pluginName}) can never be exposed through MCP.`,
+              commandId: candidate.id,
+              remediation: `Run \`lando ${candidate.id}\` interactively from a terminal; MCP and --allow cannot expose it.`,
+            }),
+            redactor,
+          ),
+        );
+      }
       continue;
     }
     const projected = yield* projectCandidate(candidate, redactor);

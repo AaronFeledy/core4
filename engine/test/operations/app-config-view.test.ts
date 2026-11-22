@@ -21,7 +21,7 @@ for (const options of [{ subcommand: "get", key: "services.web" }, { path: "serv
       services: {
         web: {
           type: "node:lts",
-          dependsOn: { database: { condition: "service_healthy", restart: true } },
+          depends_on: { database: { condition: "service_healthy", restart: true } },
           environment: { PASSWORD: "selection-canary" },
         },
         database: { type: "postgres" },
@@ -39,7 +39,7 @@ for (const options of [{ subcommand: "get", key: "services.web" }, { path: "serv
       sources: [],
       redactionTokens: ["selection-canary"],
       value: {
-        dependsOn: [{ service: "database", condition: "service_healthy", restart: true }],
+        depends_on: { database: { condition: "service_healthy", restart: true } },
         type: "node:lts",
       },
     });

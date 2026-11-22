@@ -296,7 +296,7 @@ live(
         [web]: {
           ...busybox,
           command: ["sleep", "600"],
-          dependsOn: [{ service: db, condition: "service_healthy", required: true }],
+          depends_on: [{ service: db, condition: "service_healthy", required: true }],
         },
       },
       Effect.fnUntraced(function* (app, provider, plan) {
@@ -326,7 +326,7 @@ live(
         [web]: {
           ...busybox,
           command: ["sleep", "600"],
-          dependsOn: [
+          depends_on: [
             {
               service: ServiceName.make("init"),
               condition: "service_completed_successfully",
@@ -380,7 +380,7 @@ live(
         [web]: {
           ...busybox,
           command: ["sleep", "600"],
-          dependsOn: [{ service: db, condition: "service_healthy", required: true }],
+          depends_on: [{ service: db, condition: "service_healthy", required: true }],
         },
       },
       Effect.fnUntraced(function* (app, _provider, _plan) {
@@ -454,7 +454,7 @@ test.skipIf(socket === undefined && upstreamSocket === undefined)(
           [web]: {
             ...busybox,
             command: ["sleep", "600"],
-            dependsOn: [{ service: db, condition: "service_healthy", required: true }],
+            depends_on: [{ service: db, condition: "service_healthy", required: true }],
           },
         },
         Effect.fnUntraced(function* (app, provider, plan) {

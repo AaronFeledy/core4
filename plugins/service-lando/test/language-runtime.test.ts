@@ -254,7 +254,7 @@ for (const fixture of fixtures) {
       // When
       const plan = await composeServicePlan({
         serviceType,
-        service: { ...input.service, command, entrypoint, workingDirectory: PortablePath.make("/workspace") },
+        service: { ...input.service, command, entrypoint, working_dir: PortablePath.make("/workspace") },
         appRoot: input.appRoot,
         metadata: input.metadata,
       });

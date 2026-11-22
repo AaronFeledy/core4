@@ -147,7 +147,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pick a 
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:22\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"SVELTEKIT_ADAPTER\":\\s*\"auto\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "dependsOn" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "depends_on" } }} />
     </Step>
   </Scenario>
 </Guide>

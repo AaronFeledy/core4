@@ -49,7 +49,7 @@ const SqliteAppRelativePath = Schema.String.check(
  * File-backed SQLite database authored on an app service as `services.<name>.sqlite`.
  */
 export const SqliteTargetConfig = Schema.Struct({
-  path: SqliteAppRelativePath.annotate({
+  path: SqliteAppRelativePath.annotateKey({
     description:
       "Path to the SQLite database file, relative to this service's app mount. Absolute paths and .. segments are rejected.",
   }),

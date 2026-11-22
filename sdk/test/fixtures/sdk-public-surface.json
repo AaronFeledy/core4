@@ -171,6 +171,9 @@
     "ContainerHelperAssets": [
       "resolve:(target:ContainerHelperTarget) => Effect.Effect<ContainerHelperArtifact,ContainerHelperUnavailableError>"
     ],
+    "DatabaseCredentialConvergence": [
+      "reconcile:(request:DatabaseCredentialConvergenceRequest) => Effect.Effect<DatabaseCredentialConvergenceResult,DatabaseCredentialConvergenceError>"
+    ],
     "DataMover": [
       "findOrphanedSnapshots:Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>,DataMoverError>",
       "listSnapshots:(filter:SnapshotFilter) => Effect.Effect<ReadonlyArray<SnapshotInfo>,DataMoverError>",
@@ -533,6 +536,10 @@
       "detectCollisions:(appIds:ReadonlyArray<AppId>) => Effect.Effect<ReadonlyArray<PortCollision>,ScannerError|PortCollisionError>",
       "id:string",
       "scan:(appId:AppId,options?:{ plan?:AppPlan;urls?:ReadonlyArray<{ service:ServiceName;url:string;endpoint?:EndpointRef;}>;/** Observe completed attempts without affecting probe verdicts;detail is redacted and expected is final. */ onAttempt?:(attempt:ScanAttempt) => Effect.Effect<void>;}) => Effect.Effect<ScanResult,ScannerError>"
+    ],
+    "UserAppResolver": [
+      "current:Effect.Effect<LoadScopedLandofile,UserLandofileError>",
+      "load:(root:AbsolutePath) => Effect.Effect<LoadScopedLandofile,UserLandofileError>"
     ]
   },
   "subpathExports": {
@@ -560,6 +567,7 @@
       "prepareCertificatePair"
     ],
     "./command-result": [
+      "ConvertedDefectAnnotation",
       "FailureRoleAnnotation",
       "annotateFailureRole",
       "boundedDiagnosticSummary",
@@ -583,6 +591,7 @@
       "mapStreamFailures",
       "mergeFailure",
       "normalizeDefect",
+      "orDieWithRole",
       "primaryFailureReason",
       "projectEncodedResult",
       "projectToolingDiagnostic",
@@ -891,6 +900,10 @@
       "SnapshotOwnershipError",
       "SqlCommandFailedError",
       "SqlConfirmRequiredError",
+      "SqlCredentialAdminAuthError",
+      "SqlCredentialApplyError",
+      "SqlCredentialMember",
+      "SqlCredentialTargetError",
       "SqlDatabasePathError",
       "SqlDumpCompressionError",
       "SqlDumpIncompleteError",
@@ -1106,6 +1119,7 @@
     "./fuzzy": ["bestFuzzy", "rankFuzzy"],
     "./landofile": [
       "ComposeDispositionMatrixError",
+      "EnvironmentAssignment",
       "GENERIC_FLOW_MAPPING_REMEDIATION",
       "LANDOFILE_LAYER_ORDER",
       "LANDOFILE_LEADING_COMMENT_BLOCKS",
@@ -1294,6 +1308,7 @@
       "AppRemoteEntry",
       "AppRemoteMutationResult",
       "AppRouteOwner",
+      "AppliedAppPlan",
       "AppliedStateInventory",
       "ArchiveFormat",
       "ArtifactBuildSpec",
@@ -1354,7 +1369,9 @@
       "CommandTraceSpan",
       "CommandWarning",
       "CompilationContext",
+      "CompiledEventStep",
       "CompiledLandofile",
+      "CompiledToolingTask",
       "ComponentId",
       "ComposeBooleanOrStringField",
       "ComposeByteSizeField",
@@ -1820,7 +1837,6 @@
       "RouterPortPair",
       "RouterServiceContribution",
       "RunProps",
-      "SERVICE_CONFIG_ALIASES",
       "SNAPSHOT_INFO_VERSION",
       "SSH_AGENT_SOCKET_NAME",
       "STOCK_TAG_REFRESH_AFTER_MS",
@@ -2118,6 +2134,7 @@
       "validationIssuesFromCause",
       "validationIssuesFromSchemaIssue",
       "volumesRemovedAny",
+      "wholeTemplatePattern",
       "withDefaultKey",
       "withSchemaDeprecations"
     ],
@@ -2201,6 +2218,8 @@
       "ConfigTranslatorRegistry",
       "ContainerHelperAssets",
       "DataMover",
+      "DatabaseCredentialConvergence",
+      "DatabaseCredentialConvergenceResult",
       "Dataset",
       "DeprecationService",
       "Downloader",
@@ -2251,6 +2270,7 @@
       "TunnelService",
       "UpdateService",
       "UrlScanner",
+      "UserAppResolver",
       "markDeprecated",
       "physicalVolumeLockKey"
     ],
@@ -2375,7 +2395,12 @@
       "toolVersionMarkerPath"
     ],
     "./transitions": ["defineTransitions", "illegalTransitionMessage", "planTransition"],
-    "./verified-stream": ["VerifiedStreamError", "collectVerifiedStream", "persistVerifiedStream"],
+    "./verified-stream": [
+      "VerifiedStreamError",
+      "collectVerifiedStream",
+      "mapVerifiedStreamFailures",
+      "persistVerifiedStream"
+    ],
     "./yaml": [
       "YamlEmitError",
       "emitYamlDocument",

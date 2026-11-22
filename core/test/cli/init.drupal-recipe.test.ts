@@ -75,7 +75,7 @@ describe("lando init — Drupal recipe", () => {
       const landofile = await Bun.file(join(appDir, ".lando.yml")).text();
       expect(landofile).toContain("webroot: web");
       expect(landofile).toContain("allowOverride: true");
-      expect(landofile).toContain("vendor/bin/drush");
+      expect(landofile).toContain("- :drupal-local\n      - drush");
       expect(landofile).toContain("drupal-scaffold:");
       expect(landofile).toContain("arguments: false");
       const previousCwd = process.cwd();

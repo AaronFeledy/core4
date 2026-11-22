@@ -1,5 +1,29 @@
 [
   {
+    "surface": "schema:AdminerServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Publish the actual environment map and list grammar. Null and bare entries were already rejected; empty names are now rejected in both forms (#2199)."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.build.anyOf",
+    "justification": "Publish the derived closed build families, rejecting unknown keys and the old authored camelCase Dockerfile alias (#2067)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.build.anyOf",
+    "justification": "Publish the derived closed build families, rejecting unknown keys and the old authored camelCase Dockerfile alias (#2067)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.build.oneOf",
+    "justification": "Derive the build input union from the codec and remove the old authored camelCase Dockerfile alias (#2067)."
+  },
+  {
     "surface": "command:app:info",
     "changeKind": "unsupported-construct",
     "path": "$.services.items.listenerAuthority.anyOf",
@@ -28,7 +52,10 @@
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
     "justification": "Applied state v9 decodes v8 plans unchanged; only the application branch gains optional keepAlive intent.",
-    "persistedState": { "store": "applied-state", "version": 9 }
+    "persistedState": {
+      "store": "applied-state",
+      "version": 9
+    }
   },
   {
     "surface": "schema:CheckResult",
@@ -106,13 +133,13 @@
     "surface": "schema:AdminerServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:DotnetServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:LayerMergeRule",
@@ -124,73 +151,73 @@
     "surface": "schema:LocalStackServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:MailpitServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:MinIOServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:MssqlServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:MysqlServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:PhpMyAdminServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:PhpServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:RabbitMQServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:RouteObjectInput",
     "changeKind": "unsupported-construct",
     "path": "$.filters.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:ServiceConfigInput",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:TomcatServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "schema:VarnishServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.anyOf",
-    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type\u2192kind migration on read (#2109, #2456)."
+    "justification": "Unreleased Landofile filter objects require kind; plan filters also use kind after applied-state v8 type→kind migration on read (#2109, #2456)."
   },
   {
     "surface": "command:app:destroy",
@@ -5662,7 +5689,7 @@
     "surface": "schema:EndpointPlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Unreleased endpoint vocabulary (#2456, #2109): plan endpoint variants use kind (internal|published) instead of _tag. applied-state migrates data.services[service].endpoints[i]._tag \u2192 kind (and data[appId].\u2026 for the Podman map) on read only: one in-memory pass, no write-back, lock, or provider contact; ordinary persist writes envelope version 8. Historical v7 bytes remain readable; current v8 decode never accepts old discriminators. Optional primary/appProtocol/scan fields stay optional.",
+    "justification": "Unreleased endpoint vocabulary (#2456, #2109): plan endpoint variants use kind (internal|published) instead of _tag. applied-state migrates data.services[service].endpoints[i]._tag → kind (and data[appId].… for the Podman map) on read only: one in-memory pass, no write-back, lock, or provider contact; ordinary persist writes envelope version 8. Historical v7 bytes remain readable; current v8 decode never accepts old discriminators. Optional primary/appProtocol/scan fields stay optional.",
     "persistedState": {
       "store": "applied-state",
       "version": 8
@@ -5672,7 +5699,7 @@
     "surface": "schema:InternalEndpoint",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Unreleased InternalEndpoint uses kind (internal) instead of _tag, with optional primary:true, opaque appProtocol, and sparse plan-only scan metadata (#2456, #2109). No field becomes newly required beyond the discriminator rename. applied-state version 8 migrates data.services[service].endpoints[i]._tag\u2192kind (and data[appId].\u2026) on read only; historical applied endpoints remain decodable. Authoring and readiness stay separate."
+    "justification": "Unreleased InternalEndpoint uses kind (internal) instead of _tag, with optional primary:true, opaque appProtocol, and sparse plan-only scan metadata (#2456, #2109). No field becomes newly required beyond the discriminator rename. applied-state version 8 migrates data.services[service].endpoints[i]._tag→kind (and data[appId].…) on read only; historical applied endpoints remain decodable. Authoring and readiness stay separate."
   },
   {
     "surface": "schema:LocalStackServiceConfig",
@@ -6864,7 +6891,7 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.filters.items.anyOf",
-    "justification": "AppPlan nested route filters use kind instead of type (#2109, #2456). applied-state version 8 migrates data.routes[r].filters[f].type\u2192kind (and data[appId].\u2026) on read only alongside endpoint _tag\u2192kind; no write-back. Filter semantics and optional absence are preserved.",
+    "justification": "AppPlan nested route filters use kind instead of type (#2109, #2456). applied-state version 8 migrates data.routes[r].filters[f].type→kind (and data[appId].…) on read only alongside endpoint _tag→kind; no write-back. Filter semantics and optional absence are preserved.",
     "persistedState": {
       "store": "applied-state",
       "version": 8
@@ -6874,7 +6901,7 @@
     "surface": "schema:PublishedEndpoint",
     "changeKind": "property-removed",
     "path": "$._tag",
-    "justification": "Unreleased PublishedEndpoint drops TaggedStruct _tag for plain kind: \"published\" (#2456). applied-state rewrites nested endpoint discriminators at data.services[service].endpoints[i] (_tag \u2192 kind) and the map-prefixed form on read only; no write-back. Historical applied endpoints remain decodable after migration to envelope v8.",
+    "justification": "Unreleased PublishedEndpoint drops TaggedStruct _tag for plain kind: \"published\" (#2456). applied-state rewrites nested endpoint discriminators at data.services[service].endpoints[i] (_tag → kind) and the map-prefixed form on read only; no write-back. Historical applied endpoints remain decodable after migration to envelope v8.",
     "persistedState": {
       "store": "applied-state",
       "version": 8
@@ -6884,7 +6911,7 @@
     "surface": "schema:PublishedEndpoint",
     "changeKind": "property-added",
     "path": "$.kind",
-    "justification": "Unreleased PublishedEndpoint requires kind: \"published\" in place of _tag (#2456). Same applied-state read-time migration of endpoint leaves (data.services[\u2026].endpoints[i] and data[appId].\u2026) to version 8; no rewrite on disk until ordinary persist. Publication fields and Unix variants are otherwise unchanged.",
+    "justification": "Unreleased PublishedEndpoint requires kind: \"published\" in place of _tag (#2456). Same applied-state read-time migration of endpoint leaves (data.services[…].endpoints[i] and data[appId].…) to version 8; no rewrite on disk until ordinary persist. Publication fields and Unix variants are otherwise unchanged.",
     "persistedState": {
       "store": "applied-state",
       "version": 8
@@ -6894,7 +6921,7 @@
     "surface": "schema:RouteFilter",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "RouteFilter anyOf is kind-discriminated (was type); RouteFilterType renamed to RouteFilterKind (#2109, #2456). applied-state version 8 migrates filter type\u2192kind at data.routes[r].filters[f] (and data[appId].\u2026) on read only with endpoint _tag\u2192kind; historical applied filters remain readable.",
+    "justification": "RouteFilter anyOf is kind-discriminated (was type); RouteFilterType renamed to RouteFilterKind (#2109, #2456). applied-state version 8 migrates filter type→kind at data.routes[r].filters[f] (and data[appId].…) on read only with endpoint _tag→kind; historical applied filters remain readable.",
     "persistedState": {
       "store": "applied-state",
       "version": 8
@@ -6904,7 +6931,7 @@
     "surface": "schema:RoutePlan",
     "changeKind": "unsupported-construct",
     "path": "$.filters.items.anyOf",
-    "justification": "RoutePlan.filters items use kind instead of type (#2109, #2456). applied-state version 8 migrates data.routes[r].filters[f].type\u2192kind (map: data[appId].\u2026) on read only; endpoint leaves migrate _tag\u2192kind in the same pass. No write-back until ordinary persist.",
+    "justification": "RoutePlan.filters items use kind instead of type (#2109, #2456). applied-state version 8 migrates data.routes[r].filters[f].type→kind (map: data[appId].…) on read only; endpoint leaves migrate _tag→kind in the same pass. No write-back until ordinary persist.",
     "persistedState": {
       "store": "applied-state",
       "version": 8
@@ -6914,85 +6941,85 @@
     "surface": "schema:CurrentExecutableAppPlan",
     "changeKind": "unsupported-construct",
     "path": "$.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:DatasetContext",
     "changeKind": "unsupported-construct",
     "path": "$.plan.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:PostGlobalRebuildEvent",
     "changeKind": "unsupported-construct",
     "path": "$.plan.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:PostGlobalStartEvent",
     "changeKind": "unsupported-construct",
     "path": "$.plan.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:PostRestartEvent",
     "changeKind": "unsupported-construct",
     "path": "$.plan.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:PostScratchDestroyEvent",
     "changeKind": "unsupported-construct",
     "path": "$.plan.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:PostStartEvent",
     "changeKind": "unsupported-construct",
     "path": "$.plan.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:PreGlobalRebuildEvent",
     "changeKind": "unsupported-construct",
     "path": "$.plan.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:PreGlobalStartEvent",
     "changeKind": "unsupported-construct",
     "path": "$.plan.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:PreRestartEvent",
     "changeKind": "unsupported-construct",
     "path": "$.plan.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:PreScratchDestroyEvent",
     "changeKind": "unsupported-construct",
     "path": "$.plan.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:PreStartEvent",
     "changeKind": "unsupported-construct",
     "path": "$.plan.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:TunnelStartRequest",
     "changeKind": "unsupported-construct",
     "path": "$.plan.routes.items.filters.items.anyOf",
-    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type\u2192kind and data.services[service].endpoints[i]._tag\u2192kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
+    "justification": "Nested AppPlan route filters require kind (#2109, #2456). When the enclosing plan is loaded from applied-state, version 8 migrates data.routes[r].filters[f].type→kind and data.services[service].endpoints[i]._tag→kind on read only (map-prefixed for multi-app layouts). This surface is derived/event/cache observation of AppPlan, not a separate store; historical applied bytes stay readable after migration."
   },
   {
     "surface": "schema:ProxyApplyResult",
     "changeKind": "unsupported-construct",
     "path": "$.appliedRoutes.items.filters.items.anyOf",
-    "justification": "ProxyApplyResult.appliedRoutes filters use kind (#2109, #2456). In-memory/evidence only (not applied-state); vocabulary matches RoutePlan. When routes originate from migrated applied plans, filters already carry kind after the read-time type\u2192kind rewrite. No separate persisted bump."
+    "justification": "ProxyApplyResult.appliedRoutes filters use kind (#2109, #2456). In-memory/evidence only (not applied-state); vocabulary matches RoutePlan. When routes originate from migrated applied plans, filters already carry kind after the read-time type→kind rewrite. No separate persisted bump."
   },
   {
     "surface": "schema:IdentityScopedLandofile",
@@ -7016,7 +7043,7 @@
     "surface": "schema:RouteFilterType",
     "changeKind": "surface-removed",
     "path": "$",
-    "justification": "Unreleased rename: public schema surface RouteFilterType is removed in favor of RouteFilterKind (#2109, #2456). No dual export. Applied plans store filter objects under routes, not the type alias name; read-time applied-state v8 migration rewrites filter discriminator type\u2192kind at the two plan paths. Callers and generated artifacts must use RouteFilterKind."
+    "justification": "Unreleased rename: public schema surface RouteFilterType is removed in favor of RouteFilterKind (#2109, #2456). No dual export. Applied plans store filter objects under routes, not the type alias name; read-time applied-state v8 migration rewrites filter discriminator type→kind at the two plan paths. Callers and generated artifacts must use RouteFilterKind."
   },
   {
     "surface": "schema:IdentityScopedLandofile",
@@ -7046,20 +7073,26 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.events.additionalProperties",
-    "justification": "History: Reviewed plan output: EventStepPlan provenance/status/sourceIndex and step variants are unchanged; only env adds descriptors/lists with numeric/boolean coercion and literal strings preserved. Consumers discriminate _tag; raw reserved tags require authored admission rejection. Public events remain present, never waived away. Tests: app-plan, environment-value, event-step, public-schema-contracts. Current (applied-state v10): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "Desired plans carry compiled event environments as descriptor maps. Provider applied payloads do not include events."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.additionalProperties",
+    "justification": "History: AppPlan.services additionalProperties tracks ServicePlan endpoint/filter kind vocabulary (#2456). applied-state version 8 rewrites the two paths data.services[service].endpoints[i]._tag→kind and data.routes[r].filters[f].type→kind (map-prefixed for Podman) in memory on read; ordinary successful persist writes v8. Prior additive ServicePlan fields remain valid. Current (applied-state v10): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 added optional keepAlive intent for application-owned listeners, and v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
     "persistedState": {
       "store": "applied-state",
       "version": 10
     }
   },
   {
-    "surface": "schema:AppPlan",
+    "surface": "schema:AppliedAppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "History: AppPlan.services additionalProperties tracks ServicePlan endpoint/filter kind vocabulary (#2456). applied-state version 8 rewrites the two paths data.services[service].endpoints[i]._tag\u2192kind and data.routes[r].filters[f].type\u2192kind (map-prefixed for Podman) in memory on read; ordinary successful persist writes v8. Prior additive ServicePlan fields remain valid. Current (applied-state v10): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 added optional keepAlive intent for application-owned listeners, and v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "AppliedAppPlan projects the service map from AppPlan. The nested healthcheck and readiness plans now accept optional startIntervalSeconds. Records without it retain the existing startup cadence and need no timing migration. Applied-state v11 already migrates the v10 payload to the event-free applied projection.",
     "persistedState": {
       "store": "applied-state",
-      "version": 10
+      "version": 11
     }
   },
   {
@@ -7130,21 +7163,13 @@
     "surface": "schema:EventStepPlan",
     "changeKind": "unsupported-construct",
     "path": "$.step.anyOf",
-    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
-    "persistedState": {
-      "store": "applied-state",
-      "version": 10
-    }
+    "justification": "Compiled actions retain the invocation variants but use canonical environment descriptors instead of authored Compose syntax."
   },
   {
     "surface": "schema:EventsPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.additionalProperties",
-    "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
-    "persistedState": {
-      "store": "applied-state",
-      "version": 10
-    }
+    "justification": "Event entries carry compiled steps in desired plans only; they are not stored in provider applied state."
   },
   {
     "surface": "schema:IdentityScopedLandofile",
@@ -7350,10 +7375,10 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "History: ServicePlan anyOf evolves with endpoint kind discriminators and nested plan fields (#2456, #2109). applied-state version 8 migrates endpoint _tag\u2192kind and route filter type\u2192kind under data.services and data.routes (map: data[appId].\u2026) on read only; no write-back. Historical applied ServicePlan values remain readable after that pass; v8 never accepts old keys. Current (applied-state v10): #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Applied-state v9 added optional keepAlive intent for application-owned listeners, and v10 adds RouteText descriptors: v8 and v9 records decode unchanged and need no rewrite; consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension.",
+    "justification": "History: ServicePlan anyOf evolves with endpoint kind discriminators and nested plan fields (#2456, #2109). applied-state version 8 migrates endpoint _tag→kind and route filter type→kind under data.services and data.routes (map: data[appId].…) on read only; no write-back. Historical applied ServicePlan values remain readable after that pass; v8 never accepts old keys. Applied-state v9 added optional keepAlive intent for application-owned listeners. In v10, #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension. At existing applied-state v11, the nested probe plans accept optional startIntervalSeconds. Previously valid service plans remain readable without a timing migration, and omission retains the existing startup cadence.",
     "persistedState": {
       "store": "applied-state",
-      "version": 10
+      "version": 11
     }
   },
   {
@@ -7439,5 +7464,515 @@
     "changeKind": "unsupported-keyword",
     "path": "$.document.toolingDefaults.env.additionalProperties",
     "justification": "#2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation."
+  },
+  {
+    "surface": "schema:AdminerServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:AdminerServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:AdminerServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:AdminerServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "property-removed",
+    "path": "$.context.env_file",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:GlobalConfig",
+    "changeKind": "property-removed",
+    "path": "$.appEnv",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:GlobalConfig",
+    "changeKind": "property-removed",
+    "path": "$.appLabels",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:GlobalConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.scanner.anyOf",
+    "justification": "Rename the authored scanner deadline to timeoutMs in both scopes (#2109); ScanPlan already uses timeoutMs."
+  },
+  {
+    "surface": "schema:GlobalConfigView",
+    "changeKind": "property-removed",
+    "path": "$.appEnv",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:GlobalConfigView",
+    "changeKind": "property-removed",
+    "path": "$.appLabels",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:GlobalConfigView",
+    "changeKind": "unsupported-construct",
+    "path": "$.scanner.anyOf",
+    "justification": "Rename the authored scanner deadline to timeoutMs in both scopes (#2109); ScanPlan already uses timeoutMs."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "property-removed",
+    "path": "$.document.env_file",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "property-removed",
+    "path": "$.env_file",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "property-removed",
+    "path": "$.env_file",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "property-removed",
+    "path": "$.env_file",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "property-removed",
+    "path": "$.document.env_file",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.db_client",
+    "justification": "Rename the unreleased PHP option to dbClient (#2109); Lando 3 translation emits the new key."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:ScannerConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Rename the authored scanner deadline to timeoutMs in both scopes (#2109); ScanPlan already uses timeoutMs."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.db_client",
+    "justification": "Rename the unreleased PHP option to dbClient (#2109); Lando 3 translation emits the new key."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.scanner.anyOf",
+    "justification": "Rename the authored scanner deadline to timeoutMs in both scopes (#2109); ScanPlan already uses timeoutMs."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.volumes.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "property-removed",
+    "path": "$.db_client",
+    "justification": "Rename the unreleased PHP option to dbClient (#2109); Lando 3 translation emits the new key."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.scanner.anyOf",
+    "justification": "Rename the authored scanner deadline to timeoutMs in both scopes (#2109); ScanPlan already uses timeoutMs."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.volumes.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "property-removed",
+    "path": "$.document.env_file",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "property-removed",
+    "path": "$.global.appEnv",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "property-removed",
+    "path": "$.global.appLabels",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.global.scanner.anyOf",
+    "justification": "Rename the authored scanner deadline to timeoutMs in both scopes (#2109); ScanPlan already uses timeoutMs."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "property-removed",
+    "path": "$.landofile.env_file",
+    "justification": "Move the unreleased cross-service default under serviceDefaults without accepting the old path (#2233)."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.dependsOn",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.envFile",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.ports.items.anyOf",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.workingDirectory",
+    "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
   }
 ]

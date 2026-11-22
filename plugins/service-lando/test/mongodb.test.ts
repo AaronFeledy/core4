@@ -167,7 +167,7 @@ describe("mongodb ServiceType", () => {
       creds: { database: "mydb" },
       command: ["mongod", "--auth", "--wiredTigerCacheSizeGB", "0.5"],
       entrypoint: ["docker-entrypoint.sh"],
-      workingDirectory: PortablePath.make("/data/db"),
+      working_dir: PortablePath.make("/data/db"),
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "mongo:8" });
@@ -184,7 +184,7 @@ describe("mongodb ServiceType", () => {
   });
 
   test("leaves authored service dependencies for planner normalization", async () => {
-    const plan = await planMongodb({ type: "mongodb", dependsOn: ["api"] });
+    const plan = await planMongodb({ type: "mongodb", depends_on: ["api"] });
 
     expect(plan.dependsOn).toEqual([]);
   });

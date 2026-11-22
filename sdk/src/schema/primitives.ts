@@ -1,7 +1,5 @@
 import { Schema } from "effect";
 
-import { ComposeEnvironmentInput } from "./environment-input.ts";
-
 export const AppId = Schema.String.pipe(Schema.brand("AppId"));
 export type AppId = typeof AppId.Type;
 
@@ -21,10 +19,9 @@ export const PortablePath = Schema.String.pipe(Schema.brand("PortablePath"));
 export type PortablePath = typeof PortablePath.Type;
 
 /** Integer TCP/UDP port in the inclusive IANA range. */
-export const PortNumber = Schema.Number.pipe(
-  Schema.check(Schema.isInt()),
-  Schema.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
-);
+export const PortNumber = Schema.Number.annotate({
+  description: "TCP or UDP port number from 1 through 65535.",
+}).pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: 1, maximum: 65535 })));
 export type PortNumber = typeof PortNumber.Type;
 
 /**
@@ -46,16 +43,18 @@ export const isRootContainerUser = (value: string): boolean => {
   return user === "root" || (/^[0-9]+$/u.test(user) && Number(user) === 0);
 };
 
-export const ContainerUser = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(CONTAINER_USER_PATTERN, {
-      message: "Expected a container user name or numeric id, optionally followed by :group or :gid",
-    }),
-  ),
-).annotate({
-  description:
-    'Container identity as "<name|uid>" or "<name|uid>:<group|gid>". Letters, digits, underscores, dots, and hyphens only, and each part must start with a letter, digit, or underscore.',
-});
+const containerUserDescription =
+  'Container identity as "<name|uid>" or "<name|uid>:<group|gid>". Letters, digits, underscores, dots, and hyphens only, and each part must start with a letter, digit, or underscore.';
+
+export const ContainerUser = Schema.String.annotate({ description: containerUserDescription })
+  .pipe(
+    Schema.check(
+      Schema.isPattern(CONTAINER_USER_PATTERN, {
+        message: "Expected a container user name or numeric id, optionally followed by :group or :gid",
+      }),
+    ),
+  )
+  .annotate({ description: containerUserDescription });
 export type ContainerUser = typeof ContainerUser.Type;
 
 /**
@@ -112,16 +111,16 @@ export const ABSOLUTE_CONTAINER_PATH_PATTERN = /^\/[^\0\\]*$/u;
 export const isAbsoluteContainerPath = (value: string): boolean =>
   ABSOLUTE_CONTAINER_PATH_PATTERN.test(value);
 
-export const AbsoluteContainerPath = Schema.String.pipe(
+export const AbsoluteContainerPath = Schema.String.annotate({
+  description:
+    "Absolute path inside a container. Must start with '/' and must not contain NUL or backslash characters.",
+}).pipe(
   Schema.check(
     Schema.isPattern(ABSOLUTE_CONTAINER_PATH_PATTERN, {
       message: "Expected an absolute container path",
     }),
   ),
-).annotate({
-  description:
-    "Absolute path inside a container. Must start with '/' and must not contain NUL or backslash characters.",
-});
+);
 export type AbsoluteContainerPath = typeof AbsoluteContainerPath.Type;
 
 export const HostPlatform = Schema.Literals(["darwin", "linux", "win32", "wsl"]);
@@ -199,8 +198,3 @@ export type CommandSpec = typeof CommandSpec.Type;
  */
 export const ToolingVarLiteral = Schema.Union([Schema.String, Schema.Number, Schema.Boolean]);
 export type ToolingVarLiteral = typeof ToolingVarLiteral.Type;
-
-export const ToolingEnvironment = ComposeEnvironmentInput.annotate({
-  description: "Environment variables supplied to a tooling task as scalar values.",
-});
-export type ToolingEnvironment = typeof ToolingEnvironment.Type;

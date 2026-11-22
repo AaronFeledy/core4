@@ -1,37 +1,32 @@
 import { expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { compileRecipeSource } from "@lando/sdk/recipes";
-import {
-  LandofileAuthoringShape,
-  LandofileShape,
-  RecipeManifest,
-  getEditorJsonSchema,
-  getJsonSchema,
-  validationIssuesFromSchemaIssue,
-} from "@lando/sdk/schema";
+import { BuildBlock, RecipeManifest, getJsonSchema } from "@lando/sdk/schema";
 import { LandofileStandardSchema, RecipeManifestStandardSchema } from "@lando/sdk/schema/standard";
-import {
-  Effect,
-  Exit,
-  JsonSchema,
-  Result,
-  Schema,
-  type SchemaIssue,
-  SchemaParser,
-  SchemaRepresentation,
-} from "effect";
-import type { StandardSchemaV1 } from "effect/StandardSchema";
+import { Arbitrary, Effect, Result, Schema } from "effect";
 import { expectInvalidReason } from "../../../scripts/guides/fixture-marker.ts";
-import { importableNode } from "./landofile-parity-json-schema-fixup.ts";
+import { EnvironmentAssignment } from "../../src/schema/environment-input.ts";
+import {
+  authoringVerdicts,
+  decodeAuthoring,
+  decoderIssues,
+  issueDetails,
+  landofileParityValidators,
+  parseOptions,
+  runtimeOnlyAuthoring,
+  runtimeVerdicts,
+  serviceWith,
+  uniformAuthoring,
+} from "./landofile-parity-harness.ts";
+import { publicationCases } from "./landofile-parity-mutations.ts";
+
+const root = new URL("../../../", import.meta.url);
 
 const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
-function isJsonSchema(value: unknown): value is JsonSchema.JsonSchema {
+function isJsonSchema(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-const root = new URL("../../../", import.meta.url);
-const parseOptions = { onExcessProperty: "error", errors: "all" } as const;
 
 const invalidServiceKeys = [
   { id: "service-label-too-long", input: { name: "demo", services: { ["a".repeat(64)]: {} } } },
@@ -43,7 +38,7 @@ const invalidServiceKeys = [
     },
   },
   { id: "service-key-with-slash", input: { name: "demo", services: { "bad/name": {} } } },
-];
+] as const;
 
 const curated = [
   ...invalidServiceKeys,
@@ -112,25 +107,84 @@ const curatedValid = [
   { id: "event-steps", input: { name: "demo", events: { "pre-start": ["echo ready"] } } },
 ] as const;
 
-const INEXPRESSIBLE = [
-  {
-    id: "compose-port-out-of-range",
-    check: "Compose port normalization range",
-    reason:
-      "The ports input union permits numbers; its decoding transform enforces 1..65535 after JSON Schema projection.",
-  },
-  {
-    id: "invalid-semver-range",
-    check: "npm semver range",
-    reason: "The lando string uses semver.validRange, which has no JSON Schema projection.",
-  },
-  {
-    id: "docs/guides/schedule/fixtures/schedule-rejected-every/.lando.yml",
-    check: "scheduled cadence",
-    reason:
-      "Clock-aligned @every steps and exactly five cron fields are decoder filters; JSON Schema cannot express either rule.",
-  },
-] as const;
+const GAP_CLASS = {
+  "compose-port-out-of-range": "out-of-range:services.*.ports[]",
+  "invalid-semver-range": "invalid-range:lando",
+  "docs/guides/schedule/fixtures/schedule-rejected-every/.lando.yml": "invalid-interval:services.*.schedule",
+  "docs/guides/expressions/fixtures/expressions-plan-time-typed-field/.lando.yml":
+    "expression-scope:typed-field",
+  "docs/guides/expressions/fixtures/expressions-service-port-misuse/.lando.yml":
+    "expression-scope:service-field",
+  "notice-removal-not-after-since": "version-order:tooling.*.deprecated",
+  "planner-boolean": "expression-scope:services.*.primary",
+  "proxy-boolean": "expression-scope:services.*.primary",
+  "services-boolean": "expression-scope:services.*.primary",
+  "static-number-at-text": "expression-helper-type:name",
+  "quoted-delimiters": "expression-quotes:typed-field",
+  "adjacent-object-braces": "expression-object-braces:typed-field",
+} as const;
+
+type GapCase = keyof typeof GAP_CLASS;
+const gapReason = (gaps: ReadonlyMap<string, string>, id: string) => {
+  const reason = gaps.get(id);
+  if (reason === undefined) return undefined;
+  return `${GAP_CLASS[id as GapCase]}: ${reason}`;
+};
+
+/** Decoder rejects; every published authoring document still accepts. */
+const AUTHORING_PUBLISHED_GAPS = new Map<string, string>([
+  [
+    "compose-port-out-of-range",
+    "Compose port normalization range is a decoder transform after JSON Schema projection.",
+  ],
+  ["invalid-semver-range", "The lando string uses semver.validRange, which has no JSON Schema projection."],
+  [
+    "docs/guides/schedule/fixtures/schedule-rejected-every/.lando.yml",
+    "Clock-aligned @every steps and five-field cron are decoder filters the editor schema cannot express.",
+  ],
+  [
+    "docs/guides/expressions/fixtures/expressions-plan-time-typed-field/.lando.yml",
+    "Planner-scope rejection requires parsed scope analysis.",
+  ],
+  [
+    "docs/guides/expressions/fixtures/expressions-service-port-misuse/.lando.yml",
+    "Self-port scope admission requires parsed member and destination checks.",
+  ],
+  ["notice-removal-not-after-since", "JSON Schema cannot compare the removeIn and since versions."],
+  [
+    "planner-boolean",
+    "JSON Schema cannot distinguish scope reads from quoted names without parsing the expression AST.",
+  ],
+  ["proxy-boolean", "Planner-scope reads require parsed scope analysis."],
+  ["services-boolean", "Planner-scope reads nested inside helpers require parsed scope analysis."],
+  ["static-number-at-text", "JSON Schema cannot infer helper return types at text sites."],
+]);
+
+/** Decoder accepts; published authoring documents reject (pattern over-rejection). */
+const AUTHORING_PATTERN_OVERREJECT = new Map<string, string>([
+  [
+    "quoted-delimiters",
+    "The editor pattern cannot distinguish quoted closing delimiters from an interpolation terminator.",
+  ],
+  [
+    "adjacent-object-braces",
+    "The editor pattern treats adjacent object-closing braces as an interpolation terminator; balancing nested objects requires parsing.",
+  ],
+]);
+
+/** Runtime decoder rejects; runtime JSON Schema accepts. */
+const RUNTIME_PUBLISHED_GAPS = new Map<string, string>([
+  [
+    "compose-port-out-of-range",
+    "Compose port normalization range is a decoder transform after JSON Schema projection.",
+  ],
+  ["invalid-semver-range", "The lando string uses semver.validRange, which has no JSON Schema projection."],
+  [
+    "docs/guides/schedule/fixtures/schedule-rejected-every/.lando.yml",
+    "Clock-aligned @every steps and five-field cron are decoder filters; JSON Schema cannot express either rule.",
+  ],
+  ["notice-removal-not-after-since", "JSON Schema cannot compare the removeIn and since versions."],
+]);
 
 const SKIPPED = [
   { suffix: ".lando.stop", reason: "Discovery stop marker, not a Landofile document." },
@@ -144,82 +198,6 @@ const SKIPPED = [
   { suffix: ".lando.recipe.yml", reason: "Recipe overlay layer, not a canonical Landofile document." },
   { suffix: ".lando.tasks.yml", reason: "Tooling include fragment, not a canonical Landofile document." },
 ] as const;
-
-function issueDetails(issues: readonly StandardSchemaV1.Issue[]) {
-  return issues.map(({ message, path }) => ({
-    message,
-    path: (path ?? []).map((segment) => (typeof segment === "object" ? segment.key : segment)),
-  }));
-}
-
-function decoderIssues(decoded: Result.Result<unknown, Schema.SchemaError>) {
-  return Result.isFailure(decoded)
-    ? issueDetails(validationIssuesFromSchemaIssue(decoded.failure.issue))
-    : [];
-}
-
-test("runtime JSON Schema agrees with the strict Landofile decoder", async () => {
-  // Given all guide/recipe Landofile data plus explicitly invalid boundary inputs.
-  // The published 2020-12 document is getJsonSchema("LandofileShape"). The
-  // generated snapshot must be that same runtime document.
-  const generated = getJsonSchema("LandofileShape");
-  const snapshot = JSON.parse(
-    await Bun.file(new URL("../../../dist/schemas/landofile-shape.json", import.meta.url)).text(),
-  );
-  expect(isJsonSchema(generated)).toBe(true);
-  if (!isJsonSchema(generated)) return;
-  expect(generated.$schema).toBe(DRAFT_2020_12);
-  expect(snapshot).toEqual(generated);
-  const jsonSchema = SchemaRepresentation.fromJsonSchemaDocument(
-    JsonSchema.fromSchemaDraft2020_12(generated),
-    {
-      patterns: "apply",
-      onEnter: importableNode,
-    },
-  );
-  // Schema.Top erases DecodingServices to unknown. The imported document requires
-  // none, so the closed runner is the decodeUnknownResult equivalent.
-  const decodeJsonEffect = SchemaParser.decodeUnknownEffect(jsonSchema) as (
-    input: unknown,
-    options?: Parameters<typeof SchemaParser.decodeUnknownEffect>[1],
-  ) => Effect.Effect<unknown, SchemaIssue.Issue>;
-  const decodeJson = (input: unknown) =>
-    Exit.isSuccess(Effect.runSyncExit(decodeJsonEffect(input, parseOptions)));
-  const paths = [
-    ...new Bun.Glob("docs/guides/**/fixtures/**/.lando.yml").scanSync({
-      cwd: fileURLToPath(root),
-      dot: true,
-    }),
-    ...new Bun.Glob("recipes/**/.lando.yml").scanSync({ cwd: fileURLToPath(root), dot: true }),
-  ].sort();
-  const fixtures = await Promise.all(
-    paths.map(async (id) => ({
-      id,
-      input: Bun.YAML.parse(await Bun.file(new URL(id, root)).text()),
-    })),
-  );
-  const disagreements: string[] = [];
-  const observedExceptions: string[] = [];
-
-  // When each independent surface receives the same raw parsed data.
-  for (const { id, input } of [...fixtures, ...curated, ...curatedValid]) {
-    const decoded = Schema.decodeUnknownResult(LandofileShape)(input, parseOptions);
-    const accepted = Result.isSuccess(decoded);
-    if (curated.some((entry) => entry.id === id)) expect(accepted, id).toBe(false);
-    if (curatedValid.some((entry) => entry.id === id)) expect(accepted, id).toBe(true);
-
-    // And the published JSON Schema document agrees, except for the named inexpressible checks.
-    const jsonAccepted = decodeJson(input);
-    if (jsonAccepted !== accepted) {
-      const exception = INEXPRESSIBLE.find((entry) => entry.id === id);
-      if (exception && jsonAccepted && !accepted) observedExceptions.push(id);
-      else disagreements.push(`${id}: decoder=${accepted}, json=${jsonAccepted}`);
-    }
-  }
-  expect(disagreements).toEqual([]);
-  expect(observedExceptions.sort()).toEqual(INEXPRESSIBLE.map(({ id }) => id).sort());
-  expect(paths.length).toBeGreaterThan(0);
-});
 
 const inputValid = [
   {
@@ -271,6 +249,7 @@ const inputValid = [
     input: { name: "demo", router: { httpPort: "{{ length({a:{b:1}}) }}" } },
   },
 ] as const;
+
 const inputInvalid = [
   ...invalidServiceKeys,
   {
@@ -281,14 +260,19 @@ const inputInvalid = [
     id: "notice-removal-not-after-since",
     input: {
       name: "demo",
-      tooling: { old: { cmd: "echo", deprecated: { since: "4.2.0", removeIn: "4.2.0", note: "Use new." } } },
+      tooling: {
+        old: { cmd: "echo", deprecated: { since: "4.2.0", removeIn: "4.2.0", note: "Use new." } },
+      },
     },
   },
   { id: "disabled-tooling-string", input: { tooling: { retired: "disabled" } } },
   { id: "empty-tooling-string", input: { tooling: { retired: "" } } },
   { id: "plain-boolean", input: { name: "demo", services: { web: { primary: "maybe" } } } },
   { id: "plain-number", input: { name: "demo", router: { httpPort: "abc" } } },
-  { id: "surrounding-spaces", input: { name: "demo", router: { httpPort: "  {{ number(env.PORT) }}  " } } },
+  {
+    id: "surrounding-spaces",
+    input: { name: "demo", router: { httpPort: "  {{ number(env.PORT) }}  " } },
+  },
   {
     id: "padded-trim-markers",
     input: { name: "demo", router: { httpPort: "  {{- number(env.PORT) -}}  " } },
@@ -300,7 +284,10 @@ const inputInvalid = [
     id: "services-boolean",
     input: { name: "demo", services: { web: { primary: "{{ boolean(services.web.flag) }}" } } },
   },
-  { id: "composite-boolean", input: { name: "demo", services: { web: { primary: "x{{ recipe.flag }}" } } } },
+  {
+    id: "composite-boolean",
+    input: { name: "demo", services: { web: { primary: "x{{ recipe.flag }}" } } },
+  },
   {
     id: "two-boolean-interpolations",
     input: { name: "demo", services: { web: { primary: "{{ recipe.a }}{{ recipe.b }}" } } },
@@ -317,47 +304,14 @@ const inputInvalid = [
     ].includes(id),
   ),
 ] as const;
-const INPUT_INEXPRESSIBLE = new Map([
-  ["notice-removal-not-after-since", "JSON Schema cannot compare the removeIn and since versions."],
-  [
-    "quoted-delimiters",
-    "The editor pattern cannot distinguish quoted closing delimiters from an interpolation terminator.",
-  ],
-  [
-    "adjacent-object-braces",
-    "The editor pattern treats adjacent object-closing braces as an interpolation terminator; balancing nested objects requires parsing.",
-  ],
-  [
-    "planner-boolean",
-    "JSON Schema cannot distinguish scope reads from quoted names without parsing the expression AST.",
-  ],
-  ["proxy-boolean", "Planner-scope reads require parsed scope analysis."],
-  ["services-boolean", "Planner-scope reads nested inside helpers require parsed scope analysis."],
-  [
-    "docs/guides/expressions/fixtures/expressions-service-port-misuse/.lando.yml",
-    "Self-port scope admission requires parsed member and destination checks.",
-  ],
-  ["static-number-at-text", "JSON Schema cannot infer helper return types at text sites."],
-  [
-    "docs/guides/expressions/fixtures/expressions-plan-time-typed-field/.lando.yml",
-    "Planner-scope rejection requires parsed scope analysis.",
-  ],
-  [
-    "docs/guides/schedule/fixtures/schedule-rejected-every/.lando.yml",
-    "Clock-aligned @every steps and five-field cron are decoder filters the editor schema cannot express.",
-  ],
+
+const structuralFixtureOverrides = new Map([
+  ["docs/guides/expressions/fixtures/expressions-typed-values/.lando.yml", false],
+  ["docs/guides/config-views/fixtures/layered/.lando.yml", false],
+  ["docs/guides/expressions/fixtures/expressions-service-port-misuse/.lando.yml", true],
 ]);
 
-test("input Standard Schema and editor JSON Schema accept every classified authoring fixture", async () => {
-  const editor = getEditorJsonSchema("LandofileShape");
-  const imported = SchemaRepresentation.fromJsonSchemaDocument(JsonSchema.fromSchemaDraft07(editor), {
-    patterns: "apply",
-    onEnter: importableNode,
-  });
-  const decode = SchemaParser.decodeUnknownEffect(imported) as (
-    input: unknown,
-    options?: Parameters<typeof SchemaParser.decodeUnknownEffect>[1],
-  ) => Effect.Effect<unknown, SchemaIssue.Issue>;
+async function loadCorpus() {
   const paths = [
     ...new Bun.Glob("docs/guides/**/fixtures/**/.lando.yml").scanSync({
       cwd: fileURLToPath(root),
@@ -368,47 +322,169 @@ test("input Standard Schema and editor JSON Schema accept every classified autho
   const fixtures = await Promise.all(
     paths.map(async (id) => {
       const content = await Bun.file(new URL(id, root)).text();
-      return { id, input: Bun.YAML.parse(content), invalidReason: expectInvalidReason(content) };
+      const authoring = expectInvalidReason(content) === undefined;
+      return {
+        id,
+        input: Bun.YAML.parse(content),
+        authoring,
+        runtime: structuralFixtureOverrides.get(id) ?? authoring,
+      };
     }),
   );
-  const observedGaps = new Set<string>();
-  for (const { id, input, ...fixture } of [...fixtures, ...inputValid, ...curatedValid, ...inputInvalid]) {
-    // A fixture's line-1 expect-invalid marker only waives "must be accepted"; the surfaces still agree.
-    const invalidReason = "invalidReason" in fixture ? fixture.invalidReason : undefined;
-    const decoded = Schema.decodeUnknownResult(LandofileAuthoringShape)(input, parseOptions);
+  return { paths, fixtures };
+}
+
+function expectAuthoringStages(
+  id: string,
+  actual: Awaited<ReturnType<typeof authoringVerdicts>>,
+  decodedAccept: boolean,
+) {
+  const overreject = gapReason(AUTHORING_PATTERN_OVERREJECT, id);
+  const publishedGap = gapReason(AUTHORING_PUBLISHED_GAPS, id);
+  if (overreject !== undefined) {
+    expect(decodedAccept, `${id}: decoder accepts (${overreject})`).toBe(true);
+    expect(actual, id).toEqual({
+      decode: true,
+      standard: true,
+      editor: false,
+      standard07: false,
+      standard2020: false,
+      authoring: false,
+    });
+    return "overreject" as const;
+  }
+  if (publishedGap !== undefined) {
+    expect(decodedAccept, `${id}: decoder rejects (${publishedGap})`).toBe(false);
+    expect(actual, id).toEqual(runtimeOnlyAuthoring);
+    return "published-gap" as const;
+  }
+  expect(actual, id).toEqual(uniformAuthoring(decodedAccept));
+  return "agree" as const;
+}
+
+function expectRuntimeStages(id: string, actual: ReturnType<typeof runtimeVerdicts>, decodedAccept: boolean) {
+  const gap = gapReason(RUNTIME_PUBLISHED_GAPS, id);
+  if (gap !== undefined) {
+    expect(decodedAccept, `${id}: runtime decoder rejects (${gap})`).toBe(false);
+    expect(actual, id).toEqual({ decode: false, runtime: true });
+    return "published-gap" as const;
+  }
+  expect(actual, id).toEqual({ decode: decodedAccept, runtime: decodedAccept });
+  return "agree" as const;
+}
+
+function gapIdsObservedIn(ids: ReadonlySet<string>, maps: ReadonlyArray<Map<string, string>>) {
+  return [...new Set(maps.flatMap((map) => [...map.keys()]))].filter((id) => ids.has(id)).sort();
+}
+
+test("published runtime JSON Schema document is the LandofileShape snapshot", async () => {
+  const generated = getJsonSchema("LandofileShape");
+  const snapshot = JSON.parse(
+    await Bun.file(new URL("../../../dist/schemas/landofile-shape.json", import.meta.url)).text(),
+  );
+  expect(isJsonSchema(generated)).toBe(true);
+  if (!isJsonSchema(generated)) return;
+  expect(generated.$schema).toBe(DRAFT_2020_12);
+  expect(snapshot).toEqual(generated);
+});
+
+test("corpus and curated inputs carry explicit per-stage Landofile verdicts", async () => {
+  landofileParityValidators();
+  const { paths, fixtures } = await loadCorpus();
+  const observedAuthoringGaps = new Set<string>();
+  const observedRuntimeGaps = new Set<string>();
+  const seen = new Set<string>();
+
+  for (const { id, input, authoring, runtime } of [
+    ...fixtures,
+    ...curated.map((entry) => ({ ...entry, authoring: false, runtime: false })),
+    ...curatedValid.map((entry) => ({ ...entry, authoring: true, runtime: true })),
+    ...inputValid.map((entry) => ({ ...entry, authoring: true, runtime: undefined })),
+    ...inputInvalid.map((entry) => ({
+      ...entry,
+      authoring: false,
+      runtime: entry.id === "notice-removal-not-after-since" ? false : undefined,
+    })),
+  ]) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const authoringKind = expectAuthoringStages(id, await authoringVerdicts(input), authoring);
+    if (authoringKind !== "agree") observedAuthoringGaps.add(id);
+
+    if (runtime !== undefined && expectRuntimeStages(id, runtimeVerdicts(input), runtime) !== "agree") {
+      observedRuntimeGaps.add(id);
+    }
+
+    const decoded = decodeAuthoring(input, parseOptions);
     const standard = await LandofileStandardSchema["~standard"].validate(input);
-    const accepted = standard.issues === undefined;
-    expect(accepted, id).toBe(Result.isSuccess(decoded));
-    expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded));
+    expect(standard.issues === undefined, id).toBe(Result.isSuccess(decoded));
+    expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded, input));
     if (id === "bad-service-key-and-bodies") {
-      expect(decoderIssues(decoded).map(({ path }) => path)).toEqual([
+      expect(decoderIssues(decoded, input).map(({ path }) => path)).toEqual([
         ["services", "bad/name"],
         ["services", "bad/name", "image"],
         ["services", "web", "primary"],
       ]);
     }
-    if (invalidReason === undefined)
-      expect(accepted, `${id}: valid authoring input`).toBe(!inputInvalid.some((entry) => entry.id === id));
-    const jsonAccepted = Exit.isSuccess(Effect.runSyncExit(decode(input, parseOptions)));
-    const gap = INPUT_INEXPRESSIBLE.get(id);
-    if (gap !== undefined) {
-      expect(jsonAccepted, `${id}: ${gap}`).toBe(!accepted);
-      observedGaps.add(id);
-    } else expect(jsonAccepted, `${id}: ${invalidReason ?? "editor acceptance"}`).toBe(accepted);
   }
-  expect([...observedGaps].sort()).toEqual([...INPUT_INEXPRESSIBLE.keys()].sort());
+
+  expect([...observedAuthoringGaps].sort()).toEqual(
+    gapIdsObservedIn(seen, [AUTHORING_PUBLISHED_GAPS, AUTHORING_PATTERN_OVERREJECT]),
+  );
+  expect([...observedRuntimeGaps].sort()).toEqual(gapIdsObservedIn(seen, [RUNTIME_PUBLISHED_GAPS]));
   expect(paths.length).toBeGreaterThan(0);
 });
 
+test.each([...publicationCases])(
+  "mutation $kind/$id carries explicit per-stage verdicts",
+  async ({ id, input, authoring, runtime }) => {
+    landofileParityValidators();
+    expect(await authoringVerdicts(input), id).toEqual(uniformAuthoring(authoring));
+    expect(runtimeVerdicts(input), id).toEqual({ decode: runtime, runtime });
+  },
+);
+
+test("Arbitrary constructive environment leaves agree across stages", async () => {
+  landofileParityValidators();
+  const samples = await Effect.runPromise(
+    Arbitrary.sampleEffect(Arbitrary.schema(EnvironmentAssignment), {
+      seed: 2199,
+      count: 16,
+      maxDiscards: 1024,
+    }),
+  );
+  expect(samples.length).toBe(16);
+  for (const sample of samples) {
+    const input = serviceWith({ environment: [sample] });
+    expect(await authoringVerdicts(input), JSON.stringify(sample)).toEqual(uniformAuthoring(true));
+    expect(runtimeVerdicts(input), JSON.stringify(sample)).toEqual({ decode: true, runtime: true });
+  }
+});
+
+test("Arbitrary build leaves agree across authoring and runtime stages", async () => {
+  landofileParityValidators();
+  const leaf = Schema.Struct({ build: Schema.toEncoded(BuildBlock) });
+  const samples = await Effect.runPromise(
+    Arbitrary.sampleEffect(Arbitrary.schema(leaf), { seed: 2199, count: 24 }),
+  );
+  expect(samples.length).toBe(24);
+  for (const sample of samples) {
+    const input = serviceWith(sample);
+    expect(await authoringVerdicts(input), JSON.stringify(sample)).toEqual(uniformAuthoring(true));
+    expect(runtimeVerdicts(input), JSON.stringify(sample)).toEqual({ decode: true, runtime: true });
+  }
+});
+
 test("skips non-Landofile fixture files only when a reason is listed", () => {
-  // Given every dotted Landofile-shaped fixture, when it is not a canonical .lando.yml.
   const discovered = [
-    ...new Bun.Glob("docs/guides/**/fixtures/**/.lando.*").scanSync({ cwd: fileURLToPath(root), dot: true }),
+    ...new Bun.Glob("docs/guides/**/fixtures/**/.lando.*").scanSync({
+      cwd: fileURLToPath(root),
+      dot: true,
+    }),
     ...new Bun.Glob("recipes/**/.lando.*").scanSync({ cwd: fileURLToPath(root), dot: true }),
   ];
   const skipped = discovered.filter((path) => !path.endsWith(".lando.yml"));
   const unclassified = skipped.filter((path) => !SKIPPED.some((entry) => path.endsWith(entry.suffix)));
-  // Then each skip has a listed reason, and every listed reason still matches a file.
   expect(unclassified).toEqual([]);
   for (const entry of SKIPPED)
     expect(
@@ -419,7 +495,6 @@ test("skips non-Landofile fixture files only when a reason is listed", () => {
 });
 
 test("compiled recipe manifests agree with RecipeManifest", async () => {
-  // Given the public compiler's derived manifest and invalid wire variants.
   const manifest = Result.getOrThrow(
     compileRecipeSource(
       {
@@ -439,12 +514,10 @@ test("compiled recipe manifests agree with RecipeManifest", async () => {
     { id: "excess-property", input: { ...manifest, unexpected: true }, accepted: false },
   ];
   for (const { id, input, accepted } of fixtures) {
-    // When both public schema interfaces validate the same value.
     const decoded = Schema.decodeUnknownResult(RecipeManifest)(input, parseOptions);
     const standard = await RecipeManifestStandardSchema["~standard"].validate(input);
-    // Then the Standard Schema view agrees on accept/reject and on every issue path and message.
     expect(Result.isSuccess(decoded), id).toBe(accepted);
     expect(standard.issues === undefined, id).toBe(accepted);
-    expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded));
+    expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded, input));
   }
 });

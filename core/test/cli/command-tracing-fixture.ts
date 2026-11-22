@@ -17,7 +17,7 @@ export const runTracingCommand = async (options: {
   let exitCode = 0;
   const trace = resolveTrace({
     argv: options.display === false ? [] : ["--trace"],
-    env: { LANDO_CONFIG__appEnv__API_TOKEN: options.secret },
+    env: { LANDO_SERVICE_DEFAULTS_ENVIRONMENT: JSON.stringify({ API_TOKEN: options.secret }) },
     config: {
       otlp: {
         ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),

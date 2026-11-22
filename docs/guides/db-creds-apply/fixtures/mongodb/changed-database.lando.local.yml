@@ -1,0 +1,5 @@
+services:
+  db:
+    creds:
+      database: credential_empty
+      password: mongo-fixture-pass-two

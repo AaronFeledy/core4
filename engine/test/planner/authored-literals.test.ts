@@ -8,16 +8,18 @@ import { planRedactionValues } from "@lando/redaction/plan-values";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { sha256Hex } from "@lando/sdk/digest";
 import { AbsolutePath, GlobalConfig, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner, ConfigService } from "@lando/sdk/services";
+import { AppPlanner, ConfigService, StateStore } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import * as PlanCache from "../../src/cache/app-plan.ts";
 import * as Cache from "../../src/cache/service.ts";
+import { catalogDatabase } from "../../src/operations/database-convergence/catalog.ts";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import { materializeLandofileScopesForPlan } from "../../src/planner/landofile-scopes.ts";
 import * as Registry from "../../src/plugins/registry.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
 import * as Planner from "../../src/services/planner.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const withRoot = async (run: (root: string) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-plan-literal-"));
@@ -33,12 +35,14 @@ const runPlan = (
   options: {
     readonly ts?: boolean;
     readonly layers?: boolean;
-    readonly appEnv?: Record<string, string>;
+    readonly environment?: Record<string, string>;
     readonly cache?: boolean;
   } = {},
 ) => {
   const file = join(root, options.ts ? ".lando.ts" : ".lando.yml");
-  const config = Schema.decodeUnknownSync(GlobalConfig)({ appEnv: options.appEnv ?? {} });
+  const config = Schema.decodeUnknownSync(GlobalConfig)({
+    serviceDefaults: { environment: options.environment ?? {} },
+  });
   return Effect.runPromise(
     Effect.gen(function* () {
       const loaded = yield* options.layers
@@ -50,7 +54,10 @@ const runPlan = (
             pendingSites: [],
             compilationContext: { appRoot: AbsolutePath.make(root), env: { PROOF_PASSWORD: "wordpress" } },
           });
-      return yield* (yield* AppPlanner).plan(loaded, TestRuntimeProvider.capabilities);
+      return yield* (yield* AppPlanner).plan(loaded, {
+        ...TestRuntimeProvider.capabilities,
+        artifactBuild: true,
+      });
     }).pipe(
       Effect.provide(
         Planner.layer.pipe(
@@ -73,6 +80,49 @@ const runPlan = (
 
 const database = (password: string, rootPassword = true) =>
   `name: proof\nservices:\n  db:\n    type: mariadb\n    home: false\n    creds:\n      user: wp\n      database: app\n${rootPassword ? "      rootPassword: lando\n" : ""}      password: ${JSON.stringify(password)}\n`;
+
+test("preserves convergence eligibility for all catalog database versions and image spellings", () =>
+  withRoot(async (root) => {
+    const services = (
+      [
+        ["postgres", "15 16 17 18", "postgres:%"],
+        ["mysql", "8.0 8.4 9.7", "mysql:%"],
+        ["mariadb", "11.4", "mariadb:%"],
+        ["mongodb", "7", "mongo:%"],
+        ["mssql", "2019 2022", "mcr.microsoft.com/mssql/server:%-latest"],
+      ] as const
+    ).flatMap(([family, versions, image]) => [
+      { type: family },
+      ...versions.split(" ").flatMap((version) => {
+        const ref = image.replace("%", version);
+        return [
+          { type: `${family}:${version}` },
+          { type: family, image: ref },
+          { type: `${family}:${version}`, image: ref },
+        ];
+      }),
+    ]);
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: proof\nservices:\n${services
+        .map(
+          (entry, i) =>
+            `  db${i}:\n    type: ${entry.type}${"image" in entry ? `\n    image: ${entry.image}` : ""}`,
+        )
+        .join(
+          "\n",
+        )}\n  custom:\n    type: postgres\n    image: postgres:custom\n  launcher:\n    type: postgres:16\n    command: [postgres]\n`,
+    );
+    const plan = await runPlan(root);
+    const eligible = await Effect.runPromise(
+      Effect.forEach(Object.values(plan.services), (service) =>
+        catalogDatabase({ plan, service }).pipe(
+          Effect.map((mount) => (mount === undefined ? [] : [String(service.name)])),
+        ),
+      ).pipe(Effect.provideService(StateStore, makeTestStateStore().service)),
+    );
+    expect(eligible.flat().sort()).toEqual(services.map((_, i) => `db${i}`).sort());
+  }));
 
 test.each([
   ["redis", "redis-cli", "REDISCLI_AUTH"],
@@ -165,7 +215,7 @@ test("proves canonical credential projections and exact cross-service copies, no
     expect(planRedactionValues(plan).wholeToken).toEqual(["wordpress"]);
   }));
 
-test.each(["local", "shadow", "env_file", "appEnv", "env", "load", "typescript"] as const)(
+test.each(["local", "shadow", "env_file", "serviceDefaults", "env", "load", "typescript"] as const)(
   "keeps %s-only passwords substring-sensitive despite unrelated equal literals",
   (source) =>
     withRoot(async (root) => {
@@ -197,7 +247,7 @@ test.each(["local", "shadow", "env_file", "appEnv", "env", "load", "typescript"]
       const plan = await runPlan(root, {
         ts: source === "typescript",
         layers: source === "local" || source === "shadow",
-        appEnv: source === "appEnv" ? { MYSQL_PASSWORD: "wordpress" } : {},
+        environment: source === "serviceDefaults" ? { MYSQL_PASSWORD: "wordpress" } : {},
       });
       expect(plan.committedLiteralDigests ?? []).not.toContain(sha256Hex("wordpress"));
       expect(planRedactionValues(plan).substring).toContain("wordpress");

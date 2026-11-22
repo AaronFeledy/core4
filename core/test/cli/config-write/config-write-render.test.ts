@@ -22,7 +22,7 @@ describe("config write rendering", () => {
   test.each([
     ["tracing.otlp.headers.Authorization", "Bearer secret-token-1608"],
     ["tracing.otlp.headers", { "X-Auth": "secret-token-1608" }],
-    ["appEnv.API_TOKEN", "secret-token-1608"],
+    ["serviceDefaults.environment.API_TOKEN", "secret-token-1608"],
   ])("redacts secret values at %s before formatting", (key, value) => {
     // Given
     const input = { file: "/f", subcommand: "set", key, value, editSavedLabel: "config" };
@@ -134,7 +134,7 @@ describe("config write rendering", () => {
   test.each([
     ["tracing.otlp.headers.Authorization", "Bearer secret-token-1608"],
     ["tracing.otlp.headers", { "X-Auth": "secret-token-1608" }],
-    ["appEnv.API_TOKEN", "secret-token-1608"],
+    ["serviceDefaults.environment.API_TOKEN", "secret-token-1608"],
   ])("redacts the already-set value at %s", (key, value) => {
     // Given
     const input = { file: "/f", subcommand: "set", key, value, changed: false, editSavedLabel: "config" };

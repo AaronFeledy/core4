@@ -164,7 +164,6 @@
     "lando db:import site.sql.gz --yes",
     "lando db:restore before-update --yes",
     "lando db:snapshot --label before-update",
-    "lando drupal-scaffold",
     "lando drush --version",
     "lando drush cache:rebuild",
     "lando drush site:install standard --db-url=mysql://lando:lando@database/drupal-demo '--site-name=Drupal Demo' --account-name=admin --account-mail=admin@example.com -y",
@@ -497,8 +496,6 @@
   ],
   "docs/guides/services/minio.mdx": ["lando mc ready local"],
   "docs/guides/services/mssql.mdx": [
-    "lando exec database -- /opt/mssql-tools18/bin/sqlcmd -S localhost,1433 -U sa -C -P",
-    "lando logs --service database",
     "lando sqlcmd -Q 'SELECT @@VERSION'",
     "lando sqlcmd -d master -Q 'SELECT name, state_desc FROM sys.databases'"
   ],
@@ -718,11 +715,7 @@
     "lando drush user:login --no-browser",
     "lando exec appserver -- env COMPOSER_PROCESS_TIMEOUT=900 composer install --no-interaction"
   ],
-  "recipes/drupal-contrib/README.mdx": [
-    "lando drush status",
-    "lando phpcs --standard=Drupal,DrupalPractice .",
-    "lando phpunit tests/src/Unit"
-  ],
+  "recipes/drupal-contrib/README.mdx": ["lando drush status", "lando phpunit tests/src/Unit"],
   "recipes/fastapi/README.mdx": ["lando uvicorn app.main:app --reload"],
   "recipes/hugo/README.mdx": [
     "lando hugo build",

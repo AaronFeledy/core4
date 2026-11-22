@@ -1,5 +1,5 @@
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
-import type { AppId, AppPlan } from "@lando/sdk/schema";
+import type { AppId, AppliedAppPlan } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { Effect, Schema, SchemaIssue } from "effect";
 import { APPLIED_STATE_VERSION } from "./applied-state-migrate.ts";
@@ -66,7 +66,7 @@ const appliedStateDecodeDetail = (
 
 export type AppliedPlanRead =
   | { readonly status: "missing" }
-  | { readonly status: "readable"; readonly plan: AppPlan }
+  | { readonly status: "readable"; readonly plan: AppliedAppPlan }
   | { readonly status: "unreadable"; readonly path: string; readonly detail?: DecodeDetail };
 
 export const unreadableAppliedStateError = (input: {
@@ -125,7 +125,7 @@ const inspectBucket = <A>(bucket: StateBucket<A>) =>
   );
 
 export const inspectAppliedPlanBucket = (
-  open: Effect.Effect<StateBucket<AppPlan>, StateStoreError>,
+  open: Effect.Effect<StateBucket<AppliedAppPlan>, StateStoreError>,
   fallbackPath: string,
 ): Effect.Effect<AppliedPlanRead> =>
   open.pipe(
@@ -151,7 +151,7 @@ export const inspectAppliedPlanBucket = (
   );
 
 export const inspectAppliedPlansRecordBucket = (
-  open: Effect.Effect<StateBucket<Readonly<Record<AppId, AppPlan>>>, StateStoreError>,
+  open: Effect.Effect<StateBucket<Readonly<Record<AppId, AppliedAppPlan>>>, StateStoreError>,
   fallbackPath: string,
 ) =>
   open.pipe(

@@ -101,9 +101,9 @@ describe("valkey ServiceType", () => {
   test("leaves authored dependencies for planner normalization while preserving optional process fields", async () => {
     const plan = await planValkeyService({
       type: "valkey",
-      dependsOn: ["db"],
+      depends_on: ["db"],
       entrypoint: ["docker-entrypoint.sh"],
-      workingDirectory: "/data",
+      working_dir: "/data",
       user: "valkey",
     });
 

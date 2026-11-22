@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { FileSyncInfo } from "./file-sync-policy.ts";
 import { AppLifecycleEventName } from "./landofile-events.ts";
 import { CheckResult } from "./networking.ts";
@@ -50,6 +51,19 @@ export const LandofileEventsOutcome = Schema.Union([
 export type LandofileEventsOutcome = typeof LandofileEventsOutcome.Type;
 
 export const StartAppResult = Schema.Struct({
+  credentialChanges: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        service: Schema.String.annotate({ description: "Service whose database credentials were verified." }),
+        family: Schema.Literals(["postgres", "mysql", "mariadb", "mongodb", "mssql"]).annotate({
+          description: "Database family.",
+        }),
+        changedMembers: Schema.Array(
+          Schema.Literals(["user", "password", "database", "rootPassword"]),
+        ).annotate({ description: "Credential members changed without exposing their values." }),
+      }),
+    ).annotate({ [SchemaNotCredentialAnnotationId]: true }),
+  ).annotate({ description: "Verified database credential changes made during activation." }),
   app: Schema.String.annotate({ description: "Name of the started app." }),
   servicesStarted: Schema.Array(StartedService).annotate({
     description: "Services started with their observed endpoints and connections.",
@@ -104,6 +118,7 @@ export const RestartAppResult = Schema.Struct({
   app: Schema.String.annotate({ description: "Name of the restarted app." }),
   servicesStarted: StartAppResult.fields.servicesStarted,
   checks: StartAppResult.fields.checks,
+  credentialChanges: StartAppResult.fields.credentialChanges,
   servicesRemoved: StartAppResult.fields.servicesRemoved,
 }).annotate({ description: "Services and optional readiness checks returned after restarting an app." });
 export type RestartAppResult = typeof RestartAppResult.Type;
@@ -115,6 +130,7 @@ export const RebuildAppResult = Schema.Struct({
   }),
   servicesStarted: StartAppResult.fields.servicesStarted,
   checks: StartAppResult.fields.checks,
+  credentialChanges: StartAppResult.fields.credentialChanges,
   servicesRemoved: StartAppResult.fields.servicesRemoved,
 }).annotate({
   description: "Rebuilt services and their post-start observations returned after rebuilding an app.",

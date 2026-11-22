@@ -12,7 +12,7 @@ import (
 )
 
 const drupalContribSyncCommand = "drupal-contrib-sync"
-const drupalContribOutputs = "composer.json, executable vendor/bin/{drush,phpunit,phpcs}, web/core, and web/index.php"
+const drupalContribOutputs = "composer.json, executable vendor/bin/{drush,phpunit,phpcs,phpcbf}, web/core, and web/index.php"
 
 var (
 	contribProjectPattern    = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -172,10 +172,14 @@ func (o drupalContribOptions) prepareTestSite() error {
 }
 
 func drupalContribComplete(root string) bool {
+	// The recipe's tasks run these tools from /app/vendor/bin. PHPStan is left out because
+	// drupal/core-dev only ships it from Drupal 10, so the extension's require-dev supplies it on 9.
+	for _, binary := range []string{"drush", "phpunit", "phpcs", "phpcbf"} {
+		if !executableFile(filepath.Join(root, "vendor", "bin", binary)) {
+			return false
+		}
+	}
 	return isRegularFile(filepath.Join(root, "composer.json")) &&
-		executableFile(filepath.Join(root, "vendor", "bin", "drush")) &&
-		executableFile(filepath.Join(root, "vendor", "bin", "phpunit")) &&
-		executableFile(filepath.Join(root, "vendor", "bin", "phpcs")) &&
 		isDirectory(filepath.Join(root, "web", "core")) &&
 		isRegularFile(filepath.Join(root, "web", "index.php"))
 }

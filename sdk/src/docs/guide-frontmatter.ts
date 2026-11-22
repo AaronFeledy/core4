@@ -1,4 +1,5 @@
-import { Effect, Result, Schema } from "effect";
+import { Result, Schema } from "effect";
+import { withDefaultKey } from "../schema/default-key.ts";
 
 import { DeprecationNotice, DeprecationSeverity } from "../schema/deprecation.ts";
 import { KEBAB_CASE_ID_PATTERN, patternString } from "../schema/string-forms.ts";
@@ -73,7 +74,7 @@ export const GuideFrontmatter = Schema.Struct({
   id: GuideId,
   defaultLayer: Schema.optionalKey(Schema.Literals(["scenario", "e2e"])),
   provider: Schema.optionalKey(Schema.Literal("test")),
-  timeout: GuideTimeout.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 60000))),
+  timeout: GuideTimeout.pipe(withDefaultKey(60000, { description: "Guide timeout in milliseconds." })),
   platforms: Schema.optionalKey(Schema.Array(GuidePlatform)),
   tags: Schema.optionalKey(Schema.Array(Schema.String)),
   tabs: Schema.optionalKey(TabAxis),

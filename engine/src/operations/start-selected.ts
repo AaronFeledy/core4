@@ -3,7 +3,7 @@ import { type AppPlan, type PreparedFileSyncTarget, isIdleRunStatus } from "@lan
 import { BuildOrchestrator, EventService, RouterService } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
-import { applyActivation } from "../lifecycle/activation-apply.ts";
+import { applyActivation, openDatabaseCredentialSession } from "../lifecycle/activation-apply.ts";
 import { prepareRouteUrlBindings } from "../lifecycle/route-url-bindings.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
@@ -12,10 +12,6 @@ import type { AdmittedServices } from "./app-activation.ts";
 import { applyAndObserveServices } from "./apply-observe.ts";
 import { publishApplyOutcomeNotices } from "./apply-outcome-notices.ts";
 import { collectPlanConnections, observeService, startedServices } from "./connection-collector.ts";
-import {
-  openDatabaseCredentialSession,
-  publishDatabaseCredentialWarningsSafely,
-} from "./database-credential-warnings.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
@@ -119,6 +115,7 @@ export const launchAdmittedSelectedStart = Effect.fnUntraced(function* (
                     routeUrls,
                     provider,
                     plan: runtimePlan,
+                    previousPlan: appliedPlan,
                     certificates,
                     reconcile: resolvedOptions.reconcile ?? false,
                     recordedPlan: record,
@@ -152,15 +149,6 @@ export const launchAdmittedSelectedStart = Effect.fnUntraced(function* (
               ...(landofileRouter === undefined ? {} : { landofileRouter }),
             });
             yield* publishAppLaunchComplete({ target, plan, services: serviceNames });
-            if (environment !== undefined) {
-              yield* publishDatabaseCredentialWarningsSafely({
-                provider,
-                plan: runtimePlan,
-                services: ready,
-                session: environment,
-                ...(appliedPlan === undefined ? {} : { previousPlan: appliedPlan }),
-              });
-            }
             const servicesStarted = startedServices(
               yield* collectPlanConnections(readinessPlan, ready),
               launch.applied.services,
@@ -183,6 +171,9 @@ export const launchAdmittedSelectedStart = Effect.fnUntraced(function* (
             return {
               app: target.plan.name,
               servicesStarted,
+              ...(launch.applied.credentialChanges === undefined
+                ? {}
+                : { credentialChanges: launch.applied.credentialChanges }),
               ...(checks === undefined ? {} : { checks }),
               ...(stayedDown.length === 0 ? {} : { servicesStayedDown: stayedDown }),
               ...(admitted.removedByResume.length === 0 ? {} : { servicesRemoved: admitted.removedByResume }),

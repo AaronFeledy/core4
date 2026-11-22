@@ -7,7 +7,7 @@ tags: [docs, tooling, php, path]
 
 # Resolve PHP commands
 
-A tooling command’s bare name resolves through the target service’s container `PATH`. Lando does not prepend `vendor/bin`. In `.lando.yml`, give project-local binaries an explicit path, as this PHPUnit task does:
+Start a tooling task's `cmd` with `:php-local` to run a project-local PHP command from any directory in your app. This `.lando.yml` adds `lando phpunit` and `lando console`:
 
 ```yaml
 name: php-command-resolution-demo
@@ -21,28 +21,36 @@ tooling:
     cmd: composer
   phpunit:
     service: appserver
-    cmd: vendor/bin/phpunit
+    cmd: [":php-local", "phpunit"]
+    wrapper: true
+  console:
+    service: appserver
+    cmd: [":php-local", "bin/console"]
+    wrapper: true
 ```
 
-The `phpunit` task requires your project’s Composer dependencies to have installed `vendor/bin/phpunit` inside the service. After editing the Landofile, run `lando app:config:lint --format=json` from the app directory to check the task configuration; `lando app:cache:refresh` additionally confirms the app plans before you start it.
+`lando phpunit` runs your project's `vendor/bin/phpunit`, and `lando console` runs `php bin/console`, whether you start them in the app root or deep inside `src/`. Arguments you pass, such as `lando phpunit tests/Unit`, stay relative to the directory you run them from. After editing the Landofile, run `lando app:config:lint --format=json` from the app directory to check the tasks.
 
-For a full Drupal setup with Kernel, Functional, and browser tests, see [Run Drupal tests with PHPUnit and headless Chrome](../../recipes/drupal-testing/).
+## How `:php-local` finds the command
 
-Composer is the one PHP tool preinstalled on `PATH`, at `/usr/local/bin/composer`. A bare `composer` always hits that binary. Drush, PHPUnit, PHP-CS-Fixer, and anything else under `vendor/bin` need an explicit path.
+Every PHP service declares the `:php-local` launcher. Put it first in an argv-list `cmd`, then the command. Each time the task runs, it looks from your current directory up to the app root:
 
-The Drupal recipe shows the pattern: its generated `drush` task pins `vendor/bin/drush` instead of trusting a bare `drush`.
+| Command after `:php-local` | What runs |
+| --- | --- |
+| A name, such as `phpunit` or `drush` | The nearest `vendor/bin/<name>`. A project file with that name, such as Laravel's `artisan`, runs with `php`. Otherwise the name on the service `PATH`. |
+| A path, such as `bin/console` or `cli/joomla.php` | `php` with the nearest copy of that file. |
 
-## How the command is composed
+If nothing matches, the task fails with exit status 127 and names the command. `:php-local` doesn't change the working directory or `PATH`, and the command's own exit status comes back to you.
 
-A bare `cmd` is wrapped in `sh -c` and executed as-is. Only the container's own `PATH` decides what a bare name resolves to. The tooling engine sets a cwd (the app mount target, `/app` by default) and an environment map. It does not add or reorder `PATH` entries. Relative cmds like `vendor/bin/phpunit` resolve against that cwd.
+A plain relative `cmd: vendor/bin/phpunit` resolves against the directory you run the task from, because Lando maps your host directory into the container. It works from the app root and fails anywhere else, so use `:php-local` instead.
 
-## When a bare name is safe
+The Laravel, Symfony, and Joomla recipes use it for `lando artisan`, `lando console`, and `lando joomla`. The Drupal recipes use the related `:drupal-local` launcher, which adds Drupal defaults for Drush, PHP_CodeSniffer, and PHPStan; see [Lint PHP on the Drupal recipe](../recipes/drupal-workflow.mdx#lint-php).
 
-Composer is installed once, at build time, to `/usr/local/bin/composer`. A bare `composer` is never ambiguous. Everything else under `vendor/bin` needs a pinned path.
+## Where bare names resolve
 
-## Live PATH order
+Composer is preinstalled on `PATH`, at `/usr/local/bin/composer`, so a bare `cmd: composer` always runs it. Global tools you add with `composer.packages` install there too. A bare `cmd` without `:php-local` is wrapped in `sh -c` and resolves only through the service's `PATH`; Lando doesn't add or reorder `PATH` entries.
 
-Every tooling command runs through the selected provider's `exec`, which inherits the container image's own `PATH` unchanged.
+For a full Drupal setup with Kernel, Functional, and browser tests, see [Run Drupal tests with PHPUnit and headless Chrome](../recipes/drupal-testing.mdx).
 
 ## Executable coverage
 
@@ -53,12 +61,26 @@ Every tooling command runs through the selected provider's `exec`, which inherit
     </Step>
     <Step name="verify-config">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\"vendor/bin/phpunit\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\\[\\s*\":php-local\",\\s*\"phpunit\"\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\"composer\"" } }} />
     </Step>
     <Step name="lint-config">
       <Run command="lando app:config:lint --format=json" />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="php-local-runs-project-script" layer="e2e" timeout={600000} render={false} reason="A :php-local task runs the project script through the PHP service launcher">
+    <Step name="start">
+      <UseFixture name="php-command-resolution-demo" />
+      <Run command="lando start" />
+    </Step>
+    <Step name="run-console">
+      <Verify command="lando console" expect={{ stdout: { regex: "console ran from /app" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 </Guide>

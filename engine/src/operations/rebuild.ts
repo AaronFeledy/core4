@@ -85,11 +85,11 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
         admitted.scope === "services"
           ? {
               app: plan.name,
-              servicesStarted: yield* relaunchSelectedServices(admitted, {
+              ...(yield* relaunchSelectedServices(admitted, {
                 operation: "rebuild",
                 ...(options.signal === undefined ? {} : { signal: options.signal }),
                 ...(managed === undefined ? {} : { managed }),
-              }),
+              })),
               ...(removedByResume.length === 0 ? {} : { servicesRemoved: removedByResume }),
             }
           : yield* haltAndRelaunchApp(
@@ -111,6 +111,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
         app: start.app,
         servicesRebuilt: start.servicesStarted.map((service) => service.name),
         servicesStarted: start.servicesStarted,
+        ...(start.credentialChanges === undefined ? {} : { credentialChanges: start.credentialChanges }),
         ...(start.checks === undefined ? {} : { checks: start.checks }),
         ...(start.servicesRemoved === undefined ? {} : { servicesRemoved: start.servicesRemoved }),
       };

@@ -68,7 +68,7 @@ lando node -e "import('mysql2/promise').then(async m => { const c = await m.crea
     </Step>
     <Step name="env-wired">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"app\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"[^}]*\"envFile\":\\s*\\[\\s*\"\\.env\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"app\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"[^}]*\"env_file\":\\s*\\[\\s*\"\\.env\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"db\":\\s*\\{[\\s\\S]*?\"type\":\\s*\"mysql\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\"db\":\\s*\\{[\\s\\S]*DATABASE_URL" } } }} />
     </Step>

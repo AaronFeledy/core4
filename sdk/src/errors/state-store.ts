@@ -19,4 +19,6 @@ export class StateStoreError extends Schema.TaggedError<StateStoreError>()("Stat
   timeoutMs: Schema.optional(Schema.Int),
   cause: Schema.optional(Schema.Unknown),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-}) {}
+}) {
+  override readonly message = `State store ${this.operation} failed (${this.reason}).`;
+}

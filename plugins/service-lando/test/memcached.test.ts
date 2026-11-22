@@ -102,9 +102,9 @@ describe("memcached ServiceType", () => {
   test("leaves authored dependencies for planner normalization while preserving optional process fields", async () => {
     const plan = await planMemcachedService({
       type: "memcached",
-      dependsOn: ["db"],
+      depends_on: ["db"],
       entrypoint: ["docker-entrypoint.sh"],
-      workingDirectory: "/tmp",
+      working_dir: "/tmp",
       user: "memcache",
     });
 

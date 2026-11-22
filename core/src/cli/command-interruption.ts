@@ -1,4 +1,4 @@
-import { failureOutcomeFromCause, normalizeDefect } from "@lando/sdk/command-result";
+import { type FailureOutcome, failureOutcomeFromCause, normalizeDefect } from "@lando/sdk/command-result";
 import { Cause, Schema } from "effect";
 
 export class CommandInterruptedError extends Schema.TaggedError<CommandInterruptedError>()(
@@ -32,16 +32,16 @@ export const commandInterruptionExitCode = (signal?: AbortSignal): number => {
 };
 
 /** Presentation only; the original Cause remains available to tracing and callers. */
-export const commandFailureOutcome = (cause: Cause.Cause<unknown>, signal?: AbortSignal) => {
-  if (!Cause.hasInterruptsOnly(cause)) return failureOutcomeFromCause(cause, normalizeDefect);
+export const commandFailureOutcome = (cause: Cause.Cause<unknown>, signal?: AbortSignal): FailureOutcome => {
+  const failure = failureOutcomeFromCause(cause, normalizeDefect);
+  if (failure.kind !== "none" || !Cause.hasInterruptsOnly(cause)) return failure;
   const received = interruptionSignal(signal);
   return {
-    _tag: "failure" as const,
+    ...failure,
     error: new CommandInterruptedError({
       message: "Command interrupted.",
       remediation: "Run the command again when ready.",
       ...(received === undefined ? {} : { signal: received }),
     }),
-    additionalErrors: [],
   };
 };

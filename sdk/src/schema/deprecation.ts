@@ -1,4 +1,5 @@
-import { type SchemaAST as AST, Effect, Result, Schema } from "effect";
+import { type SchemaAST as AST, Result, Schema } from "effect";
+import { withDefaultKey } from "./default-key.ts";
 import { SEMVER_CORE_PATTERN, patternString } from "./string-forms.ts";
 
 type Semver = {
@@ -88,40 +89,65 @@ const DEPRECATION_NOTICE_JSON_SCHEMA = {
     since: {
       type: "string",
       pattern: SEMVER_CORE_PATTERN.source,
+      description: "First release where this surface is deprecated (major.minor.patch).",
     },
     removeIn: {
       type: "string",
       pattern: SEMVER_CORE_PATTERN.source,
+      description: "Release that removes the surface; must be later than since when set.",
     },
     severity: {
       type: "string",
       enum: ["info", "warn", "error"],
+      description: "How strongly callers are told to stop using the surface (default warn).",
     },
     replacement: {
       type: "string",
+      description: "Preferred replacement surface or migration target, when one exists.",
     },
     note: {
       type: "string",
+      description: "Human-readable explanation of the deprecation and what to do next.",
     },
     docsUrl: {
       type: "string",
       format: "uri",
       pattern: "^[Hh][Tt][Tt][Pp][Ss]?://",
+      description: "Absolute http(s) URL with migration or replacement documentation.",
     },
     ticket: {
       type: "string",
+      description: "Tracker id or URL for the deprecation or removal work.",
     },
   },
 } as const;
 
 export const DeprecationNoticeJsonShape = Schema.Struct({
-  since: SemverString,
-  removeIn: Schema.optionalKey(SemverString),
-  severity: DeprecationSeverity.pipe(Schema.withDecodingDefaultKey(Effect.succeed("warn" as const))),
-  replacement: Schema.optionalKey(Schema.String),
-  note: Schema.String,
-  docsUrl: Schema.optionalKey(OptionalHttpUrl),
-  ticket: Schema.optionalKey(Schema.String),
+  since: SemverString.annotateKey({
+    description: "First release where this surface is deprecated (major.minor.patch).",
+  }),
+  removeIn: Schema.optionalKey(SemverString).annotateKey({
+    description: "Release that removes the surface; must be later than since when set.",
+  }),
+  severity: DeprecationSeverity.pipe(
+    withDefaultKey("warn", {
+      description: "How strongly callers are told to stop using the surface (default warn).",
+    }),
+  ).annotateKey({
+    description: "How strongly callers are told to stop using the surface (default warn).",
+  }),
+  replacement: Schema.optionalKey(Schema.String).annotateKey({
+    description: "Preferred replacement surface or migration target, when one exists.",
+  }),
+  note: Schema.String.annotateKey({
+    description: "Human-readable explanation of the deprecation and what to do next.",
+  }),
+  docsUrl: Schema.optionalKey(OptionalHttpUrl).annotateKey({
+    description: "Absolute http(s) URL with migration or replacement documentation.",
+  }),
+  ticket: Schema.optionalKey(Schema.String).annotateKey({
+    description: "Tracker id or URL for the deprecation or removal work.",
+  }),
 }).annotate({
   identifier: "DeprecationNotice",
   title: "Deprecation Notice",

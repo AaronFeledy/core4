@@ -49,7 +49,7 @@ and `DB_PASSWORD` from the database service's planned port and credentials.
 Laravel's immutable dotenv repository gives these environment values precedence
 over `.env`. SQLite sets only `DB_CONNECTION` and has no database dependency.
 
-- `lando artisan`: Laravel Artisan.
+- `lando artisan`: Laravel Artisan, through `:php-local`, from any directory in the app.
 - `lando composer`: Composer.
 - `lando create-project <package> [<version>]`: Stage a Composer project (for example `laravel/laravel`) outside the app root, promote it into `/app` without overwriting `.lando.yml`, install `vendor` in place, then run the root package's `post-root-package-install` and `post-create-project-cmd` hooks. `--no-scripts` skips both hooks and install scripts.
 - `lando npm`: npm inside the `node` service.

@@ -73,6 +73,9 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
     }));
   let recordedPlan = apply.recordedPlan ?? plan;
   const changes = new Map<string, ServiceContainerChange>();
+  const credentials: NonNullable<
+    Effect.Success<ReturnType<typeof applyActivation>>["credentialChanges"]
+  >[number][] = [];
   const outcomes = yield* Effect.forEach(
     serviceGroups(apply.services, apply.bindings),
     (group) =>
@@ -109,6 +112,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
               applyActivation({
                 provider: apply.provider,
                 plan: runtimePlan,
+                previousPlan: apply.recordedPlan === undefined ? undefined : recordedPlan,
                 certificates,
                 ...apply.options,
                 environment: session,
@@ -125,6 +129,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
               [...(apply.exclusive ?? []).filter((id) => names.has(id)), ...removalIds],
             );
             for (const [name, change] of Object.entries(applied.services ?? {})) changes.set(name, change);
+            credentials.push(...(applied.credentialChanges ?? []));
             recordedPlan = candidateRecordedPlan;
           }),
         );
@@ -139,7 +144,13 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
     outcomes.flatMap(({ names, result }) => (Result.isSuccess(result) ? [...names] : [])),
   );
   const services = Object.values(recordedPlan.services).filter((service) => startedNames.has(service.name));
-  return { builtPlan: recordedPlan, services, failures, changes: Object.fromEntries(changes) };
+  return {
+    builtPlan: recordedPlan,
+    services,
+    failures,
+    changes: Object.fromEntries(changes),
+    ...(credentials.length === 0 ? {} : { credentialChanges: credentials }),
+  };
 }, Effect.scoped);
 
 export const globalServiceGroupError = <E>(

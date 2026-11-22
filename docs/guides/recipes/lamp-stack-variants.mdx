@@ -79,12 +79,12 @@ services:
 
 ## Run two database services
 
-Add a second database service and put it on the appserver `dependsOn` list.
+Add a second database service and put it on the appserver `depends_on` list.
 
 ```yaml
 services:
   appserver:
-    dependsOn:
+    depends_on:
       - database
       - database-legacy
   database:
@@ -105,7 +105,7 @@ services:
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database-legacy\":\\s*\\{[^}]*\"type\":\\s*\"mysql:8\\.0\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dependsOn\":.*\"database-legacy\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"depends_on\":.*\"database-legacy\"" } }} />
     </Step>
   </Scenario>
 

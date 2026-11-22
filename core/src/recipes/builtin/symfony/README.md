@@ -28,7 +28,7 @@ the database service at plan time.
 
 ## Generated tooling
 
-- `lando console …`: Symfony console.
+- `lando console …`: Symfony console (`php bin/console`), through `:php-local`, from any directory in the app.
 - `lando composer …`: Composer.
 - `lando create-project <package> [<version>]`: Stage a Composer project (for example `symfony/skeleton`) outside the app root, promote it into `/app` without overwriting `.lando.yml`, install `vendor` in place, then run the root package's Composer hooks. `--no-scripts` skips both hooks and install scripts.
 

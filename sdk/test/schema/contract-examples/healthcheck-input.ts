@@ -24,14 +24,14 @@ export const table = {
         url: "http://x",
         port: 80,
         intervalSeconds: 2,
-        startInterval: "5s",
+        startIntervalSeconds: 5,
       },
-      expected: { kind: "none", intervalSeconds: 2, startInterval: "5s" },
+      expected: { kind: "none", intervalSeconds: 2, startIntervalSeconds: 5 },
     },
     {
       name: "disable drops the test but preserves normalized settings",
       input: { disable: true, test: "x", interval: "5s", start_interval: "1s" },
-      expected: { kind: "none", intervalSeconds: 5, startInterval: "1s" },
+      expected: { kind: "none", intervalSeconds: 5, start_interval: "1s" },
     },
     {
       name: "string is a shell command",
@@ -94,7 +94,7 @@ export const table = {
       input: { port: 8080 },
       expected: { port: 8080 },
     },
-    { name: "start_interval stays raw", input: { start_interval: "5s" }, expected: { startInterval: "5s" } },
+    { name: "start_interval stays raw", input: { start_interval: "5s" }, expected: { start_interval: "5s" } },
     {
       name: "none retains valid shared fields under Lando precedence",
       input: {
@@ -107,7 +107,7 @@ export const table = {
         retries: "3",
         start_interval: "5s",
       },
-      expected: { kind: "none", retries: 3, startInterval: "5s" },
+      expected: { kind: "none", retries: 3, start_interval: "5s" },
     },
     {
       name: "command selects Lando precedence over disable",
@@ -138,6 +138,11 @@ export const table = {
       name: "startPeriodSeconds selects Lando precedence",
       input: { ...ignoredComposeKeys, startPeriodSeconds: 9 },
       expected: { startPeriodSeconds: 9 },
+    },
+    {
+      name: "startIntervalSeconds is the Lando start interval",
+      input: { startIntervalSeconds: 2 },
+      expected: { startIntervalSeconds: 2 },
     },
     { name: "boolean true disables", input: { disable: true }, expected: false },
     { name: "string true disables", input: { disable: "true" }, expected: false },

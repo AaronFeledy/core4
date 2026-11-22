@@ -1,0 +1,7 @@
+# lando-lint: expect-invalid environment.null-value
+name: diagnostic-reason
+services:
+  web:
+    image: alpine
+    environment:
+      FOO: null
