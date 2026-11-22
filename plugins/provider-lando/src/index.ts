@@ -1,6 +1,7 @@
 import { dirname } from "node:path";
 import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
 import { volumeWitnessImage } from "@lando/container-runtime/data-plane";
+import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineHttpRequest,
@@ -99,6 +100,7 @@ import {
   type WaitForExitOptions,
   waitForExit as runtimeWaitForExit,
 } from "@lando/container-runtime/wait-for-exit";
+import { runtimeLayoutPaths } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ServiceExecError, type StateStoreError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
@@ -2051,6 +2053,18 @@ export const plugin = definePlugin({
       ProviderId.make("lando"),
       {
         id: ProviderId.make("lando"),
+        purge: Effect.fn("Lando.preflightMachinePurge")(function* (input) {
+          if (input.platform !== "darwin" && input.platform !== "win32") return undefined;
+          const endpoint =
+            input.platform === "win32"
+              ? WINDOWS_MANAGED_MACHINE_PIPE
+              : runtimeLayoutPaths(input.dataRoot, input.platform).providerSocketPath;
+          const ctx = providerContextForEnv(input.env);
+          return yield* preflightDataRootPurge(makeRuntimePodmanApiClient(endpoint, ctx), ctx, {
+            ...input,
+            endpoint,
+          });
+        }),
         declaredCapabilities: (platform, arch) =>
           declaredProviderLandoCapabilities(platform, arch, systemDelegatedScopeHost),
         resourceOwnership: (ctx, root) => makeResourceOwnershipStore("lando", ctx.stateStore).summary(root),

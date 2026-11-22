@@ -1,6 +1,7 @@
 import type { Effect, Layer } from "effect";
 import type {
   ProviderCapabilityError,
+  ProviderInternalError,
   ProviderUnavailableError,
   ProxyError,
   SshError,
@@ -57,7 +58,34 @@ export type RuntimeProviderFactoryRequirements =
   | ContainerHelperAssets
   | AppPlanSanitizer;
 
+export type ProviderPurgeResult = {
+  readonly endpoint: string;
+  readonly removed: readonly string[];
+  readonly retained: readonly string[];
+  readonly failed: readonly string[];
+  readonly outsideScope: number;
+};
+
+export type ProviderPurgePreflight =
+  | { readonly kind: "skipped"; readonly endpoint: string; readonly reason: string }
+  | {
+      readonly kind: "reachable";
+      readonly endpoint: string;
+      readonly counts: Readonly<Record<"container" | "network" | "volume" | "image", number>>;
+      readonly apps: readonly { readonly appId: string; readonly appRoot: string }[];
+      readonly syncPresent: boolean;
+      readonly sweep: () => Effect.Effect<ProviderPurgeResult>;
+    };
+
+export type ProviderPurgeHook = (input: {
+  readonly platform: HostPlatform;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly dataRoot: string;
+  readonly buildStore: string;
+}) => Effect.Effect<ProviderPurgePreflight | undefined, ProviderUnavailableError | ProviderInternalError>;
+
 export interface RuntimeProviderContribution {
+  readonly purge?: ProviderPurgeHook;
   readonly appliedStateInventory?: (
     ctx: LandoPluginContext,
   ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError, PathsService>;

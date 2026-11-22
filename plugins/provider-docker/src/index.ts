@@ -9,6 +9,7 @@ import {
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
 import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
+import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
 import {
   dockerLifecycleDialect,
   dockerPullDialect,
@@ -882,6 +883,15 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        purge: Effect.fn("Docker.preflightPurge")(function* (input) {
+          const endpoint = resolveDockerHost(input);
+          const ctx = dockerContextForEnv(input.env);
+          return yield* preflightDataRootPurge(
+            makeRuntimeDockerApiClient(endpoint, ctx, { env: input.env }),
+            ctx,
+            { ...input, endpoint },
+          );
+        }),
         declaredCapabilities: dockerCapabilitiesForPlatform,
         resourceOwnership: (ctx, root) =>
           makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
