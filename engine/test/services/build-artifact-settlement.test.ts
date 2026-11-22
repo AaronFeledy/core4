@@ -162,7 +162,21 @@ test.each(cases)("settles every declared artifact task once for %s", async (_nam
 
     expect(Exit.isFailure(result.exit)).toBe(true);
     if (Exit.isFailure(result.exit)) {
-      expect(result.exit.cause.reasons.slice(0, cause.reasons.length)).toMatchObject(cause.reasons);
+      const payload = (reason: Cause.Reason<unknown>) =>
+        Cause.isFailReason(reason)
+          ? reason.error
+          : Cause.isDieReason(reason)
+            ? reason.defect
+            : reason.fiberId;
+      const observed = result.exit.cause.reasons.slice(0, cause.reasons.length);
+      expect(observed.map(payload)).toEqual(cause.reasons.map(payload));
+      for (const [index, reason] of cause.reasons.entries()) {
+        const actual = observed[index];
+        if (actual === undefined) throw new Error("Missing artifact failure reason");
+        expect(
+          Cause.isFailReason(reason) && Cause.hasDies(cause) ? ["Fail", "Die"] : [reason._tag],
+        ).toContain(actual._tag);
+      }
       expect(result.exit.cause.reasons.slice(cause.reasons.length).every(Cause.isInterruptReason)).toBe(true);
     }
     expect(calls.sort()).toEqual(["sibling", "web"]);

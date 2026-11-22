@@ -1,3 +1,4 @@
+import { orDieWithRole } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AbsolutePath,
@@ -74,7 +75,7 @@ export const makeOwnedResourcesCleanup = (input: {
                     body: `Skipped ${resource.nativeName} for app ${resource.appId}: ${error.message}`,
                     timestamp: DateTime.nowUnsafe(),
                   })
-                  .pipe(Effect.orDie);
+                  .pipe(orDieWithRole("cleanup"));
               return false;
             }),
         ),

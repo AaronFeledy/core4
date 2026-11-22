@@ -131,7 +131,7 @@ const projectTaggedError = (error: unknown, ancestors: readonly unknown[]): type
 export const taggedErrorJson = (error: unknown): typeof TaggedErrorJson.Type => projectTaggedError(error, []);
 
 /** A tagged error that surfaced as a defect still has its own message and remediation. */
-const isDiagnosticError = (error: unknown): boolean => {
+export const isDiagnosticError = (error: unknown): boolean => {
   const record = error !== null && typeof error === "object" ? error : undefined;
   return (["_tag", "message", "remediation"] as const).every(
     (key) => text(ownValue(record, key)) !== undefined,

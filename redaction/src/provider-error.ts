@@ -1,3 +1,4 @@
+import { mapDefectCause, mapFailureCause } from "@lando/sdk/command-result";
 import {
   ArtifactBuildError,
   ArtifactTransferError,
@@ -24,7 +25,7 @@ import {
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ProviderError } from "@lando/sdk/services";
-import { Schema } from "effect";
+import { type Cause, Schema } from "effect";
 
 import { redactProviderDetails } from "./provider-details.ts";
 
@@ -256,3 +257,15 @@ export function redactProviderError(
     }
   }
 }
+
+/**
+ * Redact every provider error in a Cause. Effect carries a typed failure as a defect once cleanup or a
+ * sibling also dies, so defects are redacted too; reason kinds, roles and annotations are unchanged.
+ */
+export const redactProviderCause = <E>(cause: Cause.Cause<E>, redactor: Redactor): Cause.Cause<E> =>
+  mapDefectCause(
+    mapFailureCause(cause, (error) =>
+      isProviderError(error) ? redactProviderError(error, redactor) : error,
+    ),
+    (defect) => (isProviderError(defect) ? redactProviderError(defect, redactor) : defect),
+  );

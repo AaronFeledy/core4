@@ -3,6 +3,7 @@ import {
   type JsonSchema,
   type JsonValue,
   isJsonObject,
+  jsonEquals,
 } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import sensitivityDelta from "./fixtures/x-extension-tooling-sensitivity.delta.json";
@@ -97,13 +98,44 @@ export const evolveHistoricalToolingSensitivity = (
   return normalizeJsonSchema(wireObject(visit(historical)));
 };
 
+/** Effect 4.1.4 emits Schema.Int safe-integer bounds; bare capture predates that. */
+const HISTORICAL_TOOLING_ARG_ORDER: JsonSchema = { minimum: 0, type: "integer" };
+const CURRENT_TOOLING_ARG_ORDER: JsonSchema = {
+  maximum: 9007199254740991,
+  minimum: 0,
+  type: "integer",
+};
+
+const withCurrentToolingArgOrder = (fields: Record<string, JsonValue>): Record<string, JsonValue> => {
+  const args = fields.args;
+  if (!isJsonObject(args)) return fields;
+  const declaration = args.additionalProperties;
+  if (!isJsonObject(declaration)) return fields;
+  const properties = declaration.properties;
+  if (!isJsonObject(properties)) return fields;
+  const order = properties.order;
+  if (!isJsonObject(order)) return fields;
+  // Exact historical bare emission only; leave authoring/wire unions untouched.
+  if (!jsonEquals(order, HISTORICAL_TOOLING_ARG_ORDER)) return fields;
+  return {
+    ...fields,
+    args: {
+      ...args,
+      additionalProperties: {
+        ...declaration,
+        properties: { ...properties, order: structuredClone(CURRENT_TOOLING_ARG_ORDER) },
+      },
+    },
+  };
+};
+
 export const evolveHistoricalToolingWrapper = (historical: JsonSchema): JsonSchema => {
   const visit = (value: JsonValue): JsonValue => {
     if (Array.isArray(value)) return value.map(visit);
     if (!isJsonObject(value)) return value;
     const next = Object.fromEntries(Object.entries(value).map(([key, child]) => [key, visit(child)]));
     if (!isTaskObject(value)) return next;
-    const fields = wireObject(next.properties);
+    const fields = withCurrentToolingArgOrder(wireObject(next.properties));
     return {
       ...next,
       properties: {

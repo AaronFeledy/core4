@@ -2,7 +2,12 @@ import { expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { encodeCommandResult, identityRedactor } from "@lando/sdk/command-result";
+import {
+  encodeCommandResult,
+  failureOutcomeFromCause,
+  identityRedactor,
+  orDieWithRole,
+} from "@lando/sdk/command-result";
 import { FileIoError } from "@lando/sdk/errors";
 import { persistVerifiedStream } from "@lando/sdk/verified-stream";
 import { Effect, Exit, Schema, Stream, absurd } from "effect";
@@ -112,29 +117,30 @@ test("persistence failure preserves the source cleanup defect alongside the safe
       Effect.scoped(
         persistVerifiedStream({
           destinationPath: destination,
-          body: Stream.make(new Uint8Array([1])).pipe(Stream.ensuring(Effect.die(cleanup))),
+          body: Stream.make(new Uint8Array([1])).pipe(
+            Stream.ensuring(Effect.die(cleanup).pipe(orDieWithRole("cleanup"))),
+          ),
         }),
       ),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(exit.cause.reasons).toMatchObject([
-        {
-          _tag: "Fail",
-          error: {
-            _tag: "VerifiedStreamError",
-            reason: "persist",
-            cause: {
-              _tag: "FileIoError",
-              operation: "persist",
-              reason: "no-space",
-              path: destination,
-            },
+      expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
+        kind: "typed",
+        source: "elected",
+        error: {
+          _tag: "VerifiedStreamError",
+          reason: "persist",
+          cause: {
+            _tag: "FileIoError",
+            operation: "persist",
+            reason: "no-space",
+            path: destination,
           },
         },
-        { _tag: "Die", defect: cleanup },
-      ]);
+        additionalErrors: [{ role: "cleanup", error: cleanup }],
+      });
     }
     expect(await fs.readdir(directory)).toEqual([]);
   } finally {

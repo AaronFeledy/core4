@@ -70,7 +70,7 @@ const fixture = async (failedService = "mailpit") => {
       }),
     ),
   );
-  return { plan, inspected, services, publicServices };
+  return { plan, inspected, services, publicServices, failure };
 };
 
 const selections: readonly OpenAppOptions[] = [
@@ -138,17 +138,22 @@ test.each([{}, { all: true }, { service: "web" }])(
   "required inspection failure remains visible: %j",
   async (selection) => {
     // Given
-    const { publicServices } = await fixture("web");
+    const { publicServices, failure } = await fixture("web");
     // When
     const result = await Effect.runPromise(
-      invokeOperation(openApp({ ...selection, print: true })).pipe(Effect.provide(publicServices)),
+      invokeOperation(openApp({ ...selection, print: true }), {
+        isError: (error) => error instanceof ProviderUnavailableError,
+        renderError: (error) => error.message,
+      }).pipe(Effect.provide(publicServices)),
     );
     // Then
     expect(result).toMatchObject({
       ok: false,
-      error: { _tag: "ProviderUnavailableError" },
-      additionalErrors: [{ error: { message: "inspection cleanup failed" } }],
+      output: failure.message,
+      additionalErrors: [{ role: "peer", error: { message: "inspection cleanup failed" } }],
     });
+    if (result.ok) throw new Error("expected inspection failure");
+    expect(result.error).toBe(failure);
   },
 );
 

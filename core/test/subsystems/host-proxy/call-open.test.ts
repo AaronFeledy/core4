@@ -180,7 +180,7 @@ test("an open child cancels its opener and publishes the failure hook when its l
     await proc.stdin.end();
     const stdout = await new Response(proc.stdout).text();
     let stderr = "";
-    for (;;) {
+    while (true) {
       const chunk = await reader.read();
       if (chunk.done) break;
       stderr += new TextDecoder().decode(chunk.value);

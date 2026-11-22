@@ -560,6 +560,7 @@
       "prepareCertificatePair"
     ],
     "./command-result": [
+      "ConvertedDefectAnnotation",
       "FailureRoleAnnotation",
       "annotateFailureRole",
       "boundedDiagnosticSummary",
@@ -583,6 +584,7 @@
       "mapStreamFailures",
       "mergeFailure",
       "normalizeDefect",
+      "orDieWithRole",
       "primaryFailureReason",
       "projectEncodedResult",
       "projectToolingDiagnostic",
@@ -2379,7 +2381,12 @@
       "toolVersionMarkerPath"
     ],
     "./transitions": ["defineTransitions", "illegalTransitionMessage", "planTransition"],
-    "./verified-stream": ["VerifiedStreamError", "collectVerifiedStream", "persistVerifiedStream"],
+    "./verified-stream": [
+      "VerifiedStreamError",
+      "collectVerifiedStream",
+      "mapVerifiedStreamFailures",
+      "persistVerifiedStream"
+    ],
     "./yaml": [
       "YamlEmitError",
       "emitYamlDocument",

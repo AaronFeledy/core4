@@ -4,6 +4,42 @@ import type { JsonSchema } from "../../../scripts/schema-compatibility/model.ts"
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 
 describe("schema representation identities", () => {
+  test("compares old and new Effect safe-integer emissions as equivalent", () => {
+    const before = { type: "integer" };
+    const after = { ...before, minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER };
+    expect(classifySchemaChange(before, after, "strict")).toEqual([]);
+  });
+
+  test.each([
+    ["minimum", { minimum: 0, maximum: Number.MAX_SAFE_INTEGER }],
+    ["maximum", { minimum: Number.MIN_SAFE_INTEGER, maximum: 100 }],
+  ] as const)("still reports a tighter integer %s", (keyword, bounds) => {
+    const before = { type: "integer" };
+    const findings = classifySchemaChange(before, { ...before, ...bounds }, "strict");
+    expect(findings).toEqual([
+      expect.objectContaining({ path: `$.${keyword}`, verdict: "unknown", accepted: false }),
+    ]);
+  });
+
+  test.each([
+    [
+      "exclusive union",
+      { oneOf: [{ oneOf: [{ type: "number" }, { type: "integer" }] }, { const: 1 }] },
+      { oneOf: [{ type: "number" }, { type: "integer" }, { const: 1 }] },
+    ],
+    [
+      "anyOf arm with a sibling constraint",
+      { anyOf: [{ anyOf: [{ const: 1 }, { const: 2 }], minimum: 2 }, { const: 3 }] },
+      { anyOf: [{ const: 1 }, { const: 2 }, { const: 3 }] },
+    ],
+  ] satisfies ReadonlyArray<readonly [string, JsonSchema, JsonSchema]>)(
+    "reports unsafe flattening of a nested %s",
+    (_name, before, after) => {
+      const findings = classifySchemaChange(before, after, "strict");
+      expect(findings).toEqual([expect.objectContaining({ verdict: "unknown", accepted: false })]);
+    },
+  );
+
   test.each([
     ["plain string alternative", { anyOf: [{ type: "string", pattern: "^a$" }, { type: "string" }] }, true],
     ["exclusive alternatives", { oneOf: [{ type: "string", pattern: "^a$" }, { type: "string" }] }, false],

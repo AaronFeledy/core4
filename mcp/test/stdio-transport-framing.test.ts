@@ -67,7 +67,7 @@ test("stdio-malformed-frame-single-parse-error", async () => {
   );
   expectMcpTransportFailure(observed.exit);
   expect(observed.messages).toEqual([
-    { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error", _tag: "ParseError" } },
+    { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } },
   ]);
 });
 
