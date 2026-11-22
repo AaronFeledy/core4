@@ -212,7 +212,7 @@ service, site sync, and tooling. They do not download Drupal:
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "SIMPLETEST_DB" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"lando-drupal-contrib-sync\",\\s*\"module\",\\s*\"example\",\\s*\"\\^11\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"post-start\":\\s*\\[\\s*\\{\\s*\"task\":\\s*\"drupal-contrib-sync\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/vendor/bin/phpstan" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpstan\":\\s*\\{[^}]*\"cmd\":\\s*\\[\\s*\":drupal-local\",\\s*\"phpstan\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

@@ -556,7 +556,7 @@ The catalog is bundled from `@lando/service-lando` and focused `@lando/service-*
 
 | Type id | Base | Notable options |
 |---|---|---|
-| `php` | `lando` | `via`, `composer`, `xdebug`, `db_client`, `webroot`, `allowOverride`, `uploadDirs` with Lando-owned Apache |
+| `php` | `lando` | `via`, `composer`, `xdebug`, `db_client`, `webroot`, `allowOverride`, `uploadDirs` with Lando-owned Apache; launchers `:php-local` (project scripts and Composer binaries from any app directory) and `:drupal-local` (Drupal site tools with Drupal lint defaults) (§8.5) |
 | `node` | `lando` | `command`, `globals`, `port`, `packageRoot`; `:node-local` on all Node services; package-manager wrappers and `:node-install-run` only with a supported catalog-owned toolchain (§8.5) |
 | `python` | `lando` | `framework`, `port`; `:python-local` on catalog-owned images with Lando's uv install (§8.5) |
 | `ruby` | `lando` | `framework`, `port`; launcher `:ruby-local` runs through Bundler when a Gemfile lockfile is present (§8.5) |
@@ -729,7 +729,7 @@ PHP MUST compute one immutable, schema-backed runtime policy during service-type
 
 Canonical aliases of the catalog Apache reference retain stock ownership in all `via` modes; another registry or namespace does not. Replacement context takes precedence over that reference. Canonical upstream `docker.io/library/php` tags ending in `-bookworm` or `-bullseye` establish the respective family only without a replacement build; Dockerfile contents MUST NOT be inspected to manufacture family proof.
 
-An authored `command` or `entrypoint` on a stock artifact changes process authority, not artifact ownership: stock installers and baseline INI remain, while generated launchers, Apache process preparation, and implicit console aliases are omitted. Custom images and replacement builds also omit implicit PHP aliases and file-log redirects. Container stdout/stderr and explicitly authored log sources remain available. Only Lando-generated Apache/FPM processes receive the aliases in §6.14.6; CLI receives none.
+An authored `command` or `entrypoint` on a stock artifact changes process authority, not artifact ownership: stock installers and baseline INI remain, while generated startup launchers, Apache process preparation, and implicit console aliases are omitted; command launchers such as `:php-local` stay declared and need the image to supply a POSIX shell and the selected tool. Custom images and replacement builds also omit implicit PHP aliases and file-log redirects. Container stdout/stderr and explicitly authored log sources remain available. Only Lando-generated Apache/FPM processes receive the aliases in §6.14.6; CLI receives none.
 
 Stock PHP `www-data` retains its declared `/var/www` home and prepared-home ownership contract (§6.5). Default persistence MUST NOT require `home: false`; preparation occurs during the image build and a fresh named volume inherits it, while populated volumes retain their ownership. Custom runtimes may disable persistence or supply an explicit valid home path under the ordinary home contract. This policy does not alter the stock baseline INI or existing framework preset behavior.
 

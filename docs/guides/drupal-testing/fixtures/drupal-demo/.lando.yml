@@ -35,6 +35,7 @@ tooling:
     user: www-data
     description: Run Drupal's PHPUnit suites as the web server user.
     cmd:
-      - vendor/bin/phpunit
+      - :drupal-local
+      - phpunit
       - -c
-      - web/core
+      - /app/web/core

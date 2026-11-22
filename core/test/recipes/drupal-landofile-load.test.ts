@@ -86,11 +86,7 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       expect(tooling.drush?.wrapper).toBe(true);
       expect(tooling.composer?.wrapper).toBe(true);
       expect(tooling.phpcs?.wrapper).toBe(true);
-      const phpcs = Array.isArray(tooling.phpcs?.cmds) ? tooling.phpcs.cmds[0] : undefined;
-      expect(phpcs).toContain("$LANDO_APP_ROOT/vendor/bin/phpcs");
-      expect(phpcs).toContain("$LANDO_WEBROOT/modules/custom");
-      expect(phpcs).not.toContain("{{ recipe.webroot }}");
-      expect(phpcs).not.toContain("${");
+      expect(tooling.phpcs?.cmd).toEqual([":drupal-local", "phpcs"]);
       expect(services.appserver?.type).toBe(`php:${drupalDefaults.php}`);
       expect(services.appserver?.webroot).toBe(drupalDefaults.webroot);
       expect(services.database?.type).toBe(drupalDefaults.database);
@@ -124,11 +120,7 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
         expect(tooling.drush?.wrapper).toBe(true);
         expect(tooling.composer?.wrapper).toBe(true);
         expect(tooling.phpstan?.wrapper).toBe(true);
-        const phpstan = Array.isArray(tooling.phpstan?.cmds) ? tooling.phpstan.cmds[0] : undefined;
-        expect(phpstan).toContain("$LANDO_APP_ROOT/vendor/bin/phpstan");
-        expect(phpstan).toContain("$LANDO_WEBROOT/themes/custom");
-        expect(phpstan).not.toContain("{{ recipe.webroot }}");
-        expect(phpstan).not.toContain("${");
+        expect(tooling.phpstan?.cmd).toEqual([":drupal-local", "phpstan"]);
         expect(services.appserver?.type).toBe(`php:${drupalCmsDefaults.php}`);
         expect(services.appserver?.webroot).toBe(drupalCmsDefaults.webroot);
         expect(services.database?.type).toBe(drupalCmsDefaults.database);

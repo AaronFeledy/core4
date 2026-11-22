@@ -32,8 +32,9 @@ services:
         scheme: both
 tooling:
   artisan:
-    cmds:
-      - "php artisan"
+    cmd:
+      - :php-local
+      - artisan
     description: "Run a Laravel Artisan command inside the appserver service."
     wrapper: true
     service: appserver

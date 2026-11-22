@@ -47,7 +47,7 @@ version supports every PHP version. Choose a version supported by your project.
 
 ## Generated tooling
 
-- `lando drush …`: Drush, working directory `/app`.
+- `lando drush …`: Drush from `/app/vendor/bin`, working directory `/app`.
 - `lando composer …`: Composer for the site, working directory `/app`.
 - `lando drupal-contrib-sync`: Build or update the site to match `.lando.yml`
   and the extension's `composer.json`.

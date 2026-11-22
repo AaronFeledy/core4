@@ -1,6 +1,5 @@
 import type { RecipeSource } from "@lando/sdk/schema";
-import { CONTRIB_DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
-import { contribQualityTooling } from "../php-quality-command.ts";
+import { drupalTool } from "../drupal-tooling.ts";
 import { composerTool, drupalOptions, drupalWebVariantsFor, phpAppserver } from "../source-php.ts";
 import {
   DRUPAL_CONTRIB_CHROME_IMAGE,
@@ -94,10 +93,7 @@ export const source = {
     },
     tooling: {
       drush: {
-        service: "appserver",
-        description: "Run Drush for the scaffolded Drupal site in /app.",
-        cmds: [CONTRIB_DRUSH_TOOLING_COMMAND],
-        wrapper: true,
+        ...drupalTool("drush", "Run Drush for the scaffolded Drupal site in /app."),
         ...contribToolingDir,
       },
       composer: {
@@ -120,7 +116,9 @@ export const source = {
         cmd: [`${contribDir}/vendor/bin/phpunit`, "-c", `${contribDir}/web/core`],
         wrapper: true,
       },
-      ...contribQualityTooling,
+      phpcs: drupalTool("phpcs", "Run PHP_CodeSniffer with Drupal Coder from your current directory."),
+      phpcbf: drupalTool("phpcbf", "Run phpcbf with Drupal Coder from your current directory."),
+      phpstan: drupalTool("phpstan", "Run PHPStan from your current directory."),
     },
   },
   variants: [

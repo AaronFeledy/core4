@@ -13,7 +13,7 @@ Init prompts for Drupal 10 or 11, PHP 8.1 through 8.6, Apache or nginx plus FPM,
 
 ## See the generated defaults
 
-The generated Landofile is an Apache-backed `appserver` on `php:8.4`, webroot `web`, `allowOverride: true`, `composer: "2"`, a `database` service with `type: mariadb:11.4`, plus `drush` and `composer` tooling that call project-local `vendor/bin/drush` and `composer`.
+The generated Landofile is an Apache-backed `appserver` on `php:8.4`, webroot `web`, `allowOverride: true`, `composer: "2"`, a `database` service with `type: mariadb:11.4`, plus `drush`, `phpcs`, `phpcbf`, and `phpstan` tooling that run the project-local tools through `:drupal-local`, and `composer`.
 
 <Guide>
   <Scenario id="default-recipe-output" render>

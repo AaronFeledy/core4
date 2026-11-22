@@ -1,6 +1,5 @@
 import type { RecipeSource } from "@lando/sdk/schema";
-import { SITE_DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
-import { siteQualityTooling } from "../php-quality-command.ts";
+import { siteDrush, siteQualityTooling } from "../drupal-tooling.ts";
 import { composerTool, drupalOptions, drupalWebVariants, phpAppserver } from "../source-php.ts";
 
 export const source = {
@@ -22,12 +21,7 @@ export const source = {
     runtime: 4,
     services: { appserver: phpAppserver("drupal"), database: { type: "{{ recipe.database }}" } },
     tooling: {
-      drush: {
-        service: "appserver",
-        description: "Run Drush inside the appserver service.",
-        cmds: [SITE_DRUSH_TOOLING_COMMAND],
-        wrapper: true,
-      },
+      drush: siteDrush,
       composer: composerTool,
       ...siteQualityTooling,
       "drupal-scaffold": {
