@@ -15,6 +15,7 @@ import {
 import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { Cause, DateTime, Effect, Exit, Option, Result, Schema } from "effect";
+import { adoptLegacyDataRoot } from "../src/data-root-adoption.ts";
 import type { EngineHttpApi } from "../src/engine-api.ts";
 import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "../src/labels.ts";
 import { networkOwnershipLabels } from "../src/native-ownership.ts";
@@ -62,7 +63,7 @@ const Request = Schema.Struct({
 });
 
 test.each([false, true])(
-  "scoped apply preserves an old named volume only with a local record (%s)",
+  "scoped apply preserves an old named volume only with a verified receipt (%s)",
   async (recorded) => {
     const store = { name: "data", scope: "app", kind: "data" } as const;
     const old = { ...plan, stores: [store] };
@@ -86,7 +87,20 @@ test.each([false, true])(
     };
     const result = await Effect.runPromise(
       bringUp(desired, {
-        ...(recorded ? { previousPlan: old } : {}),
+        previousPlan: old,
+        adoptionReceipts: recorded
+          ? [
+              {
+                kind: "volume",
+                nativeName: store.name,
+                volumeInstance: "populated",
+                appId: old.id,
+                appRoot: old.root,
+                providerId: old.provider,
+                dataRoot: desired.identity.dataRoot,
+              },
+            ]
+          : [],
         ctx: { providerId: "podman", remediation: "test", env: {} },
         api: {
           request: ({ method, path }) => {
@@ -103,7 +117,7 @@ test.each([false, true])(
     else
       expect(result).toMatchObject({
         _tag: "Failure",
-        failure: { operation: "bringUp.volume", remediation: expect.stringMatching(/export.*restore/i) },
+        failure: { operation: "bringUp.volume", remediation: expect.stringMatching(/different app name/i) },
       });
   },
 );
@@ -306,8 +320,11 @@ test("v1 inventory upgrades and destroys the legacy app without touching peer-ro
       expect((yield* inventory.load(old.root))?.resources.every((row) => row.dataRoot === undefined)).toBe(
         true,
       );
+      yield* adoptLegacyDataRoot(desired, old, { request: api.request, store: inventory });
       yield* inventory.prepare(desired, old);
-      return yield* bringUp(desired, { previousPlan: old, ctx, api });
+      const adoptionReceipts =
+        (yield* inventory.load(old.root))?.adoptions?.flatMap((batch) => batch.receipts) ?? [];
+      return yield* bringUp(desired, { previousPlan: old, ctx, api, adoptionReceipts });
     }),
   );
   expect(result.createdVolumes).toEqual([]);
@@ -547,7 +564,7 @@ test.each(["fails", "interrupts"] as const)(
   },
 );
 
-test("inventory-only ownership preserves an unlabeled volume without a previous plan", async () => {
+test("a persisted adoption receipt preserves an unlabeled volume without a previous plan", async () => {
   const store = { name: "data", scope: "app", kind: "data" } as const;
   const dataRoot = AbsolutePath.make("/local-data");
   const desired = {
@@ -575,16 +592,14 @@ test("inventory-only ownership preserves an unlabeled volume without a previous 
       nativeName: store.name,
       appId: plan.id,
       appRoot: plan.root,
-      ownerKey: appIdentityKey("owner", plan.root),
       providerId: plan.provider,
-      volumeClass: "data" as const,
-      volumeScope: "app" as const,
-      identityDigest: "digest",
+      dataRoot,
+      volumeInstance: "populated",
     },
   ];
   const result = await Effect.runPromise(
     bringUp(desired, {
-      ownershipInventory: inventory,
+      adoptionReceipts: inventory,
       ctx: { providerId: "podman", remediation: "test", env: {} },
       api: {
         request: ({ method, path }) => {
@@ -599,7 +614,7 @@ test("inventory-only ownership preserves an unlabeled volume without a previous 
   expect(result).toMatchObject({ _tag: "Success", success: { createdVolumes: [] } });
 });
 
-test("inventory-only ownership refuses a foreign-root inventory member", async () => {
+test("an adoption receipt from a different data root cannot authorize an unlabeled volume", async () => {
   const store = { name: "data", scope: "app", kind: "data" } as const;
   const dataRoot = AbsolutePath.make("/local-data");
   const desired = {
@@ -637,7 +652,7 @@ test("inventory-only ownership refuses a foreign-root inventory member", async (
   ];
   const result = await Effect.runPromise(
     bringUp(desired, {
-      ownershipInventory: inventory,
+      adoptionReceipts: inventory,
       ctx: { providerId: "podman", remediation: "test", env: {} },
       api: {
         request: ({ method, path }) => {

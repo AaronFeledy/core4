@@ -112,7 +112,6 @@ import {
   type ProviderSetupPlan,
   hostPlatformFamily,
   landoServiceNetworkAttachments,
-  planAppIdentity,
 } from "@lando/sdk/schema";
 import {
   Downloader,
@@ -1792,17 +1791,13 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           const physicalPlan = yield* physicalNetworkPlan(plan);
           const previousPhysicalPlan =
             previous === undefined ? undefined : yield* physicalNetworkPlan(previous);
-          const ownershipInventory =
-            previousPhysicalPlan === undefined
-              ? (yield* planState.ownership.load(planAppIdentity(physicalPlan).appRoot))?.resources
-              : undefined;
-          yield* planState.ownership.prepare(physicalPlan, previousPhysicalPlan);
+          const adoptionReceipts = yield* planState.ownership.prepare(physicalPlan, previousPhysicalPlan);
           const result = yield* withGlobalPublishedLifecycle(
             String(plan.id),
             "apply",
             runtimeBringUp(physicalPlan, {
               previousPlan: previousPhysicalPlan,
-              ...(ownershipInventory === undefined ? {} : { ownershipInventory }),
+              adoptionReceipts,
               ...(applyOptions.executeReadinessAttempt === undefined
                 ? {}
                 : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),

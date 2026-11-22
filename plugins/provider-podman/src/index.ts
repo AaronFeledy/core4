@@ -98,7 +98,6 @@ import {
   type ProviderCapabilities,
   ProviderId,
   hostPlatformFamily,
-  planAppIdentity,
 } from "@lando/sdk/schema";
 import { AppPlanSanitizer, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Layer, Schema, Stream } from "effect";
@@ -876,14 +875,10 @@ const assembleRuntimeProvider = (
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
-        const ownershipInventory =
-          previous === undefined
-            ? (yield* planState.ownership.load(planAppIdentity(plan).appRoot))?.resources
-            : undefined;
-        yield* planState.ownership.prepare(plan, previous);
+        const adoptionReceipts = yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
           previousPlan: previous,
-          ...(ownershipInventory === undefined ? {} : { ownershipInventory }),
+          adoptionReceipts,
           ...(applyOptions.executeReadinessAttempt === undefined
             ? {}
             : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),

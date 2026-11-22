@@ -40,6 +40,7 @@ import { Cause, Context, DateTime, Duration, Effect, Exit, Option, Schema, Strea
 import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import { removeRuntimeContainer } from "../container-removal.ts";
 import { sharedNetworkLabels } from "../data-root-labels.ts";
+import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "../data-root-ownership.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
@@ -79,7 +80,6 @@ import {
   serviceContainerName,
 } from "../plan.ts";
 import { StartFailureLogRedactor, redactDetails, redactorFor, withApiReason } from "../redact.ts";
-import type { OwnedResource } from "../resource-ownership-inventory.ts";
 import { compileServiceProbe } from "../service-probe.ts";
 import {
   type ServicePublishProbe,
@@ -101,13 +101,7 @@ import {
 import { type ShutdownIdentity, observeShutdown } from "../shutdown-observation.ts";
 import { restartVerdict } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
-import {
-  coherentVolumeOwnership,
-  historicalInventoryVolume,
-  historicalVolume,
-  isGlobalCacheStore,
-  volumeOwnershipLabels,
-} from "../volume-ownership.ts";
+import { coherentVolumeOwnership, isGlobalCacheStore, volumeOwnershipLabels } from "../volume-ownership.ts";
 import { waitNativeContainer } from "../wait-for-exit.ts";
 import {
   ensureAuthoredNetwork,
@@ -209,7 +203,7 @@ export type StartFailureRemediation = (input: {
 export interface BringUpOptions {
   readonly previousPlan?: AppPlan | undefined;
   /** Inventory-only ownership rows when no previous applied plan remains. */
-  readonly ownershipInventory?: ReadonlyArray<OwnedResource> | undefined;
+  readonly adoptionReceipts?: readonly AdoptionReceipt[];
   readonly executeReadinessAttempt?: ApplyOptions["executeReadinessAttempt"];
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
@@ -576,30 +570,34 @@ const ensureVolume = (
             });
             const observed = inspected.status === 200 ? decodeNativeObservation(inspected.body) : undefined;
             const actual = observed?.Labels ?? observed?.labels ?? {};
-            const owner = actual[LANDO_DATA_ROOT_LABEL];
+            const resource = {
+              kind: "volume",
+              nativeName: store.name,
+              labels: actual,
+              volumeInstance: actual["dev.lando.volume-instance"],
+            } as const;
+            const ownership = decideDataRootOwnership(resource, {
+              dataRoot: plan.identity.dataRoot,
+              receipts: deps.options.adoptionReceipts ?? [],
+            });
             if (
               observed?.Name === store.name &&
+              ownership === "owned" &&
               coherentVolumeOwnership(actual, plan.provider) &&
-              Object.entries(volumeOwnershipLabels(plan, store)).every(([key, value]) =>
-                key === LANDO_DATA_ROOT_LABEL
-                  ? matchesDataRoot(
-                      owner,
-                      value,
-                      historicalVolume(deps.options.previousPlan, plan, store.name) ||
-                        historicalInventoryVolume(deps.options.ownershipInventory, plan, store.name),
-                    )
-                  : actual[key] === value,
+              Object.entries(volumeOwnershipLabels(plan, store)).every(
+                ([key, value]) => key === LANDO_DATA_ROOT_LABEL || actual[key] === value,
               )
             )
               return [];
             return yield* new ProviderUnavailableError({
               providerId: plan.provider,
               operation: "bringUp.volume",
-              message: `Cannot verify ownership of volume ${store.name}.`,
-              remediation:
-                owner !== undefined && owner !== plan.identity.dataRoot
-                  ? `Use the Lando installation with data root ${owner} to manage this volume.`
-                  : "Export the volume data before recreating the store, then restore the data.",
+              ...(ownership === "owned"
+                ? {
+                    message: `Cannot verify ownership of volume ${store.name}.`,
+                    remediation: "Export the volume data before recreating the store, then restore the data.",
+                  }
+                : dataRootRefusal(resource)),
             });
           }
           if (response.status === 201 || response.status === 200)

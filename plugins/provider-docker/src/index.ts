@@ -94,7 +94,6 @@ import {
   ServiceName,
   type ServicePlan,
   hostPlatformFamily,
-  planAppIdentity,
 } from "@lando/sdk/schema";
 import {
   PathsService,
@@ -678,14 +677,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
-        const ownershipInventory =
-          previous === undefined
-            ? (yield* planState.ownership.load(planAppIdentity(plan).appRoot))?.resources
-            : undefined;
-        yield* planState.ownership.prepare(plan, previous);
+        const adoptionReceipts = yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
           previousPlan: previous,
-          ...(ownershipInventory === undefined ? {} : { ownershipInventory }),
+          adoptionReceipts,
           ...(applyOptions.executeReadinessAttempt === undefined
             ? {}
             : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
