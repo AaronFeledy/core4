@@ -306,7 +306,7 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
     readonly request?: (request: EngineHttpRequest) => Effect.Effect<EngineHttpResponse, E>;
   },
   target: (
-    | { readonly kind: "container" }
+    | { readonly kind: "container"; readonly receipts?: readonly AdoptionReceipt[] }
     | {
         readonly kind: "network";
         readonly legacy: "accept" | "reject";
@@ -344,6 +344,7 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
       return yield* verifiedNativeId(response.body, target.labels, ctx, {
         kind: "container",
         name: target.name,
+        ...(target.receipts === undefined ? {} : { receipts: target.receipts }),
       });
     case "network": {
       const decoded = Schema.decodeUnknownOption(Observations)(response.body);

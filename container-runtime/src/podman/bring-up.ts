@@ -718,7 +718,12 @@ const identityFromCreateResponse = (
   if (response.status !== 409) return Effect.succeed(undefined);
   return inspectOwnedNativeId(
     deps.api,
-    { kind: "container", name, labels: containerOwnershipLabels(plan, service.name) },
+    {
+      kind: "container",
+      name,
+      labels: containerOwnershipLabels(plan, service.name),
+      receipts: deps.options.adoptionReceipts ?? [],
+    },
     deps.options.ctx,
   ).pipe(
     Effect.flatMap((id) =>
@@ -1115,7 +1120,12 @@ const startService = Effect.fnUntraced(function* (
           startedIdentity ??
           (yield* inspectOwnedNativeId(
             deps.api,
-            { kind: "container", name, labels: containerOwnershipLabels(plan, service.name) },
+            {
+              kind: "container",
+              name,
+              labels: containerOwnershipLabels(plan, service.name),
+              receipts: deps.options.adoptionReceipts ?? [],
+            },
             deps.options.ctx,
           ));
         if (recoveryId !== undefined) {
