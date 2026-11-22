@@ -4,15 +4,19 @@ import {
   type ServiceConfig,
   type ServicePlan,
   canonicalSqlitePath,
+  sameImageReference,
   serviceAppMount,
   validationIssue,
 } from "@lando/sdk/schema";
 import { Effect } from "effect";
-
+import { catalogDatabaseKey } from "../operations/database-convergence/catalog.ts";
 import { applyAuthoredDependencies } from "../services/authored-dependencies.ts";
 import { composeBuildToArtifact, isComposeBuild } from "../services/compose-build-artifact.ts";
 import { mergeComposeKnobs } from "../services/compose-knobs.ts";
 import { applyPreparedService } from "../services/feature.ts";
+import { AUTHORED_BUILD_STEP_PREFIX } from "./authored-build-step.ts";
+import type { MountAuthoringContext } from "./authored-mount-entry.ts";
+import { compileAuthoredMounts } from "./authored-mounts.ts";
 import { applyAuthoredHealthcheck } from "./authored-probes.ts";
 import {
   SERVICE_FEATURES_EXTENSION_KEY,
@@ -22,6 +26,7 @@ import {
   serviceFeatureExtension,
   toAppFeatureDraft,
 } from "./extensions.ts";
+import { appendExtraArgs } from "./extra-args.ts";
 import { serviceHomeIntent } from "./home.ts";
 import { servicePullPolicy } from "./pull-policy.ts";
 import { type PlannedServiceDraft, type ResolvedService, servicePlanError } from "./service-types.ts";
@@ -86,9 +91,11 @@ export const applyAuthoredSqlite = Effect.fnUntraced(function* (
 export { applyAuthoredDependencies } from "../services/authored-dependencies.ts";
 
 export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* (input: {
+  readonly landofilePath?: string;
   readonly resolvedServices: ReadonlyArray<ResolvedService>;
-  readonly appRoot: string;
+  readonly mountContext: Omit<MountAuthoringContext, "serviceName">;
 }): Effect.fn.Return<ReadonlyArray<PlannedServiceDraft>, LandofileValidationError> {
+  const { appRoot } = input.mountContext;
   const plannedServiceDrafts: PlannedServiceDraft[] = [];
   for (const {
     name,
@@ -104,30 +111,82 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
     resolvedArtifactTag,
     configSourceInputs,
   } of input.resolvedServices) {
+    const mounts = compileAuthoredMounts(
+      { ...input.mountContext, serviceName: name },
+      resolution.normalizedConfig,
+      service.storage,
+    );
+    if (mounts instanceof LandofileValidationError) return yield* Effect.fail(mounts);
     const composition = yield* applyPreparedService({
       prepared,
       endpointContributions,
       applicationConfigs,
+      authoredMounts: mounts.mounts,
+      ...(service.extraArgs?.length
+        ? { launcherFeatures: new Set(resolution.features.map((feature) => feature.id)) }
+        : {}),
     }).pipe(
       mapFailures((error) =>
         servicePlanError({
-          appRoot: input.appRoot,
+          appRoot,
           serviceName: name,
           cause: error.cause instanceof LandofileValidationError ? error.cause : error,
         }),
       ),
     );
+    const extraArgsProcess = yield* appendExtraArgs({
+      location: { name, file: input.landofilePath ?? appRoot },
+      config: service,
+      type: serviceType,
+      process: composition.plan,
+      launcher: composition.extraArgsLauncher,
+    });
+    const processPlan =
+      extraArgsProcess === undefined
+        ? composition.plan
+        : { ...composition.plan, command: extraArgsProcess.command };
     const authoredServicePlanWithoutLabels = applyAuthoredDependencies(
-      yield* applyAuthoredSqlite(applyAuthoredHealthcheck(composition.plan, service), service, input.appRoot),
+      yield* applyAuthoredSqlite(applyAuthoredHealthcheck(processPlan, service), service, appRoot),
       service,
     );
-    const authoredServicePlan = mergeComposeKnobs(
+    const mergedServicePlan = mergeComposeKnobs(
       mergeComposeExtension(authoredServicePlanWithoutLabels, service),
       service,
     );
+    const source = mergedServicePlan.artifact;
+    const family = resolution.connection?.family;
+    const catalogRefs =
+      resolvedArtifactTag === undefined ? Object.values(serviceType.artifacts ?? {}) : [resolvedArtifactTag];
+    const catalog =
+      source?.kind === "ref" &&
+      family !== undefined &&
+      (serviceType.id === family ||
+        (resolvedArtifactTag !== undefined && serviceType.id.split(":", 1)[0] === family)) &&
+      catalogRefs.some(
+        (ref) =>
+          sameImageReference(ref, source.ref) &&
+          (service.image === undefined || sameImageReference(ref, service.image)),
+      ) &&
+      service.command === undefined &&
+      service.entrypoint === undefined &&
+      service.config === undefined &&
+      service.build === undefined &&
+      extraArgsProcess === undefined &&
+      !service.storage?.length &&
+      !Object.keys(service.environment ?? {}).some((key) =>
+        /^(?:PGDATA|POSTGRES_(?:HOST_AUTH_METHOD|INITDB_ARGS)|(?:MYSQL|MARIADB)_(?:ALLOW_EMPTY|RANDOM_ROOT|.*_FILE)|MONGO_INITDB_.*_FILE)$/u.test(
+          key,
+        ),
+      );
+    const authoredServicePlan = catalog
+      ? {
+          ...mergedServicePlan,
+          extensions: { ...mergedServicePlan.extensions, [catalogDatabaseKey]: source.ref },
+        }
+      : mergedServicePlan;
     const build = service.build;
     const composeArtifact =
-      build !== undefined && isComposeBuild(build) ? composeBuildToArtifact(build, input.appRoot) : undefined;
+      build !== undefined && isComposeBuild(build) ? composeBuildToArtifact(build, appRoot) : undefined;
     const authoredArtifact =
       composeArtifact ??
       (service.image === undefined ? undefined : { kind: "ref" as const, ref: service.image });
@@ -145,13 +204,13 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
                 buildSteps: [
                   ...serviceFeatureBuildSteps(authoredServicePlan.extensions),
                   ...artifactScripts.map((script, index) => ({
-                    id: `authored-artifact:${index + 1}`,
+                    id: `${AUTHORED_BUILD_STEP_PREFIX}artifact:${index + 1}`,
                     phase: "build" as const,
                     command: ["sh", "-c", script.run],
                     ...(script.user === undefined ? {} : { user: script.user }),
                   })),
                   ...appScripts.map((script, index) => ({
-                    id: `authored-app:${index + 1}`,
+                    id: `${AUTHORED_BUILD_STEP_PREFIX}app:${index + 1}`,
                     phase: "app" as const,
                     command: { command: ["sh", "-c", script.run] },
                     ...(script.user === undefined ? {} : { user: script.user }),
@@ -162,6 +221,8 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
           };
     plannedServiceDrafts.push({
       name,
+      ...(extraArgsProcess === undefined ? {} : { extraArgsProcess }),
+      dependencyEnvironments: composition.dependencyEnvironments,
       authoredStorage: service.storage,
       hostnames: service.hostnames ?? [],
       authoredArtifact,

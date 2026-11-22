@@ -9,7 +9,7 @@ services:
     port: 80
     volumes:
       - ./config/custom-php.ini:/usr/local/etc/php/conf.d/zzz-custom.ini:ro
-    dependsOn:
+    depends_on:
       - database
   database:
     type: mariadb

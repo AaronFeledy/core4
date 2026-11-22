@@ -177,7 +177,8 @@ describe("Engine package seam", () => {
     expect(workspacePeerDependencies).toEqual([]);
     expect(runtimeDependencies).toEqual([
       ["effect", "catalog:"],
-      ["semver", "^7.8.5"],
+      // The range moves with dependency updates; the seam only requires semver 7 at runtime.
+      ["semver", expect.stringMatching(/^\^7\./)],
     ]);
     expect(nonWorkspaceDevDependencies).toEqual([["@types/semver", "^7.8.0"]]);
   });

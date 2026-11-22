@@ -1,8 +1,9 @@
-import { Effect, Result, Schema } from "effect";
-
+import { Result, Schema } from "effect";
 import { NotImplementedError } from "../../errors/index.ts";
+import { withDefaultKey } from "../../schema/default-key.ts";
 import { KEBAB_CASE_ID_PATTERN, patternString } from "../../schema/string-forms.ts";
-import { GuideId } from "../guide-frontmatter.ts";
+import { GuideSkip, GuideTimeout } from "../guide-execution-fields.ts";
+import { GuideFrontmatter, GuideId } from "../guide-frontmatter.ts";
 
 /** Scenario/step id token — same kebab alphabet as GuideId, distinct schema identity. */
 export const ComponentId = GuideId.annotate({ identifier: "ComponentId" });
@@ -22,6 +23,7 @@ const SUPPORTED_GUIDE_COMPONENTS = [
   "Step",
   "Run",
   "Verify",
+  "Fetch",
   "Cleanup",
   "Variable",
   "UseFixture",
@@ -116,10 +118,25 @@ export type GuideProps = typeof GuideProps.Type;
 
 export const ScenarioProps = Schema.Struct({
   id: ComponentId,
-  render: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),
+  render: Schema.Boolean.pipe(
+    withDefaultKey(true, { description: "Include the scenario in the rendered guide." }),
+  ),
   reason: Schema.optionalKey(Schema.String),
   tags: Schema.optionalKey(Schema.Array(Schema.String)),
   layer: Schema.optionalKey(Schema.Literals(["scenario", "e2e"])),
+  timeout: Schema.optionalKey(
+    GuideTimeout.annotate({
+      description: "Scenario test timeout in milliseconds. Overrides the guide timeout.",
+    }),
+  ),
+  platforms: GuideFrontmatter.fields.platforms.annotate({
+    description: "Host platforms allowed to run this scenario, unless the variant cell overrides them.",
+  }),
+  skip: Schema.optionalKey(
+    GuideSkip.annotate({
+      description: "Skip this scenario with a reason, unless the variant cell overrides it.",
+    }),
+  ),
 })
   .pipe(
     Schema.check(
@@ -203,6 +220,49 @@ export const VerifyProps = Schema.Struct({
     description: "<Verify> component props.",
   });
 export type VerifyProps = typeof VerifyProps.Type;
+
+export const FETCH_ROUTE_TOKEN = /^\{\{route:([a-zA-Z0-9_-]+)\}\}(?=[/?#]|$)/u;
+
+const HttpStatus = Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 200, maximum: 599 }));
+const HeaderName = Schema.String.check(Schema.isPattern(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/u));
+const FetchUrl = Schema.String.check(
+  Schema.makeFilter((value) => {
+    const candidate = value.replace(FETCH_ROUTE_TOKEN, "https://route.invalid");
+    const url = URL.parse(candidate);
+    return (
+      (/^https?:\/\//iu.test(candidate) &&
+        !/[\s\\]/u.test(candidate) &&
+        url !== null &&
+        url.username === "" &&
+        url.password === "") ||
+      "Use an absolute HTTP(S) URL without credentials or a leading {{route:service}} token."
+    );
+  }),
+);
+
+export const FetchProps = Schema.Struct({
+  url: FetchUrl.annotate({
+    description: "Absolute HTTP(S) URL or a URL starting with a service route token.",
+  }),
+  method: Schema.optionalKey(Schema.Literals(["GET", "HEAD"])).annotate({
+    description: "HTTP method. Defaults to GET.",
+  }),
+  headers: Schema.optionalKey(Schema.Record(HeaderName, Schema.String)).annotate({
+    description: "Request headers. The Host header is set from the URL.",
+  }),
+  expect: Schema.Struct({
+    status: Schema.Union([HttpStatus, Schema.NonEmptyArray(HttpStatus)]).annotate({
+      description: "Accepted HTTP status code or nonempty list of codes.",
+    }),
+    headers: Schema.optionalKey(Schema.Record(HeaderName, MatcherSchema)).annotate({
+      description: "Matchers keyed by case-insensitive response header names.",
+    }),
+    body: Schema.optionalKey(MatcherSchema).annotate({
+      description: "Matcher for the response body as text.",
+    }),
+  }).annotate({ description: "Assertions on the response without following redirects." }),
+}).annotate({ identifier: "FetchProps", title: "Fetch Props", description: "<Fetch> component props." });
+export type FetchProps = typeof FetchProps.Type;
 
 export const CleanupProps = Schema.ObjectKeyword.annotate({
   identifier: "CleanupProps",
@@ -299,7 +359,7 @@ export type TabProps = typeof TabProps.Type;
 
 export const InlineProps = Schema.Struct({
   code: Schema.String,
-  lang: Schema.String.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "ts"))),
+  lang: Schema.String.pipe(withDefaultKey("ts", { description: "Language used to highlight inline code." })),
   justification: explanationText,
 }).annotate({
   identifier: "InlineProps",
@@ -374,6 +434,18 @@ export const decodeVerifyPropsEither = (input: unknown): Result.Result<VerifyPro
 
 export const decodeCleanupPropsEither = (input: unknown): Result.Result<CleanupProps, DecodeError> =>
   decodeEither(CleanupProps, input);
+
+export const decodeFetchPropsEither = (input: unknown): Result.Result<FetchProps, DecodeError> => {
+  const result = decodeEither(FetchProps, input);
+  if (Result.isFailure(result)) return result;
+  const { expect } = result.success;
+  for (const matcher of [expect.body, ...Object.values(expect.headers ?? {})]) {
+    const unsupportedMatcherKey = findUnsupportedMatcherKey(matcher);
+    if (unsupportedMatcherKey !== undefined)
+      return Result.fail(unsupportedComponentPropsError("Fetch", unsupportedMatcherKey));
+  }
+  return result;
+};
 
 export const decodeVariablePropsEither = (input: unknown): Result.Result<VariableProps, DecodeError> =>
   decodeEither(VariableProps, input);

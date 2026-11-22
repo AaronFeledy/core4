@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.6.6/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -182,7 +182,8 @@
     {
       "includes": [
         "**/container-runtime/test/fixtures/applied-state-v3/**/*.json",
-        "**/container-runtime/test/fixtures/applied-state-v7/**/*.json"
+        "**/container-runtime/test/fixtures/applied-state-v7/**/*.json",
+        "**/container-runtime/test/fixtures/applied-state-v9/**/*.json"
       ],
       "formatter": {
         "enabled": false

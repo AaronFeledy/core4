@@ -6,12 +6,14 @@ import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lease.ts";
 import { routeOwnerFromScratch } from "./route-owner.ts";
+import type { PreparedRouteUrls } from "./route-url-bindings.ts";
 
 export const applyScratchRoutes = Effect.fn("RouterService.applyScratchRoutes")(
   function* (request: {
     readonly plan: AppPlan;
     readonly router?: RouterServiceShape;
     readonly landofileRouter?: RouterConfig;
+    readonly routeUrls?: PreparedRouteUrls | undefined;
   }) {
     const { plan, router } = request;
     if (plan.routes.length === 0 || !routerEnabled(plan) || router === undefined) return;
@@ -19,22 +21,23 @@ export const applyScratchRoutes = Effect.fn("RouterService.applyScratchRoutes")(
     const resolved = yield* resolveRouterConfigForApp(request.landofileRouter);
     yield* Effect.scoped(router.setup({ defaultDomain, ...resolved }));
     yield* verifyGlobalConsumerAdmission;
-    yield* router.applyRoutes(plan.routes, routeOwnerFromScratch(plan.id));
+    return yield* router.applyRoutes(plan.routes, routeOwnerFromScratch(plan.id));
   },
-  Effect.asVoid,
   (effect, request) =>
-    effect.pipe(
-      Effect.catchCause((cause) => {
-        if (Cause.hasInterruptsOnly(cause)) return Effect.interrupt;
-        const error = Cause.findErrorOption(cause);
-        return error._tag === "Some" &&
-          (error.value instanceof AppPlacementError ||
-            error.value instanceof GlobalAutoStartError ||
-            error.value instanceof ServiceNotReadyError)
-          ? Effect.fail(error.value)
-          : Effect.logWarning(
-              `Unable to apply routes for scratch app ${String(request.plan.id)}: ${Cause.pretty(cause)}`,
-            );
-      }),
-    ),
+    request.routeUrls !== undefined
+      ? effect
+      : effect.pipe(
+          Effect.catchCause((cause) => {
+            if (Cause.hasInterruptsOnly(cause)) return Effect.interrupt;
+            const error = Cause.findErrorOption(cause);
+            return error._tag === "Some" &&
+              (error.value instanceof AppPlacementError ||
+                error.value instanceof GlobalAutoStartError ||
+                error.value instanceof ServiceNotReadyError)
+              ? Effect.fail(error.value)
+              : Effect.logWarning(
+                  `Unable to apply routes for scratch app ${String(request.plan.id)}: ${Cause.pretty(cause)}`,
+                );
+          }),
+        ),
 );

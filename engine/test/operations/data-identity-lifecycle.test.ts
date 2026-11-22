@@ -2,11 +2,7 @@ import { expect, test } from "bun:test";
 import { AppDataIdentityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { AppPlanner, EventService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Deferred, Effect, Fiber } from "effect";
-import {
-  APP_LOCK_WAIT_MESSAGE,
-  appLockTarget,
-  withAppMutationLock,
-} from "../../src/operations/app-mutation-lock.ts";
+import { appLockTarget, withAppMutationLock } from "../../src/operations/app-mutation-lock.ts";
 import { claimAppDataIdentity } from "../../src/operations/data-identity-claim.ts";
 import { reconcileAppDataIdentity } from "../../src/operations/data-identity-reconcile.ts";
 import { startApp } from "../../src/operations/start.ts";
@@ -160,7 +156,7 @@ test("a prepared plan re-reads a competing data claim after acquiring the root l
                 .publish(event)
                 .pipe(
                   Effect.andThen(
-                    event._tag === "message.warn" && event.body === APP_LOCK_WAIT_MESSAGE
+                    event._tag === "lock.wait" && event.subject === "app"
                       ? Deferred.succeed(waiting, undefined)
                       : Effect.void,
                   ),

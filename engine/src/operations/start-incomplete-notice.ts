@@ -1,12 +1,11 @@
+import { ServiceNotFoundError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
-import { Cause, Context, Duration, Effect, Exit, Option, Ref } from "effect";
+import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { Cause, Context, Effect, Exit, Option, Ref } from "effect";
 
 import { CommandWarnings } from "../landofile/command-warnings.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
-
-/** Observation stops after this budget; anything still unobserved is reported as unverified. */
-export const INCOMPLETE_START_OBSERVATION_BUDGET = Duration.seconds(1);
+import { type ServiceObservation, observeServices } from "./service-observation.ts";
 
 /**
  * Set by the outermost start-like operation. Nested starts (restart and rebuild run start)
@@ -27,7 +26,7 @@ const listed = (names: ReadonlyArray<string>): string => (names.length === 0 ? "
 
 export type IncompleteStartVerb = "start" | "restart" | "rebuild";
 
-/** The command the user ran. `services` is set only for a selected restart or rebuild. */
+/** The command the user ran. `services` is set only for a selected start, restart, or rebuild. */
 export interface IncompleteStartCommand {
   readonly verb: IncompleteStartVerb;
   readonly services?: readonly string[];
@@ -49,38 +48,26 @@ const rerunCommand = (command: IncompleteStartCommand): string => {
  * Nothing changed, so the error's own remedy is the advice. The rerun hint is added only when that
  * remedy names no other Lando command, so the footer never contradicts it.
  */
-const unchangedNotice = (command: IncompleteStartCommand, remediation: string | undefined): string => {
+const unchangedNotice = (command: IncompleteStartCommand, failure: unknown): string => {
   const rerun = rerunCommand(command);
+  const remediation = taggedErrorRemediation(failure);
   const hasOtherCommand = [...(remediation ?? "").matchAll(/`(lando [^`]+)`/gu)].some(
     ([, named]) => named !== undefined && named !== rerun,
   );
   const summary = `${VERB_LABEL[command.verb]} did not complete. No app resources changed.`;
-  return hasOtherCommand ? summary : `${summary} Fix the reported error, then run \`${rerun}\`.`;
+  const invalidSelection = failure instanceof ServiceNotFoundError && failure.operation === "selectServices";
+  return hasOtherCommand || invalidSelection
+    ? summary
+    : `${summary} Fix the reported error, then run \`${rerun}\`.`;
 };
 
 const inventoryNotice = Effect.fnUntraced(function* (plan: AppPlan, command: IncompleteStartCommand) {
   const services = Object.values(plan.services).map((service) => service.name);
-  // Keep each completed observation even when the shared deadline interrupts its siblings.
-  const observed = new Map<string, ServiceRuntimeInfo>();
-  yield* Effect.gen(function* () {
-    const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
-    if (Option.isNone(registry)) return;
-    const provider = yield* registry.value.select(plan);
-    yield* Effect.forEach(
-      services,
-      (service) =>
-        Effect.suspend(() => provider.inspect({ app: plan.id, service, plan })).pipe(
-          Effect.tap((runtime) => Effect.sync(() => observed.set(service, runtime))),
-          // Inventory failure, including a provider defect, is unknown rather than a command failure.
-          Effect.ignoreCause,
-        ),
-      { concurrency: "unbounded", discard: true },
-    );
-  }).pipe(
-    Effect.interruptible,
-    Effect.timeoutOption(INCOMPLETE_START_OBSERVATION_BUDGET),
-    Effect.ignoreCause,
-  );
+  // Anything unobserved within the shared budget, provider selection included, is unverified.
+  const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+  const observed: ReadonlyMap<string, ServiceObservation> = Option.isNone(registry)
+    ? new Map()
+    : yield* observeServices(registry.value.select(plan), plan, services);
   const running: string[] = [];
   const stopped: string[] = [];
   const unverified: string[] = [];
@@ -145,10 +132,7 @@ export const withIncompleteStartNotice = Effect.fnUntraced(function* <A, E, R>(
               plan !== undefined
                 ? inventoryNotice(plan, command)
                 : Effect.succeed(
-                    unchangedNotice(
-                      command,
-                      taggedErrorRemediation(Option.getOrUndefined(Cause.findErrorOption(exit.cause))),
-                    ),
+                    unchangedNotice(command, Option.getOrUndefined(Cause.findErrorOption(exit.cause))),
                   ),
             ),
             Effect.flatMap(notices.addFailureNotice),

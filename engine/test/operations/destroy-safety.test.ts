@@ -3,11 +3,18 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { DataTransferError, LandofileValidationError } from "@lando/sdk/errors";
 import { SnapshotInfo, appIdentityKey } from "@lando/sdk/schema";
-import { DataMover, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  DataMover,
+  LandofileService,
+  RuntimeProviderRegistry,
+  StateStore,
+  physicalVolumeLockKey,
+} from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
-import { Effect, Schema } from "effect";
+import { Deferred, Effect, Schema } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp, destroyAppForTarget } from "../../src/operations/destroy.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
 import { emptySnapshots } from "./data-mover-support.ts";
 import { byTag, destroyTreeId, makeHarness, plan } from "./destroy-progress-topology-support.ts";
@@ -177,3 +184,74 @@ test("destroy reports unchanged when the provider returns no-op and nothing else
   });
   expect(byTag(harness.events, "post-destroy")).toMatchObject([{ outcome: "unchanged" }]);
 });
+
+test.each([false, true])(
+  "destroy with --volumes and purgeCaches=%s takes a cache lock only when purging",
+  async (purgeCaches) => {
+    const cache = { name: "composer", scope: "global", kind: "cache", key: "composer" } as const;
+    const locator = {
+      coordinationKey: "test-endpoint/composer",
+      nativeName: "lando-cache-composer",
+      presence: "present",
+    } as const;
+    const cachePlan = { ...plan, stores: [cache] };
+    const key = physicalVolumeLockKey(locator.coordinationKey);
+    const store = makeTestStateStore().service;
+    const entered = Deferred.makeUnsafe<void>();
+    let destroyed = false;
+    const cacheAttempts: string[] = [];
+    const harness = makeHarness({
+      destroyEffect: Effect.sync(() => {
+        destroyed = true;
+      }),
+    });
+    try {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const registry = yield* RuntimeProviderRegistry;
+          const provider = yield* registry.select(cachePlan);
+          yield* Effect.forkChild(
+            store.withLock(key, Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)), {
+              mode: "shared",
+            }),
+          );
+          yield* Deferred.await(entered);
+          return yield* destroyAppForTarget(
+            { volumes: true, purgeCaches },
+            {
+              plan: cachePlan,
+              root: cachePlan.root,
+              app: { kind: "user", id: cachePlan.id, root: cachePlan.root },
+            },
+          ).pipe(
+            Effect.provideService(RuntimeProviderRegistry, {
+              ...registry,
+              select: () => Effect.succeed({ ...provider, locateVolume: () => Effect.succeed(locator) }),
+            }),
+            Effect.provideService(StateStore, {
+              ...store,
+              withLock: (lockKey, body, options) =>
+                Effect.suspend(() => {
+                  if (lockKey === key) cacheAttempts.push(lockKey);
+                  return store.withLock(lockKey, body, { ...options, timeoutMs: 0 });
+                }),
+            }),
+            Effect.result,
+          );
+        }).pipe(Effect.provide(harness.layer), Effect.timeout("3 seconds")),
+      );
+      if (purgeCaches) {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "StateStoreError", lockFailure: "timeout" },
+        });
+      } else {
+        expect(result).toMatchObject({ _tag: "Success", success: { outcome: "destroyed" } });
+      }
+      expect(destroyed).toBe(!purgeCaches);
+      expect(cacheAttempts).toEqual(purgeCaches ? [key] : []);
+    } finally {
+      await rm(harness.userDataRoot, { recursive: true, force: true });
+    }
+  },
+);

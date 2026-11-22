@@ -27,6 +27,7 @@ test.skipIf(process.platform === "win32").each([
       client,
       `#!${process.execPath}
 const args = process.argv.slice(2);
+if (["MONGO_URI", "MONGO_INITDB_ROOT_USERNAME", "MONGO_INITDB_ROOT_PASSWORD"].some((key) => key in process.env)) process.exit(96);
 console.log(JSON.stringify({ args, home: process.env.HOME, mode: require("node:fs").statSync(process.env.HOME).mode & 0o777 }));
 if (Number(process.env.CLIENT_EXIT)) process.exit(Number(process.env.CLIENT_EXIT));
 new Function("db", "quit", args[args.indexOf("--eval") + 1])(
@@ -46,6 +47,9 @@ new Function("db", "quit", args[args.indexOf("--eval") + 1])(
         CLIENT_EXIT: String(input.clientExit),
         PING_OK: String(input.ok),
         HOME: "/authored-home",
+        MONGO_URI: "mongodb://example.invalid/",
+        MONGO_INITDB_ROOT_USERNAME: "probe-canary-user",
+        MONGO_INITDB_ROOT_PASSWORD: "probe-canary-password",
       },
       stdout: "pipe",
       stderr: "pipe",

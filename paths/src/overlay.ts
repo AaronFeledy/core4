@@ -16,8 +16,8 @@ const FRIENDLY_ENV_OVERLAYS = [
   ["LANDO_ROUTER_BIND_ADDRESS", ["router", "bindAddress"]],
   ["LANDO_ROUTER_HTTP_FALLBACKS", ["router", "httpFallbacks"]],
   ["LANDO_ROUTER_HTTPS_FALLBACKS", ["router", "httpsFallbacks"]],
-  ["LANDO_APP_ENV", ["appEnv"]],
-  ["LANDO_APP_LABELS", ["appLabels"]],
+  ["LANDO_SERVICE_DEFAULTS_ENVIRONMENT", ["serviceDefaults", "environment"]],
+  ["LANDO_SERVICE_DEFAULTS_LABELS", ["serviceDefaults", "labels"]],
 ] as const;
 
 // `default_provider_id` / `DEFAULT_PROVIDER_ID` -> camelCase key `defaultProviderId`.
@@ -101,7 +101,12 @@ export const envOverlayWithVariables = (
     if (segments.length === 0) continue;
     const path = segments.map(segmentToKey);
     if (path[0] === "hostEvents") continue;
-    if ((path[0] === "appEnv" || path[0] === "appLabels") && path.length !== 1) continue;
+    if (path[0] === "appEnv" || path[0] === "appLabels") continue;
+    if (
+      path[0] === "serviceDefaults" &&
+      !(path.length === 2 && (path[1] === "environment" || path[1] === "labels"))
+    )
+      continue;
     assign(name, path, parseOverlayValue(value, path));
   }
   for (const [name, path] of FRIENDLY_ENV_OVERLAYS) {

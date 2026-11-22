@@ -1,6 +1,6 @@
-import { Effect, Schema } from "effect";
-
+import { Schema } from "effect";
 import { LandoEvent } from "../events/union.ts";
+import { withDefaultKey } from "./default-key.ts";
 import { AppRef } from "./networking.ts";
 
 const RENDERER_PANEL_ID_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
@@ -74,21 +74,31 @@ export type StyledSpanTone = typeof StyledSpanTone.Type;
 /** One styled text span inside a panel row. */
 export const StyledSpan = Schema.Struct({
   text: Schema.String.annotate({ description: "Span text content (UTF-8)." }),
-  tone: StyledSpanTone.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "default" as const))).annotate({
-    description: "Semantic color tone (default muted accent success warning danger).",
-  }),
-  bold: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
-    description: "Bold weight when true.",
-  }),
-  dim: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
-    description: "Dim intensity when true.",
-  }),
-  italic: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
-    description: "Italic style when true.",
-  }),
-  underline: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
-    description: "Underline decoration when true.",
-  }),
+  tone: StyledSpanTone.pipe(
+    withDefaultKey("default", {
+      description: "Semantic color tone (default muted accent success warning danger).",
+    }),
+  ),
+  bold: Schema.Boolean.pipe(
+    withDefaultKey(false, {
+      description: "Bold weight when true.",
+    }),
+  ),
+  dim: Schema.Boolean.pipe(
+    withDefaultKey(false, {
+      description: "Dim intensity when true.",
+    }),
+  ),
+  italic: Schema.Boolean.pipe(
+    withDefaultKey(false, {
+      description: "Italic style when true.",
+    }),
+  ),
+  underline: Schema.Boolean.pipe(
+    withDefaultKey(false, {
+      description: "Underline decoration when true.",
+    }),
+  ),
 });
 export type StyledSpan = typeof StyledSpan.Type;
 

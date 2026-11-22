@@ -6,12 +6,12 @@ import {
   EnvironmentValueResolver,
   EventService,
   InteractionService,
-  LandofileService,
   PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
   ServiceReadiness,
   StateStore,
+  UserAppResolver,
 } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
@@ -26,7 +26,7 @@ import { toSqlLandofile, toSqlPlan } from "./views.ts";
 
 export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCommandInput) {
   yield* validateExportCompression(input);
-  const landofiles = yield* LandofileService;
+  const userApps = yield* UserAppResolver;
   const environmentResolver = yield* EnvironmentValueResolver;
   const registry = yield* RuntimeProviderRegistry;
   const mover = yield* DataMover;
@@ -36,7 +36,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
   const stateStore = yield* StateStore;
   const paths = yield* PathsService;
   const privateFileAccess = yield* PrivateFileAccessService;
-  const landofile = yield* landofiles.discover;
+  const landofile = yield* userApps.current;
   const authored = toSqlLandofile(landofile.document);
   const planned = yield* registry.resolveAppliedPlan(landofile.context.appRoot, undefined, "exact");
   if (planned === undefined)
@@ -189,7 +189,8 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
         },
         stateStore,
       },
-      withVolumeLock: (instanceId, body) => withPhysicalVolumeLock(stateStore, instanceId, body),
+      withVolumeLock: (request, body) =>
+        withPhysicalVolumeLock(stateStore, { ...request, mode: "exclusive" }, body),
       initialization: (identity) =>
         mover.volumeInitialization === undefined
           ? Effect.fail(

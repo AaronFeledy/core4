@@ -1,0 +1,9 @@
+name: url-no-route
+services:
+  web:
+    type: "node:22"
+    primary: true
+    environment:
+      APP_URL: "{{ services.database.url }}"
+  database:
+    type: "postgres:16"

@@ -93,6 +93,7 @@ const resolveCell = (
               name: component.props.event,
             });
           break;
+        case "Fetch":
         case "Cleanup":
         case "Inspect":
         case "Inline":
@@ -198,6 +199,7 @@ const resolveCell = (
             },
           };
         case "Variable":
+        case "Fetch":
         case "Cleanup":
         case "Inline":
         case "UseFixture":
@@ -224,9 +226,12 @@ const resolveCell = (
         name,
       });
   const hasBehavior = selected.steps.some((step) =>
-    step.components.some((component) => component.kind === "Run" || component.kind === "Verify"),
+    step.components.some(
+      (component) => component.kind === "Run" || component.kind === "Verify" || component.kind === "Fetch",
+    ),
   );
-  if (!hasBehavior && variant?.skip === undefined && !selected.skipOnly)
+  const skip = variant?.skip ?? scenario.skip ?? guide.frontmatter.skip;
+  if (!hasBehavior && skip === undefined && !selected.skipOnly)
     semanticError(guide, scenario, {
       ...variantDetail(variant),
       code: "guide.scenario.no-behavior",
@@ -236,7 +241,8 @@ const resolveCell = (
       name: scenario.id,
     });
   return {
-    variant,
+    variant: skip === undefined ? variant : { ...variant, pairs: variant?.pairs ?? [], skip },
+    platforms: variant?.platforms ?? scenario.platforms ?? guide.frontmatter.platforms,
     skipOnly: selected.skipOnly,
     skipReason: selected.skipReason,
     steps,
@@ -252,6 +258,34 @@ export const resolveGuide = (guide: ParsedGuide): GuideScenarioAst => {
   const ids = new Map<string, number>();
   const cells: Array<{ readonly scenarioId: string; readonly resolved: ResolvedScenario }> = [];
   for (const scenario of guide.scenarios) {
+    if ((scenario.layer ?? guide.frontmatter.defaultLayer) !== "e2e") {
+      const fetch = scenario.body
+        .flatMap((item) => {
+          switch (item.kind) {
+            case "step":
+              return [item.step];
+            case "hidden":
+            case "skip":
+              return item.steps;
+            case "tabs":
+              return item.tabs.flatMap((tab) => tab.steps);
+            default: {
+              const exhaustive: never = item;
+              return exhaustive;
+            }
+          }
+        })
+        .flatMap((step) => step.components)
+        .find((component) => component.kind === "Fetch");
+      if (fetch !== undefined)
+        semanticError(guide, scenario, {
+          code: "guide.fetch.requires-e2e",
+          line: fetch.line,
+          component: "Fetch",
+          prop: "layer",
+          name: 'requires layer="e2e"',
+        });
+    }
     const previous = ids.get(scenario.id);
     if (previous !== undefined)
       semanticError(guide, scenario, {

@@ -342,21 +342,27 @@ describe("node project files", () => {
     expect(nodeServiceType.projectFiles?.({ type: "node" })).toEqual([
       { path: ".nvmrc", maxBytes: 1_048_576 },
       { path: "package.json", maxBytes: 1_048_576 },
+      { path: ".yarnrc.yml", maxBytes: 1_048_576 },
     ]);
     expect(nodeServiceType.projectFiles?.({ type: "node", packageRoot: "apps/web" })).toEqual([
       { path: "apps/web/.nvmrc", maxBytes: 1_048_576 },
       { path: "apps/web/package.json", maxBytes: 1_048_576 },
+      { path: "apps/web/.yarnrc.yml", maxBytes: 1_048_576 },
       { path: "package.json", maxBytes: 1_048_576 },
+      { path: ".yarnrc.yml", maxBytes: 1_048_576 },
     ]);
   });
 
   test("explicit types declare only the manifests, never a version file", () => {
     expect(node22ServiceType.projectFiles?.({ type: "node:22" })).toEqual([
       { path: "package.json", maxBytes: 1_048_576 },
+      { path: ".yarnrc.yml", maxBytes: 1_048_576 },
     ]);
     expect(node22ServiceType.projectFiles?.({ type: "node:22", packageRoot: "apps/web" })).toEqual([
       { path: "apps/web/package.json", maxBytes: 1_048_576 },
+      { path: "apps/web/.yarnrc.yml", maxBytes: 1_048_576 },
       { path: "package.json", maxBytes: 1_048_576 },
+      { path: ".yarnrc.yml", maxBytes: 1_048_576 },
     ]);
   });
 });

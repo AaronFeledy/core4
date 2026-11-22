@@ -1,7 +1,6 @@
 ---
 id: adminer
 provider: test
-timeout: 600000
 tags: [docs, adminer, service, database, postgres, mariadb, sqlite]
 ---
 
@@ -29,7 +28,7 @@ lando info
 
 Open the HTTPS URL listed for `adminer`. Adminer signs you into the only database in the app with its configured credentials, so there is no login form to fill in. The database page shows your tables once you've created or imported them. If the browser warns about the certificate, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
 
-If you see `password authentication failed`, follow [Recover when credentials don't match](./postgres.mdx#recover-when-credentials-dont-match) to bring the running Postgres password back in sync with your Landofile.
+If you see `password authentication failed` after editing `creds`, run `lando start` to apply the change. If start warns that it couldn't update the credentials, see [Keep database credentials in sync](../tooling/db-creds-apply.mdx). Reopen Adminer and check that it can read your tables.
 
 ## Use MariaDB or MySQL
 
@@ -102,9 +101,9 @@ lando start
 `lando info` no longer lists the Adminer URL. Your database service and its data remain.
 
 <Guide>
-  <Scenario id="postgres-browse" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="postgres-browse" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-demo" /></Step>
-    <Hidden reason="Check the Adminer HTTPS probe and a fresh deep link">
+    <Hidden reason="Check the Adminer HTTPS probe, a fresh deep link, and a password change">
       <Step name="route">
         <Verify command="lando start --format=json" expect={{ stdout: { regex: '"checks"[\\s\\S]*"service":"adminer","url":"https://adminer[.][^"]+","verdict":"ready","statusCode":200' } }} />
       </Step>
@@ -112,17 +111,17 @@ lando start
         <Run command={`lando psql -c "CREATE TABLE notes (body text); INSERT INTO notes VALUES ('hello from Postgres');"`} />
         <Verify command={`lando exec adminer -- curl -fsSL -c /tmp/j -b /tmp/j "http://127.0.0.1:8080/?pgsql=db&username=lando&db=adminer-demo&select=notes"`} expect={{ stdout: { regex: "hello from Postgres" } }} />
       </Step>
-      <Step name="stale-password">
+      <Step name="changed-password">
         <Run command="lando app:config:set services.db.creds.password changed-later" />
         <Run command="lando start" />
-        <Verify command={`lando exec adminer -- curl -sSL -c /tmp/stale -b /tmp/stale "http://127.0.0.1:8080/"`} expect={{ stdout: { regex: "password authentication failed" } }} />
+        <Verify command={`lando exec adminer -- curl -fsSL -c /tmp/changed -b /tmp/changed "http://127.0.0.1:8080/?pgsql=db&username=lando&db=adminer-demo&select=notes"`} expect={{ stdout: { regex: "hello from Postgres" } }} />
       </Step>
     </Hidden>
     <Step name="info"><Verify command="lando info --format=json" expect={{ stdout: { regex: "https://adminer[.]adminer-demo[.]lndo[.]site" } }} /></Step>
     <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
   </Scenario>
 
-  <Scenario id="mariadb-browse" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="mariadb-browse" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-mariadb" /></Step>
     <Step name="start"><Run command="lando start" /></Step>
     <Hidden reason="Verify Adminer reads the MariaDB default database">
@@ -135,7 +134,7 @@ lando start
     <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
   </Scenario>
 
-  <Scenario id="mysql-browse" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="mysql-browse" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-mariadb" /></Step>
     <Hidden reason="Run the MariaDB example with MySQL in place of MariaDB">
       <Step name="switch-engine">
@@ -151,7 +150,7 @@ lando start
     <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
   </Scenario>
 
-  <Scenario id="choose-server" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="choose-server" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-multiple" /></Step>
     <Step name="start"><Run command="lando start" /></Step>
     <Hidden reason="Verify the dropdown and one sign-in deep link per database">
@@ -167,7 +166,7 @@ lando start
     <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
   </Scenario>
 
-  <Scenario id="sqlite-browse" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="sqlite-browse" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-sqlite" /></Step>
     <Step name="start"><Run command="lando start" /></Step>
     <Step name="import"><Run command="lando db:import notes.sql --yes" /></Step>
@@ -181,7 +180,7 @@ lando start
     <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
   </Scenario>
 
-  <Scenario id="remove-it" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="remove-it" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-demo" /></Step>
     <Step name="start"><Run command="lando start" /></Step>
     <Hidden reason="Seed data to check that removing Adminer preserves it">

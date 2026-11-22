@@ -17,8 +17,13 @@ import type {
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
 } from "@lando/sdk/errors";
-import { ScratchAppError, ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
-import { AbsolutePath, type IsolateMode } from "@lando/sdk/schema";
+import {
+  type RouteUrlBindingError,
+  ScratchAppError,
+  ScratchAppIdInvalidError,
+  ScratchSourceUnresolvedError,
+} from "@lando/sdk/errors";
+import { AbsolutePath, type IsolateMode, StartAppResult } from "@lando/sdk/schema";
 import type {
   ProviderError,
   ScratchGcOptions,
@@ -91,6 +96,7 @@ export const ScratchAppRefResultSchema = Schema.Struct({
 export const ScratchHandleResultSchema = Schema.Struct({
   id: Schema.String,
   app: ScratchAppRefResultSchema,
+  credentialChanges: StartAppResult.fields.credentialChanges,
 });
 
 export const ScratchSummaryResultSchema = Schema.Struct({
@@ -156,6 +162,7 @@ export const ScratchGcReportResultSchema = Schema.Struct({
 export type ScratchListFormat = "json" | "table";
 
 type ScratchStartError =
+  | RouteUrlBindingError
   | AppPlacementError
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError

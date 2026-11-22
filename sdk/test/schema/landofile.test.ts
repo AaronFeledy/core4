@@ -37,7 +37,7 @@ const SUPPORTED_TOOLING_FIELDS = [
   "deprecated",
 ] as const;
 
-const MVP_COMPOSE_SUBSET = ["image", "ports", "environment", "volumes", "command", "dependsOn"] as const;
+const MVP_COMPOSE_SUBSET = ["image", "ports", "environment", "volumes", "command", "depends_on"] as const;
 
 const minimalLandofileFixture: typeof LandofileShape.Encoded = {
   name: "myapp",
@@ -48,7 +48,7 @@ const minimalLandofileFixture: typeof LandofileShape.Encoded = {
       environment: { NODE_ENV: "development" },
       volumes: ["./src:/app"],
       command: "npm start",
-      dependsOn: ["db"],
+      depends_on: ["db"],
     },
   },
 };
@@ -174,20 +174,23 @@ describe("LandofileShape — schema gate", () => {
   test.each([
     ["scalar", "shared.env", ["shared.env"]],
     ["list", ["base.env", "local.env"], ["base.env", "local.env"]],
-  ] as const)("LandofileShape decodes top-level env_file from %s input", (_form, envFile, expected) => {
+  ] as const)("LandofileShape decodes top-level env_file from %s input", (_form, env_file, expected) => {
     // Given
-    const input = { name: "myapp", env_file: envFile };
+    const input = { name: "myapp", serviceDefaults: { env_file: env_file } };
 
     // When
     const decoded = Schema.decodeUnknownSync(LandofileShape)(input, { onExcessProperty: "error" });
 
     // Then
-    expect(decoded.env_file).toEqual(expected);
+    expect(decoded.serviceDefaults?.env_file).toEqual(expected);
   });
 
   test("LandofileShape accepts its canonical top-level env_file output on merged-layer decode", () => {
     // Given
-    const decoded = Schema.decodeUnknownSync(LandofileShape)({ name: "myapp", env_file: "shared.env" });
+    const decoded = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      serviceDefaults: { env_file: "shared.env" },
+    });
 
     // When
     const decodedAgain = Schema.decodeUnknownSync(LandofileShape)(decoded, {
@@ -195,8 +198,10 @@ describe("LandofileShape — schema gate", () => {
     });
 
     // Then
-    expect(decodedAgain.env_file).toEqual(["shared.env"]);
-    expect(Schema.encodeUnknownSync(LandofileShape)(decodedAgain).env_file).toEqual(["shared.env"]);
+    expect(decodedAgain.serviceDefaults?.env_file).toEqual(["shared.env"]);
+    expect(Schema.encodeUnknownSync(LandofileShape)(decodedAgain).serviceDefaults?.env_file).toEqual([
+      "shared.env",
+    ]);
   });
 
   test("IncludeEntry still decodes the bare string form", () => {
@@ -231,7 +236,7 @@ describe("LandofileShape — schema gate", () => {
 
     for (const key of [
       "configs",
-      "env_file",
+      "serviceDefaults",
       "include",
       "includes",
       "networks",
@@ -260,7 +265,7 @@ describe("LandofileShape — schema gate", () => {
         volumes: { data: { name: "myapp-data" } },
         networks: { frontend: { name: "myapp-frontend" } },
         configs: { app_config: { file: "./config.json" } },
-        env_file: ["./shared.env"],
+        serviceDefaults: { env_file: ["./shared.env"] },
         secrets: {
           db_password: { file: "./.secrets/db-password" },
           api_token: { environment: "LANDO_SECRET_API_TOKEN" },
@@ -417,7 +422,7 @@ describe("LandofileShape (MVP)", () => {
       { type: "bind", source: "./src", target: "/app", readOnly: false, createHostPath: true },
     ]);
     expect(web.command).toBe("npm start");
-    expect(web.dependsOn).toEqual([{ service: "db" }]);
+    expect(web.depends_on).toEqual([{ service: "db" }]);
   });
 
   test("ServiceConfig exposes every MVP Compose-subset key as an optional field", () => {

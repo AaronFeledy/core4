@@ -30,6 +30,51 @@ const resolveValue = (appRoot: string, value: unknown) =>
     policy: DEFAULT_LANDOFILE_LOAD_POLICY,
   });
 
+const publicUrl = "{{ services.web.url }}";
+
+test("defers a public URL in a Compose service environment map", () =>
+  withApp(async (appRoot) => {
+    const value = { services: { web: { type: "compose", environment: { URL: publicUrl } } } };
+    const resolved = await Effect.runPromise(resolveValue(appRoot, value));
+    expect(resolved.pendingSites.map((site) => site.path)).toEqual([
+      ["services", "web", "environment", "URL"],
+    ]);
+  }));
+
+test.each([
+  [{ services: { web: { environment: [`URL=${publicUrl}`] } } }, ["services", "web", "environment", 0]],
+  [{ services: { web: { command: publicUrl } } }, ["services", "web", "command"]],
+  [{ services: { web: { command: "{{ service.url }}" } } }, ["services", "web", "command"]],
+  [{ tooling: { demo: { env: { URL: publicUrl } } } }, ["tooling", "demo", "env", "URL"]],
+  [{ "x-note": publicUrl }, ["x-note"]],
+  [
+    { services: { web: { environment: { URL: { _tag: "RouteText", parts: [] } } } } },
+    ["services", "web", "environment", "URL"],
+  ],
+])("locates forbidden public URL sites at %j", (value, path) =>
+  withApp(async (appRoot) => {
+    const result = await Effect.runPromise(resolveValue(appRoot, value).pipe(Effect.result));
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "LandofileValidationError", issues: [{ path, rule: "unsupported-expression" }] },
+    });
+  }),
+);
+
+test.each(["info", "service"])("names the unsupported %s scope", (scope) =>
+  withApp(async (appRoot) => {
+    const result = await Effect.runPromise(
+      resolveValue(appRoot, { services: { web: { environment: { URL: `{{ ${scope}.routes }}` } } } }).pipe(
+        Effect.result,
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "LandofileValidationError", message: expect.stringContaining(`\`${scope}\``) },
+    });
+  }),
+);
+
 describe("landofile load-time route hostname expressions", () => {
   test("keeps an app/proxy hostname template unevaluated", async () => {
     await withApp(async (appRoot) => {

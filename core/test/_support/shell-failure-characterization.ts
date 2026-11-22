@@ -32,7 +32,7 @@ export const shellFailureCases = [
     causeText: "ShellFailure: operation refused\n    at <fixture>",
     rejectionCause: {
       _id: "Cause",
-      failures: [
+      reasons: [
         {
           _tag: "Fail",
           error: {
@@ -59,7 +59,7 @@ export const shellFailureCases = [
     rejectionText: "Error: unexpected defect",
     rejectionJson: {},
     causeText: "Error: unexpected defect\n    at <fixture>",
-    rejectionCause: { _id: "Cause", failures: [{ _tag: "Die", defect: {} }] },
+    rejectionCause: { _id: "Cause", reasons: [{ _tag: "Die", defect: {} }] },
   },
   {
     kind: "interrupt",
@@ -80,7 +80,7 @@ export const shellFailureCases = [
       "InterruptError: All fibers interrupted without error {\n  [cause]: InterruptCause: The fiber was interrupted by:\n      at fiber (#<id>)\n}",
     rejectionCause: {
       _id: "Cause",
-      failures: [{ _tag: "Interrupt", fiberId: "<id>" }],
+      reasons: [{ _tag: "Interrupt", fiberId: "<id>" }],
     },
   },
   {
@@ -104,10 +104,10 @@ export const shellFailureCases = [
     causeText: "ShellFailure: operation refused\n    at <fixture>\nError: cleanup defect\n    at <fixture>",
     rejectionCause: {
       _id: "Cause",
-      failures: [
+      reasons: [
         {
-          _tag: "Fail",
-          error: {
+          _tag: "Die",
+          defect: {
             message: "operation refused",
             remediation: "Retry with valid input.",
             _tag: "ShellFailure",

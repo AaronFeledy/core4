@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { serviceContainerName } from "@lando/container-runtime/plan";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { bringDown, bringUp, exec, logs, makePodmanApiClient, pullImage } from "@lando/provider-lando";
 import { type AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { ExecResult } from "@lando/sdk/services";
@@ -85,10 +86,11 @@ export const defaultLiveAppLifecycle: LiveAppLifecycle = {
   },
   bringDown: (plan, api, options) =>
     Effect.asVoid(
+      // Volume deletion holds the physical-volume lock, which the runtime's StateStore provides.
       bringDown(plan, {
         api,
         ...(options.volumes === undefined ? {} : { volumes: options.volumes }),
-      }),
+      }).pipe(Effect.provide(makeTestStateStore().layer)),
     ),
   exec: (plan, api, service, command) =>
     exec(plan, { app: plan.id, service }, { command: [...command] }, { api }),

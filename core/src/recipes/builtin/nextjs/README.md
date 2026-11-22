@@ -26,7 +26,8 @@ your choice as an environment hint; you still install and configure that helper.
 
 ## Generated tooling
 
-- `lando next ...`: Next.js CLI through `npx next`.
+- `lando next ...`: the project's installed Next.js CLI, run through the
+  project's package manager. It never downloads Next.js.
 - `lando npm ...`: npm inside the web service.
 - `lando nextjs-scaffold`: `create-next-app@16.4.0` inside the web service
   (empty TypeScript App Router template: ESLint, no Tailwind, no `src/`,

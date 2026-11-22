@@ -15,6 +15,7 @@ import {
   CommandResultEnvelope,
   SchemaNotCredentialAnnotationId,
   SecretRef,
+  StartAppResult,
   StreamFrame,
 } from "@lando/sdk/schema";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
@@ -317,6 +318,24 @@ describe("the secret-named-field rule under a compiled policy", () => {
 });
 
 describe("the NotCredential annotation", () => {
+  test("keeps activation service names without exempting registered credential values", () => {
+    const value = {
+      app: "catalog-example",
+      servicesStarted: [],
+      credentialChanges: [
+        { service: "db", family: "postgres", changedMembers: ["password"] },
+        { service: "registered-value", family: "mysql", changedMembers: ["rootPassword"] },
+      ],
+    };
+    const output = redactValueWithPolicy(redactor, structuralRedaction(StartAppResult), value);
+    expect(output).toEqual({
+      ...value,
+      credentialChanges: [
+        { service: "db", family: "postgres", changedMembers: ["password"] },
+        { service: REDACTED, family: "mysql", changedMembers: ["rootPassword"] },
+      ],
+    });
+  });
   const redactor = createRedactor("secrets", { values: ["registered-value"] });
   const notCredential = <T extends Schema.Top>(schema: T) =>
     schema.annotate({ [SchemaNotCredentialAnnotationId]: true });

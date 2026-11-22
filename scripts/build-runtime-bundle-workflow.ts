@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
+import { pinnedAction } from "./action-pins.ts";
 
 import { RUNTIME_BUNDLE_TARGETS } from "./build-runtime-bundle.ts";
-import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 import { RUNTIME_BUNDLE_PUBLISH_TARGET_KEYS } from "./runtime-bundle-workflow-targets.ts";
 
 export { RUNTIME_BUNDLE_PUBLISH_TARGET_KEYS };
@@ -62,12 +62,12 @@ jobs:
       runtime_tag: \${{ steps.classify.outputs.runtime_tag }}
       desired_sources_sha: \${{ steps.classify.outputs.desired_sources_sha }}
     steps:
-      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
         with:
           persist-credentials: false
 
       - name: Setup Bun
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupBun} # v2.0.2
+        uses: ${pinnedAction("oven-sh/setup-bun")}
         with:
           bun-version-file: .bun-version
 
@@ -152,12 +152,12 @@ ${expectedAssetLines}
         include:
 ${matrixInclude}
     steps:
-      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
         with:
           persist-credentials: false
 
       - name: Setup Bun
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupBun} # v2.0.2
+        uses: ${pinnedAction("oven-sh/setup-bun")}
         with:
           bun-version-file: .bun-version
 
@@ -168,7 +168,7 @@ ${matrixInclude}
         run: bun run scripts/assemble-runtime-bundle.ts --platform \${{ matrix.hostKey }}
 
       - name: Upload assembled bundle
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.uploadArtifact} # v7.0.2
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: runtime-bundle-\${{ matrix.hostKey }}
           path: dist/cache/runtime-bundle/\${{ matrix.filename }}
@@ -183,18 +183,18 @@ ${matrixInclude}
       actions: write
     runs-on: ubuntu-24.04
     steps:
-      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
         with:
           persist-credentials: false
 
       - name: Setup Bun
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupBun} # v2.0.2
+        uses: ${pinnedAction("oven-sh/setup-bun")}
         with:
           bun-version-file: .bun-version
 
       - name: Download assembled bundles
         if: needs.classify.outputs.state == 'publish_new'
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.downloadArtifact} # v8.0.2
+        uses: ${pinnedAction("actions/download-artifact")}
         with:
           pattern: runtime-bundle-*
           merge-multiple: true

@@ -281,11 +281,29 @@ const selectionFailure = {
 test.each([
   { name: "planned without a selectable router", selected: "missing" },
   { name: "applied through a router that is no longer selectable", selected: "custom" },
+  { name: "with a public URL binding", selected: "missing", bindsUrl: true },
 ])(
   "#2138 routed start $name fails with the router selection reason before any work",
-  async ({ selected }) => {
+  async ({ selected, bindsUrl }) => {
     // Given: a routed plan and a runtime whose configured router cannot be selected.
-    const plan = await planned({ selected });
+    const desired = await planned({ selected });
+    const plan: AppPlan = bindsUrl
+      ? {
+          ...desired,
+          services: Object.fromEntries(
+            Object.entries(desired.services).map(([name, service]) => [
+              name,
+              {
+                ...service,
+                environment: {
+                  ...service.environment,
+                  APP_URL: { _tag: "RouteText", parts: [{ service: name, encoding: "raw" }] },
+                },
+              },
+            ]),
+          ),
+        }
+      : desired;
 
     // When
     const run = await runWithoutRouter(plan, (target) => startApp({}, target));

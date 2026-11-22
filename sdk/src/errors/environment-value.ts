@@ -1,5 +1,29 @@
 import { Schema } from "effect";
 
+export class RouteUrlBindingError extends Schema.TaggedError<RouteUrlBindingError>()(
+  "RouteUrlBindingError",
+  {
+    _tag: Schema.tag("RouteUrlBindingError").annotate({
+      description: "Public URL binding failure discriminator.",
+    }),
+    reason: Schema.Literals([
+      "no-route",
+      "router-unsupported",
+      "authority-changed",
+      "retained-consumer",
+    ]).annotate({ description: "Why the public service URL could not be bound." }),
+    service: Schema.String.annotate({ description: "Name of the service whose URL is referenced." }),
+    consumers: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+      description: "Services reading this URL.",
+    }),
+    message: Schema.String.annotate({ description: "Public URL binding failure explanation." }),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
+      description: "How to resolve the public URL binding failure.",
+    }),
+  },
+  { description: "A service's public route URL could not be bound safely during activation." },
+) {}
+
 export class EnvironmentValueResolutionError extends Schema.TaggedError<EnvironmentValueResolutionError>()(
   "EnvironmentValueResolutionError",
   {

@@ -14,6 +14,8 @@ import {
 
 const RESERVED_PLUGIN_ROOT_ENTRIES = new Set([
   ".lando-plugin-mutation",
+  // Persistent kernel sentinel (ADVISORY_LOCK_SUFFIX). Old pid-file name stays reserved.
+  ".lando-plugin-mutation.lck",
   ".lando-plugin-mutation.lock",
   "node_modules",
   "package.json",

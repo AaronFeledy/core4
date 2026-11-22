@@ -3,6 +3,7 @@ import type { AppPlan, DataStorePlan, ServiceHomePlan, ServicePlan } from "@land
 import { EventService } from "@lando/sdk/services";
 import { quoteYamlScalar } from "@lando/sdk/yaml";
 import { Context, DateTime, Effect } from "effect";
+import { isDependencyEnvironmentStore } from "../planner/dependency-environments.ts";
 
 const VolumeTransitionNotices = Context.Reference<Set<string> | undefined>(
   "@lando/engine/VolumeTransitionNotices",
@@ -83,8 +84,14 @@ export const publishVolumeTransitionNotices = Effect.fn("AppOperation.volumeTran
     if (previous === undefined) continue;
     const desiredVolumes = dataVolumes(service, desiredStores);
     for (const old of dataVolumes(previous, appliedStores).values()) {
+      const managed = isDependencyEnvironmentStore(applied, previous, old);
+      const next = desiredVolumes.get(old.target);
+      const replacement =
+        managed && next !== undefined && isDependencyEnvironmentStore(desired, service, next);
       let message: string;
-      if (
+      if (managed && !replacement) {
+        message = `Service ${service.name} will no longer use its managed dependency environment at ${old.target} (${old.store}).`;
+      } else if (
         previous.home?.state === "persisted" &&
         previous.home.target === old.target &&
         previous.home.store === old.store
@@ -108,7 +115,6 @@ export const publishVolumeTransitionNotices = Effect.fn("AppOperation.volumeTran
           }
         }
       } else {
-        const next = desiredVolumes.get(old.target);
         if (next?.store === old.store) continue;
         message =
           next === undefined
@@ -123,17 +129,21 @@ export const publishVolumeTransitionNotices = Effect.fn("AppOperation.volumeTran
         previous.serviceTypeId !== undefined &&
         service.serviceTypeId !== undefined &&
         previous.serviceTypeId === service.serviceTypeId;
-      const advice = sameType
-        ? `To mount it at its previous location, set ${storage} under services.${service.name} in your Landofile.`
-        : `${
-            previous.serviceTypeId === undefined || service.serviceTypeId === undefined
-              ? "Service-type compatibility is unverified because a recorded declaration identity is missing."
-              : `The service type changed from ${previous.serviceTypeId} to ${service.serviceTypeId}.`
-          }
+      const advice = managed
+        ? replacement
+          ? " Lando prepares a fresh dependency environment; do not reattach the previous store."
+          : ""
+        : sameType
+          ? ` To mount it at its previous location, set ${storage} under services.${service.name} in your Landofile.`
+          : ` ${
+              previous.serviceTypeId === undefined || service.serviceTypeId === undefined
+                ? "Service-type compatibility is unverified because a recorded declaration identity is missing."
+                : `The service type changed from ${previous.serviceTypeId} to ${service.serviceTypeId}.`
+            }
 Export the data from the old service first, then import it using the new service's supported tools.`;
       yield* events.publish(
         MessageWarnEvent.make({
-          body: `${message}\nLando leaves ${old.store} untouched. ${advice}`,
+          body: `${message}\nLando leaves ${old.store} untouched.${advice}`,
           timestamp: DateTime.nowUnsafe(),
         }),
       );

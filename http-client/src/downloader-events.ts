@@ -2,6 +2,7 @@
  * Redacted lifecycle-event seam for the verified-artifact Downloader.
  */
 
+import { failureOutcomeFromCause } from "@lando/sdk/command-result";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { EventService, LandoEvent } from "@lando/sdk/services";
 import { Cause, type Context, Effect, Option } from "effect";
@@ -38,8 +39,8 @@ export const makeDownloaderEvents = (
 
 /** Map a failed/interrupted exit cause to a controlled, content-free detail. */
 export const failureDetailFromExitCause = (cause: Cause.Cause<DownloadError>): string => {
-  const failure = Option.getOrUndefined(Cause.findErrorOption(cause));
-  if (failure !== undefined && isDownloadError(failure)) return failureDetailForError(failure);
+  const failure = failureOutcomeFromCause(cause);
+  if (failure.kind === "typed" && isDownloadError(failure.error)) return failureDetailForError(failure.error);
   if (Cause.hasInterrupts(cause)) return "interrupted";
   return "error";
 };

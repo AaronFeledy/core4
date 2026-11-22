@@ -1,7 +1,9 @@
-import { Effect, Result, Schema } from "effect";
+import { Result, Schema } from "effect";
+import { withDefaultKey } from "../schema/default-key.ts";
 
 import { DeprecationNotice, DeprecationSeverity } from "../schema/deprecation.ts";
 import { KEBAB_CASE_ID_PATTERN, patternString } from "../schema/string-forms.ts";
+import { GuideSkip, GuideTimeout } from "./guide-execution-fields.ts";
 
 export { DeprecationNotice, DeprecationSeverity };
 
@@ -44,9 +46,7 @@ const Axes = Schema.Record(AxisName, TabAxis).pipe(
 );
 
 const GuideVariantOverride = Schema.Struct({
-  skip: Schema.optionalKey(
-    Schema.Struct({ reason: Schema.String, until: Schema.optionalKey(Schema.String) }),
-  ),
+  skip: Schema.optionalKey(GuideSkip),
   tags: Schema.optionalKey(Schema.Array(Schema.String)),
   platforms: Schema.optionalKey(Schema.Array(GuidePlatform)),
 });
@@ -74,20 +74,13 @@ export const GuideFrontmatter = Schema.Struct({
   id: GuideId,
   defaultLayer: Schema.optionalKey(Schema.Literals(["scenario", "e2e"])),
   provider: Schema.optionalKey(Schema.Literal("test")),
-  timeout: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))).pipe(
-    Schema.withDecodingDefaultKey(Effect.sync(() => 60000)),
-  ),
+  timeout: GuideTimeout.pipe(withDefaultKey(60000, { description: "Guide timeout in milliseconds." })),
   platforms: Schema.optionalKey(Schema.Array(GuidePlatform)),
   tags: Schema.optionalKey(Schema.Array(Schema.String)),
   tabs: Schema.optionalKey(TabAxis),
   axes: Schema.optionalKey(Axes),
   variants: Schema.optionalKey(Variants),
-  skip: Schema.optionalKey(
-    Schema.Struct({
-      reason: Schema.String,
-      until: Schema.optionalKey(Schema.String),
-    }),
-  ),
+  skip: Schema.optionalKey(GuideSkip),
   deprecated: Schema.optionalKey(DeprecationNotice),
 }).annotate({
   identifier: "GuideFrontmatter",

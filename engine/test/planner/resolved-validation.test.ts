@@ -154,12 +154,12 @@ test("lint permits service default membership and declared external networks", a
   );
 });
 
-test("top-level env file failures aggregate with independent service and route issues", async () => {
+test("serviceDefaults env file failures aggregate with independent service and route issues", async () => {
   await withApp(
-    "env_file: [missing.env]\nservices:\n  db:\n    type: validation\n    environment: {FAIL: yes}\n  web:\n    type: validation\n    routes: [bad_host!]\n",
+    "serviceDefaults:\n  env_file: [missing.env]\nservices:\n  db:\n    type: validation\n    environment: {FAIL: yes}\n  web:\n    type: validation\n    routes: [bad_host!]\n",
     async (root) => {
       const { lint } = await compareIssues(root, [
-        ["env_file", 0],
+        ["serviceDefaults", "env_file", 0],
         ["services", "db", "port"],
         ["services", "web", "routes", 0],
       ]);
@@ -364,14 +364,12 @@ test("local override routes retain layer attribution in lint and planning", asyn
   });
 });
 
-test("all unsupported authored healthcheck kinds are reported together", async () => {
+test("authored HTTP and TCP healthchecks do not block resolution", async () => {
   await withApp(
     "services:\n  a: {type: validation, healthcheck: {kind: http, url: 'http://localhost'}}\n  b: {type: validation, healthcheck: {kind: tcp, port: 80}}\n",
     async (root) => {
-      await compareIssues(root, [
-        ["services", "a", "healthcheck", "kind"],
-        ["services", "b", "healthcheck", "kind"],
-      ]);
+      const result = await Effect.runPromise(planning(root).pipe(Effect.result));
+      expect(Result.isSuccess(result)).toBe(true);
     },
   );
 });

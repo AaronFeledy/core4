@@ -91,7 +91,11 @@ export const makePluginRuntimeState = Effect.fnUntraced(function* (ctx: LandoPlu
 
   return {
     runtimeShutdownStore: yield* makeRuntimeShutdownStore(ctx.stateStore),
-    runtimeLock: (body) => ctx.stateStore.withLock("runtime-launch", body),
+    runtimeLock: (body) =>
+      ctx.stateStore.withLock("runtime-launch", body, {
+        wait: "operation",
+        resource: "the Lando container runtime",
+      }),
     runtimeGenerationStore: {
       get: generationBucketValue.get,
       set: (generation) => generationBucketValue.set(generation),

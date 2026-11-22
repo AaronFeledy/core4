@@ -82,7 +82,8 @@ The blob overrides `$database` in `settings.php`. If you change the database nam
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"BACKDROP_SETTINGS\":\\s*\"\\{" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "BACKDROP_SETTINGS[^}]*database\\W{1,6}\\{\\{ services\\.database\\.creds\\.database \\}\\}" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "BACKDROP_SETTINGS.{0,200}host\\W{1,6}database" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "BACKDROP_SETTINGS.{0,400}host\\W{1,6}database" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "BACKDROP_SETTINGS.{0,400}base_url\\W{1,6}\\{\\{ services\\.appserver\\.url \\}\\}" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "ln -sf /usr/bin/mariadb-dump /usr/local/bin/mysqldump" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "releases/download/1\\.x-1\\.2\\.0/bee\\.phar" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"xdebug\":\\s*true" } }} />
@@ -95,11 +96,28 @@ The blob overrides `$database` in `settings.php`. If you change the database nam
       <Cleanup />
     </Step>
   </Scenario>
+  <Scenario id="one-time-login" layer="e2e" timeout={600000} render={false} reason="Install Backdrop and check that Bee builds a login link using the published site URL">
+    <Step name="start">
+      <UseFixture name="backdrop-dev" />
+      <Run command="lando start --format=json" />
+    </Step>
+    <Step name="install-backdrop">
+      <Run command={`lando exec appserver -- sh -c 'set -eu; cd "$(mktemp -d)"; curl -fsSL -o backdrop.zip https://github.com/backdrop/backdrop/releases/download/1.35.1/backdrop.zip; echo "7add8d49fdbfee6819cfb4866cd3501f5e06df8000e39652ecf896a2fa7a729c  backdrop.zip" | sha256sum -c -; unzip -q backdrop.zip; cp -a backdrop/. /app/'`} />
+      <Run command="lando bee install --auto --db-name=backdrop-dev --db-user=lando --db-pass=lando --db-host=database --username=admin --password=backdrop-e2e-only --email=admin@example.com --site-name='Backdrop Demo'" />
+    </Step>
+    <Step name="check-login-link">
+      <Verify command="lando bee uli" expect={{ stdout: { regex: "https://backdrop-dev\\.lndo\\.site(?::[0-9]+)?/(?:\\?q=)?user/reset/" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes --format=json" />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## Add Bee and its database client names
 
-Lando enables Apache's `mod_rewrite` for clean URLs when it builds the stock PHP service. Add Bee and the `mysql` and `mysqldump` names Bee's `db-*` commands call. The MariaDB 11.4 client Lando installs on `appserver` (`db_client: auto`) names those `mariadb` and `mariadb-dump`. Add these root `build.artifact` steps:
+Lando enables Apache's `mod_rewrite` for clean URLs when it builds the stock PHP service. Add Bee and the `mysql` and `mysqldump` names Bee's `db-*` commands call. The MariaDB 11.4 client Lando installs on `appserver` (`dbClient: auto`) names those `mariadb` and `mariadb-dump`. Add these root `build.artifact` steps:
 
 ```yaml
 services:
@@ -216,11 +234,23 @@ Backdrop keeps active config as files, not in the database. Stock `settings.php`
 
 ## Log in with a one-time link
 
-```sh
-lando bee uli --base-url=https://backdrop-demo.lndo.site
+Bee doesn't know the site's public URL on its own. Give it to Backdrop once. In `.lando.yml`, add a `base_url` field at the end of the `BACKDROP_SETTINGS` value on `appserver`:
+
+```yaml
+services:
+  appserver:
+    environment:
+      BACKDROP_SETTINGS: '{"databases":{"default":{"default":{"driver":"mysql","database":"{{ services.database.creds.database }}","username":"lando","password":"lando","host":"database","port":3306}}},"base_url":"{{ services.appserver.url }}"}'
 ```
 
-Bee prints a one-time login link for the admin account. Match `--base-url` to the URL `lando info` prints, port included if the proxy fell back to `:8443`.
+Only the `,"base_url":"{{ services.appserver.url }}"` part before the last brace is new. `{{ services.appserver.url }}` is the URL the router publishes for `appserver`, the same one `lando info` prints, port included when the router isn't on 443. Backdrop takes top-level `BACKDROP_SETTINGS` fields as `settings.php` variables, so this sets `$base_url` for the site and for Bee. Apply it and ask for a link:
+
+```sh
+lando start
+lando bee uli
+```
+
+Bee prints a one-time login link for the admin account on that URL. When the router moves to another port, the next `lando start` recreates `appserver` and the links follow.
 
 ## Debug with Xdebug
 

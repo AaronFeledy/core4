@@ -6,10 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
-func fakeCmsComposer(command string, workingDir string, positional []string, env map[string]string) int {
+func fakeCmsComposer(command string, workingDir string, positional []string, dev bool, env map[string]string) int {
 	mode := env["LANDO_TEST_COMPOSER_MODE"]
 	switch command {
 	case "create-project":
@@ -19,6 +20,7 @@ func fakeCmsComposer(command string, workingDir string, positional []string, env
 		target := positional[1]
 		_ = os.MkdirAll(filepath.Join(target, "web", "core", "lib"), 0o755)
 		root := map[string]any{
+			"config":       map[string]any{"allow-plugins": map[string]any{"composer/installers": true}},
 			"require":      map[string]any{"drupal/cms": "^2.0"},
 			"repositories": map[string]any{"drupal": map[string]any{"type": "composer", "url": "https://packages.drupal.org/8"}},
 			"scripts":      map[string]any{"post-update-cmd": []string{"rm -f vendor/bin/composer"}},
@@ -28,7 +30,19 @@ func fakeCmsComposer(command string, workingDir string, positional []string, env
 		_ = os.WriteFile(filepath.Join(target, "web", "core", "lib", "Drupal.php"), []byte("late\n"), 0o644)
 		return 0
 	case "config":
+		if len(positional) != 2 {
+			return 2
+		}
 		root := readFakeJSON(filepath.Join(workingDir, "composer.json"))
+		if plugin, ok := strings.CutPrefix(positional[0], "allow-plugins."); ok {
+			allowed, err := strconv.ParseBool(positional[1])
+			if err != nil {
+				return 2
+			}
+			root["config"].(map[string]any)["allow-plugins"].(map[string]any)[plugin] = allowed
+			writeCmsComposer(filepath.Join(workingDir, "composer.json"), root)
+			return 0
+		}
 		repository := readFakeJSONBytes([]byte(positional[1]))
 		if mode == "repo-tamper" {
 			repository["package"].(map[string]any)["description"] = "tampered"
@@ -39,6 +53,15 @@ func fakeCmsComposer(command string, workingDir string, positional []string, env
 		return 0
 	case "require":
 		root := readFakeJSON(filepath.Join(workingDir, "composer.json"))
+		if dev {
+			requireDev := make(map[string]string, len(positional))
+			for _, requirement := range positional {
+				requireDev[requirement] = "*"
+			}
+			root["require-dev"] = requireDev
+			writeCmsComposer(filepath.Join(workingDir, "composer.json"), root)
+			return 0
+		}
 		require := root["require"].(map[string]any)
 		for _, requirement := range positional {
 			name, constraint, ok := strings.Cut(requirement, ":")
@@ -100,8 +123,16 @@ func fakeCmsComposer(command string, workingDir string, positional []string, env
 		source := maps.Clone(pkg["source"].(map[string]any))
 		_ = os.MkdirAll(filepath.Join(workingDir, "vendor", "bin"), 0o755)
 		_ = os.MkdirAll(filepath.Join(workingDir, "vendor", "composer"), 0o755)
-		for _, binary := range []string{"drush", "composer"} {
-			_ = os.WriteFile(filepath.Join(workingDir, "vendor", "bin", binary), []byte("#!/bin/sh\n"), 0o755)
+		binaries := []string{"drush", "composer"}
+		requireDev, _ := root["require-dev"].(map[string]any)
+		if _, ok := requireDev["drupal/coder"]; ok {
+			binaries = append(binaries, "phpcs", "phpcbf")
+		}
+		if _, ok := requireDev["phpstan/phpstan"]; ok {
+			binaries = append(binaries, "phpstan")
+		}
+		if code := fakeComposerBinaries(workingDir, mode, binaries...); code != 0 {
+			return code
 		}
 		if mode == "installed-source" {
 			source["reference"] = strings.Repeat("b", 40)

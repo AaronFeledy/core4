@@ -62,6 +62,7 @@ export const ScratchRunResultSchema = Schema.Struct({
 });
 
 export type ScratchRunError =
+  | import("@lando/sdk/errors").RouteUrlBindingError
   | ProviderError
   | AppPlacementError
   | ScratchSourceUnresolvedError

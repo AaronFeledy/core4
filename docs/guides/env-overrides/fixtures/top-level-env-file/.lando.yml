@@ -1,7 +1,8 @@
 name: env-overrides-shared
 runtime: 4
-env_file:
-  - shared.env
+serviceDefaults:
+  env_file:
+    - shared.env
 services:
   web:
     type: node:lts

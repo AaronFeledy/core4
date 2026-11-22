@@ -163,7 +163,6 @@ test("keeps templated hostname case literal instead of conflating different expr
 });
 
 test.each([
-  { field: "dependsOn", key: "service" },
   { field: "endpoints", key: "name" },
   { field: "ports", key: "name" },
   { field: "logs", key: "id" },
@@ -175,6 +174,19 @@ test.each([
   const merged = mergeValues(ServiceConfig, inherited, local, [field]);
   // Then the match deep-merges without replacing the collection.
   expect(merged).toEqual([{ [key]: "${IDENTITY}", inherited: true, local: true }, { [key]: "stable" }]);
+});
+
+test("matches literal template identities in depends_on condition maps", () => {
+  // Given a matching template service key and a second inherited entry as Compose maps.
+  const inherited = { "${IDENTITY}": { inherited: true }, stable: {} };
+  const local = { "${IDENTITY}": { local: true } };
+  // When depends_on merges by service identity into authored Compose map form.
+  const merged = mergeValues(ServiceConfig, inherited, local, ["depends_on"]);
+  // Then the match deep-merges, defaults condition, and retains the unrelated service.
+  expect(merged).toEqual({
+    "${IDENTITY}": { condition: "service_started", inherited: true, local: true },
+    stable: { condition: "service_started" },
+  });
 });
 
 test.each(["name", "kind"])("matches a literal template filter %s", (key) => {

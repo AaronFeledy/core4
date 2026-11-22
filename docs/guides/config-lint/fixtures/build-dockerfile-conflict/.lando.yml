@@ -1,0 +1,8 @@
+# lando-lint: expect-invalid build.dockerfile-conflict
+name: diagnostic-reason
+services:
+  web:
+    image: alpine
+    build:
+      dockerfile: Dockerfile
+      dockerfile_inline: FROM alpine

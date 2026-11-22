@@ -1,4 +1,4 @@
-import { SecretNotFoundError } from "@lando/sdk/errors";
+import { EnvironmentValueResolutionError, SecretNotFoundError } from "@lando/sdk/errors";
 import { type Environment, type EnvironmentValue, encodeUriComponent } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import { Effect } from "effect";
@@ -40,6 +40,14 @@ export const valueResolver = (values: Readonly<Record<string, string>>) => {
               }
               return result;
             }
+            case "RouteText":
+              return yield* new EnvironmentValueResolutionError({
+                reason: "unresolved-binding",
+                message: "Public URL was not bound.",
+                remediation: "Activate the app before resolving its environment.",
+              });
+            default:
+              return value satisfies never;
           }
         });
         return {

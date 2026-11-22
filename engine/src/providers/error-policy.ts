@@ -1,17 +1,19 @@
-import { isProviderError, redactProviderError } from "@lando/redaction/provider-error";
-import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
+import { redactProviderCause } from "@lando/redaction/provider-error";
 import type { Redactor } from "@lando/sdk/secrets";
-import type { ProviderError, RuntimeProviderShape, VolumeArchiveImportSpec } from "@lando/sdk/services";
-import type { Effect } from "effect";
+import type { RuntimeProviderShape, VolumeArchiveImportSpec } from "@lando/sdk/services";
+import { Effect, Stream } from "effect";
 import type { ProviderErrorMember } from "./output-policy.ts";
 
 export const withProviderErrorRedaction = (
   runtime: RuntimeProviderShape,
   redactor: Redactor,
 ): RuntimeProviderShape => {
-  const redactFailure = (error: ProviderError) => redactProviderError(error, redactor);
-  const effect = mapFailures(redactFailure);
-  const stream = mapStreamFailures(redactFailure);
+  // Archive and beforeCommit failures that belong to the caller pass through; provider errors are redacted
+  // wherever they sit in the Cause, keeping every reason.
+  const effect = <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    Effect.catchCause(self, (cause) => Effect.failCause(redactProviderCause(cause, redactor)));
+  const stream = <A, E, R>(self: Stream.Stream<A, E, R>): Stream.Stream<A, E, R> =>
+    Stream.catchCause(self, (cause) => Stream.failCause(redactProviderCause(cause, redactor)));
   const {
     appliedPlans,
     cleanupOwnedResources,
@@ -33,7 +35,7 @@ export const withProviderErrorRedaction = (
     adoptVolume,
   } = runtime;
   const adapters = {
-    isAvailable: runtime.isAvailable.pipe(mapFailures((error) => redactProviderError(error, redactor))),
+    isAvailable: effect(runtime.isAvailable),
     ...(appliedPlans === undefined ? {} : { appliedPlans: effect(appliedPlans) }),
     ...(cleanupOwnedResources === undefined
       ? {}
@@ -64,8 +66,7 @@ export const withProviderErrorRedaction = (
     buildArtifact: (spec) => effect(runtime.buildArtifact(spec)),
     pullArtifact: (spec) => effect(runtime.pullArtifact(spec)),
     removeArtifact: (ref) => effect(runtime.removeArtifact(ref)),
-    listArtifacts: (selector) =>
-      runtime.listArtifacts(selector).pipe(mapFailures((error) => redactProviderError(error, redactor))),
+    listArtifacts: (selector) => effect(runtime.listArtifacts(selector)),
     ...(inspectAppliedFileSync === undefined
       ? {}
       : { inspectAppliedFileSync: (plan) => effect(inspectAppliedFileSync.call(runtime, plan)) }),
@@ -99,14 +100,7 @@ export const withProviderErrorRedaction = (
     execStream: (target, command) => stream(runtime.execStream(target, command)),
     run: (spec) => effect(runtime.run(spec)),
     runStream: (spec) => stream(runtime.runStream(spec)),
-    // The archive and beforeCommit failures belong to the caller (E); only canonical
-    // provider failures are reconstructed and redacted, with every cause reason kept.
-    importVolume: <E, R>(spec: VolumeArchiveImportSpec<E, R>) =>
-      runtime
-        .importVolume(spec)
-        .pipe(
-          mapFailures((error) => (isProviderError(error) ? redactProviderError(error, redactor) : error)),
-        ),
+    importVolume: <E, R>(spec: VolumeArchiveImportSpec<E, R>) => effect(runtime.importVolume(spec)),
     logs: (target, options) => stream(runtime.logs(target, options)),
     inspect: (target) => effect(runtime.inspect(target)),
     list: (filter) => effect(runtime.list(filter)),
@@ -118,12 +112,7 @@ export const withProviderErrorRedaction = (
     restoreVolume: <E = never>(
       spec: Parameters<RuntimeProviderShape["restoreVolume"]>[0],
       options?: { readonly beforeCommit?: Effect.Effect<void, E> },
-    ) =>
-      runtime
-        .restoreVolume(spec, options)
-        .pipe(
-          mapFailures((error) => (isProviderError(error) ? redactProviderError(error, redactor) : error)),
-        ),
+    ) => effect(runtime.restoreVolume(spec, options)),
     listVolumes: (filter) => effect(runtime.listVolumes(filter)),
     locateVolume: (ref) => effect(runtime.locateVolume(ref)),
     ...(inspectResourceNames === undefined

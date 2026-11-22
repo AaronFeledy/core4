@@ -54,7 +54,7 @@ const expectedEnvironment = (serviceName: string, service: ServiceConfig) => ({
   // capability, so the plan carries the host alias variable alongside the
   // authored environment.
   LANDO_HOST_IP: "host.lando.internal",
-  ...Object.fromEntries((service.envFile ?? []).map((_, index) => fixtureEnvEntry(serviceName, index))),
+  ...Object.fromEntries((service.env_file ?? []).map((_, index) => fixtureEnvEntry(serviceName, index))),
   ...(service.environment ?? {}),
 });
 
@@ -237,7 +237,7 @@ export const assertNormalizedMatch = (match: ComposeDispositionMatch, context: O
     case "dependencies":
       requireProducedValue(planService.dependsOn, match, "ServicePlan.dependsOn");
       expect<unknown>(planService.dependsOn).toEqual(
-        (service.dependsOn ?? []).map((dependency) => ({
+        (service.depends_on ?? []).map((dependency) => ({
           service: dependency.service,
           condition: dependency.condition ?? "service_started",
           required: dependency.required ?? true,

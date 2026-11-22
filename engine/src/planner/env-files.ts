@@ -92,8 +92,8 @@ export const loadTopLevelEnvFiles = (input: {
   loadEnvFiles({
     ...input,
     owner: "The Landofile",
-    readContext: "declared by the Landofile",
-    issuePath: ["env_file"],
+    readContext: "declared by serviceDefaults.env_file",
+    issuePath: ["serviceDefaults", "env_file"],
   });
 
 export const loadServiceEnvFiles = (input: {
@@ -110,11 +110,11 @@ export const loadServiceEnvFiles = (input: {
 > =>
   loadEnvFiles({
     appRoot: input.appRoot,
-    envFiles: input.service.envFile ?? [],
+    envFiles: input.service.env_file ?? [],
     fileSystem: input.fileSystem,
     owner: `Service ${input.serviceName}`,
     readContext: `for service ${input.serviceName}`,
-    issuePath: ["services", input.serviceName, "envFile"],
+    issuePath: ["services", input.serviceName, "env_file"],
   }).pipe(
     Effect.map(({ environment, inputs }) => ({
       environment: { ...environment, ...(input.service.environment ?? {}) },

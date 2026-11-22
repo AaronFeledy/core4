@@ -67,7 +67,7 @@ test("init writes a complete theme-free Hugo site beside the Landofile", async (
     services: {
       builder: {
         build: { artifact: [...HUGO_BUILD_ARTIFACT] },
-        command: "hugo server --bind 0.0.0.0 --port 1313",
+        command: "hugo server --bind 0.0.0.0 --port {{ service.port }}",
       },
     },
     tooling: { hugo: { cmds: ["hugo"] } },

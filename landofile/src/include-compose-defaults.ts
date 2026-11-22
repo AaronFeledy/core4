@@ -76,9 +76,7 @@ export const composeIncludeDefaults = (
       const implicitContext =
         localRoots !== undefined &&
         plain.context === undefined &&
-        ["dockerfile", "dockerfile_inline", "dockerfileInline", "args", "target"].some(
-          (key) => plain[key] !== undefined,
-        );
+        ["dockerfile", "dockerfile_inline", "args", "target"].some((key) => plain[key] !== undefined);
       return mapFields(implicitContext ? { ...plain, context: "." } : plain, { context: path });
     });
   const fileDefinitions = (value: unknown) =>
@@ -91,7 +89,6 @@ export const composeIncludeDefaults = (
             {
               volumes: (value) => mapList(value, volume),
               env_file: envFiles,
-              envFile: envFiles,
               build,
               devices: (value) =>
                 mapList(value, (entry) =>
@@ -107,7 +104,19 @@ export const composeIncludeDefaults = (
   return {
     ...document,
     ...(services === undefined ? {} : { services }),
-    ...(document.env_file === undefined ? {} : { env_file: envFiles(document.env_file) }),
+    ...(document.serviceDefaults !== undefined &&
+    typeof document.serviceDefaults === "object" &&
+    document.serviceDefaults !== null &&
+    !Array.isArray(document.serviceDefaults) &&
+    "env_file" in document.serviceDefaults &&
+    document.serviceDefaults.env_file !== undefined
+      ? {
+          serviceDefaults: {
+            ...document.serviceDefaults,
+            env_file: envFiles(document.serviceDefaults.env_file),
+          },
+        }
+      : {}),
     ...(document.configs === undefined ? {} : { configs: fileDefinitions(document.configs) }),
     ...(document.secrets === undefined ? {} : { secrets: fileDefinitions(document.secrets) }),
   };

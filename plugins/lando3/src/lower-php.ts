@@ -131,6 +131,6 @@ export const lowerPhpOptions = (
     diagnostics.push(...lowered.diagnostics);
   }
 
-  if (Object.hasOwn(service, "db_client")) patch.db_client = service.db_client;
+  if (Object.hasOwn(service, "db_client")) patch.dbClient = service.db_client;
   return { patch, claims: cursor.claims, ...(companions === undefined ? {} : { companions }), diagnostics };
 };

@@ -1,10 +1,10 @@
 import { FileSyncStartError } from "@lando/sdk/errors";
-import type { AppPlan, AppRef, PreparedFileSyncTarget } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, PreparedFileSyncTarget, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import type { ProgressEmitter } from "@lando/sdk/task-progress";
 import { Effect } from "effect";
 import { beginOrResumeAcceleratedStart } from "./accelerated-start-journal.ts";
-import { matchesRecordedTargets } from "./accelerated-start-record.ts";
+import { matchesRecordedTargets, recordedStartCommand } from "./accelerated-start-record.ts";
 import { acquirePlannedFileSyncEngine, requireFileSyncProvider } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { verifyPreparedFileSyncTargets } from "./prepared-file-sync-targets.ts";
@@ -18,6 +18,7 @@ export const prepareAcceleratedStart = Effect.fnUntraced(function* (
     readonly events: ProgressEmitter;
     readonly managed: StartManagedScope | undefined;
     readonly preparedTargets?: readonly PreparedFileSyncTarget[];
+    readonly services?: readonly ServiceName[];
   },
 ) {
   const bundle = yield* fileSyncBundle(plan);
@@ -33,7 +34,7 @@ export const prepareAcceleratedStart = Effect.fnUntraced(function* (
         remediation: "Restore the recorded provider or use ordinary bind mounts for a new app.",
       }),
     );
-  const pendingStart = yield* beginOrResumeAcceleratedStart(plan, execution.app);
+  const pendingStart = yield* beginOrResumeAcceleratedStart(plan, execution.app, execution.services);
   const prepared =
     execution.preparedTargets === undefined ? yield* prepare(plan) : { targets: execution.preparedTargets };
   yield* verifyPreparedFileSyncTargets(plan, prepared.targets);
@@ -67,7 +68,7 @@ export const prepareAcceleratedStart = Effect.fnUntraced(function* (
     execution.events,
     execution.managed,
     bound,
-    pendingStart.resumedFrom === "apply-intent",
+    pendingStart.resumedFrom === "apply-intent" ? recordedStartCommand(pendingStart.record) : undefined,
   );
   return { pendingStart };
 });

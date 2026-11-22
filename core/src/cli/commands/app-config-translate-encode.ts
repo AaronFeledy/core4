@@ -3,6 +3,7 @@ import { landofileLayerPaths } from "@lando/landofile/layers";
 import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigTranslateError } from "@lando/sdk/errors";
+import { containsReservedBinding } from "@lando/sdk/expressions";
 import { decodeLandofileAuthoringLayer, mergeLandofiles } from "@lando/sdk/landofile";
 import {
   type ConfigTranslateExpectation,
@@ -32,6 +33,11 @@ export const encodeTranslateOutputs = Effect.fnUntraced(function* (
   ].sort((a, b) => layerOrder(a.layer) - layerOrder(b.layer));
   let merged: Record<string, unknown> = {};
   for (const entry of ordered) {
+    if (containsReservedBinding(entry.fragment))
+      return yield* new ConfigTranslateError({
+        message: `The translation for ${entry.layer} contains a reserved environment binding object.`,
+        remediation: "Write an authored expression rather than a runtime environment descriptor.",
+      });
     const invalidPrefix = (cause: unknown) =>
       new ConfigTranslateError({
         message: `Invalid merge prefix at layer ${entry.layer}.`,

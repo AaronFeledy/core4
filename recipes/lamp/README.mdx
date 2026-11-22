@@ -1,7 +1,6 @@
 ---
 id: lamp
 provider: test
-timeout: 900000
 tags: [recipe, lamp, php]
 ---
 
@@ -90,7 +89,7 @@ For day-to-day tooling, Apache PHP, and database hosts, see [Run the LAMP recipe
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
     </Step>
   </Scenario>
-  <Scenario id="install-path" layer="e2e" render={false} reason="Live coverage for the documented TYPO3 Composer install">
+  <Scenario id="install-path" layer="e2e" timeout={900000} render={false} reason="Live coverage for the documented TYPO3 Composer install">
     <Step name="init">
       <Run command="lando init --recipe lamp --name=lamp-install --yes --answer=webroot=public" />
     </Step>

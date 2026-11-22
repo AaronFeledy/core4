@@ -27,6 +27,11 @@ test.each([
     job: "guide-scenarios-linux-x64-runner",
     before: "Run generated guide scenarios",
   },
+  {
+    workflow: renderCiWorkflow,
+    job: "guide-e2e-linux-x64-runner",
+    before: "Prepare provider via lando setup",
+  },
   { workflow: renderCiWorkflow, job: "container-helper", before: "Set up Lando with Docker" },
   {
     workflow: renderNightlyWorkflow,

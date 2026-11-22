@@ -9,8 +9,6 @@ import {
   TunnelStopRequest,
   TunnelTarget,
   type TunnelTarget as TunnelTargetType,
-  routeListenerPreference,
-  selectHttpEndpoint,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -26,6 +24,7 @@ import { Effect, Schema, type Scope } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
 import { reconcileTunnelRegistry, recordTunnelSession, removeTunnelSession } from "../tunnel/registry.ts";
+import { primaryRouteCandidates } from "./connection-url.ts";
 
 export const ShareListResultSchema = Schema.Array(TunnelSession);
 
@@ -115,31 +114,7 @@ const resolvePlan = Effect.fnUntraced(function* (
 export const defaultTunnelTarget = (plan: AppPlan): TunnelTargetType => {
   const routes = routerEnabled(plan) ? plan.routes : [];
   const primary = Object.values(plan.services).find((service) => service.primary);
-  // Per-scheme plans leave the primary service's plain listener HTTP while a
-  // verifiable HTTPS listener serves the HTTPS route. Eligibility is the primary
-  // SERVICE, then the listener the shared preference selects, then any HTTPS
-  // route, so the split default route wins without losing the older preference
-  // for a marked primary listener.
-  const serviceRoutes = primary === undefined ? [] : routes.filter((route) => route.service === primary.name);
-  const endpoint =
-    primary === undefined
-      ? undefined
-      : selectHttpEndpoint(
-          primary.endpoints,
-          undefined,
-          routeListenerPreference("https", primary.certs !== undefined),
-        );
-  const listenerRoutes =
-    endpoint?.status === "selected"
-      ? serviceRoutes.filter(
-          (route) =>
-            route.backend.port === endpoint.endpoint.port &&
-            route.backend.protocol === endpoint.endpoint.protocol,
-        )
-      : [];
-  const httpsRoutes = serviceRoutes.filter((route) => route.scheme !== "http");
-  const preferred =
-    listenerRoutes.length > 0 ? listenerRoutes : httpsRoutes.length > 0 ? httpsRoutes : serviceRoutes;
+  const preferred = primary === undefined ? [] : primaryRouteCandidates(routes, primary);
   const candidates = preferred.length > 0 ? preferred : routes;
   // A tunnelled public authority is one hostname and path, regardless of how many
   // scheme rows describe it.

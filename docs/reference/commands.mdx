@@ -565,6 +565,12 @@ Start the current Lando app.
 
 Aliases: `lando start`
 
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service, -s` | Service to start, with its prerequisites (repeatable). |
+
 ## `lando app:stop`
 
 Stop the current Lando app.
@@ -791,6 +797,26 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
+
+## `lando db:creds:apply`
+
+Preview or repair credentials for a running database service.
+
+Provided by `@lando/sql`.
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `adminPasswordSource` | Fallback database administrator password source. Use - to read from stdin. (one of `-`) |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--admin-user` | Existing PostgreSQL or MongoDB administrator login. |
+| `--service` | Target database service. |
+| `--yes, -y` | Apply the previewed changes. |
 
 ## `lando db:export`
 

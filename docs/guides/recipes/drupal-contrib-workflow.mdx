@@ -1,7 +1,6 @@
 ---
 id: drupal-contrib-workflow
 provider: test
-timeout: 900000
 tags: [docs, recipes, drupal, drupal-contrib, php, phpunit]
 ---
 
@@ -74,8 +73,11 @@ lando phpcs
 lando phpstan analyse
 ```
 
-Without a PHP_CodeSniffer config, name the standard and path:
-`lando phpcs --standard=Drupal,DrupalPractice .`.
+Without a PHP_CodeSniffer ruleset, `lando phpcs` and `lando phpcbf` check the
+extension root against Drupal and DrupalPractice, including Drupal's file types
+such as `.module` and `.info.yml`, and skip `node_modules` and `vendor`. Without
+a PHPStan config, a bare `lando phpstan` analyses the extension root at PHPStan's
+default level 0.
 
 ## Add a dependency to your extension
 
@@ -210,7 +212,7 @@ service, site sync, and tooling. They do not download Drupal:
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "SIMPLETEST_DB" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"lando-drupal-contrib-sync\",\\s*\"module\",\\s*\"example\",\\s*\"\\^11\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"post-start\":\\s*\\[\\s*\\{\\s*\"task\":\\s*\"drupal-contrib-sync\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/vendor/bin/phpstan" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpstan\":\\s*\\{[^}]*\"cmd\":\\s*\\[\\s*\":drupal-local\",\\s*\"phpstan\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -232,7 +234,7 @@ service, site sync, and tooling. They do not download Drupal:
     </Step>
   </Scenario>
 
-  <Scenario id="extension-smoke" layer="e2e" tags={["@smoke"]} render={false} reason="Prove that start builds a working site around a module checkout">
+  <Scenario id="extension-smoke" layer="e2e" timeout={900000} tags={["@smoke"]} render={false} reason="Prove that start builds a working site around a module checkout">
     <Step name="init">
       <UseFixture name="example-module" />
       <Run command="lando init . --recipe drupal-contrib --name=contrib-smoke --yes --answer=project=example" />
@@ -249,7 +251,7 @@ service, site sync, and tooling. They do not download Drupal:
     </Step>
   </Scenario>
 
-  <Scenario id="extension-journey" layer="e2e" render={false} reason="Exercise tests, linters, site install, dependency sync, and a core switch on a module checkout">
+  <Scenario id="extension-journey" layer="e2e" timeout={900000} render={false} reason="Exercise tests, linters, site install, dependency sync, and a core switch on a module checkout">
     <Step name="init">
       <UseFixture name="example-module" />
       <Run command="lando init . --recipe drupal-contrib --name=contrib-journey --yes --answer=project=example" />
@@ -262,6 +264,13 @@ service, site sync, and tooling. They do not download Drupal:
       <Verify command="lando phpcs" />
       <Verify command="lando phpstan analyse --no-progress" />
     </Step>
+    <Hidden reason="Without a ruleset, phpcs checks the extension root against Drupal and DrupalPractice">
+      <Step name="lint-without-ruleset">
+        <Run command="lando exec appserver -- mv phpcs.xml.dist phpcs.xml.off" />
+        <Verify command="lando phpcs" />
+        <Run command="lando exec appserver -- mv phpcs.xml.off phpcs.xml.dist" />
+      </Step>
+    </Hidden>
     <Step name="install-site">
       <Run command="lando drush site:install standard --db-url=mysql://lando:lando@database/contrib-journey --site-name=Example --account-name=admin --account-mail=admin@example.com -y" />
       <Verify command="lando drush status --field=bootstrap" expect={{ stdout: { regex: "Successful" } }} />

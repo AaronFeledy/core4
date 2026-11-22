@@ -15,10 +15,13 @@ import { databaseCredentialRemediation } from "./database-credentials.ts";
 const credentialRemediation = (
   connection: DatabaseConnection | undefined,
   state: DatabaseClientCheckState | undefined,
+  target: ReadinessTarget,
 ): string => {
   if (connection === undefined || state === undefined) return "";
   if (state !== "rejected" && state !== "database-missing") return "";
-  return ` ${databaseCredentialRemediation(connection.family, state)}`;
+  if (target.plan.extensions["@lando/core/scratch"] !== undefined || target.plan.id === "global")
+    return " Check that the database credentials and database name match the running service before retrying.";
+  return ` ${databaseCredentialRemediation(connection.family, state, target.service)}`;
 };
 
 /**
@@ -133,7 +136,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
     remediation:
       evidence.reason === "inspect-failed"
         ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
-        : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}${credentialRemediation(service?.connection, logEvidence?.credentialState)}`,
+        : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}${credentialRemediation(service?.connection, logEvidence?.credentialState, target)}`,
     ...(listener === undefined ? {} : { listener }),
     ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
     ...(evidence.runtime === undefined ? {} : { state: redactor.redactString(evidence.runtime.status) }),
@@ -162,7 +165,7 @@ export const guardServiceRunning = Effect.fn("ServiceReadiness.guardRunning")(fu
 ) {
   const running = runtime.status === "running";
   const job = completionIntentServices(target.plan).has(String(target.service));
-  if (initial !== undefined && !sameReadinessIncarnation(initial, runtime))
+  if (initial !== undefined && readinessIncarnation(initial, runtime) !== "same")
     return yield* failReadinessIncarnation(target, runtime);
   if (!running && !(job && runtime.status === "exited" && runtime.exitCode === 0))
     return yield* failReadiness(target, {
@@ -177,8 +180,15 @@ const startedAt = (runtime: ServiceRuntimeInfo) =>
     ? undefined
     : DateTime.toEpochMillis(DateTime.makeUnsafe(runtime.lastStartedAt));
 
-export const sameReadinessIncarnation = (left: ServiceRuntimeInfo, right: ServiceRuntimeInfo) =>
-  left.containerId === right.containerId && startedAt(left) === startedAt(right);
+export const readinessIncarnation = (initial: ServiceRuntimeInfo, observed: ServiceRuntimeInfo) => {
+  if (initial.containerId !== observed.containerId) return "different";
+  const before = startedAt(initial);
+  const after = startedAt(observed);
+  if (before === after) return "same";
+  return initial.containerId !== undefined && before !== undefined && after !== undefined && after > before
+    ? "restarted"
+    : "different";
+};
 
 export const failReadinessIncarnation = (target: ReadinessTarget, runtime: ServiceRuntimeInfo) =>
   failReadiness(target, {

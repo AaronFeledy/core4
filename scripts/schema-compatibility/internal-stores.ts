@@ -289,12 +289,12 @@ export const UNREGISTERED_DURABLE_BUCKETS: ReadonlyArray<BucketSite & { readonly
   {
     file: "container-runtime/src/applied-state.ts",
     schema: "AppliedPlan",
-    reason: "Guarded as the published applied-state store through the AppPlan schema surface.",
+    reason: "Guarded as the published applied-state store through the AppliedAppPlan schema surface.",
   },
   {
     file: "container-runtime/src/applied-state.ts",
     schema: "AppliedPlans",
-    reason: "Record of AppPlan values; guarded as the published applied-state store.",
+    reason: "Record of AppliedAppPlan values; guarded as the published applied-state store.",
   },
   {
     file: "core/src/cli/commands/list-prune-state.ts",
@@ -308,7 +308,7 @@ export const UNREGISTERED_DURABLE_BUCKETS: ReadonlyArray<BucketSite & { readonly
   },
   {
     file: "engine/src/scratch-app/plan.ts",
-    schema: "AppPlan",
+    schema: "ScratchDesiredPlan",
     reason: "Plan cache: quarantined on corruption, discarded on version mismatch, re-planned.",
   },
   {

@@ -1,0 +1,5 @@
+name: python-invalid-requirements
+services:
+  app:
+    type: python:3.12
+    endpoints: []

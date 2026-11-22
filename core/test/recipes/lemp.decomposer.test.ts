@@ -42,7 +42,7 @@ const authoring = {
       framework: "none",
       via: "fpm",
       webroot: ".",
-      dependsOn: ["database"],
+      depends_on: ["database"],
     },
     database: { type: "mariadb" },
   },

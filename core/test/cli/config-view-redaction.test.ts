@@ -16,13 +16,15 @@ const secret = "canary-config-opaque-value-626";
 const dottedSecret = "canary-dotted-label-value-633";
 const hyphenatedSecret = "canary-hyphenated-label-value-633";
 const loaded = Schema.decodeUnknownSync(GlobalConfig)({
-  appEnv: { API_TOKEN: secret, TEAM: "platform" },
-  appLabels: {
-    owner: "platform",
-    API_KEY: secret,
-    "com.example.password": dottedSecret,
-    "dev.example.db-password": hyphenatedSecret,
-    "com.example.team": "platform-team",
+  serviceDefaults: {
+    environment: { API_TOKEN: secret, TEAM: "platform" },
+    labels: {
+      owner: "platform",
+      API_KEY: secret,
+      "com.example.password": dottedSecret,
+      "dev.example.db-password": hyphenatedSecret,
+      "com.example.team": "platform-team",
+    },
   },
   network: { proxy: { https: "http://user:proxy-pass-626@proxy.invalid:3128" } },
   tracing: {
@@ -41,13 +43,15 @@ test("config collection distinguishes env maps from structural metadata and scal
     tokenFile: "./token.txt",
     storage: { key: "storage-name" },
     certs: { key: "./certs/server.key" },
-    appEnv: {
-      stripeSecretKey: "sk_test_canary",
-      PGPASSWORD: "pg-private",
-      MYSQL_PWD: "mysql-private",
-      TOKENIZERS_PARALLELISM: "false",
+    serviceDefaults: {
+      environment: {
+        stripeSecretKey: "sk_test_canary",
+        PGPASSWORD: "pg-private",
+        MYSQL_PWD: "mysql-private",
+        TOKENIZERS_PARALLELISM: "false",
+      },
+      labels: { cacheKey: "label-private" },
     },
-    appLabels: { cacheKey: "label-private" },
     plugin: {
       clientSecret: "client-private",
       rootPassword: "root-private",
@@ -63,9 +67,9 @@ test("config collection distinguishes env maps from structural metadata and scal
     "api-private",
   ]);
   expect(configRedactionTokens({ key: "defaultSecretStore", value: "env" })).toEqual([]);
-  expect(configRedactionTokens({ key: "appEnv.stripeSecretKey", value: "set-private" })).toContain(
-    "set-private",
-  );
+  expect(
+    configRedactionTokens({ key: "serviceDefaults.environment.stripeSecretKey", value: "set-private" }),
+  ).toContain("set-private");
   expect(configRedactionTokens({ key: "plugin.clientSecret", value: "set-private" })).toContain(
     "set-private",
   );
@@ -84,10 +88,11 @@ for (const rendererMode of ["lando", "plain", "verbose", "json"] as const) {
   for (const format of ["table", "yaml", "json"] as const) {
     for (const key of [
       undefined,
-      "appEnv",
-      "appEnv.API_TOKEN",
-      'appEnv["API_TOKEN"]',
-      "appLabels.API_KEY",
+      "serviceDefaults",
+      "serviceDefaults.environment",
+      "serviceDefaults.environment.API_TOKEN",
+      'serviceDefaults.environment["API_TOKEN"]',
+      "serviceDefaults.labels.API_KEY",
       "network.proxy.https",
       "tracing.otlp.headers",
       "tracing.otlp.headers.x-team",

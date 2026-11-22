@@ -80,7 +80,7 @@ describe("django decomposition", () => {
               "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
             REDIS_URL: "redis://cache:6379",
           },
-          dependsOn: [{ service: "cache" }, { service: "database" }],
+          depends_on: ["cache", "database"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "postgres" },
@@ -93,7 +93,12 @@ describe("django decomposition", () => {
           cmds: ["python manage.py"],
           wrapper: true,
         },
-        pip: { service: "web", description: "Run pip inside the web service.", cmds: ["pip"], wrapper: true },
+        pip: {
+          service: "web",
+          description: expect.any(String),
+          cmds: ["python -m pip"],
+          wrapper: true,
+        },
       },
     });
     expect<unknown>(result.fragment).toEqual({
@@ -111,7 +116,8 @@ describe("django decomposition", () => {
     expect<unknown>(authoring.services.worker).toEqual({
       type: "python:3.12",
       framework: "django",
-      command: "celery -A app worker --loglevel=info",
+      command: "exec celery -A config worker --loglevel=info",
+      endpoints: [],
       restart: "unless-stopped",
       environment: {
         DJANGO_SETTINGS_MODULE: "config.settings",
@@ -119,7 +125,7 @@ describe("django decomposition", () => {
           "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
         REDIS_URL: "redis://cache:6379",
       },
-      dependsOn: [{ service: "cache" }, { service: "database" }],
+      depends_on: ["cache", "database"],
     });
   });
 

@@ -4,4 +4,3 @@ services:
     type: node:lts
     healthcheck:
       kind: http
-      url: http://localhost/health

@@ -29,7 +29,7 @@ services:
       XHGUI_PDO_PASS: xhgui
     endpoints:
       - ui=http:80
-    dependsOn:
+    depends_on:
       profiles:
         condition: service_healthy
   profiles:

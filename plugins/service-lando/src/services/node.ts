@@ -9,15 +9,18 @@ import type {
   ServiceTypeResolution,
 } from "@lando/sdk/services";
 import { type Effect, Schema } from "effect";
+import { LANGUAGE_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { normalizeNpmGlobals } from "./_package-specs.ts";
-import { NODE_FEATURE_ID, artifactFor } from "./node-feature.ts";
+import { NODE_FEATURE_ID, artifactFor, nodePlannedPort } from "./node-feature.ts";
 import { resolveNodeInference } from "./node-inference.ts";
 import { applyProvisionedGlobals, packageManagerConfigFor } from "./node-package-manager.ts";
 import { resolveNodePackageManager } from "./node-package-manager-declaration.ts";
 import { validatePackageManagerDistribution } from "./node-package-manager-install.ts";
+import { nodeServiceLaunchers } from "./node-service-launchers.ts";
 import { nodeManagerTooling } from "./node-tooling.ts";
 import { NODE_ARTIFACTS, SUPPORTED_NODE_VERSIONS, type SupportedNodeVersion } from "./node-versions.ts";
+import { YARN_RC, usesYarnPnp } from "./node-yarn-linker.ts";
 
 export {
   DEFAULT_PORT,
@@ -49,7 +52,7 @@ const validateVersion = (
   );
 };
 
-/** Version inputs are declared only for bare `node`; every catalog type reads manifests for the manager. */
+/** Only bare `node` infers its version; all catalog types inspect the manager and linker. */
 const nodeProjectFiles = (
   service: ServiceConfig,
   includeVersionInputs: boolean,
@@ -59,8 +62,11 @@ const nodeProjectFiles = (
   return [
     ...(includeVersionInputs ? [{ path: `${prefix}.nvmrc`, maxBytes: PROJECT_FILE_LIMIT }] : []),
     { path: `${prefix}package.json`, maxBytes: PROJECT_FILE_LIMIT },
-    // A nested package can inherit its workspace root's manager.
-    ...(packageRoot === "." ? [] : [{ path: "package.json", maxBytes: PROJECT_FILE_LIMIT }]),
+    { path: `${prefix}${YARN_RC}`, maxBytes: PROJECT_FILE_LIMIT },
+    // A nested package can inherit its workspace root's manager and linker.
+    ...(packageRoot === "."
+      ? []
+      : ["package.json", YARN_RC].map((path) => ({ path, maxBytes: PROJECT_FILE_LIMIT }))),
   ];
 };
 
@@ -79,6 +85,7 @@ const resolveCatalogNode = (
     const selected = selectVersion(projectFiles);
     const packageManager = resolveNodePackageManager(projectFiles);
     if (packageManager !== undefined) validatePackageManagerDistribution(packageManager);
+    const includes = usesYarnPnp(packageManager, projectFiles) ? ["node_modules"] : [];
     const packageManagerConfig =
       packageManager === undefined ? undefined : packageManagerConfigFor(packageManager);
     // The planner supplies no candidates when the author owns the image/build.
@@ -101,8 +108,12 @@ const resolveCatalogNode = (
             ...(packageManagerConfig === undefined ? {} : { packageManager: packageManagerConfig }),
           },
         },
-        { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
+        { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET, includes } },
       ],
+      launchers: nodeServiceLaunchers({
+        catalogOwned,
+        manager: packageManager?.name,
+      }),
       ...(catalogOwned ? { tooling: nodeManagerTooling(input.name, packageManager?.name) } : {}),
       metadata: {
         node: {
@@ -124,6 +135,8 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
   id: `node:${version}`,
   name: `node:${version}`,
   base: "lando",
+  extraArgsRemediation: LANGUAGE_EXTRA_ARGS_REMEDIATION,
+  plannedPort: nodePlannedPort,
   versions: SUPPORTED_NODE_VERSIONS,
   artifacts: NODE_ARTIFACTS,
   identity: rootIdentity({ node: "/home/node" }),
@@ -144,6 +157,8 @@ export const nodeServiceType: ServiceType = {
   id: "node",
   name: "node",
   base: "lando",
+  extraArgsRemediation: LANGUAGE_EXTRA_ARGS_REMEDIATION,
+  plannedPort: nodePlannedPort,
   identity: rootIdentity({ node: "/home/node" }),
   schema: Schema.Unknown,
   projectFiles: (service) => nodeProjectFiles(service, true),

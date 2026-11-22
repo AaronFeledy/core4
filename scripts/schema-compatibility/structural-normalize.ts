@@ -59,6 +59,12 @@ const disjointBranches = (left: JsonValue, right: JsonValue): boolean => {
 /** Canonicalize only identities whose accepted JSON values are unchanged. */
 export const normalizeStructure = (schema: JsonSchema, preserveEvaluatedProperties = false): JsonSchema => {
   const result: Record<string, JsonValue> = { ...schema };
+  if (result.type === "integer") {
+    // Effect's Int decoder already used Number.isSafeInteger in 4.0.0.
+    // 4.1.4 emits these implicit limits; stricter authored bounds still matter.
+    if (result.minimum === Number.MIN_SAFE_INTEGER) Reflect.deleteProperty(result, "minimum");
+    if (result.maximum === Number.MAX_SAFE_INTEGER) Reflect.deleteProperty(result, "maximum");
+  }
   if (Array.isArray(result.prefixItems)) {
     const rest = result.items;
     result.items = result.prefixItems;
@@ -185,9 +191,9 @@ export const normalizeStructure = (schema: JsonSchema, preserveEvaluatedProperti
         Object.keys(child).length === 1 ||
         ["$ref", "$dynamicRef", "$recursiveRef"].some((key) => Object.hasOwn(child, key)),
     );
-    result.anyOf = [...new Map(retained.map((child) => [jsonValueKey(child), child])).values()].sort((a, b) =>
-      jsonValueKey(a).localeCompare(jsonValueKey(b)),
-    );
+    result.anyOf = [...new Map(retained.map((child) => [jsonValueKey(child), child]))]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, child]) => child);
   }
   if (Array.isArray(result.allOf)) {
     const branches = result.allOf.filter((child) => !emptySchema(child));

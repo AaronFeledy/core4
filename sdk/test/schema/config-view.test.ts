@@ -4,7 +4,7 @@ import { Result, Schema } from "effect";
 
 test("public view keeps maps and drops unknown state when encoding loaded config", () => {
   // Given
-  const maps = { appEnv: { TEAM: "platform" }, appLabels: { team: "platform" } };
+  const maps = { serviceDefaults: { environment: { TEAM: "platform" }, labels: { team: "platform" } } };
   const loaded = { ...Schema.decodeUnknownSync(GlobalConfig)(maps), privateState: { token: "opaque" } };
   // When
   const encoded = Schema.encodeSync(GlobalConfigView)(loaded);
@@ -18,7 +18,10 @@ test("public view rejects an invalid map when encoding", () => {
   // Given
   const loaded = Schema.decodeUnknownSync(GlobalConfig)({});
   // When
-  const encoded = Schema.encodeUnknownResult(GlobalConfigView)({ ...loaded, appEnv: { TEAM: 42 } });
+  const encoded = Schema.encodeUnknownResult(GlobalConfigView)({
+    ...loaded,
+    serviceDefaults: { environment: { TEAM: 42 } },
+  });
   // Then
   expect(Result.isFailure(encoded)).toBe(true);
 });

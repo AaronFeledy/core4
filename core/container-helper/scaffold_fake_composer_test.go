@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -42,6 +43,9 @@ func runFakeComposer(args []string) int {
 	if command == "run-script" && len(positional) > 0 {
 		logLine += " " + positional[0]
 	}
+	if command == "require" || (command == "config" && len(positional) > 0 && strings.HasPrefix(positional[0], "allow-plugins.")) {
+		logLine += " " + strings.Join(arguments, " ")
+	}
 	if logPath := env["LANDO_TEST_COMPOSER_LOG"]; logPath != "" {
 		file, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 		if err == nil {
@@ -51,9 +55,9 @@ func runFakeComposer(args []string) int {
 	}
 	switch env["LANDO_TEST_COMPOSER_RECIPE"] {
 	case "drupal":
-		return fakeDrupalComposer(command, workingDir, positional)
+		return fakeDrupalComposer(command, workingDir, arguments, env["LANDO_TEST_COMPOSER_MODE"])
 	case "cms":
-		return fakeCmsComposer(command, workingDir, positional, env)
+		return fakeCmsComposer(command, workingDir, positional, slices.Contains(arguments, "--dev"), env)
 	default:
 		return fakeCreateComposer(command, positional, env)
 	}
@@ -132,27 +136,47 @@ func fakeCreateComposer(command string, positional []string, env map[string]stri
 	return 2
 }
 
-func fakeDrupalComposer(command string, workingDir string, positional []string) int {
+func fakeDrupalComposer(command, workingDir string, arguments []string, mode string) int {
 	switch command {
 	case "create-project":
-		if len(positional) < 2 {
+		if len(arguments) < 2 {
 			return 2
 		}
-		target := positional[1]
+		target := arguments[1]
 		_ = os.MkdirAll(filepath.Join(target, "web"), 0o755)
 		_ = os.MkdirAll(filepath.Join(target, "vendor", "bin"), 0o755)
 		_ = os.WriteFile(filepath.Join(target, "composer.json"), []byte("{}\n"), 0o644)
-		_ = os.WriteFile(filepath.Join(target, "vendor", "bin", "drush"), []byte("#!/bin/sh\n"), 0o755)
+		if mode == "staged-config" {
+			if err := os.WriteFile(filepath.Join(target, "phpcs.xml.dist"), []byte("project rules\n"), 0o644); err != nil {
+				return 2
+			}
+		}
 		return 0
 	case "require":
 		if workingDir == "" {
 			return 2
 		}
-		_ = os.MkdirAll(filepath.Join(workingDir, "vendor", "bin"), 0o755)
-		_ = os.WriteFile(filepath.Join(workingDir, "vendor", "bin", "drush"), []byte("#!/bin/sh\n"), 0o755)
-		return 0
+		if slices.Equal(arguments, []string{"drush/drush"}) {
+			return fakeComposerBinaries(workingDir, "", "drush")
+		}
+		if slices.Contains(arguments, "--dev") {
+			return fakeComposerBinaries(workingDir, mode, "phpcs", "phpcbf", "phpstan")
+		}
 	}
 	return 2
+}
+
+func fakeComposerBinaries(workingDir, mode string, binaries ...string) int {
+	for _, binary := range binaries {
+		permissions := os.FileMode(0o755)
+		if mode == "nonexecutable-"+binary {
+			permissions = 0o644
+		}
+		if err := os.WriteFile(filepath.Join(workingDir, "vendor", "bin", binary), []byte("#!/bin/sh\n"), permissions); err != nil {
+			return 2
+		}
+	}
+	return 0
 }
 
 func writeFakeJSON(path string, value any) {

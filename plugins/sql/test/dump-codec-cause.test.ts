@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { failureOutcomeFromCause, orDieWithRole } from "@lando/sdk/command-result";
 import { DataTransferError } from "@lando/sdk/errors";
 import { Cause, Context, Effect, Exit, Stream } from "effect";
 import { compressDumpStream } from "../src/compression.ts";
@@ -50,18 +51,23 @@ for (const compression of ["gzip", "zstd"] as const) {
     });
     const sourceCleanup = new Error("source cleanup");
     const outerCleanup = new Error("outer cleanup");
-    const source = Stream.fail(failure).pipe(Stream.ensuring(Effect.die(sourceCleanup)));
+    const source = Stream.fail(failure).pipe(
+      Stream.ensuring(Effect.die(sourceCleanup).pipe(orDieWithRole("cleanup"))),
+    );
     const exit = await Effect.runPromiseExit(
       Stream.runDrain(
-        compressDumpStream(source, compression).pipe(Stream.ensuring(Effect.die(outerCleanup))),
+        compressDumpStream(source, compression).pipe(
+          Stream.ensuring(Effect.die(outerCleanup).pipe(orDieWithRole("cleanup"))),
+        ),
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected source failure");
-    expect(exit.cause.reasons).toMatchObject([
-      { _tag: "Fail", error: failure },
-      { _tag: "Die", defect: sourceCleanup },
-      { _tag: "Die", defect: outerCleanup },
-    ]);
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.kind).toBe("typed");
+    expect(outcome.error).toBe(failure);
+    expect(outcome.additionalErrors.map(({ role }) => role)).toEqual(["cleanup", "cleanup"]);
+    expect(outcome.additionalErrors[0]?.error).toBe(sourceCleanup);
+    expect(outcome.additionalErrors[1]?.error).toBe(outerCleanup);
   });
 }

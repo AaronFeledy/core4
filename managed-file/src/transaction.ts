@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
-import { commandFailureCause, mapFailures } from "@lando/sdk/command-result";
+import { commandFailureCause, mapFailures, orDieWithRole } from "@lando/sdk/command-result";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
 import { createdOutputs } from "./transaction-create.ts";
@@ -113,7 +113,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
           for (const owned of stages)
             await removeRecordedStage(owned.stage, owned.digest, options.privateFileAccess);
         });
-      }).pipe(Effect.orDie),
+      }).pipe(orDieWithRole("cleanup")),
     );
     return yield* Effect.uninterruptible(
       Effect.gen(function* () {

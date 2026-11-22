@@ -15,10 +15,10 @@ test.each([
     environment: env,
     routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
   });
-  expect(withoutDatabase.document.services?.[ServiceName.make("web")]?.dependsOn).toBeUndefined();
+  expect(withoutDatabase.document.services?.[ServiceName.make("web")]?.depends_on).toBeUndefined();
   expect(withoutDatabase.document.services?.[ServiceName.make("database")]).toBeUndefined();
   expect(withDatabase.document.services?.[ServiceName.make("database")]?.type).toBe("postgres");
-  expect(withDatabase.document.services?.[ServiceName.make("web")]?.dependsOn).toEqual([
+  expect(withDatabase.document.services?.[ServiceName.make("web")]?.depends_on).toEqual([
     { service: "database" },
   ]);
 });

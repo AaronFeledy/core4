@@ -21,6 +21,9 @@ export const ListenerAuthority = Schema.Union([
       description: "Application code or its command owns a language-runtime listener.",
     }),
     ...authorityFields,
+    keepAlive: Schema.optionalKey(Schema.Literal(true)).annotate({
+      description: "The runtime starts its default idle process instead of an authored server command.",
+    }),
     variables: Schema.NonEmptyArray(NonEmptyString).annotate({
       description: "Port environment variables Lando projects from the planned port.",
     }),

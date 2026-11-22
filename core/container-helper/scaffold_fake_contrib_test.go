@@ -79,7 +79,7 @@ func fakeContribComposer(args []string, env map[string]string) int {
 			}
 			return 42
 		}
-		for _, executable := range []string{"drush", "phpunit", "phpcs"} {
+		for _, executable := range []string{"drush", "phpunit", "phpcs", "phpcbf"} {
 			mode := os.FileMode(0o755)
 			if executable == env["LANDO_TEST_COMPOSER_MODE"] {
 				mode = 0o644

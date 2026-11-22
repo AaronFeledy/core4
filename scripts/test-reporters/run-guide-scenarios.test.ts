@@ -1,9 +1,14 @@
 import { expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 
 import {
   LIVE_OUTPUT_ENV,
   drainStream,
+  expandSmokeE2e,
   guideScenarioTestArgs,
+  isSmokeE2eScenario,
   liveOutputEnabled,
 } from "./run-guide-scenarios.ts";
 
@@ -73,4 +78,49 @@ test("drainStream tees every chunk as it arrives and returns the full decoded te
   expect(text).toBe("héllo\nwörld\n");
   expect(seen).toEqual([2, 5, 7]);
   expect(buffered).toBe("héllo\nwörld\n");
+});
+
+const header = (tags: string, layer: string): string =>
+  `// @generated\n// @source: docs/guides/x.mdx:1\n// @scenario: s\n// @variant:\n// @tags: ${tags}\n${layer}\n`;
+
+test.each([
+  { tags: "docs,node,@smoke", layer: "// @layer: e2e", smokeE2e: true },
+  { tags: "@smoke", layer: "// @layer: e2e", smokeE2e: true },
+  { tags: "docs,node", layer: "// @layer: e2e", smokeE2e: false },
+  { tags: "docs,@smoke-later", layer: "// @layer: e2e", smokeE2e: false },
+  { tags: "docs,@smoke", layer: "", smokeE2e: false },
+])("only @smoke scenarios on the e2e layer are smoke e2e: %j", ({ tags, layer, smokeE2e }) => {
+  expect(isSmokeE2eScenario(header(tags, layer))).toBe(smokeE2e);
+});
+
+test("--smoke-e2e expands to the sorted smoke e2e files and keeps the caller's other arguments", async () => {
+  const root = await mkdtemp(join(tmpdir(), "guide-smoke-e2e-"));
+  try {
+    const files = {
+      "test/scenarios/generated/guides/node/dev-engines.test.ts": header("docs,@smoke", "// @layer: e2e"),
+      "test/scenarios/generated/guides/adminer/browse.test.ts": header("@smoke", "// @layer: e2e"),
+      "test/scenarios/generated/guides/adminer/plan.test.ts": header("@smoke", ""),
+      "test/scenarios/generated/guides/node/full.test.ts": header("docs", "// @layer: e2e"),
+    };
+    for (const [path, source] of Object.entries(files)) {
+      await mkdir(dirname(join(root, path)), { recursive: true });
+      await writeFile(join(root, path), source);
+    }
+
+    expect(await expandSmokeE2e(["--smoke-e2e", "--shard=2/2"], root)).toEqual([
+      "./test/scenarios/generated/guides/adminer/browse.test.ts",
+      "./test/scenarios/generated/guides/node/dev-engines.test.ts",
+      "--test-name-pattern=@smoke.*\\[e2e\\]",
+      "--shard=2/2",
+    ]);
+    expect(await expandSmokeE2e(["generated.test.ts"], root)).toEqual(["generated.test.ts"]);
+    await expect(expandSmokeE2e(["--smoke-e2e", "--shard=1/3"], root)).rejects.toThrow(
+      "found 2 @smoke [e2e] scenarios for 3 shards",
+    );
+    await rm(join(root, "test/scenarios/generated/guides/adminer/browse.test.ts"));
+    await rm(join(root, "test/scenarios/generated/guides/node/dev-engines.test.ts"));
+    await expect(expandSmokeE2e(["--smoke-e2e"], root)).rejects.toThrow("found no @smoke [e2e] scenarios");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

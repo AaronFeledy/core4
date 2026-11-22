@@ -83,7 +83,7 @@ export const captureGlobalEnsureInputs = Effect.fnUntraced(
         (source) =>
           source.form !== "yaml" ||
           !isAbsolute(source.file) ||
-          /\b(?:env|env_file|envFile)\b|\b(?:load|import)\s*\(/u.test(source.content),
+          /\b(?:env|env_file)\b|\b(?:load|import)\s*\(/u.test(source.content),
       )
     )
       return undefined;

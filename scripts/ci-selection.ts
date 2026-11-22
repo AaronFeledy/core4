@@ -24,6 +24,8 @@ export const CI_JOB_TIERS: Readonly<Record<string, CiTier>> = {
   "runtime-bundle-linux-arm64": "runtime",
   "guide-scenarios-linux-x64-runner": "guides",
   "guide-scenarios-linux-x64": "guides",
+  "guide-e2e-linux-x64-runner": "guides",
+  "guide-e2e-linux-x64": "guides",
   "unit-tests-linux-x64-shard": "runtime",
   "unit-tests-linux-x64": "runtime",
   "test-isolation-linux-x64": "runtime",
@@ -78,8 +80,8 @@ const affectsProviders = (path: string): boolean =>
     path,
   );
 
-const platformBuildSelections = TEST_SELECTIONS.filter(({ jobs }) =>
-  jobs.some(({ job }) => job.startsWith("build-")),
+const platformBuildSelections = TEST_SELECTIONS.filter(
+  ({ id, jobs }) => id === "native-lock" || jobs.some(({ job }) => job.startsWith("build-")),
 );
 
 // The selector tests check the relative import graph and the preload passed by path.
@@ -94,11 +96,18 @@ const platformBuildTestSupport: ReadonlySet<string> = new Set([
   "core/test/build/fixtures/opentui-prompt.ts",
   "core/test/cli/stdio-file-status-support.ts",
   "core/test/cli/subprocess-support.ts",
+  "state-store/test/state/fixtures/advisory-lock-holder.ts",
+  "state-store/test/state/lock-test-access.ts",
+  "state-store/test/state/native-lock-support.ts",
   "scripts/generated/opentui-native/catalog.generated.ts",
 ]);
 
+// Native advisory locking binds libc or kernel32 per OS, so a change must run on every platform.
+const NATIVE_LOCK_SOURCE = /^state-store\/src\/(?:native-)?lock(?:-[a-z]+)?\.ts$/;
+
 const affectsPlatformBuild = (path: string): boolean =>
   path === "engine/src/runtime/libc.ts" ||
+  NATIVE_LOCK_SOURCE.test(path) ||
   platformBuildSelections.some((selection) => selectionMatches(selection, path)) ||
   platformBuildTestSupport.has(path) ||
   /^scripts\/(?:codegen|build-command-registry-manifest|build-compiled-binary|sanitize-compiled-binary|smoke-windows-binary|check-compiled-binary-notices)\.ts$/.test(

@@ -19,9 +19,6 @@ import { makePlainRenderer } from "@lando/renderer/runtime";
 import type { FormatSummaryOptions } from "@lando/renderer/summary";
 import {
   type CompletedCommandResult,
-  failureOutcomeFromCause,
-  normalizeDefect,
-  primaryFailureReason,
   redactValueWithPolicy,
   resolveCommandCompletion,
   structuralRedaction,
@@ -30,6 +27,7 @@ import { CommandInputValidationError, JqExpressionError } from "@lando/sdk/error
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { CommandCompletion, StreamFrameSchema } from "@lando/sdk/schema";
 import { EventService, Renderer } from "@lando/sdk/services";
+import { LockHolder } from "@lando/state-store/lock-holder";
 import {
   Cause,
   Clock,
@@ -62,6 +60,7 @@ import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
 import { dimBugReportDetails } from "./diagnostic-text";
 import { renderFailureEvidence } from "./failure-evidence";
 import { DEFAULT_RESULT_FORMAT, type ResultFormat, isEnvelopeResultFormat } from "./format-flags";
+import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { interruptOnAbort } from "./interrupt-on-abort";
 import { resolveOutputRouting } from "./output-routing";
 import { renderDeprecationDiagnostics } from "./renderer-deprecations";
@@ -201,6 +200,13 @@ const makeStage = (name: "init" | "run" | "render", revisable = false) => {
     });
   return { start, end };
 };
+
+const commandAliases: Readonly<Record<string, { readonly aliases: ReadonlyArray<string> }>> =
+  COMMAND_REGISTRY_MANIFEST.commands;
+
+/** How a user types the command (`lando start` for `app:start`), recorded on locks it holds. */
+const holderCommandLabel = (commandId: string): string =>
+  `lando ${commandAliases[commandId]?.aliases[0] ?? commandId}`;
 
 // allow: SIZE_OK — command rendering state machine shares lifecycle, emitters, and failure policy in one closure.
 export const runWithRendererHandling = async <A, E, R, RE>(
@@ -377,19 +383,6 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       error instanceof JqExpressionError || error instanceof CommandInputValidationError
         ? 2
         : (commandStdioExitCode(error) ?? options.failureExitCode?.(error) ?? 1);
-    const setFailureExitCode = (cause: Cause.Cause<unknown>) =>
-      Effect.sync(() => {
-        if (Cause.hasInterruptsOnly(cause)) {
-          setExitCode(commandInterruptionExitCode(options.signal));
-          return;
-        }
-        const primary = primaryFailureReason(cause);
-        if (primary !== undefined && Cause.isDieReason(primary)) {
-          setExitCode(1);
-          return;
-        }
-        setExitCode(errorExitCode(failureOutcomeFromCause(cause, normalizeDefect).error));
-      });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
       resultExit = Exit.failCause(cause);
       const defectRedactor = yield* redaction.forProfile("secrets", {
@@ -397,7 +390,10 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         redactionTokens: extraTokens,
       });
       yield* recordCliDefect(cause, defectRedactor, io);
-      const { error: primaryError, additionalErrors } = commandFailureOutcome(cause, options.signal);
+      const { kind, error: primaryError, additionalErrors } = commandFailureOutcome(cause, options.signal);
+      let failureExitCode = 1;
+      if (Cause.hasInterruptsOnly(cause)) failureExitCode = commandInterruptionExitCode(options.signal);
+      else if (kind === "typed") failureExitCode = errorExitCode(primaryError);
       const error = yield* renderFailureEvidence(primaryError);
       if (envelopeFormat) {
         const outcome = {
@@ -415,7 +411,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
           setExitCode(2);
           return;
         }
-        yield* setFailureExitCode(cause);
+        setExitCode(failureExitCode);
         return;
       }
       const redactor = yield* redaction.forProfile("secrets", { sourceEnv, redactionTokens: extraTokens });
@@ -428,7 +424,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       yield* writeDiagnosticLine(message);
       const renderer = yield* Renderer;
       for (const notice of notices) yield* renderer.message.warn(notice);
-      yield* setFailureExitCode(cause);
+      setExitCode(failureExitCode);
     });
     let finishMachineEvents: Effect.Effect<void> = Effect.void;
     const executeCommand = Effect.gen(function* () {
@@ -710,7 +706,13 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
             ...(!isStdioRendererIO(realIO) && realIO.stdin !== undefined ? { stdin: realIO.stdin } : {}),
           }),
         )
-  ).pipe(Effect.provideService(RendererHost, { io: realIO, env: sourceEnv }));
+  ).pipe(
+    Effect.provideService(RendererHost, { io: realIO, env: sourceEnv }),
+    Effect.provideService(
+      LockHolder,
+      options.command === undefined ? {} : { command: holderCommandLabel(options.command) },
+    ),
+  );
   const exit = await Effect.runPromiseExit(
     options.tracer === undefined
       ? scopedProgram.pipe(Effect.provideService(References.TracerEnabled, false))

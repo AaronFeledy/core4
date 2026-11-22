@@ -1,7 +1,6 @@
 import { constants } from "node:fs";
 import { access, chmod, mkdir, mkdtemp, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { mapFailures } from "@lando/sdk/command-result";
 import {
   type CommandStdioError,
   DataTransferError,
@@ -10,7 +9,7 @@ import {
   SqlDumpNotFoundError,
   errnoCode,
 } from "@lando/sdk/errors";
-import { VerifiedStreamError, persistVerifiedStream } from "@lando/sdk/verified-stream";
+import { mapVerifiedStreamFailures, persistVerifiedStream } from "@lando/sdk/verified-stream";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, type Scope, Stream } from "effect";
 
@@ -175,15 +174,7 @@ export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (i
         throw privacyFailure;
       }
     },
-  }).pipe(
-    mapFailures((error) =>
-      error instanceof VerifiedStreamError
-        ? privacyFailure === undefined
-          ? dumpTransferError("persist", path, error)
-          : privacyFailure
-        : error,
-    ),
-  );
+  }).pipe(mapVerifiedStreamFailures((error) => privacyFailure ?? dumpTransferError("persist", path, error)));
   yield* tracker.requireComplete(label, fromStdin);
   return { path, digest: staged.sha256 } satisfies PreparedDump;
 });

@@ -7,17 +7,17 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -50,7 +50,7 @@ export const MEILISEARCH_SERVICE_DESCRIPTION = `Meilisearch is an MIT-licensed s
 
 const applyMeilisearchFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = plannedPort(service, MEILISEARCH_LISTENER);
+  const port = selectPort(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.addEnv("MEILI_MASTER_KEY", MEILISEARCH_DEFAULT_MASTER_KEY);
@@ -78,7 +78,7 @@ export const meilisearchServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, MEILISEARCH_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "http",
       }),
     ),
@@ -98,10 +98,15 @@ const resolveMeilisearchService: ServiceType["resolve"] = (input) =>
     features: [{ id: MEILISEARCH_FEATURE_ID }],
   });
 
+const selectPort = primaryPortSelector(MEILISEARCH_LISTENER);
+const EXTRA_ARGS_REMEDIATION = IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("Meilisearch environment");
+
 export const meilisearch1ServiceType: ServiceType = {
   id: "meilisearch:1",
   name: "meilisearch",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -114,6 +119,8 @@ export const meilisearchServiceType: ServiceType = {
   id: "meilisearch",
   name: "meilisearch",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

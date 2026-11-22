@@ -106,11 +106,10 @@ pgvector
 numpy
 ```
 
-Install into `/app/.venv`. Python keeps that path as a service-owned overlay, so the packages stay in the service instead of on the host:
+Apply the requirements to the [active project venv](./python.mdx) by restarting the running app. The packages stay in the service instead of on the host:
 
 ```sh
-lando uv venv /app/.venv
-lando uv pip install --python /app/.venv/bin/python -r requirements.txt
+lando restart
 ```
 
 Drop `search.py` next to the Landofile. It reads the `DATABASE_URL` Lando hands the `app` service:
@@ -136,7 +135,7 @@ for (body,) in rows:
 ```
 
 ```sh
-lando exec app -- /app/.venv/bin/python search.py
+lando exec app -- python search.py
 ```
 
 The script prints the two matching bodies, one per line.
@@ -167,7 +166,7 @@ Don't import this dump back into the populated sample database unless you've cle
 
 ## Rebuild without losing rows
 
-With the same app and Postgres major, `lando rebuild -y` and `lando destroy -y` followed by `lando start` preserve the named database volume. This section is about those rows, not the venv overlay. If `/app/.venv` is missing after start, run the `uv venv` step again. Check the table after rebuilding:
+With the same app and Postgres major, `lando rebuild -y` and `lando destroy -y` followed by `lando start` preserve the named database volume. Check the table after rebuilding:
 
 ```sh
 lando rebuild -y

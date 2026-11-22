@@ -1,4 +1,6 @@
-// Historical bytes written by origin/main 140f4828f (v3) and the pinned old writer (v7).
+// Historical bytes written by origin/main 140f4828f (v3), the pinned old writer (v7),
+// origin/main bfc9496f2 (v8, persisted from the v7 corpus), and scanner writer 0c7b08c9c
+// (v9, persisted from the v8 corpus with keepAlive intent added to the web listener).
 // Never regenerate these fixture files from the code under test.
 // Each future state-version bump adds a new snapshot alongside this corpus.
 import { expect, test } from "bun:test";
@@ -6,10 +8,10 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { APPLIED_STATE_VERSION, makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
-import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, RouteText, ServiceName } from "@lando/sdk/schema";
 import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeStateStore } from "@lando/state-store/service";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 const v3Fixtures = join(import.meta.dir, "fixtures/applied-state-v3");
 const v7Fixtures = join(import.meta.dir, "fixtures/applied-state-v7");
@@ -198,7 +200,7 @@ for (const fixture of v7Cases) {
     }
   });
 
-  test(`ordinary persist of v7 ${fixture.name} writes one v8 envelope with kind keys`, async () => {
+  test(`ordinary persist of v7 ${fixture.name} writes one current envelope with kind keys`, async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-state-v7-write-"));
     const target = join(root, fixture.target);
     try {
@@ -230,7 +232,7 @@ for (const fixture of v7Cases) {
   });
 }
 
-test("podman record remove migrates survivors into one v8 map", async () => {
+test("podman record remove migrates survivors into one current map", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-state-v7-survivor-"));
   const target = join(root, "applied-plans.json");
   try {
@@ -321,8 +323,8 @@ test.each([
   }
 });
 
-test("current v8 decode rejects old discriminators and never migrates", async () => {
-  const root = await mkdtemp(join(tmpdir(), "lando-state-v8-old-keys-"));
+test("current decode rejects old discriminators and never migrates", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-state-current-old-keys-"));
   const target = join(root, "applied-plans/historical.json");
   try {
     const source = JSON.parse(
@@ -345,3 +347,67 @@ test("current v8 decode rejects old discriminators and never migrates", async ()
     await rm(root, { recursive: true, force: true });
   }
 });
+
+const additiveLayouts = [
+  {
+    name: "lando/applied-plans/historical.json",
+    target: "applied-plans/historical.json",
+    providerId: "lando" as const,
+    layout: "per-app" as const,
+    appId: "historical",
+  },
+  {
+    name: "podman/applied-plans.json",
+    target: "applied-plans.json",
+    providerId: "podman" as const,
+    layout: "record" as const,
+    appId: "historical",
+  },
+] as const;
+
+const additiveCases = ([8, 9] as const).flatMap((version) =>
+  additiveLayouts.map((fixture) => ({ ...fixture, version })),
+);
+
+for (const fixture of additiveCases) {
+  test(`reads v${fixture.version} ${fixture.name} unchanged and persists it as the current envelope`, async () => {
+    const root = await mkdtemp(join(tmpdir(), `lando-state-v${fixture.version}-`));
+    const target = join(root, fixture.target);
+    const sourcePath = join(import.meta.dir, `fixtures/applied-state-v${fixture.version}`, fixture.name);
+    try {
+      await mkdir(dirname(target), { recursive: true });
+      await copyFile(sourcePath, target);
+      const before = await readFile(target);
+      const state = openState(root);
+      const store =
+        fixture.layout === "record" ? makeAppliedPlanStore(fixture) : makeAppliedPlanStore(fixture);
+
+      const read = await Effect.runPromise(store.inspectAppliedPlan(state, AppId.make(fixture.appId)));
+
+      expect(read.status).toBe("readable");
+      if (read.status !== "readable") throw new Error(`v${fixture.version} state is ${read.status}`);
+      expect(Object.keys(read.plan.services)).toEqual(["web", "worker"]);
+      expectMigratedNetworkVocabulary(read.plan);
+      expect(Buffer.compare(await readFile(target), before)).toBe(0);
+      const keepAliveServices = Object.values(read.plan.services).flatMap((service) => {
+        const authority = service.listenerAuthority;
+        return authority?.owner === "application" && authority.keepAlive ? [service.name] : [];
+      });
+      expect(keepAliveServices).toEqual(fixture.version === 9 ? [ServiceName.make("web")] : []);
+      for (const service of Object.values(read.plan.services)) {
+        expect(Object.values(service.environment ?? {}).some(Schema.is(RouteText))).toBe(false);
+      }
+
+      await Effect.runPromise(store.persistAppliedPlan(state, read.plan));
+      const envelope = JSON.parse(await readFile(target, "utf8")) as {
+        version: number;
+        data: Record<string, PersistedPlan> | PersistedPlan;
+      };
+      expect(envelope.version).toBe(APPLIED_STATE_VERSION);
+      const source = JSON.parse(before.toString("utf8")) as { data: unknown };
+      expect(envelope.data).toEqual(source.data as Record<string, PersistedPlan> | PersistedPlan);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}

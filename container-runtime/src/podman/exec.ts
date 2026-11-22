@@ -23,7 +23,10 @@ export const execStream = (
       return Stream.fail(missingService(options.ctx, target, "exec"));
     if (options.api === undefined) return Stream.fail(missingApi(options.ctx, "exec"));
     if (command.tty === true || command.raw === true || options.raw === true)
-      return transportExecStream(plan, target, command, options);
+      return transportExecStream(plan, target, command, {
+        ...options,
+        ...(target.expectedContainerId === undefined ? {} : { containerId: target.expectedContainerId }),
+      });
     return supervisedExecStream(plan, target, command, {
       ...options,
       prepareCommand: (containerId) => prepareExecCommand(plan, target, command, { ...options, containerId }),

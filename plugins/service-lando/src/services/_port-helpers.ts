@@ -47,18 +47,25 @@ export interface ListenerContract {
 
 type AuthorityOf<O extends ListenerAuthority["owner"]> = Extract<ListenerAuthority, { readonly owner: O }>;
 
-export const plannedPort = (service: ServiceConfig, listener: ListenerContract): PortNumber =>
+export const plannedPort = (service: Pick<ServiceConfig, "port">, listener: ListenerContract): PortNumber =>
   PortNumber.make(service.port ?? listener.port);
+
+export const primaryPortSelector =
+  (listener: ListenerContract) =>
+  (service: Pick<ServiceConfig, "port">): PortNumber =>
+    plannedPort(service, listener);
 
 /** The application owns the listener; Lando projects the contract's port variables. */
 export const applicationAuthority = (
   contract: ListenerContract & Pick<Required<ListenerContract>, "variables">,
   port: number,
+  service: Pick<ServiceConfig, "command" | "entrypoint">,
 ): AuthorityOf<"application"> => ({
   owner: "application",
   daemon: contract.daemon,
   port: PortNumber.make(port),
   variables: [...contract.variables],
+  ...(service.command === undefined && service.entrypoint === undefined ? { keepAlive: true } : {}),
 });
 
 /** An authored command or entrypoint replaced the launcher that set the listener. */

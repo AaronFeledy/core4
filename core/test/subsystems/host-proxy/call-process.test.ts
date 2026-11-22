@@ -286,7 +286,7 @@ test("child aborts active invocation when its worker stdin lease closes", async 
     expect(new TextDecoder().decode(first.value)).toContain("ready");
     await proc.stdin.end();
     let output = "";
-    for (;;) {
+    while (true) {
       const next = await reader.read();
       if (next.done) break;
       output += new TextDecoder().decode(next.value);

@@ -32,12 +32,12 @@ describe("authoring JSON Schema publication", () => {
   test.each([
     ["environment", '{"__proto__":"value"}'],
     ["labels", '{"__proto__":"value"}'],
-    ["dependsOn", '{"__proto__":{"condition":"service_started"}}'],
+    ["depends_on", '{"__proto__":{"condition":"service_started"}}'],
     ["sysctls", '{"__proto__":{"nested":true}}'],
     ["extra_hosts", '{"__proto__":{"nested":true}}'],
     ["environment", '{"__proto__":{"nested":true}}'],
     ["labels", '{"__proto__":{"nested":true}}'],
-    ["dependsOn", '{"__proto__":{"condition":false}}'],
+    ["depends_on", '{"__proto__":{"condition":false}}'],
     ["environment", '{"invalid":{},"__proto__":{"nested":true}}'],
   ])("rejects JSON-owned reserved keys in %s", (field, json) => {
     // Given an own reserved property from JSON, not a prototype-setting literal.
@@ -66,7 +66,7 @@ describe("authoring JSON Schema publication", () => {
     const schema = getJsonSchema("ServiceConfigInput");
     // Then the map branch excludes the same reserved key as runtime decoding.
     expect(schema).toHaveProperty(
-      "properties.dependsOn.anyOf",
+      "properties.depends_on.anyOf",
       expect.arrayContaining([
         expect.objectContaining({ type: "object", propertyNames: { not: { const: "__proto__" } } }),
       ]),
@@ -77,10 +77,12 @@ describe("authoring JSON Schema publication", () => {
     [
       "environment",
       [
-        { $ref: "#/$defs/EnvironmentValueEncoded" },
+        { type: "string" },
+        { $ref: expect.stringMatching(/^#\/\$defs\/SecretRef(?:_\d+)?$/) },
+        { $ref: expect.stringMatching(/^#\/\$defs\/BoundText(?:_\d+)?$/) },
+        { $ref: expect.stringMatching(/^#\/\$defs\/RouteText(?:_\d+)?$/) },
         { type: "number" },
         { type: "boolean" },
-        { type: "null" },
       ],
     ],
     ["labels", [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }]],
@@ -94,17 +96,22 @@ describe("authoring JSON Schema publication", () => {
       {
         type: "object",
         additionalProperties: { anyOf: values },
-        propertyNames: { not: { const: "__proto__" } },
+        propertyNames:
+          field === "environment" ? { pattern: expect.any(String) } : { not: { const: "__proto__" } },
+        ...(field === "environment" ? { allOf: [{ propertyNames: { pattern: expect.any(String) } }] } : {}),
       },
-      { type: "array", items: { type: "string" } },
+      {
+        type: "array",
+        items:
+          field === "environment"
+            ? {
+                type: "string",
+                pattern: expect.any(String),
+                allOf: [{ pattern: expect.any(String) }, { pattern: expect.any(String) }],
+              }
+            : { type: "string" },
+      },
     ]);
-    if (field === "environment") {
-      expect(schema).toHaveProperty("$defs.EnvironmentValueEncoded.anyOf", [
-        { type: "string" },
-        { $ref: expect.stringMatching(/^#\/\$defs\/SecretRef(?:_\d+)?$/) },
-        { $ref: expect.stringMatching(/^#\/\$defs\/BoundText(?:_\d+)?$/) },
-      ]);
-    }
   });
 
   test.each(["AppEnvironmentDefaults", "AppLabelDefaults"] as const)(

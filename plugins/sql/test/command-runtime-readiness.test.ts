@@ -15,11 +15,11 @@ import {
   EnvironmentValueResolver,
   EventService,
   InteractionService,
-  LandofileService,
   PathsService,
   RuntimeProviderRegistry,
   ServiceReadiness,
   StateStore,
+  UserAppResolver,
 } from "@lando/sdk/services";
 import { makeTestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -95,8 +95,8 @@ test("SQLite command resume waits through the SDK readiness port before returnin
     Layer.succeed(ServiceReadiness, {
       wait: (options) => Deferred.succeed(entered, options).pipe(Effect.andThen(Deferred.await(release))),
     }),
-    Layer.succeed(LandofileService, {
-      discover: Effect.succeed({
+    Layer.succeed(UserAppResolver, {
+      current: Effect.succeed({
         stage: "load-scoped" as const,
         pendingSites: [],
         context: { appRoot: planned.root, env: {} },
@@ -107,6 +107,7 @@ test("SQLite command resume waits through the SDK readiness port before returnin
           },
         }),
       }),
+      load: () => Effect.die("unused"),
     }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),

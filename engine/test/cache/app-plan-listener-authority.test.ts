@@ -13,10 +13,11 @@ test("preserves service listener authority through the persisted plan cache code
   const name = ServiceName.make("database");
   const provider = ProviderId.make("lando");
   const listenerAuthority = {
-    owner: "launcher" as const,
-    daemon: "MongoDB",
+    owner: "application" as const,
+    daemon: "Node.js",
     port: PortNumber.make(27018),
-    setting: "--port 27018",
+    keepAlive: true as const,
+    variables: ["PORT"] as const,
   };
   const metadata = { resolvedAt: DateTime.makeUnsafe(0), source: "listener-authority", runtime: 4 as const };
   const plan: AppPlan = {

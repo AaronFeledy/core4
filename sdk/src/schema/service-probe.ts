@@ -36,15 +36,20 @@ export const probeTargetError = (
       probe.target !== undefined ||
       (probe.kind !== "none" && (probe.kind !== "command" || probe.command === undefined)));
   if (!nativeUnsupported && !hostUnsupported) return undefined;
+  const hostNetworkProbe =
+    probe.executionTarget === "host" && (probe.kind === "http" || probe.kind === "tcp");
   return new HealthcheckTargetUnsupportedError({
     service: String(service),
     target: probe.executionTarget ?? "service",
     role,
-    message: nativeUnsupported
-      ? "Native healthcheck cannot select a host target or an explicit user."
-      : "Host readiness requires its own command without a container user or listener.",
-    remediation:
-      "Use readiness for host execution or an explicit container user. Host readiness requires its own command, application root, and host runner, with no user or listener target.",
+    message: hostNetworkProbe
+      ? "HTTP and TCP probes run inside the service container, not on the CLI host."
+      : nativeUnsupported
+        ? "Native healthcheck cannot select a host target or an explicit user."
+        : "Host readiness requires its own command without a container user or listener.",
+    remediation: hostNetworkProbe
+      ? "Omit target: host to probe inside the service, or use a command probe under readiness for host execution."
+      : "Use readiness for host execution or an explicit container user. Host readiness requires its own command, application root, and host runner, with no user or listener target.",
   });
 };
 

@@ -95,7 +95,7 @@ Set `php: "8.2"` at init when the default was `8.3`, and a later edge that moves
 
 ### Renames are all or nothing
 
-When an edge renames a service, it rewrites `recipe.services`, the service key, and every managed reference to it (`dependsOn`, tooling `service:` lines, routes) in one hunk. If any of those references was taken over, the whole edge blocks. No half-renamed service map.
+When an edge renames a service, it rewrites `recipe.services`, the service key, and every managed reference to it (`depends_on`, tooling `service:` lines, routes) in one hunk. If any of those references was taken over, the whole edge blocks. No half-renamed service map.
 
 ### Repeat runs are no-ops
 

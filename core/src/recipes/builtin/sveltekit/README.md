@@ -16,7 +16,9 @@ configure the adapter package.
 
 ## Generated tooling
 
-- `lando svelte …`: Svelte CLI through `npx svelte-kit`.
+- `lando svelte …`: the project's installed `svelte-kit` CLI, run through
+  the project's package manager. It never downloads SvelteKit, so install
+  dependencies first.
 - `lando npm …`: npm inside the web service.
 
 ## Limitations

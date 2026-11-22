@@ -59,11 +59,16 @@ test("attributes httpsPort to the file when env changes only httpPort", () => {
 
 test("attributes literal dotted keys without splitting them", () => {
   // Given a host-authored label map with a dotted key and invalid value.
-  const stack: readonly ConfigLayer[] = [{ layer: "host", tree: { appLabels: { "com.example.owner": 42 } } }];
+  const stack: readonly ConfigLayer[] = [
+    { layer: "host", tree: { serviceDefaults: { labels: { "com.example.owner": 42 } } } },
+  ];
   // When decoding the source stack.
   const error = failure(stack);
   // Then both logical path and physical source preserve the key as one segment.
-  expect(error.issues?.[0]?.source).toEqual({ layer: "host", path: ["appLabels", "com.example.owner"] });
+  expect(error.issues?.[0]?.source).toEqual({
+    layer: "host",
+    path: ["serviceDefaults", "labels", "com.example.owner"],
+  });
 });
 
 test("missing fields inherit their nearest authored ancestor source path", () => {
@@ -78,14 +83,20 @@ test("missing fields inherit their nearest authored ancestor source path", () =>
   expect(missing?.source).toEqual({ layer: "host", path: ["hostEvents", "post-start", 0] });
 });
 
-test("whole appEnv replacement discards invalid file entries and their origins", () => {
+test("whole serviceDefaults.environment replacement discards invalid file entries and their origins", () => {
   // Given an invalid file map and a valid, disjoint environment replacement.
   const input = fixture();
-  writeFileSync(join(input.rootOverrides?.userConfRoot ?? "", "config.yml"), "appEnv:\n  OLD: 42\n");
+  writeFileSync(
+    join(input.rootOverrides?.userConfRoot ?? "", "config.yml"),
+    "serviceDefaults:\n  environment:\n    OLD: 42\n",
+  );
   // When loading the effective configuration.
-  const config = loadGlobalConfigSync({ ...input, env: { LANDO_APP_ENV: '{"NEW":"valid"}' } });
+  const config = loadGlobalConfigSync({
+    ...input,
+    env: { LANDO_SERVICE_DEFAULTS_ENVIRONMENT: '{"NEW":"valid"}' },
+  });
   // Then the invalid removed entry cannot fail validation or survive the merge.
-  expect(config.appEnv).toEqual({ NEW: "valid" });
+  expect(config.serviceDefaults?.environment).toEqual({ NEW: "valid" });
 });
 
 test.each(["config.yml", "config.d/broken.yml"])(

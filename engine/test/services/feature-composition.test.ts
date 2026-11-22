@@ -27,6 +27,24 @@ const composeOnce = (features: ReadonlyArray<ServiceFeatureDefinition>): Promise
   Effect.runPromise(composeService(inputFor(features)));
 
 describe("composeService", () => {
+  test("rejects a feature that claims an authored build step id", async () => {
+    await expect(
+      composeOnce([
+        {
+          id: "test.seed",
+          priority: 100,
+          apply: (ctx) =>
+            Effect.sync(() =>
+              ctx.addBuildStep({ id: "authored-artifact:1", phase: "build", command: ["true"] }),
+            ),
+        },
+      ]),
+    ).rejects.toMatchObject({
+      _tag: "ServiceFeatureError",
+      feature: "test.seed",
+      remediation: expect.stringContaining("feature-specific prefix"),
+    });
+  });
   test.each(["lando", "l337"] as const)("keeps the %s base init default", async (baseKind) => {
     // Given / When
     const plan = await Effect.runPromise(composeService({ ...inputFor([]), baseKind }));

@@ -1,6 +1,5 @@
 import type { RecipeSource } from "@lando/sdk/schema";
 import { defaultRoutes } from "../source-web.ts";
-import { FASTAPI_ENTRYPOINT, FASTAPI_ENVIRONMENT } from "./startup.ts";
 
 export const source = {
   id: "fastapi",
@@ -16,9 +15,7 @@ export const source = {
         type: "python:3.12",
         framework: "fastapi",
         port: 8000,
-        entrypoint: FASTAPI_ENTRYPOINT,
-        environment: FASTAPI_ENVIRONMENT,
-        dependsOn: ["database", "cache"],
+        depends_on: ["database", "cache"],
         routes: defaultRoutes,
       },
       database: { type: "postgres" },

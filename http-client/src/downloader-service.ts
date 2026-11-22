@@ -9,7 +9,11 @@ import type { DownloadRequest, DownloadResult, DownloaderCapabilities } from "@l
 import type { DownloaderShape } from "@lando/sdk/services";
 import { OnlineAcquisition } from "@lando/sdk/services";
 import { CurrentTaskDetail } from "@lando/sdk/task-progress";
-import { collectVerifiedStream, persistVerifiedStream } from "@lando/sdk/verified-stream";
+import {
+  collectVerifiedStream,
+  mapVerifiedStreamFailures,
+  persistVerifiedStream,
+} from "@lando/sdk/verified-stream";
 import { Clock, DateTime, Effect, type Exit, Ref, Stream } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import type * as HttpClientError from "effect/http/HttpClientError";
@@ -214,7 +218,7 @@ export const makeDownloaderService = (
             fromCache: false,
           } satisfies DownloadResult;
         }),
-      ).pipe(Effect.catchTag("VerifiedStreamError", (error) => Effect.fail(mapVerifiedError(error, origin))));
+      ).pipe(mapVerifiedStreamFailures((error) => mapVerifiedError(error, origin)));
 
     const fetchWithRetry = (destinationPath: string | undefined) =>
       runWithTransientRetry({

@@ -108,6 +108,9 @@ export const managedFileLedgerPath = (
 export const globalAppRootPath = (userDataRoot: string, platform = normalizeHostPlatform()): string =>
   joinFor(platform)(userDataRoot, "global");
 
+export const databaseAdminSeedPath = (userDataRoot: string, platform = normalizeHostPlatform()): string =>
+  joinFor(platform)(userDataRoot, "db-admin", "key.v1");
+
 type RuntimeLayoutPaths = Pick<
   LandoPaths,
   | "runtimeDir"

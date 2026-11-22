@@ -77,7 +77,7 @@ export const compileGlobalConfigDocument = Effect.fnUntraced(function* (filePath
         file: filePath,
         issues: effective.errors.map((issue) =>
           validationIssue(
-            ["services", issue.id, "dependsOn"],
+            ["services", issue.id, "depends_on"],
             `${issue.cause.message} ${issue.cause.remediation}`,
           ),
         ),

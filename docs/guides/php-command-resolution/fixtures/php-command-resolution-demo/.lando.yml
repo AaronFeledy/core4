@@ -9,5 +9,9 @@ tooling:
     cmd: composer
   phpunit:
     service: appserver
-    description: Run the project-local PHPUnit binary, pinned by relative path so it never depends on PATH order.
-    cmd: vendor/bin/phpunit
+    cmd: [":php-local", "phpunit"]
+    wrapper: true
+  console:
+    service: appserver
+    cmd: [":php-local", "bin/console"]
+    wrapper: true

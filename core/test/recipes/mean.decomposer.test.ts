@@ -56,14 +56,14 @@ describe("mean decomposition", () => {
           type: "node:{{ recipe.node }}",
           primary: true,
           port: 3000,
-          command: "npm install --no-audit --no-fund && exec node server.js",
+          command: [":node-install-run", "start"],
           environment: {
             NODE_ENV: "development",
             PORT: 3000,
             MONGO_URL:
               "mongodb://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?authSource=admin",
           },
-          dependsOn: ["database"],
+          depends_on: ["database"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "mongodb" },
@@ -85,7 +85,7 @@ describe("mean decomposition", () => {
     );
     expect(services.api).toMatchObject({
       environment: { REDIS_URL: "redis://cache:6379" },
-      dependsOn: [{ service: "database" }, { service: "cache" }],
+      depends_on: ["database", "cache"],
     });
     expect(services.cache).toMatchObject({ type: "redis" });
     expect(Object.keys(services)).toEqual(["api", "database", "cache"]);

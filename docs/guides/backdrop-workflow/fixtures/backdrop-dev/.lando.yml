@@ -9,8 +9,8 @@ services:
     allowOverride: true
     port: 80
     environment:
-      BACKDROP_SETTINGS: '{"databases":{"default":{"default":{"driver":"mysql","database":"{{ services.database.creds.database }}","username":"lando","password":"lando","host":"database","port":3306}}}}'
-    dependsOn:
+      BACKDROP_SETTINGS: '{"databases":{"default":{"default":{"driver":"mysql","database":"{{ services.database.creds.database }}","username":"lando","password":"lando","host":"database","port":3306}}},"base_url":"{{ services.appserver.url }}"}'
+    depends_on:
       - database
     routes:
       - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"

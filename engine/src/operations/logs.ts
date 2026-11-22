@@ -5,7 +5,15 @@ import {
   type LandofileLoadExpressionError,
   ToolingExecError,
 } from "@lando/sdk/errors";
-import { type AppPlan, LogSourceId, RESERVED_LOG_SOURCE_ID, type ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  DEPENDENCY_ENVIRONMENT_EXTENSION_KEY,
+  DependencyEnvironmentJob,
+  LogSourceId,
+  RESERVED_LOG_SOURCE_ID,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type LandofileService,
@@ -18,7 +26,7 @@ import { Clock, DateTime, Effect, Option, Schema, Stream } from "effect";
 
 import { type ResolvedAppTarget, planDesiredApp } from "../landofile/app-resolution.ts";
 import { observedAppPlan } from "../providers/app-placement.ts";
-import { resolveAppliedStateTarget } from "./applied-state-target.ts";
+import { resolveAppliedLogsTarget } from "./applied-state-target.ts";
 import { StreamFrameSink } from "./stream-frame-sink.ts";
 
 export type LogsAppError = SdkLogsAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -231,8 +239,29 @@ const resolvePlanServices = Effect.fnUntraced(function* (
   LogsAppError,
   LogsAppServices
 > {
-  const observedTarget = target ?? (yield* resolveAppliedStateTarget);
+  const observedTarget = target ?? (yield* resolveAppliedLogsTarget);
   const plan = yield* observedAppPlan(observedTarget?.plan ?? (yield* planDesiredApp).plan);
+
+  if (
+    target === undefined &&
+    options.service !== undefined &&
+    !Object.hasOwn(plan.services, options.service)
+  ) {
+    const candidate = yield* planDesiredApp.pipe(
+      Effect.map((target) => target.plan),
+      Effect.catch(() => Effect.succeed(undefined)),
+    );
+    const service = candidate?.services[ServiceName.make(options.service)];
+    if (
+      candidate?.id === plan.id &&
+      candidate.root === plan.root &&
+      candidate.provider === plan.provider &&
+      Schema.is(DependencyEnvironmentJob)(service?.extensions[DEPENDENCY_ENVIRONMENT_EXTENSION_KEY])
+    ) {
+      const { services, provider } = yield* servicesForPlan(candidate, options);
+      return { plan: candidate, services, provider };
+    }
+  }
 
   const { services, provider } = yield* servicesForPlan(plan, options);
   return { plan, services, provider };

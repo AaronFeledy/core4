@@ -1,4 +1,8 @@
-import { expressionInterpolationsTouchOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
+import {
+  evaluateTemplateEither,
+  expressionInterpolationsTouchOnlyScopes,
+  parseExpressionEither,
+} from "@lando/sdk/expressions";
 import {
   composeServiceDispositions,
   composeTopLevelDispositions,
@@ -15,7 +19,9 @@ import {
   formatValidationIssuePath,
   schemaIssueLeaves,
 } from "@lando/sdk/schema";
+import { yamlMappingKeyText } from "@lando/sdk/yaml";
 import { Result, type SchemaIssue } from "effect";
+import { exactSecretReferenceId } from "./secret-reference.ts";
 
 const SERVICE_KEYS = [...Object.keys(ServiceConfig.fields), "working_dir", "env_file", "depends_on"];
 const MISPLACED_COMPOSE_SURFACE_REMEDIATION = {
@@ -46,7 +52,7 @@ const plannerScopeSuggestion = (value: unknown, path: ValidationIssuePath): stri
   const parsed = parseExpressionEither(site, { filePath: "<landofile>", bareShellParameters: "preserve" });
   return Result.isSuccess(parsed) &&
     !expressionInterpolationsTouchOnlyScopes(parsed.success, ["recipe", "env"])
-    ? "This value uses plan-time scopes (app, proxy, services), which resolve to text after validation. Use a literal or a recipe/env expression here."
+    ? "This value uses plan-time scopes, which resolve to text after validation. Use a literal or a recipe/env expression here."
     : undefined;
 };
 
@@ -128,8 +134,63 @@ const composeSuggestedFix = (issue: SchemaIssueLeaf): string | undefined => {
   }
 };
 
+const hostEnvMember = (key: string): string | undefined => {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*(?![\s\S])/u.test(key)) return undefined;
+  const template = `{{ env.${key} }}`;
+  const parsed = parseExpressionEither(template, { filePath: "<landofile>" });
+  // The evaluator also forbids some syntactically valid members (e.g. constructor).
+  return Result.isSuccess(parsed) &&
+    Result.isSuccess(evaluateTemplateEither(parsed.success, { env: { [key]: "" } }))
+    ? template
+    : undefined;
+};
+
+const reasonSuggestion = (
+  issue: SchemaIssueLeaf,
+  path: ValidationIssuePath,
+  parsed: unknown,
+): string | undefined => {
+  const key = path.at(-1);
+  switch (issue.reason) {
+    case "environment.bare-entry": {
+      const entry = valueAtPath(parsed, path);
+      if (typeof entry !== "string" || entry === "" || exactSecretReferenceId(entry) !== undefined) {
+        return "Write KEY=value with an explicit name and value.";
+      }
+      const host = hostEnvMember(entry);
+      return host === undefined
+        ? `Write ${JSON.stringify(`${entry}=`)} with an explicit value after =.`
+        : `Write ${JSON.stringify(`${entry}=${host}`)} to read the host value, or supply a literal value after =.`;
+    }
+    case "environment.empty-name":
+    case "environment.reserved-name":
+      return typeof key === "number"
+        ? "Choose a name and write KEY=value."
+        : "Choose a name and write KEY: value.";
+    case "environment.null-value": {
+      if (typeof key !== "string") return undefined;
+      const host = hostEnvMember(key);
+      return `Write ${yamlMappingKeyText(key)}: "" for a literal empty value.${host === undefined ? "" : ` Use ${host} to read the host value.`}`;
+    }
+    case "key.renamed":
+      return issue.suggestion;
+    case "build.unsupported-key":
+      return "Remove the unsupported build key.";
+    case "build.mixed-families":
+      return "Keep either Compose image-build keys or Lando build-script keys in build, not both.";
+    case "build.dockerfile-conflict":
+      return "Keep exactly one of dockerfile and dockerfile_inline.";
+    case "build.empty":
+      return "Remove build or add an image-build or build-script key.";
+    default:
+      return undefined;
+  }
+};
+
 const suggestionForLeaf = (issue: SchemaIssueLeaf, parsed: unknown): string | undefined => {
   const path = issue.path.map((segment) => (typeof segment === "number" ? segment : String(segment)));
+  const repair = reasonSuggestion(issue, path, parsed);
+  if (repair !== undefined) return repair;
   const formatted = formatValidationIssuePath(path);
   const key = issue.path.at(-1);
   switch (issue._tag) {
@@ -164,10 +225,17 @@ export const landofileIssuesFromSchema = (
     input: parsed,
   }).map((leaf) => {
     const suggestion = suggestionForLeaf(leaf, parsed);
+    const path = leaf.path.map((segment) => (typeof segment === "number" ? segment : String(segment)));
+    const key = path.at(-1);
+    const message =
+      typeof key === "string" && leaf.reason === "environment.null-value"
+        ? `For environment key ${JSON.stringify(key)}, supply a concrete value; use an empty string for an empty value.`
+        : leaf.message;
     return {
-      path: leaf.path.map((segment) => (typeof segment === "number" ? segment : String(segment))),
-      message: leaf.message,
+      path,
+      message,
       ...(leaf.kind === undefined ? {} : { kind: leaf.kind }),
+      ...(leaf.reason === undefined ? {} : { reason: leaf.reason }),
       ...(suggestion === undefined ? {} : { suggestion }),
     };
   });

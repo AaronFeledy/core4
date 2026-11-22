@@ -5,7 +5,7 @@ services:
     webroot: web
     allowOverride: true
     port: 80
-    dependsOn:
+    depends_on:
       - database
     routes:
       - hostname: site1.lndo.site
@@ -17,16 +17,19 @@ tooling:
     service: appserver
     description: Run Drush inside the appserver service without a site URI.
     cmd:
-      - vendor/bin/drush
+      - :php-local
+      - drush
   drush-site1:
     service: appserver
     description: Run Drush scoped to site1 via --uri.
     cmd:
-      - vendor/bin/drush
+      - :php-local
+      - drush
       - --uri=https://site1.lndo.site
   drush-site2:
     service: appserver
     description: Run Drush scoped to site2 via --uri.
     cmd:
-      - vendor/bin/drush
+      - :php-local
+      - drush
       - --uri=https://site2.lndo.site

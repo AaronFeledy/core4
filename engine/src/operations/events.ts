@@ -78,7 +78,10 @@ const eventError = (
     kind: identity.kind,
     exitCode: 1,
     outputTail: redactor.redactString(failure instanceof Error ? failure.message : String(failure)),
-    remediation: `Fix ${label}, then rerun the lifecycle command.`,
+    remediation:
+      failure instanceof ToolingCompileError
+        ? redactor.redactString(failure.remediation)
+        : `Fix ${label}, then rerun the lifecycle command.`,
   });
 };
 
@@ -118,25 +121,38 @@ const inspectHostContainer = Effect.fnUntraced(function* (plan: AppPlan, service
 const resolveCompiledSteps = Effect.fnUntraced(function* (
   plan: AppPlan,
   event: LandofileEventName,
-  redactor: EventRedactor,
+  context: { readonly redactor: EventRedactor; readonly services?: readonly unknown[] },
 ) {
   const compiled = plan.events?.[event] ?? [];
   const primary = Object.entries(plan.services).find(([, service]) => service.primary === true)?.[0];
   const resolved: EventStepPlan[] = [];
   for (const entry of compiled) {
-    if (entry.status !== "active" || entry.source !== "host") {
+    if (entry.status !== "active") {
       resolved.push(entry);
       continue;
     }
     const service = hostStepService(entry.step, primary);
-    if (service === undefined || service === ":host") {
+    const scopedGuard =
+      context.services !== undefined &&
+      authoredStepKind(entry.step) === "cmd" &&
+      !context.services.includes(service);
+    const inspect = entry.source === "host" || scopedGuard;
+    if (service === undefined || service === ":host" || !inspect) {
       resolved.push(entry);
       continue;
     }
     const status = yield* inspectHostContainer(plan, service).pipe(
-      mapFailures((error) => eventError(error, event, entry.step, redactor, entry.source, entry.sourceIndex)),
+      mapFailures((error) =>
+        eventError(error, event, entry.step, context.redactor, entry.source, entry.sourceIndex),
+      ),
     );
     if (isStoppedStatus(status)) {
+      if (scopedGuard && entry.source !== "host") {
+        yield* publishInfo(
+          `Skipped events.${event}[${entry.sourceIndex}]: service ${service} is not running.`,
+        );
+        continue;
+      }
       const reason =
         status === "absent" ? `service ${service} is not running` : `service ${service} is ${status}`;
       resolved.push({ ...entry, status: "skipped", skipReason: reason });
@@ -161,7 +177,10 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
         wholeTokenValues: planValues.wholeToken,
       })
     : { redactString: () => "Provider inspection failed." };
-  const compiled = yield* resolveCompiledSteps(plan, event, inspectRedactor);
+  const compiled = yield* resolveCompiledSteps(plan, event, {
+    redactor: inspectRedactor,
+    ...(Array.isArray(payload?.services) ? { services: payload.services } : {}),
+  });
   const skippedByHostGuard = compiled.some(
     (entry) => entry.source === "host" && entry.skipReason === `${LANDO_HOST_EVENT_ENV}=1`,
   );

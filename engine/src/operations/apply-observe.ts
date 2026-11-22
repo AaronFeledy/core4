@@ -8,17 +8,17 @@ import { inspectAppliedService } from "./service-readiness.ts";
 type InspectionError = Effect.Error<ReturnType<typeof inspectAppliedService>>;
 type InspectionServices = Effect.Services<ReturnType<typeof inspectAppliedService>>;
 
-export interface AppliedAndObserved {
-  readonly applied: ApplyResult;
+export interface AppliedAndObserved<A extends ApplyResult = ApplyResult> {
+  readonly applied: A;
   /** Each service's runtime at inspection time, keyed by the requested service name. */
   readonly initial: ReadonlyMap<string, ServiceRuntimeInfo>;
   /** One runtime per requested service, in the order the services were requested. */
   readonly inspected: ReadonlyArray<ServiceRuntimeInfo>;
 }
 
-interface ApplyAndObserveInput<E, R, EBefore, RBefore> {
+interface ApplyAndObserveInput<A extends ApplyResult, E, R, EBefore, RBefore> {
   /** The provider apply, assembled by the operation that owns its activation policy. */
-  readonly apply: Effect.Effect<ApplyResult, E, R>;
+  readonly apply: Effect.Effect<A, E, R>;
   /** Runs once the apply succeeded, before the GPG home is prepared (accelerated journal completion). */
   readonly afterApply?: Effect.Effect<void, FileSyncStartError>;
   /** The overlay scope's deferred preparation of a GPG home an applied container may need. */
@@ -34,10 +34,10 @@ interface ApplyAndObserveInput<E, R, EBefore, RBefore> {
  * Keeps the steps between apply and readiness in one place so whole-app launches and selected
  * relaunches cannot drift apart.
  */
-export const applyAndObserveServices = <E, R, EBefore = never, RBefore = never>(
-  input: ApplyAndObserveInput<E, R, EBefore, RBefore>,
+export const applyAndObserveServices = <A extends ApplyResult, E, R, EBefore = never, RBefore = never>(
+  input: ApplyAndObserveInput<A, E, R, EBefore, RBefore>,
 ): Effect.Effect<
-  AppliedAndObserved,
+  AppliedAndObserved<A>,
   E | EBefore | FileSyncStartError | GpgAgentTransportError | InspectionError,
   R | RBefore | InspectionServices
 > =>

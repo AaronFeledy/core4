@@ -1,4 +1,4 @@
-import { compiledValueError, consumeSites } from "@lando/landofile/compiled-sites";
+import { compiledValueError, consumeSites, siteExpression } from "@lando/landofile/compiled-sites";
 import { provenanceOf } from "@lando/landofile/provenance";
 import {
   PLAN_IDENTITY_EXPRESSION_SCOPES,
@@ -8,7 +8,7 @@ import {
 import { pathHasPrefix, pathsOverlap } from "@lando/landofile/validation";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigExpressionError } from "@lando/sdk/errors";
-import { type ExpressionContext, expressionScopeMembers } from "@lando/sdk/expressions";
+import { type ExpressionContext, expressionScopeMemberPaths } from "@lando/sdk/expressions";
 import {
   type AppPlan,
   type CompilationContext,
@@ -17,12 +17,16 @@ import {
   LandofileShape,
   type LoadScopedLandofile,
   type ParsedPendingSite,
+  type PortNumber,
+  ServiceName,
   ServiceScopedLandofile,
   type ValidationIssuePath,
 } from "@lando/sdk/schema";
-import { Effect, Result, Schema } from "effect";
+import type { PluginRegistry } from "@lando/sdk/services";
+import { type Context, Effect, Result, Schema } from "effect";
 import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { normalizeAppSlug } from "./naming.ts";
+import { ownPortReplacement } from "./self-read-hint.ts";
 import { type ServiceExpressionFacts, serviceExpressionFacts } from "./service-credential-facts.ts";
 
 export interface MaterializeLandofileScopesInput {
@@ -56,6 +60,7 @@ export const materializeLandofileScopes = Effect.fn("Landofile.identityScope")(f
       document: compiled.document,
       pendingSites: compiled.pendingSites,
       scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
+      renderText: true,
       context: {
         app: { name: appSlug, slug: appSlug },
         proxy: { defaultDomain },
@@ -105,14 +110,18 @@ export const materializeServiceScopeSites = Effect.fn("Landofile.serviceSites")(
   readonly pathPrefix: ValidationIssuePath;
   readonly deferredSites: DeferredExpressionSites;
   readonly context: ExpressionContext;
+  readonly selfPort?: PortNumber;
 }) {
+  const { selfPort, context } = input;
+  const hasSelfPort = selfPort !== undefined;
   const sites = input.deferredSites.filter((site) => pathHasPrefix(site.path, input.pathPrefix));
   const result = yield* Effect.fromResult(
     consumeSites({
       document: input.value,
       pendingSites: sites,
-      context: input.context,
-      scopes: PLAN_SERVICE_EXPRESSION_SCOPES,
+      context: hasSelfPort ? { ...context, service: { port: selfPort } } : context,
+      scopes: hasSelfPort ? [...PLAN_SERVICE_EXPRESSION_SCOPES, "service"] : PLAN_SERVICE_EXPRESSION_SCOPES,
+      renderText: true,
       pathPrefix: input.pathPrefix,
     }),
   );
@@ -121,22 +130,24 @@ export const materializeServiceScopeSites = Effect.fn("Landofile.serviceSites")(
 
 export const serviceCredsScopeForPlan = (plan: AppPlan): ServiceCredsScope =>
   Object.fromEntries(
-    Object.values(plan.services).flatMap((service) => {
-      const facts = serviceExpressionFacts(service);
-      return facts === undefined ? [] : [[service.name, facts]];
-    }),
+    Object.values(plan.services).map((service) => [
+      service.name,
+      serviceExpressionFacts(service.name, service),
+    ]),
   );
 
+/** Replay non-service declarations for tooling, which gets service facts from the plan. */
 export const materializeLandofileScopesForPlan = Effect.fn("Landofile.planScopes")(function* (
   input: MaterializeLandofileScopesInput,
   plan: AppPlan,
 ) {
   const identity = yield* materializeLandofileScopes(input);
+  const { services: _services, ...nonServiceDocument } = identity.landofile;
   const result = yield* materializeServiceScopeSites({
-    value: identity.landofile,
+    value: nonServiceDocument,
     landofilePath: input.landofilePath,
     pathPrefix: [],
-    deferredSites: identity.pendingSites,
+    deferredSites: identity.pendingSites.filter((site) => site.path[0] !== "services"),
     context: serviceScopeContext({ ...identity, services: serviceCredsScopeForPlan(plan) }),
   });
   const document = yield* decodeDocument(result.document, input.landofilePath, identity.pendingSites);
@@ -153,57 +164,88 @@ export const referencedServices = (
   pathPrefix: ValidationIssuePath,
   sites: DeferredExpressionSites,
   filePath: string,
-): Result.Result<ReadonlySet<string>, ConfigExpressionError> => {
-  const references = new Set<string>();
+): Result.Result<ReadonlyMap<string, ParsedPendingSite>, ConfigExpressionError> => {
+  const references = new Map<string, ParsedPendingSite>();
   for (const site of sites) {
     if (!pathHasPrefix(site.path, pathPrefix)) continue;
-    const members = expressionScopeMembers(site.template, "services");
+    const members = expressionScopeMemberPaths(site.template, "services");
     if (!members.analyzable)
       return Result.fail(
         new ConfigExpressionError({
           message: "A services.<name> reference must name the service literally.",
           path: site.path,
-          expression: JSON.stringify(site.template),
-          filePath,
+          expression: siteExpression(site),
+          source: site.source,
+          filePath: "file" in site.source ? site.source.file : filePath,
           remediation: "Write the service name directly, for example services.database.creds.user.",
         }),
       );
-    for (const member of members.members) references.add(member);
+    // URL facts are descriptors available before any service resolves, including self reads.
+    for (const [name, member] of members.paths)
+      if (member !== "url" && !references.has(name)) references.set(name, site);
   }
   return Result.succeed(references);
 };
 
-export const orderServicesByCredsReferences = (input: {
+export const orderServicesByCredsReferences = Effect.fnUntraced(function* (input: {
   readonly landofile: LandofileShape;
   readonly deferredSites: DeferredExpressionSites;
   readonly landofilePath: string;
-}): Result.Result<
-  { readonly order: readonly string[]; readonly references: ReadonlyMap<string, ReadonlySet<string>> },
-  ConfigExpressionError
-> => {
+  readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
+  readonly registeredServiceTypeIds: ReadonlyArray<string>;
+}) {
   const names = Object.keys(input.landofile.services ?? {});
   const declared = new Set(names);
-  const pending = new Map<string, Set<string>>();
+  const pending = new Map<string, ReadonlyMap<string, ParsedPendingSite>>();
   for (const name of names) {
-    const references = referencedServices(["services", name], input.deferredSites, input.landofilePath);
-    if (Result.isFailure(references)) return Result.fail(references.failure);
-    pending.set(name, new Set([...references.success].filter((reference) => declared.has(reference))));
+    const references = yield* Effect.fromResult(
+      referencedServices(["services", name], input.deferredSites, input.landofilePath),
+    );
+    const self = references.get(name);
+    if (self !== undefined) {
+      const replacement = yield* ownPortReplacement({ ...input, name, site: self });
+      return yield* Effect.fail(
+        new ConfigExpressionError({
+          message: `Service ${name} cannot read its own published facts.`,
+          path: self.path,
+          source: self.source,
+          expression: siteExpression(self, input.landofile.services?.[ServiceName.make(name)], 2),
+          filePath: "file" in self.source ? self.source.file : input.landofilePath,
+          remediation: replacement
+            ? "Use {{ service.port }} for the planned listen port."
+            : "Remove the self-reference; a service's published facts are only available after it resolves.",
+        }),
+      );
+    }
+    pending.set(name, new Map([...references].filter(([reference]) => declared.has(reference))));
   }
   const order: string[] = [];
   const resolved = new Set<string>();
   while (order.length < names.length) {
     const next = names.find(
       (name) =>
-        !resolved.has(name) && [...(pending.get(name) ?? [])].every((reference) => resolved.has(reference)),
+        !resolved.has(name) &&
+        [...(pending.get(name)?.keys() ?? [])].every((reference) => resolved.has(reference)),
     );
     if (next === undefined) {
-      const stuck = names.find((name) => !resolved.has(name)) ?? "";
-      return Result.fail(
+      const chain = new Map<string, ParsedPendingSite>();
+      let current = names.find((name) => !resolved.has(name));
+      while (current !== undefined && !chain.has(current)) {
+        const edge = [...(pending.get(current) ?? [])].find(([reference]) => !resolved.has(reference));
+        if (edge === undefined) break;
+        chain.set(current, edge[1]);
+        current = edge[0];
+      }
+      const members = [...chain.keys()];
+      const first = current === undefined ? undefined : chain.get(current);
+      const cycle = current === undefined ? members : members.slice(members.indexOf(current));
+      return yield* Effect.fail(
         new ConfigExpressionError({
-          message: `Service connection reference cycle involving ${stuck}.`,
-          path: ["services", stuck],
-          expression: "services",
-          filePath: input.landofilePath,
+          message: `Service connection reference cycle involving ${cycle.join(", ")}.`,
+          path: first?.path ?? ["services"],
+          expression: first === undefined ? "services" : siteExpression(first, input.landofile),
+          filePath: first !== undefined && "file" in first.source ? first.source.file : input.landofilePath,
+          ...(first === undefined ? {} : { source: first.source }),
           remediation: "Break the service connection reference cycle.",
         }),
       );
@@ -211,5 +253,5 @@ export const orderServicesByCredsReferences = (input: {
     order.push(next);
     resolved.add(next);
   }
-  return Result.succeed({ order, references: pending });
-};
+  return { order, references: pending };
+});

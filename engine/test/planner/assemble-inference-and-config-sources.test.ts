@@ -88,6 +88,7 @@ test("keeps Node project-file fingerprints and catalog config sources in one cac
       expect(web?.projectFiles).toEqual([
         { path: ".nvmrc", present: true, sha256: expect.any(String) },
         { path: "package.json", present: false },
+        { path: ".yarnrc.yml", present: false },
       ]);
       expect(db?.configSourceInputs?.map((source) => source.key).sort()).toEqual(["dir", "server"]);
     } finally {

@@ -5,7 +5,7 @@ import { plan, web } from "../operations/start-progress-topology-support.ts";
 
 describe("resolveScanPlan", () => {
   const defaults: ScanPlan = { enabled: true, path: "/", okCodes: [], retries: 2, timeoutMs: 20000 };
-  const tuned: ScannerConfig = { path: "/ready", okCodes: [200, 302], retries: 5, timeout: 9000 };
+  const tuned: ScannerConfig = { path: "/ready", okCodes: [200, 302], retries: 5, timeoutMs: 9000 };
   const cases: ReadonlyArray<{
     readonly name: string;
     readonly global: ScannerConfig | undefined;

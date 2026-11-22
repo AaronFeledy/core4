@@ -22,10 +22,10 @@ const planEffect = (mailFrom: unknown, php = true, firstOverrides: Record<string
                     type: "php:8.3",
                     via: "cli",
                     composer: false,
-                    db_client: false,
+                    dbClient: false,
                     ...firstOverrides,
                   },
-                  second: { type: "php:8.3", via: "cli", composer: false, db_client: false },
+                  second: { type: "php:8.3", via: "cli", composer: false, dbClient: false },
                 }
               : {}),
             cache: { type: "redis" },

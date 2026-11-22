@@ -8,6 +8,8 @@ services:
     composer: "2"
     allowOverride: true
     port: 80
+    environment:
+      APP_URL: "{{ services.appserver.url }}"
     build:
       artifact:
         - run: a2enmod rewrite
@@ -16,7 +18,7 @@ services:
       target: /app
       includes:
         - vendor
-    dependsOn:
+    depends_on:
       - database
       - cache
     routes:
@@ -31,20 +33,23 @@ services:
     via: cli
     framework: laravel
     command: "php artisan horizon"
+    environment:
+      APP_URL: "{{ services.appserver.url }}"
     restart: unless-stopped
     appMount:
       target: /app
       includes:
         - vendor
-    dependsOn:
+    depends_on:
       database:
         condition: service_healthy
       cache:
         condition: service_healthy
 tooling:
   artisan:
-    cmds:
-      - "php artisan"
+    cmd:
+      - :php-local
+      - artisan
     description: "Run a Laravel Artisan command inside the appserver service."
     wrapper: true
     service: appserver

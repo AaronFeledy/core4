@@ -2,6 +2,7 @@ import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services"
 import { Schema } from "effect";
 
 import { type LanguageFrameworkPreset, makeLanguageRuntime } from "./_language-runtime.ts";
+import { rubyServiceLaunchers } from "./ruby-local-launcher.ts";
 
 export const SUPPORTED_RUBY_VERSIONS = ["3.3"] as const;
 export type SupportedRubyVersion = (typeof SUPPORTED_RUBY_VERSIONS)[number];
@@ -67,6 +68,7 @@ const runtime = makeLanguageRuntime({
   configFor,
   applyFallback: "service-lando.ruby failed to apply",
   resolveFallback: (version) => `Failed to resolve ruby:${version}`,
+  launchers: rubyServiceLaunchers,
 });
 
 export const rubyServiceFeature: ServiceFeatureDefinition = runtime.serviceFeature;
