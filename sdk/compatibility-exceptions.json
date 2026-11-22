@@ -27,8 +27,8 @@
     "surface": "persisted:resource-ownership",
     "changeKind": "unsupported-construct",
     "path": "$.resources.items.anyOf",
-    "justification": "Resource entries optionally carry the data root. Version 1 entries decode without inventing an owner and retain their original identity digest.",
-    "persistedState": { "store": "resource-ownership", "version": 2 }
+    "justification": "Resource entries optionally carry the data root and a volume instance witness. Version 1 and 2 rows retain their original identity digest and migrate without granting adoption receipts.",
+    "persistedState": { "store": "resource-ownership", "version": 3 }
   },
   {
     "surface": "command:app:info",

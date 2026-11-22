@@ -345,9 +345,9 @@ test("v1 inventory upgrades and destroys the legacy app without touching peer-ro
   );
   expect(
     Schema.decodeUnknownSync(
-      Schema.fromJsonString(Schema.Struct({ version: Schema.Literal(2), data: ResourceOwnershipInventory })),
+      Schema.fromJsonString(Schema.Struct({ version: Schema.Literal(3), data: ResourceOwnershipInventory })),
     )(new TextDecoder().decode((await Effect.runPromise(state.readRaw(file))) ?? undefined)).version,
-  ).toBe(2);
+  ).toBe(3);
   const cleanup = makeOwnedResourcesCleanup({
     ctx,
     api,
