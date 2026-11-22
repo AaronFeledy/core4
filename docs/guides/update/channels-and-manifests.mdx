@@ -31,3 +31,37 @@ Update also keeps a freshness record per channel. A verified manifest whose vers
 If Lando reports that a newer Lando wrote the local freshness record, leave that file in place, run the release that wrote it or upgrade Lando, then retry. The error is about the local record's stored format version, not the version named in the signed manifest.
 
 Run `lando update --dry-run` to see the resolved channel and target version without changing anything. See [Update permission errors](./permission-errors.mdx) when the swap cannot write the install path.
+
+Use `lando update --only=plugins --dry-run --format=json` to preview plugin changes without checking for a core binary update.
+
+## Share one data root carefully
+
+Lando keeps durable state under one user data root. Two different Lando builds that share that root can race on the same apps and runtime.
+
+When you upgrade an installer-managed binary with `lando update`, or switch which checkout's `lando` you run:
+
+1. Let all in-flight Lando commands finish.
+2. Point every shell and tool that shares the data root at the same Lando build before you mutate again.
+3. Prefer one current binary for day-to-day work. Rebuild or reinstall every checkout that still uses the old binary against that root.
+
+An older Lando that shares a data root with a newer one does not always wait on the newer one's locks. Locks moved from `.lock` files to kernel locks on `.lck` sentinels in [dev.1539](https://github.com/AaronFeledy/core4/releases/tag/v4.0.0-dev.1539). Builds from before that change and builds after it do not exclude each other, so mixed-version concurrent mutation is unsupported. Do not delete lock files to "clear" a wait; the OS releases a lock when the holder exits, and removing a sentinel does not free a live holder.
+
+If a command says a newer Lando wrote a state file, leave that file in place. Run the build that wrote it, or upgrade this Lando with `lando update`, then retry. Builds that recognize this format refusal won't overwrite or delete the protected record.
+
+### Isolate side-by-side builds
+
+To test two Lando builds on one machine without sharing state, give each build its own config, data, and cache roots and its own runtime resources. Set `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` for each shell, then run `lando setup` in that environment. See [Find where Lando keeps files](../config/global-config.mdx#find-where-lando-keeps-files).
+
+### Lock wait timeout
+
+`LANDO_LOCK_TIMEOUT_MS` sets how long a command waits for an exclusive lock (default two minutes; range `0` to `600000`). It replaces the removed `LANDO_APP_LOCK_TIMEOUT_MS` name; there is no alias. See [Wait for another command to finish](../cli/everyday-commands.mdx#wait-for-another-command-to-finish).
+
+<Guide>
+  <Scenario id="preview-plugin-updates" render={false} reason="Verify a plugins-only preview in an isolated install without contacting a core update channel.">
+    <Step name="preview-plugins-only">
+      <Run runtime="library" displayCode="lando update --only=plugins --dry-run --format=json" code={`const run = yield* context.runCli(["update", "--only=plugins", "--dry-run", "--format=json"]);
+expect(run.exitCode).toBe(0);
+expect(JSON.parse(run.stdout)).toMatchObject({ command: "meta:update", ok: true, result: { updatedCore: false, updatedPlugins: [] } });`} />
+    </Step>
+  </Scenario>
+</Guide>
