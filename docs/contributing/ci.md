@@ -275,9 +275,29 @@ Replace `/path/to/podman.sock` with a running Podman-compatible provider socket.
 
 Normal codegen is offline: it checks local hashes and template invariants and derives the ignored embedded TypeScript catalog. Commit only paired inputs and the generated workflow, not the derived catalog. The daily/dispatch `tomcat-bump` workflow merges `main` into its rolling branch, prepares candidates, runs focused unit checks before proposing, then explicitly dispatches `ci.yml` on the proposal branch. That CI run includes service-lando live integration tests; the workflow does not auto-merge.
 
+## Update the Xdebug pins
+
+Run the network updater from the repository root:
+
+```bash
+bun run update:xdebug
+```
+
+The updater verifies the committed tarballs against their SHA-256 checksums before looking for updates. It picks the newest compatible stable release it finds for each PHP version, or the newest compatible pre-release if it finds no stable release. It skips a candidate release whose tarball is missing or unreadable and prints a warning, but a committed pin that fails verification fails the run. It writes `plugins/service-lando/src/services/php-xdebug-pins.json` only if a pin changes.
+
+With Docker running, check a changed pin locally. For example, to check PHP 8.6, run:
+
+```bash
+bun run scripts/check-xdebug-build.ts 8.6
+```
+
+The check runs Lando's install command on the stock PHP CLI Bookworm image and confirms PHP loads the pinned Xdebug version. Pass each changed PHP version to check them in one run.
+
+The daily `xdebug-bump` workflow builds only changed pins before it opens or updates the PR. It does not auto-merge. If you see an `xdebug-bump automation failure` issue, open the linked run to see which check failed. A URL or checksum failure means a stock PHP image build that uses that pin may fail. Investigate the upstream tarball before accepting a replacement checksum.
+
 ## Extend the internal maintenance workflows
 
-`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts`, `build-compose-vendor-bump-workflow.ts`, and `build-node-releases-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts`, `build-compose-vendor-bump-workflow.ts`, `build-node-releases-bump-workflow.ts`, and `build-xdebug-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
 
 The `report-failure` job runs after every run that was not cancelled as a whole, and it is the only job with `issues: write`. It reports every job whose result is not `success` or `skipped`, so a timeout (reported as `cancelled`), a lost runner (`abandoned`), and any result GitHub adds later all count. When nothing failed, it exits without touching issues. Otherwise it searches open issues in `GH_REPO` for the title `<workflow name> automation failure`, keeps only exact title matches, comments on the oldest match, and files a new issue only when none is open. The issue or comment links the run and lists the failed jobs, marking them `(timed out or cancelled)` or with their result name, such as `(abandoned)`.
 
