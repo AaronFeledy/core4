@@ -260,7 +260,9 @@ At `app` bootstrap, `globalServices.<name>.{type,primary,creds,hostnames,routes,
 |---|---|
 | `service` | Data owned by one global service; preserved by normal destroy and removed by `--volumes` or `--purge`. |
 | `app` | Data shared across global services; preserved by normal destroy and removed by `--volumes` or `--purge`. |
-| `global` | Shared under §6.5; survives `meta:global:destroy --purge` and is removed only by `meta:uninstall --purge` under §17.7. |
+| `global` | Shared under §6.5; ordinarily survives `meta:global:destroy --purge`. |
+
+When migrating the unscoped global realization, retain its old volumes and report them by name. A verified adoption receipt lets `global:destroy --volumes` or `--purge` clean up the retained volume. Do not automatically remove an unverified volume.
 
 Global-app volumes carry `dev.lando.app: "global"` and the standard storage ownership labels derived from the global root (§6.5). No separate global-app volume marker exists. `apps:poweroff --keep-global` excludes the global app by its app id.
 

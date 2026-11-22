@@ -250,11 +250,13 @@ lando global:destroy --volumes
 ```
 
 Add `--purge` instead to remove those volumes and the built images right away.
-Volumes declared with `scope: global` survive both:
+Volumes declared with `scope: global` normally survive both:
 
 ```sh
 lando global:destroy --purge
 ```
+
+If an upgrade moves your global services to new volumes, Lando names the old volumes it kept. `lando global:destroy --volumes` can delete the old volumes Lando verified as belonging to this installation. Lando leaves any unverified volumes untouched.
 
 Stop and destroy use the global app's applied state, so an invalid edit to a global Landofile doesn't block cleanup. Fix the config before starting the app again.
 

@@ -159,11 +159,11 @@ This durable provider-private identity record lets stop, destroy, and a convergi
 | Field | Contract |
 |---|---|
 | Namespace | `resource-ownership` on the provider-private `ctx.stateStore`, keyed by canonical owner. |
-| Document | One JSON object per owner, version 2. Version 1 reads without inventing a data-root label. |
+| Document | One JSON object per owner, version 3. Versions 1 and 2 read without granting adoption receipts. |
 | Mode | `0600`. |
 | Lock | Advisory. |
 | Corruption or unsupported version | Fail closed. Do not treat the hint as absent. |
-| Payload | Container, private-network, and volume identities and digests only, with expected app, provider, app root, data root when recorded, and owner, and the actual physical name. No raw config, no per-value hashes, no resolved secret values. |
+| Payload | Container, private-network, and volume intent identities and digests, plus separate verified adoption batches. A receipt records kind, native name, native ID or volume instance, app/data ID, provider, app root, and data root. No raw config, per-value hashes, or resolved secret values. |
 
 `ResourceOwnership` (`appRoot`, `ownerKey`, `providerId`, `appIds`) is the summary hint. `OwnedResourcesCleanupResult` (`servicesRemoved`, `networksRemoved`, and `volumesRemoved` split into `data`/`cache` counts) is the verified cleanup result. `RuntimeProviderContribution.resourceOwnership(ctx, root)` reads this namespace from the filesystem and MUST NOT construct, initialize, or contact a runtime. The global app root's inventory is scoped to the realized global provider, or the host provider when no applied global plan exists (§5.3.1). Cleanup MUST verify ownership labels before mutation; recorded names alone are not ownership proof. A legacy unlabeled network entry is retired after its verified-by-id removal, or a 404 for that id, consistent with §5.3.1.
 
