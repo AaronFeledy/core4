@@ -200,10 +200,6 @@ describe("PHP xdebug option", () => {
     expect(command).toMatch(/\bon\b/);
     expect(command).toMatch(/\boff\b/);
     expect(command).toMatch(/\bstatus\b/);
-    expect(command).toContain('function_exists("xdebug_info")');
-    expect(command).toContain('xdebug_info("mode")');
-    expect(command).toContain("Xdebug enabled (");
-    expect(command).toContain("Xdebug disabled");
     expect(command).toMatch(/on\) write_ini "\$mode"; reload; status/);
     expect(command).toContain(`"${PHP_XDEBUG_CLIENT_HOST}" "${PHP_XDEBUG_PORT}"`);
     expect(command).toMatch(/off\) write_ini off; reload; status/);

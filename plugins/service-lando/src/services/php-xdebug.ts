@@ -155,7 +155,7 @@ export const phpXdebugTooling = (
     "}",
     `reload() { ${reload}; }`,
     "status() {",
-    `  php -r '$m = function_exists("xdebug_info") ? xdebug_info("mode") : []; if (!is_array($m) || count($m) === 0) { echo "Xdebug disabled\\n"; } else { echo "Xdebug enabled (" . implode(",", $m) . ")\\n"; }'`,
+    `  php -r '$version = phpversion("xdebug"); if ($version === false) { echo "Xdebug not installed. Install the extension in your image.\\n"; exit(1); } $m = xdebug_info("mode"); if (!is_array($m) || count($m) === 0) { echo "Xdebug $version disabled\\n"; } else { echo "Xdebug $version enabled (" . implode(",", $m) . ")\\n"; }'`,
     `  host=$(php -r 'echo ini_get("xdebug.client_host");')`,
     `  port=$(php -r 'echo ini_get("xdebug.client_port");')`,
     '  resolved=$(getent -s files hosts -- "$host" 2>/dev/null | awk \'!seen[$1]++ { print $1 }\' | paste -sd" " - || true)',

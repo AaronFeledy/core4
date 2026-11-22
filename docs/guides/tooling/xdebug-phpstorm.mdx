@@ -133,11 +133,11 @@ lando config unset debugger.host
     </Step>
     <Step name="verify-extension">
       <Verify command={`lando exec app -- php -r 'echo phpversion("xdebug"), PHP_EOL;'`} expect={{ stdout: { regex: "3\\.6\\.0alpha1" } }} />
-      <Verify command="lando xdebug status" expect={{ stdout: { regex: "Xdebug enabled \\(debug\\)" } }} />
+      <Verify command="lando xdebug status" expect={{ stdout: { regex: "Xdebug 3\\.6\\.0alpha1 enabled \\(debug\\)" } }} />
     </Step>
     <Step name="toggle">
-      <Verify command="lando xdebug off" expect={{ stdout: { regex: "Xdebug disabled" } }} />
-      <Verify command="lando xdebug on" expect={{ stdout: { regex: "Xdebug enabled \\(debug\\)" } }} />
+      <Verify command="lando xdebug off" expect={{ stdout: { regex: "Xdebug 3\\.6\\.0alpha1 disabled" } }} />
+      <Verify command="lando xdebug on" expect={{ stdout: { regex: "Xdebug 3\\.6\\.0alpha1 enabled \\(debug\\)" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
