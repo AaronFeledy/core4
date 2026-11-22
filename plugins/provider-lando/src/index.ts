@@ -121,6 +121,7 @@ import {
   RuntimeProvider,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { isNewerVersionStoreError, storeErrorRemediation } from "@lando/state-store";
 import { type Context, Effect, Layer, Schema, Semaphore, Stream } from "effect";
 import { inspectAppliedFileSync, verifiedFileSyncSessions } from "./applied-file-sync.ts";
 import {
@@ -659,10 +660,13 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             new ProviderUnavailableError({
               providerId,
               operation,
-              message:
-                "Could not complete the managed Windows published-service operation under its lifecycle lock.",
-              remediation:
+              message: isNewerVersionStoreError(cause)
+                ? cause.message
+                : "Could not complete the managed Windows published-service operation under its lifecycle lock.",
+              remediation: storeErrorRemediation(
+                cause,
                 "Wait for the other global service operation to finish, then retry. If the wait persists, inspect the managed Podman machine and global services.",
+              ),
               cause,
             }),
           ),

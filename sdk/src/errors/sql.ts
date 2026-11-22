@@ -156,6 +156,7 @@ export class SqlRecoveryUnavailableError extends Schema.TaggedError<SqlRecoveryU
     service: Schema.String,
     reason: Schema.String,
     recoveryFile: Schema.optional(Schema.String),
+    cause: Schema.optional(Schema.Unknown),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

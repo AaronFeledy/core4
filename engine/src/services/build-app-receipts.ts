@@ -14,6 +14,7 @@ import {
 } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { BuildAppError } from "@lando/sdk/services";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Cause, DateTime, Effect } from "effect";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
 import { type AppBuildAttempt, appBuildResultWarning } from "./build-app-disposition.ts";
@@ -52,8 +53,10 @@ export const makeAppBuildReceipts = (input: AppBuildInput) => {
             message: input.redaction.redactor.redactString(
               `Build step ${step.id} completed, but its result could not be recorded.`,
             ),
-            remediation:
+            remediation: storeErrorRemediation(
+              cause,
               "Check access to the build-results cache before retrying. The command already ran; retrying may run it again.",
+            ),
             details: {
               step: step.id,
               service: step.service,

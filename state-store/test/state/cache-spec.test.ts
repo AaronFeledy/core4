@@ -12,7 +12,7 @@ import { makeTestStateStore } from "../../src/testing.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 for (const backend of ["disk", "memory"] as const) {
-  for (const violation of ["default", "onCorrupt", "onVersionMismatch"] as const) {
+  for (const violation of ["default", "onCorrupt", "onVersionMismatch", "onNewerVersion"] as const) {
     test(`${backend} rejects a JavaScript cache spec violating ${violation} at open`, async () => {
       const store =
         backend === "disk"
@@ -26,7 +26,7 @@ for (const backend of ["disk", "memory"] as const) {
         default: 0,
       };
       if (violation === "default") Reflect.deleteProperty(spec, "default");
-      else Reflect.set(spec, violation, violation === "onCorrupt" ? "fail" : () => 0);
+      else Reflect.set(spec, violation, violation === "onVersionMismatch" ? () => 0 : "fail");
 
       const result = await Effect.runPromise(Effect.result(store.open(spec)));
 
@@ -37,7 +37,7 @@ for (const backend of ["disk", "memory"] as const) {
     });
   }
 
-  test(`${backend} accepts a regenerable cache and returns its default after removal`, async () => {
+  test(`${backend} reads a newer user cache envelope as absent`, async () => {
     const root = AbsolutePath.make(await mkdtemp(join(tmpdir(), "lando-cache-spec-")));
     try {
       const store =
@@ -49,21 +49,21 @@ for (const backend of ["disk", "memory"] as const) {
           : makeTestStateStore().service;
       const value = await Effect.runPromise(
         Effect.gen(function* () {
-          const bucket = yield* store.open({
+          const spec = {
             root: "userCache",
             key: "regenerable.json",
             schema: Schema.Number,
             version: 1,
             default: 0,
             onCorrupt: "quarantine",
-            onVersionMismatch: "discard",
-          });
-          yield* bucket.set(7);
-          yield* bucket.remove;
-          return yield* bucket.get;
+          } as const;
+          const newer = yield* store.open({ ...spec, version: 2 });
+          yield* newer.set(7);
+          const reader = yield* store.open(spec);
+          return { read: yield* reader.get, stillPresent: yield* newer.get };
         }),
       );
-      expect(value).toBe(0);
+      expect(value).toEqual({ read: 0, stillPresent: 7 });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

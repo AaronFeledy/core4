@@ -1,5 +1,5 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
+import { RecipeSourceError, StateStoreError, causeMessage } from "@lando/sdk/errors";
 import { SourceAcquisitionError, displaySource } from "@lando/source-acquisition";
 import { Effect, Schema } from "effect";
 
@@ -47,6 +47,15 @@ export const mapSourceAcquisitionError = (
       message: displaySource(cause.message),
       source: displaySource(cause.source),
       kind: recipeKind(cause.kind, context, cause.phase),
+      remediation: displaySource(cause.remediation),
+    });
+  // Raw store failures (including newer-version) keep their remediation instead of
+  // the generic source-coordinates advice.
+  if (cause instanceof StateStoreError)
+    return new RecipeSourceError({
+      message: displaySource(cause.message),
+      source: "sources",
+      kind: recipeKind("cache", context),
       remediation: displaySource(cause.remediation),
     });
   return new RecipeSourceError({

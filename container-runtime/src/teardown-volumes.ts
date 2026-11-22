@@ -1,5 +1,5 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type AppId, type OwnedResourcesCleanupResult, noVolumesRemoved } from "@lando/sdk/schema";
 import { type ProviderError, StateStore } from "@lando/sdk/services";
 import { withPhysicalVolumeLocks } from "@lando/state-store/volume-lock";
@@ -200,11 +200,16 @@ export const deleteVolumeSnapshot = Effect.fnUntraced(function* (
   const appVolumes = snapshot.filter((candidate) => !candidate.shared);
   if (appVolumes.length > 0)
     yield* work(appVolumes).pipe(
-      mapFailures((error) =>
-        error._tag === "StateStoreError"
-          ? teardownVolumeFailure(runtime.ctx, `Could not acquire the volume locks: ${error.message}`)
-          : error,
-      ),
+      mapFailures((error) => {
+        if (!(error instanceof StateStoreError)) return error;
+        return new ProviderUnavailableError({
+          providerId: runtime.ctx.providerId,
+          operation: "bringDown.volume",
+          message: `Could not acquire the volume locks: ${error.message}`,
+          remediation: error.reason === "newer-version" ? error.remediation : runtime.ctx.remediation,
+          cause: error,
+        });
+      }),
     );
   // Shared cache contention must not prevent app-volume cleanup or another cache's purge.
   for (const candidate of snapshot
