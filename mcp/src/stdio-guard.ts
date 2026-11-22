@@ -1,6 +1,6 @@
 import { McpTransportError } from "@lando/sdk/errors";
-import { Cause, Clock, Deferred, Duration, Effect, Pull, Schema, Semaphore, Stdio, Stream } from "effect";
-import { ParseError } from "effect/ai/McpSchema";
+import { Cause, Clock, Deferred, Duration, Effect, Pull, Semaphore, Stdio, Stream } from "effect";
+import { PARSE_ERROR_CODE } from "effect/ai/McpSchema";
 import { forEach as forEachChunk } from "effect/Sink";
 import {
   MAX_FRAME_BYTES,
@@ -108,7 +108,7 @@ export const guardStdio = Effect.fnUntraced(function* (
                   if (text.trim().length > 0) {
                     const parsed = yield* Effect.result(Effect.try(() => JSON.parse(text)));
                     if (parsed._tag === "Failure") {
-                      const error = Schema.encodeSync(ParseError)(new ParseError({ message: "Parse error" }));
+                      const error = { code: PARSE_ERROR_CODE, message: "Parse error" };
                       yield* Stream.run(
                         Stream.make(`${JSON.stringify({ jsonrpc: "2.0", id: null, error })}\n`),
                         stdout(),

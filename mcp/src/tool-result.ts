@@ -36,8 +36,8 @@ const noticeContent = (notice: McpToolNotice | undefined, redactor: Redactor) =>
   ];
 };
 
-export const toolOutputSchema = (resultSchema: Schema.Codec<unknown, unknown>) =>
-  Schema.decodeUnknownSync(McpSchema.ToolOutputJson)(
+export const toolOutputSchema = (resultSchema: Schema.Codec<unknown, unknown>): Schema.JsonObject =>
+  Schema.decodeUnknownSync(Schema.JsonObject)(
     compactOutputSchema(
       Schema.decodeUnknownSync(Schema.JsonObject)(
         getJsonSchemaWithDeprecations(

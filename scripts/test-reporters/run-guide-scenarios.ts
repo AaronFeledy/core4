@@ -59,7 +59,7 @@ export const drainStream = async (
   const [live, buffered] = stream.tee();
   const pump = (async (): Promise<void> => {
     const reader = live.getReader();
-    for (;;) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       tee(value);

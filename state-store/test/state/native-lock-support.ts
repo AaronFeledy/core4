@@ -50,7 +50,7 @@ const readReadyLine = async (
     });
   });
   try {
-    for (;;) {
+    while (true) {
       const chunk = await Promise.race([reader.read(), timedOut]);
       if (chunk.done) break;
       buffer += decoder.decode(chunk.value, { stream: true });

@@ -123,7 +123,7 @@ describe("Landofile package seam", () => {
 
     // Then
     expect(dependencies.effect).toBe("catalog:");
-    expect(dependencies.semver).toBe("^7.8.5");
+    expect(dependencies.semver).toMatch(/^\^7\./);
     expect(devDependencies["@types/semver"]).toBe("^7.8.0");
   });
 

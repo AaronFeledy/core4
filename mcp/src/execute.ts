@@ -16,6 +16,7 @@ import {
   type CompletedCommandResult,
   failureOutcomeFromCause,
   normalizeDefect,
+  orDieWithRole,
 } from "@lando/sdk/command-result";
 import { Cause, type Context, Effect, Exit } from "effect";
 import type { McpExecute } from "./dispatch";
@@ -70,7 +71,10 @@ export const makeNestedExecute = (
       const exit = yield* discover(
         cwd,
         executor.execute(
-          rootAwareCommand.pipe(Effect.scoped, Effect.ensuring(Effect.suspend(output.finish))),
+          rootAwareCommand.pipe(
+            Effect.scoped,
+            Effect.ensuring(Effect.suspend(output.finish).pipe(orDieWithRole("cleanup"))),
+          ),
           {
             commandId: entry.spec.id,
             ...snapshot,

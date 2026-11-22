@@ -123,42 +123,30 @@ export const runProcess = async (
   }
 };
 
-export async function* streamProcess(
+export function openProcessStream(
   input: ProcessSpawnOptions,
-  captured: CapturedHostExecutionContext,
-  execution: {
-    readonly includeExitCode: boolean;
-    readonly bunCommandEnv: boolean;
-    readonly prepared?: { readonly cwd: string; readonly env: Readonly<Record<string, string>> };
-  },
-): AsyncGenerator<ProcessStreamEvent> {
-  await using context =
-    execution.prepared === undefined
-      ? await prepareProcessSpawn(captured, {
-          ...(input.signal === undefined ? {} : { signal: input.signal }),
-          bunCommandEnv: execution.bunCommandEnv,
-        })
-      : { ...execution.prepared, [Symbol.asyncDispose]: async () => {} };
+  platform: CapturedHostExecutionContext["platform"],
+  includeExitCode: boolean,
+) {
   input.signal?.throwIfAborted();
-  const proc = Bun.spawn(
-    [input.cmd, ...input.args],
-    buildSpawnOptions({ ...input, cwd: context.cwd, env: context.env }, captured.platform),
-  );
+  const proc = Bun.spawn([input.cmd, ...input.args], buildSpawnOptions(input, platform));
   const startedAt = DateTime.toEpochMillis(DateTime.nowUnsafe());
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const stdinPump = pumpStdin(proc, input);
-  void stdinPump.catch(() => proc.kill());
+  const stopStdin = new AbortController();
+  const stdinPump = pumpStdin(proc, { ...input, signal: stopStdin.signal });
+  void stdinPump.catch(() => {
+    if (!stopStdin.signal.aborted) proc.kill();
+  });
   const queue: ProcessStreamChunk[] = [];
   const queueLimit = 16;
   const budget = privateCaptureBudget(input);
   const stdoutStream = pipedOutput(proc.stdout);
   const stderrStream = pipedOutput(proc.stderr);
-  let openReaders = (stdoutStream === undefined ? 0 : 1) + (stderrStream === undefined ? 0 : 1);
-  let failure: unknown;
-  let failed = false;
+  let failure: { readonly cause: unknown } | undefined;
   let cancelled = false;
   let killTimer: ReturnType<typeof setTimeout> | undefined;
+  const stopped = Promise.withResolvers<void>();
   const readersWaiting: Array<() => void> = [];
   const consumerWaiting: Array<() => void> = [];
   const wakeConsumer = () => {
@@ -168,21 +156,26 @@ export async function* streamProcess(
     for (const wake of readersWaiting.splice(0)) wake();
   };
   const abort = () => {
-    proc.kill("SIGTERM");
-    killTimer ??= setTimeout(() => proc.kill("SIGKILL"), 500);
+    if (killTimer === undefined && proc.exitCode === null && proc.signalCode === null) {
+      proc.kill("SIGTERM");
+      killTimer = setTimeout(() => proc.kill("SIGKILL"), 500);
+    }
+    stopStdin.abort();
+    stopped.resolve();
     wakeReaders();
     wakeConsumer();
   };
   input.signal?.addEventListener("abort", abort, { once: true });
+  if (input.signal?.aborted) abort();
   if (input.timeoutMs !== undefined)
     timer = setTimeout(() => {
       timedOut = true;
       abort();
     }, input.timeoutMs);
   const enqueue = async (value: ProcessStreamChunk): Promise<void> => {
-    while (queue.length >= queueLimit && !cancelled && !failed && !input.signal?.aborted)
+    while (queue.length >= queueLimit && !cancelled && failure === undefined && !input.signal?.aborted)
       await new Promise<void>((resolve) => readersWaiting.push(resolve));
-    if (cancelled || failed || input.signal?.aborted) return;
+    if (cancelled || failure !== undefined || input.signal?.aborted) return;
     queue.push(value);
     wakeConsumer();
   };
@@ -192,7 +185,7 @@ export async function* streamProcess(
     const reader = stream.getReader();
     readers.add(reader);
     try {
-      for (;;) {
+      while (true) {
         waitingReaders.add(reader);
         const next = await reader.read();
         waitingReaders.delete(reader);
@@ -202,59 +195,63 @@ export async function* streamProcess(
         await enqueue({ kind, chunk });
       }
     } catch (cause) {
-      if (!failed) {
-        failed = true;
-        failure = cause;
+      if (!cancelled) {
+        failure ??= { cause };
+        proc.kill(input.capture === true ? "SIGKILL" : "SIGTERM");
+        wakeReaders();
       }
-      proc.kill(input.capture === true ? "SIGKILL" : "SIGTERM");
-      wakeReaders();
     } finally {
       readers.delete(reader);
       waitingReaders.delete(reader);
       reader.releaseLock();
-      openReaders--;
       wakeConsumer();
     }
   };
-  const stdoutReader = stdoutStream === undefined ? Promise.resolve() : drain(stdoutStream, "stdout");
-  const stderrReader = stderrStream === undefined ? Promise.resolve() : drain(stderrStream, "stderr");
+  const stdoutReader = stdoutStream && drain(stdoutStream, "stdout");
+  const stderrReader = stderrStream && drain(stderrStream, "stderr");
   let drainTimer: ReturnType<typeof setTimeout> | undefined;
   const closeIdleReaders = () => {
     if (queue.length === 0) for (const reader of waitingReaders) void reader.cancel().catch(() => undefined);
     if (readers.size > 0) drainTimer = setTimeout(closeIdleReaders, 1000);
   };
   void proc.exited.then(() => {
-    if (openReaders > 0) drainTimer = setTimeout(closeIdleReaders, 1000);
-  });
-  try {
-    for (;;) {
-      if (timedOut) throw timeoutError(input, DateTime.toEpochMillis(DateTime.nowUnsafe()) - startedAt);
-      input.signal?.throwIfAborted();
-      const value = queue.shift();
-      if (value !== undefined) {
-        wakeReaders();
-        yield value;
-        continue;
-      }
-      if (failed) throw failure;
-      if (openReaders === 0) break;
-      await new Promise<void>((resolve) => consumerWaiting.push(resolve));
-    }
-    await Promise.all([stdoutReader, stderrReader]);
-    await stdinPump;
-    const exitCode = await proc.exited;
-    input.signal?.throwIfAborted();
-    if (execution.includeExitCode) yield { exitCode };
-  } finally {
-    cancelled = true;
-    wakeReaders();
-    if (timer !== undefined) clearTimeout(timer);
-    input.signal?.removeEventListener("abort", abort);
-    if (proc.exitCode === null) abort();
-    await proc.exited;
     if (killTimer !== undefined) clearTimeout(killTimer);
-    for (const reader of readers) await reader.cancel();
-    await Promise.all([stdoutReader, stderrReader]);
+    if (!cancelled && readers.size > 0) drainTimer = setTimeout(closeIdleReaders, 1000);
+  });
+  const iterable: AsyncIterable<ProcessStreamEvent> = {
+    async *[Symbol.asyncIterator]() {
+      const checkStopped = () => {
+        if (timedOut) throw timeoutError(input, DateTime.toEpochMillis(DateTime.nowUnsafe()) - startedAt);
+        input.signal?.throwIfAborted();
+      };
+      while (!cancelled) {
+        checkStopped();
+        const value = queue.shift();
+        if (value !== undefined) {
+          wakeReaders();
+          yield value;
+          continue;
+        }
+        if (failure !== undefined) throw failure.cause;
+        if (readers.size === 0) break;
+        await new Promise<void>((resolve) => consumerWaiting.push(resolve));
+      }
+      if (cancelled) return;
+      const exitCode = await Promise.race([stdinPump.then(() => proc.exited), stopped.promise]);
+      if (cancelled) return;
+      checkStopped();
+      if (includeExitCode && exitCode !== undefined) yield { exitCode };
+    },
+  };
+  const close = async () => {
+    cancelled = true;
+    if (timer !== undefined) clearTimeout(timer);
     if (drainTimer !== undefined) clearTimeout(drainTimer);
-  }
+    input.signal?.removeEventListener("abort", abort);
+    abort();
+    // Descendants may still hold the pipes. Reap the direct child without waiting for pipe EOF.
+    for (const reader of readers) void reader.cancel().catch(() => undefined);
+    await Promise.all([stdoutReader, stderrReader]).finally(() => proc.exited);
+  };
+  return { iterable, close };
 }

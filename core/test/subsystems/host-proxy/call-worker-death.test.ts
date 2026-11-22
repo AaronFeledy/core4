@@ -51,7 +51,7 @@ test.each([
     worker.kill("SIGKILL");
     await worker.exited;
     let output = "";
-    for (;;) {
+    while (true) {
       const next = await reader.read();
       if (next.done) break;
       output += new TextDecoder().decode(next.value);

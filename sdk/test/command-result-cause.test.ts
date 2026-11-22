@@ -77,6 +77,8 @@ describe("command failure projection", () => {
     // Then: normalization does not invent an additional error.
     expect(outcome).toEqual({
       _tag: "failure",
+      kind: "typed",
+      source: "fail",
       error: primary,
       additionalErrors: [],
     });
@@ -90,7 +92,7 @@ describe("command failure projection", () => {
       // When: the cause is projected.
       const outcome = failureOutcomeFromCause(cause);
       // Then: the fallback matches Effect and has no additional errors.
-      expect(outcome).toEqual({ _tag: "failure", error: expected, additionalErrors: [] });
+      expect(outcome).toEqual({ _tag: "failure", kind: "none", error: expected, additionalErrors: [] });
     },
   );
 
@@ -124,6 +126,8 @@ describe("command failure projection", () => {
     // Then: the primary is typed and additional failures retain their original order.
     expect(outcome).toEqual({
       _tag: "failure",
+      kind: "typed",
+      source: "fail",
       error: primary,
       additionalErrors: [
         { role: "peer", error: defect },
@@ -142,6 +146,7 @@ describe("command failure projection", () => {
     // Then: neither interruption nor the primary is duplicated.
     expect(outcome).toEqual({
       _tag: "failure",
+      kind: "defect",
       error: first,
       additionalErrors: [{ role: "peer", error: second }],
     });
@@ -217,7 +222,13 @@ describe("command failure projection", () => {
       }),
     );
     // Then: the optional collection is absent on both representations.
-    expect(outcome).toEqual({ _tag: "failure", error: primary, additionalErrors: [] });
+    expect(outcome).toEqual({
+      _tag: "failure",
+      kind: "typed",
+      source: "fail",
+      error: primary,
+      additionalErrors: [],
+    });
     expect(Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line)).error).toEqual({
       _tag: "StartError",
       message: "failed",
