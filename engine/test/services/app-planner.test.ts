@@ -4440,7 +4440,7 @@ describe("AppPlannerLayer.layer", () => {
     expect(servicePlan?.healthcheck).not.toHaveProperty("startIntervalSeconds");
   });
 
-  test("emits Lando startIntervalSeconds as native start_interval without plan field", async () => {
+  test("retains Lando startIntervalSeconds in the plan and emits native start_interval", async () => {
     // Given
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "lando-start-interval-seconds",
@@ -4460,13 +4460,13 @@ describe("AppPlannerLayer.layer", () => {
     // When
     const appPlan = await plan(landofile, composePreservedPathCapabilities);
 
-    // Then native emission is extension-only; HealthcheckPlan stays free of the field.
+    // Then the Lando timing and native lowering remain separate.
     const servicePlan = appPlan.services[ServiceName.make("web")];
     expect(servicePlan?.extensions).toMatchObject({
       compose: { healthcheck: { start_interval: "2s" } },
     });
     expect(servicePlan?.healthcheck).not.toHaveProperty("startInterval");
-    expect(servicePlan?.healthcheck).not.toHaveProperty("startIntervalSeconds");
+    expect(servicePlan?.healthcheck?.startIntervalSeconds).toBe(2);
     expect(servicePlan?.healthcheck).not.toHaveProperty("start_interval");
   });
 
@@ -4493,8 +4493,11 @@ describe("AppPlannerLayer.layer", () => {
     // Then readiness never feeds the native healthcheck extension.
     const servicePlan = appPlan.services[ServiceName.make("web")];
     expect(servicePlan?.extensions.compose).toBeUndefined();
-    expect(servicePlan?.readiness).toMatchObject({ kind: "command", command: ["true"] });
-    expect(servicePlan?.readiness).not.toHaveProperty("startIntervalSeconds");
+    expect(servicePlan?.readiness).toMatchObject({
+      kind: "command",
+      command: ["true"],
+      startIntervalSeconds: 2,
+    });
   });
 
   test("preserves Compose labels and healthcheck start_interval together", async () => {

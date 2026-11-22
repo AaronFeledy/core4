@@ -59,7 +59,7 @@ const ComposeHealthcheckAccepted = Schema.Struct({
   }),
   startIntervalSeconds: Schema.optionalKey(IntervalSeconds).annotateKey({
     description:
-      "Seconds between attempts during the start period for native container healthchecks. Distinct from Compose start_interval; neither field rewrites the other.",
+      "Seconds between attempts during the start period for healthchecks or readiness. Distinct from Compose start_interval; neither field rewrites the other.",
   }),
   test: Schema.optionalKey(ComposeTest).annotateKey({
     description:
@@ -118,7 +118,7 @@ const HealthcheckCanonicalBase = Schema.Struct({
   }),
   startIntervalSeconds: Schema.optionalKey(IntervalSeconds).annotateKey({
     description:
-      "Seconds between attempts during the start period for native container healthchecks. Distinct from Compose start_interval.",
+      "Seconds between attempts during the start period for healthchecks or readiness. Distinct from Compose start_interval.",
   }),
 });
 
