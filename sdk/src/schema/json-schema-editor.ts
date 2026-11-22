@@ -112,7 +112,8 @@ export const projectAuthoringInput = (
   const schema = { LandofileShape: LandofileAuthoringShape, GlobalConfig }[name];
   const artifact = getJsonSchemaWithDeprecations(schema, {
     onExcessProperty: "error",
-    generateDescriptions: true,
+    // GlobalConfig has authored descriptions; generated check prose splits the router port bounds.
+    generateDescriptions: name === "LandofileShape",
     includeAnnotationKey: (key) => includeProvenance && key === JSON_SCHEMA_FIELD_PROVENANCE_KEY,
   });
   const definitions = artifact.$defs;
