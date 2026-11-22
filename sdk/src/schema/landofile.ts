@@ -4,7 +4,7 @@ import validRange from "semver/ranges/valid.js";
 import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 import { BuildBlock } from "./build-block.ts";
 import { HealthcheckInput } from "./compose-healthcheck.ts";
-import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
+import { COMPOSE_PORTS_DESCRIPTION, ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import {
   ComposeInitServiceField,
   ComposePullPolicyServiceField,
@@ -81,17 +81,17 @@ export { ServiceDependencyCondition } from "./service-dependency.ts";
 
 /** Route input as authored under `services.<name>.routes` (or top-level `proxy:`). */
 export const RouteObjectInput = Schema.Struct({
-  hostname: Schema.String.annotate({
+  hostname: Schema.String.annotateKey({
     description: "Host pattern only, without a port or path; use endpoint and pathPrefix for those.",
   }),
-  scheme: Schema.optionalKey(Schema.Literals(["http", "https", "both"])).annotate({
+  scheme: Schema.optionalKey(Schema.Literals(["http", "https", "both"])).annotateKey({
     description: "HTTP or HTTPS schemes served by this route.",
   }),
-  endpoint: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])).annotate({
+  endpoint: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])).annotateKey({
     description:
       "Target endpoint name or container port (1 to 65535). An unused numeric port declares internal HTTP unless a known TCP or UDP listener conflicts. A string selects by name.",
   }),
-  pathPrefix: Schema.optionalKey(Schema.String).annotate({
+  pathPrefix: Schema.optionalKey(Schema.String).annotateKey({
     description: "Request path prefix to match, beginning with / and without a query string or fragment.",
   }),
   filters: Schema.optionalKey(
@@ -101,7 +101,7 @@ export const RouteObjectInput = Schema.Struct({
       whenUnkeyed: "replace",
       onMatch: "replace-on-kind-change",
     }),
-  ).annotate({
+  ).annotateKey({
     description: "Ordered provider-neutral route filters; names identify filters across layers.",
   }),
 });
@@ -120,10 +120,19 @@ const MOUNT_INPUT_DESCRIPTION =
 export const MountInput = Schema.Union([
   Schema.String,
   Schema.Struct({
-    type: Schema.optionalKey(Schema.Literals(["bind", "tmpfs", "volume"])),
-    source: Schema.optionalKey(Schema.String),
-    target: Schema.String,
-    readOnly: Schema.optionalKey(Schema.Boolean),
+    type: Schema.optionalKey(Schema.Literals(["bind", "tmpfs", "volume"])).annotate({
+      description:
+        "Mount kind: bind for a host path, volume for a named volume, or tmpfs for an in-memory filesystem.",
+    }),
+    source: Schema.optionalKey(Schema.String).annotate({
+      description: "Host path or named volume that backs the mount; omitted for tmpfs.",
+    }),
+    target: Schema.String.annotate({
+      description: "Absolute in-container path where the mount is attached.",
+    }),
+    readOnly: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "When true, the mount is read-only inside the container.",
+    }),
     excludes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
       description:
         "Bind mounts only: paths beneath the bind that become service-owned volume shadows. Use includes instead of ! entries.",
@@ -142,12 +151,25 @@ const STORAGE_INPUT_DESCRIPTION =
 export const StorageInput = Schema.Union([
   Schema.String,
   Schema.Struct({
-    store: Schema.String,
-    target: Schema.String,
-    readOnly: Schema.optionalKey(Schema.Boolean),
-    scope: Schema.optionalKey(StorageScope),
-    kind: Schema.optionalKey(Schema.Literals(["data", "cache"])),
-    key: Schema.optionalKey(Schema.String),
+    store: Schema.String.annotate({
+      description: "Named store identity used to share or distinguish volumes across mounts.",
+    }),
+    target: Schema.String.annotate({
+      description: "Absolute in-container path where the store is mounted.",
+    }),
+    readOnly: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "When true, the storage mount is read-only inside the container.",
+    }),
+    scope: Schema.optionalKey(StorageScope).annotate({
+      description: "Lifetime for the store: service, app, or global.",
+    }),
+    kind: Schema.optionalKey(Schema.Literals(["data", "cache"])).annotate({
+      description: 'Store durability class: "data" for persistent volumes or "cache" for disposable caches.',
+    }),
+    key: Schema.optionalKey(Schema.String).annotate({
+      description:
+        "Optional disambiguating key within the store scope when multiple mounts share a store name.",
+    }),
   }),
 ]).annotate({ description: STORAGE_INPUT_DESCRIPTION, expected: "a target path string or a storage object" });
 export type StorageInput = typeof StorageInput.Type;
@@ -155,10 +177,19 @@ export type StorageInput = typeof StorageInput.Type;
 export { HealthcheckInput } from "./compose-healthcheck.ts";
 
 export const ServiceDependency = Schema.Struct({
-  service: Schema.String,
-  condition: Schema.optionalKey(ServiceDependencyConditionSchema),
-  required: Schema.optionalKey(Schema.Boolean),
-  restart: Schema.optionalKey(Schema.Boolean),
+  service: Schema.String.annotate({
+    description: "Name of the service this dependency refers to.",
+  }),
+  condition: Schema.optionalKey(ServiceDependencyConditionSchema).annotate({
+    description:
+      "When the dependency is considered satisfied: service_started, service_healthy, or service_completed_successfully.",
+  }),
+  required: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "When false, a missing dependency does not fail start; defaults to true.",
+  }),
+  restart: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "When true, restart this service if the dependency restarts.",
+  }),
 }).annotate({
   identifier: "ServiceDependency",
   title: "Service Dependency",
@@ -168,9 +199,16 @@ export const ServiceDependency = Schema.Struct({
 export type ServiceDependency = typeof ServiceDependency.Type;
 
 const ServiceDependencyInput = Schema.Struct({
-  condition: ServiceDependencyConditionSchema,
-  required: Schema.optionalKey(Schema.Boolean),
-  restart: Schema.optionalKey(Schema.Boolean),
+  condition: ServiceDependencyConditionSchema.annotate({
+    description:
+      "When the dependency is considered satisfied: service_started, service_healthy, or service_completed_successfully.",
+  }),
+  required: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "When false, a missing dependency does not fail start; defaults to true.",
+  }),
+  restart: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "When true, restart this service if the dependency restarts.",
+  }),
 });
 
 const RESERVED_KEY_PROPERTY_NAMES = { not: { const: "__proto__" } } as const;
@@ -348,7 +386,9 @@ const ExtensionRecord = Schema.Record(Schema.TemplateLiteral(["x-", Schema.Strin
 
 const ComposeNetworkAttachment = Schema.StructWithRest(
   Schema.Struct({
-    aliases: Schema.optionalKey(Schema.Array(Schema.String)),
+    aliases: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+      description: "Additional DNS names for this service on the attached network.",
+    }),
   }),
   [ExtensionRecord],
 );
@@ -379,11 +419,21 @@ const ComposeNetworksInput = Schema.Union([
 
 const ComposeConfigOrSecretEntry = Schema.StructWithRest(
   Schema.Struct({
-    source: Schema.optionalKey(Schema.String),
-    target: Schema.optionalKey(Schema.String),
-    uid: Schema.optionalKey(Schema.String),
-    gid: Schema.optionalKey(Schema.String),
-    mode: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])),
+    source: Schema.optionalKey(Schema.String).annotate({
+      description: "Top-level configs or secrets entry name this grant references.",
+    }),
+    target: Schema.optionalKey(Schema.String).annotate({
+      description: "In-container path or name for the mounted grant; defaults to /<source> for configs.",
+    }),
+    uid: Schema.optionalKey(Schema.String).annotate({
+      description: "Optional numeric user id applied to the mounted grant.",
+    }),
+    gid: Schema.optionalKey(Schema.String).annotate({
+      description: "Optional numeric group id applied to the mounted grant.",
+    }),
+    mode: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])).annotate({
+      description: "Optional file mode as an integer or octal string applied to the mounted grant.",
+    }),
   }),
   [ExtensionRecord],
 );
@@ -463,36 +513,60 @@ const Forbidden = Schema.optionalKey(Schema.Never);
 
 const ServiceSecurityInput = Schema.Union([
   Schema.Struct({
-    ca: Schema.optionalKey(layerMerge(Schema.Array(CaInput), REPLACE)),
+    ca: Schema.optionalKey(layerMerge(Schema.Array(CaInput), REPLACE)).annotate({
+      description: "Additional CA certificate paths for this service.",
+    }),
     cas: Forbidden,
     "certificate-authority": Forbidden,
     "certificate-authorities": Forbidden,
-    inheritNetworkCa: Schema.optionalKey(Schema.Boolean),
-    inheritNetworkProxy: Schema.optionalKey(Schema.Boolean),
+    inheritNetworkCa: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Override whether this service inherits host network CA certificates.",
+    }),
+    inheritNetworkProxy: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Override whether this service inherits host network proxy settings.",
+    }),
   }),
   Schema.Struct({
     ca: Forbidden,
-    cas: ServiceSecurityCaAlias,
+    cas: ServiceSecurityCaAlias.annotate({
+      description: "Additional CA certificate paths for this service (alias of ca).",
+    }),
     "certificate-authority": Forbidden,
     "certificate-authorities": Forbidden,
-    inheritNetworkCa: Schema.optionalKey(Schema.Boolean),
-    inheritNetworkProxy: Schema.optionalKey(Schema.Boolean),
+    inheritNetworkCa: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Override whether this service inherits host network CA certificates.",
+    }),
+    inheritNetworkProxy: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Override whether this service inherits host network proxy settings.",
+    }),
   }),
   Schema.Struct({
     ca: Forbidden,
     cas: Forbidden,
-    "certificate-authority": ServiceSecurityCaAlias,
+    "certificate-authority": ServiceSecurityCaAlias.annotate({
+      description: "Additional CA certificate paths for this service (alias of ca).",
+    }),
     "certificate-authorities": Forbidden,
-    inheritNetworkCa: Schema.optionalKey(Schema.Boolean),
-    inheritNetworkProxy: Schema.optionalKey(Schema.Boolean),
+    inheritNetworkCa: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Override whether this service inherits host network CA certificates.",
+    }),
+    inheritNetworkProxy: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Override whether this service inherits host network proxy settings.",
+    }),
   }),
   Schema.Struct({
     ca: Forbidden,
     cas: Forbidden,
     "certificate-authority": Forbidden,
-    "certificate-authorities": ServiceSecurityCaAlias,
-    inheritNetworkCa: Schema.optionalKey(Schema.Boolean),
-    inheritNetworkProxy: Schema.optionalKey(Schema.Boolean),
+    "certificate-authorities": ServiceSecurityCaAlias.annotate({
+      description: "Additional CA certificate paths for this service (alias of ca).",
+    }),
+    inheritNetworkCa: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Override whether this service inherits host network CA certificates.",
+    }),
+    inheritNetworkProxy: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Override whether this service inherits host network proxy settings.",
+    }),
   }),
 ]).annotate({ description: SERVICE_SECURITY_DESCRIPTION });
 
@@ -647,9 +721,17 @@ export type AppMountInput = typeof AppMountInput.Type;
 
 const ServiceConfigWithExtensions = Schema.StructWithRest(
   Schema.Struct({
-    api: Schema.optionalKey(Schema.Literal(4)),
-    type: Schema.optionalKey(Schema.String), // defaults to "lando"
-    primary: Schema.optionalKey(Schema.Boolean),
+    api: Schema.optionalKey(Schema.Literal(4)).annotate({
+      description: "Landofile service API version; only 4 is accepted for Lando 4 services.",
+    }),
+    type: Schema.optionalKey(Schema.String).annotate({
+      description:
+        'Service type id, optionally versioned (for example "php:8.3" or "mariadb:10.6"). Defaults to "lando".',
+    }),
+    primary: Schema.optionalKey(Schema.Boolean).annotate({
+      description:
+        "When true, marks this service as the app primary for tooling, exec, open, and share defaults.",
+    }),
 
     image: Schema.optionalKey(Schema.String).annotate({
       description: "Container image reference used by the service.",
@@ -703,7 +785,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         "Mailpit PHP senders: omitted selects every resolved PHP service, false selects none, and a list selects named PHP services in authored order with duplicates removed.",
     }),
-    cores: Schema.optionalKey(Schema.Array(Schema.String)),
+    cores: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+      description:
+        "Solr core names to precreate before solr-foreground; each name must be a plain directory segment.",
+    }),
     port: Schema.optionalKey(PortNumber).annotate({
       description:
         "Primary container listen port (integer 1-65535). On raw lando and compose services, only supplies the value of {{ service.port }}; it does not configure the listener, an endpoint, publication, routing, or readiness.",
@@ -712,7 +797,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         "MinIO console TCP port number (integer 1-65535); defaults to 9001, independently of the API port.",
     }),
-    framework: Schema.optionalKey(Schema.String),
+    framework: Schema.optionalKey(Schema.String).annotate({
+      description:
+        "Language or recipe framework preset (for example drupal, laravel, fastapi, rails, or none) that supplies overridable defaults.",
+    }),
     packageRoot: Schema.optionalKey(Schema.String).annotate({
       description:
         "App-root-relative source directory for project-file inputs: bare Node infers the Node version from .nvmrc and package.json engines, and catalog Node types select the package manager from package.json (packageManager or devEngines.packageManager). It changes neither mounts nor the container working directory. A custom image or replacement Compose build owns its toolchain and rejects an authored packageRoot.",
@@ -766,7 +854,9 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     init: ComposeInitServiceField,
     pull_policy: ComposePullPolicyServiceField,
 
-    ports: Schema.optionalKey(ComposePortsField),
+    ports: Schema.optionalKey(ComposePortsField).annotate({
+      description: COMPOSE_PORTS_DESCRIPTION,
+    }),
     expose: Schema.optionalKey(ComposeExposeField),
     tmpfs: ComposeTmpfsServiceField,
     volumes: Schema.optionalKey(ComposeVolumesField).annotate({
@@ -830,7 +920,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         "Lifecycle readiness probe, independent of native healthcheck; false explicitly disables command readiness, not process supervision.",
     }),
-    logs: Schema.optionalKey(layerMerge(Schema.Array(LogSourceInput), keyedMerge("log-id"))),
+    logs: Schema.optionalKey(layerMerge(Schema.Array(LogSourceInput), keyedMerge("log-id"))).annotate({
+      description:
+        "Additional in-container log files to surface beside the native console stream; each entry is followed at runtime.",
+    }),
     certs: Schema.optionalKey(CertsInput).annotate({ description: SERVICE_CERTS_DESCRIPTION }),
     hostnames: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
       description:
@@ -839,7 +932,9 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     security: Schema.optionalKey(ServiceSecurityField).annotate({
       description: SERVICE_SECURITY_DESCRIPTION,
     }),
-    depends_on: Schema.optionalKey(ComposeDependsOnInput),
+    depends_on: Schema.optionalKey(ComposeDependsOnInput).annotate({
+      description: COMPOSE_DEPENDS_ON_DESCRIPTION,
+    }),
 
     providers: Schema.optionalKey(ProviderExtensionConfig).annotate({
       description: "Provider-specific service configuration keyed by provider id.",
@@ -868,16 +963,18 @@ const ServiceConfigDecode = ServiceConfigInput.pipe(Schema.decodeTo(ServiceConfi
  * command interpolations bind its output as escaped data; results are never cached.
  */
 export const ToolingVarSh = Schema.Struct({
-  sh: executionSiteKey(Schema.String, "tooling-var"),
-  service: Schema.optionalKey(Schema.String).annotate({
+  sh: executionSiteKey(Schema.String, "tooling-var").annotateKey({
+    description: "Shell command whose captured stdout becomes this variable's value after input admission.",
+  }),
+  service: Schema.optionalKey(Schema.String).annotateKey({
     description:
       "Target for this var command: :host, a service name, or :<declared non-boolean flag>. An explicit target resets task user and dir; invocation overrides still apply.",
   }),
-  env: Schema.optionalKey(ToolingEnvironment).annotate({
+  env: Schema.optionalKey(ToolingEnvironment).annotateKey({
     description:
       "Environment applied only to this var command, after the task env ban; the var command receives no task env.",
   }),
-  sensitive: Schema.optionalKey(Schema.Literal(true)).annotate({
+  sensitive: Schema.optionalKey(Schema.Literal(true)).annotateKey({
     description:
       "Protect captured output from diagnostics and task output. Secret-like names are always sensitive; false is not accepted.",
   }),
@@ -894,17 +991,17 @@ export const ToolingVar = Schema.Union([ToolingVarLiteral, ToolingVarSh]);
 export type ToolingVar = typeof ToolingVar.Type;
 
 export const ToolingStepShape = Schema.Struct({
-  cmd: Schema.String.annotate({ description: "Shell command executed for this step." }),
-  service: Schema.optionalKey(Schema.String).annotate({
+  cmd: Schema.String.annotateKey({ description: "Shell command executed for this step." }),
+  service: Schema.optionalKey(Schema.String).annotateKey({
     description: "Service this step runs in; overrides the task service.",
   }),
-  dir: Schema.optionalKey(PortablePath).annotate({
+  dir: Schema.optionalKey(PortablePath).annotateKey({
     description: "Working directory for this step; overrides the task directory.",
   }),
-  user: Schema.optionalKey(Schema.String).annotate({
+  user: Schema.optionalKey(Schema.String).annotateKey({
     description: "User this step runs as; overrides the task user.",
   }),
-  env: Schema.optionalKey(ToolingEnvironment).annotate({
+  env: Schema.optionalKey(ToolingEnvironment).annotateKey({
     description: "Environment overlaid on the task environment for this step.",
   }),
 });
@@ -939,43 +1036,45 @@ export type ToolingStepShape = typeof ToolingStepShape.Type;
  * `examples:`, `usage:`.
  */
 export const ToolingTaskShape = Schema.Struct({
-  user: Schema.optionalKey(Schema.String).annotate({
+  user: Schema.optionalKey(Schema.String).annotateKey({
     description: "User that the task's commands run as inside the target service.",
   }),
-  disabled: Schema.optionalKey(Schema.Boolean).annotate({
+  disabled: Schema.optionalKey(Schema.Boolean).annotateKey({
     description: "Disables the task so it is hidden from listings and refused at execution.",
   }),
-  service: Schema.optionalKey(Schema.String).annotate({
+  service: Schema.optionalKey(Schema.String).annotateKey({
     description: "Service target, :host for host execution, or :<flag-name> for a dynamic target.",
   }),
-  description: Schema.optionalKey(Schema.String).annotate({ description: "Task description shown in help." }),
-  summary: Schema.optionalKey(Schema.String).annotate({
+  description: Schema.optionalKey(Schema.String).annotateKey({
+    description: "Task description shown in help.",
+  }),
+  summary: Schema.optionalKey(Schema.String).annotateKey({
     description: "Short task help, used when description is absent.",
   }),
   cmd: executionSiteKey(
     Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
     "tooling-cmd",
-  ).annotate({
+  ).annotateKey({
     description: "Single shell command or argv array run by the task.",
   }),
   cmds: executionSiteKey(
     Schema.optionalKey(layerMerge(Schema.Array(Schema.Union([Schema.String, ToolingStepShape])), REPLACE)),
     "tooling-cmds",
-  ).annotate({
+  ).annotateKey({
     description: "Ordered shell commands or command steps with task-local execution overrides.",
   }),
   ...ToolingAuthoredInputFields,
-  wrapper: Schema.optionalKey(Schema.Boolean).annotate({
+  wrapper: Schema.optionalKey(Schema.Boolean).annotateKey({
     description:
       "Mark this task as a thin wrapper around one CLI tool. Every argument and flag after the task name goes to that tool, including --help, --version, and flags Lando also has; Lando's own flags go before the task name. Requires one command and no declared flags or args.",
   }),
-  dir: Schema.optionalKey(PortablePath).annotate({
+  dir: Schema.optionalKey(PortablePath).annotateKey({
     description: "Working directory used when the tooling task runs.",
   }),
-  env: Schema.optionalKey(ToolingEnvironment).annotate({
+  env: Schema.optionalKey(ToolingEnvironment).annotateKey({
     description: "Environment variables applied to this tooling task after app-wide tooling defaults.",
   }),
-  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVar)).annotate({
+  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVar)).annotateKey({
     description: "Task-local variables, overriding include and app-wide tooling variables.",
   }),
   deprecated: Schema.optionalKey(DeprecationNotice),
@@ -1076,10 +1175,18 @@ export const BunShellScriptFrontMatter = Schema.Struct({
 export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;
 
 export const ComposeSecretConfig = Schema.Struct({
-  file: Schema.optionalKey(Schema.String),
-  environment: Schema.optionalKey(Schema.String),
-  external: Schema.optionalKey(Schema.Boolean),
-  name: Schema.optionalKey(Schema.String),
+  file: Schema.optionalKey(Schema.String).annotateKey({
+    description: "Host file supplying the secret contents.",
+  }),
+  environment: Schema.optionalKey(Schema.String).annotateKey({
+    description: "Host environment variable supplying the secret contents.",
+  }),
+  external: Schema.optionalKey(Schema.Boolean).annotateKey({
+    description: "Use an existing runtime secret instead of creating it from a file or environment variable.",
+  }),
+  name: Schema.optionalKey(Schema.String).annotateKey({
+    description: "Runtime secret name, independent of the key services use to reference it.",
+  }),
 }).annotate({ [SchemaNotCredentialAnnotationId]: true });
 export type ComposeSecretConfig = typeof ComposeSecretConfig.Type;
 
@@ -1099,9 +1206,15 @@ export const COMPOSE_EXTENSION_TOP_LEVEL_PATTERN = "x-*" as const;
 export const COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY = `${COMPOSE_TOP_LEVEL_KEYS.join(", ")}, ${COMPOSE_EXTENSION_TOP_LEVEL_PATTERN}`;
 
 const ComposeNamedResourceConfig = Schema.Struct({
-  name: Schema.optionalKey(Schema.String),
-  external: Schema.optionalKey(Schema.Boolean),
-  driver: Schema.optionalKey(Schema.String),
+  name: Schema.optionalKey(Schema.String).annotateKey({
+    description: "Explicit runtime name instead of the app-scoped name derived from the resource key.",
+  }),
+  external: Schema.optionalKey(Schema.Boolean).annotateKey({
+    description: "Use an existing resource instead of creating one for this app.",
+  }),
+  driver: Schema.optionalKey(Schema.String).annotateKey({
+    description: "Runtime storage or network driver to use when creating the resource.",
+  }),
 });
 
 const ComposeNamedNetworkConfig = Schema.Union([ComposeNamedResourceConfig, Schema.Null]).pipe(
@@ -1112,9 +1225,15 @@ const ComposeNamedNetworkConfig = Schema.Union([ComposeNamedResourceConfig, Sche
 );
 
 const ComposeConfigConfig = Schema.Struct({
-  file: Schema.optionalKey(Schema.String),
-  external: Schema.optionalKey(Schema.Boolean),
-  name: Schema.optionalKey(Schema.String),
+  file: Schema.optionalKey(Schema.String).annotateKey({
+    description: "Host file whose contents are mounted as a config by services that reference it.",
+  }),
+  external: Schema.optionalKey(Schema.Boolean).annotateKey({
+    description: "Reference a runtime-managed config instead of reading a project file.",
+  }),
+  name: Schema.optionalKey(Schema.String).annotateKey({
+    description: "Runtime config name, independent of the key services use to reference it.",
+  }),
 });
 
 export const CommandAliasesShape = Schema.Struct({
@@ -1141,7 +1260,9 @@ const LandofileShapeBase = Schema.Struct({
         "User-facing app name. Runtime identity is a lowercase ASCII slug: non-alphanumeric runs become one hyphen, edge hyphens are removed, and the result is capped at 57 characters so the lando-<slug> network label stays within DNS's 63-character limit. Names with no ASCII alphanumeric characters use a stable app-root hash.",
     }),
   ),
-  runtime: Schema.optionalKey(Schema.Literal(4)),
+  runtime: Schema.optionalKey(Schema.Literal(4)).annotateKey({
+    description: "Explicitly select Landofile runtime version 4.",
+  }),
   lando: Schema.optionalKey(
     Schema.String.pipe(
       Schema.check(
@@ -1153,7 +1274,7 @@ const LandofileShapeBase = Schema.Struct({
         ),
       ),
     ),
-  ).annotate({
+  ).annotateKey({
     description:
       'Semver range the running Lando core version must satisfy before the app is planned or started (e.g. ">=4.1 <5"). Prereleases are included; unsatisfied constraints fail closed with remediation.',
   }),
@@ -1163,21 +1284,48 @@ const LandofileShapeBase = Schema.Struct({
         "Recipe id, or inert object-form provenance recording the producing recipe and its merged options.",
     }),
   ),
-  provider: Schema.optionalKey(ProviderId),
-  toolingEngine: Schema.optionalKey(Schema.String),
+  provider: Schema.optionalKey(ProviderId).annotateKey({
+    description: "Installed runtime provider id to use for this app rather than the host default.",
+  }),
+  toolingEngine: Schema.optionalKey(Schema.String).annotateKey({
+    description:
+      "Installed tooling engine id used to run this app's tasks when a task does not select its own engine.",
+  }),
   commandAliases: Schema.optionalKey(CommandAliasesShape).annotate({
     description: "Per-app top-level command alias remapping and disablement policy.",
   }),
-  agentEnv: Schema.optionalKey(Schema.Boolean),
-  version: Schema.optionalKey(Schema.String),
-  includes: Schema.optionalKey(layerMerge(Schema.Array(IncludeEntry), REPLACE)),
-  include: Schema.optionalKey(Schema.Array(Schema.String)),
-  remotes: Schema.optionalKey(Schema.Record(Schema.String, RemoteConfig)),
-  sync: Schema.optionalKey(Schema.Record(Schema.String, DatasetBinding)),
-  volumes: Schema.optionalKey(Schema.Record(Schema.String, ComposeNamedResourceConfig)),
-  networks: Schema.optionalKey(Schema.Record(Schema.String, ComposeNamedNetworkConfig)),
-  configs: Schema.optionalKey(Schema.Record(Schema.String, ComposeConfigConfig)),
-  secrets: Schema.optionalKey(Schema.Record(Schema.String, ComposeSecretConfig)),
+  agentEnv: Schema.optionalKey(Schema.Boolean).annotateKey({
+    description:
+      "Set false to opt out of forwarding host agent environment variables to this app's exec and tooling commands.",
+  }),
+  version: Schema.optionalKey(Schema.String).annotateKey({
+    description:
+      "Compose file version metadata retained for compatibility; use runtime to select the Lando runtime.",
+  }),
+  includes: Schema.optionalKey(layerMerge(Schema.Array(IncludeEntry), REPLACE)).annotateKey({
+    description: "Local or pinned remote fragments to load and merge before this Landofile's own settings.",
+  }),
+  include: Schema.optionalKey(Schema.Array(Schema.String)).annotateKey({
+    description: "Compose shorthand: local paths or source strings for fragments to include during loading.",
+  }),
+  remotes: Schema.optionalKey(Schema.Record(Schema.String, RemoteConfig)).annotateKey({
+    description: "Named data sources and destinations available to app data-transfer commands.",
+  }),
+  sync: Schema.optionalKey(Schema.Record(Schema.String, DatasetBinding)).annotateKey({
+    description: "Named dataset bindings that select the service and path for app data transfers.",
+  }),
+  volumes: Schema.optionalKey(Schema.Record(Schema.String, ComposeNamedResourceConfig)).annotateKey({
+    description: "Named volumes that services can reference in their volume mounts.",
+  }),
+  networks: Schema.optionalKey(Schema.Record(Schema.String, ComposeNamedNetworkConfig)).annotateKey({
+    description: "Named networks that services can join in addition to the app network.",
+  }),
+  configs: Schema.optionalKey(Schema.Record(Schema.String, ComposeConfigConfig)).annotateKey({
+    description: "Named Compose configs that services can reference and mount.",
+  }),
+  secrets: Schema.optionalKey(Schema.Record(Schema.String, ComposeSecretConfig)).annotateKey({
+    description: "Named Compose secrets that services can reference and mount.",
+  }),
   serviceDefaults: Schema.optionalKey(LandofileServiceDefaults).annotate({
     description:
       "Cross-service defaults for this app. serviceDefaults.env_file loads app-root-relative env files into every user-app service below each service's own env_file and environment.",
@@ -1196,16 +1344,22 @@ const LandofileShapeBase = Schema.Struct({
         "Expected a service key with dot-separated labels of letters, digits, hyphens, or underscores, without leading or trailing hyphens (at most 63 characters per label and 253 total).",
       ),
     ),
-  ),
-  proxy: Schema.optionalKey(Schema.Record(ServiceName, layerMerge(Schema.Array(RouteInput), ROUTE_MERGE))),
+  ).annotateKey({ description: "Services to build and run, keyed by service name." }),
+  proxy: Schema.optionalKey(
+    Schema.Record(ServiceName, layerMerge(Schema.Array(RouteInput), ROUTE_MERGE)),
+  ).annotateKey({ description: "Router routes keyed by the names of their target services." }),
   router: Schema.optionalKey(RouterConfig).annotate({
     description: "App-authored shared-router bind address and port policy.",
   }),
-  providers: Schema.optionalKey(ProviderExtensionConfig),
+  providers: Schema.optionalKey(ProviderExtensionConfig).annotateKey({
+    description: "Provider-specific app settings, keyed by runtime provider id.",
+  }),
   toolingDefaults: Schema.optionalKey(ToolingDefaultsShape).annotate({
     description: "App-wide service, directory, environment, and variable defaults for tooling tasks.",
   }),
-  tooling: Schema.optionalKey(Schema.Record(Schema.String, ToolingTaskInput)),
+  tooling: Schema.optionalKey(Schema.Record(Schema.String, ToolingTaskInput)).annotateKey({
+    description: "Named app commands exposed through Lando's tooling dispatcher.",
+  }),
   events: Schema.optionalKey(LandofileEvents),
   toolingIncludes: Schema.optionalKey(Schema.Record(Schema.String, ToolingIncludeShape)).annotate({
     description:

@@ -105,14 +105,26 @@ export type AppLabelDefaults = typeof AppLabelDefaults.Type;
  * schema default for their host decision; they stay opt-in at runtime creation.
  */
 export const TelemetryConfig = Schema.Struct({
-  enabled: Schema.Boolean.pipe(withDefaultKey(true)),
+  enabled: Schema.Boolean.pipe(
+    withDefaultKey(true, { description: "Allow the CLI to send usage telemetry. Set false to opt out." }),
+  ),
 });
 export type TelemetryConfig = typeof TelemetryConfig.Type;
 
 export const NetworkProxyConfig = Schema.Struct({
-  http: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  https: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  noProxy: Schema.Array(Schema.String).pipe(withDefaultKey([])),
+  http: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])).annotateKey({
+    description:
+      "Proxy URL for plain HTTP requests. Use null to disable proxying for HTTP instead of using the host environment.",
+  }),
+  https: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])).annotateKey({
+    description:
+      "Proxy URL for HTTPS requests. Use null to disable proxying for HTTPS instead of using the host environment.",
+  }),
+  noProxy: Schema.Array(Schema.String).pipe(
+    withDefaultKey([], {
+      description: "Host and optional port patterns that bypass the HTTP and HTTPS proxies.",
+    }),
+  ),
   /**
    * When true, write the resolved proxy env (`HTTP_PROXY` / `HTTPS_PROXY` /
    * `NO_PROXY`) into `type: lando` service env layers. Default false — proxy
@@ -128,8 +140,17 @@ export const NetworkProxyConfig = Schema.Struct({
 export type NetworkProxyConfig = typeof NetworkProxyConfig.Type;
 
 export const NetworkCaConfig = Schema.Struct({
-  trustHost: Schema.Boolean.pipe(withDefaultKey(true)),
-  certs: Schema.Array(Schema.String).pipe(withDefaultKey([])),
+  trustHost: Schema.Boolean.pipe(
+    withDefaultKey(true, {
+      description:
+        "Include the host's system CA certificates when verifying outbound TLS; false restricts trust to the configured certificates.",
+    }),
+  ),
+  certs: Schema.Array(Schema.String).pipe(
+    withDefaultKey([], {
+      description: "Host paths to readable PEM CA certificate files to trust for outbound TLS.",
+    }),
+  ),
   /**
    * When true (default), install `network.ca.certs` into every `type: lando`
    * service trust store and runtime CA env (`NODE_EXTRA_CA_CERTS`, etc.) so
@@ -146,8 +167,13 @@ export const NetworkCaConfig = Schema.Struct({
 export type NetworkCaConfig = typeof NetworkCaConfig.Type;
 
 export const NetworkConfig = Schema.Struct({
-  proxy: Schema.optionalKey(NetworkProxyConfig),
-  ca: Schema.optionalKey(NetworkCaConfig),
+  proxy: Schema.optionalKey(NetworkProxyConfig).annotateKey({
+    description: "HTTP and HTTPS egress proxy policy for Lando's host-side network requests.",
+  }),
+  ca: Schema.optionalKey(NetworkCaConfig).annotateKey({
+    description:
+      "Certificate authorities used to verify Lando's outbound TLS connections, with optional installation into Lando-managed services.",
+  }),
 });
 export type NetworkConfig = typeof NetworkConfig.Type;
 

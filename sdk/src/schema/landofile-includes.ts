@@ -39,14 +39,20 @@ export type ToolingIncludeShape = typeof ToolingIncludeShape.Type;
 export const IncludeEntry = Schema.Union([
   Schema.String,
   Schema.Struct({
-    source: Schema.String,
+    source: Schema.String.annotateKey({
+      description: "Local fragment path or remote source specifier to resolve during Landofile loading.",
+    }),
     when: Schema.optionalKey(IncludeWhen).annotateKey({ description: INCLUDE_WHEN_DESCRIPTION }),
     kind: Schema.optionalKey(Schema.Literals(["landofile", "compose", "tooling"])).annotate({
       description:
         'The fragment content semantics: "landofile" is a Landofile fragment; "compose" is a Compose fragment routed through the same parser, rejection, and decode path; "tooling" is a tooling fragment carrying only tooling: and toolingIncludes:. This is not source transport.',
     }),
-    path: Schema.optionalKey(Schema.String),
-    version: Schema.optionalKey(Schema.String),
+    path: Schema.optionalKey(Schema.String).annotateKey({
+      description: "Path to the fragment within the acquired remote source.",
+    }),
+    version: Schema.optionalKey(Schema.String).annotateKey({
+      description: "Version selector for the remote source, resolved when updating include pins.",
+    }),
     namespace: Schema.optionalKey(Schema.String).annotate({
       description:
         'kind: "tooling" only: the sub-namespace included tasks register under. Required unless flatten is true.',
