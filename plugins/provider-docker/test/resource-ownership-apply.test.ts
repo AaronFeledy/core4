@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
-import { loadAppliedPlan } from "@lando/provider-docker";
-import { ServiceName, landoAppNetworkName } from "@lando/sdk/schema";
+import { loadAppliedPlan, persistAppliedPlan } from "@lando/provider-docker";
+import { ServiceName, landoAppNetworkName, planAppIdentity } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 import { webFor, withInventory } from "./resource-ownership-support.ts";
@@ -13,6 +13,30 @@ const CreateBodyLabels = Schema.Struct({
 const NetworkCreateBody = Schema.Struct({
   Name: Schema.String,
   Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+});
+
+test("direct scoped apply cannot bypass legacy adoption preflight", async () => {
+  await withInventory(async ({ plan, root, state, store }) => {
+    await Effect.runPromise(persistAppliedPlan(state, plan));
+    const desired = { ...plan, identity: { ...planAppIdentity(plan), dataRoot: root } };
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "linux",
+        appliedPlanState: state,
+        dockerApi: {
+          info: Effect.succeed({}),
+          request: () => Effect.succeed({ status: 404, body: "" }),
+        },
+      }),
+    );
+
+    const result = await Effect.runPromise(
+      Effect.scoped(provider.apply(desired, { reconcile: false })).pipe(Effect.result),
+    );
+
+    expect(result).toMatchObject({ _tag: "Failure", failure: { operation: "data-root-adoption" } });
+    expect(await Effect.runPromise(store.load(root))).toBeUndefined();
+  });
 });
 
 test("failed apply leaves durable ownership hints for verified later cleanup without rollback", async () => {

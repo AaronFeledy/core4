@@ -68,21 +68,17 @@ const makeOwnership = (options: ProviderPlanStateOptions) => {
   const adopt = Effect.fn("ProviderOwnership.adopt")(function* (
     plan: AppPlan,
     previous: AppPlan | undefined,
-    witness?: Parameters<NonNullable<RuntimeProviderShape["adoptDataRoot"]>>[1],
+    witness: Parameters<NonNullable<RuntimeProviderShape["adoptDataRoot"]>>[1],
   ) {
     const api = options.api;
     if (api?.request === undefined) return;
     yield* adoptLegacyDataRoot(plan, previous, {
       request: api.request,
       store,
-      ...(witness === undefined
-        ? {}
-        : {
-            volumeWitness: (name: string) =>
-              volumeCoordinationKey({ ...options, api, providerId: options.ctx.providerId }, name).pipe(
-                Effect.flatMap((key) => (key === undefined ? Effect.succeed(undefined) : witness(key))),
-              ),
-          }),
+      volumeWitness: (name) =>
+        volumeCoordinationKey({ ...options, api, providerId: options.ctx.providerId }, name).pipe(
+          Effect.flatMap((key) => (key === undefined ? Effect.succeed(undefined) : witness(key))),
+        ),
     });
   });
   return {
@@ -95,7 +91,28 @@ const makeOwnership = (options: ProviderPlanStateOptions) => {
         ctx: options.ctx,
         ...(options.api === undefined ? {} : { api: options.api }),
       });
-      yield* adopt(plan, previous);
+      const owner = planAppIdentity(plan);
+      if (
+        owner.dataRoot !== undefined &&
+        previous !== undefined &&
+        previous.root === plan.root &&
+        previous.identity?.dataRoot === undefined
+      ) {
+        const inventory = yield* store.load(owner.appRoot);
+        if (
+          !inventory?.adoptions?.some(
+            (batch) => batch.dataRoot === owner.dataRoot && batch.previousAppId === previous.id,
+          )
+        ) {
+          return yield* new ProviderUnavailableError({
+            providerId: options.ctx.providerId,
+            operation: "data-root-adoption",
+            message: "The legacy applied plan has not been checked for data-root adoption.",
+            remediation:
+              "Start the app through Lando so it can verify legacy resources and volume initialization before applying the new plan.",
+          });
+        }
+      }
       yield* store.prepare(plan, previous);
       return yield* receiptsFor(plan);
     }),
