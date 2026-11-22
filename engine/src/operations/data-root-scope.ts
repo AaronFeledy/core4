@@ -1,6 +1,6 @@
 import { type AdoptionReceipt, decideDataRootOwnership } from "@lando/container-runtime/native-ownership";
-import type { AppPlan } from "@lando/sdk/schema";
-import { PathsService, type ProviderRuntimeSnapshot } from "@lando/sdk/services";
+import { type AppPlan, LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
+import { PathsService, type ProviderRuntimeSnapshot, type ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 
@@ -11,21 +11,14 @@ export const currentDataRoot = Effect.flatMap(PathsService, (paths) =>
 export const localAppliedRecord = (plan: Pick<AppPlan, "identity">, dataRoot: string): boolean =>
   plan.identity?.dataRoot === undefined || plan.identity.dataRoot === dataRoot;
 
-export const scopeRuntimeSnapshot = <
-  Snapshot extends Pick<ProviderRuntimeSnapshot, "services" | "volumes"> &
-    Partial<Pick<ProviderRuntimeSnapshot, "appliedPlans">>,
->(
-  snapshot: Snapshot,
-  dataRoot: string,
-  receipts: readonly AdoptionReceipt[] = [],
-): Snapshot => ({
-  ...snapshot,
-  ...(snapshot.appliedPlans === undefined
-    ? {}
-    : { appliedPlans: snapshot.appliedPlans.filter((plan) => localAppliedRecord(plan, dataRoot)) }),
-  services: snapshot.services.filter(
-    (service) =>
-      decideDataRootOwnership(
+export const serviceInDataRoot = (
+  service: ServiceRuntimeInfo,
+  dataRoot: string | undefined,
+  receipts: readonly AdoptionReceipt[],
+): boolean =>
+  dataRoot === undefined
+    ? service.labels?.[LANDO_DATA_ROOT_LABEL] === undefined
+    : decideDataRootOwnership(
         {
           kind: "container",
           nativeName: service.nativeName ?? "",
@@ -41,8 +34,21 @@ export const scopeRuntimeSnapshot = <
               receipt.appId === service.app,
           ),
         },
-      ) === "owned",
-  ),
+      ) === "owned";
+
+export const scopeRuntimeSnapshot = <
+  Snapshot extends Pick<ProviderRuntimeSnapshot, "services" | "volumes"> &
+    Partial<Pick<ProviderRuntimeSnapshot, "appliedPlans">>,
+>(
+  snapshot: Snapshot,
+  dataRoot: string,
+  receipts: readonly AdoptionReceipt[] = [],
+): Snapshot => ({
+  ...snapshot,
+  ...(snapshot.appliedPlans === undefined
+    ? {}
+    : { appliedPlans: snapshot.appliedPlans.filter((plan) => localAppliedRecord(plan, dataRoot)) }),
+  services: snapshot.services.filter((service) => serviceInDataRoot(service, dataRoot, receipts)),
   volumes: snapshot.volumes.filter((volume) => {
     const identity = volume.identity;
     return (

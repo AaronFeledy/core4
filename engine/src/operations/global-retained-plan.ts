@@ -25,6 +25,7 @@ import { resolveGlobalPlacement } from "../global-app/placement.ts";
 import { readGlobalResolution } from "../global-app/resolution.ts";
 import { adoptPlanDataRoot } from "../lifecycle/volume-coordination.ts";
 import { prepareProvider } from "../providers/prepared.ts";
+import { serviceInDataRoot } from "./data-root-scope.ts";
 import { composeGlobalRecordedPlan } from "./global-recorded-plan.ts";
 import { selectGlobalPlan } from "./global-selected-plan.ts";
 import { globalSiblingConflicts } from "./global-sibling-conflicts.ts";
@@ -129,11 +130,24 @@ export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(
   },
 ) {
   const { prior, provider, replacement } = yield* prepareGlobalReplacement(desired, selectedProvider);
+  const registry = yield* RuntimeProviderRegistry;
+  const dataRoot = desired.identity?.dataRoot;
+  const receipts =
+    dataRoot === undefined
+      ? []
+      : adoptionReceiptsFromSummary(
+          yield* registry.resourceOwnership?.(desired.provider, desired.root) ?? Effect.succeed(undefined),
+        ).filter(
+          (receipt) =>
+            receipt.providerId === desired.provider &&
+            receipt.appRoot === desired.root &&
+            receipt.appId === desired.id,
+        );
   const observed = (yield* provider.list({ app: desired.id, includeUnplanned: true })).filter(
     (service) =>
       service.app === desired.id &&
       service.appRoot === desired.root &&
-      service.labels?.[LANDO_DATA_ROOT_LABEL] === desired.identity?.dataRoot,
+      serviceInDataRoot(service, dataRoot, receipts),
   );
   const resolution = yield* readGlobalResolution({
     providerId: desired.provider,
@@ -167,7 +181,7 @@ export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(
       const id = String(observation.service);
       if (selected.has(id)) continue;
       const active = isActiveRunStatus(observation.status);
-      if (!ownsServiceContainer(desired, observation)) {
+      if (!ownsServiceContainer(desired, observation, receipts)) {
         if (active)
           failure = new GlobalAppError({
             operation: "start",
@@ -234,7 +248,7 @@ export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(
   // Removal targets keep their recorded metadata until the group that removes them succeeds.
   const owned = observed.filter(
     (observation) =>
-      ownsServiceContainer(desired, observation) &&
+      ownsServiceContainer(desired, observation, receipts) &&
       Object.hasOwn(prior?.services ?? {}, String(observation.service)),
   );
   const recordedIds = new Set(owned.map((observation) => String(observation.service)));

@@ -1,9 +1,9 @@
+import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import { AppResolveError } from "@lando/sdk/errors";
 import { PostGlobalDestroyEvent, PreGlobalDestroyEvent } from "@lando/sdk/events";
 import {
   AbsolutePath,
   AppId,
-  LANDO_DATA_ROOT_LABEL,
   type ServiceShutdownObservation,
   isActiveRunStatus,
   noVolumesRemoved,
@@ -24,7 +24,7 @@ import { type AppliedStateProvider, resolveTeardownEvidence } from "../providers
 import { observeRuntime, prepareTeardownOwners, runtimeOnline } from "../providers/runtime-observation.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { missingRootAppliedTarget } from "./applied-state-target.ts";
-import { currentDataRoot } from "./data-root-scope.ts";
+import { currentDataRoot, serviceInDataRoot } from "./data-root-scope.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
 import { removeGlobalResources } from "./global-teardown-resources.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
@@ -150,11 +150,12 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
   const observed = online
     ? yield* resolved.provider.list({ app: evidence.plan.id, includeUnplanned: true })
     : [];
+  const receipts = (evidence.ownership ?? []).flatMap(adoptionReceiptsFromSummary);
   const owned = observed.filter(
     (service) =>
       service.app === evidence.plan.id &&
       service.appRoot === resolved.paths.root &&
-      service.labels?.[LANDO_DATA_ROOT_LABEL] === evidence.plan.identity?.dataRoot &&
+      serviceInDataRoot(service, evidence.plan.identity?.dataRoot, receipts) &&
       service.providerId === evidence.plan.provider &&
       service.containerId !== undefined,
   );
