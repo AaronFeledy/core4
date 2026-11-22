@@ -4,6 +4,7 @@ import { APP_LABEL, APP_ROOT_LABEL, PROVIDER_LABEL, SERVICE_LABEL } from "@lando
 import { rememberAppliedPlan } from "@lando/container-runtime/provider-assembly";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
+  AbsolutePath,
   type AppPlan,
   type AppliedAppPlan,
   PortablePath,
@@ -149,6 +150,24 @@ test("a whole-app start removes a removed service's owned container and drops it
   expect(seen[0]?.recordedPlan).toBeUndefined();
   expect(Object.keys(record.read()?.services ?? {})).toEqual([String(web.name)]);
   expect(record.read()?.stores).toEqual([]);
+});
+
+test("upgrade removes an unlabeled service dropped from the recorded plan's successor", async () => {
+  const containers = runningContainer();
+  const harness = makeHarness({
+    plannedApp: desired,
+    resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(withAdminer)),
+    providerOverrides: containers.providerOverrides,
+  });
+  const scoped = {
+    ...desired,
+    identity: { ...planAppIdentity(desired), dataRoot: AbsolutePath.make(harness.userDataRoot) },
+  };
+  const result = await Effect.runPromise(
+    startApp({}, { ...target, plan: scoped }).pipe(Effect.provide(harness.layer)),
+  );
+  expect(result.servicesRemoved).toEqual([String(adminer.name)]);
+  expect(containers.containers).toEqual([]);
 });
 
 test("a second start over the converged app removes nothing and stays quiet", async () => {

@@ -1,12 +1,17 @@
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
   LANDO_SHARED_CROSS_APP_NETWORK,
   appIdentityKey,
   landoSharedNetworkName,
   planAppIdentity,
 } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
+import { dataRootLabels, matchesDataRoot } from "./data-root-labels.ts";
+
+export { matchesDataRoot, ownsSharedCrossAppNetwork } from "./data-root-labels.ts";
+
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
 import {
   APP_LABEL,
@@ -34,6 +39,7 @@ const Observation = Schema.Struct({
   name: Schema.optionalKey(Schema.String),
   Labels: Schema.optionalKey(Schema.NullOr(Labels)),
   labels: Schema.optionalKey(Schema.NullOr(Labels)),
+  Containers: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
   Config: Schema.optionalKey(Schema.Struct({ Labels: Schema.optionalKey(Labels) })),
 });
 export type NativeObservation = typeof Observation.Type;
@@ -57,11 +63,19 @@ export const coherentContainerOwnership = (
     serviceContainerOwnershipProblem(labels, {
       app,
       appRoot: labels[APP_ROOT_LABEL] ?? "",
+      dataRoot: labels[LANDO_DATA_ROOT_LABEL],
       service: labels[SERVICE_LABEL] ?? "",
       providerId,
     }) === undefined
   );
 };
+
+export const isRecordedAppPlan = (plan: AppPlan, recorded: AppPlan | undefined): recorded is AppPlan =>
+  recorded !== undefined &&
+  recorded.id === plan.id &&
+  recorded.provider === plan.provider &&
+  planAppIdentity(recorded).appRoot === planAppIdentity(plan).appRoot &&
+  matchesDataRoot(recorded.identity?.dataRoot, plan.identity?.dataRoot, true);
 
 /** Authorizes a planned service-container mutation from native labels plus its observed identity. */
 export const ownsServiceContainer = (
@@ -71,15 +85,19 @@ export const ownsServiceContainer = (
     readonly service: string;
     readonly labels?: Readonly<Record<string, string>>;
   },
+  recorded = false,
 ): boolean => {
   const labels = observation.labels;
   if (labels === undefined || !observation.containerId) return false;
+  const owner = labels[LANDO_DATA_ROOT_LABEL];
+  if (!matchesDataRoot(owner, plan.identity?.dataRoot, recorded)) return false;
   if (
     serviceContainerOwnershipProblem(labels, {
       app: plan.id,
       appRoot: planAppIdentity(plan).appRoot,
       service: observation.service,
       providerId: plan.provider,
+      dataRoot: owner,
     }) !== undefined
   )
     return false;
@@ -106,6 +124,7 @@ export const coherentPrivateNetworkOwnership = (
       privateNetworkLabels({
         appId,
         appRoot,
+        dataRoot: labels[LANDO_DATA_ROOT_LABEL],
         ownerKey: appIdentityKey("owner", appRoot),
         providerId,
         ...(scratch === "TRUE" ? { scratchId: appId } : {}),
@@ -117,12 +136,14 @@ export const coherentPrivateNetworkOwnership = (
 export const privateNetworkLabels = (resource: {
   readonly appId: string;
   readonly appRoot: string;
+  readonly dataRoot?: string | undefined;
   readonly ownerKey: string;
   readonly providerId: string;
   readonly scratchId?: string;
 }) => ({
   [APP_LABEL]: resource.appId,
   [APP_ROOT_LABEL]: resource.appRoot,
+  ...dataRootLabels(resource.dataRoot),
   "dev.lando.owner": resource.ownerKey,
   "dev.lando.provider": resource.providerId,
   ...(resource.scratchId === undefined
@@ -134,6 +155,7 @@ export const containerOwnershipLabels = (plan: AppPlan, service: string) => ({
   [APP_LABEL]: plan.id,
   [APP_ROOT_LABEL]: planAppIdentity(plan).appRoot,
   [SERVICE_LABEL]: service,
+  ...dataRootLabels(plan.identity?.dataRoot),
   ...scratchLabelsForPlan(plan),
 });
 
@@ -151,11 +173,15 @@ export const networkOwnershipLabels = (plan: AppPlan) => {
 export const networkLabelsDecision = (
   labels: Readonly<Record<string, string>> | undefined,
   expected: Readonly<Record<string, string>>,
+  recorded = false,
 ): "owned" | "legacy" | "foreign" => {
   if (labels === undefined || Object.keys(labels).length === 0)
     return SCRATCH_ID_LABEL in expected ? "foreign" : "legacy";
-  return Object.keys(labels).length === Object.keys(expected).length &&
-    Object.entries(expected).every(([key, value]) => labels[key] === value)
+  const owner = labels[LANDO_DATA_ROOT_LABEL];
+  const { [LANDO_DATA_ROOT_LABEL]: expectedOwner, ...proof } = expected;
+  return matchesDataRoot(owner, expectedOwner, recorded) &&
+    Object.keys(labels).length === Object.keys(proof).length + (owner === undefined ? 0 : 1) &&
+    Object.entries(proof).every(([key, value]) => labels[key] === value)
     ? "owned"
     : "foreign";
 };
@@ -175,6 +201,8 @@ const refused = (
   },
 ) => {
   const root = resource?.labels[APP_ROOT_LABEL];
+  const dataRoot = resource?.labels[LANDO_DATA_ROOT_LABEL];
+  const foreignDataRoot = dataRoot !== undefined && dataRoot !== resource?.expected[LANDO_DATA_ROOT_LABEL];
   const foreign =
     resource !== undefined &&
     root !== undefined &&
@@ -190,9 +218,11 @@ const refused = (
       : resource?.problem === undefined
         ? "Native resource ownership labels or identity could not be verified. No mutation is authorized."
         : `${resource.kind === "container" ? "Container" : "Network"} ${resource.name} failed ownership verification on its ${resource.problem}. No mutation is authorized.`,
-    remediation: foreign
-      ? "Change `name:` in this app's .lando.yml (or destroy the other app) and run `lando start` again."
-      : "Inspect the conflicting native resource and restore its verified Lando ownership or move it out of the planned name before retrying. Unlabeled resources cannot be adopted.",
+    remediation: foreignDataRoot
+      ? `Use the Lando installation with data root ${dataRoot} to manage this resource.`
+      : foreign
+        ? "Change `name:` in this app's .lando.yml (or destroy the other app) and run `lando start` again."
+        : "Inspect the conflicting native resource and restore its verified Lando ownership or move it out of the planned name before retrying. Unlabeled resources cannot be adopted.",
     ...(foreign
       ? { details: { root } }
       : resource?.problem === undefined
@@ -231,6 +261,7 @@ export const verifiedNativeId = Effect.fnUntraced(function* (
           appRoot: expected[APP_ROOT_LABEL] ?? "",
           service: expected[SERVICE_LABEL] ?? "",
           providerId: ctx.providerId,
+          dataRoot: expected[LANDO_DATA_ROOT_LABEL],
         });
   const scratchExpected = expected[SCRATCH_LABEL];
   const scratchMatches =
@@ -260,6 +291,7 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
         readonly kind: "network";
         readonly legacy: "accept" | "reject";
         readonly exactName?: true;
+        readonly recorded?: boolean;
       }
   ) & {
     readonly name: string;
@@ -299,16 +331,17 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
       const observed = Array.isArray(decoded.value) ? decoded.value[0] : decoded.value;
       const id = observed?.Id ?? observed?.ID ?? observed?.id;
       const labels = observed?.Labels ?? observed?.labels ?? {};
+      const exactName = (observed?.Name ?? observed?.name) === target.name;
       const decision = networkLabelsDecision(
         Object.keys(labels).length === 0 ? undefined : labels,
         target.labels,
+        exactName && target.recorded === true,
       );
       if (
         !id ||
-        (target.exactName === true && (observed?.Name ?? observed?.name) !== target.name) ||
+        (target.exactName === true && !exactName) ||
         decision === "foreign" ||
-        (decision === "legacy" &&
-          (target.legacy === "reject" || (observed?.Name ?? observed?.name) !== target.name))
+        (decision === "legacy" && (target.legacy === "reject" || !exactName))
       )
         return yield* Effect.fail(refused(ctx, { ...target, labels, expected: target.labels }));
       return id;

@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { access, readFile, readdir, realpath } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import {
   APP_LABEL,
@@ -9,9 +9,11 @@ import {
   SERVICE_LABEL,
   VOLUME_OWNER_LABEL,
 } from "@lando/container-runtime/labels";
+import { matchesDataRoot, serviceContainerOwnershipLabels } from "@lando/container-runtime/native-ownership";
 
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
-import { makeLandoPaths } from "@lando/paths";
+import { makeLandoPaths, sameRealpath } from "@lando/paths";
+import { LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 import type { Context } from "effect";
 import { Predicate } from "effect";
@@ -298,7 +300,7 @@ const labeledResourceEvidence = (
 
 export const appsFromContainerList = (
   body: unknown,
-  options: { readonly globalAppRoot?: string; readonly includeScratch?: boolean } = {},
+  options: { readonly includeScratch?: boolean } = {},
 ): AppsListEntry[] => {
   if (!Array.isArray(body)) return [];
   const grouped = new Map<
@@ -320,7 +322,7 @@ export const appsFromContainerList = (
     const scratch = labels[SCRATCH_LABEL] === "TRUE";
     if (options.includeScratch !== true && scratch) continue;
     const providerId = labels[PROVIDER_LABEL] ?? "lando";
-    const appRoot = labels[APP_ROOT_LABEL] ?? (appId === GLOBAL_APP_ID ? (options.globalAppRoot ?? "") : "");
+    const appRoot = labels[APP_ROOT_LABEL] ?? "";
     const key = appsListIdentity({ providerId, appRoot, appId, scratch });
     const existing = grouped.get(key) ?? {
       appId,
@@ -407,6 +409,8 @@ export const discoverRunningAppsEvidenceFromSockets = async (
   } = {},
 ): Promise<AppsDiscoveryEvidence> => {
   const paths = makeLandoPaths({ userDataRoot });
+  // Pre-upgrade containers lack dev.lando.data-root; keep them only when this root still records the app.
+  const recorded = await readAppliedPlansFromUserData(userDataRoot);
   const discoveredApps: AppsListEntry[] = [];
   const listedProviders = new Set<string>();
   const owned = new Map<string, OwnedAppResource>();
@@ -432,17 +436,49 @@ export const discoverRunningAppsEvidenceFromSockets = async (
       const volumes = Predicate.isObject(volumesBody) ? volumesBody.Volumes : undefined;
       if (!Array.isArray(containers) || (volumes !== null && !Array.isArray(volumes)))
         throw new TypeError("Container runtime returned an invalid resource inventory.");
-      const apps = appsFromContainerList(containers, {
-        globalAppRoot: await realpath(paths.globalAppRoot).catch(() => paths.globalAppRoot),
+      let socketProvider: string | undefined;
+      const localContainers = [];
+      for (const resource of containers) {
+        if (!Predicate.isObject(resource)) continue;
+        const labels = stringLabels(resource.Labels);
+        const owner = labels[LANDO_DATA_ROOT_LABEL];
+        if (owner !== undefined) {
+          if (sameRealpath(owner, paths.roots.userDataRoot)) localContainers.push(resource);
+          continue;
+        }
+        const service = labels[SERVICE_LABEL];
+        if (service === undefined) continue;
+        const matches = recorded.filter(
+          (entry) =>
+            entry.services.includes(service) &&
+            serviceContainerOwnershipLabels(labels, {
+              app: entry.appId,
+              appRoot: entry.appRoot,
+              service,
+              providerId: entry.providerId,
+            }),
+        );
+        if (matches.length === 0) continue;
+        const labeledProvider = labels[PROVIDER_LABEL];
+        if (labeledProvider === undefined) socketProvider ??= await providerIdOnSocket(socket, userDataRoot);
+        const record = matches.find((entry) => entry.providerId === (labeledProvider ?? socketProvider));
+        if (record !== undefined && matchesDataRoot(owner, paths.roots.userDataRoot, true))
+          localContainers.push({ ...resource, Labels: { ...labels, [PROVIDER_LABEL]: record.providerId } });
+      }
+      const apps = appsFromContainerList(localContainers, {
         ...(options.includeScratch === true ? { includeScratch: true } : {}),
       });
       const containerEvidence = labeledResourceEvidence(
-        containers,
+        localContainers,
         APP_ROOT_LABEL,
         options.includeScratch === true,
       );
       const volumeEvidence = labeledResourceEvidence(
-        volumes,
+        volumes?.filter((resource) => {
+          if (!Predicate.isObject(resource)) return false;
+          const owner = stringLabels(resource.Labels)[LANDO_DATA_ROOT_LABEL];
+          return owner !== undefined && sameRealpath(owner, paths.roots.userDataRoot);
+        }),
         VOLUME_OWNER_LABEL,
         options.includeScratch === true,
       );
@@ -451,7 +487,9 @@ export const discoverRunningAppsEvidenceFromSockets = async (
         ...volumeEvidence.providerIds,
       ]);
       const confirmedProviderIds =
-        labeledProviderIds.length > 0 ? labeledProviderIds : [await providerIdOnSocket(socket, userDataRoot)];
+        labeledProviderIds.length > 0
+          ? labeledProviderIds
+          : [socketProvider ?? (await providerIdOnSocket(socket, userDataRoot))];
       discoveredApps.push(...apps);
       for (const provider of confirmedProviderIds) listedProviders.add(provider);
       for (const resource of [...containerEvidence.ownedResources, ...volumeEvidence.ownedResources])

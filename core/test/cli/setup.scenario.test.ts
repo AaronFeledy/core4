@@ -7,17 +7,21 @@ import { makeTestDownloader, makeTestInteractionService } from "@lando/core/test
 import { GlobalConfigSources } from "@lando/engine/services/config";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
+import { makeLandoPaths } from "@lando/paths";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
+
 import {
   ConfigService,
   Downloader,
   EventService,
   InteractionService,
+  PathsService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+
 import { Effect, Layer, Schema, Stream } from "effect";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 
@@ -91,6 +95,7 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
     select: () => Effect.succeed(provider),
   });
   return Layer.mergeAll(
+    Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(RuntimeProviderRegistry, registry),
     makeEventServiceLayer(sink),
     makeConfigServiceLayer(),
@@ -232,6 +237,7 @@ describe("meta:setup task tree progress", () => {
         select: () => Effect.succeed(provider),
       });
       const layer = Layer.mergeAll(
+        Layer.succeed(PathsService, makeLandoPaths()),
         Layer.succeed(RuntimeProviderRegistry, registry),
         makeEventServiceLayer(sink),
         makeConfigServiceLayer(),

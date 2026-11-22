@@ -9,7 +9,7 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
-import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { GlobalAppService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Clock, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
@@ -21,6 +21,7 @@ import {
   sidecarSocketCheck,
 } from "../../../src/subsystems/ssh-agent/session.ts";
 import { globalPlanAt } from "../../../src/testing/global-teardown.ts";
+import { pathsServiceLayer, testPaths } from "../../paths-service.ts";
 
 const globalRoot = AbsolutePath.make("/lando/global");
 const globalApp = GlobalAppService.of({
@@ -63,23 +64,28 @@ const runningProvider = {
       publications: { status: "unknown" as const },
     }),
 };
-const withProvider = (provider: typeof TestRuntimeProvider, plan: AppPlan | null = applied) =>
-  Effect.provideService(RuntimeProviderRegistry, {
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: (root, app, lookup) =>
-      Effect.succeed(
-        root === globalRoot && app?.id === applied.id && app.kind === "global" && lookup === "exact"
-          ? (plan ?? undefined)
-          : undefined,
-      ),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    list: Effect.succeed([ProviderId.make(provider.id)]),
-    capabilities: Effect.succeed(provider.capabilities),
-    select: (target) =>
-      Effect.succeed(
-        typeof target !== "string" && target?.provider === provider.id ? provider : TestRuntimeProvider,
-      ),
-  });
+const withProvider =
+  (provider: typeof TestRuntimeProvider, plan: AppPlan | null = applied) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(
+      Effect.provideService(PathsService, testPaths()),
+      Effect.provideService(RuntimeProviderRegistry, {
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: (root, app, lookup) =>
+          Effect.succeed(
+            root === globalRoot && app?.id === applied.id && app.kind === "global" && lookup === "exact"
+              ? (plan ?? undefined)
+              : undefined,
+          ),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        list: Effect.succeed([ProviderId.make(provider.id)]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: (target) =>
+          Effect.succeed(
+            typeof target !== "string" && target?.provider === provider.id ? provider : TestRuntimeProvider,
+          ),
+      }),
+    ) as Effect.Effect<A, E, Exclude<R, PathsService | RuntimeProviderRegistry>>;
 
 test("builds a read-only passthrough bind when the socket uses a host directory", () => {
   // Given
@@ -362,7 +368,7 @@ test("overall timeout retains the last completed failure rather than the interru
       const fiber = yield* Effect.forkChild(awaitRuntimeSshAgent(check));
       yield* TestClock.adjust("30 seconds");
       return yield* Fiber.join(fiber);
-    }).pipe(Effect.provide(TestClock.layer())),
+    }).pipe(Effect.provide(TestClock.layer()), Effect.provide(pathsServiceLayer())),
   );
   // Then the completed failure, not ProbeTimeoutError, is the reported reason.
   expect(result).toEqual({ state: "starting", detail: "concrete exec refusal" });

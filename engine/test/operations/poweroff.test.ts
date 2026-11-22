@@ -9,6 +9,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
   ProviderId,
   ServiceName,
   appIdentityKey,
@@ -18,6 +19,7 @@ import {
   AppPlanner,
   ConfigService,
   LandofileService,
+  PathsService,
   RuntimeProviderRegistry,
   ScratchAppService,
   StateStore,
@@ -64,6 +66,7 @@ const serviceAt = (root: string, app: string, status: ServiceRuntimeInfo["status
   status,
   containerId: `${app}-web`,
   publications: { status: "unknown" as const },
+  labels: { [LANDO_DATA_ROOT_LABEL]: dataRoot },
 });
 
 const fakeConfigService = Layer.succeed(
@@ -116,7 +119,12 @@ const makeHarness = async (input: {
       ...serviceAt(root, "global", "running"),
       service: ServiceName.make(service),
       containerId: service,
-      labels: { [APP_LABEL]: "global", [APP_ROOT_LABEL]: root, [SERVICE_LABEL]: service },
+      labels: {
+        ...serviceAt(root, "global", "running").labels,
+        [APP_LABEL]: "global",
+        [APP_ROOT_LABEL]: root,
+        [SERVICE_LABEL]: service,
+      },
     };
   });
   services.push(...globalServices);
@@ -232,6 +240,7 @@ const makeHarness = async (input: {
     AppPlanner.of({ plan: () => Effect.die("no desired plan may be built during poweroff inventory") }),
   );
   const layer = Layer.mergeAll(
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: dataRoot })),
     teardown.layer,
     layerTransactionGuard,
     emptySnapshotsLayer,

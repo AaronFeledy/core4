@@ -15,6 +15,7 @@ import { matchesAppPlanIdentity } from "../providers/app-plan-identity.ts";
 import { readAcceleratedStartInventory } from "./accelerated-start-inventory.ts";
 import { digest } from "./accelerated-start-record.ts";
 import { appRootIdentityKey } from "./app-root-identity.ts";
+import { currentDataRoot, scopeRuntimeSnapshot } from "./data-root-scope.ts";
 import {
   providerInventoryFailure,
   unobservedRuntimeError,
@@ -263,11 +264,16 @@ export const readRunningInventory = Effect.fnUntraced(function* () {
         }),
       });
   }
-  const targets = deriveRunningTargets(inventory.snapshots, journalRecords);
+  const scope = yield* Effect.result(currentDataRoot);
+  if (Result.isFailure(scope)) failures.push(providerInventoryFailure("data-root", scope.failure));
+  const snapshots = Result.isSuccess(scope)
+    ? inventory.snapshots.map((snapshot) => scopeRuntimeSnapshot(snapshot, scope.success))
+    : [];
+  const targets = deriveRunningTargets(snapshots, journalRecords);
   return {
     userTargets: targets.userTargets,
     failures: [...failures, ...targets.failures],
-    resolveGlobalTarget: resolveGlobalStopTarget(inventory.snapshots),
+    resolveGlobalTarget: resolveGlobalStopTarget(snapshots),
     // User stop hooks can change the scratch list before poweroff reaches that phase.
     readScratch: readScratchTargets(targets.scratchObserved),
   };

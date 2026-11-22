@@ -112,6 +112,7 @@ import {
   type ProviderSetupPlan,
   hostPlatformFamily,
   landoServiceNetworkAttachments,
+  planAppIdentity,
 } from "@lando/sdk/schema";
 import {
   Downloader,
@@ -930,6 +931,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
     };
     const planState = makeProviderPlanState({
       ctx: LANDO_CTX,
+      userDataRoot: options.userDataRoot,
       ...(podmanApi === undefined
         ? {}
         : {
@@ -1780,11 +1782,17 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           const physicalPlan = yield* physicalNetworkPlan(plan);
           const previousPhysicalPlan =
             previous === undefined ? undefined : yield* physicalNetworkPlan(previous);
+          const ownershipInventory =
+            previousPhysicalPlan === undefined
+              ? (yield* planState.ownership.load(planAppIdentity(physicalPlan).appRoot))?.resources
+              : undefined;
           yield* planState.ownership.prepare(physicalPlan, previousPhysicalPlan);
           const result = yield* withGlobalPublishedLifecycle(
             String(plan.id),
             "apply",
             runtimeBringUp(physicalPlan, {
+              previousPlan: previousPhysicalPlan,
+              ...(ownershipInventory === undefined ? {} : { ownershipInventory }),
               ...(applyOptions.executeReadinessAttempt === undefined
                 ? {}
                 : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
@@ -1838,6 +1846,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               }
               const physicalPlan = yield* physicalNetworkPlan(plan);
               return yield* runtimeBringDown(physicalPlan, {
+                recordedPlan: physicalPlan,
                 ...(podmanApi === undefined ? {} : { api: podmanApi }),
                 ctx: LANDO_CTX,
                 volumes: false,
@@ -1857,7 +1866,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               const plan = yield* freshPlanForTeardown(target, false);
               if (plan === undefined) return DESTROY_NO_OP;
               const physicalPlan = yield* physicalNetworkPlan(plan);
+              const recorded = yield* appliedPlans.resolveMutationPlan(target.app);
               const result = yield* runtimeBringDown(physicalPlan, {
+                recordedPlan: recorded === undefined ? undefined : yield* physicalNetworkPlan(recorded),
                 ...(podmanApi === undefined ? {} : { api: podmanApi }),
                 ...(socketPath === undefined
                   ? {}
@@ -1884,13 +1895,12 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             String(observed.app),
             "removeObservedService",
             appliedPlans.resolveMutationPlan(observed.app).pipe(
-              Effect.andThen(
-                Effect.suspend(() =>
-                  removeObservedContainer(observed, {
-                    ...(podmanApi === undefined ? {} : { api: podmanApi }),
-                    ctx: LANDO_CTX,
-                  }),
-                ),
+              Effect.flatMap((plan) =>
+                removeObservedContainer(observed, {
+                  ...(podmanApi === undefined ? {} : { api: podmanApi }),
+                  ctx: LANDO_CTX,
+                  dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
+                }),
               ),
               Effect.tap(() =>
                 runtimeBinDir === undefined || observed.containerId === undefined

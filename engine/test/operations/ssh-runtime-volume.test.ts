@@ -20,6 +20,10 @@ import { startSshSidecar } from "../../src/operations/start-ssh-sidecar.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { globalPlanAt } from "../../src/testing/global-teardown.ts";
 
+const testPaths = makeLandoPaths();
+const runWithPaths = <A, E>(effect: Effect.Effect<A, E, PathsService>) =>
+  Effect.runPromise(effect.pipe(Effect.provideService(PathsService, testPaths)));
+
 const metadata = { resolvedAt: "2026-01-01T00:00:00Z", source: "test", runtime: 4 };
 const plan = Schema.decodeUnknownSync(AppPlan)({
   id: "demo",
@@ -109,7 +113,7 @@ const registry = (state: "running" | "exited", selected: string[], providerId = 
 
 test("Docker app uses the runtime volume when the global app is realized on Docker", async () => {
   const selected: string[] = [];
-  const upstream = await Effect.runPromise(
+  const upstream = await runWithPaths(
     resolveSshAgentUpstream({
       appId: plan.id,
       provider: ProviderId.make("docker"),
@@ -135,7 +139,7 @@ test("global placement failure keeps its reason and remediation in the sidecar e
   // Given
   const remediation = "Remove the duplicate global app realization, then retry.";
   // When
-  const failure = await Effect.runPromise(
+  const failure = await runWithPaths(
     resolveSshAgentUpstream({
       appId: plan.id,
       provider: ProviderId.make("docker"),
@@ -245,52 +249,56 @@ test("stopped sidecar warns and leaves the app without an overlay", async () => 
   expect(warnings[0]).toContain("global:logs --service ssh-agent");
 });
 
-test.each(["docker", "podman", "missing-volume"])("%s keeps the host socket probe path", async (provider) => {
-  // Given
-  const selected: string[] = [];
-  const service =
-    provider === "missing-volume"
-      ? {
-          ...ssh,
-          getAgentSocket: (appId: AppId) => Effect.succeed({ appId, socketPath: "/missing-host-agent.sock" }),
-        }
-      : ssh;
-  // When
-  const result = await Effect.runPromise(
-    Effect.result(
-      resolveSshAgentUpstream({
-        appId: plan.id,
-        provider: ProviderId.make(provider === "missing-volume" ? "lando" : provider),
-        intent: { mode: "sidecar" },
-      }),
-    ).pipe(
-      Effect.provideService(SshService, {
-        ...service,
-        setup: () =>
-          Effect.fail(
-            new SshError({
-              sshId: "sidecar",
-              message: "offline",
-              remediation:
-                "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
-            }),
-          ),
-      }),
-      Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
-      Effect.provideService(GlobalAppService, globalApp),
-      Effect.provide(LandoEventService.layer),
-    ),
-  );
-  // Then
-  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "sidecar-not-running" } });
-  expect(selected).toEqual([]);
-});
+test.each(["docker", "podman", "missing-volume"])(
+  "%s refuses an unavailable sidecar delivery",
+  async (provider) => {
+    // Given
+    const selected: string[] = [];
+    const service =
+      provider === "missing-volume"
+        ? {
+            ...ssh,
+            getAgentSocket: (appId: AppId) =>
+              Effect.succeed({ appId, socketPath: "/missing-host-agent.sock" }),
+          }
+        : ssh;
+    // When
+    const result = await runWithPaths(
+      Effect.result(
+        resolveSshAgentUpstream({
+          appId: plan.id,
+          provider: ProviderId.make(provider === "missing-volume" ? "lando" : provider),
+          intent: { mode: "sidecar" },
+        }),
+      ).pipe(
+        Effect.provideService(SshService, {
+          ...service,
+          setup: () =>
+            Effect.fail(
+              new SshError({
+                sshId: "sidecar",
+                message: "offline",
+                remediation:
+                  "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+              }),
+            ),
+        }),
+        Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
+        Effect.provideService(GlobalAppService, globalApp),
+        Effect.provide(LandoEventService.layer),
+      ),
+    );
+    // Then
+    expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "sidecar-not-running" } });
+    expect(selected).toEqual(provider === "missing-volume" ? ["lando"] : []);
+  },
+);
 
 test("host-socket path stops waiting when the started sidecar exits", async () => {
   // Given
   let setups = 0;
   // When
-  const result = await Effect.runPromise(
+  const result = await runWithPaths(
     Effect.result(
       resolveSshAgentUpstream({
         appId: plan.id,
@@ -476,6 +484,7 @@ test.each([false, true])(
               ),
           }),
           Effect.provideService(GlobalAppService, globalApp),
+          Effect.provideService(PathsService, makeLandoPaths()),
           Effect.provide(LandoEventService.layer),
           Effect.provide(TestClock.layer()),
         ),

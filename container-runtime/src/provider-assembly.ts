@@ -48,6 +48,7 @@ export const providerHostInputs = Effect.gen(function* () {
 type ProviderPlanStateOptions = AppliedPlanCacheOptions &
   Omit<ProviderDataPlaneOptions, "api" | "providerId" | "redactorFor"> & {
     readonly ctx: ProviderErrorContext;
+    readonly userDataRoot?: string | undefined;
     readonly api?: ProviderDataPlaneOptions["api"];
   };
 
@@ -72,6 +73,7 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
     }),
   ownership: makeOwnership(options),
   cleanupOwnedResources: makeOwnedResourcesCleanup({
+    userDataRoot: options.userDataRoot,
     checkAppliedState: (app) =>
       options.appliedPlanState === undefined
         ? Effect.void

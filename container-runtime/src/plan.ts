@@ -11,6 +11,7 @@ import { serviceContainerName } from "./container-name.ts";
 import { ContainerPlanError } from "./container-plan-error.ts";
 import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
 import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
+import { dataRootLabels } from "./data-root-labels.ts";
 import { literalServiceEnvironment, requireCurrentCreationPlan } from "./environment-values.ts";
 import {
   APP_LABEL,
@@ -147,6 +148,7 @@ export const commonContainerLabels = (
       [SERVICE_LABEL]: service.name,
       ...scratchLabelsForPlan(plan),
       ...extra,
+      ...dataRootLabels(plan.identity?.dataRoot),
     },
     service.extensions,
   );

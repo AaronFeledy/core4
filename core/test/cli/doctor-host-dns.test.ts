@@ -5,7 +5,7 @@ import { ConfigService } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
-import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
+import { DefaultSubsystemDoctorLayer, doctorPathsLayer } from "./doctor-subsystem-fixture.ts";
 
 test.each([
   { addresses: ["127.0.0.1"], status: "pass" },
@@ -17,7 +17,10 @@ test.each([
   const resolver = HostDnsResolver.of({ lookup: () => Effect.succeed(addresses) });
   // When doctor inspects the host.
   const result = await Effect.runPromise(
-    subsystemDoctor().pipe(Effect.provideService(HostDnsResolver, resolver)),
+    subsystemDoctor().pipe(
+      Effect.provideService(HostDnsResolver, resolver),
+      Effect.provide(doctorPathsLayer),
+    ),
   );
   // Then the verdict reflects DNS alone, without fabricated service status.
   const check = result.checks.find((entry) => entry.name === "host-dns");
@@ -50,7 +53,7 @@ test.each([
 test("skips host DNS when no resolver is provided", async () => {
   // Given no host services or resolver.
   // When doctor inspects the available context.
-  const result = await Effect.runPromise(subsystemDoctor());
+  const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(doctorPathsLayer)));
   // Then it explains the missing inspection capability.
   expect(result.checks.some((entry) => entry.name === "host-dns")).toBe(false);
   expect(result.skipped).toContainEqual({

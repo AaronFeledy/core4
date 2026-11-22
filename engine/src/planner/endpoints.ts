@@ -94,6 +94,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly appId: ReturnType<typeof AppId.make>;
   readonly appRoot: string;
   readonly appSlug: string;
+  readonly nativeSlug?: string;
   readonly dataSlug?: string;
   readonly appName: string;
   readonly appKind?: "user" | "global" | "scratch";

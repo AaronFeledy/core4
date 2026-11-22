@@ -10,6 +10,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const plan = async (name: string, services: Record<string, unknown>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-derived-store-"));
@@ -21,7 +22,9 @@ const plan = async (name: string, services: Record<string, unknown>) => {
       ).pipe(
         Effect.provide(
           AppPlannerLayer.layer.pipe(
-            Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
+            Layer.provide(
+              Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer, pathsServiceLayer()),
+            ),
           ),
         ),
       ),

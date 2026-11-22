@@ -3,6 +3,7 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AbsolutePath,
   type AppId,
+  LANDO_DATA_ROOT_LABEL,
   type OwnedResourcesCleanupResult,
   type ServiceName,
   noVolumesRemoved,
@@ -10,6 +11,7 @@ import {
 import { type DestroyOptions, EventService, type ProviderError } from "@lando/sdk/services";
 import { DateTime, Effect, Option, Schema } from "effect";
 import { removeRuntimeContainer } from "./container-removal.ts";
+import { inventoryDataRoot, matchesDataRoot } from "./data-root-labels.ts";
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
 import { planInventoryVolumeDeletions } from "./inventory-volume-deletions.ts";
 import {
@@ -31,6 +33,7 @@ export const makeOwnedResourcesCleanup = (input: {
   };
   readonly ctx: ProviderErrorContext;
   readonly endpointNamespace?: string;
+  readonly userDataRoot?: string | undefined;
 }) =>
   Effect.fn("RuntimeProvider.cleanupOwnedResources")(function* (root: AbsolutePath, options: DestroyOptions) {
     const inventory = yield* input.store.load(root);
@@ -55,6 +58,7 @@ export const makeOwnedResourcesCleanup = (input: {
       coverage,
       runtime: volumeRuntime,
       store: input.store,
+      userDataRoot: input.userDataRoot,
       skipped,
       ...(input.checkAppliedState === undefined ? {} : { checkAppliedState: input.checkAppliedState }),
     });
@@ -94,32 +98,18 @@ export const makeOwnedResourcesCleanup = (input: {
       const observed = Array.isArray(decoded.value) ? decoded.value[0] : decoded.value;
       if (observed === undefined) return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
       const labels = observed.Config?.Labels ?? observed.Labels ?? observed.labels ?? {};
+      const dataOwner = labels[LANDO_DATA_ROOT_LABEL];
+      const expectedOwner = inventoryDataRoot(dataOwner, resource.dataRoot, input.userDataRoot);
       const containerProblem =
         resource.kind === "container"
           ? serviceContainerOwnershipProblem(labels, {
               app: String(resource.appId),
               appRoot: String(root),
+              dataRoot: dataOwner,
               service: String(resource.service),
               providerId: input.ctx.providerId,
             })
           : undefined;
-      let expected: Readonly<Record<string, string>>;
-      switch (resource.kind) {
-        case "container":
-          expected = {
-            "dev.lando.app": resource.appId,
-            "dev.lando.app-root": root,
-            "dev.lando.service": resource.service,
-          };
-          break;
-        case "network":
-          expected = privateNetworkLabels(resource);
-          break;
-        default: {
-          const unreachable: never = resource;
-          return unreachable;
-        }
-      }
       const refusedContainer = (reason: string, details: Readonly<Record<string, string>>) =>
         new ProviderUnavailableError({
           providerId: input.ctx.providerId,
@@ -128,6 +118,14 @@ export const makeOwnedResourcesCleanup = (input: {
           remediation: `Inspect container ${resource.nativeName} with your container runtime and remove it there if it is a leftover, then retry.`,
           details: { container: resource.nativeName, ...details },
         });
+      if (!matchesDataRoot(dataOwner, expectedOwner, true)) {
+        return yield* new ProviderUnavailableError({
+          providerId: input.ctx.providerId,
+          operation: "resource-ownership",
+          message: `Resource ${resource.nativeName} belongs to a different Lando data root.`,
+          remediation: `Use the Lando installation with data root ${dataOwner} to manage this resource.`,
+        });
+      }
       if (resource.kind === "container" && containerProblem !== undefined)
         return yield* Effect.fail(
           refusedContainer(
@@ -135,14 +133,20 @@ export const makeOwnedResourcesCleanup = (input: {
             { label: containerProblem },
           ),
         );
-      if (resource.kind === "network" && networkLabelsDecision(labels, expected) === "foreign")
-        return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
-      if (
-        resource.kind === "network" &&
-        networkLabelsDecision(labels, expected) === "legacy" &&
-        (resource.role === "authored" || (observed.Name ?? observed.name) !== resource.nativeName)
-      )
-        return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
+      if (resource.kind === "network") {
+        const exactName = (observed.Name ?? observed.name) === resource.nativeName;
+        const decision = networkLabelsDecision(
+          labels,
+          privateNetworkLabels({ ...resource, dataRoot: expectedOwner }),
+          exactName,
+        );
+        if (
+          decision === "foreign" ||
+          (decision === "legacy" &&
+            (resource.role === "authored" || resource.dataRoot !== undefined || !exactName))
+        )
+          return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
+      }
       const nativeId = observed.Id ?? observed.ID ?? observed.id;
       if (!nativeId && resource.kind === "container")
         return yield* Effect.fail(refusedContainer("the runtime reported no native id for it", {}));

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import {
   AbsolutePath,
@@ -69,12 +69,13 @@ const serviceAt = (root: AbsolutePath): ServiceRuntimeInfo => ({
     "dev.lando.app": "global",
     "dev.lando.app-root": root,
     "dev.lando.service": "orphan",
+    "dev.lando.data-root": dirname(root),
   },
 });
 
 const volumeAt = (root: AbsolutePath, scope: "app" | "global"): VolumeInfo => ({
   ref: { app: appId, store: scope },
-  labels: { "dev.lando.scope": scope },
+  labels: { "dev.lando.scope": scope, "dev.lando.data-root": dirname(root) },
   identity: {
     ownerRoot: root,
     nativeName: scope,

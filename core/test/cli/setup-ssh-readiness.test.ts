@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import { GlobalConfigSources } from "@lando/engine/services/config";
 import * as LandoHttpClient from "@lando/http-client";
+import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   ConfigService,
@@ -12,6 +13,7 @@ import {
   EventService,
   GlobalAppService,
   InteractionService,
+  PathsService,
   RuntimeProviderRegistry,
   SshService,
 } from "@lando/sdk/services";
@@ -128,6 +130,7 @@ test.each([
                   userLandofile: AbsolutePath.make(join(userDataRoot, "global", ".lando.yml")),
                 }),
               }),
+              Layer.succeed(PathsService, makeLandoPaths()),
               Layer.succeed(EventService, events),
               Layer.succeed(Downloader, downloader.service),
               Layer.succeed(InteractionService, interaction.service),
@@ -186,6 +189,7 @@ test.each([
   await Effect.runPromise(
     runShellServiceSetupStep({ flags: { "skip-shell-integration": skip } }, recorder).pipe(
       Effect.provideService(SshService, { ...ssh, id }),
+      Effect.provideService(PathsService, makeLandoPaths()),
     ),
   );
   // Then: no runtime registry is needed for other implementations or a skipped sidecar.

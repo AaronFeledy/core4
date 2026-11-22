@@ -36,13 +36,7 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
         : [];
       const active = new Set(
         observed
-          .filter(
-            (service) =>
-              service.app === plan.id &&
-              service.appRoot === plan.root &&
-              service.providerId === plan.provider &&
-              isActiveRunStatus(service.status),
-          )
+          .filter((service) => ownsAppliedGlobalService(plan, service) && isActiveRunStatus(service.status))
           .map((service) => service.service),
       );
       const routes = plan.routes.filter((route) => started.has(route.service) || active.has(route.service));
@@ -56,3 +50,5 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
     }),
   );
 });
+
+import { ownsAppliedGlobalService } from "@lando/container-runtime/applied-global-service";

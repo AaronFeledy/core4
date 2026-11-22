@@ -1,4 +1,4 @@
-import { appIdentityKey } from "@lando/sdk/schema";
+import { LANDO_DATA_ROOT_LABEL, appIdentityKey } from "@lando/sdk/schema";
 import {
   APP_LABEL,
   APP_ROOT_LABEL,
@@ -16,6 +16,7 @@ export interface ServiceContainerIdentity {
   readonly appRoot: string;
   readonly service: string;
   readonly providerId: string;
+  readonly dataRoot?: string | undefined;
 }
 
 const scratchMarkersCoherent = (labels: Readonly<Record<string, string>>, app: string): boolean => {
@@ -37,6 +38,7 @@ export const serviceContainerOwnershipProblem = (
   identity: ServiceContainerIdentity,
 ): string | undefined => {
   if (labels === undefined || Object.keys(labels).length === 0) return APP_LABEL;
+  if (labels[LANDO_DATA_ROOT_LABEL] !== identity.dataRoot) return LANDO_DATA_ROOT_LABEL;
   const app = labels[APP_LABEL];
   if (app === undefined || identity.app.length === 0 || app !== identity.app) return APP_LABEL;
   const appRoot = labels[APP_ROOT_LABEL];

@@ -25,6 +25,7 @@ import {
   DependencyEnvironmentJob,
   type EndpointPlan,
   type HostPlatform,
+  LANDO_DATA_ROOT_LABEL,
   ProviderId,
   type ServiceContainerChange,
   ServiceName,
@@ -38,6 +39,7 @@ import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@la
 import { Cause, Context, DateTime, Duration, Effect, Exit, Option, Schema, Stream } from "effect";
 import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import { removeRuntimeContainer } from "../container-removal.ts";
+import { sharedNetworkLabels } from "../data-root-labels.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
@@ -61,8 +63,10 @@ import { listenerAuthorityAction, listenerDiagnostic } from "../listener-diagnos
 import { observeTcpListener } from "../listener-observation.ts";
 import {
   containerOwnershipLabels,
+  decodeNativeObservation,
   inspectOwnedNativeId,
   isSharedNetwork,
+  matchesDataRoot,
   verifiedNativeId,
 } from "../native-ownership.ts";
 import {
@@ -75,6 +79,7 @@ import {
   serviceContainerName,
 } from "../plan.ts";
 import { StartFailureLogRedactor, redactDetails, redactorFor, withApiReason } from "../redact.ts";
+import type { OwnedResource } from "../resource-ownership-inventory.ts";
 import { compileServiceProbe } from "../service-probe.ts";
 import {
   type ServicePublishProbe,
@@ -96,6 +101,13 @@ import {
 import { type ShutdownIdentity, observeShutdown } from "../shutdown-observation.ts";
 import { restartVerdict } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
+import {
+  coherentVolumeOwnership,
+  historicalInventoryVolume,
+  historicalVolume,
+  isGlobalCacheStore,
+  volumeOwnershipLabels,
+} from "../volume-ownership.ts";
 import { waitNativeContainer } from "../wait-for-exit.ts";
 import {
   ensureAuthoredNetwork,
@@ -195,6 +207,9 @@ export type StartFailureRemediation = (input: {
 }) => string | undefined;
 
 export interface BringUpOptions {
+  readonly previousPlan?: AppPlan | undefined;
+  /** Inventory-only ownership rows when no previous applied plan remains. */
+  readonly ownershipInventory?: ReadonlyArray<OwnedResource> | undefined;
   readonly executeReadinessAttempt?: ApplyOptions["executeReadinessAttempt"];
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
@@ -226,6 +241,7 @@ interface BringUpDeps {
   readonly remediation: string;
   readonly creationEnvironments: Map<string, Readonly<Record<string, string>>>;
   readonly changes: Map<string, ServiceContainerChange>;
+  readonly networkIds: Map<string, string>;
   /** Cached once per bringUp; never construct per failure/inspect line. */
   readonly redactor: ReturnType<typeof redactorFor>;
 }
@@ -443,7 +459,7 @@ const ensureNetwork = (
   deps: BringUpDeps,
   name: string,
   plan: AppPlan,
-): Effect.Effect<void, ProviderError> => {
+): Effect.Effect<string | undefined, ProviderError> => {
   const driver =
     (plan.networking?.perAppBridge?.name === name ? plan.networking.perAppBridge.driver : undefined) ??
     "bridge";
@@ -480,7 +496,8 @@ const ensureNetwork = (
         }),
       ),
     );
-  if (!isSharedNetwork(plan, name)) {
+  const sharedDataRoot = isSharedNetwork(plan, name) ? plan.identity?.dataRoot : undefined;
+  if (!isSharedNetwork(plan, name) || sharedDataRoot !== undefined) {
     return ensurePrivateNetwork(
       (input) => request(deps, input),
       {
@@ -489,22 +506,28 @@ const ensureNetwork = (
         driver,
         create,
         createFailure,
+        previousPlan: deps.options.previousPlan,
+        ...(sharedDataRoot === undefined
+          ? {}
+          : { sharedDataRoot, labels: sharedNetworkLabels(sharedDataRoot) }),
       },
       deps.options.ctx,
     );
   }
-  return request(deps, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
-    Effect.flatMap((inspectResponse) => {
-      if (inspectResponse.status === 200) return Effect.void;
-      return create().pipe(
-        Effect.flatMap((response) =>
-          response.status === 200 || response.status === 201 || response.status === 409
-            ? Effect.void
-            : Effect.fail(createFailure(response)),
-        ),
-      );
-    }),
-  );
+  return request(deps, { method: "GET", path: `/networks/${encodeURIComponent(name)}` })
+    .pipe(
+      Effect.flatMap((inspectResponse) => {
+        if (inspectResponse.status === 200) return Effect.void;
+        return create().pipe(
+          Effect.flatMap((response) =>
+            response.status === 200 || response.status === 201 || response.status === 409
+              ? Effect.void
+              : Effect.fail(createFailure(response)),
+          ),
+        );
+      }),
+    )
+    .pipe(Effect.as(undefined));
 };
 
 export const podmanVolumeCreationLabels = (
@@ -538,30 +561,71 @@ const ensureVolume = (
         Labels: labels,
       },
     }).pipe(
-      Effect.flatMap((response) => {
-        if (response.status === 201 || response.status === 200)
-          return Effect.succeed(volumeCreationFact({ body: response.body, name: store.name, labels }));
-        if (response.status === 409) return Effect.succeed([]);
-        return Effect.fail(
-          new ProviderUnavailableError({
-            providerId: deps.options.ctx.providerId,
-            operation: "bringUp.volume",
-            message: withApiReason(
-              `provider-${deps.options.ctx.providerId} volume create failed with HTTP ${response.status}.`,
-              {
-                status: response.status,
-                body: response.body,
-              },
-              deps.redactor,
-            ),
-            details: redactDetails(
-              { name: store.name, status: response.status, body: response.body },
-              deps.redactor,
-            ),
-            remediation: deps.remediation,
-          }),
-        );
-      }),
+      Effect.flatMap(
+        Effect.fnUntraced(function* (response) {
+          if (
+            (response.status === 200 || response.status === 201 || response.status === 409) &&
+            plan.identity?.dataRoot !== undefined &&
+            !isGlobalCacheStore(store)
+          ) {
+            const fact = volumeCreationFact({ body: response.body, name: store.name, labels });
+            if (response.status !== 409 && fact.length > 0) return fact;
+            const inspected = yield* request(deps, {
+              method: "GET",
+              path: `/volumes/${encodeURIComponent(store.name)}`,
+            });
+            const observed = inspected.status === 200 ? decodeNativeObservation(inspected.body) : undefined;
+            const actual = observed?.Labels ?? observed?.labels ?? {};
+            const owner = actual[LANDO_DATA_ROOT_LABEL];
+            if (
+              observed?.Name === store.name &&
+              coherentVolumeOwnership(actual, plan.provider) &&
+              Object.entries(volumeOwnershipLabels(plan, store)).every(([key, value]) =>
+                key === LANDO_DATA_ROOT_LABEL
+                  ? matchesDataRoot(
+                      owner,
+                      value,
+                      historicalVolume(deps.options.previousPlan, plan, store.name) ||
+                        historicalInventoryVolume(deps.options.ownershipInventory, plan, store.name),
+                    )
+                  : actual[key] === value,
+              )
+            )
+              return [];
+            return yield* new ProviderUnavailableError({
+              providerId: plan.provider,
+              operation: "bringUp.volume",
+              message: `Cannot verify ownership of volume ${store.name}.`,
+              remediation:
+                owner !== undefined && owner !== plan.identity.dataRoot
+                  ? `Use the Lando installation with data root ${owner} to manage this volume.`
+                  : "Export the volume data before recreating the store, then restore the data.",
+            });
+          }
+          if (response.status === 201 || response.status === 200)
+            return volumeCreationFact({ body: response.body, name: store.name, labels });
+          if (response.status === 409) return [];
+          return yield* Effect.fail(
+            new ProviderUnavailableError({
+              providerId: deps.options.ctx.providerId,
+              operation: "bringUp.volume",
+              message: withApiReason(
+                `provider-${deps.options.ctx.providerId} volume create failed with HTTP ${response.status}.`,
+                {
+                  status: response.status,
+                  body: response.body,
+                },
+                deps.redactor,
+              ),
+              details: redactDetails(
+                { name: store.name, status: response.status, body: response.body },
+                deps.redactor,
+              ),
+              remediation: deps.remediation,
+            }),
+          );
+        }),
+      ),
     );
   });
 
@@ -802,7 +866,7 @@ const connectNetwork = (
 ): Effect.Effect<void, BringUpError> =>
   request(deps, {
     method: "POST",
-    path: `/networks/${encodeURIComponent(attachment.name)}/connect`,
+    path: `/networks/${encodeURIComponent(deps.networkIds.get(attachment.name) ?? attachment.name)}/connect`,
     body: {
       Container: name,
       EndpointConfig: { Aliases: attachment.aliases },
@@ -952,10 +1016,22 @@ const startService = Effect.fnUntraced(function* (
   );
 
   const inspected = inspectedBeforeSchedule ?? (yield* inspectContainer(deps, name));
+  const previous = deps.options.previousPlan;
+  const legacy =
+    inspected.labels?.[LANDO_DATA_ROOT_LABEL] === undefined &&
+    previous !== undefined &&
+    previous.root === plan.root &&
+    previous.provider === plan.provider &&
+    previous.id === plan.id &&
+    matchesDataRoot(previous.identity?.dataRoot, plan.identity?.dataRoot, true) &&
+    Object.hasOwn(previous.services, service.name) &&
+    serviceContainerName(previous, service.name) === name;
+  const expected: Readonly<Record<string, string>> = containerOwnershipLabels(plan, service.name);
+  const { [LANDO_DATA_ROOT_LABEL]: _dataRoot, ...historicalLabels } = expected;
   const existingId = inspected.exists
     ? yield* verifiedNativeId(
         JSON.stringify(inspected.body),
-        containerOwnershipLabels(plan, service.name),
+        legacy ? historicalLabels : expected,
         deps.options.ctx,
       )
     : undefined;
@@ -972,7 +1048,7 @@ const startService = Effect.fnUntraced(function* (
   let replacedReason: ServiceContainerChange["reason"];
   let before = inspected;
   let startedIdentity: string | undefined = before.exists ? existingId : undefined;
-  if (before.exists && (deps.options.reconcile === true || recreateReasons.length > 0)) {
+  if (before.exists && (legacy || deps.options.reconcile === true || recreateReasons.length > 0)) {
     yield* prepareCreationEnvironment(deps, plan, service);
     if (existingId !== undefined) {
       yield* stopContainerSilent(deps, existingId);
@@ -1408,6 +1484,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     remediation: applyRemediationFor(plan),
     creationEnvironments: new Map(),
     changes: new Map(),
+    networkIds: new Map(),
     redactor: redactorFor(options.ctx),
   };
 
@@ -1419,11 +1496,11 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   const externalNames = new Set(landoExternalNetworkNames(plan));
   for (const name of networkNames) {
     if (!externalNames.has(name)) continue;
-    yield* preflightExternalNetwork(api, name, options.ctx);
+    yield* preflightExternalNetwork(api, name, options.ctx, plan.identity?.dataRoot);
   }
 
   const containers = yield* listLabeledServiceContainers(api, options.ctx, plan.id);
-  const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
+  const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers, options.previousPlan);
   const staleNameChanged = (yield* removeStaleServiceContainers(api, options.ctx, plan, stales)).changed;
 
   for (const service of Object.values(plan.services)) {
@@ -1441,9 +1518,14 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     if (authored?.external === true) continue;
     if (authored !== undefined) {
       yield* creationEligibility(plan);
-      yield* ensureAuthoredNetwork(api, { plan, network: authored }, options.ctx);
+      yield* ensureAuthoredNetwork(
+        api,
+        { plan, network: authored, previousPlan: options.previousPlan },
+        options.ctx,
+      );
     } else {
-      yield* ensureNetwork(deps, name, plan);
+      const id = yield* ensureNetwork(deps, name, plan);
+      if (id !== undefined && isSharedNetwork(plan, name)) deps.networkIds.set(name, id);
     }
   }
   const createdVolumes: VolumeCreationFact[] = [];

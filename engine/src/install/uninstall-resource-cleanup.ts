@@ -3,13 +3,14 @@ import {
   coherentContainerOwnership,
   coherentPrivateNetworkOwnership,
   decodeNativeObservation,
+  ownsSharedCrossAppNetwork,
 } from "@lando/container-runtime/native-ownership";
 import {
   VOLUME_OWNER_LABEL,
   VOLUME_SELECTOR_LABEL,
   coherentVolumeOwnership,
 } from "@lando/container-runtime/volume-ownership";
-import { LANDO_SHARED_CROSS_APP_NETWORK } from "@lando/sdk/schema";
+import { LANDO_DATA_ROOT_LABEL, LANDO_SHARED_CROSS_APP_NETWORK } from "@lando/sdk/schema";
 import { UninstallResourceCleanupError } from "./uninstall-cleanup-error.ts";
 import { type RuntimeExec, type UninstallRuntime, runUninstallRuntime } from "./uninstall-runtime.ts";
 
@@ -27,20 +28,37 @@ const candidateLabels = {
 export const cleanupUninstallResources = async (
   exec: RuntimeExec,
   runtime: UninstallRuntime,
-): Promise<void> => {
+  dataRoot?: string,
+): Promise<string> => {
   const removed: string[] = [];
   const retained: string[] = [];
   const failed: string[] = [];
+  const outside: string[] = [];
   const run = (args: readonly string[]) => runUninstallRuntime(exec, runtime, { args, timeout: 60_000 });
   try {
     for (const kind of ["container", "network", "volume"] as const) {
-      const candidates = new Set<string>();
-      for (const label of candidateLabels[kind]) {
-        const args = kind === "container" ? ["ps", "-a"] : [kind, "ls"];
-        const format = kind === "volume" ? "{{.Name}}" : "{{.ID}}";
-        const result = await run([...args, "--filter", `label=${label}`, "--format", format]);
-        for (const ref of lines(result.stdout)) candidates.add(ref);
-      }
+      const args = kind === "container" ? ["ps", "-a"] : [kind, "ls"];
+      const format = kind === "volume" ? "{{.Name}}" : "{{.ID}}";
+      const list = async (label: string) =>
+        lines((await run([...args, "--filter", `label=${label}`, "--format", format])).stdout);
+      const candidates = new Set(
+        runtime.managed
+          ? (await Promise.all(candidateLabels[kind].map(list))).flat()
+          : dataRoot === undefined
+            ? []
+            : await list(`${LANDO_DATA_ROOT_LABEL}=${dataRoot}`),
+      );
+      if (!runtime.managed)
+        for (const label of [...candidateLabels[kind], LANDO_DATA_ROOT_LABEL]) {
+          try {
+            for (const ref of await list(label))
+              if (!candidates.has(ref)) outside.push(`${runtime.cmd} ${kind} ${ref}`);
+          } catch (cause) {
+            outside.push(
+              `${runtime.cmd} ${kind}: outside-scope discovery unavailable (${cause instanceof Error ? cause.message : String(cause)})`,
+            );
+          }
+        }
       const seen = new Set<string>();
       for (const ref of candidates) {
         const resource = `${runtime.cmd} ${kind} ${ref}`;
@@ -52,6 +70,10 @@ export const cleanupUninstallResources = async (
             continue;
           }
           const labels = observed.Config?.Labels ?? observed.Labels ?? observed.labels ?? {};
+          if (!runtime.managed && (dataRoot === undefined || labels[LANDO_DATA_ROOT_LABEL] !== dataRoot)) {
+            outside.push(resource);
+            continue;
+          }
           const id = kind === "volume" ? observed.Name : (observed.Id ?? observed.ID ?? observed.id);
           if (!id || (kind === "volume" && id !== ref)) {
             failed.push(`${resource}: exact native identity unavailable`);
@@ -59,11 +81,16 @@ export const cleanupUninstallResources = async (
           }
           if (seen.has(id)) continue;
           seen.add(id);
+          const shared =
+            kind === "network" &&
+            !runtime.managed &&
+            dataRoot !== undefined &&
+            ownsSharedCrossAppNetwork(dataRoot, observed.Name ?? observed.name, labels);
           const owned =
             kind === "container"
               ? coherentContainerOwnership(labels, runtime.providerId)
               : kind === "network"
-                ? coherentPrivateNetworkOwnership(labels, runtime.providerId)
+                ? shared || coherentPrivateNetworkOwnership(labels, runtime.providerId)
                 : coherentVolumeOwnership(labels, runtime.providerId);
           if (
             !owned ||
@@ -86,6 +113,10 @@ export const cleanupUninstallResources = async (
               continue;
             }
           }
+          if (shared && Object.keys(observed.Containers ?? {}).length > 0) {
+            retained.push(`${resource}: shared network has attached endpoints`);
+            continue;
+          }
           await run(kind === "container" ? containerRemovalArgs([id]) : [kind, "rm", id]);
           removed.push(resource);
         } catch (cause) {
@@ -107,4 +138,5 @@ export const cleanupUninstallResources = async (
       remediation:
         "Inspect retained or failed resources and recover their data before retrying purge. Managed storage and uninstall state must be preserved.",
     });
+  return outside.length === 0 ? "" : `Outside this data root's purge scope: ${outside.join("; ")}.`;
 };

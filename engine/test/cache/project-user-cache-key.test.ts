@@ -111,3 +111,8 @@ describe("deriveAppPlanCacheKey project-user facts", () => {
     expect(second).toBe(first);
   });
 });
+test("a shared plan cache cannot return another data root's plan", () => {
+  expect(deriveAppPlanCacheKey(base({ dataRoot: "/data/root-a" }))).not.toBe(
+    deriveAppPlanCacheKey(base({ dataRoot: "/data/root-b" })),
+  );
+});

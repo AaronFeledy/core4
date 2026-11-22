@@ -1,6 +1,6 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, LANDO_DATA_ROOT_LABEL, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
@@ -110,6 +110,7 @@ export const labelOwnedSnapshots = (
         serviceContainerOwnershipProblem(snapshot.labels, {
           app: String(snapshot.app),
           appRoot: String(snapshot.appRoot),
+          dataRoot: snapshot.labels?.[LANDO_DATA_ROOT_LABEL],
           service: String(snapshot.service),
           providerId: String(snapshot.providerId),
         }) !== undefined

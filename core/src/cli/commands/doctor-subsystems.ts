@@ -1,5 +1,5 @@
 import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
-import { RouterService, SshService } from "@lando/sdk/services";
+import { type PathsService, RouterService, SshService } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import type { DoctorFinding, DoctorSectionResult } from "./doctor-contract";
 import { idleGlobalProvider } from "./doctor-global-runtime";
@@ -24,7 +24,7 @@ export interface SubsystemDoctorOptions {
 
 export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   options: SubsystemDoctorOptions = {},
-): Effect.fn.Return<DoctorSectionResult, never> {
+): Effect.fn.Return<DoctorSectionResult, never, PathsService> {
   const fix = options.fix === true;
   const proxy = Option.getOrUndefined(yield* Effect.serviceOption(RouterService));
   const ssh = Option.getOrUndefined(yield* Effect.serviceOption(SshService));
@@ -61,28 +61,27 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
         const gpg = check.details.gpg;
         if (gpg === undefined) return [];
         const ready = gpg.upstream.reachable && gpg.keyringExported;
-        return [
-          {
-            name: "gpg-agent",
-            status: ready ? "pass" : "warn",
-            severity: ready ? "info" : "warn",
-            recovery: "manual",
-            context: {
-              subsystem: "gpg-agent",
-              upstreamReachable: String(gpg.upstream.reachable),
-              keyringExported: String(gpg.keyringExported),
-            },
-            solutions: ready
-              ? []
-              : [
-                  {
-                    kind: "manual",
-                    description:
-                      "Restore your host GPG agent and public keyring export, then rerun `lando doctor`.",
-                  },
-                ],
+        const finding: DoctorFinding = {
+          name: "gpg-agent",
+          status: ready ? "pass" : "warn",
+          severity: ready ? "info" : "warn",
+          recovery: "manual",
+          context: {
+            subsystem: "gpg-agent",
+            upstreamReachable: String(gpg.upstream.reachable),
+            keyringExported: String(gpg.keyringExported),
           },
-        ];
+          solutions: ready
+            ? []
+            : [
+                {
+                  kind: "manual",
+                  description:
+                    "Restore your host GPG agent and public keyring export, then rerun `lando doctor`.",
+                },
+              ],
+        };
+        return [finding];
       }),
       ...hostDnsChecks,
     ],

@@ -1,5 +1,16 @@
 import { expect, test } from "bun:test";
-import { type AppPlan, type ListenerAuthority, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
+  LANDO_NETWORK_ROLE_LABEL,
+  LANDO_SHARED_NETWORK_ROLE,
+  type ListenerAuthority,
+  ServiceName,
+  landoNetworkingPlan,
+  landoSharedCrossAppNetworkName,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest } from "../src/engine-api.ts";
@@ -7,6 +18,50 @@ import { networkOwnershipLabels } from "../src/native-ownership.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { field, networkApi, networkPlan } from "./authored-network-fixture.ts";
 import { APPLY_REMEDIATION, bringUp } from "./support/service-creation.ts";
+
+test.each(["/data/local", "/data/foreign", undefined])(
+  "shared bridge create conflict verifies the winning data root (%s)",
+  async (winner) => {
+    const dataRoot = AbsolutePath.make("/data/local");
+    const identity = { ...planAppIdentity(networkPlan), dataRoot };
+    const networking = landoNetworkingPlan({
+      ...networkPlan,
+      identity,
+      perAppBridge: false,
+      serviceNames: Object.keys(networkPlan.services),
+      sharedCrossAppNetwork: true,
+    });
+    const plan = { ...networkPlan, identity, networking };
+    const name = landoSharedCrossAppNetworkName(dataRoot);
+    let inspected = false;
+    const fake = networkApi({
+      conflict: true,
+      inspect: (candidate) => {
+        if (candidate !== name) return undefined;
+        if (!inspected) {
+          inspected = true;
+          return { status: 404, body: "" };
+        }
+        return {
+          status: 200,
+          body: JSON.stringify({
+            Id: "bridge-id",
+            Name: name,
+            Driver: "bridge",
+            Labels:
+              winner === undefined
+                ? {}
+                : { [LANDO_DATA_ROOT_LABEL]: winner, [LANDO_NETWORK_ROLE_LABEL]: LANDO_SHARED_NETWORK_ROLE },
+          }),
+        };
+      },
+    });
+    const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }).pipe(Effect.result));
+    expect(Result.isSuccess(result)).toBe(winner === dataRoot);
+    if (winner !== undefined && winner !== dataRoot)
+      expect(result).toMatchObject({ failure: { remediation: expect.stringContaining(winner) } });
+  },
+);
 
 const ctx = { providerId: "docker", remediation: "Retry.", env: {} };
 test("omits listener advice on network-connect failure", async () => {

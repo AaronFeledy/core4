@@ -9,6 +9,7 @@ import { loadLandofileFile } from "@lando/engine/services/landofile-live";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { AppPlanner } from "@lando/engine/services/planner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { makeLandoPaths } from "@lando/paths";
 import {
   bringDown,
   bringUp,
@@ -26,6 +27,7 @@ import {
   landoAuthoredNetworkName,
   landoServiceContainerName,
 } from "@lando/sdk/schema";
+import { PathsService } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Layer, Stream } from "effect";
 import { assertServiceContainerRunning } from "./compose-fixture-container-state.ts";
 
@@ -33,7 +35,11 @@ const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
 const fixturesRoot = resolve(import.meta.dir, "../../../core/test/fixtures/compose");
 const plannerLayer = AppPlannerLayer.layer.pipe(
   Layer.provide(
-    Layer.mergeAll(BunFileSystem.layer, PluginRegistryLayer.layerWith({ app: false, user: false })),
+    Layer.mergeAll(
+      BunFileSystem.layer,
+      PluginRegistryLayer.layerWith({ app: false, user: false }),
+      Layer.succeed(PathsService, makeLandoPaths()),
+    ),
   ),
 );
 

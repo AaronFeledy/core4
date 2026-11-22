@@ -1,7 +1,8 @@
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { AbsolutePath, AppId } from "@lando/sdk/schema";
+import { type AbsolutePath, type AppId, LANDO_DATA_ROOT_LABEL, planAppIdentity } from "@lando/sdk/schema";
 import type { DestroyOptions } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { inventoryDataRoot, matchesDataRoot } from "./data-root-labels.ts";
 import type { makeResourceOwnershipStore } from "./resource-ownership.ts";
 import {
   type SkippedVolume,
@@ -12,7 +13,7 @@ import {
   snapshotVolumeDeletion,
 } from "./teardown-volumes.ts";
 import { STORAGE_SCOPE_LABEL, volumeClassFromLabels } from "./volume-classes.ts";
-import { volumeOwnershipLabels } from "./volume-ownership.ts";
+import { ownedVolumeLockTier, volumeOwnershipLabels } from "./volume-ownership.ts";
 
 type Inventory = NonNullable<
   Effect.Success<ReturnType<ReturnType<typeof makeResourceOwnershipStore>["load"]>>
@@ -32,6 +33,7 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
   readonly store: ReturnType<typeof makeResourceOwnershipStore>;
   readonly skipped: SkippedVolume[];
   readonly checkAppliedState?: (appId: AppId) => Effect.Effect<void, ProviderUnavailableError>;
+  readonly userDataRoot?: string | undefined;
 }) {
   const { root, resources, options, coverage, skipped } = input;
   const volumeRuntime = input.runtime;
@@ -51,7 +53,15 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
       continue;
     const store = { name: resource.nativeName, scope: resource.volumeScope, kind: resource.volumeClass };
     const expected = volumeOwnershipLabels(
-      { id: resource.appId, provider: resource.providerId, root },
+      {
+        id: resource.appId,
+        provider: resource.providerId,
+        root,
+        identity: {
+          ...planAppIdentity({ root }),
+          ...(resource.dataRoot === undefined ? {} : { dataRoot: resource.dataRoot }),
+        },
+      },
       store,
     );
     const volume = {
@@ -59,13 +69,21 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
       name: resource.nativeName,
       volumeClass: resource.volumeClass,
       shared,
+      tier: ownedVolumeLockTier(resource.appId, shared),
       matches: (labels: Readonly<Record<string, string>>) =>
         shared
           ? matchesSharedCache(resource.providerId, resource.nativeName, labels)
           : labels["dev.lando.app"] === resource.appId &&
             labels[STORAGE_SCOPE_LABEL] === resource.volumeScope &&
             volumeClassFromLabels(labels) === resource.volumeClass &&
-            Object.entries(expected).every(([key, value]) => labels[key] === value),
+            matchesDataRoot(
+              labels[LANDO_DATA_ROOT_LABEL],
+              inventoryDataRoot(labels[LANDO_DATA_ROOT_LABEL], resource.dataRoot, input.userDataRoot),
+              true,
+            ) &&
+            Object.entries(expected).every(
+              ([key, value]) => key === LANDO_DATA_ROOT_LABEL || labels[key] === value,
+            ),
     };
     const readable = yield* (input.checkAppliedState?.(resource.appId) ?? Effect.void).pipe(
       Effect.as(true),

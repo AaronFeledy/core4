@@ -8,8 +8,9 @@ tags: [docs, cli, lifecycle]
 
 # Power off every app
 
-`lando poweroff` stops every Lando-managed app on the host, not just this
-one.
+`lando poweroff` stops the apps owned by the current Lando data root, not just
+the app in your current directory. Apps from another data root stay running,
+even on the same container engine.
 
 Warning: this command reaches beyond the current app. Run it only when you
 mean to stop everything. It removes scratch apps and their disposable data
@@ -51,7 +52,7 @@ A failed `post-stop` step does not prevent poweroff from continuing or change it
 
 ## Scope flags
 
-Skip the shared global app with `--keep-global`, so host-wide services such
+Skip this data root's global app with `--keep-global`, so services such
 as the proxy keep running. Skip scratch apps with `--keep-scratch`, so
 disposable throwaway apps stay up while every other app stops.
 Use both flags to keep both kinds of app. The command reports what it kept

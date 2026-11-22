@@ -369,6 +369,7 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
       // Whole-app start names every service, so containers of services the Landofile no
       // longer defines are pruned here, after accelerated-start preparation.
       servicesRemoved = yield* convergeRemovedServices(runtimePlan, provider, {
+        recordedPlan: admitted.placement.plan,
         app: target.app,
         events,
         observations,

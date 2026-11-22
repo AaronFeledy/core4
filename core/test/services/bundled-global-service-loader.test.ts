@@ -12,12 +12,13 @@ import type {
   PendingGlobalServiceContribution,
 } from "@lando/engine/services/global-services";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { GlobalAppError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { LandofileShape, type PluginManifest, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
+import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { literalLandofile } from "../_support/value-contracts.ts";
 
 const entry = (plugin: string, id: string, module?: string): PendingGlobalServiceContribution => ({
@@ -70,7 +71,12 @@ describe("bundled-first global service loader", () => {
     const plan = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) =>
         planner.plan(literalLandofile(landofile, process.cwd()), TestRuntimeProvider.capabilities),
-      ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
+      ).pipe(
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+        ),
+        Effect.provide(PluginRegistryLayer.layer),
+      ),
     );
     const sidecar = plan.services[ServiceName.make("ssh-agent")];
     // Then

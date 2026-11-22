@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, AppId, type AppPlan, appIdentityKey } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, LANDO_DATA_ROOT_LABEL, appIdentityKey } from "@lando/sdk/schema";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { Deferred, Effect, Fiber } from "effect";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
@@ -242,4 +242,81 @@ test("a late volume and a same-name replacement survive the locked snapshot", as
       expect([...volumes.keys()]).toEqual([store.name, late.name]);
     }).pipe(Effect.provide(makeTestStateStore().layer)),
   );
+});
+
+test("destroy removes this root's historical unlabeled volume and leaves a peer root's labeled volume", async () => {
+  const dataRoot = AbsolutePath.make("/data/local");
+  const peerRoot = AbsolutePath.make("/data/peer");
+  const oldStore = { name: "app-data", kind: "data", scope: "app" } as const;
+  const newStore = { ...oldStore, name: "new-data" };
+  const peerStore = { ...oldStore, name: "peer-data" };
+  const local: AppPlan = {
+    ...plan,
+    identity: {
+      appRoot: plan.root,
+      ownerKey: appIdentityKey("owner", plan.root),
+      dataRoot,
+    },
+    stores: [oldStore, newStore],
+  };
+  const peer: AppPlan = {
+    ...local,
+    identity: {
+      appRoot: local.root,
+      ownerKey: appIdentityKey("owner", local.root),
+      dataRoot: peerRoot,
+    },
+    stores: [peerStore],
+  };
+  // Historical: ownership-complete, no data-root label, still named in this plan.
+  const historical = {
+    ...podmanVolumeCreationLabels(
+      { ...local, identity: { appRoot: local.root, ownerKey: appIdentityKey("owner", local.root) } },
+      oldStore,
+    ),
+  };
+  const peerLabels = podmanVolumeCreationLabels(peer, peerStore);
+  expect(peerLabels[LANDO_DATA_ROOT_LABEL]).toBe(peerRoot);
+  const volumes = new Map<string, Readonly<Record<string, string>>>([
+    ["app-data", historical],
+    ["new-data", podmanVolumeCreationLabels(local, newStore)],
+    ["peer-data", peerLabels],
+  ]);
+  const deleted: string[] = [];
+  const result = await Effect.runPromise(
+    bringDown(local, {
+      ctx: { providerId: "docker", remediation: "Retry.", env: {} },
+      dialect: dockerLifecycleDialect,
+      volumes: true,
+      endpointNamespace: "test-daemon",
+      api: {
+        request: ({ method, path }) =>
+          Effect.sync(() => {
+            if (method === "GET" && path.startsWith("/containers/json?")) return { status: 200, body: "[]" };
+            if (path === "/volumes")
+              return {
+                status: 200,
+                body: JSON.stringify({
+                  Volumes: [...volumes].map(([Name, Labels]) => ({ Name, Labels })),
+                }),
+              };
+            if (path.startsWith("/volumes/")) {
+              const name = decodeURIComponent(path.slice("/volumes/".length));
+              const labels = volumes.get(name);
+              if (labels === undefined) return { status: 404, body: "{}" };
+              if (method === "DELETE") {
+                deleted.push(name);
+                volumes.delete(name);
+                return { status: 204, body: "" };
+              }
+              return { status: 200, body: JSON.stringify({ Name: name, Labels: labels }) };
+            }
+            return { status: 404, body: "{}" };
+          }),
+      },
+    }).pipe(Effect.provide(makeTestStateStore().layer)),
+  );
+  expect(result.volumesRemoved).toEqual({ data: 2, cache: 0 });
+  expect(deleted.sort()).toEqual(["app-data", "new-data"]);
+  expect([...volumes.keys()]).toEqual(["peer-data"]);
 });

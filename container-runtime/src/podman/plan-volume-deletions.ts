@@ -1,5 +1,6 @@
-import { type AppPlan, planDataId } from "@lando/sdk/schema";
+import { type AppPlan, LANDO_DATA_ROOT_LABEL, planDataId } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
+import { matchesDataRoot } from "../data-root-labels.ts";
 import { STORE_LABEL } from "../labels.ts";
 import { NativeVolumeSchema } from "../native-volume-identity.ts";
 import {
@@ -20,7 +21,12 @@ import {
   volumeClassForStore,
   volumeClassFromLabels,
 } from "../volume-classes.ts";
-import { coherentVolumeOwnership, isGlobalCacheStore, planVolumeFilters } from "../volume-ownership.ts";
+import {
+  coherentVolumeOwnership,
+  isGlobalCacheStore,
+  ownedVolumeLockTier,
+  planVolumeFilters,
+} from "../volume-ownership.ts";
 import { volumeMatchesFilters } from "./volume-prune.ts";
 
 const NativeVolumes = Schema.Array(NativeVolumeSchema);
@@ -39,6 +45,11 @@ export const planVolumeDeletions = Effect.fnUntraced(function* (
   const filters = classes.map((volumeClass) => planVolumeFilters(plan, [volumeClass]));
   const matchesApp = (labels: Readonly<Record<string, string>>) =>
     !isGlobalScopedVolume(labels) &&
+    matchesDataRoot(
+      labels[LANDO_DATA_ROOT_LABEL],
+      plan.identity?.dataRoot,
+      plan.stores.some(({ name }) => name === labels[STORE_LABEL]),
+    ) &&
     coherentVolumeOwnership(labels, plan.provider) &&
     filters.some((filter) => volumeMatchesFilters(labels, filter));
   const names = new Map<string, VolumeDeletion>();
@@ -52,6 +63,7 @@ export const planVolumeDeletions = Effect.fnUntraced(function* (
       name: store.name,
       volumeClass,
       shared,
+      tier: ownedVolumeLockTier(plan.id, shared),
       matches: (labels) =>
         shared
           ? matchesSharedCache(plan.provider, store.name, labels)
@@ -77,6 +89,7 @@ export const planVolumeDeletions = Effect.fnUntraced(function* (
       name,
       volumeClass,
       shared: false,
+      tier: ownedVolumeLockTier(plan.id, false),
       matches: (fresh: Readonly<Record<string, string>>) =>
         matchesApp(fresh) &&
         fresh[STORE_LABEL] === labels[STORE_LABEL] &&

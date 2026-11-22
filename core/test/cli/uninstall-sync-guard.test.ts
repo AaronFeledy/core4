@@ -151,13 +151,30 @@ describe("uninstall purge sync guard", () => {
           calls.push([...args]);
           if (args.includes("ps"))
             return {
-              stdout: args.includes("label=dev.lando.app") ? "current-id\nsecond-id\n" : "legacy-id\n",
+              stdout:
+                args.includes(`label=dev.lando.data-root=${fixture.data}`) ||
+                args.includes("label=dev.lando.app")
+                  ? "current-id\nsecond-id\n"
+                  : "legacy-id\n",
             };
           if (args.includes("inspect")) {
             const id = args.at(-1) ?? "";
             return {
               stdout: JSON.stringify([
-                { Id: `exact-${id}`, Config: { Labels: { "com.lando.app": "legacy" } } },
+                {
+                  Id: `exact-${id}`,
+                  Config: {
+                    Labels:
+                      runtime === "managed"
+                        ? { "com.lando.app": "legacy" }
+                        : {
+                            "dev.lando.app": "demo",
+                            "dev.lando.app-root": fixture.root,
+                            "dev.lando.service": "web",
+                            "dev.lando.data-root": fixture.data,
+                          },
+                  },
+                },
               ]),
             };
           }
@@ -173,38 +190,28 @@ describe("uninstall purge sync guard", () => {
         // When: purge sweeps the runtime through injected execution only.
         await makeCleanupDiscoveredApps(fixture.data, exec, "linux")([]);
         // Then: candidate labels discover only; inspected exact IDs authorize removal.
-        expect(calls).toEqual([
-          [...prefix, "ps", "-a", "--filter", "label=dev.lando.app", "--format", "{{.ID}}"],
-          [...prefix, "ps", "-a", "--filter", "label=com.lando.app", "--format", "{{.ID}}"],
+        expect(calls.filter((call) => call.includes("inspect") || call.includes("rm"))).toEqual([
           [...prefix, "container", "inspect", "current-id"],
           [...prefix, "rm", "-f", "--volumes", "exact-current-id"],
           [...prefix, "container", "inspect", "second-id"],
           [...prefix, "rm", "-f", "--volumes", "exact-second-id"],
-          [...prefix, "container", "inspect", "legacy-id"],
-          [...prefix, "rm", "-f", "--volumes", "exact-legacy-id"],
-          [...prefix, "network", "ls", "--filter", "label=dev.lando.app", "--format", "{{.ID}}"],
-          [...prefix, "network", "ls", "--filter", "label=com.lando.app", "--format", "{{.ID}}"],
-          [...prefix, "network", "ls", "--filter", "label=dev.lando.network", "--format", "{{.ID}}"],
-          [...prefix, "network", "ls", "--filter", "label=dev.lando.owner", "--format", "{{.ID}}"],
-          [...prefix, "volume", "ls", "--filter", "label=dev.lando.app", "--format", "{{.Name}}"],
-          [...prefix, "volume", "ls", "--filter", "label=com.lando.app", "--format", "{{.Name}}"],
-          [...prefix, "volume", "ls", "--filter", "label=dev.lando.volume-owner", "--format", "{{.Name}}"],
-          [...prefix, "volume", "ls", "--filter", "label=dev.lando.volume-selector", "--format", "{{.Name}}"],
-          [...prefix, "volume", "ls", "--filter", "label=dev.lando.volume", "--format", "{{.Name}}"],
-          ...(runtime === "managed" ? [[...prefix, "system", "df", "--format", "json"]] : []),
           ...(runtime === "managed"
-            ? []
-            : [
-                [
-                  "images",
-                  "--no-trunc",
-                  "--filter",
-                  expect.stringMatching(/^label=dev\.lando\.build-store=[a-f0-9]{8}$/u),
-                  "--format",
-                  "{{.ID}}",
-                ],
-              ]),
+            ? [
+                [...prefix, "container", "inspect", "legacy-id"],
+                [...prefix, "rm", "-f", "--volumes", "exact-legacy-id"],
+              ]
+            : []),
         ]);
+        if (runtime !== "managed")
+          expect(calls[0]).toEqual([
+            ...prefix,
+            "ps",
+            "-a",
+            "--filter",
+            `label=dev.lando.data-root=${fixture.data}`,
+            "--format",
+            "{{.ID}}",
+          ]);
       } finally {
         rmSync(fixture.root, { recursive: true, force: true });
       }

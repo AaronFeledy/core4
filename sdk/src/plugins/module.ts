@@ -38,6 +38,7 @@ import type {
   PathsService,
   ProcessRunner,
   RouterService,
+  RuntimeProviderRegistry,
   RuntimeProviderShape,
   SecretStore,
   ServiceFeatureDefinition,
@@ -186,7 +187,7 @@ export interface RouterServiceContribution {
 export type SshServiceContributionLayer = Layer.Layer<
   SshService,
   SshError,
-  FileSystem | GlobalAppService | PathsService
+  FileSystem | GlobalAppService | PathsService | RuntimeProviderRegistry
 >;
 export type SecretStoreContributionLayer = Layer.Layer<
   SecretStore,

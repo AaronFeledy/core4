@@ -19,7 +19,12 @@ import type {
 } from "../engine-api.ts";
 import { missingApi } from "../engine-errors.ts";
 import type { HelperReclaimOptions } from "../helper-owner.ts";
-import { inspectOwnedNativeId, isSharedNetwork, networkOwnershipLabels } from "../native-ownership.ts";
+import {
+  inspectOwnedNativeId,
+  isRecordedAppPlan,
+  isSharedNetwork,
+  networkOwnershipLabels,
+} from "../native-ownership.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
 import { retainShutdownObservations } from "../stop-container.ts";
 import { type SkippedVolume, deleteVolumeSnapshot } from "../teardown-volumes.ts";
@@ -57,6 +62,7 @@ export interface BringDownOptions {
   /** Test seam for owner-aware helper reclamation. */
   readonly helperReclaim?: HelperReclaimOptions;
   readonly purgeCaches?: boolean;
+  readonly recordedPlan?: AppPlan | undefined;
 }
 
 interface BringDownDeps {
@@ -88,15 +94,19 @@ const removeNetwork = Effect.fnUntraced(function* (
   name: string,
 ): Effect.fn.Return<boolean, BringDownError> {
   if (isSharedNetwork(plan, name)) return false;
+  const recorded = deps.options.recordedPlan;
   const id = yield* inspectOwnedNativeId(
     deps.api,
     {
       kind: "network",
       name,
       labels: networkOwnershipLabels(plan),
-      legacy: plan.networking?.authoredNetworks?.some((network) => network.name === name)
-        ? "reject"
-        : "accept",
+      recorded: isRecordedAppPlan(plan, recorded) && landoOwnedNetworkNames(recorded).includes(name),
+      legacy:
+        plan.identity?.dataRoot !== undefined ||
+        plan.networking?.authoredNetworks?.some((network) => network.name === name)
+          ? "reject"
+          : "accept",
     },
     deps.options.ctx,
   );
@@ -148,7 +158,7 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
   const containers = yield* listLabeledServiceContainers(api, stopCtx, plan.id).pipe(
     mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
   );
-  const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
+  const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers, options.recordedPlan);
   const stale = yield* removeStaleServiceContainers(api, stopCtx, plan, stales).pipe(
     mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
   );

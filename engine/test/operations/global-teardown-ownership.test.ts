@@ -93,6 +93,7 @@ const harnessAt = (
                 labels: {
                   "dev.lando.app": "global",
                   "dev.lando.app-root": root,
+                  "dev.lando.data-root": dataRoot,
                   "dev.lando.service": "orphan",
                 },
               },

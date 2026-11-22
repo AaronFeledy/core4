@@ -10,7 +10,7 @@ import {
 import { Effect } from "effect";
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { APP_LABEL, SERVICE_LABEL } from "../labels.ts";
-import { ownsServiceContainer } from "../native-ownership.ts";
+import { isRecordedAppPlan, ownsServiceContainer } from "../native-ownership.ts";
 import { serviceContainerName } from "../plan.ts";
 import { retainShutdownObservations, stopAndRemoveContainer } from "../stop-container.ts";
 import { listLabeledContainerRows } from "./discover.ts";
@@ -62,6 +62,7 @@ export const selectStaleServiceContainers = (
   plan: AppPlan,
   providerId: string,
   containers: ReadonlyArray<LabeledServiceContainer>,
+  previous?: AppPlan,
 ): ReadonlyArray<StaleServiceContainer> => {
   const ownershipPlan = { ...plan, provider: ProviderId.make(providerId) };
   const planned = new Map(
@@ -75,17 +76,25 @@ export const selectStaleServiceContainers = (
     const labels = container.labels;
     const service = labels[SERVICE_LABEL];
     if (service === undefined) continue;
+    const names = container.names.map(stripName).filter((name) => name.length > 0);
+    const recorded =
+      isRecordedAppPlan(ownershipPlan, previous) &&
+      Object.hasOwn(previous.services, service) &&
+      names.includes(serviceContainerName(previous, service));
     if (
-      !ownsServiceContainer(ownershipPlan, {
-        containerId: container.id,
-        service,
-        labels,
-      })
+      !ownsServiceContainer(
+        ownershipPlan,
+        {
+          containerId: container.id,
+          service,
+          labels,
+        },
+        recorded,
+      )
     )
       continue;
     const expected = planned.get(service);
     if (expected === undefined) continue;
-    const names = container.names.map(stripName).filter((name) => name.length > 0);
     const name = names[0];
     if (name === undefined || names.includes(expected)) continue;
     selected.push({

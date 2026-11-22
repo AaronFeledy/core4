@@ -1,6 +1,11 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { type AppId, type OwnedResourcesCleanupResult, noVolumesRemoved } from "@lando/sdk/schema";
+import {
+  type AppId,
+  type OwnedResourcesCleanupResult,
+  type PhysicalVolumeLockTier,
+  noVolumesRemoved,
+} from "@lando/sdk/schema";
 import { type ProviderError, StateStore } from "@lando/sdk/services";
 import { withPhysicalVolumeLocks } from "@lando/state-store/volume-lock";
 import { Context, Effect, Option, Schema } from "effect";
@@ -31,6 +36,7 @@ export interface VolumeDeletion {
   readonly name: string;
   readonly volumeClass: VolumeSelectorClass;
   readonly shared: boolean;
+  readonly tier?: PhysicalVolumeLockTier | undefined;
   readonly matches: (labels: Readonly<Record<string, string>>) => boolean;
 }
 
@@ -168,7 +174,13 @@ export const deleteVolumeSnapshot = Effect.fnUntraced(function* (
       );
     return withPhysicalVolumeLocks(
       state.value,
-      candidates.map(({ key, name }) => ({ key, name, mode: "exclusive", resource: `volume ${name}` })),
+      candidates.map(({ key, name, tier }) => ({
+        key,
+        name,
+        mode: "exclusive",
+        resource: `volume ${name}`,
+        ...(tier === undefined ? {} : { tier }),
+      })),
       Effect.forEach(
         candidates,
         (candidate) =>

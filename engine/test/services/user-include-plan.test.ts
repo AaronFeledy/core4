@@ -13,6 +13,7 @@ import { landofileRuntimeInputs } from "../../src/composition.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 test("plans user profile build context and env_file from the consuming app root", async () => {
   // Given: app and profile directories contain deliberately different env files.
@@ -53,7 +54,12 @@ test("plans user profile build context and env_file from the consuming app root"
       ).pipe(
         Effect.provide(
           AppPlannerLayer.layer.pipe(
-            Layer.provide(Layer.merge(PluginRegistryLayer.layer, BunFileSystem.layer)),
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.merge(PluginRegistryLayer.layer, BunFileSystem.layer),
+                pathsServiceLayer(),
+              ),
+            ),
           ),
         ),
       ),

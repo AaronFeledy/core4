@@ -98,6 +98,7 @@ import {
   type ProviderCapabilities,
   ProviderId,
   hostPlatformFamily,
+  planAppIdentity,
 } from "@lando/sdk/schema";
 import { AppPlanSanitizer, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Layer, Schema, Stream } from "effect";
@@ -752,6 +753,7 @@ const assembleRuntimeProvider = (
     const agentBridge = yield* resolvePodmanAgentBridge({ ...options, platform });
     const planState = makeProviderPlanState({
       ctx: PODMAN_CTX,
+      userDataRoot: options.userDataRoot,
       providerId: providerIdBranded,
       endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
       pullHelperImage: (ref) =>
@@ -870,8 +872,14 @@ const assembleRuntimeProvider = (
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
+        const ownershipInventory =
+          previous === undefined
+            ? (yield* planState.ownership.load(planAppIdentity(plan).appRoot))?.resources
+            : undefined;
         yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
+          previousPlan: previous,
+          ...(ownershipInventory === undefined ? {} : { ownershipInventory }),
           ...(applyOptions.executeReadinessAttempt === undefined
             ? {}
             : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
@@ -902,6 +910,7 @@ const assembleRuntimeProvider = (
         const plan = target.plan ?? previous;
         if (plan === undefined) return DESTROY_NO_OP;
         const { shutdownObservations, volumesRemoved, skipped } = yield* bringDown(plan, {
+          recordedPlan: previous,
           api: podmanApi,
           endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
           ctx: PODMAN_CTX,
@@ -917,9 +926,15 @@ const assembleRuntimeProvider = (
         };
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
-        appliedPlans
-          .resolveMutationPlan(observed.app)
-          .pipe(Effect.andThen(removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX }))),
+        appliedPlans.resolveMutationPlan(observed.app).pipe(
+          Effect.flatMap((plan) =>
+            removeObservedContainer(observed, {
+              api: podmanApi,
+              ctx: PODMAN_CTX,
+              dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
+            }),
+          ),
+        ),
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(

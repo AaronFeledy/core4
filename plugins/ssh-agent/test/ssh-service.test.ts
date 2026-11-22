@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { GlobalAppError, SshError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId } from "@lando/sdk/schema";
-import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
+import { GlobalAppService, PathsService, RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { layer as sshService } from "../src/ssh-service.ts";
 
@@ -29,6 +29,15 @@ const globalApp = {
     }),
 };
 
+const registry = RuntimeProviderRegistry.of({
+  list: Effect.succeed([]),
+  capabilities: Effect.die("unexpected capability lookup"),
+  appliedPlansFor: () => Effect.succeed([]),
+  select: () => Effect.die("unexpected provider selection"),
+  resolveAppliedPlan: () => Effect.succeed(undefined),
+  resolveTeardownEvidence: () => Effect.die("unexpected teardown lookup"),
+});
+
 const setup = Effect.fnUntraced(
   function* (_userDataRoot: string) {
     const ssh = yield* SshService;
@@ -40,9 +49,10 @@ const setup = Effect.fnUntraced(
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux", userDataRoot, env: {} })),
     ),
   Effect.provideService(GlobalAppService, globalApp),
+  Effect.provideService(RuntimeProviderRegistry, registry),
 );
 
-test("publishes both the host socket and the runtime volume", async () => {
+test("does not report a runtime volume before the global plan is applied", async () => {
   const socket = await Effect.runPromise(
     Effect.gen(function* () {
       const ssh = yield* SshService;
@@ -54,12 +64,12 @@ test("publishes both the host socket and the runtime volume", async () => {
         makeLandoPaths({ platform: "linux", userDataRoot: "/isolated", env: {} }),
       ),
       Effect.provideService(GlobalAppService, globalApp),
+      Effect.provideService(RuntimeProviderRegistry, registry),
     ),
   );
   expect(socket).toEqual({
     appId: AppId.make("demo"),
     socketPath: "/isolated/ssh/ssh-agent.sock",
-    runtimeVolume: "lando-ssh-agent",
   });
 });
 
@@ -97,6 +107,7 @@ test("setup reports the deepest cause when global service startup fails", async 
           PathsService,
           makeLandoPaths({ platform: "linux", userDataRoot: root, env: {} }),
         ),
+        Effect.provideService(RuntimeProviderRegistry, registry),
         Effect.provideService(GlobalAppService, {
           ...globalApp,
           ensureRunning: () => Effect.fail(cause),

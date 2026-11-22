@@ -17,6 +17,7 @@ import {
   type OwnedResource,
   RESOURCE_OWNERSHIP_VERSION,
   type ResourceInventory,
+  legacyResourceDigest,
   ownershipFailure,
   resourcesForPlan,
   validate,
@@ -46,7 +47,8 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
             mode: 0o600,
             lock: "advisory",
             onCorrupt: "fail",
-            onVersionMismatch: (_raw, version): ResourceInventory => {
+            onVersionMismatch: (raw, version): ResourceInventory => {
+              if (version === 1) return Schema.decodeUnknownSync(Inventory)(raw);
               throw new StateStoreError({
                 reason: "version",
                 operation: "resource-ownership",
@@ -162,7 +164,14 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
           }
           unionByKey.set(key, item);
         }
-        const union = [...unionByKey.values()];
+        const scoped = new Set(
+          [...unionByKey.values()]
+            .filter((item) => item.dataRoot === owner.dataRoot && item.dataRoot !== undefined)
+            .map(legacyResourceDigest),
+        );
+        const union = [...unionByKey.values()].filter(
+          (item) => item.dataRoot !== undefined || !scoped.has(item.identityDigest),
+        );
         return [
           undefined,
           {
@@ -212,6 +221,13 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
                 ownerKey: inventory.ownerKey,
                 providerId: inventory.providerId,
                 appIds: inventory.appIds,
+                // Member-scoped inventory-only proof for historical unlabeled resources.
+                members: inventory.resources.map((resource) => ({
+                  kind: resource.kind,
+                  nativeName: resource.nativeName,
+                  appId: resource.appId,
+                  ...(resource.kind === "container" ? { service: resource.service } : {}),
+                })),
               },
         ),
       ),

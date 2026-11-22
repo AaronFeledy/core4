@@ -1,8 +1,15 @@
+import { matchesDataRoot } from "@lando/container-runtime/native-ownership";
+import {
+  historicalInventoryVolume,
+  historicalVolume,
+  ownedVolumeLockTier,
+} from "@lando/container-runtime/volume-ownership";
+import { mapFailures } from "@lando/sdk/command-result";
 import { VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, DataStorePlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
-import { PHYSICAL_VOLUME_LOCK_TIER, type PhysicalVolumeLockTier, planDataId } from "@lando/sdk/schema";
-import type { ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { LANDO_DATA_ROOT_LABEL, type PhysicalVolumeLockTier, planDataId } from "@lando/sdk/schema";
+import { type ProviderError, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
+import { Effect, Option } from "effect";
 
 import { shellArg } from "../services/shell-quote.ts";
 
@@ -19,16 +26,15 @@ export const isGlobalCache = (store: Pick<DataStorePlan, "scope" | "kind">): boo
   store.scope === "global" && store.kind === "cache";
 
 /**
- * The global app's stores rank above every user app's volumes. Plugins name them freely (for
- * example `lando-ssh-agent`), so their owner, not their name, decides the tier. A user start
+ * The global app's stores rank above every user app's volumes. Plugins can name them explicitly,
+ * so their owner, not their name, decides the tier. A user start
  * already holds its own keys when it starts global services, and nothing takes a global-app key
  * and then a user key, so this order cannot invert.
  */
 export const volumeLockTierFor = (
   plan: Pick<AppPlan, "id">,
   store: Pick<DataStorePlan, "scope" | "kind">,
-): PhysicalVolumeLockTier | undefined =>
-  String(plan.id) === "global" && !isGlobalCache(store) ? PHYSICAL_VOLUME_LOCK_TIER.globalApp : undefined;
+): PhysicalVolumeLockTier | undefined => ownedVolumeLockTier(plan.id, isGlobalCache(store));
 
 export const coordinationFailure = (providerId: string, message: string) =>
   new VolumeOperationError({
@@ -77,11 +83,30 @@ const ownerRootMismatch = (
   plan: AppPlan,
   providerId: string,
   store: DataStorePlan,
-  locator: VolumeLocator,
+  evidence: { readonly locator: VolumeLocator; readonly historical: boolean },
 ): VolumeOperationError | undefined => {
+  const { locator, historical } = evidence;
+  const expected = plan.identity?.dataRoot;
+  const owner = locator.presence === "absent" ? undefined : locator.labels?.[LANDO_DATA_ROOT_LABEL];
+  if (
+    !isGlobalCache(store) &&
+    locator.presence === "present" &&
+    !matchesDataRoot(owner, expected, historical)
+  ) {
+    return new VolumeOperationError({
+      providerId,
+      operation: "coordinateVolume",
+      store: store.name,
+      message: `Cannot verify data-root ownership of volume ${locator.nativeName}.`,
+      remediation:
+        owner === undefined
+          ? "Export the volume data before recreating the store, then restore the data."
+          : `Use the Lando installation with data root ${owner} to manage this volume.`,
+    });
+  }
   if (
     locator.identity === undefined ||
-    store.scope === "global" ||
+    isGlobalCache(store) ||
     locator.identity.ownerRoot === (plan.identity?.appRoot ?? plan.root)
   ) {
     return undefined;
@@ -105,12 +130,46 @@ const locatePlanVolumes = (
     (store) => {
       const ref: VolumeRef = { app: planDataId(plan), store: store.name, scope: store.scope };
       return provider.locateVolume(ref).pipe(
-        Effect.flatMap((locator) => {
-          const mismatch = ownerRootMismatch(plan, provider.id, store, locator);
-          if (mismatch !== undefined) return Effect.fail(mismatch);
-          const tier = volumeLockTierFor(plan, store);
-          return Effect.succeed({ ref, store, locator, ...(tier === undefined ? {} : { tier }) });
-        }),
+        Effect.flatMap(
+          Effect.fnUntraced(function* (locator) {
+            let historical = false;
+            if (
+              locator.presence === "present" &&
+              locator.labels?.[LANDO_DATA_ROOT_LABEL] === undefined &&
+              plan.identity?.dataRoot !== undefined &&
+              !isGlobalCache(store) &&
+              locator.identity?.ownerRoot === plan.root
+            ) {
+              const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+              if (Option.isSome(registry)) {
+                const records = yield* registry.value
+                  .appliedPlansFor(plan.root, plan.provider)
+                  .pipe(mapFailures((cause) => coordinationFailure(provider.id, cause.message)));
+                historical = records.some((record) => historicalVolume(record, plan, locator.nativeName));
+                if (!historical && registry.value.resourceOwnership !== undefined) {
+                  const ownership = yield* registry.value
+                    .resourceOwnership(plan.provider, plan.root)
+                    .pipe(mapFailures((cause) => coordinationFailure(provider.id, cause.message)));
+                  historical = historicalInventoryVolume(
+                    ownership?.members?.map((member) => ({
+                      kind: member.kind,
+                      nativeName: member.nativeName,
+                      appId: member.appId,
+                      appRoot: ownership.appRoot,
+                      providerId: ownership.providerId,
+                    })),
+                    plan,
+                    locator.nativeName,
+                  );
+                }
+              }
+            }
+            const mismatch = ownerRootMismatch(plan, provider.id, store, { locator, historical });
+            if (mismatch !== undefined) return yield* mismatch;
+            const tier = volumeLockTierFor(plan, store);
+            return { ref, store, locator, ...(tier === undefined ? {} : { tier }) };
+          }),
+        ),
       );
     },
   );

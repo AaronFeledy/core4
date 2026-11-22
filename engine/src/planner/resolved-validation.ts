@@ -14,6 +14,7 @@ import {
   type ValidationIssue,
   type ValidationIssuePath,
   authoredProbeTargetError,
+  isLandoScopedSharedNetworkName,
   landoAuthoredNetworkName,
 } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
@@ -52,6 +53,7 @@ export const validateResolvedLandofile = (input: {
   readonly blocked?: readonly ValidationIssuePath[] | undefined;
   readonly loadBlocked?: readonly ValidationIssuePath[] | undefined;
   readonly appSlug?: string;
+  readonly nativeSlug?: string;
 }) => {
   const { landofile, blocked } = input;
   const issues: PlannerIssue[] = [];
@@ -105,7 +107,8 @@ export const validateResolvedLandofile = (input: {
     }
     return normalized;
   };
-  const bridgeName = input.appSlug === undefined ? undefined : appNetworkName(input.appSlug);
+  const nativeSlug = input.nativeSlug ?? input.appSlug;
+  const bridgeName = nativeSlug === undefined ? undefined : appNetworkName(nativeSlug);
   for (const [key, network] of Object.entries(landofile.networks ?? {})) {
     const path = ["networks", key];
     // A blocked network entry is treated as declared for membership and skipped here.
@@ -138,15 +141,18 @@ export const validateResolvedLandofile = (input: {
     const name = network.name ?? key;
     if (
       network.external === true &&
-      input.appSlug !== undefined &&
-      name.startsWith(landoAuthoredNetworkName(input.appSlug, ""))
+      nativeSlug !== undefined &&
+      name.startsWith(landoAuthoredNetworkName(nativeSlug, ""))
     )
       networkIssue(
         path,
         `External network ${name} uses a name Lando generates for this app's own networks.`,
         "Remove external and name to let Lando manage this network, or join a network another project owns by its own name.",
       );
-    if (network.external === true && (name === bridgeName || name === LANDO_SHARED_CROSS_APP_NETWORK))
+    if (
+      network.external === true &&
+      (name === bridgeName || name === LANDO_SHARED_CROSS_APP_NETWORK || isLandoScopedSharedNetworkName(name))
+    )
       networkIssue(
         path,
         `External network ${name} is already a Lando app or shared network.`,
@@ -165,7 +171,7 @@ export const validateResolvedLandofile = (input: {
   );
   const physicalNames = new Map<string, string>();
   for (const [key, network] of Object.entries(landofile.networks ?? {})) {
-    if (!joined.has(key) || input.appSlug === undefined || isLoadBlocked(["networks", key])) continue;
+    if (!joined.has(key) || nativeSlug === undefined || isLoadBlocked(["networks", key])) continue;
     if (
       blocked !== undefined &&
       (isBlocked(["networks", key, "external"]) ||
@@ -173,7 +179,7 @@ export const validateResolvedLandofile = (input: {
     )
       continue;
     const name =
-      network.external === true ? (network.name ?? key) : landoAuthoredNetworkName(input.appSlug, key);
+      network.external === true ? (network.name ?? key) : landoAuthoredNetworkName(nativeSlug, key);
     const other = physicalNames.get(name);
     if (other !== undefined)
       networkIssue(
@@ -184,7 +190,14 @@ export const validateResolvedLandofile = (input: {
     else physicalNames.set(name, key);
   }
   issues.push(
-    ...dnsNameIssues({ landofile, isBlocked, isLoadBlocked, isDeferredAncestor, appSlug: input.appSlug }),
+    ...dnsNameIssues({
+      landofile,
+      isBlocked,
+      isLoadBlocked,
+      isDeferredAncestor,
+      appSlug: input.appSlug,
+      nativeSlug,
+    }),
   );
   for (const [name, service] of Object.entries(landofile.services ?? {})) {
     for (const hostname of Object.keys(service.extra_hosts ?? {})) {

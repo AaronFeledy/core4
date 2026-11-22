@@ -1,7 +1,8 @@
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import type { LandofileShape } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
+import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { services } from "../../src/index.ts";
 import { compileTestLandofile } from "./compiled-landofile.ts";
@@ -50,5 +51,10 @@ export const planMysqlApp = (servicesInput: NonNullable<LandofileShape["services
         compileTestLandofile({ name: "mysql-versions", runtime: 4, services: servicesInput }),
         providerCapabilities,
       ),
-    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(registryLayer)),
+    ).pipe(
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+      ),
+      Effect.provide(registryLayer),
+    ),
   );

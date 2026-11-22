@@ -4,6 +4,7 @@ import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
+import { makeLandoPaths } from "@lando/paths";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type CurrentExecutableAppPlan,
@@ -15,6 +16,7 @@ import {
 import {
   AppPlanner,
   LandofileService,
+  PathsService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
@@ -149,7 +151,12 @@ const makeProvider = (
 const planLandofile = (landofile: LandofileShape): Promise<CurrentExecutableAppPlan> =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(compileTestLandofile(landofile), capabilities)).pipe(
-      Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
+      Effect.provide(
+        Layer.merge(
+          services,
+          AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+        ),
+      ),
       Effect.provide(PluginRegistryLayer.layer),
     ),
   );

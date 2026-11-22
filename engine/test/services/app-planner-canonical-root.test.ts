@@ -13,6 +13,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const slowBindCapabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -34,7 +35,11 @@ test("uses the canonical Windows root when planning a teardown target", async ()
     // When: the real planner produces the root-bound plan consumed by teardown.
     const plan = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, TestRuntimeProvider.capabilities)).pipe(
-        Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))),
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(
+            Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, pathsServiceLayer())),
+          ),
+        ),
       ),
     );
 
@@ -97,6 +102,7 @@ test("plans file-sync sessions and bind mounts on the canonical Windows root", a
                   { ...TestFileSyncEngine, id: "mutagen" },
                   { platform: ["linux", "darwin", "win32"] },
                 ),
+                pathsServiceLayer(),
               ),
             ),
           ),

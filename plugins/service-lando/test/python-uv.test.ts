@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
+import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { services } from "../src/index.ts";
@@ -72,7 +73,9 @@ const planPython = async (overrides: Readonly<Record<string, unknown>> = {}) => 
         projectUserMapping: "userns-keep-id",
       }),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+      ),
       Effect.provide(Layer.merge(services, PluginRegistryLayer.layer)),
     ),
   );

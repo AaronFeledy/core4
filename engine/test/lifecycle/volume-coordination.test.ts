@@ -6,6 +6,7 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, type VolumeRef } from "@lando/sdk/schema";
 import {
   EnvironmentValueResolver,
+  RuntimeProviderRegistry,
   StateStore,
   type StateStoreShape,
   physicalVolumeLockKey,
@@ -259,6 +260,64 @@ describe("physical volume lifecycle coordination", () => {
     expect(result.failure.remediation).toContain("name:");
     expect(result.failure.remediation).toContain("lando doctor");
   });
+
+  test.each([false, true])(
+    "startup accepts an unlabeled volume only with its inventory member (%s)",
+    async (recorded) => {
+      const scoped: AppPlan = {
+        ...plan,
+        identity: { ...plan.identity, dataRoot: AbsolutePath.make(root) },
+        stores: [{ name: "zeta", scope: "app", kind: "data" }],
+      };
+      const nativeName = "app_zeta";
+      const locator = {
+        coordinationKey: coordinationKey(nativeName),
+        nativeName,
+        presence: "present",
+        identity: {
+          coordinationKey: coordinationKey(nativeName),
+          nativeName,
+          generation: "one",
+          ownerRoot: plan.root,
+          origin: "created",
+        },
+      } as const;
+      const stateStore = await liveStore();
+      const result = await Effect.runPromise(
+        withPlanVolumeCoordination({
+          plan: scoped,
+          provider: { id: plan.provider, locateVolume: () => Effect.succeed(locator) },
+          stateStore,
+          body: () => Effect.succeed("admitted"),
+        }).pipe(
+          Effect.provideService(RuntimeProviderRegistry, {
+            list: Effect.succeed([plan.provider]),
+            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+            select: () => Effect.succeed(TestRuntimeProvider),
+            appliedPlansFor: () => Effect.succeed([]),
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.die("unexpected teardown"),
+            resourceOwnership: () =>
+              Effect.succeed({
+                appRoot: plan.root,
+                ownerKey: plan.identity.ownerKey,
+                providerId: plan.provider,
+                appIds: [plan.id],
+                members: [
+                  { kind: "volume", nativeName: recorded ? nativeName : "another-volume", appId: plan.id },
+                ],
+              }),
+          }),
+          Effect.result,
+        ),
+      );
+      expect(result).toMatchObject(
+        recorded
+          ? { _tag: "Success", success: "admitted" }
+          : { _tag: "Failure", failure: { _tag: "VolumeOperationError", store: "zeta" } },
+      );
+    },
+  );
 
   test("sorts and deduplicates provider locators before acquiring advisory locks", async () => {
     // Given three plan stores where two provider locators identify one physical volume.

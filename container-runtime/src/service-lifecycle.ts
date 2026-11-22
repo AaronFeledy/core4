@@ -1,6 +1,6 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, LANDO_DATA_ROOT_LABEL, type ServicePlan } from "@lando/sdk/schema";
 import type {
   DestroyOutcome,
   ObservedServiceRemoval,
@@ -169,7 +169,7 @@ export const postExactServiceLifecycle = (
  */
 export const removeObservedContainer = (
   observed: ServiceRuntimeInfo,
-  options: ServiceLifecycleOptions,
+  options: ServiceLifecycleOptions & { readonly dataRoot?: string | undefined },
 ): Effect.Effect<ObservedServiceRemoval, ProviderError> => {
   const operation = "removeObservedService";
   if (String(observed.providerId) !== options.ctx.providerId) {
@@ -197,6 +197,8 @@ export const removeObservedContainer = (
     app: String(observed.app),
     appRoot: observed.appRoot === undefined ? "" : String(observed.appRoot),
     service: String(observed.service),
+    // Legacy observations reach this seam only after the caller has selected their local evidence.
+    dataRoot: observed.labels?.[LANDO_DATA_ROOT_LABEL] === undefined ? undefined : options.dataRoot,
     providerId: options.ctx.providerId,
   });
   if (ownershipProblem !== undefined) {

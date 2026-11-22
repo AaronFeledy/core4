@@ -87,7 +87,7 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
   const snapshot: ProviderRuntimeSnapshot = {
     providerId,
     runtimeObserved: true,
-    appliedPlans: [],
+    appliedPlans: plans,
     services: input.services ?? [],
     volumes: [],
   };

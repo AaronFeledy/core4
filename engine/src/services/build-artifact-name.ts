@@ -1,8 +1,10 @@
+import { BUILT_ARTIFACT_PREFIX } from "@lando/container-runtime/image-build";
 import { sha256Hex } from "@lando/sdk/digest";
 import { Effect } from "effect";
 import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 
 export const BUILT_ARTIFACT_STORE_LABEL = "dev.lando.build-store";
+export const artifactBuildStorePrefix = (store: string) => `${BUILT_ARTIFACT_PREFIX}${store}-`;
 
 export const artifactBuildStoreKey = (userCacheRoot: string) =>
   canonicalMissingAppRoot(userCacheRoot).pipe(Effect.map((root) => sha256Hex(root).slice(0, 8)));
@@ -18,4 +20,4 @@ export const artifactBuildName = (
   service: string,
   buildKey: string,
 ): string =>
-  `lando-build-${store}-${imageComponent(provider, 64)}-${imageComponent(service, 128)}-${buildKey.slice(0, 24)}`;
+  `${artifactBuildStorePrefix(store)}${imageComponent(provider, 64)}-${imageComponent(service, 128)}-${buildKey.slice(0, 24)}`;

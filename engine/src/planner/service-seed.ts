@@ -45,6 +45,7 @@ export interface ServiceSeedInput {
   readonly appRoot: string;
   readonly appName: string;
   readonly dataName?: string;
+  readonly nativeDataSlug?: string;
   readonly appDefaults: UserAppDefaults;
   readonly registeredServiceTypeIds: ReadonlyArray<string>;
   readonly metadata: ServiceTypeInput["metadata"];

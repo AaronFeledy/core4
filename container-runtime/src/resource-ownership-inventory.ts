@@ -21,6 +21,7 @@ const ResourceOwner = Schema.Struct({
   nativeName: Schema.String,
   appId: AppId,
   appRoot: AbsolutePath,
+  dataRoot: Schema.optionalKey(AbsolutePath),
   ownerKey: Schema.String,
   providerId: ProviderId,
 });
@@ -48,7 +49,7 @@ export const OwnedResource = Schema.Union([
   Schema.Struct({ ...VolumeIdentity.fields, identityDigest: Schema.String }),
 ]);
 export type OwnedResource = typeof OwnedResource.Type;
-export const RESOURCE_OWNERSHIP_VERSION = 1;
+export const RESOURCE_OWNERSHIP_VERSION = 2;
 export const ResourceOwnershipInventory = Schema.Struct({
   ...ResourceOwnership.fields,
   resources: Schema.Array(OwnedResource),
@@ -65,6 +66,11 @@ export const ownershipFailure = (providerId: string, cause?: unknown) =>
   });
 
 const digest = (resource: typeof ResourceIdentity.Type) => sha256Hex(canonicalJson(resource));
+export const legacyResourceDigest = ({
+  dataRoot: _root,
+  identityDigest: _digest,
+  ...identity
+}: OwnedResource) => digest(identity);
 const identify = (resource: typeof ResourceIdentity.Type): OwnedResource => ({
   ...resource,
   identityDigest: digest(resource),
@@ -74,6 +80,7 @@ export const resourcesForPlan = (plan: AppPlan): OwnedResource[] => {
   const owner = planAppIdentity(plan);
   const identity = {
     appRoot: owner.appRoot,
+    ...(owner.dataRoot === undefined ? {} : { dataRoot: owner.dataRoot }),
     ownerKey: owner.ownerKey,
     appId: plan.id,
     providerId: plan.provider,

@@ -11,6 +11,12 @@ import { TeardownProvider } from "../providers/app-placement.ts";
 import { acceleratedStartInventory } from "./accelerated-start-inventory.ts";
 import { type PendingStart, digest } from "./accelerated-start-record.ts";
 import { appRootIdentityKey } from "./app-root-identity.ts";
+import {
+  type ScopedOwnershipRecord,
+  currentDataRoot,
+  scopeRuntimeSnapshot,
+  scopedOwnershipRecords,
+} from "./data-root-scope.ts";
 import type { MissingRootScan } from "./missing-app-root-schema.ts";
 
 /** Groups observed and recorded leftovers by the app root whose folder no longer exists. */
@@ -53,7 +59,54 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
     group.runtimeObserved &&= runtimeObserved;
     return group;
   };
+  const registry = yield* RuntimeProviderRegistry;
+  const dataRoot = yield* currentDataRoot;
+  // Inventory-only member records prove historical unlabeled leftovers for GC.
+  const ownershipRecords: ScopedOwnershipRecord[] = [];
+  const candidateRoots = new Set<string>();
   for (const snapshot of snapshots) {
+    for (const plan of snapshot.appliedPlans) {
+      if (plan.identity?.appRoot !== undefined) candidateRoots.add(plan.identity.appRoot);
+    }
+    for (const service of snapshot.services) {
+      if (service.appRoot !== undefined) candidateRoots.add(service.appRoot);
+    }
+    for (const volume of snapshot.volumes) {
+      if (volume.identity?.ownerRoot !== undefined) candidateRoots.add(volume.identity.ownerRoot);
+    }
+  }
+  if (registry.resourceOwnership !== undefined) {
+    for (const root of [...candidateRoots].sort()) {
+      for (const snapshot of snapshots) {
+        const ownership = yield* registry
+          .resourceOwnership(snapshot.providerId, AbsolutePath.make(root))
+          .pipe(Effect.catch(() => Effect.succeed(undefined)));
+        if (ownership?.members === undefined || ownership.members.length === 0) continue;
+        ownershipRecords.push(
+          ...scopedOwnershipRecords([
+            {
+              providerId: ownership.providerId,
+              root: ownership.appRoot,
+              appId: String(ownership.appIds[0] ?? ""),
+              members: ownership.members.map((member) => ({
+                kind: member.kind,
+                nativeName: member.nativeName,
+                appId: String(member.appId),
+                ...(member.service === undefined ? {} : { service: String(member.service) }),
+              })),
+            },
+          ]),
+        );
+      }
+    }
+  }
+  for (const snapshot of snapshots.map((snapshot) =>
+    scopeRuntimeSnapshot(
+      snapshot,
+      dataRoot,
+      ownershipRecords.filter((record) => record.providerId === snapshot.providerId),
+    ),
+  )) {
     for (const plan of snapshot.appliedPlans) {
       // Teardown only targets plans by their recorded identity, so report nothing it cannot act on.
       if (
@@ -98,7 +151,6 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
     }
   }
   const store = yield* Effect.serviceOption(StateStore);
-  const registry = yield* RuntimeProviderRegistry;
   const capabilityFailures = new Map<ProviderId, typeof MissingRootScan.Type>();
   const selected = yield* TeardownProvider;
   const journals = Option.isNone(store)

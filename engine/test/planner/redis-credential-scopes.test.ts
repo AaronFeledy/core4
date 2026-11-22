@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { AppPlan, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import { invocationToolingForPlan, sitesUnder } from "../../src/planner/invocation-authority.ts";
 import {
@@ -13,6 +13,7 @@ import * as Registry from "../../src/plugins/registry.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { resolveToolingTaskShape } from "../../src/tooling/step-runner.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const root = process.cwd();
 const cases = [
@@ -47,7 +48,10 @@ const planRedis = (password: string | undefined, withConsumer = false) =>
     );
     const planner = yield* AppPlanner;
     return yield* planner.plan(compiled, TestRuntimeProvider.capabilities);
-  }).pipe(Effect.provide(Planner.layer), Effect.provide(Registry.layer));
+  }).pipe(
+    Effect.provide(Planner.layer.pipe(Layer.provide(pathsServiceLayer()))),
+    Effect.provide(Registry.layer),
+  );
 
 test.each([...cases])(
   "publishes $name Redis credentials before a dependent service resolves",

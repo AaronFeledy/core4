@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import { GlobalConfigSources } from "@lando/engine/services/config";
 import { layerWith } from "@lando/http-client/live";
+import { makeLandoPaths } from "@lando/paths";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import {
@@ -12,6 +13,7 @@ import {
   ConfigService,
   Downloader,
   InteractionService,
+  PathsService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
@@ -50,6 +52,7 @@ test.each(["provider", "ca", "selection-failure", "selection-defect"] as const)(
       }
     };
     const layers = Layer.mergeAll(
+      Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(ConfigService, {
         load: Effect.succeed(config),
         get: (key) => Effect.succeed(config[key]),

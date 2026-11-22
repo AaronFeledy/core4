@@ -94,6 +94,7 @@ export const locateVolume = Effect.fn("RuntimeProvider.locateVolume")(
       coordinationKey: key,
       nativeName: volume.Name,
       presence: "present",
+      ...(volume.Labels == null ? {} : { labels: volume.Labels }),
       ...(resolution.identity === undefined ? {} : { identity: resolution.identity }),
     });
   },

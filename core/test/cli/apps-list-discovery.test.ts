@@ -172,16 +172,13 @@ describe("decodeAppliedStateFile", () => {
 
 describe("appsFromContainerList", () => {
   test("groups running containers by dev.lando.app and includes the global app", () => {
-    const apps = appsFromContainerList(
-      [
-        labeled("drupal-cms", "appserver", { "dev.lando.provider": "lando" }),
-        labeled("drupal-cms", "database", { "dev.lando.provider": "lando" }),
-        labeled("global", "traefik"),
-        labeled("global", "mailpit"),
-        labeled("scratchy", "web", { "dev.lando.scratch": "TRUE" }),
-      ],
-      { globalAppRoot: "/data/global" },
-    );
+    const apps = appsFromContainerList([
+      labeled("drupal-cms", "appserver", { "dev.lando.provider": "lando" }),
+      labeled("drupal-cms", "database", { "dev.lando.provider": "lando" }),
+      labeled("global", "traefik"),
+      labeled("global", "mailpit"),
+      labeled("scratchy", "web", { "dev.lando.scratch": "TRUE" }),
+    ]);
     expect(apps.map((app) => app.appId).sort()).toEqual(["drupal-cms", "global"]);
     expect(apps.find((app) => app.appId === "drupal-cms")).toMatchObject({
       providerId: "lando",
@@ -189,7 +186,7 @@ describe("appsFromContainerList", () => {
       appRoot: "",
     });
     expect(apps.find((app) => app.appId === "global")).toMatchObject({
-      appRoot: "/data/global",
+      appRoot: "",
       services: ["mailpit", "traefik"],
     });
   });
@@ -694,23 +691,19 @@ describe("apps:list host-wide discovery", () => {
 
   test("includes running labeled apps and the global app from any directory", async () => {
     await withTempRoot(async (userDataRoot) => {
-      const paths = makeLandoPaths({ userDataRoot });
       const result = await runList(userDataRoot, {
         discoverContainers: async () =>
-          appsFromContainerList(
-            [
-              labeled("drupal-cms", "appserver", { "dev.lando.provider": "lando" }),
-              labeled("drupal-cms", "database"),
-              labeled("global", "traefik"),
-              labeled("global", "mailpit"),
-            ],
-            { globalAppRoot: paths.globalAppRoot },
-          ),
+          appsFromContainerList([
+            labeled("drupal-cms", "appserver", { "dev.lando.provider": "lando" }),
+            labeled("drupal-cms", "database"),
+            labeled("global", "traefik"),
+            labeled("global", "mailpit"),
+          ]),
       });
       const names = result.apps.map((app) => app.appName);
       expect(names).toContain("drupal-cms");
       expect(names).toContain("global");
-      expect(result.apps.find((app) => app.appId === "global")?.appRoot).toBe(paths.globalAppRoot);
+      expect(result.apps.find((app) => app.appId === "global")?.appRoot).toBe("");
       expect(result.apps.find((app) => app.appId === "drupal-cms")?.services).toEqual([
         "appserver",
         "database",
@@ -779,6 +772,72 @@ describe("apps:list host-wide discovery", () => {
     });
   });
 
+  test("keeps unlabeled pre-upgrade running apps that are recorded and ignores peer data-roots", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const appliedDir = join(paths.pluginStateDir("@lando/provider-podman"), "applied-plans");
+      await mkdir(appliedDir, { recursive: true });
+      const appRoot = join(userDataRoot, "legacy-app");
+      await mkdir(appRoot, { recursive: true });
+      await writeFile(
+        join(appliedDir, "legacy.json"),
+        JSON.stringify(stateEnvelope("legacy", "legacy", appRoot, ["web"], "podman")),
+      );
+      const socketPath = join(userDataRoot, "pre-upgrade.sock");
+      const server = createServer((request, response) => {
+        response.writeHead(200, { "content-type": "application/json" });
+        if (request.url === "/version") {
+          response.end(JSON.stringify({ Platform: { Name: "Podman Engine" } }));
+          return;
+        }
+        if (request.url?.startsWith("/volumes") === true) {
+          response.end(JSON.stringify({ Volumes: [] }));
+          return;
+        }
+        response.end(
+          JSON.stringify([
+            // Pre-upgrade: running, no data-root label, but locally recorded.
+            labeled("legacy", "web", {
+              "dev.lando.app-root": appRoot,
+            }),
+            labeled("legacy", "web", { "dev.lando.app-root": join(userDataRoot, "wrong-checkout") }),
+            labeled("legacy", "web", { "dev.lando.app-root": appRoot, "dev.lando.provider": "docker" }),
+            // Peer install: labeled for another data root.
+            labeled("peer", "web", {
+              "dev.lando.provider": "lando",
+              "dev.lando.app-root": join(userDataRoot, "peer-app"),
+              "dev.lando.data-root": `${userDataRoot}-peer`,
+            }),
+            // Unlabeled foreign app this root never recorded.
+            labeled("foreign", "web", {
+              "dev.lando.provider": "lando",
+              "dev.lando.app-root": join(userDataRoot, "foreign-app"),
+            }),
+          ]),
+        );
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.listen(socketPath, () => resolve());
+        server.on("error", reject);
+      });
+      try {
+        const discovered = await discoverRunningAppsFromSockets(userDataRoot, [socketPath]);
+        expect(discovered.map(({ appId, providerId, appRoot }) => [appId, providerId, appRoot])).toEqual([
+          ["legacy", "podman", appRoot],
+        ]);
+        const result = await runList(userDataRoot, {
+          discoverContainersEvidence: async (root) =>
+            discoverRunningAppsEvidenceFromSockets(root, [socketPath]),
+        });
+        expect(result.apps).toMatchObject([{ appId: "legacy", status: "active", appRoot }]);
+        expect(result.apps.map((app) => app.appId)).not.toContain("peer");
+        expect(result.apps.map((app) => app.appId)).not.toContain("foreign");
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    });
+  });
+
   test("discovers labeled containers from a Docker-compatible unix socket", async () => {
     await withTempRoot(async (userDataRoot) => {
       const socketPath = join(userDataRoot, "podman.sock");
@@ -792,8 +851,12 @@ describe("apps:list host-wide discovery", () => {
         requestUrl = request.url;
         response.end(
           JSON.stringify([
-            labeled("drupal-cms", "appserver", { "dev.lando.provider": "lando" }),
-            labeled("global", "traefik"),
+            labeled("drupal-cms", "appserver", {
+              "dev.lando.provider": "lando",
+              "dev.lando.data-root": userDataRoot,
+            }),
+            labeled("global", "traefik", { "dev.lando.data-root": userDataRoot }),
+            labeled("peer", "web", { "dev.lando.data-root": `${userDataRoot}-peer` }),
           ]),
         );
       });
@@ -824,7 +887,11 @@ describe("apps:list host-wide discovery", () => {
       const server = createServer((request, response) => {
         response.writeHead(200, { "content-type": "application/json" });
         if (request.url?.startsWith("/containers/json") === true) {
-          response.end(JSON.stringify([{ ...labeled("stopped", "web"), State: "exited" }]));
+          response.end(
+            JSON.stringify([
+              { ...labeled("stopped", "web", { "dev.lando.data-root": userDataRoot }), State: "exited" },
+            ]),
+          );
           return;
         }
         response.end(
@@ -834,6 +901,7 @@ describe("apps:list host-wide discovery", () => {
                 Name: "alpha-data",
                 Labels: {
                   "dev.lando.app": "volume-only",
+                  "dev.lando.data-root": userDataRoot,
                   "dev.lando.volume-owner": "/volumes/alpha",
                 },
               },
@@ -873,6 +941,7 @@ describe("apps:list host-wide discovery", () => {
               : JSON.stringify([
                   labeled(appId, "web", {
                     "dev.lando.provider": appId === "managed-app" ? "lando" : "docker",
+                    "dev.lando.data-root": userDataRoot,
                   }),
                 ]),
           );
@@ -911,7 +980,12 @@ describe("apps:list host-wide discovery", () => {
         response.end(
           request.url?.startsWith("/volumes") === true
             ? JSON.stringify({ Volumes: [] })
-            : JSON.stringify([labeled("managed-app", "web", { "dev.lando.provider": "lando" })]),
+            : JSON.stringify([
+                labeled("managed-app", "web", {
+                  "dev.lando.provider": "lando",
+                  "dev.lando.data-root": userDataRoot,
+                }),
+              ]),
         );
       });
       await new Promise<void>((resolve, reject) => {

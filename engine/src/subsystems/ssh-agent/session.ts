@@ -1,5 +1,9 @@
 import { chmod, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import {
+  ownsAppliedGlobalService,
+  resolveAppliedGlobalPlan,
+} from "@lando/container-runtime/applied-global-service";
 import { type RootOverrides, makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { withDeadline } from "@lando/sdk/command-result";
@@ -8,7 +12,6 @@ import { runProbe } from "@lando/sdk/probe";
 import {
   type AgentSocketBridgeResult,
   type AgentSocketKind,
-  AppId,
   type AppRef,
   GPG_AGENT_SOCKET_NAME,
   type MountPlan,
@@ -16,7 +19,7 @@ import {
   SSH_AGENT_SOCKET_NAME,
   ServiceName,
 } from "@lando/sdk/schema";
-import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { GlobalAppService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Duration, Effect, Option, Ref } from "effect";
 import { prepareHealthcheckAttempt } from "../healthcheck/attempt.ts";
 import { probeSshAgent } from "./agent-probe.ts";
@@ -61,13 +64,21 @@ const inspectSshAgent = Effect.gen(function* () {
   if (Option.isNone(globalApp))
     return { state: "starting" as const, detail: "Global app service is unavailable." };
   const { root } = yield* globalApp.value.paths;
-  const id = AppId.make(globalApp.value.id);
-  const plan = yield* registry.value.resolveAppliedPlan(root, { kind: "global", id }, "exact");
+  const paths = yield* PathsService;
+  const plan = yield* resolveAppliedGlobalPlan(registry.value, {
+    appRoot: root,
+    dataRoot: paths.roots.userDataRoot,
+  });
   if (plan === undefined)
     return { state: "stopped" as const, detail: "No applied global app plan for the SSH agent sidecar." };
   const provider = yield* registry.value.select(plan);
   const target = { app: plan.id, service: ServiceName.make("ssh-agent"), plan };
   const service = yield* provider.inspect(target);
+  if (plan.identity?.dataRoot !== undefined && !ownsAppliedGlobalService(plan, service))
+    return {
+      state: "stopped" as const,
+      detail: "The SSH agent container does not prove ownership by this global plan.",
+    };
   if (service.status !== "running")
     return {
       state: service.status === "restarting" ? ("starting" as const) : ("stopped" as const),
@@ -141,7 +152,7 @@ export const SSH_SIDECAR_READINESS_POLICY = {
 } as const;
 
 export const awaitRuntimeSshAgent = Effect.fnUntraced(function* (
-  check: Effect.Effect<SshSidecarReadiness, unknown> = runtimeSshAgentCheck,
+  check: Effect.Effect<SshSidecarReadiness, unknown, PathsService> = runtimeSshAgentCheck,
 ) {
   const lastState = yield* Ref.make<SshSidecarState>("starting");
   const lastFailure = yield* Ref.make<string | undefined>(undefined);

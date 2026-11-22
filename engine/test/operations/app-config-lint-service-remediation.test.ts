@@ -2,10 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest, type ValidationIssue } from "@lando/sdk/schema";
-import { AppPlanner, type ServiceType } from "@lando/sdk/services";
+import { AppPlanner, PathsService, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
@@ -104,7 +105,12 @@ describe.each(["type", "feature"] as const)("service %s remediation", (kind) => 
           const result = await Effect.runPromise(
             Effect.flatMap(AppPlanner, (planner) =>
               planner.plan(landofile, TestRuntimeProvider.capabilities),
-            ).pipe(Effect.result, Effect.provide(Planner.layer), Effect.provide(registry)),
+            ).pipe(
+              Effect.result,
+              Effect.provide(Planner.layer),
+              Effect.provideService(PathsService, makeLandoPaths()),
+              Effect.provide(registry),
+            ),
           );
           // Then
           if (!Result.isFailure(result)) throw new Error("Expected planner failure");
