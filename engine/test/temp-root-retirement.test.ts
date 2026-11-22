@@ -1,362 +1,188 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
-import { LANDO_DATA_ROOT_LABEL, landoSharedCrossAppNetworkName } from "@lando/sdk/schema";
+import { LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { type TempRootRetirement, retireTempRoots } from "../src/testing/temp-root-retirement.ts";
+import { artifactBuildStoreKey } from "../src/services/build-artifact-name.ts";
+import { retireTempRoots, tempPodmanRootEnv } from "../src/testing/temp-root-retirement.ts";
 
-const label = "dev.lando.build-store";
-const image = `sha256:${"a".repeat(64)}`;
-const otherImage = `sha256:${"b".repeat(64)}`;
-const json = (body: unknown, status = 200) => ({ status, body: JSON.stringify(body) });
+const endpoint = "/unused-fake.sock";
+const success = {
+  exitCode: 0,
+  stderr: "",
+  stdout: JSON.stringify({
+    apiVersion: "v4",
+    command: "meta:uninstall",
+    ok: true,
+    result: {},
+    warnings: [],
+    deprecations: [],
+  }),
+};
 
-async function fixture(run: (input: TempRootRetirement, store: string, dataRoot: string) => Promise<void>) {
+async function fixture<T>(
+  run: (value: {
+    readonly directory: string;
+    readonly endpoint: string;
+    readonly command: readonly [string];
+    readonly env: ReturnType<typeof tempPodmanRootEnv>;
+  }) => Promise<T>,
+) {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "temp-root-retirement-test-")));
-  const cache = join(directory, "cache");
-  const dataRoot = join(directory, "data");
   try {
-    await run(
-      {
-        directory,
-        endpoint: "/unused-fake.sock",
-        command: ["/fake/lando"],
-        env: {
-          LANDO_USER_DATA_ROOT: dataRoot,
-          LANDO_TEST_PODMAN_SOCKET: "/unused-fake.sock",
-          LANDO_USER_CONF_ROOT: join(directory, "conf"),
-          LANDO_USER_CACHE_ROOT: cache,
-          LANDO_SYSTEM_PLUGIN_ROOT: join(directory, "system-plugins"),
-        },
-      },
-      new Bun.CryptoHasher("sha256").update(cache).digest("hex").slice(0, 8),
-      dataRoot,
-    );
+    return await run({
+      directory,
+      endpoint,
+      command: ["/fake/lando"],
+      env: tempPodmanRootEnv(directory, endpoint),
+    });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 }
 
-const fakeEngine = (
-  store: string,
-  state: "owned" | "in-use" | "foreign" | "drift" | "relabelled" | "multi-tag",
-  options: {
-    readonly beforeList?: () => void;
-    readonly dataRoot?: string;
-    readonly sharedNetwork?: "owned" | "foreign" | "unlabeled" | "wrong-role" | "attached";
-    readonly leftover?: "container" | "network" | "volume" | "image";
-    readonly volumeListStatus?: number;
-  } = {},
-) => {
-  const ownTag = `localhost/lando-build-${store}-podman-web-key:latest`;
-  const images = new Set([image, otherImage]);
-  const tags = new Set(
-    state === "multi-tag" ? [ownTag, `localhost/lando-build-${store}-podman-web-older:latest`] : [ownTag],
-  );
-  const dataLabels = options.dataRoot === undefined ? {} : { [LANDO_DATA_ROOT_LABEL]: options.dataRoot };
-  const networkName = landoSharedCrossAppNetworkName(options.dataRoot ?? "unused");
-  const networkId = "shared-network-id";
-  const network = {
-    Name: networkName,
-    Id: networkId,
-    Labels: {
-      ...(options.sharedNetwork === "unlabeled" ? {} : dataLabels),
-      ...(options.sharedNetwork === "foreign" ? { [LANDO_DATA_ROOT_LABEL]: "/another/root" } : {}),
-      "dev.lando.network-role": options.sharedNetwork === "wrong-role" ? "private" : "shared-cross-app",
-    },
-    Containers: options.sharedNetwork === "attached" ? { "endpoint-id": {} } : {},
-  };
-  let networkPresent = options.sharedNetwork !== undefined;
-  const api: EngineHttpApi = {
-    request: ({ method, path }) =>
-      Effect.sync(() => {
-        const url = new URL(path, "http://fake");
-        if (method === "GET" && url.pathname === "/images/json") {
-          options.beforeList?.();
-          const selected =
-            url.searchParams.get("filters") === JSON.stringify({ label: [`${label}=${store}`] });
-          const listed = selected ? [...images].filter((id) => id === image) : [...images];
-          return json(
-            url.searchParams.get("all") === "true"
-              ? listed.map((Id) => ({
-                  Id,
-                  RepoTags: state === "foreign" ? ["team/backup:latest"] : [ownTag],
-                }))
-              : [],
-          );
-        }
-        const imagePath = `/images/${encodeURIComponent(image)}`;
-        if (method === "GET" && url.pathname === `${imagePath}/json`) {
-          return json({
-            Id: image,
-            RepoTags: state === "drift" || state === "foreign" ? [ownTag, "team/backup:latest"] : [...tags],
-            Config: { Labels: { [label]: state === "relabelled" ? "other" : store } },
-          });
-        }
-        const tagPath = [...tags].find((tag) => url.pathname === `/images/${encodeURIComponent(tag)}`);
-        if (method === "DELETE" && (url.pathname === imagePath || tagPath !== undefined)) {
-          expect(url.search).toBe("?noprune=true");
-          if (state === "in-use") return json({ message: "used by container" }, 409);
-          if (tagPath === undefined && tags.size > 1)
-            return json({ message: "unable to delete image by ID with more than one tag" }, 500);
-          if (tagPath === undefined) tags.clear();
-          else tags.delete(tagPath);
-          if (tags.size === 0 && options.leftover !== "image") images.delete(image);
-          return json([]);
-        }
-        const filters = url.searchParams.get("filters");
-        if (method === "GET" && url.pathname === "/containers/json" && filters?.includes('"ancestor"')) {
-          return json([{ Names: ["/still-running"] }]);
-        }
-        if (method === "GET" && url.pathname.startsWith("/networks/"))
-          return networkPresent && url.pathname === `/networks/${networkName}`
-            ? json(network)
-            : json(null, 404);
-        if (method === "DELETE" && url.pathname === `/networks/${networkId}` && url.search === "") {
-          networkPresent = false;
-          return { status: 204, body: "" };
-        }
-        if (
-          method === "GET" &&
-          (options.dataRoot === undefined ||
-            filters === JSON.stringify({ label: [`${LANDO_DATA_ROOT_LABEL}=${options.dataRoot}`] }))
-        ) {
-          if (url.pathname === "/containers/json" && url.searchParams.get("all") === "true") {
-            return json(
-              options.leftover === "container" ? [{ Id: "stopped-container", Labels: dataLabels }] : [],
-            );
-          }
-          if (url.pathname === "/networks")
-            return json([
-              ...(networkPresent ? [network] : []),
-              ...(options.leftover === "network" ? [{ Name: "private-bridge", Labels: dataLabels }] : []),
-            ]);
-          if (url.pathname === "/volumes") {
-            return json(
-              {
-                Volumes: [
-                  { Name: "class-owned-cache", Labels: { "dev.lando.volume-class": "cache" } },
-                  ...(options.leftover === "volume" ? [{ Name: "owned-data", Labels: dataLabels }] : []),
-                ],
-              },
-              options.volumeListStatus,
-            );
-          }
-        }
-        throw new Error(`Unexpected fake engine request: ${method} ${path}`);
-      }),
-  };
-  return { api, images, hasSharedNetwork: () => networkPresent };
-};
-
-const cliSuccess = async ({ args }: { readonly args: readonly string[] }) => ({
-  exitCode: 0,
-  stderr: "",
-  stdout: envelope(args[0], args[0] === "apps:list" ? { apps: [] } : []),
-});
-const envelope = (command: string | undefined, result: unknown) =>
-  JSON.stringify({ apiVersion: "v4", command, ok: true, result, warnings: [], deprecations: [] });
-
-test("purges apps and the global app before removing only this cache store's images and deleting roots", async () => {
-  await fixture(async (input, store) => {
-    const teardown = [
-      ["apps:list", "--format=json", "--all"],
-      ["apps:scratch:list", "--format=json"],
-      ["apps:gc", "--format=json", "--provider", "podman", "--prune", "--purge", "--purge-caches", "--yes"],
-      ["meta:global:destroy", "--format=json", "--provider", "podman", "--purge", "--yes"],
-    ];
-    const { api, images } = fakeEngine(store, "owned", { beforeList: () => expect(teardown).toEqual([]) });
-    const result = await retireTempRoots(input, {
-      imageApi: api,
-      runCli: async (command) => {
-        expect(command.args).toEqual(teardown.shift() ?? []);
-        expect(command.cmd).toBe("/fake/lando");
-        for (const [key, value] of Object.entries(input.env)) expect(command.env?.[key]).toBe(value);
-        return cliSuccess(command);
-      },
-    });
-    expect(result).toEqual({ removed: [image], retained: [], failed: [] });
-    expect([...images]).toEqual([otherImage]);
-    expect(existsSync(input.directory)).toBe(false);
-  });
+const readOnlyEngine = (
+  respond: (url: URL) => { readonly body: unknown; readonly status?: number },
+): EngineHttpApi => ({
+  request: ({ method, path }) =>
+    Effect.sync(() => {
+      expect(method).toBe("GET");
+      const { body, status = 200 } = respond(new URL(path, "http://fake"));
+      return { status, body: JSON.stringify(body) };
+    }),
 });
 
-test("removes the owned, endpoint-free shared network and deletes clean roots", async () => {
-  await fixture(async (input, store, dataRoot) => {
-    const { api, hasSharedNetwork } = fakeEngine(store, "owned", { dataRoot, sharedNetwork: "owned" });
-    const result = await retireTempRoots(input, { imageApi: api, runCli: cliSuccess });
-    expect(result).toEqual({
-      removed: [image, landoSharedCrossAppNetworkName(dataRoot)],
-      retained: [],
-      failed: [],
-    });
-    expect(hasSharedNetwork()).toBe(false);
-    expect(existsSync(input.directory)).toBe(false);
-  });
-});
-
-test.each([
-  ["foreign", "ownership"],
-  ["unlabeled", "ownership"],
-  ["wrong-role", "ownership"],
-  ["attached", "endpoint-id"],
-] as const)("leaves the %s shared network and directory intact", async (sharedNetwork, reason) => {
-  await fixture(async (input, store, dataRoot) => {
-    const { api, hasSharedNetwork } = fakeEngine(store, "owned", { dataRoot, sharedNetwork });
-    const result = await retireTempRoots(input, { imageApi: api, runCli: cliSuccess });
-    expect(result.failed).toEqual([]);
-    expect(result.retained).toEqual([
-      { target: landoSharedCrossAppNetworkName(dataRoot), reason: expect.stringContaining(reason) },
-    ]);
-    expect(hasSharedNetwork()).toBe(true);
-    expect(existsSync(input.directory)).toBe(true);
-  });
-});
-
-test.each([
-  ["container", "stopped-container"],
-  ["network", "private-bridge"],
-  ["volume", "owned-data"],
-  ["image", image],
-] as const)("keeps the roots when final verification finds an owned %s", async (leftover, target) => {
-  await fixture(async (input, store, dataRoot) => {
-    const { api } = fakeEngine(store, "owned", { dataRoot, leftover });
-    const result = await retireTempRoots(input, { imageApi: api, runCli: cliSuccess });
-    expect(result.failed).toEqual([]);
-    expect(result.retained).toEqual([{ target, reason: `Owned ${leftover} remains after retirement.` }]);
-    expect(existsSync(input.directory)).toBe(true);
-  });
-});
-
-test("keeps the roots when the endpoint cannot verify volumes", async () => {
-  await fixture(async (input, store, dataRoot) => {
-    const { api } = fakeEngine(store, "owned", { dataRoot, volumeListStatus: 500 });
-    const result = await retireTempRoots(input, { imageApi: api, runCli: cliSuccess });
-    expect(result.failed).toMatchObject([
-      { target: "volume verification", reason: expect.stringContaining("HTTP 500") },
-    ]);
-    expect(existsSync(input.directory)).toBe(true);
-  });
-});
-
-test.each([
-  ["in-use", "still-running"],
-  ["foreign", "team/backup:latest"],
-  ["drift", "team/backup:latest"],
-  ["relabelled", "build-store label"],
-] as const)("retains the image and its roots when the image is %s", async (state, reason) => {
-  await fixture(async (input, store) => {
-    const { api, images } = fakeEngine(store, state);
-    const result = await retireTempRoots(input, { imageApi: api, runCli: cliSuccess });
-    expect(result.removed).toEqual([]);
-    expect(result.failed).toEqual([]);
-    expect(result.retained).toEqual([{ target: image, reason: expect.stringContaining(reason) }]);
-    expect([...images]).toEqual([image, otherImage]);
-    expect(existsSync(input.directory)).toBe(true);
-  });
-});
-
-test("reports a CLI failure and keeps the roots even if the image is removed", async () => {
-  await fixture(async (input, store) => {
-    const { api } = fakeEngine(store, "owned");
-    const result = await retireTempRoots(input, {
-      imageApi: api,
-      runCli: async ({ args }) =>
-        args[0] === "apps:gc" ? { exitCode: 3, stdout: "", stderr: "purge failed" } : cliSuccess({ args }),
-    });
-    expect(result).toMatchObject({
-      removed: [image],
-      retained: [],
-      failed: [
-        {
-          target: "apps:gc",
-          reason: "Exit 3: purge failed",
-          _tag: "TempRootRetirementError",
-          remediation: expect.any(String),
-        },
-      ],
-    });
-    expect(existsSync(input.directory)).toBe(true);
-  });
-});
-
-test("rejects a mismatched endpoint before starting CLI or HTTP work", async () => {
+test("purge can remove the roots before verification; only verified retirement removes the parent", async () => {
   await fixture(async (input) => {
-    const unexpected = () => {
-      throw new Error("mismatched descriptor reached I/O");
-    };
-    const result = await retireTempRoots(
-      { ...input, endpoint: "/other.sock" },
-      {
-        runCli: unexpected,
-        imageApi: { request: unexpected },
+    const { directory, env } = input;
+    const data = join(directory, "canonical-data");
+    const cache = join(directory, "canonical-cache");
+    await mkdir(data);
+    await mkdir(cache);
+    await symlink(data, env.LANDO_USER_DATA_ROOT, "junction");
+    await symlink(cache, env.LANDO_USER_CACHE_ROOT, "junction");
+    const store = await Effect.runPromise(artifactBuildStoreKey(cache));
+    const checked: string[] = [];
+    const result = await retireTempRoots(input, {
+      runCli: async ({ cmd, args, env: childEnv, replaceEnv }) => {
+        expect(cmd).toBe(input.command[0]);
+        expect(args).toEqual(["uninstall", "--purge", "--yes", "--format=json"]);
+        expect(replaceEnv).toBe(true);
+        expect(childEnv?.LANDO_SHELL_PROFILE).toBe(join(directory, "shell-profile"));
+        expect(childEnv?.LANDO_USER_DATA_ROOT).toBe(data);
+        expect(childEnv?.LANDO_TEST_DOCKER_SOCKET).toBe(`unix://${endpoint}`);
+        await Promise.all(
+          [data, cache, env.LANDO_USER_DATA_ROOT, env.LANDO_USER_CACHE_ROOT].map((root) =>
+            rm(root, { recursive: true, force: true }),
+          ),
+        );
+        return success;
       },
-    );
-    expect(result.failed).toMatchObject([
-      { _tag: "TempRootRetirementError", reason: expect.stringContaining("endpoint does not match") },
+      engineApi: readOnlyEngine((url) => {
+        expect(existsSync(data)).toBe(false);
+        expect(existsSync(cache)).toBe(false);
+        expect(existsSync(directory)).toBe(true);
+        checked.push(url.pathname);
+        const label =
+          url.pathname === "/images/json"
+            ? `dev.lando.build-store=${store}`
+            : `${LANDO_DATA_ROOT_LABEL}=${data}`;
+        expect(url.searchParams.get("filters")).toBe(JSON.stringify({ label: [label] }));
+        return { body: url.pathname === "/volumes" ? { Volumes: null } : [] };
+      }),
+    });
+    expect(checked.sort()).toEqual(["/containers/json", "/images/json", "/networks", "/volumes"]);
+    expect(result).toEqual({ removed: [directory], retained: [], failed: [] });
+    expect(existsSync(directory)).toBe(false);
+  });
+});
+
+test.each([
+  { ...success, exitCode: 1, stdout: "Partial failure report: /fixture/uninstall-report.json" },
+  { ...success, stdout: "not an uninstall result" },
+])("reports an unsuccessful purge without verification or deleting remaining roots: %j", async (purge) => {
+  await fixture(async (input) => {
+    await mkdir(input.env.LANDO_USER_DATA_ROOT);
+    const result = await retireTempRoots(input, {
+      runCli: async () => purge,
+      engineApi: readOnlyEngine(() => {
+        throw new Error("Verification ran despite a failed purge");
+      }),
+    });
+    expect(result.failed).toEqual([
+      expect.objectContaining({
+        target: "uninstall --purge",
+        _tag: "TempRootRetirementError",
+        reason: expect.stringContaining(purge.stdout),
+      }),
+    ]);
+    expect(result.removed).toEqual([]);
+    expect(existsSync(input.env.LANDO_USER_DATA_ROOT)).toBe(true);
+  });
+});
+
+test("reports every labeled leftover after purge, without retaining a class-owned cache", async () => {
+  await fixture(async (input) => {
+    const Labels = { [LANDO_DATA_ROOT_LABEL]: input.env.LANDO_USER_DATA_ROOT };
+    const responses = new Map<string, unknown>([
+      ["/containers/json", [{ Id: "stopped-container", Labels }]],
+      ["/networks", [{ Id: "test-network-id", Name: "test-network", Labels }]],
+      ["/volumes", { Volumes: [{ Name: "owned-volume", Labels }, { Name: "class-cache" }] }],
+      ["/images/json", [{ Id: "store-image" }]],
+    ]);
+    const result = await retireTempRoots(input, {
+      runCli: async () => success,
+      engineApi: readOnlyEngine((url) => ({ body: responses.get(url.pathname) })),
+    });
+    expect(result.failed).toEqual([]);
+    expect(result.retained.map(({ target }) => target).sort()).toEqual([
+      "owned-volume",
+      "stopped-container",
+      "store-image",
+      "test-network-id",
     ]);
     expect(existsSync(input.directory)).toBe(true);
   });
 });
 
-test("destroys only the verified app whose project still exists, before garbage collection", async () => {
-  await fixture(async (input, store, dataRoot) => {
-    const appRoot = join(input.directory, "project");
-    const foreignRoot = join(input.directory, "foreign");
-    await Promise.all([mkdir(appRoot), mkdir(foreignRoot)]);
-    const fake = fakeEngine(store, "owned");
-    let live = true;
-    const api: EngineHttpApi = {
-      request: (request) =>
-        live && request.path.startsWith("/containers/json?")
-          ? Effect.succeed(
-              json([
-                { Id: "owned", Labels: { [LANDO_DATA_ROOT_LABEL]: dataRoot, "dev.lando.app-root": appRoot } },
-              ]),
-            )
-          : (fake.api.request?.(request) ?? Effect.die("fake has no transport")),
-    };
+test("keeps the directory if verification cannot read the endpoint", async () => {
+  await fixture(async (input) => {
     const result = await retireTempRoots(input, {
-      imageApi: api,
-      runCli: async ({ args, cwd }) => {
-        if (args[0] === "apps:list")
-          return {
-            exitCode: 0,
-            stderr: "",
-            stdout: envelope("apps:list", {
-              apps: [appRoot, foreignRoot].map((appRoot) => ({ appRoot, providerId: "podman" })),
-            }),
-          };
-        if (args[0] === "app:destroy") {
-          expect(args).toEqual([
-            "app:destroy",
-            "--format=json",
-            "--provider",
-            "podman",
-            "--purge",
-            "--purge-caches",
-            "--yes",
-          ]);
-          expect(cwd).toBe(appRoot);
-          live = false;
-        }
-        if (args[0] === "apps:gc") expect(live).toBe(false);
-        return cliSuccess({ args });
-      },
+      runCli: async () => success,
+      engineApi: readOnlyEngine((url) =>
+        url.pathname === "/volumes" ? { status: 503, body: {} } : { body: [] },
+      ),
     });
-    expect(result.failed).toEqual([]);
-    expect(existsSync(input.directory)).toBe(false);
+    expect(result.failed).toEqual([expect.objectContaining({ target: "volume verification" })]);
+    expect(existsSync(input.directory)).toBe(true);
   });
 });
 
-test("removes an image tagged by several owned names one name at a time", async () => {
-  await fixture(async (input, store) => {
-    const { api, images } = fakeEngine(store, "multi-tag");
-    const result = await retireTempRoots(input, { imageApi: api, runCli: cliSuccess });
-    expect(result).toEqual({ removed: [image], retained: [], failed: [] });
-    expect([...images]).toEqual([otherImage]);
-    expect(existsSync(input.directory)).toBe(false);
-  });
-});
+test.each(["LANDO_TEST_PODMAN_SOCKET", "DOCKER_HOST", "LANDO_TEST_DOCKER_SOCKET"])(
+  "rejects mismatched %s before running purge or verification",
+  async (key) => {
+    await fixture(async (input) => {
+      const result = await retireTempRoots(
+        { ...input, env: { ...input.env, [key]: "/wrong.sock" } },
+        {
+          runCli: async () => {
+            throw new Error("Purge must not run");
+          },
+          engineApi: readOnlyEngine(() => {
+            throw new Error("Verification must not run");
+          }),
+        },
+      );
+      expect(result.failed).toEqual([
+        expect.objectContaining({
+          target: input.directory,
+          reason: expect.stringContaining("endpoint does not match"),
+        }),
+      ]);
+      expect(existsSync(input.directory)).toBe(true);
+    });
+  },
+);

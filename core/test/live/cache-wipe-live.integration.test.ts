@@ -134,40 +134,11 @@ services:
       expect(Schema.decodeUnknownSync(Schema.Array(scratchSummary))(await cli(["scratch:list"]))).toEqual([]);
     } finally {
       console.log("CACHE_WIPE_CLEANUP_PENDING", JSON.stringify({ name, root, scratchIds: [...scratchIds] }));
-      let fixtureCleanupFailure: string | undefined;
-      try {
-        const results = await Promise.allSettled([
-          ...[...scratchIds].map((id) => lando(["scratch:destroy", id, "--yes"])),
-          lando(["destroy", "--yes", "--volumes"]),
-        ]);
-        console.log("CACHE_WIPE_CLEANUP_RESULT", JSON.stringify({ name, root, results }));
-        for (const result of results) {
-          expect(result.status, JSON.stringify(result)).toBe("fulfilled");
-          switch (result.status) {
-            case "fulfilled":
-              expect(result.value.exitCode, JSON.stringify(result.value)).toBe(0);
-              break;
-            case "rejected":
-              break;
-          }
-        }
-      } catch (error) {
-        fixtureCleanupFailure = String(error);
-      } finally {
-        const retirement = await retireTempRoots({
-          directory,
-          env,
-          endpoint: socket.socketPath,
-          command,
-          ...(fixtureCleanupFailure === undefined
-            ? {}
-            : { priorFailures: [{ target: root, reason: fixtureCleanupFailure }] }),
-        });
-        expect(
-          [...retirement.retained, ...retirement.failed],
-          JSON.stringify({ directory, endpoint: socket.socketPath, ...retirement }),
-        ).toEqual([]);
-      }
+      const retirement = await retireTempRoots({ directory, env, endpoint: socket.socketPath, command });
+      expect(
+        [...retirement.retained, ...retirement.failed],
+        JSON.stringify({ directory, endpoint: socket.socketPath, ...retirement }),
+      ).toEqual([]);
     }
   },
   13 * childTimeout + 120_000,

@@ -188,27 +188,11 @@ services:
       expect(after.untagged).toEqual([]);
       expect(after.all, "removal also reclaims the image's parent layers").toEqual([]);
     } finally {
-      let fixtureCleanupFailure: string | undefined;
-      try {
-        const cleanup = await lando(["destroy", "--yes", "--volumes"]);
-        expect(cleanup.exitCode, JSON.stringify(cleanup)).toBe(0);
-      } catch (error) {
-        fixtureCleanupFailure = String(error);
-      } finally {
-        const retirement = await retireTempRoots({
-          directory,
-          env,
-          endpoint: socket.socketPath,
-          command,
-          ...(fixtureCleanupFailure === undefined
-            ? {}
-            : { priorFailures: [{ target: root, reason: fixtureCleanupFailure }] }),
-        });
-        expect(
-          [...retirement.retained, ...retirement.failed],
-          JSON.stringify({ directory, endpoint: socket.socketPath, ...retirement }),
-        ).toEqual([]);
-      }
+      const retirement = await retireTempRoots({ directory, env, endpoint: socket.socketPath, command });
+      expect(
+        [...retirement.retained, ...retirement.failed],
+        JSON.stringify({ directory, endpoint: socket.socketPath, ...retirement }),
+      ).toEqual([]);
     }
   },
   8 * childTimeout + 120_000,
