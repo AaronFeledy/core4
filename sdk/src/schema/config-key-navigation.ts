@@ -88,7 +88,12 @@ export const conjoin = (nodes: readonly SchemaNode[]): SchemaNode => {
       continue;
     }
     for (const [key, value] of Object.entries(node)) {
-      if (!(key in merged) || JSON.stringify(merged[key]) === JSON.stringify(value)) merged[key] = value;
+      const current = merged[key];
+      if (typeof current === "number" && typeof value === "number" && key === "minimum")
+        merged[key] = Math.max(current, value);
+      else if (typeof current === "number" && typeof value === "number" && key === "maximum")
+        merged[key] = Math.min(current, value);
+      else if (!(key in merged) || JSON.stringify(current) === JSON.stringify(value)) merged[key] = value;
       else if (!ANNOTATION_KEYWORDS.has(key)) conflicts.push({ [key]: value });
     }
   }
