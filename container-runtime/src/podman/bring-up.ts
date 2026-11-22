@@ -499,7 +499,7 @@ const ensureNetwork = (
         driver,
         create,
         createFailure,
-        previousPlan: deps.options.previousPlan,
+        adoptionReceipts: deps.options.adoptionReceipts,
         ...(sharedDataRoot === undefined
           ? {}
           : { sharedDataRoot, labels: sharedNetworkLabels(sharedDataRoot) }),
@@ -1511,7 +1511,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       yield* creationEligibility(plan);
       yield* ensureAuthoredNetwork(
         api,
-        { plan, network: authored, previousPlan: options.previousPlan },
+        { plan, network: authored, adoptionReceipts: options.adoptionReceipts },
         options.ctx,
       );
     } else {

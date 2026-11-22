@@ -114,10 +114,7 @@ export const adoptLegacyDataRoot = Effect.fn("DataRootAdoption.adopt")(function*
     const proven =
       candidate.kind === "container"
         ? ownsServiceContainer(previous, { service: candidate.service, containerId: nativeId, labels })
-        : Object.entries({
-            ...networkOwnershipLabels(previous),
-            ...(candidate.role === "authored" ? { "dev.lando.network-role": "authored" } : {}),
-          }).every(([key, value]) => labels[key] === value);
+        : Object.entries(networkOwnershipLabels(previous)).every(([key, value]) => labels[key] === value);
     if (proven) {
       receipts.push({ ...receipt, kind: candidate.kind, nativeId });
     }
