@@ -294,9 +294,12 @@ the command. Missing or unreadable provider state is not enough evidence to
 delete a record. When a prune candidate was written by a newer Lando, prune
 skips that candidate, leaves its bytes intact, lists it under `pruneFailures`
 with upgrade remediation, and continues with the rest. Only those protected
-candidates appear in `pruneFailures`; a newer-format record that is not a prune
-candidate is left alone and does not fail the run. A run that protected any
-candidate is a partial failure, not a clean prune.
+candidates appear in `pruneFailures`, and a nonempty `pruneFailures` means
+the prune was only partly successful.
+
+With or without `--prune`, `lando list` warns about newer-format records,
+even when it can't list an app from them. In JSON output these warnings
+appear in `appliedStateIssues`. They don't affect the exit status.
 The `Pruned N` line ignores `--status` and `--path`; it counts every pruned
 record, not the filtered table.
 
