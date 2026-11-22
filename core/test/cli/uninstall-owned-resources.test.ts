@@ -99,7 +99,7 @@ test("native purge uses the bundled Podman hook with only its socket available",
     };
     const plan = await run("--dry-run");
     expect(plan).toContain(socket);
-    expect(plan).toContain("1 containers, 0 networks, 0 volumes, 0 built images");
+    expect(plan).toContain("1 container, 0 networks, 0 volumes, and 0 built images");
     expect(containers.has("owned")).toBe(true);
     expect(stopped).toBe(false);
     await run("--yes");

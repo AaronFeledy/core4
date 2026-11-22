@@ -87,7 +87,7 @@ test.each(["clean", "foreign", "in-use", "failed", "listing-failed", "dry-run", 
       expect(existsSync(recovery)).toBe(scenario !== "clean");
       expect(probeCount).toBe(scenario === "keep-data" ? 0 : 1);
       const runningApps = result.steps.find((step) => step.id === "running-apps");
-      if (scenario === "dry-run") expect(runningApps?.detail).toContain("1 built images");
+      if (scenario === "dry-run") expect(runningApps?.detail).toContain("1 built image");
       else if (scenario !== "clean" && scenario !== "keep-data")
         expect(runningApps).toMatchObject({ outcome: "failed" });
       else expect(result.failed).toBe(false);

@@ -462,7 +462,7 @@ export const makeUnixDockerApiClient = (
             if (spawned.exitCode !== 0) {
               throw unavailable(ctx)(
                 "docker-api",
-                `Docker API request failed with exit code ${spawned.exitCode}.`,
+                `Docker API request failed with exit code ${spawned.exitCode}${spawned.exitCode === 7 ? " (could not connect to the engine)" : ""}.`,
                 {
                   method: request.method,
                   path: request.path,

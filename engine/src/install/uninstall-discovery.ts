@@ -27,8 +27,17 @@ export const providerPurgeHooks = (
     ),
   );
 
+const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
 const summary = (result: ProviderPurgeResult): string =>
-  `${result.endpoint}: removed ${result.removed.length}; retained ${result.retained.join("; ") || "none"}; failed ${result.failed.join("; ") || "none"}; outside scope ${result.outsideScope}.`;
+  [
+    `${result.endpoint}: removed ${plural(result.removed.length, "resource")}.`,
+    ...(result.retained.length === 0 ? [] : [`Kept: ${result.retained.join("; ")}.`]),
+    ...(result.failed.length === 0 ? [] : [`Failed: ${result.failed.join("; ")}.`]),
+    ...(result.outsideScope === 0
+      ? []
+      : [`Left ${plural(result.outsideScope, "resource")} from other installations in place.`]),
+  ].join(" ");
 
 export const makePrepareUninstallCleanup =
   (
@@ -65,12 +74,14 @@ export const makePrepareUninstallCleanup =
       if (!found) return [];
       switch (found.kind) {
         case "skipped":
-          details.push(`${providerId} (${found.endpoint}) skipped: ${found.reason}.`);
+          details.push(
+            `${providerId}: no engine answered at ${found.endpoint} (${found.reason.replace(/\.$/u, "")}), so there was nothing to clean there.`,
+          );
           return [];
         case "reachable": {
           const { container, network, volume, image } = found.counts;
           details.push(
-            `${providerId} (${found.endpoint}): ${container} containers, ${network} networks, ${volume} volumes, ${image} built images in scope.`,
+            `${providerId} (${found.endpoint}): this installation owns ${plural(container, "container")}, ${plural(network, "network")}, ${plural(volume, "volume")}, and ${plural(image, "built image")} there.`,
           );
           apps.push(
             ...found.apps.map(({ appId, appRoot }) => ({
@@ -87,7 +98,7 @@ export const makePrepareUninstallCleanup =
           return found satisfies never;
       }
     });
-    const scope = "Other installations' resources stay in place.";
+    const scope = "Resources from other Lando installations stay in place.";
     return {
       apps,
       detail: [...details, scope].join(" "),

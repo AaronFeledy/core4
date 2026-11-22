@@ -1308,7 +1308,7 @@ describe("meta:uninstall", () => {
       const runningAppsStep = result.steps.find((step) => step.id === "running-apps");
       expect(runningAppsStep?.status).toBe("owned");
       expect(runningAppsStep?.outcome).toBe("completed");
-      expect(runningAppsStep?.detail).toContain("/unreachable.sock) skipped");
+      expect(runningAppsStep?.detail).toContain("no engine answered at /unreachable.sock");
       expect(existsSync(userDataRoot)).toBe(false);
       expect(existsSync(userCacheRoot)).toBe(false);
       expect(existsSync(userConfRoot)).toBe(false);
