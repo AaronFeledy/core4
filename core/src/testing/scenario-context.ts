@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { chmodTreeUserWritable } from "@lando/engine/operations/uninstall-runtime-dir";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -943,6 +944,13 @@ const makeScenarioContext = (
   } satisfies E2eScenarioContext;
 };
 
+// Drupal can leave sites/default read-only, blocking recursive removal.
+const removeScenarioDir = (dir: string) =>
+  rm(dir, { recursive: true, force: true }).catch(async () => {
+    await chmodTreeUserWritable(dir);
+    await rm(dir, { recursive: true, force: true });
+  });
+
 const withScenarioContextInternal = <A, E, R>(
   options: WithScenarioContextOptions,
   runnerKind: ScenarioRunnerKind,
@@ -955,7 +963,7 @@ const withScenarioContextInternal = <A, E, R>(
       ),
       (testDir) => {
         if (process.env.KEEP_SCENARIO_DIRS !== "1") {
-          return Effect.promise(() => rm(testDir, { recursive: true, force: true }));
+          return Effect.promise(() => removeScenarioDir(testDir));
         }
         return process.env.LANDO_DOCS_SCENARIO_KEEP === "1"
           ? Console.log(`Scenario temp dir: ${testDir}`)

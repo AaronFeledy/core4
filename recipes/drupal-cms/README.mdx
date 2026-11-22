@@ -118,11 +118,6 @@ For day-to-day tooling and database hosts, see [Run the Drupal CMS recipe](/guid
     <Step name="check-drush">
       <Run command="lando drush --version" />
     </Step>
-    <Hidden reason="Allow teardown of the disposable directory locked by Drupal installation">
-      <Step name="unlock-test-fixture">
-        <Run command="lando exec appserver -- chmod u+w /app/web/sites/default" />
-      </Step>
-    </Hidden>
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y --volumes" />
