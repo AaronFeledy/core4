@@ -7,6 +7,7 @@ export interface TestSelection {
   readonly args?: readonly string[];
   /** Run as `bun --no-orphans test`, killing every descendant on exit; live suites keep their daemons. */
   readonly noOrphans?: true;
+  readonly usesInheritedLivePodmanRoots?: true;
   readonly unit?: "exclude";
   readonly runner?: "go";
   readonly jobs: readonly { readonly workflow: string; readonly job: string }[];
@@ -146,6 +147,7 @@ export const TEST_SELECTIONS = [
   },
   {
     id: "providers-core-live",
+    usesInheritedLivePodmanRoots: true,
     paths: ["core/test/live/"],
     jobs: live,
     needs: "Live provider socket and compiled CLI",

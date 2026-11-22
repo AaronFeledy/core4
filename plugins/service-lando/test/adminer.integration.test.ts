@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import { retireTempRoots } from "@lando/engine/testing/temp-root-retirement";
 
 const socket = resolveLiveProviderSocket();
 const required = process.env.LANDO_GUIDE_E2E === "1";
@@ -24,23 +25,26 @@ test.skipIf(socket === undefined && !required)(
     const app = join(root, "app");
     const name = `adminer-live-${crypto.randomUUID().slice(0, 8)}`;
     const password = `live-${crypto.randomUUID()}`;
+    const env = {
+      ...process.env,
+      BUN_BE_BUN: undefined,
+      ...(useManaged
+        ? { LANDO_PROVIDER: "lando" }
+        : {
+            LANDO_USER_CONF_ROOT: join(root, "config"),
+            LANDO_USER_DATA_ROOT: join(root, "state"),
+            LANDO_USER_CACHE_ROOT: join(root, "cache"),
+            LANDO_SYSTEM_PLUGIN_ROOT: join(root, "system-plugins"),
+            LANDO_PROVIDER: "podman",
+            LANDO_CONFIG__default_provider_id: "podman",
+            DOCKER_HOST: `unix://${socket.socketPath}`,
+          }),
+      LANDO_SECRET_ADMINER_LIVE_DB: password,
+    };
     const cli = async (...args: string[]) => {
       const proc = Bun.spawn([binary, ...args], {
         cwd: app,
-        env: {
-          ...process.env,
-          BUN_BE_BUN: undefined,
-          ...(useManaged
-            ? { LANDO_PROVIDER: "lando" }
-            : {
-                LANDO_USER_CONF_ROOT: join(root, "config"),
-                LANDO_USER_DATA_ROOT: join(root, "state"),
-                LANDO_USER_CACHE_ROOT: join(root, "cache"),
-                LANDO_PROVIDER: "podman",
-                DOCKER_HOST: `unix://${socket.socketPath}`,
-              }),
-          LANDO_SECRET_ADMINER_LIVE_DB: password,
-        },
+        env,
         stdout: "pipe",
         stderr: "pipe",
         timeout: 180_000,
@@ -147,12 +151,32 @@ services:
         }
       }
     } finally {
+      let fixtureCleanupFailure: string | undefined;
       try {
         await cli("destroy", "-y", "--volumes");
+      } catch (error) {
+        fixtureCleanupFailure = String(error);
       } finally {
-        await rm(root, { recursive: true, force: true });
+        if (useManaged) {
+          await rm(root, { recursive: true, force: true });
+          expect(fixtureCleanupFailure).toBeUndefined();
+        } else {
+          const retirement = await retireTempRoots({
+            directory: root,
+            endpoint: socket.socketPath,
+            env,
+            command: [binary],
+            ...(fixtureCleanupFailure === undefined
+              ? {}
+              : { priorFailures: [{ target: app, reason: fixtureCleanupFailure }] }),
+          });
+          expect(
+            [...retirement.retained, ...retirement.failed],
+            JSON.stringify({ root, endpoint: socket.socketPath, ...retirement }),
+          ).toEqual([]);
+        }
       }
     }
   },
-  300_000,
+  420_000,
 );

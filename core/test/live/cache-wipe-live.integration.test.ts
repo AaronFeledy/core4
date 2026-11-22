@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import { retireTempRoots } from "@lando/engine/testing/temp-root-retirement";
 import { InfoAppResult } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
@@ -46,19 +47,17 @@ test.skipIf(socket === undefined && !required)(
       LANDO_CONFIG__default_provider_id: "podman",
       LANDO_TELEMETRY_ENABLED: "false",
     };
+    const command = binary === undefined ? ([process.execPath, cliEntry] as const) : ([binary] as const);
     const lando = async (args: readonly string[]) => {
-      const proc = Bun.spawn(
-        [...(binary === undefined ? [process.execPath, cliEntry] : [binary]), ...args, "--format=json"],
-        {
-          cwd: root,
-          env,
-          stdin: "ignore",
-          stdout: "pipe",
-          stderr: "pipe",
-          timeout: childTimeout,
-          killSignal: "SIGKILL",
-        },
-      );
+      const proc = Bun.spawn([...command, ...args, "--format=json"], {
+        cwd: root,
+        env,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: childTimeout,
+        killSignal: "SIGKILL",
+      });
       const [exitCode, stdout, stderr] = await Promise.all([
         proc.exited,
         new Response(proc.stdout).text(),
@@ -135,6 +134,7 @@ services:
       expect(Schema.decodeUnknownSync(Schema.Array(scratchSummary))(await cli(["scratch:list"]))).toEqual([]);
     } finally {
       console.log("CACHE_WIPE_CLEANUP_PENDING", JSON.stringify({ name, root, scratchIds: [...scratchIds] }));
+      let fixtureCleanupFailure: string | undefined;
       try {
         const results = await Promise.allSettled([
           ...[...scratchIds].map((id) => lando(["scratch:destroy", id, "--yes"])),
@@ -151,10 +151,24 @@ services:
               break;
           }
         }
+      } catch (error) {
+        fixtureCleanupFailure = String(error);
       } finally {
-        await rm(directory, { recursive: true, force: true });
+        const retirement = await retireTempRoots({
+          directory,
+          env,
+          endpoint: socket.socketPath,
+          command,
+          ...(fixtureCleanupFailure === undefined
+            ? {}
+            : { priorFailures: [{ target: root, reason: fixtureCleanupFailure }] }),
+        });
+        expect(
+          [...retirement.retained, ...retirement.failed],
+          JSON.stringify({ directory, endpoint: socket.socketPath, ...retirement }),
+        ).toEqual([]);
       }
     }
   },
-  13 * childTimeout + 60_000,
+  13 * childTimeout + 120_000,
 );
