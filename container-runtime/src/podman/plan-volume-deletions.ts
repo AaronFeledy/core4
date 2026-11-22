@@ -1,6 +1,6 @@
 import { type AppPlan, LANDO_DATA_ROOT_LABEL, planDataId } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
-import { type AdoptionReceipt, decideDataRootOwnership } from "../data-root-ownership.ts";
+import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "../data-root-ownership.ts";
 import { STORE_LABEL, VOLUME_INSTANCE_LABEL } from "../labels.ts";
 import { NativeVolumeSchema } from "../native-volume-identity.ts";
 import {
@@ -101,7 +101,7 @@ export const planVolumeDeletions = Effect.fnUntraced(function* (
     const observed = yield* snapshotVolumeDeletion(runtime, volume, labels).pipe(
       Effect.catchIf(
         () => volume.shared,
-        () => Effect.succeed({ kind: "unverified" } as const),
+        () => Effect.succeed({ kind: "unverified", labels } as const),
       ),
     );
     switch (observed.kind) {
@@ -111,6 +111,17 @@ export const planVolumeDeletions = Effect.fnUntraced(function* (
       case "unverified":
         if (volume.shared)
           skipped.push(skippedVolume(volume, "shared cache ownership could not be verified"));
+        else if (
+          observed.labels[LANDO_DATA_ROOT_LABEL] !== undefined &&
+          observed.labels[LANDO_DATA_ROOT_LABEL] !== dataRoot
+        ) {
+          const { message, remediation } = dataRootRefusal({
+            kind: "volume",
+            nativeName: name,
+            labels: observed.labels,
+          });
+          skipped.push(skippedVolume(volume, `${message} ${remediation}`));
+        }
         break;
       case "absent":
         break;

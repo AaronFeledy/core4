@@ -1,9 +1,10 @@
-import type { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type AbsolutePath, type AppId, LANDO_DATA_ROOT_LABEL, planAppIdentity } from "@lando/sdk/schema";
 import type { DestroyOptions } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { type AdoptionReceipt, decideDataRootOwnership } from "./data-root-ownership.ts";
+import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
 import type { makeResourceOwnershipStore } from "./resource-ownership.ts";
+import { ownershipFailure } from "./resource-ownership-inventory.ts";
 import {
   type SkippedVolume,
   type TeardownVolumeRuntime,
@@ -40,7 +41,7 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
   const volumeRuntime = input.runtime;
   const candidates: VolumeDeletionCandidate[] = [];
   const volumeRecords = [];
-  let unverifiedAppVolume = false;
+  let refusal: ProviderUnavailableError | undefined;
   for (const resource of resources) {
     if (resource.kind !== "volume") continue;
     const dataRoot = input.userDataRoot ?? resource.dataRoot;
@@ -123,7 +124,11 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
     const observed = yield* snapshotVolumeDeletion(volumeRuntime, volume).pipe(
       Effect.catchIf(
         () => shared,
-        () => Effect.succeed({ kind: "unverified" } as const),
+        () =>
+          Effect.succeed({
+            kind: "unverified",
+            labels: {} satisfies Readonly<Record<string, string>>,
+          } as const),
       ),
     );
     switch (observed.kind) {
@@ -138,9 +143,18 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
         break;
       case "unverified":
         if (shared) skipped.push(skippedVolume(volume, "shared cache ownership could not be verified"));
-        else unverifiedAppVolume = true;
+        else {
+          const labels: Readonly<Record<string, string>> = observed.labels;
+          if (labels[LANDO_DATA_ROOT_LABEL] !== undefined && labels[LANDO_DATA_ROOT_LABEL] !== dataRoot)
+            refusal = new ProviderUnavailableError({
+              providerId: resource.providerId,
+              operation: "resource-ownership",
+              ...dataRootRefusal({ kind: "volume", nativeName: resource.nativeName, labels }),
+            });
+          else refusal ??= ownershipFailure(resource.providerId);
+        }
         break;
     }
   }
-  return { candidates, volumeRecords, unverifiedAppVolume };
+  return { candidates, volumeRecords, refusal };
 });

@@ -84,7 +84,7 @@ export const snapshotVolumeDeletion = Effect.fnUntraced(function* (
   const labels = listedLabels ?? (yield* inspect(runtime, deletion.name));
   if (labels === undefined) return { kind: "absent" } as const;
   const generation = labels[VOLUME_INSTANCE_LABEL];
-  if (!generation || !deletion.matches(labels)) return { kind: "unverified" } as const;
+  if (!generation || !deletion.matches(labels)) return { kind: "unverified", labels } as const;
   const key = yield* volumeCoordinationKey(
     { ...runtime, api: runtime, providerId: runtime.ctx.providerId },
     deletion.name,

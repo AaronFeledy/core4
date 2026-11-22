@@ -52,7 +52,7 @@ export const makeOwnedResourcesCleanup = (input: {
       return order[left.kind] - order[right.kind];
     });
     const volumeRuntime = { ...input, request };
-    const { candidates, volumeRecords, unverifiedAppVolume } = yield* planInventoryVolumeDeletions({
+    const { candidates, volumeRecords, refusal } = yield* planInventoryVolumeDeletions({
       root,
       resources,
       options,
@@ -190,7 +190,7 @@ export const makeOwnedResourcesCleanup = (input: {
         }
       }
     }
-    if (unverifiedAppVolume) return yield* ownershipFailure(input.ctx.providerId);
+    if (refusal !== undefined) return yield* refusal;
     const removed =
       candidates.length === 0 ? undefined : yield* deleteVolumeSnapshot(volumeRuntime, candidates);
     if (removed !== undefined) {
