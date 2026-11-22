@@ -110,16 +110,16 @@ describe("runtime-bundle source pins", () => {
       expect(byFile.get("copyright")?.sha256).toBe(
         "91b658413f8fa63a40060bb18aac958d407d454c0827c6fe78c003ea10d2018b",
       );
-      // Upstream LGPL-2.1 text for glibc-2.41 (Built-Using glibc (= 2.41-12+deb13u4)).
+      // Upstream LGPL-2.1 text for glibc-2.41 (Built-Using glibc (= 2.41-12+deb13u5)).
       expect(byFile.get("COPYING.LIB")).toEqual({
         file: "COPYING.LIB",
         url: "https://raw.githubusercontent.com/bminor/glibc/glibc-2.41/COPYING.LIB",
         sha256: "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
       });
-      // Debian source/copyright for the exact Built-Using version (not a placeholder).
+      // Debian source/copyright for the currently published Built-Using series (not a placeholder).
       expect(byFile.get("glibc-copyright")).toEqual({
         file: "glibc-copyright",
-        url: "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u4_copyright",
+        url: "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u5_copyright",
         sha256: "f5788886720a2605a946e81d571e6c8162b09f58d2e2ceb8d36e5768fccd850d",
       });
       // license.source stays the catatonit source archive, not the binary .deb.
