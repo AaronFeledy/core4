@@ -22,6 +22,7 @@ import {
   toolingSourceResolverForResolution,
 } from "./effective-tooling.ts";
 import { serviceCredsScopeForPlan, serviceScopeContext } from "./landofile-scopes.ts";
+import { primaryServiceName } from "./primary-service.ts";
 
 const KEY = "@lando/core/invocation-authority";
 const Authority = Schema.Struct({
@@ -105,6 +106,7 @@ export const invocationToolingForPlan = Effect.fnUntraced(function* (
   const resolution = resolveEffectiveTooling({
     landofile,
     provenance: provenanceOf(compiled),
+    primary: primaryServiceName(plan.services),
     services: Object.values(plan.services).map((service) => ({ name: service.name })),
   });
   const authored = resolution.tasks;

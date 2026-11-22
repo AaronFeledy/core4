@@ -1659,12 +1659,24 @@
       "digest": "2ca78acb2785dab169f9cb64e0c950ba1b2605e82e61a13f7cf09c7a452728c1"
     },
     {
+      "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-custom-image",
+      "digest": "73cec1681f3ba86cc4551f886f3a5dacff7a759e87882c3b77157ea3c5fe2027"
+    },
+    {
       "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-demo",
       "digest": "49ca1d149841fa3580959de29d57c29834bde43cd0cedff3fbb51482051a2f48"
     },
     {
       "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-invalid",
       "digest": "497659277c73b4fceb9d7eb115d3f6e744e62ed10368cdddd4b468e169f436cd"
+    },
+    {
+      "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-php86",
+      "digest": "020dbd6eb1e5586c87e7705c5fc149f0e76115964ef99507d1bc47028552fcca"
+    },
+    {
+      "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-primary",
+      "digest": "1f22fd1015406e0e727ec31054dd19664ef6b5e966319d047433510cc20e9633"
     },
     {
       "fixture": "docs/guides/xhprof-xhgui/fixtures/xhprof-demo",

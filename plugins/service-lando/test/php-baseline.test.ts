@@ -6,7 +6,6 @@ import { PHP_FEATURE_ID, php82ServiceType, phpServiceFeature } from "../src/serv
 import {
   PHP_BASELINE_INI_PATH,
   PHP_BASELINE_STEP_ID,
-  PHP_SECURITY_BASELINE,
   phpBaselineBuildStep,
   phpBaselineIniCommand,
   renderPhpBaselineIni,
@@ -59,26 +58,14 @@ const baselineIni = renderPhpBaselineIni();
 describe("PHP security baseline table", () => {
   test("renders table settings into a conf.d ini that cites the advisory", () => {
     // Given / When: the stock baseline table is rendered.
-    // Then: comments cite the advisory and the setting is assigned, without version pins.
-    expect(baselineIni.endsWith("\n")).toBe(true);
-    expect(baselineIni).toContain("; Lando-managed PHP security baseline\n");
-    expect(baselineIni).not.toMatch(/\b\d+\.\d+\.\d+\b/u);
-    for (const entry of PHP_SECURITY_BASELINE) {
-      expect(baselineIni).toContain(`; ${entry.reason}`);
-      expect(baselineIni).toContain(`; Advisory: ${entry.advisoryUrl}`);
-      expect(baselineIni).not.toContain(entry.removeWhen);
-      expect(baselineIni).toContain(`${entry.setting} = ${entry.value}\n`);
-    }
-    expect(baselineIni).toContain("https://www.php.net/archive/2026.php#2026-10-23-1");
-    expect(baselineIni).toContain("session.upload_progress.enabled = 0\n");
-  });
-
-  test("requires an advisory URL and a non-empty removal trigger on every entry", () => {
-    expect(PHP_SECURITY_BASELINE.length).toBeGreaterThan(0);
-    for (const entry of PHP_SECURITY_BASELINE) {
-      expect(entry.advisoryUrl.length).toBeGreaterThan(0);
-      expect(entry.removeWhen.length).toBeGreaterThan(0);
-    }
+    // Then: only the header, advisory, and required setting are written.
+    const [header, ...lines] = baselineIni.split("\n");
+    expect(header).toMatch(/^; /u);
+    expect(lines).toEqual([
+      "; Advisory: https://www.php.net/archive/2026.php#2026-10-23-1",
+      "session.upload_progress.enabled = 0",
+      "",
+    ]);
   });
 });
 
@@ -90,7 +77,7 @@ describe("PHP security baseline plan", () => {
       const plan = await composePhpPlan({ via });
       const step = buildStepsFor(plan).find((candidate) => candidate.id === PHP_BASELINE_STEP_ID);
 
-      // Then: the Lando-managed conf.d file is a root build step keyed by the table.
+      // Then: the root build step is keyed by the conf.d file's path and content.
       expect(step?.user).toBe("root");
       expect(step?.command).not.toMatch(/[\r\n\p{Cc}]/u);
       expect(step?.command).toContain(phpBaselineIniCommand(baselineIni));
@@ -99,7 +86,6 @@ describe("PHP security baseline plan", () => {
         phpBaseline: {
           path: PHP_BASELINE_INI_PATH,
           content: baselineIni,
-          entries: PHP_SECURITY_BASELINE,
         },
       });
     },
