@@ -6,9 +6,11 @@ import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { apacheGeneratedCertificateEndpoint } from "./apache-native-tls.ts";
+import { drupalLocalLauncher } from "./drupal-local-launcher.ts";
 import { resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
 import { PHP_COMPOSER_CACHE, PHP_FEATURE_ID } from "./php-feature.ts";
+import { phpLocalLauncher } from "./php-local-launcher.ts";
 import { assertPhpComposerCompatible, resolvePhpComposer } from "./php-prerequisites.ts";
 import { PHP_RUNTIME_POLICY_KEY, resolvePhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
@@ -115,6 +117,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       });
       return {
         base: "lando" as const,
+        launchers: { ":php-local": phpLocalLauncher, ":drupal-local": drupalLocalLauncher },
         normalizedConfig: {
           ...input.service,
           type: `php:${resolvedVersion}`,

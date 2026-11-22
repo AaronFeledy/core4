@@ -30,6 +30,17 @@ version supports every PHP version. Choose a version supported by your project.
 
 ## Generated tooling
 
-- `lando drush …`: Drush.
+- `lando drush …`: Drush from the site's `vendor/bin`, from any directory in the app.
 - `lando composer …`: Composer inside the appserver.
-- `lando drupal-scaffold`: Scaffold pinned Drupal 11 and project-local Drush, with recovery on retry.
+- `lando phpcs …` / `lando phpcbf …`: PHP_CodeSniffer from the site's
+  `vendor/bin`, through the `:drupal-local` launcher. The scaffold installs
+  `drupal/coder` and writes `phpcs.xml.dist` (Drupal and DrupalPractice over
+  `web/modules`, `web/themes`, and `web/profiles`, skipping `contrib`). Without a
+  ruleset, Lando adds `--standard=Drupal,DrupalPractice`, Drupal's file
+  extensions, and `--ignore=*/node_modules/*,*/vendor/*`, and with no arguments
+  checks whichever `*/custom` directories exist under the webroot.
+- `lando phpstan …`: PHPStan from the site's `vendor/bin`. The scaffold installs
+  it with `mglaman/phpstan-drupal` and writes `phpstan.neon.dist` (level 1, same
+  directories). The task passes the nearest PHPStan config to `analyse`, because
+  PHPStan only looks in its working directory.
+- `lando drupal-scaffold`: Scaffold pinned Drupal 11, project-local Drush, and the PHP lint tools and configs, with recovery on retry.

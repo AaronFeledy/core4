@@ -47,7 +47,7 @@ export const source = {
       console: {
         service: "appserver",
         description: "Run the Symfony console inside the appserver service.",
-        cmds: ["php bin/console"],
+        cmd: [":php-local", "bin/console"],
         wrapper: true,
       },
       composer: composerTool,

@@ -1,0 +1,13 @@
+<?php
+
+/**
+ * @file
+ * Hooks for the Hello module.
+ */
+
+/**
+ * Returns the greeting for the Hello module.
+ */
+function hello_greeting(): string {
+    return 'Hello';
+}

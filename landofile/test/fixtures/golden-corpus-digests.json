@@ -436,11 +436,11 @@
     },
     {
       "fixture": "docs/guides/drupal-multisite/fixtures/drupal-multisite-demo",
-      "digest": "ef76456800a12440b6bb24420819793a35b5a3b5a4ab0ce7d44cf0fbcc3e65e9"
+      "digest": "adbe341526645ae5dd9452612ae4a3c4e7d4c3e879d7a9f9b512ce2d1a341d5f"
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/bind-mounted-config",
-      "digest": "bde00549dfe4cea426260dc65677719f7cf468ee1b9edf49e960ccd8d6d1d236"
+      "digest": "3e39b8a2e2c089d0a555f2329585223dfb753e56b7a05a34394eb1b0bde3f4dd"
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/database-image-pin",
@@ -448,11 +448,11 @@
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/drush-uri-webroot",
-      "digest": "ef3e32393c4987b1d5c658298e49653190c39c3f9c5e78c167e059dcd699a720"
+      "digest": "933f2c3627af48cc22f4a86e7a6ffa305822b8b7099a9cf3fe9ca44a3f8f217c"
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/php-version-override",
-      "digest": "bde091422732ef9f75bfc74575835bf8849b8b86261deb89368fd66757cf292f"
+      "digest": "26f6eb592a45e04f3c4d797bcb7d7340ebd70661aaddc9ca97c15034d1336002"
     },
     {
       "fixture": "docs/guides/drupal-stack-overrides/fixtures/two-database-services",
@@ -460,7 +460,7 @@
     },
     {
       "fixture": "docs/guides/drupal-testing/fixtures/drupal-demo",
-      "digest": "dc450f72f5399f18887ea56463a7fd488fdc42bc9097d6e79d44b6c3cee1a042"
+      "digest": "e943469b0246b93eb9560b2e813c24fa04fae471b3e511cd3534459f8803fa26"
     },
     {
       "fixture": "docs/guides/e2e-smoke-scenarios/fixtures/router-page",
@@ -757,7 +757,7 @@
     },
     {
       "fixture": "docs/guides/laravel-horizon/fixtures/laravel-horizon",
-      "digest": "ede0a1d54a61f26dbf825cd68ddf3c7234fa6684cbd54ed08d411fbd91eff2d9"
+      "digest": "fc1ae9c33c5c3bbe5b074a003897e2cbeb977bc5c00763d66103c8325e5426e5"
     },
     {
       "fixture": "docs/guides/laravel-reverb/fixtures/laravel-reverb",
@@ -765,7 +765,7 @@
     },
     {
       "fixture": "docs/guides/laravel-vite/fixtures/laravel-vite",
-      "digest": "d292aed80ee6dc979d9d2825ad12be00d189f35801475b078e5b3254dce07554"
+      "digest": "00ea8ef5a37c7d63bda4f69e73303cbc39f28e7adfedaa33c9dca66347bec41e"
     },
     {
       "fixture": "docs/guides/locale/fixtures/locale-demo",
@@ -1004,7 +1004,7 @@
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-drupal",
-      "digest": "bb61e74c47b107e938be4343d78cc66c5b3a5b04b11d69823c2dcabeb96b1109"
+      "digest": "495c01efff9afd56bba631ea5ca029c55975dd2e1bd819d33fa31f4fef538937"
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-infer",
@@ -1115,7 +1115,7 @@
     },
     {
       "fixture": "docs/guides/php-command-resolution/fixtures/php-command-resolution-demo",
-      "digest": "7a9f7c132622b8bf8e46e267b57c38799ea5fc05ce8d405c381574b5e352dd62"
+      "digest": "d0c9d5909fd5f4d5424e3fc0c13065c252272d3a0c8772b11e0c10262c4ebecc"
     },
     {
       "fixture": "docs/guides/php-composer-workflows/fixtures/php-composer-exact",
@@ -1497,7 +1497,7 @@
     },
     {
       "fixture": "docs/guides/symfony-messenger/fixtures/symfony-messenger",
-      "digest": "85df92be6c4d5a5e424170ea326a0dbd23a6886138da7771cea28a4f59c1cb39"
+      "digest": "626d6ba842cfa4a9eedb18a43ea13ee5cb795d660b9ece0043762c360943fbfa"
     },
     {
       "fixture": "docs/guides/task-events/fixtures/bracketed-build",
@@ -1768,18 +1768,18 @@
         "digest": "3f256ed2c224bc94bc91ee335eb6a8fa1111d4f4bd8d7aa0d391d1ff2e44a585"
       },
       "after": {
-        "digest": "cf221fe33efc622bdfabfd3c792dbba6d252e7b001066c4f40f7bafc96c80d3c"
+        "digest": "17d47742abd1de0523d3f77f1647d51c97beedeac6e092c2e90e8650874440ce"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer. Recipe tooling copies now include wrapper: true and the recipe's Drush URL resolution command (#2401). The canonical authored spelling changes the encoded document in this track."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer. Recipe tooling copies now include wrapper: true and the recipe's Drush URL resolution command (#2401). The Drush prelude now runs $LANDO_APP_ROOT/vendor/bin/drush so it works from app subdirectories. Drush now uses the PHP service's :drupal-local launcher instead of the embedded shell prelude. The canonical authored spelling (dbClient and other Compose key names) changes the encoded document."
     },
     "docs/guides/drupal-stack-overrides/fixtures/two-database-services": {
       "before": {
         "digest": "c5d890ccf5168bac68eb47a4a55d47145d21cd7fee243fe96175b0b2bdf3514e"
       },
       "after": {
-        "digest": "7cc0e5ccf065a3eacf8079627fbab87981a8943a3962bbcebc64ec99e704868e"
+        "digest": "1ac39a7fb77c0be394ee0573303ca183b74a3c0baa9edc9c93e101c2b12f1d70"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer. Recipe tooling copies now include wrapper: true and the recipe's Drush URL resolution command (#2401). The canonical authored spelling changes the encoded document in this track."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer. Recipe tooling copies now include wrapper: true and the recipe's Drush URL resolution command (#2401). The Drush prelude now runs $LANDO_APP_ROOT/vendor/bin/drush so it works from app subdirectories. Drush now uses the PHP service's :drupal-local launcher instead of the embedded shell prelude. The canonical authored spelling (dbClient and other Compose key names) changes the encoded document."
     },
     "docs/guides/elasticsearch/fixtures/elasticsearch-demo": {
       "before": {

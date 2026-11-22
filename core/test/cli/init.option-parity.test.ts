@@ -224,7 +224,7 @@ describe("recipe option parity", () => {
       const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
       expect(yaml).toContain('php: "8.4"');
       expect(yaml).toContain("webroot: web");
-      expect(yaml).toContain("vendor/bin/drush");
+      expect(Bun.YAML.parse(yaml)).toMatchObject({ tooling: { drush: { cmd: [":drupal-local", "drush"] } } });
       expect(yaml).toContain("allowOverride: true");
       expect(yaml).not.toContain("via:");
     });
@@ -272,7 +272,7 @@ describe("recipe option parity", () => {
       const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
       expect(yaml).toContain('php: "8.4"');
       expect(yaml).toContain("webroot: web");
-      expect(yaml).toContain("vendor/bin/drush");
+      expect(Bun.YAML.parse(yaml)).toMatchObject({ tooling: { drush: { cmd: [":drupal-local", "drush"] } } });
       expect(yaml).toContain("lando-drupal-cms-scaffold");
       expect(yaml).not.toContain("recommended-project");
     });
@@ -541,7 +541,9 @@ describe("recipe option parity", () => {
       expect(yaml).toContain('type: "{{ recipe.database }}"');
       expect(yaml).toContain("framework: joomla");
       expect(yaml).toContain("joomla:");
-      expect(yaml).toContain('- "php cli/joomla.php"');
+      expect(Bun.YAML.parse(yaml)).toMatchObject({
+        tooling: { joomla: { cmd: [":php-local", "cli/joomla.php"] } },
+      });
       expect(yaml).not.toContain("via:");
 
       const landofile = await discoverFrom(result.directory);

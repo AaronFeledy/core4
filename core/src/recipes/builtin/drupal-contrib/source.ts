@@ -1,5 +1,5 @@
 import type { RecipeSource } from "@lando/sdk/schema";
-import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
+import { drupalTool } from "../drupal-tooling.ts";
 import { composerTool, drupalOptions, drupalWebVariantsFor, phpAppserver } from "../source-php.ts";
 import {
   DRUPAL_CONTRIB_CHROME_IMAGE,
@@ -40,14 +40,6 @@ const contribAppserver = {
 };
 
 const contribToolingDir = { dir: contribDir } as const;
-/** Checkout tools run where the user stands, so paths and the extension's own configs match the host. */
-const extensionTool = (description: string, binary: string) =>
-  ({
-    service: "appserver",
-    description,
-    cmd: [`${contribDir}/vendor/bin/${binary}`],
-    wrapper: true,
-  }) as const;
 
 export const source = {
   id: "drupal-contrib",
@@ -101,10 +93,7 @@ export const source = {
     },
     tooling: {
       drush: {
-        service: "appserver",
-        description: "Run Drush for the scaffolded Drupal site in /app.",
-        cmds: [DRUSH_TOOLING_COMMAND],
-        wrapper: true,
+        ...drupalTool("drush", "Run Drush for the scaffolded Drupal site in /app."),
         ...contribToolingDir,
       },
       composer: {
@@ -127,9 +116,9 @@ export const source = {
         cmd: [`${contribDir}/vendor/bin/phpunit`, "-c", `${contribDir}/web/core`],
         wrapper: true,
       },
-      phpcs: extensionTool("Run PHP_CodeSniffer with Drupal Coder from your current directory.", "phpcs"),
-      phpcbf: extensionTool("Run phpcbf with Drupal Coder from your current directory.", "phpcbf"),
-      phpstan: extensionTool("Run PHPStan from your current directory.", "phpstan"),
+      phpcs: drupalTool("phpcs", "Run PHP_CodeSniffer with Drupal Coder from your current directory."),
+      phpcbf: drupalTool("phpcbf", "Run phpcbf with Drupal Coder from your current directory."),
+      phpstan: drupalTool("phpstan", "Run PHPStan from your current directory."),
     },
   },
   variants: [

@@ -15,8 +15,6 @@ const {
   manifest,
 } = bundledRecipe("drupal");
 
-import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
-
 const defaults = { ...drupalDefaults };
 const alternatives = {
   drupal: "10",
@@ -90,7 +88,7 @@ describe("drupal decomposition", () => {
         drush: {
           service: "appserver",
           description: "Run Drush inside the appserver service.",
-          cmds: [DRUSH_TOOLING_COMMAND],
+          cmd: [":drupal-local", "drush"],
           wrapper: true,
         },
         composer: {
@@ -98,6 +96,24 @@ describe("drupal decomposition", () => {
           description: "Run Composer inside the appserver service.",
           cmds: ["composer"],
           wrapper: true,
+        },
+        phpcs: {
+          service: "appserver",
+          cmd: [":drupal-local", "phpcs"],
+          wrapper: true,
+          description: "Run PHP_CodeSniffer inside the appserver service.",
+        },
+        phpcbf: {
+          service: "appserver",
+          cmd: [":drupal-local", "phpcbf"],
+          wrapper: true,
+          description: "Run phpcbf inside the appserver service.",
+        },
+        phpstan: {
+          service: "appserver",
+          cmd: [":drupal-local", "phpstan"],
+          wrapper: true,
+          description: "Run PHPStan inside the appserver service.",
         },
         "drupal-scaffold": scaffoldTooling,
       },

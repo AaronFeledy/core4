@@ -47,13 +47,16 @@ version supports every PHP version. Choose a version supported by your project.
 
 ## Generated tooling
 
-- `lando drush …`: Drush, working directory `/app`.
+- `lando drush …`: Drush from `/app/vendor/bin`, working directory `/app`.
 - `lando composer …`: Composer for the site, working directory `/app`.
 - `lando drupal-contrib-sync`: Build or update the site to match `.lando.yml`
   and the extension's `composer.json`.
 - `lando phpunit …`: PHPUnit with core's configuration and SIMPLETEST env, run
   from your current directory as `www-data`.
 - `lando phpcs …` / `lando phpcbf …`: Drupal Coder, run from your current
-  directory so the extension's `phpcs.xml.dist` applies.
+  directory so the extension's `phpcs.xml.dist` applies. Without a ruleset,
+  Lando checks the extension root against Drupal and DrupalPractice with
+  Drupal's file extensions.
 - `lando phpstan …`: PHPStan, run from your current directory so the
-  extension's `phpstan.neon.dist` applies.
+  extension's `phpstan.neon.dist` applies. With no arguments and no config, it
+  analyses the extension root at PHPStan's default level 0.

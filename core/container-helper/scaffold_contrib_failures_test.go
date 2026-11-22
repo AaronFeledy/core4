@@ -53,6 +53,7 @@ func TestDrupalContribSyncDoesNotMarkIncompleteInstall(t *testing.T) {
 		{"missing staged manifest", "missing-stage-json", "did not stage a composer.json"},
 		{"nonexecutable PHPUnit", "phpunit", "did not produce"},
 		{"nonexecutable PHPCS", "phpcs", "did not produce"},
+		{"nonexecutable PHPCBF", "phpcbf", "did not produce"},
 		{"duplicate extension", "", "installed the extension into contrib"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
