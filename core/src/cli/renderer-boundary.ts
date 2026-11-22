@@ -19,9 +19,6 @@ import { makePlainRenderer } from "@lando/renderer/runtime";
 import type { FormatSummaryOptions } from "@lando/renderer/summary";
 import {
   type CompletedCommandResult,
-  failureOutcomeFromCause,
-  normalizeDefect,
-  primaryFailureReason,
   redactValueWithPolicy,
   resolveCommandCompletion,
   structuralRedaction,
@@ -386,19 +383,6 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       error instanceof JqExpressionError || error instanceof CommandInputValidationError
         ? 2
         : (commandStdioExitCode(error) ?? options.failureExitCode?.(error) ?? 1);
-    const setFailureExitCode = (cause: Cause.Cause<unknown>) =>
-      Effect.sync(() => {
-        if (Cause.hasInterruptsOnly(cause)) {
-          setExitCode(commandInterruptionExitCode(options.signal));
-          return;
-        }
-        const primary = primaryFailureReason(cause);
-        if (primary !== undefined && Cause.isDieReason(primary)) {
-          setExitCode(1);
-          return;
-        }
-        setExitCode(errorExitCode(failureOutcomeFromCause(cause, normalizeDefect).error));
-      });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
       resultExit = Exit.failCause(cause);
       const defectRedactor = yield* redaction.forProfile("secrets", {
@@ -406,7 +390,10 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         redactionTokens: extraTokens,
       });
       yield* recordCliDefect(cause, defectRedactor, io);
-      const { error: primaryError, additionalErrors } = commandFailureOutcome(cause, options.signal);
+      const { kind, error: primaryError, additionalErrors } = commandFailureOutcome(cause, options.signal);
+      let failureExitCode = 1;
+      if (Cause.hasInterruptsOnly(cause)) failureExitCode = commandInterruptionExitCode(options.signal);
+      else if (kind === "typed") failureExitCode = errorExitCode(primaryError);
       const error = yield* renderFailureEvidence(primaryError);
       if (envelopeFormat) {
         const outcome = {
@@ -424,7 +411,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
           setExitCode(2);
           return;
         }
-        yield* setFailureExitCode(cause);
+        setExitCode(failureExitCode);
         return;
       }
       const redactor = yield* redaction.forProfile("secrets", { sourceEnv, redactionTokens: extraTokens });
@@ -437,7 +424,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       yield* writeDiagnosticLine(message);
       const renderer = yield* Renderer;
       for (const notice of notices) yield* renderer.message.warn(notice);
-      yield* setFailureExitCode(cause);
+      setExitCode(failureExitCode);
     });
     let finishMachineEvents: Effect.Effect<void> = Effect.void;
     const executeCommand = Effect.gen(function* () {

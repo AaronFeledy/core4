@@ -1024,7 +1024,13 @@ describe("failed-create compensation", () => {
     });
     const inner = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(invokeFailedCreate(provider, mode));
+        // Observe the first pull directly: Effect's Channel.runDrain loses a pull failure when
+        // the fiber has a pending interrupt, even when acquireRelease preserved both reasons.
+        const attempt =
+          mode === "streamed"
+            ? Effect.scoped(Effect.flatten(Stream.toPull(provider.runStream(spec))))
+            : invokeFailedCreate(provider, mode);
+        const fiber = yield* Effect.forkChild(attempt);
         yield* Deferred.await(pending);
         // Start the interrupter now so the interrupt is pending before the create returns.
         yield* Effect.forkChild(Fiber.interrupt(fiber), { startImmediately: true });
@@ -1035,6 +1041,10 @@ describe("failed-create compensation", () => {
     expect(Exit.isFailure(inner)).toBe(true);
     if (!Exit.isFailure(inner)) return;
     expectRemovedOnce(requests);
-    expect(failureOutcomeFromCause(inner.cause).error).toMatchObject(createHttpError(500));
+    expect(Cause.hasInterrupts(inner.cause)).toBe(true);
+    expect(failureOutcomeFromCause(inner.cause)).toMatchObject({
+      kind: "typed",
+      error: createHttpError(500),
+    });
   });
 });

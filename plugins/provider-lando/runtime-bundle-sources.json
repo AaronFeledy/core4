@@ -1,5 +1,5 @@
 {
-  "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative upstream digest. Linux Podman, Netavark, Aardvark DNS, and passt/pasta are source-built natively during assembly. newuidmap/newgidmap are host-provided via uidmap because packaging non-setuid copies would be unsafe and unusable. nft is provisioned into the runtime bin from pinned Debian packages (nft-versions.json) so netavark can find it without a host nftables install and without setting the invalid pasta network_backend. Linux catatonit is a typed Debian package component (archive: deb) extracted to bin/catatonit with static-ELF verification during assembly; each deb pin carries an exact source archive pin (url/sha256/sizeBytes) and license.source points at that source (not the binary .deb), with upstream COPYING, the Debian package copyright text, and the static-link glibc notices required by Built-Using glibc (= 2.41-12+deb13u4): upstream COPYING.LIB (glibc-2.41) plus the Debian glibc 2.41-12+deb13u4 copyright (source provenance https://sourceware.org/git/glibc.git and https://deb.debian.org/debian/pool/main/g/glibc/). Debian copyright alone is not treated as a complete substitute for the LGPL license text. Published runtime-bundle-versions.json stays on the last released payload until a helper-bearing release is published. Do not bump the managed Linux crun pin to 1.31 or newer until a crun release that actually fixes https://github.com/containers/crun/issues/2466 ships, or until bundled Podman is a recorded release that includes the exec oom_score_adj clamp. See container-runtime/src/podman/oci-runtime-floor.ts.",
+  "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative upstream digest. Linux Podman, Netavark, Aardvark DNS, and passt/pasta are source-built natively during assembly. newuidmap/newgidmap are host-provided via uidmap because packaging non-setuid copies would be unsafe and unusable. nft is provisioned into the runtime bin from pinned Debian packages (nft-versions.json) so netavark can find it without a host nftables install and without setting the invalid pasta network_backend. Linux catatonit is a typed Debian package component (archive: deb) extracted to bin/catatonit with static-ELF verification during assembly; each deb pin carries an exact source archive pin (url/sha256/sizeBytes) and license.source points at that source (not the binary .deb), with upstream COPYING, the Debian package copyright text, and the static-link glibc notices required by Built-Using glibc (= 2.41-12+deb13u4): upstream COPYING.LIB (glibc-2.41) plus the Debian glibc copyright at glibc_2.41-12+deb13u5_copyright because ftp-master dropped the u4 URL (byte-identical text, same sha256; source provenance https://sourceware.org/git/glibc.git and https://deb.debian.org/debian/pool/main/g/glibc/). Debian copyright alone is not treated as a complete substitute for the LGPL license text. Published runtime-bundle-versions.json stays on the last released payload until a helper-bearing release is published. Do not bump the managed Linux crun pin to 1.31 or newer until a crun release that actually fixes https://github.com/containers/crun/issues/2466 ships, or until bundled Podman is a recorded release that includes the exec oom_score_adj clamp. See container-runtime/src/podman/oci-runtime-floor.ts.",
   "schemaVersion": 1,
   "runtimeVersion": "0.1.8",
   "hostProvidedHelpers": ["newuidmap", "newgidmap"],
@@ -250,7 +250,7 @@
               },
               {
                 "file": "glibc-copyright",
-                "url": "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u4_copyright",
+                "url": "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u5_copyright",
                 "sha256": "f5788886720a2605a946e81d571e6c8162b09f58d2e2ceb8d36e5768fccd850d"
               }
             ]
@@ -520,7 +520,7 @@
               },
               {
                 "file": "glibc-copyright",
-                "url": "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u4_copyright",
+                "url": "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u5_copyright",
                 "sha256": "f5788886720a2605a946e81d571e6c8162b09f58d2e2ceb8d36e5768fccd850d"
               }
             ]

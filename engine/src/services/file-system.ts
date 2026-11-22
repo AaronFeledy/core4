@@ -56,7 +56,7 @@ async function* readChunks(path: string): AsyncGenerator<Uint8Array> {
 
   const reader = file.stream().getReader();
   try {
-    for (;;) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) {
         break;

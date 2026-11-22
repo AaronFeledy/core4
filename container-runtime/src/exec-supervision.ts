@@ -1,4 +1,4 @@
-import { annotateFailureRole, failureDefectCause, mapFailures } from "@lando/sdk/command-result";
+import { mapFailures, orDieWithRole } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
 import type { AppPlan, ContainerHelperTarget } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ExecTarget, ProviderError } from "@lando/sdk/services";
@@ -192,7 +192,7 @@ export const supervisedExecStream = (
           yield* Queue.shutdown(input);
           yield* Queue.shutdown(output);
           if (Exit.isFailure(result))
-            return yield* Effect.failCause(failureDefectCause(annotateFailureRole(result.cause, "cleanup")));
+            return yield* Effect.failCause(result.cause).pipe(orDieWithRole("cleanup"));
         }),
       );
       owned.producer = yield* Effect.gen(function* () {

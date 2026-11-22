@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { orDieWithRole } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -230,7 +231,8 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
     };
     return yield* Effect.acquireRelease(
       Effect.tryPromise({ try: (signal) => acquire(target(), host, signal), catch: failure(operation) }),
-      ({ release }) => Effect.tryPromise({ try: release, catch: failure(operation) }).pipe(Effect.orDie),
+      ({ release }) =>
+        Effect.tryPromise({ try: release, catch: failure(operation) }).pipe(orDieWithRole("cleanup")),
     );
   });
   return {

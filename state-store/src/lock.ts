@@ -100,7 +100,7 @@ const acquire = Effect.fnUntraced(function* (
   );
   const pending = yield* enqueueLock(lockPath, mode);
   if (pending !== undefined) {
-    for (;;) {
+    while (true) {
       if ((yield* wait.remaining) <= 0) return yield* wait.timeout();
       yield* wait.onContention();
       const delay = yield* wait.untilNextWake;
@@ -210,7 +210,7 @@ const acquire = Effect.fnUntraced(function* (
   // Operation holds can last minutes, so keep their lower steady-state poll rate.
   const maxDelay = options.wait === "operation" ? 250 : 20;
   let delay = 5;
-  for (;;) {
+  while (true) {
     const outcome = yield* attempt();
     if (outcome === "acquired") return { token };
     if (outcome === "contended") {

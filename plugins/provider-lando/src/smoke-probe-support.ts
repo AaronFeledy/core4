@@ -5,7 +5,7 @@ import type {
 } from "@lando/container-runtime/engine-api";
 import { buildContainerRemoveRequest } from "@lando/container-runtime/engine-api";
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
-import { annotateFailureRole, failureDefectCause, mapFailures } from "@lando/sdk/command-result";
+import { mapFailures, orDieWithRole } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
 import { Duration, Effect, type Schema } from "effect";
@@ -187,9 +187,7 @@ export const acquireSmokeContainer = (
               );
           }
         }),
-        Effect.catchCause((cause) =>
-          Effect.failCause(failureDefectCause(annotateFailureRole(cause, "cleanup"))),
-        ),
+        orDieWithRole("cleanup"),
       ),
   );
 

@@ -12,7 +12,7 @@ export const findRealpathAncestor = async (
   tryRealpath: (candidate: string) => Promise<string | null>,
 ): Promise<{ readonly ancestor: string; readonly realAncestor: string } | null> => {
   let ancestor = path;
-  for (;;) {
+  while (true) {
     const realAncestor = await tryRealpath(ancestor);
     if (realAncestor !== null) return { ancestor, realAncestor };
     const parent = dirname(ancestor);

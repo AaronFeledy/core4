@@ -40,12 +40,14 @@ const union = (members: readonly AST.AST[], annotations?: Schema.Annotations.Ann
 
 const authoringAnnotations = (ast: AST.AST, partial: boolean): Schema.Annotations.Annotations | undefined => {
   const identifier = AST.resolveIdentifier(ast);
-  return identifier === undefined
-    ? AST.resolve(ast)
-    : {
-        ...AST.resolve(ast),
-        identifier: `${identifier}${partial ? "AuthoringFragment" : "Authoring"}`,
-      };
+  const annotations = AST.resolve(ast);
+  if (annotations === undefined) return undefined;
+  const authored = { ...annotations };
+  // The strict runtime projection cannot represent fragment expressions or merge directives.
+  if (partial) authored.jsonSchemaProjection = undefined;
+  if (identifier !== undefined)
+    authored.identifier = `${identifier}${partial ? "AuthoringFragment" : "Authoring"}`;
+  return authored;
 };
 
 const leafKind = (ast: AST.AST): "string" | "number" | "boolean" | undefined => {

@@ -66,7 +66,7 @@ export const pumpStdin = async (
   const iterator = input.stdinStream[Symbol.asyncIterator]();
   let finished = false;
   try {
-    for (;;) {
+    while (true) {
       const next = await Promise.race([
         iterator.next().then((value) => ({ kind: "chunk" as const, value })),
         exited.then(() => ({ kind: "exited" as const })),
