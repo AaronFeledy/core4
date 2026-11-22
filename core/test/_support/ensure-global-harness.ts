@@ -173,6 +173,9 @@ export const makeHarness = async (
             labels: {
               "dev.lando.app": plan.id,
               "dev.lando.app-root": plan.root,
+              ...(plan.identity?.dataRoot === undefined
+                ? {}
+                : { "dev.lando.data-root": plan.identity.dataRoot }),
               "dev.lando.service": service.name,
             },
             status: "running" as const,
