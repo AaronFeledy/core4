@@ -151,7 +151,7 @@ If you are looking for a public surface or policy:
 | Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
 | Schema and generated-reference publication, build and environment input parity, encoded decoding-default metadata, indexed endpoint diagnostics, resolved `kind` encoding, and shared provider-free route listener derivation | 07 | §7.8 |
 | Shared resolved-Landofile validation, open diagnostic reasons, env/build repairs, and the generated lint rule reference | 07 + 08 | §7.3.1 + §7.8 + §8.2.1 + §8.11.1 |
-| Canonical authored key spelling, cross-service defaults, and unreleased spelling removals | 06 + 07 + 16 | §6.2 + §7.4–§7.8 + §16.2 |
+| Canonical authored key spelling, cross-service defaults, and unreleased spelling removals | 06 + 07 + 16 | §6.2 + §7.4–§7.6 + §7.8 + §18.1 |
 | Editor naming gate, exact debt ledger, and removed-spelling repairs | 07 + 13 | §7.8 + §13.2 |
 | Authored HTTP route binding with route-declared listeners and TCP/UDP protocol conflicts, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
 | Node runtime inference versus package-manager selection, offline launchers, BYO toolchains, and project-file validation headlines | 06 + 07 + 12 + 13 | §6.11.0 + §6.12.1 + §6.13.3 + §7.8 + §12.1 + §13.1 |
@@ -184,6 +184,7 @@ If you are looking for a public surface or policy:
 | Output routing table, JSON frame-stream events, and dropped-event warnings | 08 | §8.11.3 |
 | History-plus-live event subscriptions (`subscribeWithHistory`) | 03 | §11.1 |
 | Library entry points and runtime factory | 09 | §16.2 + §16.3 |
+| Standard Schema and Standard JSON Schema input views | 07 + 09 | §7.8 + §16.2 |
 | Library plugin/config policy and scope ownership | 09 | §16.4 + §16.6 |
 | Programmatic CLI and testing APIs | 09 | §16.7 + §16.8 |
 | Library compatibility and non-goals | 09 | §16.9 + §16.10 |
@@ -238,7 +239,7 @@ If you are looking for a public surface or policy:
 | Paired Tomcat image/config maintenance, offline catalog generation, and automation failure reporting | 15 | §17.2 |
 | Signing, supply chain, update, and installation | 15 | §17.4 + §17.7 |
 | Release workflow and shipping criteria | 15 | §17.8 + §17.9 |
-| Unreleased endpoint/filter `kind` vocabulary, declaration wire form, applied/cache bumps, and inline Dockerfile alias removal | 16 | §18.1 |
+| Unreleased endpoint/filter `kind` vocabulary, declaration wire form, applied/cache bumps, and authored spelling removals | 16 | §18.1 |
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |
 | Deprecation presentation, removal, and gates | 16 | §18.6 + §18.8 |
 | Executable-guide model, components, scenario runtime, and display vs. execute bindings | 17 | §19.2 + §19.4 + §19.5 |
