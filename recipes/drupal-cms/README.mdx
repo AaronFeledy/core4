@@ -102,6 +102,12 @@ For day-to-day tooling and database hosts, see [Run the Drupal CMS recipe](/guid
       <Verify command="lando exec appserver -- test -f /app/composer.json" />
       <Verify command="lando exec appserver -- test -x /app/vendor/bin/drush" />
     </Step>
+    <Hidden reason="The scaffold trusts the installers that register Coder standards and the PHPStan Drupal extension">
+      <Step name="quality-plugins">
+        <Verify command="lando composer config allow-plugins.dealerdirect/phpcodesniffer-composer-installer" expect={{ stdout: { regex: "^true" } }} />
+        <Verify command="lando composer config allow-plugins.phpstan/extension-installer" expect={{ stdout: { regex: "^true" } }} />
+      </Step>
+    </Hidden>
     <Step name="install-cms">
       <Run command="lando drupal-cms-install" />
       <Verify command="lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/" expect={{ stdout: { regex: "^200$" } }} />

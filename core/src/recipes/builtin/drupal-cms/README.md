@@ -27,6 +27,12 @@ The scaffold command handles the empty `vendor` and `node_modules` volumes by
 staging the `composer create-project` output and atomically moving files into
 place, similar to how the `drupal` recipe works.
 
+Right after `create-project`, the staged project allows the
+`dealerdirect/phpcodesniffer-composer-installer` and
+`phpstan/extension-installer` Composer plugins, as `drupal/recommended-project`
+does, so requiring `drupal/coder` or `mglaman/phpstan-drupal` registers their
+standards and extensions for `lando phpcs` and `lando phpstan`.
+
 Before promotion, the staged project pins the upstream SVG Image security patch
 (merge request 65) through a first-priority root `package` repository. Its
 metadata is the patch commit's `composer.json` verbatim plus two Lando-authored

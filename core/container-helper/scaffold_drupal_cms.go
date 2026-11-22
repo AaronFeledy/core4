@@ -49,6 +49,15 @@ func stageDrupalCms(s *scaffold, stage string) error {
 	); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not stage the project: %w", err)
 	}
+	// Match drupal/recommended-project's allow-plugins so phpcs/phpcbf/phpstan can install their standards.
+	for _, plugin := range []string{
+		"dealerdirect/phpcodesniffer-composer-installer",
+		"phpstan/extension-installer",
+	} {
+		if err := s.runCommand(s.appRoot, "composer", "--working-dir="+stage, "config", "--no-plugins", "allow-plugins."+plugin, "true"); err != nil {
+			return fmt.Errorf("Drupal CMS scaffold could not allow the %s Composer plugin: %w", plugin, err)
+		}
+	}
 	repository := cmsSvgRepositoryJSON()
 	if err := s.runCommand(
 		s.appRoot,

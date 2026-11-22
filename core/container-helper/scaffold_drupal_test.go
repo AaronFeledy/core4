@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,6 +102,8 @@ func TestDrupalCmsScaffoldRunsThePinnedSequence(t *testing.T) {
 	}
 	mustEqualStrings(t, fixture.calls(t), []string{
 		"create-project",
+		"config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-composer-installer true",
+		"config --no-plugins allow-plugins.phpstan/extension-installer true",
 		"config",
 		"require",
 		"update",
@@ -109,6 +113,26 @@ func TestDrupalCmsScaffoldRunsThePinnedSequence(t *testing.T) {
 		"run-script post-create-project-cmd",
 		"audit",
 	})
+	data, err := os.ReadFile(filepath.Join(fixture.appRoot, "composer.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var project struct {
+		Config struct {
+			AllowPlugins map[string]bool `json:"allow-plugins"`
+		} `json:"config"`
+	}
+	if err := json.Unmarshal(data, &project); err != nil {
+		t.Fatal(err)
+	}
+	wantPlugins := map[string]bool{
+		"composer/installers":                            true,
+		"dealerdirect/phpcodesniffer-composer-installer": true,
+		"phpstan/extension-installer":                    true,
+	}
+	if !maps.Equal(project.Config.AllowPlugins, wantPlugins) {
+		t.Fatalf("promoted allow-plugins = %v, want %v", project.Config.AllowPlugins, wantPlugins)
+	}
 	for _, path := range []string{
 		"composer.json",
 		"composer.lock",

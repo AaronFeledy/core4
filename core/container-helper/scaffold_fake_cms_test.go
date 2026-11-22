@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -19,6 +20,7 @@ func fakeCmsComposer(command string, workingDir string, positional []string, env
 		target := positional[1]
 		_ = os.MkdirAll(filepath.Join(target, "web", "core", "lib"), 0o755)
 		root := map[string]any{
+			"config":       map[string]any{"allow-plugins": map[string]any{"composer/installers": true}},
 			"require":      map[string]any{"drupal/cms": "^2.0"},
 			"repositories": map[string]any{"drupal": map[string]any{"type": "composer", "url": "https://packages.drupal.org/8"}},
 			"scripts":      map[string]any{"post-update-cmd": []string{"rm -f vendor/bin/composer"}},
@@ -28,7 +30,19 @@ func fakeCmsComposer(command string, workingDir string, positional []string, env
 		_ = os.WriteFile(filepath.Join(target, "web", "core", "lib", "Drupal.php"), []byte("late\n"), 0o644)
 		return 0
 	case "config":
+		if len(positional) != 2 {
+			return 2
+		}
 		root := readFakeJSON(filepath.Join(workingDir, "composer.json"))
+		if plugin, ok := strings.CutPrefix(positional[0], "allow-plugins."); ok {
+			allowed, err := strconv.ParseBool(positional[1])
+			if err != nil {
+				return 2
+			}
+			root["config"].(map[string]any)["allow-plugins"].(map[string]any)[plugin] = allowed
+			writeCmsComposer(filepath.Join(workingDir, "composer.json"), root)
+			return 0
+		}
 		repository := readFakeJSONBytes([]byte(positional[1]))
 		if mode == "repo-tamper" {
 			repository["package"].(map[string]any)["description"] = "tampered"

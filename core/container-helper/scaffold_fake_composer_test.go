@@ -42,6 +42,9 @@ func runFakeComposer(args []string) int {
 	if command == "run-script" && len(positional) > 0 {
 		logLine += " " + positional[0]
 	}
+	if command == "config" && len(positional) > 0 && strings.HasPrefix(positional[0], "allow-plugins.") {
+		logLine += " " + strings.Join(arguments, " ")
+	}
 	if logPath := env["LANDO_TEST_COMPOSER_LOG"]; logPath != "" {
 		file, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 		if err == nil {
