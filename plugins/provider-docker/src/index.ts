@@ -716,25 +716,33 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
             const plan = target.plan ?? previous;
             return plan === undefined
               ? Effect.succeed(DESTROY_NO_OP)
-              : bringDown(plan, {
-                  recordedPlan: previous,
-                  api: dockerApi,
-                  endpointNamespace: resolvedDockerHost,
-                  ctx: DOCKER_CTX,
-                  dialect: dockerLifecycleDialect,
-                  volumes: destroyOptions.volumes,
-                  ...(destroyOptions.purgeCaches === undefined
-                    ? {}
-                    : { purgeCaches: destroyOptions.purgeCaches }),
-                }).pipe(
-                  Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
-                  Effect.map(({ shutdownObservations, volumesRemoved, skipped }) => ({
-                    kind: "destroyed" as const,
-                    volumesRemoved,
-                    shutdownObservations,
-                    ...(skipped === undefined ? {} : { skipped }),
-                  })),
-                );
+              : planState.ownership
+                  .receiptsFor(plan)
+                  .pipe(
+                    Effect.flatMap((adoptionReceipts) =>
+                      bringDown(plan, {
+                        adoptionReceipts,
+                        recordedPlan: previous,
+                        api: dockerApi,
+                        endpointNamespace: resolvedDockerHost,
+                        ctx: DOCKER_CTX,
+                        dialect: dockerLifecycleDialect,
+                        volumes: destroyOptions.volumes,
+                        ...(destroyOptions.purgeCaches === undefined
+                          ? {}
+                          : { purgeCaches: destroyOptions.purgeCaches }),
+                      }),
+                    ),
+                  )
+                  .pipe(
+                    Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
+                    Effect.map(({ shutdownObservations, volumesRemoved, skipped }) => ({
+                      kind: "destroyed" as const,
+                      volumesRemoved,
+                      shutdownObservations,
+                      ...(skipped === undefined ? {} : { skipped }),
+                    })),
+                  );
           }),
         );
       }),

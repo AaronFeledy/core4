@@ -308,7 +308,7 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
         readonly kind: "network";
         readonly legacy: "accept" | "reject";
         readonly exactName?: true;
-        readonly recorded?: boolean;
+        readonly receipts?: readonly AdoptionReceipt[];
       }
   ) & {
     readonly name: string;
@@ -349,10 +349,23 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
       const id = observed?.Id ?? observed?.ID ?? observed?.id;
       const labels = observed?.Labels ?? observed?.labels ?? {};
       const exactName = (observed?.Name ?? observed?.name) === target.name;
+      const dataRoot = target.labels[LANDO_DATA_ROOT_LABEL];
+      const native = { kind: "network", nativeName: target.name, nativeId: id, labels } as const;
+      if (
+        dataRoot !== undefined &&
+        decideDataRootOwnership(native, { dataRoot, receipts: exactName ? (target.receipts ?? []) : [] }) !==
+          "owned"
+      ) {
+        return yield* new ProviderUnavailableError({
+          providerId: ctx.providerId,
+          operation: "resource-ownership",
+          ...dataRootRefusal(native),
+        });
+      }
       const decision = networkLabelsDecision(
         Object.keys(labels).length === 0 ? undefined : labels,
         target.labels,
-        exactName && target.recorded === true,
+        dataRoot !== undefined,
       );
       if (
         !id ||

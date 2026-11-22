@@ -340,9 +340,11 @@ test("v1 inventory upgrades and destroys the legacy app without touching peer-ro
     commonContainerLabels(old, service)["dev.lando.create-config"],
   );
   expect([...volumes.keys()]).toEqual([...stores.map(({ name }) => name), peerStore.name]);
+  const adopted = await Effect.runPromise(inventory.load(old.root));
   const receipt = await Effect.runPromise(
     bringDown(desired, {
       recordedPlan: desired,
+      adoptionReceipts: adopted?.adoptions?.flatMap((batch) => batch.receipts) ?? [],
       ctx,
       api,
       volumes: true,

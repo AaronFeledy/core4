@@ -909,6 +909,7 @@ const assembleRuntimeProvider = (
         const plan = target.plan ?? previous;
         if (plan === undefined) return DESTROY_NO_OP;
         const { shutdownObservations, volumesRemoved, skipped } = yield* bringDown(plan, {
+          adoptionReceipts: yield* planState.ownership.receiptsFor(plan),
           recordedPlan: previous,
           api: podmanApi,
           endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,

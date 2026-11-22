@@ -285,6 +285,17 @@ test("destroy removes this root's historical unlabeled volume and leaves a peer 
   const deleted: string[] = [];
   const result = await Effect.runPromise(
     bringDown(local, {
+      adoptionReceipts: [
+        {
+          kind: "volume",
+          nativeName: oldStore.name,
+          dataRoot,
+          appRoot: local.root,
+          appId: local.id,
+          providerId: local.provider,
+          volumeInstance: historical["dev.lando.volume-instance"],
+        },
+      ],
       ctx: { providerId: "docker", remediation: "Retry.", env: {} },
       dialect: dockerLifecycleDialect,
       volumes: true,
