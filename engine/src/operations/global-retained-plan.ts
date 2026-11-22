@@ -1,4 +1,8 @@
-import { adoptionReceiptsFromSummary, ownsServiceContainer } from "@lando/container-runtime/native-ownership";
+import {
+  adoptionReceiptsFromSummary,
+  dataRootRefusal,
+  ownsServiceContainer,
+} from "@lando/container-runtime/native-ownership";
 import { GlobalAppError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
@@ -50,11 +54,16 @@ export const prepareGlobalReplacement = Effect.fn("GlobalApp.prepareReplacement"
     return yield* Effect.fail(
       new GlobalAppError({
         operation: "start",
-        message: `Global services have conflicting applied placement at ${placed.root} on ${placed.provider}.`,
-        remediation:
-          placed.identity?.dataRoot === undefined
-            ? "Resolve the recorded global app placement before starting services."
-            : `Use the Lando installation with data root ${placed.identity.dataRoot} to manage this realization.`,
+        ...(placed.identity?.dataRoot !== undefined && placed.identity.dataRoot !== desired.identity?.dataRoot
+          ? dataRootRefusal({
+              kind: "global app",
+              nativeName: placed.id,
+              labels: { [LANDO_DATA_ROOT_LABEL]: placed.identity.dataRoot },
+            })
+          : {
+              message: `Global services have conflicting applied placement at ${placed.root} on ${placed.provider}.`,
+              remediation: "Resolve the recorded global app placement before starting services.",
+            }),
       }),
     );
   const provider = yield* prepareProvider(selectedProvider);

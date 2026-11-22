@@ -59,12 +59,11 @@ export const preflightExternalNetwork = Effect.fnUntraced(function* (
   }
   const owner = decoded.value.Labels?.[LANDO_DATA_ROOT_LABEL];
   if (owner !== undefined && owner !== dataRoot) {
-    return yield* networkFailure(
-      ctx,
-      name,
-      "another Lando data root owns this network.",
-      `Use the Lando installation with data root ${owner} to manage this network.`,
-    );
+    return yield* new ProviderUnavailableError({
+      providerId: ctx.providerId,
+      operation: "bringUp.network.external",
+      ...dataRootRefusal({ kind: "network", nativeName: name, labels: decoded.value.Labels }),
+    });
   }
 });
 

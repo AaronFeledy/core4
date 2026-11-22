@@ -73,8 +73,15 @@ export const decideDataRootOwnership = (
     : "unknown";
 };
 
-export const dataRootRefusal = ({ kind, nativeName, labels }: DataRootResource) => {
+export const dataRootRefusal = ({
+  kind,
+  nativeName,
+  labels,
+}: Pick<DataRootResource, "nativeName" | "labels"> & {
+  readonly kind: NativeKind | "global app" | "router";
+}) => {
   const root = labels?.[LANDO_DATA_ROOT_LABEL];
+  const resource = `${kind.charAt(0).toUpperCase()}${kind.slice(1)} ${nativeName}`;
   return root === undefined
     ? {
         message: `Cannot verify which Lando installation owns ${kind} ${nativeName}.`,
@@ -82,7 +89,7 @@ export const dataRootRefusal = ({ kind, nativeName, labels }: DataRootResource) 
           "Use a different app name, or verify and remove the conflicting resource from its owning installation.",
       }
     : {
-        message: `${kind} ${nativeName} belongs to the Lando installation with data root ${root}.`,
-        remediation: `Run this from that installation (LANDO_USER_DATA_ROOT=${root}) or rename the app.`,
+        message: `${resource} belongs to the Lando installation with data root ${root}.`,
+        remediation: `Run this command from that installation (LANDO_USER_DATA_ROOT=${root})${kind === "global app" || kind === "router" ? "." : " or give this app a different name."}`,
       };
 };
