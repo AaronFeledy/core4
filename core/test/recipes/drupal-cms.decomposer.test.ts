@@ -132,7 +132,7 @@ describe("drupal-cms decomposition", () => {
           service: "appserver",
           description: "Scaffold Drupal CMS 2 and project-local Drush into the mounted app root.",
           arguments: false,
-          cmd: ["lando-drupal-cms-scaffold", "{{ recipe.webroot }}", "--testing={{ recipe.testing }}"],
+          cmd: 'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=false',
         },
         "drupal-cms-install": {
           service: "appserver",
@@ -260,13 +260,11 @@ describe("drupal-cms decomposition", () => {
 
   test("keeps the container helper scaffold command through snapshot encoding", () => {
     const rendered = Result.getOrThrow(renderRecipeSnapshot(drupalCmsSnapshot, defaults)) as {
-      tooling: { "drupal-cms-scaffold": { cmd: readonly string[] } };
+      tooling: { "drupal-cms-scaffold": { cmd: string } };
     };
-    expect(rendered.tooling["drupal-cms-scaffold"].cmd).toEqual([
-      "lando-drupal-cms-scaffold",
-      "{{ recipe.webroot }}",
-      "--testing={{ recipe.testing }}",
-    ]);
+    expect(rendered.tooling["drupal-cms-scaffold"].cmd).toBe(
+      'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=false',
+    );
   });
 
   test.each([

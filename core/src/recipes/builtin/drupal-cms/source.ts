@@ -5,6 +5,17 @@ import { composerTool, drupalSiteOptions, drupalWebVariants, phpAppserver } from
 import { DRUPAL_CMS_GIT_ARTIFACT, drupalCmsInstallCommand } from "./commands.ts";
 import { DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET } from "./php-config.ts";
 
+const scaffold = (testing: boolean) => ({
+  tooling: {
+    "drupal-cms-scaffold": {
+      service: "appserver",
+      description: "Scaffold Drupal CMS 2 and project-local Drush into the mounted app root.",
+      arguments: false,
+      cmd: `lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=${testing}`,
+    },
+  },
+});
+
 export const source = {
   id: "drupal-cms",
   title: "Drupal CMS",
@@ -30,12 +41,7 @@ export const source = {
       drush: siteDrush,
       composer: composerTool,
       ...siteQualityTooling,
-      "drupal-cms-scaffold": {
-        service: "appserver",
-        description: "Scaffold Drupal CMS 2 and project-local Drush into the mounted app root.",
-        arguments: false,
-        cmd: ["lando-drupal-cms-scaffold", "{{ recipe.webroot }}", "--testing={{ recipe.testing }}"],
-      },
+      ...scaffold(false).tooling,
       "drupal-cms-install": {
         service: "appserver",
         dir: "/app",
@@ -47,7 +53,7 @@ export const source = {
   },
   variants: [
     ...drupalWebVariants,
-    ...drupalSiteTestingVariants,
+    ...drupalSiteTestingVariants([{ when: "{{ options.testing }}", config: scaffold(true) }]),
     {
       when: '{{ eq(options.database, "postgres:16") }}',
       config: {

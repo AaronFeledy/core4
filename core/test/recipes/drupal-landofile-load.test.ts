@@ -83,12 +83,9 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       const routes = services.appserver?.routes as ReadonlyArray<Record<string, unknown>>;
       const drupalVersion = drupalDefaults.drupal;
       if (typeof drupalVersion !== "string") throw new TypeError("Expected a Drupal version default");
-      expect(tooling["drupal-scaffold"]?.cmd).toEqual([
-        "lando-drupal-scaffold",
-        drupalVersion,
-        "web",
-        "--testing=false",
-      ]);
+      expect(tooling["drupal-scaffold"]?.cmd).toBe(
+        `lando-drupal-scaffold ${drupalVersion} "$LANDO_WEBROOT" --testing=false`,
+      );
       expect(tooling.drush?.wrapper).toBe(true);
       expect(tooling.composer?.wrapper).toBe(true);
       expect(tooling.phpcs?.wrapper).toBe(true);
@@ -102,18 +99,20 @@ describe("the decomposed drupal Landofile on the native load path", () => {
 
   test("carries a nondefault drupal major into the resolved scaffold command", async () => {
     await withEncodedApp({ ...drupalDefaults, drupal: "10", php: "8.4" }, async (appRoot) => {
+      await writeFile(
+        join(appRoot, ".lando.local.yml"),
+        "recipe:\n  options:\n    drupal: '11'\n    testing: true\n",
+      );
       // When
       const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
 
       // Then
       const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
       const services = landofile.document.services as Record<string, Record<string, unknown>>;
-      expect(tooling["drupal-scaffold"]?.cmd).toEqual([
-        "lando-drupal-scaffold",
-        "10",
-        "web",
-        "--testing=false",
-      ]);
+      expect(tooling["drupal-scaffold"]?.cmd).toBe(
+        'lando-drupal-scaffold 10 "$LANDO_WEBROOT" --testing=false',
+      );
+      expect(tooling.phpunit).toBeUndefined();
       expect(services.appserver?.type).toBe("php:8.4");
     });
   });
@@ -130,14 +129,13 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
         testing: true,
       },
       async (appRoot) => {
+        await writeFile(join(appRoot, ".lando.local.yml"), "recipe:\n  options:\n    testing: false\n");
         const { document } = await Effect.runPromise(
           loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")),
         );
-        expect(document.tooling?.["drupal-cms-scaffold"]?.cmd).toEqual([
-          "lando-drupal-cms-scaffold",
-          "docroot",
-          "--testing=true",
-        ]);
+        expect(document.tooling?.["drupal-cms-scaffold"]?.cmd).toBe(
+          'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=true',
+        );
         expect(document.tooling?.phpunit?.cmd).toEqual([
           "/app/vendor/bin/phpunit",
           "-c",
@@ -162,11 +160,9 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
         const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
         const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
         const services = landofile.document.services as Record<string, Record<string, unknown>>;
-        expect(tooling["drupal-cms-scaffold"]?.cmd).toEqual([
-          "lando-drupal-cms-scaffold",
-          "web",
-          "--testing=false",
-        ]);
+        expect(tooling["drupal-cms-scaffold"]?.cmd).toBe(
+          'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=false',
+        );
         expect(services.chrome).toBeUndefined();
         expect(tooling.phpunit).toBeUndefined();
         expect(tooling.drush?.wrapper).toBe(true);

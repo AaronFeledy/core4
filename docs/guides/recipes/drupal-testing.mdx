@@ -25,6 +25,8 @@ For Drupal CMS, select `--recipe drupal-cms` and run `lando drupal-cms-scaffold`
 
 If the git repository is the module, theme, or profile, use [Run the Drupal contrib recipe](./drupal-contrib-workflow.mdx) instead. That recipe bakes this Chrome service, SIMPLETEST environment, and `lando phpunit` task in.
 
+Editing `recipe.options.testing` after init doesn't change the generated Chrome service, PHPUnit task, or scaffold command.
+
 ## Add testing to an existing checkout
 
 Don't rerun scaffold on a project that already has a `composer.json` and site files. If you scaffolded with `testing=true`, skip to [Run a Kernel test](#run-a-kernel-test).

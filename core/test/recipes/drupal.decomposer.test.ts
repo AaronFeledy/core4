@@ -43,12 +43,7 @@ const scaffoldTooling = {
   service: "appserver",
   description: "Scaffold Drupal and project-local Drush into the mounted app root.",
   arguments: false,
-  cmd: [
-    "lando-drupal-scaffold",
-    "{{ recipe.drupal }}",
-    "{{ recipe.webroot }}",
-    "--testing={{ recipe.testing }}",
-  ],
+  cmd: 'lando-drupal-scaffold 11 "$LANDO_WEBROOT" --testing=false',
 };
 
 describe("drupal decomposition", () => {
@@ -146,11 +141,13 @@ describe("drupal decomposition", () => {
     });
   });
 
-  test("names the container helper scaffold command and keeps the Drupal major in recipe scope", () => {
-    const authoring = authoringOf(alternatives) as {
-      tooling: { "drupal-scaffold": { cmd: readonly string[] } };
+  test("pins the chosen major and enables testing in the generated scaffold", () => {
+    const authoring = authoringOf({ ...alternatives, drupal: "10", testing: true }) as {
+      tooling: { "drupal-scaffold": { cmd: string } };
     };
-    expect(authoring.tooling["drupal-scaffold"].cmd).toEqual(scaffoldTooling.cmd);
+    expect(authoring.tooling["drupal-scaffold"].cmd).toBe(
+      'lando-drupal-scaffold 10 "$LANDO_WEBROOT" --testing=true',
+    );
   });
 
   test.each([

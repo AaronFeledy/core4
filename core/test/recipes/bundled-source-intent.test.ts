@@ -44,7 +44,7 @@ test.each([
       composer: "2",
       webroot: "web",
     },
-    site: "tooling.drupal-scaffold.cmd.1",
+    site: "services.appserver.webroot",
   },
 ])(
   "retains authored intent after $id preview source is reloaded",
@@ -81,12 +81,9 @@ test.each([
     expect(compiled.pendingSites.map((pending) => pending.path.join("."))).toContain(site);
     expect(loaded.document.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.1");
     if (id === "drupal")
-      expect(loaded.document.tooling?.["drupal-scaffold"]?.cmd).toEqual([
-        "lando-drupal-scaffold",
-        "10",
-        "web",
-        "--testing=false",
-      ]);
+      expect(loaded.document.tooling?.["drupal-scaffold"]?.cmd).toBe(
+        'lando-drupal-scaffold 10 "$LANDO_WEBROOT" --testing=false',
+      );
     if (id === "laravel")
       expect(loaded.document.services?.[ServiceName.make("appserver")]?.schedule).toEqual([
         {

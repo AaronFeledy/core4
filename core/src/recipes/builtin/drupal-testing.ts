@@ -66,10 +66,21 @@ export const drupalTestingOverrides = (optIn: boolean) =>
     },
   ] as const satisfies readonly RecipeConfigLayer[];
 
-export const drupalSiteTestingVariants = [
-  {
-    when: "{{ options.testing }}",
-    config: drupalTestingConfig('{{ path.resolve("/app", recipe.webroot) }}'),
-  },
-  ...drupalTestingOverrides(true),
-] as const satisfies readonly RecipeConfigLayer[];
+export const drupalSiteTestingVariants = (variants: readonly RecipeConfigLayer[]) =>
+  [
+    ...variants.map(({ config, when }) => ({
+      when,
+      config: {
+        ...config,
+        services: {
+          ...config.services,
+          ...siteTesting.services,
+          appserver: { ...config.services?.appserver, ...siteTesting.services.appserver },
+        },
+        tooling: { ...config.tooling, ...siteTesting.tooling },
+      },
+    })),
+    ...drupalTestingOverrides(true),
+  ] as const satisfies readonly RecipeConfigLayer[];
+
+const siteTesting = drupalTestingConfig('{{ path.resolve("/app", recipe.webroot) }}');

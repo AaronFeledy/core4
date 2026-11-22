@@ -155,12 +155,9 @@ describe("recipe option parity", () => {
       const landofile = await discoverFrom(result.directory);
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.5");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
-      expect(landofile.tooling?.["drupal-scaffold"]?.cmd).toEqual([
-        "lando-drupal-scaffold",
-        "10",
-        "web",
-        "--testing=false",
-      ]);
+      expect(landofile.tooling?.["drupal-scaffold"]?.cmd).toBe(
+        'lando-drupal-scaffold 10 "$LANDO_WEBROOT" --testing=false',
+      );
       expect(landofile.services?.[ServiceName.make("appserver")]?.via).toBe("fpm");
       expect(landofile.services?.[ServiceName.make("edge")]?.type).toBe("nginx");
       expect(landofile.services?.[ServiceName.make("edge")]?.uploadDirs).toEqual(["sites/*/files"]);
