@@ -83,6 +83,6 @@ test("skips an unreachable endpoint and still completes cleanup", async () => {
   );
   expect(prepared.apps).toEqual([]);
   expect(await prepared.cleanup()).toContain(
-    "docker: no engine answered at /test/unreachable.sock (HTTP 503)",
+    "docker: no engine answered at /test/unreachable.sock, so there was nothing to clean there (HTTP 503).",
   );
 });

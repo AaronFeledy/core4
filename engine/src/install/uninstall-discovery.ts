@@ -75,7 +75,7 @@ export const makePrepareUninstallCleanup =
       switch (found.kind) {
         case "skipped":
           details.push(
-            `${providerId}: no engine answered at ${found.endpoint} (${found.reason.replace(/\.$/u, "")}), so there was nothing to clean there.`,
+            `${providerId}: no engine answered at ${found.endpoint}, so there was nothing to clean there (${found.reason.replace(/\.$/u, "")}).`,
           );
           return [];
         case "reachable": {
@@ -112,7 +112,7 @@ export const makePrepareUninstallCleanup =
             hostSyncPresent: observations.some(({ syncPresent }) => syncPresent),
           });
         const results = await Effect.runPromise(Effect.forEach(observations, (found) => found.sweep()));
-        const actual = [...details, ...results.map(summary), scope].join(" ");
+        const actual = [...details, ...results.map(summary)].join(" ");
         const retained = results.flatMap((result) => result.retained);
         const failed = results.flatMap((result) => result.failed);
         if (retained.length > 0 || failed.length > 0)
