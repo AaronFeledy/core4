@@ -66,7 +66,7 @@ const stable = (value: unknown): unknown => {
   );
 };
 
-const generateJsonSchema = (schemaName: (typeof JSON_SCHEMA_NAMES)[number]): unknown => {
+const generateJsonSchema = (schemaName: (typeof JSON_SCHEMA_NAMES)[number]) => {
   try {
     return getJsonSchema(schemaName);
   } catch (cause) {
@@ -140,13 +140,10 @@ const main = async (): Promise<void> => {
 
   const sdkSchemas = JSON_SCHEMA_NAMES.map((schemaName) => ({
     schemaName,
-    jsonSchema: stable(generateJsonSchema(schemaName)),
+    jsonSchema: generateJsonSchema(schemaName),
   }));
-  assertPublicSchemaAnnotations(
-    undefined,
-    undefined,
-    new Map(sdkSchemas.map(({ schemaName, jsonSchema }) => [schemaName, jsonSchema])),
-  );
+  const sdkArtifacts = new Map(sdkSchemas.map(({ schemaName, jsonSchema }) => [schemaName, jsonSchema]));
+  assertPublicSchemaAnnotations(undefined, undefined, sdkArtifacts);
   const editorSchemas = {
     LandofileShape: getEditorJsonSchema("LandofileShape"),
     GlobalConfig: getEditorJsonSchema("GlobalConfig"),
@@ -222,7 +219,11 @@ const main = async (): Promise<void> => {
     if (!commandSchemaArtifactPaths.has(path)) await rm(path);
   }
 
-  const referencePages = renderPublicSchemaReferencePages();
+  const referencePages = renderPublicSchemaReferencePages((name) => {
+    const artifact = sdkArtifacts.get(name);
+    if (artifact === undefined) throw new Error(`Missing generated schema for ${name}.`);
+    return artifact;
+  });
   const referencePaths = new Set(referencePages.map((page) => resolve(REPO_ROOT, page.docsPath)));
   for (const entry of await readdir(SCHEMA_REFERENCE_DIR, { withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith(".mdx")) continue;

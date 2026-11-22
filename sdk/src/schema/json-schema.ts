@@ -2700,12 +2700,14 @@ export const assertPublicSchemaAnnotations = (
   throw new Error(`Public schema annotation gate failed:\n${lines.join("\n")}`);
 };
 
-export const renderPublicSchemaReferencePages = (): ReadonlyArray<PublicSchemaReferencePage> =>
+export const renderPublicSchemaReferencePages = (
+  artifactFor: (name: JsonSchemaName) => JsonObject = (name) => getJsonSchema(name) as JsonObject,
+): ReadonlyArray<PublicSchemaReferencePage> =>
   publicSchemaMetadataIndex.map((metadata) => ({
     id: metadata.id,
     docsPath: metadata.docsPath,
     content: renderSchemaReferenceMarkdown(metadata.id, publicSchemaRegistry[metadata.id], {
-      jsonSchema: getJsonSchema(metadata.id) as JsonObject,
+      jsonSchema: artifactFor(metadata.id),
       jsonSchemaPath: metadata.jsonSchemaPath,
       title: metadata.title,
       description: metadata.description,
