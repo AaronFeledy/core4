@@ -18,6 +18,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
+    "./data-root-purge": "./src/data-root-purge.ts",
     ".": "./src/index.ts",
     "./command-output": "./src/command-output.ts",
     "./transport": "./src/transport.ts",
