@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func fakeCmsComposer(command string, workingDir string, positional []string, env map[string]string) int {
+func fakeCmsComposer(command string, workingDir string, positional []string, dev bool, env map[string]string) int {
 	mode := env["LANDO_TEST_COMPOSER_MODE"]
 	switch command {
 	case "create-project":
@@ -53,6 +53,15 @@ func fakeCmsComposer(command string, workingDir string, positional []string, env
 		return 0
 	case "require":
 		root := readFakeJSON(filepath.Join(workingDir, "composer.json"))
+		if dev {
+			requireDev := make(map[string]string, len(positional))
+			for _, requirement := range positional {
+				requireDev[requirement] = "*"
+			}
+			root["require-dev"] = requireDev
+			writeCmsComposer(filepath.Join(workingDir, "composer.json"), root)
+			return 0
+		}
 		require := root["require"].(map[string]any)
 		for _, requirement := range positional {
 			name, constraint, ok := strings.Cut(requirement, ":")
@@ -114,8 +123,16 @@ func fakeCmsComposer(command string, workingDir string, positional []string, env
 		source := maps.Clone(pkg["source"].(map[string]any))
 		_ = os.MkdirAll(filepath.Join(workingDir, "vendor", "bin"), 0o755)
 		_ = os.MkdirAll(filepath.Join(workingDir, "vendor", "composer"), 0o755)
-		for _, binary := range []string{"drush", "composer"} {
-			_ = os.WriteFile(filepath.Join(workingDir, "vendor", "bin", binary), []byte("#!/bin/sh\n"), 0o755)
+		binaries := []string{"drush", "composer"}
+		requireDev, _ := root["require-dev"].(map[string]any)
+		if _, ok := requireDev["drupal/coder"]; ok {
+			binaries = append(binaries, "phpcs", "phpcbf")
+		}
+		if _, ok := requireDev["phpstan/phpstan"]; ok {
+			binaries = append(binaries, "phpstan")
+		}
+		if code := fakeComposerBinaries(workingDir, mode, binaries...); code != 0 {
+			return code
 		}
 		if mode == "installed-source" {
 			source["reference"] = strings.Repeat("b", 40)

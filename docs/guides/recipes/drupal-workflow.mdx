@@ -21,7 +21,7 @@ If something else owns 80 or 443, Lando falls back to the next free port, starti
 
 ## Scaffold Drupal and project-local Drush
 
-Init only writes the Landofile. Pull `drupal/recommended-project` and project-local Drush into the app root:
+Init only writes the Landofile. Pull `drupal/recommended-project`, project-local Drush, and the PHP lint tools into the app root:
 
 ```sh
 lando drupal-scaffold
@@ -30,7 +30,7 @@ lando composer --version
 lando mariadb -e 'SELECT 1 AS ok;'
 ```
 
-Scaffold runs `composer create-project 'drupal/recommended-project'` into a staging dir, requires `drush/drush`, then moves the project into the app root without overwriting anything already there, and checks for `composer.json`, `vendor/bin/drush`, and `web/`. If a run is interrupted, running it again resumes. On a finished tree it fails on purpose.
+Scaffold runs `composer create-project 'drupal/recommended-project'` into a staging dir, requires `drush/drush`, and adds Drupal Coder and PHPStan with its Drupal extension as dev dependencies. It writes a `phpcs.xml.dist` and a `phpstan.neon.dist` for your custom code, then moves the project into the app root without overwriting anything already there, and checks for `composer.json`, the tools in `vendor/bin`, and `web/`. If a run is interrupted, running it again resumes. On a finished tree it fails on purpose.
 
 ## Install Drupal with Drush
 
@@ -126,41 +126,24 @@ Drush gets `status --format=json` and prints its own JSON. Lando's flags go befo
 
 ## Lint PHP
 
-`lando phpcs`, `lando phpcbf`, and `lando phpstan` run in `appserver`. The recipe doesn't add the tools to your project, so require Drupal Coder first. It brings PHP_CodeSniffer with the Drupal and DrupalPractice standards:
+`lando drupal-scaffold` installs Drupal Coder and PHPStan, so `lando phpcs`, `lando phpcbf`, and `lando phpstan` work as soon as the scaffold finishes. Write a custom module under `web/modules/custom`, then check and fix it:
 
 ```sh
-lando composer require --dev drupal/coder
 lando phpcs
 lando phpcbf
-```
-
-`lando phpcs` checks `web/modules/custom`, `web/themes/custom`, and `web/profiles/custom` (whichever exist) against Drupal and DrupalPractice. When none of them exist yet, it says so and exits. It includes Drupal's file types, such as `.module`, `.theme`, `.install`, and `.info.yml`, and skips `node_modules` and `vendor`. `lando phpcbf` fixes what it can with the same defaults. Both return PHP_CodeSniffer's own exit status, so you can script them.
-
-You can run them from any directory in the app. Paths you pass are relative to where you run the command, for example `lando phpcs src` from inside a module, and replace the default directories. Pass `--standard=` to use a different standard for one run.
-
-To pick your own standards, sniffs, or paths, commit a ruleset to the app root. It's the same file PHP_CodeSniffer reads outside Lando, such as in CI. PHP_CodeSniffer finds `phpcs.xml.dist` (or `phpcs.xml`, `.phpcs.xml`, `.phpcs.xml.dist`) in your directory or a parent, and Lando then passes your arguments through unchanged:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<ruleset name="drupal-demo">
-  <rule ref="Drupal"/>
-  <rule ref="DrupalPractice"/>
-  <arg name="extensions" value="engine,inc,info,install,module,php,profile,test,theme,yml"/>
-  <exclude-pattern>*/node_modules/*</exclude-pattern>
-  <file>web/modules/custom</file>
-</ruleset>
-```
-
-For PHPStan, require it with the Drupal extension and its installer, then run it:
-
-```sh
-lando composer require --dev phpstan/phpstan mglaman/phpstan-drupal phpstan/extension-installer
 lando phpstan
 ```
 
-With no arguments, `lando phpstan` runs `phpstan analyse` with the nearest `phpstan.neon`, `phpstan.neon.dist`, or `phpstan.dist.neon` in your directory or a parent. Without one, it analyses the same custom directories at PHPStan's default level 0. Arguments go to PHPStan unchanged, for example `lando phpstan analyse --level=2 web/modules/custom`.
+The scaffold writes two config files to the app root, and both tools read them on their own, so `vendor/bin/phpcs` in CI and your editor's PHP_CodeSniffer integration get the same results:
 
-If a tool isn't installed, the task prints the `lando composer require` command that adds it and exits without running anything.
+- `phpcs.xml.dist` checks `web/modules`, `web/themes`, and `web/profiles` against Drupal and DrupalPractice. It includes Drupal's file types, such as `.module`, `.theme`, and `.info.yml`, and skips `contrib`, `node_modules`, and `vendor`.
+- `phpstan.neon.dist` analyses the same directories at level 1, with the Drupal extension loaded.
+
+Edit either file to change the rules. Until you have custom code, both tools report that they found no files to check. `lando phpcbf` fixes what it can. All three tasks return the tool's own exit status, so you can script them.
+
+You can run them from any directory in the app, and paths you pass stay relative to where you are, for example `lando phpcs src` from inside a module. PHP_CodeSniffer finds `phpcs.xml.dist` in a parent directory itself. PHPStan only looks in the current directory, so the task passes it the nearest `phpstan.neon`, `phpstan.neon.dist`, or `phpstan.dist.neon` when you run `lando phpstan` or `lando phpstan analyse` without your own `--configuration`.
+
+On a project without these files, such as an existing site you set up with `lando init --recipe drupal`, the tasks still lint custom code the Drupal way. With no ruleset, `lando phpcs` and `lando phpcbf` check `web/modules/custom`, `web/themes/custom`, and `web/profiles/custom` against Drupal and DrupalPractice with the same file types. With no PHPStan config, `lando phpstan` analyses those directories at PHPStan's default level 0. If the tools aren't installed there, the task prints the `lando composer require` command that adds them and exits without running anything.
 
 ## Run Drupal cron on a schedule
 
@@ -313,7 +296,7 @@ lando exec appserver -- php -v
     </Step>
   </Scenario>
 
-  <Scenario id="lint-php" layer="e2e" timeout={1200000} render={false} reason="Run the Lint PHP commands against a custom module">
+  <Scenario id="lint-php" layer="e2e" timeout={1200000} render={false} reason="Lint a custom module with the tools and configs the scaffold installs">
     <Step name="init">
       <UseFixture name="drupal-lint" />
       <Run command="lando init . --recipe drupal --name=drupal-lint --yes" />
@@ -321,20 +304,9 @@ lando exec appserver -- php -v
     <Step name="scaffold">
       <Run command="lando start" />
       <Run command="lando drupal-scaffold" />
+      <Verify command="lando exec appserver -- test -f phpcs.xml.dist" />
+      <Verify command="lando exec appserver -- test -f phpstan.neon.dist" />
     </Step>
-    <Hidden reason="A missing tool names the package that provides it">
-      <Step name="missing-coder">
-        <Verify command="lando phpcs" expectExit={1} expect={{ stderr: { regex: "Run lando composer require --dev drupal/coder" } }} />
-      </Step>
-    </Hidden>
-    <Step name="install-coder">
-      <Run command="lando composer require --dev drupal/coder" />
-    </Step>
-    <Hidden reason="With no custom code yet, phpcs says so instead of linting nothing">
-      <Step name="no-custom-code">
-        <Verify command="lando phpcs" expectExit={1} expect={{ stderr: { regex: "No custom code to check" } }} />
-      </Step>
-    </Hidden>
     <Hidden reason="Move the fixture module into the scaffolded site, as a reader adds custom code">
       <Step name="add-module">
         <Run command="lando exec appserver -- mkdir -p web/modules/custom" />
@@ -345,11 +317,18 @@ lando exec appserver -- php -v
       <Verify command="lando phpcs" expectExit={1} expect={{ stdout: { regex: "hello\\.module[\\s\\S]*expected 2 spaces, found 4" } }} />
       <Run command="lando phpcbf" />
       <Verify command="lando phpcs" />
-    </Step>
-    <Step name="phpstan">
-      <Run command="lando composer require --dev phpstan/phpstan mglaman/phpstan-drupal phpstan/extension-installer" />
       <Verify command="lando phpstan" expect={{ stdout: { regex: "No errors" } }} />
     </Step>
+    <Hidden reason="Without project configs the tasks fall back to Drupal defaults on custom code">
+      <Step name="lint-without-configs">
+        <Run command="lando exec appserver -- mv phpcs.xml.dist phpcs.xml.off" />
+        <Run command="lando exec appserver -- mv phpstan.neon.dist phpstan.neon.off" />
+        <Verify command="lando phpcs" />
+        <Verify command="lando phpstan" expect={{ stdout: { regex: "No errors" } }} />
+        <Run command="lando exec appserver -- mv phpcs.xml.off phpcs.xml.dist" />
+        <Run command="lando exec appserver -- mv phpstan.neon.off phpstan.neon.dist" />
+      </Step>
+    </Hidden>
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y --volumes" />

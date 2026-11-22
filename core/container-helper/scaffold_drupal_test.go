@@ -15,7 +15,8 @@ func TestDrupalScaffoldStagesAndPromotes(t *testing.T) {
 	if code := fixture.run(t, "drupal-scaffold", "11"); code != 0 {
 		t.Fatalf("drupal-scaffold exited %d: %s", code, fixture.stderr.String())
 	}
-	mustEqualStrings(t, fixture.calls(t), []string{"create-project", "require"})
+	mustEqualStrings(t, fixture.calls(t), []string{"create-project", "require drush/drush", "require --dev " + lintPackageArguments})
+	assertDrupalLintOutputs(t, fixture.appRoot)
 	for _, path := range []string{"composer.json", "vendor/bin/drush", "web", ".lando-drupal-scaffold-complete"} {
 		if !pathExists(filepath.Join(fixture.appRoot, filepath.FromSlash(path))) {
 			t.Fatalf("missing %s", path)
@@ -57,12 +58,19 @@ func TestDrupalScaffoldCompletionAndRepair(t *testing.T) {
 		t.Fatalf("first run exited %d: %s", code, fixture.stderr.String())
 	}
 
+	for _, path := range []string{"phpcs.xml.dist", "phpstan.neon.dist", "vendor/bin/phpcs", "vendor/bin/phpcbf", "vendor/bin/phpstan"} {
+		if err := os.Remove(filepath.Join(fixture.appRoot, path)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	callsBeforeRetry := fixture.calls(t)
 	if code := fixture.run(t, "drupal-scaffold", "11"); code == 0 {
 		t.Fatal("a completed scaffold was run again")
 	}
 	if !strings.Contains(fixture.stderr.String(), "already scaffolded") {
 		t.Fatalf("unexpected completion error: %s", fixture.stderr.String())
 	}
+	mustEqualStrings(t, fixture.calls(t), callsBeforeRetry)
 
 	repair := newScaffoldFixture(t, map[string]string{"LANDO_TEST_COMPOSER_RECIPE": "drupal"})
 	if err := os.WriteFile(filepath.Join(repair.appRoot, ".lando-drupal-scaffold-complete"), nil, 0o644); err != nil {
@@ -105,7 +113,8 @@ func TestDrupalCmsScaffoldRunsThePinnedSequence(t *testing.T) {
 		"config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-composer-installer true",
 		"config --no-plugins allow-plugins.phpstan/extension-installer true",
 		"config",
-		"require",
+		"require --no-update drupal/svg_image:3.x-dev enshrined/svg-sanitize:^1.0 drupal/drupal_cms_starter:^2",
+		"require --dev --no-update " + lintPackageArguments,
 		"update",
 		"audit",
 		"install",
@@ -113,6 +122,7 @@ func TestDrupalCmsScaffoldRunsThePinnedSequence(t *testing.T) {
 		"run-script post-create-project-cmd",
 		"audit",
 	})
+	assertDrupalLintOutputs(t, fixture.appRoot)
 	data, err := os.ReadFile(filepath.Join(fixture.appRoot, "composer.json"))
 	if err != nil {
 		t.Fatal(err)

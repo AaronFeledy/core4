@@ -39,6 +39,8 @@ lando drush --version
 lando drush user:login --no-browser
 ```
 
+The scaffold also installs Drupal Coder and PHPStan and writes `phpcs.xml.dist` and `phpstan.neon.dist`, so `lando phpcs`, `lando phpcbf`, and `lando phpstan` check your custom modules and themes and skip Drupal CMS's contrib code. See [Lint PHP](https://aaronfeledy.github.io/core4/guides/recipes/drupal-workflow/#lint-php).
+
 `lando drupal-cms-install` prints the admin username and a generated password when it finishes. Then open the site:
 
 ```sh
@@ -102,10 +104,10 @@ For day-to-day tooling and database hosts, see [Run the Drupal CMS recipe](/guid
       <Verify command="lando exec appserver -- test -f /app/composer.json" />
       <Verify command="lando exec appserver -- test -x /app/vendor/bin/drush" />
     </Step>
-    <Hidden reason="The scaffold trusts the installers that register Coder standards and the PHPStan Drupal extension">
-      <Step name="quality-plugins">
-        <Verify command="lando composer config allow-plugins.dealerdirect/phpcodesniffer-composer-installer" expect={{ stdout: { regex: "^true" } }} />
-        <Verify command="lando composer config allow-plugins.phpstan/extension-installer" expect={{ stdout: { regex: "^true" } }} />
+    <Hidden reason="The scaffold installs Coder and PHPStan and the lint tasks find them">
+      <Step name="lint-tools">
+        <Verify command="lando phpcs -i" expect={{ stdout: { regex: "Drupal, DrupalPractice" } }} />
+        <Verify command="lando phpstan --version" expect={{ stdout: { regex: "PHPStan" } }} />
       </Step>
     </Hidden>
     <Step name="install-cms">

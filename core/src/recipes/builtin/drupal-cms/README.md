@@ -30,8 +30,10 @@ place, similar to how the `drupal` recipe works.
 Right after `create-project`, the staged project allows the
 `dealerdirect/phpcodesniffer-composer-installer` and
 `phpstan/extension-installer` Composer plugins, as `drupal/recommended-project`
-does, so requiring `drupal/coder` or `mglaman/phpstan-drupal` registers their
-standards and extensions for `lando phpcs` and `lando phpstan`.
+does. It requires `drupal/coder`, `phpstan/phpstan`, `mglaman/phpstan-drupal`,
+and `phpstan/extension-installer` as dev dependencies in the same Composer solve
+and stages `phpcs.xml.dist` and `phpstan.neon.dist`, so `lando phpcs` and
+`lando phpstan` work as soon as the scaffold finishes.
 
 Before promotion, the staged project pins the upstream SVG Image security patch
 (merge request 65) through a first-priority root `package` repository. Its
@@ -56,20 +58,18 @@ the Composer project (`drupal/cms`) and its bundled install profile / recipes.
 
 ## Generated tooling
 
-- `lando drush`: Drush (via `vendor/bin/drush` after scaffolding).
+- `lando drush`: Drush from the site's `vendor/bin` after scaffolding, from any directory in the app.
 - `lando composer`: Composer inside the appserver.
-- `lando phpcs …` / `lando phpcbf …`: PHP_CodeSniffer from the app's
-  `vendor/bin`; require `drupal/coder` to install it. Without a project ruleset
-  (`phpcs.xml.dist`, `phpcs.xml`, `.phpcs.xml`, or `.phpcs.xml.dist` in the
-  current directory or a parent), Lando adds `--standard=Drupal,DrupalPractice`,
-  Drupal's file extensions, and `--ignore=*/node_modules/*,*/vendor/*`, and with
-  no arguments checks whichever of `modules/custom`, `themes/custom`, and
-  `profiles/custom` exist under the webroot. A ruleset or an explicit
-  `--standard=` passes the arguments through unchanged.
-- `lando phpstan …`: PHPStan from the app's `vendor/bin`; require
-  `phpstan/phpstan`, `mglaman/phpstan-drupal`, and `phpstan/extension-installer`.
-  With no arguments it runs `analyse` with the nearest PHPStan config in the
-  current directory or a parent, or else on the same custom directories.
-  Arguments pass through unchanged.
+- `lando phpcs …` / `lando phpcbf …`: PHP_CodeSniffer from the site's
+  `vendor/bin`, through the `:drupal-local` launcher. The scaffold installs
+  `drupal/coder` and writes `phpcs.xml.dist` (Drupal and DrupalPractice over
+  `web/modules`, `web/themes`, and `web/profiles`, skipping `contrib`). Without a
+  ruleset, Lando adds `--standard=Drupal,DrupalPractice`, Drupal's file
+  extensions, and `--ignore=*/node_modules/*,*/vendor/*`, and with no arguments
+  checks whichever `*/custom` directories exist under the webroot.
+- `lando phpstan …`: PHPStan from the site's `vendor/bin`. The scaffold installs
+  it with `mglaman/phpstan-drupal` and writes `phpstan.neon.dist` (level 1, same
+  directories). The task passes the nearest PHPStan config to `analyse`, because
+  PHPStan only looks in its working directory.
 - `lando drupal-cms-scaffold`: Scaffold Drupal CMS 2 and project-local Drush into the mounted app root. Handles empty volume directories atomically.
 - `lando drupal-cms-install`: Install Drupal CMS 2 using the drupal_cms_starter recipe with wired database credentials.
