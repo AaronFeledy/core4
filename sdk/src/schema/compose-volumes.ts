@@ -7,43 +7,79 @@ const ComposeVolumeType = Schema.Literals(["bind", "volume", "tmpfs"]);
 const Forbidden = Schema.optionalKey(Schema.Never);
 
 const ComposeVolumeTmpfs = Schema.Struct({
-  size: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])),
-  mode: Schema.optionalKey(Schema.Number),
+  size: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])).annotate({
+    description: "tmpfs size limit as integer bytes or a Compose byte-size string.",
+  }),
+  mode: Schema.optionalKey(Schema.Number).annotate({
+    description: "Optional octal file mode applied to the tmpfs mount.",
+  }),
 });
 
 const ComposeVolumeOptions = Schema.Struct({
-  subpath: Schema.optionalKey(Schema.String),
+  subpath: Schema.optionalKey(Schema.String).annotate({
+    description: "Subdirectory within a named volume to mount instead of the volume root.",
+  }),
   nocopy: Forbidden,
   labels: Forbidden,
 });
 
 const ComposeVolumeBind = Schema.Struct({
-  create_host_path: Schema.optionalKey(Schema.Boolean),
+  create_host_path: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "When true, create the host path if it is missing before binding.",
+  }),
   propagation: Forbidden,
   recursive: Forbidden,
   selinux: Forbidden,
 });
 
 const ComposeVolumeLongInput = Schema.Struct({
-  type: Schema.optionalKey(ComposeVolumeType),
-  source: Schema.optionalKey(Schema.String),
-  target: Schema.String,
-  read_only: Schema.optionalKey(Schema.Boolean),
-  volume: Schema.optionalKey(ComposeVolumeOptions),
-  bind: Schema.optionalKey(ComposeVolumeBind),
-  tmpfs: Schema.optionalKey(ComposeVolumeTmpfs),
+  type: Schema.optionalKey(ComposeVolumeType).annotate({
+    description: 'Volume kind: "bind", "volume", or "tmpfs"; inferred from source when omitted.',
+  }),
+  source: Schema.optionalKey(Schema.String).annotate({
+    description: "Host path or named volume that backs the mount; forbidden for tmpfs.",
+  }),
+  target: Schema.String.annotate({
+    description: "Absolute in-container path where the volume is mounted.",
+  }),
+  read_only: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "When true, the volume is mounted read-only inside the container.",
+  }),
+  volume: Schema.optionalKey(ComposeVolumeOptions).annotate({
+    description: "Named-volume options such as subpath; only valid when type is volume.",
+  }),
+  bind: Schema.optionalKey(ComposeVolumeBind).annotate({
+    description: "Bind-mount options such as create_host_path; only valid when type is bind.",
+  }),
+  tmpfs: Schema.optionalKey(ComposeVolumeTmpfs).annotate({
+    description: "tmpfs options such as size and mode; only valid when type is tmpfs.",
+  }),
   consistency: Forbidden,
   image: Forbidden,
 });
 
 const ComposeVolumeEntry = Schema.Struct({
-  type: ComposeVolumeType,
-  source: Schema.optionalKey(Schema.String),
-  target: Schema.String,
-  readOnly: Schema.Boolean,
-  subpath: Schema.optionalKey(Schema.String),
-  createHostPath: Schema.optionalKey(Schema.Boolean),
-  tmpfs: Schema.optionalKey(ComposeVolumeTmpfs),
+  type: ComposeVolumeType.annotate({
+    description: 'Volume kind: "bind", "volume", or "tmpfs".',
+  }),
+  source: Schema.optionalKey(Schema.String).annotate({
+    description: "Host path or named volume that backs the mount; omitted for tmpfs and anonymous volumes.",
+  }),
+  target: Schema.String.annotate({
+    description: "Absolute in-container path where the volume is mounted.",
+  }),
+  readOnly: Schema.Boolean.annotate({
+    description: "When true, the volume is mounted read-only inside the container.",
+  }),
+  subpath: Schema.optionalKey(Schema.String).annotate({
+    description: "Subdirectory within a named volume to mount instead of the volume root.",
+  }),
+  createHostPath: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "When true, create the host path if it is missing before binding.",
+  }),
+  tmpfs: Schema.optionalKey(ComposeVolumeTmpfs).annotate({
+    description: "tmpfs options such as size and mode when type is tmpfs.",
+  }),
 });
 export type ComposeVolumeEntry = typeof ComposeVolumeEntry.Type;
 
@@ -180,6 +216,9 @@ const encodeLongVolume = (entry: ComposeVolumeEntry): typeof ComposeVolumeLongIn
   ...(entry.tmpfs === undefined ? {} : { tmpfs: entry.tmpfs }),
 });
 
+const COMPOSE_VOLUMES_DESCRIPTION =
+  'Compose volumes as short strings ("./src:/app", "named:/data:ro", "/data") or long objects; host paths, named and anonymous volumes, and tmpfs normalize into the service mount list.';
+
 export const ComposeVolumesField = Schema.Array(
   Schema.Union([Schema.String, ComposeVolumeLongInput]).pipe(
     Schema.decodeTo(
@@ -206,4 +245,8 @@ export const ComposeVolumesField = Schema.Array(
       }),
     ),
   ),
-).pipe((schema) => layerMerge(schema, { kind: "replace" }));
+)
+  .pipe((schema) => layerMerge(schema, { kind: "replace" }))
+  .annotate({
+    description: COMPOSE_VOLUMES_DESCRIPTION,
+  });

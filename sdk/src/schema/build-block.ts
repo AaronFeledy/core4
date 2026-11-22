@@ -20,8 +20,14 @@ const anti = (key: string, family: "script" | "compose") =>
   );
 
 const LandoBuildBlock = Schema.Struct({
-  artifact: Schema.optionalKey(BuildScript),
-  app: Schema.optionalKey(BuildScript),
+  artifact: Schema.optionalKey(BuildScript).annotate({
+    description:
+      "Build steps that produce or refresh the service image before the app is mounted; a string or list of shell steps.",
+  }),
+  app: Schema.optionalKey(BuildScript).annotate({
+    description:
+      "Build steps that run after the app mount is available inside the built image; a string or list of shell steps.",
+  }),
   context: anti("context", "compose"),
   dockerfile: anti("dockerfile", "compose"),
   dockerfileInline: anti("dockerfileInline", "compose"),
@@ -30,11 +36,21 @@ const LandoBuildBlock = Schema.Struct({
 });
 
 const ComposeBuildBlock = Schema.Struct({
-  context: Schema.String,
-  dockerfile: Schema.optionalKey(Schema.String),
-  dockerfileInline: Schema.optionalKey(Schema.String),
-  args: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-  target: Schema.optionalKey(Schema.String),
+  context: Schema.String.annotate({
+    description: "Build context directory relative to the app root; defaults to . when omitted on input.",
+  }),
+  dockerfile: Schema.optionalKey(Schema.String).annotate({
+    description: "Path to a Dockerfile relative to the build context.",
+  }),
+  dockerfileInline: Schema.optionalKey(Schema.String).annotate({
+    description: "Inline Dockerfile contents used instead of a context-relative Dockerfile.",
+  }),
+  args: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)).annotate({
+    description: "Build-time ARG values as a map of names to strings.",
+  }),
+  target: Schema.optionalKey(Schema.String).annotate({
+    description: "Target stage name for a multi-stage Dockerfile build.",
+  }),
   artifact: anti("artifact", "script"),
   app: anti("app", "script"),
 });
@@ -42,14 +58,26 @@ const ComposeBuildBlock = Schema.Struct({
 const BuildBlockCanonical = Schema.Union([LandoBuildBlock, ComposeBuildBlock]);
 
 const scriptFields = {
-  artifact: executionSiteKey(Schema.optionalKey(BuildScript), "build-artifact"),
-  app: executionSiteKey(Schema.optionalKey(BuildScript), "build-app"),
+  artifact: executionSiteKey(Schema.optionalKey(BuildScript), "build-artifact").annotate({
+    description:
+      "Build steps that produce or refresh the service image before the app is mounted; a string or list of shell steps.",
+  }),
+  app: executionSiteKey(Schema.optionalKey(BuildScript), "build-app").annotate({
+    description:
+      "Build steps that run after the app mount is available inside the built image; a string or list of shell steps.",
+  }),
 } as const;
 
 const composeFields = {
-  context: Schema.optionalKey(Schema.String),
-  dockerfile: Schema.optionalKey(Schema.String),
-  dockerfile_inline: executionSiteKey(Schema.optionalKey(Schema.String), "build-dockerfile"),
+  context: Schema.optionalKey(Schema.String).annotate({
+    description: "Build context directory relative to the app root; defaults to . when omitted.",
+  }),
+  dockerfile: Schema.optionalKey(Schema.String).annotate({
+    description: "Path to a Dockerfile relative to the build context.",
+  }),
+  dockerfile_inline: executionSiteKey(Schema.optionalKey(Schema.String), "build-dockerfile").annotate({
+    description: "Inline Dockerfile contents used instead of a context-relative Dockerfile.",
+  }),
   args: executionSiteKey(
     Schema.optionalKey(
       Schema.Union([
@@ -62,8 +90,13 @@ const composeFields = {
       ]),
     ),
     "build-arg",
-  ),
-  target: Schema.optionalKey(Schema.String),
+  ).annotate({
+    description:
+      'Build-time ARG values as a name-to-string map or a list of "KEY=value" entries; canonicalized to a map.',
+  }),
+  target: Schema.optionalKey(Schema.String).annotate({
+    description: "Target stage name for a multi-stage Dockerfile build.",
+  }),
 } as const;
 
 const presence = Schema.makeFilter(

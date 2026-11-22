@@ -150,5 +150,7 @@ export type BuildScriptStep = typeof BuildScriptStep.Type;
 export const BuildScript = Schema.Union([
   BuildScriptStep,
   layerMerge(Schema.Array(BuildScriptStep), { kind: "replace" }),
-]);
+]).annotate({
+  description: "One build step as a shell string or { run, user } object, or a list of those steps.",
+});
 export type BuildScript = typeof BuildScript.Type;

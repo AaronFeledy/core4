@@ -11,11 +11,12 @@ const ComposeTest = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
 // JSON Schema publishes the encoded side, so both sides carry the description.
 const HEALTHCHECK_FIELD_DESCRIPTION =
   "Probe accepts false, a non-empty command string or argv array, or a command, HTTP, or TCP probe object with timing settings.";
-const ProbeUrl = Schema.optionalKey(ServiceProbeHttpUrl).annotate({
+// annotateKey keeps descriptions on transform/authoring encoded sides where plain annotate drops.
+const ProbeUrl = Schema.optionalKey(ServiceProbeHttpUrl).annotateKey({
   description:
     "Required for kind: http. Absolute HTTP or HTTPS URL requested from inside the service container.",
 });
-const ProbePort = Schema.optionalKey(PortNumber).annotate({
+const ProbePort = Schema.optionalKey(PortNumber).annotateKey({
   description:
     "TCP listener port (integer 1 to 65535), required for kind: tcp unless a service type supplies a listener target. Lando connects using the service network name.",
 });
@@ -24,50 +25,107 @@ const IntervalSeconds = ProbeIntervalSeconds;
 const TimeoutSeconds = ProbeTimeoutSeconds;
 
 const ComposeHealthcheckAccepted = Schema.Struct({
-  target: Schema.optionalKey(Schema.Literals(["service", "host"])).annotate({
+  target: Schema.optionalKey(Schema.Literals(["service", "host"])).annotateKey({
     description: "Execution location; omitted means service. Host means the CLI machine.",
   }),
-  user: Schema.optionalKey(ContainerUser).annotate({
+  user: Schema.optionalKey(ContainerUser).annotateKey({
     description: "Container identity for a service probe; not supported for host probes.",
   }),
-  kind: Schema.optionalKey(Schema.Literals(["command", "http", "tcp", "none"])),
-  command: Schema.optionalKey(CommandSpec),
+  kind: Schema.optionalKey(Schema.Literals(["command", "http", "tcp", "none"])).annotateKey({
+    description:
+      "Probe kind: command, http, tcp, or none. Omitted with command implies command. Lando kind and related fields take precedence over Compose test, disable, and duration spellings.",
+  }),
+  command: Schema.optionalKey(CommandSpec).annotateKey({
+    description:
+      "Shell string or argv for a command probe. Empty commands are rejected; use false or kind none to disable.",
+  }),
   url: ProbeUrl,
   port: ProbePort,
-  intervalSeconds: Schema.optionalKey(IntervalSeconds),
-  timeoutSeconds: Schema.optionalKey(TimeoutSeconds),
-  retries: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])),
-  startPeriodSeconds: Schema.optionalKey(IntervalSeconds),
-  startIntervalSeconds: Schema.optionalKey(IntervalSeconds),
-  test: Schema.optionalKey(ComposeTest),
-  disable: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.String])),
-  interval: Schema.optionalKey(Schema.String),
-  timeout: Schema.optionalKey(Schema.String),
-  start_period: Schema.optionalKey(Schema.String),
-  start_interval: Schema.optionalKey(Schema.String),
+  intervalSeconds: Schema.optionalKey(IntervalSeconds).annotateKey({
+    description:
+      "Seconds between probe attempts after the start period. Non-negative. Planner default is 10 when omitted.",
+  }),
+  timeoutSeconds: Schema.optionalKey(TimeoutSeconds).annotateKey({
+    description:
+      "Per-attempt timeout in seconds; must be greater than zero. Planner default is 5 when omitted.",
+  }),
+  retries: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])).annotateKey({
+    description:
+      "Maximum attempts after the start period, with at least one attempt. Non-negative decimal integer or numeric string. Planner default is 5 when omitted.",
+  }),
+  startPeriodSeconds: Schema.optionalKey(IntervalSeconds).annotateKey({
+    description:
+      "Grace period in seconds: probing starts immediately, but failures during this period do not consume retries.",
+  }),
+  startIntervalSeconds: Schema.optionalKey(IntervalSeconds).annotateKey({
+    description:
+      "Seconds between attempts during the start period for native container healthchecks. Distinct from Compose start_interval; neither field rewrites the other.",
+  }),
+  test: Schema.optionalKey(ComposeTest).annotateKey({
+    description:
+      "Compose healthcheck test: a shell string, or a CMD, CMD-SHELL, or NONE argv array. Used only when no Lando kind, command, url, port, or numeric timing fields are set.",
+  }),
+  disable: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.String])).annotateKey({
+    description:
+      'Compose disable flag. true or "true" disables when no Lando fields win; false has no effect. Prefer healthcheck: false to replace a lower probe.',
+  }),
+  interval: Schema.optionalKey(Schema.String).annotateKey({
+    description:
+      'Compose duration between attempts (for example "30s" or "1m30s"). Normalized to intervalSeconds when Lando timing fields are absent.',
+  }),
+  timeout: Schema.optionalKey(Schema.String).annotateKey({
+    description:
+      "Compose per-attempt duration. Normalized to timeoutSeconds when Lando timing fields are absent; must decode to greater than zero.",
+  }),
+  start_period: Schema.optionalKey(Schema.String).annotateKey({
+    description:
+      "Compose start-period duration. Normalized to startPeriodSeconds when Lando timing fields are absent.",
+  }),
+  start_interval: Schema.optionalKey(Schema.String).annotateKey({
+    description:
+      "Raw Compose start_interval duration preserved losslessly for native runtime extensions. Not rewritten from startIntervalSeconds.",
+  }),
 }).annotate({ description: HEALTHCHECK_FIELD_DESCRIPTION });
 
 const HealthcheckCanonicalBase = Schema.Struct({
-  target: Schema.optionalKey(Schema.Literals(["service", "host"])),
-  user: Schema.optionalKey(ContainerUser),
-  kind: Schema.optionalKey(Schema.Literals(["command", "http", "tcp", "none"])),
-  command: Schema.optionalKey(CommandSpec),
+  target: Schema.optionalKey(Schema.Literals(["service", "host"])).annotateKey({
+    description: "Execution location; omitted means service. Host means the CLI machine.",
+  }),
+  user: Schema.optionalKey(ContainerUser).annotateKey({
+    description: "Container identity for a service probe; not supported for host probes.",
+  }),
+  kind: Schema.optionalKey(Schema.Literals(["command", "http", "tcp", "none"])).annotateKey({
+    description: "Probe kind: command, http, tcp, or none. Omitted with command implies command.",
+  }),
+  command: Schema.optionalKey(CommandSpec).annotateKey({
+    description: "Shell string or argv for a command probe.",
+  }),
   url: ProbeUrl,
   port: ProbePort,
-  intervalSeconds: Schema.optionalKey(IntervalSeconds),
-  timeoutSeconds: Schema.optionalKey(TimeoutSeconds),
-  retries: Schema.optionalKey(ProbeRetries),
-  startPeriodSeconds: Schema.optionalKey(IntervalSeconds),
-  startIntervalSeconds: Schema.optionalKey(IntervalSeconds).annotate({
+  intervalSeconds: Schema.optionalKey(IntervalSeconds).annotateKey({
+    description: "Seconds between probe attempts after the start period.",
+  }),
+  timeoutSeconds: Schema.optionalKey(TimeoutSeconds).annotateKey({
+    description: "Per-attempt timeout in seconds; must be greater than zero.",
+  }),
+  retries: Schema.optionalKey(ProbeRetries).annotateKey({
     description:
-      "Seconds between healthcheck attempts during the start period for native container healthchecks.",
+      "Maximum attempts after the start period, with at least one attempt; the first success completes the probe.",
+  }),
+  startPeriodSeconds: Schema.optionalKey(IntervalSeconds).annotateKey({
+    description:
+      "Grace period in seconds: probing starts immediately, but failures during this period do not consume retries.",
+  }),
+  startIntervalSeconds: Schema.optionalKey(IntervalSeconds).annotateKey({
+    description:
+      "Seconds between attempts during the start period for native container healthchecks. Distinct from Compose start_interval.",
   }),
 });
 
 const HealthcheckCanonicalObject = HealthcheckCanonicalBase.pipe(
   Schema.fieldsAssign({
-    start_interval: Schema.optionalKey(Schema.String).annotate({
-      description: "Raw Compose start_interval duration preserved losslessly for runtime extensions.",
+    start_interval: Schema.optionalKey(Schema.String).annotateKey({
+      description: "Raw Compose start_interval duration preserved losslessly for native runtime extensions.",
     }),
   }),
 );

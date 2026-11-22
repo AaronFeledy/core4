@@ -15,7 +15,10 @@ export const RESERVED_LOG_SOURCE_ID = "console";
  * `console` source is reserved and cannot be used by a declared source, so the
  * brand rejects it (and empty ids) at decode time.
  */
-export const LogSourceId = Schema.String.pipe(
+export const LogSourceId = Schema.String.annotate({
+  description:
+    "Unique log source id within the service; `console` is reserved for the implicit engine stream and empty ids are rejected.",
+}).pipe(
   Schema.check(
     Schema.makeFilter((id) => id.length > 0, {
       message: "A log source id must not be empty.",
@@ -110,9 +113,11 @@ const LogSourceInputFields = Schema.Struct({
     }),
   ),
   /** Source id; defaults to the path basename. */
-  id: Schema.optionalKey(LogSourceId).annotate({
-    description: "Optional source id; defaults to the path basename.",
-  }),
+  id: Schema.optionalKey(
+    LogSourceId.annotate({
+      description: "Optional source id; defaults to the path basename when omitted.",
+    }),
+  ),
   timestamps: Schema.Boolean.pipe(
     withDefaultKey(false, {
       description:
@@ -123,6 +128,8 @@ const LogSourceInputFields = Schema.Struct({
   identifier: "LogSourceInput",
   expected: "a log source object with an absolute path",
   message: "Expected a log source object with an absolute path",
+  description:
+    "Declared in-container log file under services.<name>.logs; strategy is follow and required is false after decode.",
 });
 
 /**
@@ -167,5 +174,8 @@ export const LogSourceInput = LogSourceInputFields.pipe(
       },
     }),
   ),
-);
+).annotate({
+  description:
+    "Declared in-container log file under services.<name>.logs; strategy is follow and required is false after decode.",
+});
 export type LogSourceInput = typeof LogSourceInput.Type;

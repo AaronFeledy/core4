@@ -114,16 +114,14 @@ export const expandCronMacro = (value: string): string => {
   return Object.hasOwn(CRON_MACROS, trimmed) ? CRON_MACROS[trimmed as keyof typeof CRON_MACROS] : trimmed;
 };
 
-export const CronExpression = Schema.String.check(
-  Schema.makeFilter((value: string) => cronExpressionCheck(value)),
-).annotate({
+export const CronExpression = Schema.String.annotate({
   identifier: "CronExpression",
   title: "Cron Expression",
   description:
     "Five-field cron expression, a named schedule such as @hourly, or @every with seconds or minutes that divide 60, or hours that divide 24.",
   expected: "a cron expression",
   message: cronExpressionMessage,
-});
+}).check(Schema.makeFilter((value: string) => cronExpressionCheck(value)));
 export type CronExpression = typeof CronExpression.Type;
 
 // ============================================================================
@@ -132,14 +130,12 @@ export type CronExpression = typeof CronExpression.Type;
 
 const SCHEDULE_JOB_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]*$/u;
 
-export const ScheduleJobName = Schema.String.pipe(
-  Schema.check(Schema.isMinLength(1), Schema.isPattern(SCHEDULE_JOB_NAME_PATTERN)),
-).annotate({
+export const ScheduleJobName = Schema.String.annotate({
   identifier: "ScheduleJobName",
   title: "Schedule Job Name",
   description:
     "Job name unique within the service. Letters, digits, underscores, and hyphens; must start with a letter.",
-});
+}).pipe(Schema.check(Schema.isMinLength(1), Schema.isPattern(SCHEDULE_JOB_NAME_PATTERN)));
 export type ScheduleJobName = typeof ScheduleJobName.Type;
 
 export const ScheduleJob = Schema.Struct({
@@ -177,10 +173,10 @@ const uniqueScheduleJobNames = Schema.makeFilter((jobs: ReadonlyArray<ScheduleJo
 });
 
 export const ScheduleConfig = layerMerge(Schema.Array(ScheduleJob), REPLACE)
-  .check(uniqueScheduleJobNames)
   .annotate({
     identifier: "ScheduleConfig",
     title: "Schedule",
     description: "Scheduled jobs for a service. Names must be unique within the service.",
-  });
+  })
+  .check(uniqueScheduleJobNames);
 export type ScheduleConfig = typeof ScheduleConfig.Type;

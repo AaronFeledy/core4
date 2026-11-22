@@ -14,22 +14,46 @@ const PORT_MERGE = {
 const DecimalPortToken = /^[0-9]{1,5}$/;
 
 export const ComposePortEntry = Schema.Struct({
-  target: PortNumber,
-  published: Schema.optionalKey(PortNumber),
-  hostIp: Schema.optionalKey(BindAddress),
-  protocol: PortProtocol,
-  name: Schema.optionalKey(Schema.String),
-  appProtocol: Schema.optionalKey(Schema.String),
+  target: PortNumber.annotate({
+    description: "Container port the process listens on (1 through 65535).",
+  }),
+  published: Schema.optionalKey(PortNumber).annotate({
+    description: "Host port published for this mapping; omit for an unpublished container port.",
+  }),
+  hostIp: Schema.optionalKey(BindAddress).annotate({
+    description: "Host address to bind the published port to.",
+  }),
+  protocol: PortProtocol.annotate({
+    description: 'Transport protocol for the mapping; "tcp" or "udp".',
+  }),
+  name: Schema.optionalKey(Schema.String).annotate({
+    description: "Optional stable name for this port mapping used when merging layers.",
+  }),
+  appProtocol: Schema.optionalKey(Schema.String).annotate({
+    description: "Application-level protocol hint such as http or https; not the transport protocol.",
+  }),
 });
 export type ComposePortEntry = typeof ComposePortEntry.Type;
 
 const ComposePortLongInput = Schema.Struct({
-  target: PortNumber,
-  published: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])),
-  host_ip: Schema.optionalKey(BindAddress),
-  protocol: Schema.optionalKey(PortProtocol),
-  name: Schema.optionalKey(Schema.String),
-  app_protocol: Schema.optionalKey(Schema.String),
+  target: PortNumber.annotate({
+    description: "Container port the process listens on (1 through 65535).",
+  }),
+  published: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])).annotate({
+    description: "Host port published for this mapping; omit for an unpublished container port.",
+  }),
+  host_ip: Schema.optionalKey(BindAddress).annotate({
+    description: "Host address to bind the published port to.",
+  }),
+  protocol: Schema.optionalKey(PortProtocol).annotate({
+    description: 'Transport protocol for the mapping; "tcp" (default) or "udp".',
+  }),
+  name: Schema.optionalKey(Schema.String).annotate({
+    description: "Optional stable name for this port mapping used when merging layers.",
+  }),
+  app_protocol: Schema.optionalKey(Schema.String).annotate({
+    description: "Application-level protocol hint such as http or https; not the transport protocol.",
+  }),
   mode: Schema.optionalKey(Schema.Never).annotate({ description: "Compose ports.mode is unsupported." }),
 });
 
@@ -125,7 +149,7 @@ const parseShortPort = (value: string): Result.Result<ReadonlyArray<ComposePortE
 const ComposePortInput = Schema.Union([Schema.String, Schema.Number, ComposePortLongInput]);
 
 // JSON Schema publishes the encoded side, so both sides of each field carry the description.
-const COMPOSE_PORTS_DESCRIPTION =
+export const COMPOSE_PORTS_DESCRIPTION =
   'Published container ports as Compose short strings ("8080:80", "127.0.0.1:8080:80/udp", "80", ranges) or long objects; canonicalized to target/published/hostIp/protocol entries that normalize into endpoints.';
 
 export const ComposePortsField = layerMerge(Schema.Array(ComposePortInput), PORT_MERGE)

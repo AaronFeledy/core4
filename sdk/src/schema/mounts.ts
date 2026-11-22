@@ -98,7 +98,9 @@ export type MountPlan = typeof MountPlan.Type;
 /**
  * Storage scope — drives auto-naming for named volumes.
  */
-export const StorageScope = Schema.Literals(["service", "app", "global"]);
+export const StorageScope = Schema.Literals(["service", "app", "global"]).annotate({
+  description: "Lifetime that owns a named store: one service, the whole app, or every app on the host.",
+});
 export type StorageScope = typeof StorageScope.Type;
 
 /**
