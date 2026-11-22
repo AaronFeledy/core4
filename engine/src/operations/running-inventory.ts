@@ -268,6 +268,7 @@ export const readRunningInventory = Effect.fnUntraced(function* () {
   const scope = yield* Effect.result(currentDataRoot);
   if (Result.isFailure(scope)) failures.push(providerInventoryFailure("data-root", scope.failure));
   const registry = yield* RuntimeProviderRegistry;
+  const ownershipFailures = new Set<ProviderId>();
   const snapshots = Result.isSuccess(scope)
     ? yield* Effect.forEach(inventory.snapshots, (snapshot) =>
         Effect.gen(function* () {
@@ -280,7 +281,13 @@ export const readRunningInventory = Effect.fnUntraced(function* () {
           );
           const summaries = yield* Effect.forEach(roots, (root) =>
             (registry.resourceOwnership?.(snapshot.providerId, root) ?? Effect.succeed(undefined)).pipe(
-              Effect.catch(() => Effect.succeed(undefined)),
+              Effect.catch((error) => {
+                if (!ownershipFailures.has(snapshot.providerId)) {
+                  ownershipFailures.add(snapshot.providerId);
+                  failures.push(providerInventoryFailure(snapshot.providerId, error));
+                }
+                return Effect.succeed(undefined);
+              }),
             ),
           );
           return scopeRuntimeSnapshot(

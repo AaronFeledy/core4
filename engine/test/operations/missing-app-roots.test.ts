@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { makeLandoPaths } from "@lando/paths";
-import { FileIoError } from "@lando/sdk/errors";
+import { FileIoError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -299,6 +299,58 @@ test("drops unlabeled services without local plan membership under a data root",
   const { labels: _omitLabels, ...unlabeled } = service;
   expect(await run([snapshot({ services: [unlabeled] })])).toEqual([]);
 });
+
+test.each(["unreadable", "missing"] as const)(
+  "reports an %s ownership inventory accurately in the GC scan",
+  async (state) => {
+    const otherProvider = ProviderId.make("docker");
+    const { labels: _labels, ...legacy } = service;
+    const result = await Effect.runPromise(
+      scanMissingAppRoots().pipe(
+        Effect.provide(BunFileSystem.layer),
+        Effect.provideService(PathsService, makeLandoPaths({ userDataRoot: dataRoot })),
+        Effect.provideService(RuntimeProviderRegistry, {
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
+          list: Effect.succeed([providerId, otherProvider]),
+          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          select: () => Effect.succeed(TestRuntimeProvider),
+          observeRuntime: Effect.succeed([
+            snapshot({ services: [legacy] }),
+            snapshot({ providerId: otherProvider }),
+          ]),
+          resourceOwnership: (id) =>
+            state === "unreadable" && id === providerId
+              ? Effect.fail(
+                  new ProviderUnavailableError({
+                    providerId,
+                    operation: "resource-ownership",
+                    message: "Resource ownership inventory could not be read.",
+                    remediation: "Repair the provider plugin state.",
+                  }),
+                )
+              : Effect.succeed(undefined),
+        }),
+      ),
+    );
+
+    expect(result.candidates).toEqual([]);
+    expect(result.scans).toMatchObject([
+      state === "unreadable"
+        ? {
+            providerId,
+            runtimeObserved: true,
+            complete: false,
+            errorTag: "ProviderUnavailableError",
+            remediation: expect.stringMatching(/ownership inventory/i),
+          }
+        : { providerId, runtimeObserved: true, complete: true },
+      { providerId: otherProvider, complete: true },
+    ]);
+    if (state === "missing") expect(result.scans[0]?.errorTag).toBeUndefined();
+  },
+);
 
 test("verified adoption receipts keep unlabeled missing-root services", async () => {
   const { labels: _labels, ...unlabeled } = service;

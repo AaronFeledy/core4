@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
+import { CommandWarning, appIdentityKey } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
 import { AppsListResultSchema, appliedPlansDirectory } from "../../src/cli/commands/list.ts";
@@ -241,7 +242,7 @@ test.skipIf(process.platform === "win32")(
 );
 
 test.skipIf(process.platform === "win32")(
-  "source CLI keeps the legacy record but does not credit unreceipted or peer runtime observations",
+  "source CLI silently ignores missing ownership receipts and warns when the inventory becomes unreadable",
   async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-list-cli-pre-upgrade-"));
     const paths = makeLandoPaths({
@@ -263,6 +264,16 @@ test.skipIf(process.platform === "win32")(
                   Labels: {
                     "dev.lando.app": "legacy",
                     "dev.lando.app-root": appRoot,
+                    "dev.lando.provider": "lando",
+                    "dev.lando.service": "web",
+                  },
+                },
+                {
+                  State: "running",
+                  Labels: {
+                    "dev.lando.app": "local",
+                    "dev.lando.data-root": paths.roots.userDataRoot,
+                    "dev.lando.app-root": join(root, "local-app"),
                     "dev.lando.provider": "lando",
                     "dev.lando.service": "web",
                   },
@@ -311,11 +322,34 @@ test.skipIf(process.platform === "win32")(
       const listed = await runSourceAppsList(["apps:list", "--format=json"], env, root);
       expect(listed.exitCode).toBe(0);
       expect(listed.stderr).toBe("");
-      const envelope = Schema.decodeUnknownSync(
-        Schema.fromJsonString(Schema.Struct({ result: AppsListResultSchema })),
-      )(listed.stdout);
+      const decode = Schema.decodeUnknownSync(
+        Schema.fromJsonString(
+          Schema.Struct({ result: AppsListResultSchema, warnings: Schema.Array(CommandWarning) }),
+        ),
+      );
+      const envelope = decode(listed.stdout);
       expect(envelope.result.apps.map(({ appId, status, appRoot }) => ({ appId, status, appRoot }))).toEqual([
         { appId: "legacy", status: "stopped", appRoot },
+        { appId: "local", status: "active", appRoot: join(root, "local-app") },
+      ]);
+      expect(envelope.warnings).toEqual([]);
+
+      const ownershipDir = join(paths.pluginStateDir("@lando/provider-lando"), "resource-ownership");
+      await mkdir(ownershipDir, { recursive: true });
+      await writeFile(join(ownershipDir, `${appIdentityKey("owner", appRoot)}.json`), "{");
+
+      const partial = await runSourceAppsList(["apps:list", "--format=json"], env, root);
+      expect(partial.exitCode).toBe(0);
+      const result = decode(partial.stdout);
+      expect(result.result.apps.map(({ appId, status }) => ({ appId, status }))).toEqual([
+        { appId: "legacy", status: "unknown" },
+        { appId: "local", status: "active" },
+      ]);
+      expect(result.warnings).toMatchObject([
+        {
+          message: expect.stringMatching(/lando.*ownership inventory/i),
+          remediation: expect.stringMatching(/restore.*inventory/i),
+        },
       ]);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));

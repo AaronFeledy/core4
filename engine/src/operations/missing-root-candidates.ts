@@ -7,7 +7,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { Effect, Option } from "effect";
+import { Effect, Option, Result } from "effect";
 import { TeardownProvider } from "../providers/app-placement.ts";
 import { acceleratedStartInventory } from "./accelerated-start-inventory.ts";
 import { type PendingStart, digest } from "./accelerated-start-record.ts";
@@ -58,6 +58,7 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
   const registry = yield* RuntimeProviderRegistry;
   const dataRoot = yield* currentDataRoot;
   const receipts: AdoptionReceipt[] = [];
+  const scanFailures = new Map<ProviderId, typeof MissingRootScan.Type>();
   const candidateRoots = new Set<string>();
   for (const snapshot of snapshots) {
     for (const plan of snapshot.appliedPlans) {
@@ -75,8 +76,21 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
       for (const snapshot of snapshots) {
         const ownership = yield* registry
           .resourceOwnership(snapshot.providerId, AbsolutePath.make(root))
-          .pipe(Effect.catch(() => Effect.succeed(undefined)));
-        receipts.push(...adoptionReceiptsFromSummary(ownership));
+          .pipe(Effect.result);
+        if (Result.isFailure(ownership)) {
+          if (scanFailures.has(snapshot.providerId)) continue;
+          scanFailures.set(snapshot.providerId, {
+            providerId: snapshot.providerId,
+            runtimeObserved: snapshot.runtimeObserved,
+            recordedState: true,
+            complete: false,
+            message: ownership.failure.message,
+            errorTag: ownership.failure._tag,
+            remediation: `Resolve the resource ownership inventory read failure. ${ownership.failure.remediation}`,
+          });
+        } else {
+          receipts.push(...adoptionReceiptsFromSummary(ownership.success));
+        }
       }
     }
   }
@@ -132,7 +146,6 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
     }
   }
   const store = yield* Effect.serviceOption(StateStore);
-  const capabilityFailures = new Map<ProviderId, typeof MissingRootScan.Type>();
   const selected = yield* TeardownProvider;
   const journals = Option.isNone(store)
     ? { records: [], unreadable: [] }
@@ -172,7 +185,8 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
             Effect.map((provider) => provider.capabilities.fileSyncTargets !== "prepared-volume"),
             Effect.catch((error) => {
               const providerId = ProviderId.make(id);
-              capabilityFailures.set(providerId, {
+              if (scanFailures.has(providerId)) return Effect.succeed(false);
+              scanFailures.set(providerId, {
                 providerId,
                 runtimeObserved: snapshots.some(
                   (snapshot) => snapshot.providerId === id && snapshot.runtimeObserved,
@@ -207,7 +221,7 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
     candidates: results.flat(),
     unreadableJournals: journals.unreadable,
     journalProviders: new Set(journals.records.map((journal) => journal.providerId)),
-    capabilityFailures,
+    scanFailures,
     identities: new Map(
       [...groups.entries()].map(([root, group]) => [root, digest([...group.observations].sort())]),
     ),

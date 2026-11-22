@@ -8,14 +8,15 @@ import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { makeLandoPaths } from "@lando/paths";
 import { hasC0OrDel, hyperlink } from "@lando/renderer/console-layout";
 import type { AppLockTimeoutError, CacheError, LandoCommandError, StateStoreError } from "@lando/sdk/errors";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, type CommandWarning } from "@lando/sdk/schema";
 import type { FileSystem, LandoPaths, StateStoreShape } from "@lando/sdk/services";
 import { ConfigService, PathsService, ProcessRunner, StateStore } from "@lando/sdk/services";
 import { makePluginStateStore } from "@lando/state-store/plugin";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 
+import { recordCommandWarning } from "../command-warnings";
 import { type RenderContext, contextAllowsHyperlinks } from "../renderer-boundary";
 import {
   type AppsDiscoveryEvidence,
@@ -154,6 +155,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
         ...(app.appRoot === "" ? {} : { appRoot: app.appRoot }),
       }),
     );
+  const ownershipWarnings = new Map<string, CommandWarning>();
   const discoverEvidence = (): Effect.Effect<AppsDiscoveryEvidence> =>
     Effect.tryPromise(async () => {
       if (options.discoverContainersEvidence !== undefined) {
@@ -173,7 +175,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
           ownedResources: ownedFromApps(apps),
         };
       }
-      return discoverRunningAppsEvidenceFromSockets(
+      const evidence = await discoverRunningAppsEvidenceFromSockets(
         userDataRoot,
         containerSocketCandidates(userDataRoot, { env: invocation.env }),
         {
@@ -188,20 +190,26 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
                     AbsolutePath.make(paths.pluginStateDir(`@lando/provider-${providerId}`)),
                     privateFileAccess.value,
                   );
-                  return Effect.runPromise(
-                    makeResourceOwnershipStore(providerId, pluginStore)
-                      .summary(root)
-                      .pipe(
-                        Effect.map(adoptionReceiptsFromSummary),
-                        Effect.catch(() => Effect.succeed([])),
-                      ),
+                  const ownership = await Effect.runPromise(
+                    makeResourceOwnershipStore(providerId, pluginStore).summary(root).pipe(Effect.result),
                   );
+                  if (Result.isSuccess(ownership)) return adoptionReceiptsFromSummary(ownership.success);
+                  ownershipWarnings.set(providerId, {
+                    code: "LANDO_OWNERSHIP_INVENTORY_UNREADABLE",
+                    message: `Provider ${providerId}: ${ownership.failure.message}`,
+                    remediation:
+                      "Check the provider plugin state permissions or restore the ownership inventory from a trusted backup, then rerun `lando list`.",
+                    context: { providerId },
+                  });
+                  return [];
                 },
               }
             : {}),
           ...(processRunner._tag === "Some" ? { processRunner: processRunner.value } : {}),
         },
       );
+      const confirmedProviderIds = evidence.confirmedProviderIds.filter((id) => !ownershipWarnings.has(id));
+      return { ...evidence, confirmedProviderIds, providerConfirmed: confirmedProviderIds.length > 0 };
     }).pipe(
       Effect.catch(() =>
         Effect.succeed({
@@ -280,6 +288,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   );
   const visible =
     pruneCandidate === undefined ? filtered : filtered.filter((entry) => !pruned.includes(entry));
+  for (const warning of ownershipWarnings.values()) yield* recordCommandWarning(warning);
   return { apps: visible, ...(pruneCandidate === undefined ? {} : { pruned }) };
 });
 

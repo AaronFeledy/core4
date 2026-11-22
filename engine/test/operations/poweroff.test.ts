@@ -25,9 +25,9 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Result } from "effect";
 import { pendingStartBucketSpec } from "../../src/operations/accelerated-start-record.ts";
-import { poweroff } from "../../src/operations/poweroff.ts";
+import { PoweroffStopError, poweroff } from "../../src/operations/poweroff.ts";
 import { HostMaintenanceRegistry } from "../../src/runtime/host-maintenance.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
 import { layerTransactionGuard } from "../services/landofile-layer.ts";
@@ -93,6 +93,8 @@ const makeHarness = async (input: {
   readonly holdingPlans?: ReadonlyArray<AppPlan>;
   readonly globalPlans?: ReadonlyArray<AppPlan>;
   readonly observedGlobalRoots?: readonly string[];
+  readonly legacyRoots?: readonly string[];
+  readonly ownershipFailure?: ProviderUnavailableError;
 }) => {
   const teardown = await globalTeardownHarness(dataRoot);
   const calls: string[] = [];
@@ -111,6 +113,8 @@ const makeHarness = async (input: {
   const services: ServiceRuntimeInfo[] = input.roots.map((entry) =>
     serviceAt(entry.root, String(entry.plan.id), entry.status),
   );
+  for (const root of input.legacyRoots ?? [])
+    services.push({ ...serviceAt(root, "legacy", "running"), labels: {} });
   if (input.quiescent !== undefined)
     services.push(serviceAt(input.quiescent.root, String(input.quiescent.plan.id), "exited"));
   const globalServices = (input.observedGlobalRoots ?? []).map((root, index) => {
@@ -189,7 +193,10 @@ const makeHarness = async (input: {
           ? { kind: "applied" as const, plan: plans.get(root) as AppPlan }
           : { kind: "absent" as const },
       ),
-    resourceOwnership: () => Effect.succeed(undefined),
+    resourceOwnership: (_id: ProviderId, root: AbsolutePath) =>
+      input.ownershipFailure !== undefined && input.legacyRoots?.includes(root) === true
+        ? Effect.fail(input.ownershipFailure)
+        : Effect.succeed(undefined),
     select: () => Effect.succeed(provider),
   };
   const scratch = Layer.succeed(
@@ -274,6 +281,52 @@ const withRoots = async <A>(
 };
 
 describe("poweroff operation", () => {
+  test.each(["unreadable", "missing"] as const)(
+    "stops labeled apps with an %s ownership inventory",
+    async (state) => {
+      await withRoots(async ({ a, b, quiet }) => {
+        const harness = await makeHarness({
+          roots: [{ root: a, plan: planAt(a), status: "running" }],
+          legacyRoots: [b, quiet],
+          ...(state === "unreadable"
+            ? {
+                ownershipFailure: new ProviderUnavailableError({
+                  providerId,
+                  operation: "resource-ownership",
+                  message: "Resource ownership inventory could not be read.",
+                  remediation: "Restore readable provider plugin state.",
+                }),
+              }
+            : {}),
+        });
+
+        const result = await Effect.runPromise(poweroff().pipe(Effect.provide(harness.layer), Effect.result));
+
+        if (state === "unreadable") {
+          if (Result.isSuccess(result)) throw new Error("Poweroff unexpectedly reported success.");
+          const error = result.failure;
+          if (!(error instanceof PoweroffStopError)) throw error;
+          expect(error.apps.filter(({ kind }) => kind === "user")).toMatchObject([
+            { appRoot: a, outcome: "stopped", appId: "twin", providerId },
+          ]);
+          expect(error.failures).toMatchObject([
+            {
+              providerId,
+              _tag: "ProviderUnavailableError",
+              message: expect.stringMatching(/ownership inventory/i),
+              remediation: "Restore readable provider plugin state.",
+            },
+          ]);
+          expect(harness.calls).not.toContain("runtime");
+        } else {
+          expect(Result.isSuccess(result)).toBe(true);
+        }
+        expect(
+          harness.calls.filter((call) => call.startsWith("destroy:") && call !== "destroy:global"),
+        ).toEqual([`destroy:${a}`]);
+      });
+    },
+  );
   test("stops two apps with the same id at different roots", async () => {
     await withRoots(async ({ a, b, quiet }) => {
       const harness = await makeHarness({
