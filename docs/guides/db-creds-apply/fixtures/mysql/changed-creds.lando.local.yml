@@ -1,0 +1,5 @@
+services:
+  db:
+    creds:
+      user: fixture_after
+      rootPassword: mysql-root-pass-two

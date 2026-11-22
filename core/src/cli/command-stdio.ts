@@ -50,11 +50,16 @@ const stdoutTerminalError = (command: string): CommandStdioError =>
 
 const stdinTerminalError = (command: string): CommandStdioError =>
   new CommandStdioError({
-    message: `Command ${command} cannot read its data payload from a terminal stdin.`,
+    message: `Command ${command} cannot read ${command === "db:creds:apply" ? "the administrator password" : "its input"} from a terminal stdin.`,
     command,
     stream: "stdin",
     reason: "terminal",
-    remediation: "Pipe or redirect stdin, for example: lando db:import - --yes < dump.sql",
+    remediation:
+      command === "db:creds:apply"
+        ? "Pipe the current administrator password through stdin: secret-producer | lando db:creds:apply --yes -. Omit - for a masked prompt."
+        : command === "db:import"
+          ? "Pipe or redirect stdin, for example: lando db:import - --yes < dump.sql"
+          : `Pipe or redirect the input for ${command}, then retry.`,
   });
 
 const stdinReadError = (command: string, cause: unknown): CommandStdioError =>

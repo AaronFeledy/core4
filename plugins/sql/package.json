@@ -43,6 +43,10 @@
         { "id": "db:snapshots:prune", "summary": "Preview or apply database snapshot retention." },
         { "id": "db:restore", "summary": "Restore a database service from a snapshot." },
         { "id": "db:reset", "summary": "Reset a database service to an empty state." },
+        {
+          "id": "db:creds:apply",
+          "summary": "Preview or repair credentials for a running database service."
+        },
         { "id": "db:seed", "summary": "Seed a fresh database from a dump, snapshot, or running app." }
       ]
     }

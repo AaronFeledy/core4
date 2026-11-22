@@ -26,6 +26,7 @@
     "./paths": "./src/paths.ts",
     "./plugin": "./src/plugin.ts",
     "./testing": "./src/testing.ts",
+    "./database-admin-seed": "./src/database-admin-seed.ts",
     "./private-file-access": "./src/private-file-access.ts",
     "./service": "./src/service.ts",
     "./volume-initialization": "./src/volume-initialization.ts",

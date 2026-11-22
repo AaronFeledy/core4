@@ -169,6 +169,29 @@ const eventPlan = (): AppPlan => ({
 });
 
 describe("EventCommandExecutorLayer.layer", () => {
+  test.each(["pre-start", "post-start", "post-rebuild"] as const)(
+    "refuses credential apply declared in %s even with yes",
+    async (event) => {
+      const harness = makeHarness();
+      const plan = withProjectEvents(eventPlan(), {
+        [event]: [{ command: "db:creds:apply", flags: { yes: true } }],
+      });
+      const exit = await Effect.runPromiseExit(
+        runAppEvent(plan, event).pipe(
+          Effect.provideService(EventCommandExecutor, makeEventCommandExecutor(harness.context)),
+          Effect.provide(harness.context),
+        ),
+      );
+      expect(Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined).toMatchObject({
+        _tag: "LandofileEventStepFailedError",
+        event,
+        kind: "command",
+        outputTail: expect.stringContaining("Database credential changes cannot run"),
+        remediation: expect.stringContaining("Run `lando db:creds:apply` directly"),
+      });
+    },
+  );
+
   test("uses the retained result terminal instead of narration capabilities or process stdout", async () => {
     const harness = makeHarness();
     const spec = {

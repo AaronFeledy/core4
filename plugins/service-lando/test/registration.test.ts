@@ -10,6 +10,7 @@ import { Effect, Layer, Schema } from "effect";
 import { globalServices, services } from "../src/index.ts";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
+import { mssqlHealthcheck } from "../src/services/mssql-healthcheck.ts";
 import { rabbitmqProbes } from "../src/services/rabbitmq-probes.ts";
 import { uploadDirRegex } from "../src/services/upload-dirs.ts";
 import { compileTestLandofile } from "./support/compiled-landofile.ts";
@@ -388,28 +389,7 @@ describe("@lando/service-lando registration", () => {
       target: PortablePath.make("/var/opt/mssql"),
       readOnly: false,
     });
-    expect(database.healthcheck?.command).toEqual([
-      "/bin/bash",
-      "-c",
-      'export SQLCMDPASSWORD="$SA_PASSWORD"; exec "$@"',
-      "lando-mssql-health",
-      "/opt/mssql-tools18/bin/sqlcmd",
-      "-S",
-      "localhost,1433",
-      "-U",
-      "sa",
-      "-C",
-      "-b",
-      "-r1",
-      "-d",
-      "master",
-      "-l",
-      "2",
-      "-t",
-      "5",
-      "-Q",
-      "IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'sql-app' AND state_desc = 'ONLINE' AND HAS_DBACCESS(name) = 1) THROW 50000, 'Database is not accessible', 1;",
-    ]);
+    expect(database.healthcheck?.command).toEqual([...mssqlHealthcheck(1433)]);
   });
 
   for (const phpmyadminType of ["phpmyadmin", "phpmyadmin:5", "phpmyadmin:latest"] as const) {

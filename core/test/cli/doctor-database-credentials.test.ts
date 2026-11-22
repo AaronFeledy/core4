@@ -152,7 +152,7 @@ test("reports a rejected login as a warn finding with recovery advice", async ()
       severity: "warn",
       context: { family: "mariadb", login: "app" },
     });
-    expect(warning?.solutions[0]?.description).toContain("Restore the previous creds values");
+    expect(warning?.solutions[0]?.description).toContain("lando restart --service db");
     expect(JSON.stringify(result)).not.toContain("original");
   } finally {
     await rm(root, { recursive: true, force: true });

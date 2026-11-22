@@ -729,7 +729,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
         ),
       ),
     );
-    yield* applyScratchStartup(
+    const credentialChanges = yield* applyScratchStartup(
       {
         id: scratchId,
         plan: certifiedPlan,
@@ -748,6 +748,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     return {
       id: scratchId,
       app: { kind: "scratch", id: scratchId, root: markedPlan.root },
+      ...(credentialChanges === undefined ? {} : { credentialChanges }),
     } satisfies ScratchHandle;
   });
 
