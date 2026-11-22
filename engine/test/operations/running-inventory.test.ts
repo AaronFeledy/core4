@@ -35,7 +35,7 @@ test("selects scratch containers with uncertain status and skips terminal contai
   expect(result.failures).toEqual([]);
 });
 
-test("startup inventory keeps historical unlabeled containers proved by local applied plans", () => {
+test("poweroff inventory keeps only the native container proved by an adoption receipt", () => {
   const dataRoot = "/running/data";
   const appRoot = AbsolutePath.make("/running/app");
   const providerId = ProviderId.make("lando");
@@ -63,6 +63,7 @@ test("startup inventory keeps historical unlabeled containers proved by local ap
     status: "running" as const,
     publications: { status: "unknown" as const },
     containerId: "running-web",
+    nativeName: "legacy-web",
   };
   const foreign = {
     ...unlabeled,
@@ -78,6 +79,17 @@ test("startup inventory keeps historical unlabeled containers proved by local ap
       volumes: [],
     },
     dataRoot,
+    [
+      {
+        kind: "container",
+        nativeName: "legacy-web",
+        nativeId: "running-web",
+        appRoot,
+        appId: app,
+        providerId,
+        dataRoot,
+      },
+    ],
   );
   expect(scoped.services.map((service) => service.containerId)).toEqual(["running-web"]);
   const targets = deriveRunningTargets([scoped], []);
