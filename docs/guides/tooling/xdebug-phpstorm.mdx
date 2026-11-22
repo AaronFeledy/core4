@@ -25,6 +25,8 @@ lando xdebug status
 
 `xdebug: true` works on every PHP version Lando ships. `php:8.1` through `php:8.5` build Xdebug 3.5.3. `php:8.6` builds the Xdebug 3.6.0alpha1 pre-release, because no stable Xdebug release supports PHP 8.6 yet.
 
+The first line of `lando xdebug status`, `on`, and `off` shows the loaded version and mode, such as `Xdebug 3.6.0alpha1 enabled (debug)` on `php:8.6`.
+
 `xdebug: true` enables mode `debug`. A string such as `xdebug: "debug,develop"` sets `xdebug.mode` to that list. `xdebug: false` (the default) installs nothing. Setting `XDEBUG_MODE` in `environment:` does not add the extension.
 
 ## Listen in PhpStorm
@@ -138,6 +140,19 @@ lando config unset debugger.host
     <Step name="toggle">
       <Verify command="lando xdebug off" expect={{ stdout: { regex: "Xdebug 3\\.6\\.0alpha1 disabled" } }} />
       <Verify command="lando xdebug on" expect={{ stdout: { regex: "Xdebug 3\\.6\\.0alpha1 enabled \\(debug\\)" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+  <Scenario id="status-without-extension" layer="e2e" timeout={600000} render={false} reason="A custom image without the Xdebug extension gets a one-line status failure instead of client diagnostics">
+    <Step name="start">
+      <UseFixture name="xdebug-custom-image" />
+      <Run command="lando start" />
+    </Step>
+    <Step name="status">
+      <Verify command="lando xdebug status" expectExit={1} expect={{ stdout: { regex: "Xdebug not installed\\. Install the extension in your image\\.(?![\\s\\S]*Client:)" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
