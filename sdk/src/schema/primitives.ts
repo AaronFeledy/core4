@@ -43,16 +43,18 @@ export const isRootContainerUser = (value: string): boolean => {
   return user === "root" || (/^[0-9]+$/u.test(user) && Number(user) === 0);
 };
 
-export const ContainerUser = Schema.String.annotate({
-  description:
-    'Container identity as "<name|uid>" or "<name|uid>:<group|gid>". Letters, digits, underscores, dots, and hyphens only, and each part must start with a letter, digit, or underscore.',
-}).pipe(
-  Schema.check(
-    Schema.isPattern(CONTAINER_USER_PATTERN, {
-      message: "Expected a container user name or numeric id, optionally followed by :group or :gid",
-    }),
-  ),
-);
+const containerUserDescription =
+  'Container identity as "<name|uid>" or "<name|uid>:<group|gid>". Letters, digits, underscores, dots, and hyphens only, and each part must start with a letter, digit, or underscore.';
+
+export const ContainerUser = Schema.String.annotate({ description: containerUserDescription })
+  .pipe(
+    Schema.check(
+      Schema.isPattern(CONTAINER_USER_PATTERN, {
+        message: "Expected a container user name or numeric id, optionally followed by :group or :gid",
+      }),
+    ),
+  )
+  .annotate({ description: containerUserDescription });
 export type ContainerUser = typeof ContainerUser.Type;
 
 /**

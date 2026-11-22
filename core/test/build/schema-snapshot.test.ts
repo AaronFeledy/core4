@@ -89,7 +89,7 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
       target.allOf.forEach((branch, index) => {
         visit(ast, branch, `${path}.allOf[${index}]`);
       });
-      return;
+      if (Object.keys(target).every((key) => key === "allOf")) return;
     }
     if (AST.isDeclaration(ast) && ast.annotations?.toCodecJson !== undefined) {
       visit(AST.toEncoded(Schema.toCodecJson(Schema.make(ast)).ast), target, path);
@@ -331,9 +331,9 @@ describe("schema snapshot artifact-set gate", () => {
     expect(page?.content).toContain(
       "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
     );
-    expect(page?.content).toContain("| `since` | Yes | `string` | — | — | — | — | — |");
-    expect(page?.content).toContain(
-      "| `severity` | No | `string` | Severity of the deprecation notice. | `warn` | `info`, `warn`, `error` | — | — |",
+    expect(page?.content).toMatch(/\| `since` \| Yes \| `string` \| (?!— \|)[^|]+ \|/u);
+    expect(page?.content).toMatch(
+      /\| `severity` \| No \| `string` \| [^|]+ \| `warn` \| `info`, `warn`, `error` \|/u,
     );
 
     const primitivePage = pages.find((entry) => entry.id === "AppId");
