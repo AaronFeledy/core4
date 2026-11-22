@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   type RetirementResult,
+  TEMP_PODMAN_ROOT_SETUP_ARGS,
   TEST_ROOT_ENV_KEYS,
   type TempRootRetirement,
-  retireTempRootsEffect,
-  retirementReport,
+  retireTempRoots,
+  tempPodmanRootEnv,
 } from "@lando/engine/testing/temp-root-retirement";
 import { causeMessage } from "@lando/sdk/errors";
-import { Effect } from "effect";
 
 type Env = TempRootRetirement["env"];
 type RunnerSignal = "SIGINT" | "SIGTERM";
@@ -37,11 +37,8 @@ function ownedLiveTestRoots(directory: string, endpoint: string, env: Env, cwd: 
     command: [binary],
     env: Object.freeze({
       ...env,
-      ...Object.fromEntries(TEST_ROOT_ENV_KEYS.map((key) => [key, join(directory, key.toLowerCase())])),
+      ...tempPodmanRootEnv(directory, endpoint),
       LANDO_SCENARIO_E2E_BINARY: binary,
-      LANDO_PROVIDER: "podman",
-      LANDO_CONFIG__default_provider_id: "podman",
-      DOCKER_HOST: `unix://${endpoint}`,
     }),
   };
 }
@@ -52,28 +49,15 @@ function ownedLiveTestRoots(directory: string, endpoint: string, env: Env, cwd: 
  * store) are skipped: they belong to the caller's installation, not to disposable roots.
  */
 async function prepareLiveTestRoots(owned: TempRootRetirement, track: TrackTestChild): Promise<number> {
-  const setup = Bun.spawn(
-    [
-      ...owned.command,
-      "setup",
-      "--provider=podman",
-      "--skip-proxy",
-      "--skip-shell-integration",
-      "--skip-file-sync",
-      "--skip-install-ca",
-      "--yes",
-      "--no-interactive",
-    ],
-    {
-      cwd: owned.directory,
-      env: owned.env,
-      stdin: "ignore",
-      stdout: "inherit",
-      stderr: "inherit",
-      timeout: 120_000,
-      killSignal: "SIGKILL",
-    },
-  );
+  const setup = Bun.spawn([...owned.command, ...TEMP_PODMAN_ROOT_SETUP_ARGS], {
+    cwd: owned.directory,
+    env: owned.env,
+    stdin: "ignore",
+    stdout: "inherit",
+    stderr: "inherit",
+    timeout: 120_000,
+    killSignal: "SIGKILL",
+  });
   track(setup);
   return setup.exited;
 }
@@ -81,8 +65,7 @@ async function prepareLiveTestRoots(owned: TempRootRetirement, track: TrackTestC
 export async function runWithLiveTestRoots(
   options: { readonly live: boolean; readonly cwd: string; readonly env: Env },
   run: (env: Env, track: TrackTestChild) => Promise<number>,
-  retire: (owned: TempRootRetirement) => Promise<RetirementResult> = (owned) =>
-    Effect.runPromise(retireTempRootsEffect(owned)).then(retirementReport),
+  retire: (owned: TempRootRetirement) => Promise<RetirementResult> = retireTempRoots,
   prepare: (owned: TempRootRetirement, track: TrackTestChild) => Promise<number> = prepareLiveTestRoots,
 ): Promise<number> {
   let child: TestChild | undefined;
@@ -182,7 +165,7 @@ if (import.meta.main) {
     process.exit(2);
   }
   const owned = ownedLiveTestRoots(resolve(directory), endpoint, process.env, process.cwd());
-  const result = await Effect.runPromise(retireTempRootsEffect(owned)).then(retirementReport);
+  const result = await retireTempRoots(owned);
   console.log(JSON.stringify(result, null, 2));
   process.exit(result.retained.length > 0 || result.failed.length > 0 ? 1 : 0);
 }

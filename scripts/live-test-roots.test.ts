@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { TEST_ROOT_ENV_KEYS } from "@lando/engine/testing/temp-root-retirement";
 import { runWithLiveTestRoots } from "./live-test-roots.ts";
 
-const socketEnv = { LANDO_TEST_PODMAN_SOCKET: "/unused-fake.sock" };
+const socketEnv = { LANDO_TEST_PODMAN_SOCKET: "/unused-fake.sock", LANDO_SHELL_PROFILE: "/caller-profile" };
 const prepared = async () => 0;
 
 test("forwards TERM and waits for the test child before retiring", async () => {
@@ -108,6 +108,7 @@ test.each([
           expect(reaped).toBe(true);
           retirements++;
           for (const key of TEST_ROOT_ENV_KEYS) expect(dirname(env[key] ?? "")).toBe(directory);
+          expect(dirname(env.LANDO_SHELL_PROFILE ?? "")).toBe(directory);
           expect(endpoint).toBe(socketEnv.LANDO_TEST_PODMAN_SOCKET);
           return {
             removed: [],
