@@ -103,7 +103,7 @@ lando start
 <Guide>
   <Scenario id="postgres-browse" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="adminer-demo" /></Step>
-    <Hidden reason="Check the Adminer HTTPS probe and a fresh deep link">
+    <Hidden reason="Check the Adminer HTTPS probe, a fresh deep link, and a password change">
       <Step name="route">
         <Verify command="lando start --format=json" expect={{ stdout: { regex: '"checks"[\\s\\S]*"service":"adminer","url":"https://adminer[.][^"]+","verdict":"ready","statusCode":200' } }} />
       </Step>
@@ -111,10 +111,10 @@ lando start
         <Run command={`lando psql -c "CREATE TABLE notes (body text); INSERT INTO notes VALUES ('hello from Postgres');"`} />
         <Verify command={`lando exec adminer -- curl -fsSL -c /tmp/j -b /tmp/j "http://127.0.0.1:8080/?pgsql=db&username=lando&db=adminer-demo&select=notes"`} expect={{ stdout: { regex: "hello from Postgres" } }} />
       </Step>
-      <Step name="stale-password">
+      <Step name="changed-password">
         <Run command="lando app:config:set services.db.creds.password changed-later" />
         <Run command="lando start" />
-        <Verify command={`lando exec adminer -- curl -sSL -c /tmp/stale -b /tmp/stale "http://127.0.0.1:8080/"`} expect={{ stdout: { regex: "password authentication failed" } }} />
+        <Verify command={`lando exec adminer -- curl -fsSL -c /tmp/changed -b /tmp/changed "http://127.0.0.1:8080/?pgsql=db&username=lando&db=adminer-demo&select=notes"`} expect={{ stdout: { regex: "hello from Postgres" } }} />
       </Step>
     </Hidden>
     <Step name="info"><Verify command="lando info --format=json" expect={{ stdout: { regex: "https://adminer[.]adminer-demo[.]lndo[.]site" } }} /></Step>
