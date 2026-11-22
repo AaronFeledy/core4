@@ -21,7 +21,7 @@ export type DataRootResource = {
   readonly labels: Readonly<Record<string, string>> | null | undefined;
 };
 
-type DataRootOwnershipContext = {
+export type DataRootOwnershipContext = {
   readonly dataRoot: string;
   readonly receipts: readonly AdoptionReceipt[];
 };
