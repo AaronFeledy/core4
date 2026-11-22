@@ -10,6 +10,7 @@ import type {
   ServiceSelector,
 } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, missingService } from "./engine-errors.ts";
 import { serviceContainerOwnershipProblem } from "./native-ownership.ts";
@@ -192,13 +193,31 @@ export const removeObservedContainer = (
   };
   if (containerId === undefined)
     return Effect.succeed({ kind: "absent", shutdownObservations: [absentShutdown(identity)] });
+  const native = {
+    kind: "container",
+    nativeName: containerId,
+    nativeId: containerId,
+    labels: observed.labels,
+  } as const;
+  if (
+    options.dataRoot !== undefined &&
+    decideDataRootOwnership(native, { dataRoot: options.dataRoot, receipts: [] }) !== "owned"
+  ) {
+    return Effect.fail(
+      new ProviderUnavailableError({
+        providerId: options.ctx.providerId,
+        operation,
+        ...dataRootRefusal(native),
+        details: { service: observed.service, containerId, label: LANDO_DATA_ROOT_LABEL },
+      }),
+    );
+  }
   // Observed identity alone is not mutation authority: the container's own labels must prove it.
   const ownershipProblem = serviceContainerOwnershipProblem(observed.labels, {
     app: String(observed.app),
     appRoot: observed.appRoot === undefined ? "" : String(observed.appRoot),
     service: String(observed.service),
-    // Legacy observations reach this seam only after the caller has selected their local evidence.
-    dataRoot: observed.labels?.[LANDO_DATA_ROOT_LABEL] === undefined ? undefined : options.dataRoot,
+    dataRoot: options.dataRoot,
     providerId: options.ctx.providerId,
   });
   if (ownershipProblem !== undefined) {
