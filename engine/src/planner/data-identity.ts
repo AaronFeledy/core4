@@ -6,6 +6,7 @@ import { defineTransitions } from "@lando/sdk/transitions";
 import { storeErrorRemediation } from "@lando/state-store";
 import * as DiskStateStore from "@lando/state-store/service";
 import { Effect, Option, Schema } from "effect";
+import { CORE_VERSION } from "../version.ts";
 
 export const AppDataIdentityRecord = Schema.Struct({ name: Schema.String });
 export const appDataIdentityTransitions = defineTransitions<"absent" | "present">()({
@@ -43,7 +44,11 @@ export const readAppDataIdentity = Effect.fn("AppDataIdentity.read")(function* (
   const store = Option.isSome(provided)
     ? provided.value
     : yield* StateStore.pipe(
-        Effect.provide(roots === undefined ? DiskStateStore.layer : DiskStateStore.layerAt(roots)),
+        Effect.provide(
+          roots === undefined
+            ? DiskStateStore.layerWith({ writer: CORE_VERSION })
+            : DiskStateStore.layerAt(roots, { writer: CORE_VERSION }),
+        ),
       );
   return yield* store.open(appDataIdentityBucketSpec(identity)).pipe(
     Effect.flatMap((bucket) => bucket.get),
