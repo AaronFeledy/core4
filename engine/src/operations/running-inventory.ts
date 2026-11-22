@@ -1,4 +1,5 @@
 import { SCRATCH_LABEL } from "@lando/container-runtime/labels";
+import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import { AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
 import {
@@ -266,8 +267,29 @@ export const readRunningInventory = Effect.fnUntraced(function* () {
   }
   const scope = yield* Effect.result(currentDataRoot);
   if (Result.isFailure(scope)) failures.push(providerInventoryFailure("data-root", scope.failure));
+  const registry = yield* RuntimeProviderRegistry;
   const snapshots = Result.isSuccess(scope)
-    ? inventory.snapshots.map((snapshot) => scopeRuntimeSnapshot(snapshot, scope.success))
+    ? yield* Effect.forEach(inventory.snapshots, (snapshot) =>
+        Effect.gen(function* () {
+          const roots = new Set(
+            snapshot.services.flatMap((service) =>
+              service.appRoot !== undefined && service.labels?.["dev.lando.data-root"] === undefined
+                ? [service.appRoot]
+                : [],
+            ),
+          );
+          const summaries = yield* Effect.forEach(roots, (root) =>
+            (registry.resourceOwnership?.(snapshot.providerId, root) ?? Effect.succeed(undefined)).pipe(
+              Effect.catch(() => Effect.succeed(undefined)),
+            ),
+          );
+          return scopeRuntimeSnapshot(
+            snapshot,
+            scope.success,
+            summaries.flatMap(adoptionReceiptsFromSummary),
+          );
+        }),
+      )
     : [];
   const targets = deriveRunningTargets(snapshots, journalRecords);
   return {
