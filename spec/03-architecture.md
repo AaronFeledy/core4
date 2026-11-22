@@ -38,7 +38,7 @@ Levels form a chain `none` → `minimal` → `plugins` → `commands`; `tooling`
 | `provider` | Provider selection and provider-dependent subsystems | `commands` + eager `RuntimeProviderRegistry`, engine-private `FileSyncResolver`; lazy `CertificateAuthority` and `DataMover`; `RouterService` is selected at bootstrap, where an unselectable router becomes the unavailable router (§10.2) and a selected implementation's layer-build failure is a bootstrap failure |
 | `global` | Global-app lifecycle (§20) | `provider` + eager `GlobalAppService` and global-root `LandofileService`; lazy `BuildOrchestrator`, `HealthcheckRunner`, `CheckRunner` |
 | `scratch` | Scoped scratch-app lifecycle (§21) and `apps:poweroff` | `app` + eager `ScratchAppService`, so scratch commands and poweroff run Landofile event steps, tooling, command steps, and plugin subscribers exactly as user-app commands do; building the graph performs no provider or global-app work |
-| `app` | Full user-app planning and lifecycle | `global` + eager user-root `AppPlanner` and `LandofileService`; lazy `HealthcheckRunner`, `CheckRunner`, host-proxy worker, `TunnelService`, `BuildOrchestrator`; no globally provided `FileSyncEngine` (selected engines are scope-acquired through the provider-tier `FileSyncResolver`) |
+| `app` | Full user-app planning and lifecycle | `global` + eager user-root `AppPlanner` and `LandofileService` and `DatabaseCredentialConvergence`; lazy `HealthcheckRunner`, `CheckRunner`, host-proxy worker, `TunnelService`, `BuildOrchestrator`; no globally provided `FileSyncEngine` (selected engines are scope-acquired through the provider-tier `FileSyncResolver`) |
 
 The `LandoCommandSpec` registry is canonical for built-in command-to-level assignment, and a plugin command's validated `ExecutableCommandSpec` `bootstrap` is canonical for that command (§8.3). Levels `minimal` through `app` emit `pre-bootstrap-<level>` and `post-bootstrap-<level>`, followed by `post-bootstrap` and `ready`; `none` emits no events through the command-base path. A retained MCP host emits its bootstrap sequence once; building, reusing, superseding, or releasing an app contribution generation (§10.14) MUST NOT replay bootstrap or `ready` events.
 
@@ -54,13 +54,13 @@ Execution sessions honor the requested runtime tier and caller context; host-onl
 
 ```text
 core/               public runtime, CLI shells, generated composition, docs/testing exports
-engine/             private orchestration runtime, planner, lifecycle, providers, subsystems
+engine/             private orchestration runtime, planner, lifecycle, providers, subsystems (including database credential convergence)
 sdk/                public schemas, tags, events, errors, and plugin contracts
 container-runtime/  provider-neutral container helpers
 landofile/          Landofile discovery, merge, expressions, and serialization
 managed-file/       managed working-tree writes
-paths/              pure root and path resolution
-state-store/        durable state
+paths/              pure root and path resolution (including `databaseAdminSeedPath`)
+state-store/        durable state (including the private database admin seed)
 redaction/          canonical redaction implementation
 http-client/        outbound HTTP boundary
 plugins/            bundled plugin packages
@@ -76,7 +76,8 @@ All services are consumed through their tags inside Effect. Core-provided does n
 |---|---|
 | `ConfigService` | Global config, environment overrides, and staged expression resolution (§7) |
 | `LandofileService` | Discover, parse, merge, and validate Landofiles (§7) |
-| `UserAppResolver` | Load the current or exact-root user Landofile with user-app admission checks (§7.1) |
+| `UserAppResolver` | Load the current or exact-root user Landofile with user-app admission checks (§7.1); commands-tier; does not select a provider or create an `App` handle |
+| `DatabaseCredentialConvergence` | Preview or apply catalog database credential deltas for an exact user root and selected service (§6.12.4, §10.7); app-tier engine implementation; not a generic DDL or provider API |
 | `PluginRegistry` | Load manifests and assemble the contribution graph (§9) |
 | `CommandRegistry` | Register and resolve canonical built-in, plugin, and tooling commands (§8) |
 | `ConfigTranslatorRegistry` | Select plugin-contributed external config translators (§4, §7) |
@@ -220,6 +221,8 @@ After redaction, the sink MUST deliver human payload bytes only through `Rendere
 A data artifact a plugin command streams through a CLI-granted stdout (§8.3, for example `db:export -`) is not human tool output. It MUST reach stdout byte-exact through the base `Renderer.output.stdout`, without payload redaction, exactly as a file destination would receive it. The exception covers only that granted channel; the command's narration, errors, events, envelopes, and transcripts keep their assigned profiles.
 
 Plan values are classified once, by their bytes. A value is a committed sensitive literal when it is written at a sensitive Landofile path (a secret-named key of service `environment`, `labels`, or Compose labels, of `tooling` and `toolingDefaults` `env`, or of event step `env`; or a secret-named `creds` field), and that occurrence's origin is a YAML source in the `base`, `dist`, `upstream`, or `canonical` layer with no template directive whose raw leaf has no expression syntax and equals the composed value. The planner records the SHA-256 digests of those values as `AppPlan.committedLiteralDigests`. Such bytes are already disclosed in shared configuration as a credential, so every sensitive plan value with the same bytes is `whole-token` wherever it appears: service-type projections, generated client environments, expression copies, and lowered runtime environments inherit the mode without any declaration. Every other sensitive value is `substring`, including values that only come from env files, global `appEnv`, the `.lando.local` and `.lando.user` layers, TypeScript or rendered sources, and expression or `load()` results; a plan without digests is entirely `substring`. One walker in `@lando/redaction` finds the sensitive plan values (secret-named keys of service environment, labels, Compose labels, effective tooling and compiled event step `env`, plus typed `connection.creds` and non-SQL creds passwords), and one reader returns them as `substring` or `whole-token` values and reports the public ones. Consumers register plan values through the reader and MUST NOT re-collect lowered copies of plan env entries as substrings. Key-name heuristics remain only for host `process.env` and free-form maps without provenance; their values are `substring`, as are secret-store values, explicit registrations, and container-inspect read-back values, even when their bytes equal a committed literal.
+
+Derived database administrator passwords and the private admin seed (§6.12.4, §12.4) MUST be registered for redaction before any exec can observe them and MUST NOT be stored in plans, applied state, caches, events, snapshots, backups, traces, or support bundles. The seed file is installation-private state, not a `SecretStore` backend and not a `StateBucket` schema.
 
 Heuristic secret-key collection MUST exclude exact, case-sensitive matches of the published default credential values (`lando`, `landolando`, `Landolando1`) exported by `@lando/sdk/secrets`, without whitespace normalization. It MUST also exclude a database credential password or root password that exactly equals the same credential's user or database name, because `lando info` and connection strings print those in clear. Credentials are read from a service's authored `creds` block, and the `LANDO_DB_*` and database family environment keys of that service; an unrelated subtree such as an `x-*` extension never establishes an exclusion. The exclusion covers that value across one app plan or Landofile, so another service's projection of the same credential stays readable. Arbitrary keys that merely share the value never exempt it. These exclusions MUST NOT apply to explicit token registration, secret-store values, or resolved `${secret:...}` values. They affect collection only; published development defaults additionally receive the pattern and secret-named-field exceptions defined above, and explicit registrations remain authoritative. An unusable explicit value suppresses the whole string detail that contains it and is matched literally in payload bytes, which cannot suppress a detail.
 

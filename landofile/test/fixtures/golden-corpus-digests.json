@@ -333,6 +333,26 @@
       "digest": "3e8128eab07e4ea4e2ab362a7e20ec84d7a3e85905b27cc56c740b77cc6a7f8b"
     },
     {
+      "fixture": "docs/guides/db-creds-apply/fixtures/mariadb",
+      "digest": "07df80f3494bc7cfca784ee84f4359bb1cd1fa254915aa8bb99c37f6a16c2651"
+    },
+    {
+      "fixture": "docs/guides/db-creds-apply/fixtures/mongodb",
+      "digest": "84df378ea3032ca7c7bcdf93e9e309130735337048e7c094f1dfa9077fc0ca56"
+    },
+    {
+      "fixture": "docs/guides/db-creds-apply/fixtures/mssql",
+      "digest": "099debb3713827611b397d3bf3f84d575f2c170e9d9932e5a5f640d531aaf14e"
+    },
+    {
+      "fixture": "docs/guides/db-creds-apply/fixtures/mysql",
+      "digest": "d306fb1338120c1b776d46fbd6f9793723b396c6793b63837ef1e52a61bc6f11"
+    },
+    {
+      "fixture": "docs/guides/db-creds-apply/fixtures/postgres",
+      "digest": "d68f755a2c071a29b065bb988e0771682befd5825eceb4c55c3a2671a98206ae"
+    },
+    {
       "fixture": "docs/guides/db-import-export/fixtures/one-db",
       "digest": "5e950dcb15d5873532fb2c02197ca467c762bb6406bf6fe5c4b95e2f6c9101db"
     },

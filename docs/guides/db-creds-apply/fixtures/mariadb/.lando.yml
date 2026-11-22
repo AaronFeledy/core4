@@ -1,0 +1,9 @@
+name: db-creds-apply-mariadb
+services:
+  db:
+    type: mariadb:11.4
+    creds:
+      user: fixture_before
+      database: credential_demo
+      password: mariadb-fixture-pass-one
+      rootPassword: mariadb-root-pass-one

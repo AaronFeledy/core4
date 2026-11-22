@@ -139,7 +139,7 @@ The `certs` check belongs to the `certificate-authority` section.
 | missing-app-root | Move the folder back to keep using the app, or run the `lando apps:gc --prune` command doctor gives you. It adds `--volumes` only when Lando can remove the recorded file-sync copies. Without `--volumes`, data and file-sync copies are kept. Add `--purge-caches` when doctor lists caches. |
 | missing-app-root-scan | Lando could not read app state to look for missing app folders. Fix the reported problem, then rerun `lando doctor`. |
 | orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. GC never starts or repairs a runtime, including during removal. |
-| database-credentials | The running database rejected the configured login, or the configured database is absent. Restore the previous `creds:` values and run `lando start`, or change the user inside the database with an administrator account. Data is retained. Read the per-family guide section named in the finding. |
+| database-credentials | The running database rejected the configured login, or the configured database is absent. Run `lando start` after editing `creds`. For drift or a password changed at the same secret reference, restart the affected service or [preview and apply a repair](../tooling/db-creds-apply.mdx). |
 | legacy-snapshot-catalogs | Review the reported count and catalog paths. These catalogs came from a development build. Their snapshots are no longer listed or restorable, but their referenced provider images stay protected from GC. Deleting a catalog directory releases that protection so GC can reclaim the images. |
 
 If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
@@ -388,12 +388,12 @@ Run from the app directory after starting it:
 lando doctor --app --section database-credentials
 ```
 
-Doctor uses the applied plan and checks each running database service with one authenticated, bounded query inside its container. It does not start the runtime, change credentials, or read a password from your Landofile into the report. `lando restart` and `lando rebuild` run the same check for the services they restart, and `lando start` runs it when it started or recreated the container or the planned connection changed. A no-op start of an unchanged running app runs no check. A failure appears as a warning naming the service.
+Doctor uses the applied plan and checks each running database service with a bounded query inside its container. It does not start the runtime, change credentials, or print a password. Start, restart, and rebuild can update credentials; doctor only reports what it finds.
 
 | Result | Meaning and next action |
 | --- | --- |
 | `pass` | The running service accepted the local query with the configured login. That proves the query ran with those credentials, not that the server validated the password when its own rules trust the connection. |
-| `warn` | The server rejected the login, or the configured database is absent or inaccessible. Restore the previous `creds:` values, or change the user inside the database with an administrator account. The finding names the family's guide section. |
+| `warn` | The server rejected the login, or the configured database is absent or inaccessible. If you edited `creds`, run `lando start`. If the running database drifted or the same secret reference now resolves to a different password, run `lando restart --service <service>` using the service named in the finding. You can also preview with `lando db:creds:apply --service <service>`, then add `--yes` to apply the repair. |
 | `skipped` | There is no applied plan, the service is not running, the plan publishes no database connection, or the check could not prove a verdict (missing client, unreachable server, an expired budget, or an unavailable secret). A skip is not evidence of a rejected password. |
 
 The finding's `subject` is `<app>/<service>:<login>`. Its context names the family, login, and any changed `creds` members compared as descriptors. Passwords never appear in the finding or its remediation. `--fix` does nothing destructive for this section. Use `--app` or `--section database-credentials` to run it. JSON findings appear in `result.checks` with `section: database-credentials`; unverified logins and stopped services appear in `result.skipped` with `check: database-credentials:<service>` or `database-credentials:<service>:<login>`.

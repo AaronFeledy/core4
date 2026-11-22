@@ -28,7 +28,7 @@ lando info
 
 Open the HTTPS URL listed for `adminer`. Adminer signs you into the only database in the app with its configured credentials, so there is no login form to fill in. The database page shows your tables once you've created or imported them. If the browser warns about the certificate, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
 
-If you see `password authentication failed`, follow [Recover when credentials don't match](./postgres.mdx#recover-when-credentials-dont-match) to bring the running Postgres password back in sync with your Landofile.
+If you see `password authentication failed` after editing `creds`, run `lando start` to apply the change. If start warns that it couldn't update the credentials, see [Keep database credentials in sync](../tooling/db-creds-apply.mdx). Reopen Adminer and check that it can read your tables.
 
 ## Use MariaDB or MySQL
 
