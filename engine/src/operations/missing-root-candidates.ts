@@ -107,12 +107,7 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
   for (const { path, remediation: _remediation, ...journal } of journals.records) {
     if (journal.appId === "global" || (selected !== undefined && selected !== journal.providerId)) continue;
     // The filename binds app kind and root; scratch journals cannot claim a user root.
-    if (
-      !path.endsWith(
-        `${digest(appRootIdentityKey({ kind: "user", id: AppId.make(journal.appId), root: AbsolutePath.make(journal.appRoot) }, journal.appRoot))}.json`,
-      )
-    )
-      continue;
+    if (!path.endsWith(`${digest(appRootIdentityKey({ kind: "user" }, journal.appRoot))}.json`)) continue;
     const observed =
       snapshots.find((snapshot) => snapshot.providerId === journal.providerId)?.runtimeObserved ?? false;
     groupFor(

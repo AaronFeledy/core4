@@ -109,6 +109,8 @@ export const makeGlobalLifecycleFixture = (
     capabilities: Effect.succeed(provider.capabilities),
     appliedStateInventory: () => provider.appliedStateInventory,
     appliedPlansFor: () => Effect.sync(plans),
+    readAppliedPlanStrict: ({ id, provider }) =>
+      Effect.sync(() => plans().find((plan) => plan.id === id && plan.provider === provider)),
     resolveAppliedPlan: () => Effect.sync(() => applied),
     resolveTeardownEvidence: () =>
       Effect.sync(() =>

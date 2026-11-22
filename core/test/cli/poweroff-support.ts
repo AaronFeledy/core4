@@ -94,7 +94,7 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
   const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
     observeRuntime: Effect.succeed([snapshot]),
-    appliedPlansFor: (root: string, scope?: ProviderId) =>
+    appliedPlansFor: (root, { providerId: scope } = {}) =>
       Effect.succeed(
         scope === undefined || scope === providerId
           ? plans.filter((plan) => plan.identity?.appRoot === root)

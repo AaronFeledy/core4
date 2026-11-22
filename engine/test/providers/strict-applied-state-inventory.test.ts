@@ -33,7 +33,6 @@ test("strict inventory preserves all roots and unreadable ownership without cons
         registryLayer(TestRuntimeProvider, {
           contribution: {
             make: () => Effect.die("Strict inventory must not construct a runtime"),
-            appliedPlans: () => Effect.die("Strict inventory must not call the lossy plans reader"),
             appliedStateInventory: () =>
               Effect.gen(function* () {
                 const paths = yield* PathsService;
@@ -57,7 +56,6 @@ test("an installed third-party provider without strict inventory fails instead o
         registryLayer(TestRuntimeProvider, {
           contribution: {
             make: () => Effect.die("Missing strict inventory must not construct a runtime"),
-            appliedPlans: () => Effect.die("Missing strict inventory must not use the lossy fallback"),
             ...Object.fromEntries([["appliedStateInventory", undefined]]),
           },
         }),
@@ -83,7 +81,6 @@ test("an unknown provider fails without reading another installed provider's inv
         registryLayer(TestRuntimeProvider, {
           contribution: {
             make: () => Effect.die("Unknown provider must not construct another runtime"),
-            appliedPlans: () => Effect.die("Unknown provider must not read another provider"),
             appliedStateInventory: () => Effect.die("Unknown provider must not read another inventory"),
           },
         }),

@@ -39,18 +39,17 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
   const registry = yield* RuntimeProviderRegistry;
   const explicit = yield* TeardownProvider;
   const providerId = explicit ?? (yield* globalObserveProviderId);
-  yield* registry.readAppliedPlanStrict({ id: AppId.make("global"), provider: providerId });
+  const recorded = yield* registry.readAppliedPlanStrict({ id: AppId.make("global"), provider: providerId });
+  const plans =
+    recorded !== undefined && (recorded.identity?.appRoot ?? recorded.root) === root ? [recorded] : [];
   const provider = yield* registry.select(providerId);
   const resourceOwnership = registry.resourceOwnership;
   const ownership = yield* resourceOwnership?.(providerId, root) ?? Effect.succeed(undefined);
-  if (
-    intent === "destroy" &&
-    (ownership !== undefined ||
-      (yield* registry.appliedPlansFor(root, providerId)).some((plan) => plan.provider === providerId))
-  )
+  if (intent === "destroy" && (ownership !== undefined || plans.length > 0))
     yield* prepareTeardownOwners([provider]);
   const observedProvider = {
     ...provider,
+    appliedStateInventory: Effect.succeed({ plans, unreadable: [] }),
     isAvailable: observeRuntime(provider).pipe(
       Effect.flatMap((observation) =>
         observation.kind === "unavailable"

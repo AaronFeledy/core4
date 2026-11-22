@@ -3,7 +3,12 @@ import { dirname, join } from "node:path";
 import { type RootOverrides, makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { withDeadline } from "@lando/sdk/command-result";
-import { SshError, causeMessage } from "@lando/sdk/errors";
+import {
+  AppliedStateVersionError,
+  ProviderUnavailableError,
+  SshError,
+  causeMessage,
+} from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import {
   type AgentSocketBridgeResult,
@@ -47,7 +52,7 @@ export const agentSocketMountPlan = (mount: AgentSocketBridgeResult, target: Por
   }
 };
 
-export type SshSidecarState = "starting" | "stopped" | "ready";
+export type SshSidecarState = "starting" | "stopped" | "ready" | "unknown";
 export interface SshSidecarReadiness {
   readonly state: SshSidecarState;
   readonly detail?: string;
@@ -98,6 +103,16 @@ export const runtimeSshAgentCheck = withDeadline(inspectSshAgent, "5 seconds").p
       checked._tag === "Completed"
         ? checked.value
         : { state: "starting", detail: "SSH sidecar observation timed out." },
+  ),
+  Effect.catchIf(
+    (error) =>
+      error instanceof AppliedStateVersionError ||
+      (error instanceof ProviderUnavailableError && error.operation === "applied-state.read"),
+    (error) =>
+      Effect.succeed<SshSidecarReadiness>({
+        state: "unknown",
+        detail: `${error.message} ${error.remediation}`,
+      }),
   ),
 );
 
@@ -156,7 +171,7 @@ export const awaitRuntimeSshAgent = Effect.fnUntraced(function* (
       policy: SSH_SIDECAR_READINESS_POLICY,
       // Green ends probing for both terminal states; the Ref preserves which terminal state won.
       classify: {
-        success: (state) => (state === "starting" ? "yellow" : "green"),
+        success: (state) => (state === "starting" ? "yellow" : state === "unknown" ? "red" : "green"),
         failure: () => "yellow",
       },
     },

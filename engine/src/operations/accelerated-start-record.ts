@@ -1,8 +1,9 @@
 import { sha256Hex } from "@lando/sdk/digest";
 import { FileSyncStartError } from "@lando/sdk/errors";
-import { type PreparedFileSyncTarget, ServiceName } from "@lando/sdk/schema";
+import { type AppRef, type PreparedFileSyncTarget, ServiceName } from "@lando/sdk/schema";
 import { defineTransitions } from "@lando/sdk/transitions";
 import { Schema } from "effect";
+import { appRootIdentityKey } from "./app-root-identity.ts";
 
 const PendingStartPhase = Schema.Literals(["preparing", "sessions-ready", "apply-intent", "completed"]);
 
@@ -87,6 +88,9 @@ export const pendingStartBucketSpec = (key: string) =>
     },
   }) as const;
 export const digest = (value: unknown): string => sha256Hex(JSON.stringify(value));
+
+export const pendingStartAtRoot = (kind: AppRef["kind"], canonicalRoot: string) =>
+  pendingStartBucketSpec(`${digest(appRootIdentityKey({ kind }, canonicalRoot))}.json`);
 export const recordedStartCommand = (record: PendingStart): string =>
   ["lando start", ...(record.services ?? []).map((service) => `-s ${service}`)].join(" ");
 export const journalRecovery = (path?: string) =>

@@ -77,10 +77,6 @@ export interface RuntimeProviderContribution {
     ctx: LandoPluginContext,
     root: AbsolutePath,
   ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError>;
-  /** Read durable ownership claims without connecting to or initializing the runtime. */
-  readonly appliedPlans: (
-    ctx: LandoPluginContext,
-  ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError, PathsService>;
   readonly make: (
     ctx: LandoPluginContext,
   ) => Effect.Effect<

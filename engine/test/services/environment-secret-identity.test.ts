@@ -130,7 +130,7 @@ test("roundtrips bindings through applied state", async () => {
     const store = makeAppliedPlanStore({ providerId: "lando", layout: "per-app" });
     // When
     await Effect.runPromise(store.persistAppliedPlan(stateStore, plan));
-    const loaded = await Effect.runPromise(store.loadAppliedPlan(stateStore, plan.id));
+    const loaded = await Effect.runPromise(store.loadAppliedPlanStrict(stateStore, plan.id));
     // Then
     expect(loaded?.services[service.name]?.environment.TOKEN).toEqual({
       _tag: "SecretRef",

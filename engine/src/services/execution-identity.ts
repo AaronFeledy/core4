@@ -80,10 +80,18 @@ export const selectCommandIdentity = (input: SelectCommandIdentityInput): Comman
 export const appliedAppPlan = (
   registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
   plan: AppPlan,
-): Effect.Effect<AppPlan | undefined> =>
+) =>
   registry
-    .resolveAppliedPlan(plan.root, undefined, "exact")
-    .pipe(Effect.catch(() => Effect.succeed(undefined)));
+    .readAppliedPlanStrict(plan)
+    .pipe(
+      Effect.map((recorded) =>
+        recorded?.id === plan.id &&
+        recorded.provider === plan.provider &&
+        (recorded.identity?.appRoot ?? recorded.root) === (plan.identity?.appRoot ?? plan.root)
+          ? recorded
+          : undefined,
+      ),
+    );
 
 /**
  * The service plan as it was applied, or `undefined` when no applied plan is
@@ -94,7 +102,7 @@ export const appliedServicePlan = (
   registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
   plan: AppPlan,
   serviceName: string,
-): Effect.Effect<ServicePlan | undefined> =>
+) =>
   appliedAppPlan(registry, plan).pipe(
     Effect.map((applied) =>
       applied === undefined

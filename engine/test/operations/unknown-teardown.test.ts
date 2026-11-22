@@ -216,8 +216,10 @@ test("destroy with an explicit provider reads only that provider's applied state
             makeTestRuntimeProviderRegistry({
               ...registry,
               // Only an unscoped read reaches the unreadable provider.
-              appliedPlansFor: (root, providerId) =>
-                providerId === "lando" ? registry.appliedPlansFor(root, providerId) : Effect.fail(unrelated),
+              appliedPlansFor: (root, options) =>
+                options?.providerId === "lando"
+                  ? registry.appliedPlansFor(root, options)
+                  : Effect.fail(unrelated),
             }),
           ),
         );

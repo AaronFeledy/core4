@@ -260,7 +260,7 @@ describe("applied plan state layouts", () => {
           ? makeAppliedPlanStore({ providerId: "docker", layout })
           : makeAppliedPlanStore({ providerId: "podman", layout });
       // When
-      const observed = await Effect.runPromise(store.loadAppliedPlan(state, current.id));
+      const observed = await Effect.runPromise(store.loadAppliedPlanStrict(state, current.id));
       // Then
       expect(observed?.id).toBe(current.id);
       expect(observed?.root).toBe(current.root);
@@ -276,7 +276,7 @@ describe("applied plan state layouts", () => {
     const store = makeAppliedPlanStore({ providerId: "docker", layout: "per-app" });
     const appId = AppId.make("example");
 
-    await Effect.runPromiseExit(store.loadAppliedPlan(recordingStateStore(calls), appId));
+    await Effect.runPromiseExit(store.loadAppliedPlanStrict(recordingStateStore(calls), appId));
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
