@@ -1,9 +1,8 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { mapFailures } from "@lando/sdk/command-result";
 import { type DataTransferError, SqlDumpCompressionError } from "@lando/sdk/errors";
 import type { DataTransferResult } from "@lando/sdk/schema";
-import { VerifiedStreamError, persistVerifiedStream } from "@lando/sdk/verified-stream";
+import { mapVerifiedStreamFailures, persistVerifiedStream } from "@lando/sdk/verified-stream";
 import { type Cause, Effect, type Scope, Stream, absurd } from "effect";
 import { dumpTransferError } from "./dump-transfer-error.ts";
 
@@ -152,11 +151,7 @@ export const writeDumpTransform = (
         ),
         destinationPath: destPath,
         mode: 0o600,
-      }).pipe(
-        mapFailures((cause) =>
-          cause instanceof VerifiedStreamError ? dumpTransferError("persist", destPath, cause) : cause,
-        ),
-      );
+      }).pipe(mapVerifiedStreamFailures((cause) => dumpTransferError("persist", destPath, cause)));
       return { digest: result.sha256, sizeBytes: result.sizeBytes };
     }),
   );

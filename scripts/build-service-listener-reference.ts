@@ -102,7 +102,7 @@ export const renderServiceListenerReference = (contracts: Contracts = listenerCo
     "",
     "Secondary listeners are collision-reserved: the primary port cannot reuse them while that contract applies. Some reservations apply only when Lando owns the configuration or launcher; read the applicability notes for the service or variant. These are internal container ports, not published host ports.",
     "",
-    "Launcher arguments and custom image settings below use the default port. Substitute your chosen `port:` when replacing a Lando-owned launcher or supplying your own image configuration. Not specified means the contract declares no requirement for that field, not that any replacement will listen correctly.",
+    "The examples below show the default port. In an authored launcher, use `{{ service.port }}` for the planned port wherever the daemon accepts it as an argument. See [Your service's own port](../guides/landofile/expressions.mdx#your-services-own-port). If you configure the listener in a file in a custom image, set the port in that file. Not specified means the contract declares no requirement for that field, not that any replacement will listen correctly.",
     "",
     ...sections,
   ].join("\n");

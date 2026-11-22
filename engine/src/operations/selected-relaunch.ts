@@ -3,8 +3,10 @@ import { PostServiceStopEvent, PreServiceStopEvent } from "@lando/sdk/events";
 import type { AppPlan, FileSyncSessionSpec } from "@lando/sdk/schema";
 import { BuildOrchestrator, EventService, RouterService } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
+import { routerEnabled } from "../config/router-config.ts";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
+import { prepareRouteUrlBindings } from "../lifecycle/route-url-bindings.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { resolveAppPlacement } from "../providers/app-placement.ts";
@@ -22,6 +24,7 @@ import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { selectedAppliedRecord } from "./selected-relaunch-record.ts";
+import { refuseRetainedRouteConsumers, retainedRouteReferences } from "./selected-route-url-bindings.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { projectDebuggerOverlay, withAcquiredStartOverlays } from "./start-overlays.ts";
@@ -126,13 +129,23 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
       const services = Object.values(runtimePlan.services);
       return yield* withGlobalConsumerAdmission(
         {
-          plan: readinessPlan,
+          plan: { ...readinessPlan, routes: record.routes },
           setupRouter: true,
           ...(signal === undefined ? {} : { signal }),
           ...(landofileRouter === undefined ? {} : { landofileRouter }),
         },
         Effect.scoped(
           Effect.gen(function* () {
+            const retained = retainedRouteReferences(appliedPlan, runtimePlan);
+            const routeUrls = yield* prepareRouteUrlBindings({
+              plan: runtimePlan,
+              // A record that disables the router withdraws every route at completion.
+              routes: routerEnabled(record) ? record.routes : [],
+              router,
+              appliedPlan,
+              retainedTargets: new Set(retained.map(({ service }) => service)),
+            });
+            yield* refuseRetainedRouteConsumers({ retained, runtimePlan, proof: routeUrls, operation });
             const environment = yield* openDatabaseCredentialSession(runtimePlan);
             for (const service of [...services].reverse()) {
               if (signal?.aborted === true) return yield* Effect.interrupt;
@@ -162,6 +175,7 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
             if (signal?.aborted === true) return yield* Effect.interrupt;
             const launch = yield* applyAndObserveServices({
               apply: applyActivation({
+                routeUrls,
                 provider,
                 plan: runtimePlan,
                 certificates,
@@ -182,6 +196,7 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
               yield* publishApplyOutcomeNotices(events, launch.applied.services, { created: true });
             const ready = yield* completeStartup({
               policy: "selected",
+              routeUrls,
               selectedPlan: runtimePlan,
               routePlan: record,
               builds,

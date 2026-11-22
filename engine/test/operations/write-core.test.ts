@@ -1,12 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Result } from "effect";
 
-import {
-  applySetMutation,
-  applyUnsetMutation,
-  parseConfigPath,
-  parseConfigValue,
-} from "../../src/config-write/write-core.ts";
+import { setAtPath, unsetAtPath } from "../../src/config-write/dot-path.ts";
+import { parseConfigPath, parseConfigValue } from "../../src/config-write/write-core.ts";
 
 const FILE = "/tmp/.lando.yml";
 
@@ -43,41 +39,28 @@ describe("parseConfigValue", () => {
   });
 });
 
-describe("applySetMutation", () => {
+describe("setAtPath", () => {
   test("sets a typed value into the encoded tree", () => {
-    const result = applySetMutation({
-      tree: { name: "app" },
-      key: "services.web.type",
-      raw: "php",
-      type: "string",
-      file: FILE,
+    expect(setAtPath({ name: "app" }, ["services", "web", "type"], "php")).toEqual({
+      name: "app",
+      services: { web: { type: "php" } },
     });
-    expect(Result.isSuccess(result)).toBe(true);
-    if (Result.isSuccess(result)) {
-      expect(result.success.next).toEqual({ name: "app", services: { web: { type: "php" } } });
-      expect(result.success.value).toBe("php");
-    }
   });
 
   test("propagates a path error", () => {
-    const result = applySetMutation({ tree: {}, key: "", raw: "x", type: "string", file: FILE });
-    expect(Result.isFailure(result)).toBe(true);
+    const result = parseConfigPath("services..web", FILE);
+    expect(result).toMatchObject({
+      failure: { _tag: "LandofileWriteValidationError", path: "services..web" },
+    });
   });
 });
 
-describe("applyUnsetMutation", () => {
+describe("unsetAtPath", () => {
   test("removes a key and reports changed", () => {
-    const result = applyUnsetMutation({ tree: { a: { b: 1 } }, key: "a.b", file: FILE });
-    expect(Result.isSuccess(result)).toBe(true);
-    if (Result.isSuccess(result)) {
-      expect(result.success.changed).toBe(true);
-      expect(result.success.next).toEqual({ a: {} });
-    }
+    expect(unsetAtPath({ a: { b: 1 } }, ["a", "b"])).toEqual({ changed: true, next: { a: {} } });
   });
 
   test("no-op on a missing key reports changed:false", () => {
-    const result = applyUnsetMutation({ tree: { a: 1 }, key: "z", file: FILE });
-    expect(Result.isSuccess(result)).toBe(true);
-    if (Result.isSuccess(result)) expect(result.success.changed).toBe(false);
+    expect(unsetAtPath({ a: 1 }, ["z"])).toEqual({ changed: false, next: { a: 1 } });
   });
 });

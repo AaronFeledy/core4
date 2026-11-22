@@ -12,6 +12,7 @@ import {
   AbsolutePath,
   AppId,
   AppPlan,
+  AppliedAppPlan,
   MountPlan,
   ProviderId,
   ServiceName,
@@ -20,6 +21,7 @@ import {
 import type { StateBucket } from "@lando/sdk/services";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
+import { AppliedPlan, AppliedPlans } from "../src/applied-state-codec.ts";
 import {
   migrateAppliedPlanWithCoordinate,
   migrateAppliedPlansRecordWithCoordinate,
@@ -113,6 +115,35 @@ const v1PlanBase = {
 };
 
 describe("applied plan state layouts", () => {
+  test("v10 historical events cannot block recovery of the realized plan", () => {
+    const plan = legacyPlan();
+    const raw = {
+      ...Schema.encodeSync(AppPlan)(plan),
+      events: {
+        "pre-stop": [
+          { step: { cmd: "true", env: { "": "old" } }, source: "project", sourceIndex: 0, status: "active" },
+        ],
+      },
+    };
+    const migrated = migrateAppliedPlan(raw, 10);
+    expect(migrated).toMatchObject({ id: plan.id, services: plan.services });
+    expect(migrated).not.toHaveProperty("events");
+  });
+  test("reads v8 application listener authority without inventing keep-alive intent", () => {
+    const encoded = Schema.encodeSync(AppPlan)(legacyPlan());
+    const service = Object.values(encoded.services)[0];
+    if (service === undefined) throw new Error("The historical plan fixture must contain a service.");
+    const listenerAuthority = {
+      owner: "application",
+      daemon: "Node.js",
+      port: 3000,
+      variables: ["PORT"],
+    } as const;
+    const raw = { ...encoded, services: { [service.name]: { ...service, listenerAuthority } } };
+    expect(migrateAppliedPlan(raw, 8)?.services[ServiceName.make(service.name)]?.listenerAuthority).toEqual(
+      listenerAuthority,
+    );
+  });
   for (const layout of ["per-app", "record"] as const) {
     test.each([true, false, undefined, "off"])(
       `${layout} migrates v2 init %s without changing ownership`,
@@ -560,6 +591,21 @@ describe("applied plan records", () => {
     extensions: {},
   };
   const { events: _events, ...record } = plan;
+
+  test.each(["per-app", "record"] as const)("reads legitimate v11 %s writer bytes", (layout) => {
+    const historicalWriterValue = Schema.encodeSync(AppPlan)(record);
+    const bytes = JSON.stringify(
+      layout === "per-app" ? historicalWriterValue : { [plan.id]: historicalWriterValue },
+    );
+    const raw: unknown = JSON.parse(bytes);
+    const decoded =
+      layout === "per-app"
+        ? Schema.decodeUnknownSync(AppliedPlan)(raw)
+        : Schema.decodeUnknownSync(AppliedPlans)(raw)[plan.id];
+    expect(APPLIED_STATE_VERSION).toBe(11);
+    expect(decoded).toEqual(Schema.decodeUnknownSync(AppliedAppPlan)(historicalWriterValue));
+    expect(decoded).toEqual(record);
+  });
   const writingStateStore = (written: unknown[]): PluginStateStore => ({
     open: <A, I>(_spec: PluginStateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
       Effect.succeed({

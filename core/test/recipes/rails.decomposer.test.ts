@@ -93,7 +93,7 @@ describe("rails decomposition", () => {
               "gem install rails --no-document",
             ],
           },
-          dependsOn: [{ service: "cache" }, { service: "database" }],
+          depends_on: ["cache", "database"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "postgres" },
@@ -115,7 +115,7 @@ describe("rails decomposition", () => {
         rake: {
           service: "web",
           description: "Run Rake inside the web service.",
-          cmds: ["rake"],
+          cmd: [":ruby-local", "rake"],
           wrapper: true,
         },
       },

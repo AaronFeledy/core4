@@ -98,7 +98,7 @@ const invalidAuthoring = (
 ): LandofileValidationError => {
   const message = `services.${input.serviceName}.projectUser has an unsupported value "${value}": ${reason}`;
   return new LandofileValidationError({
-    file: `${input.appRoot}/.lando.yml`,
+    file: input.appRoot,
     message,
     issues: [validationIssue(["services", input.serviceName, "projectUser"], message)],
     remediation,

@@ -49,7 +49,7 @@ export const source = {
         uploadDirs: ["storage"],
         allowOverride: true,
         port: 80,
-        dependsOn: ["cache"],
+        depends_on: ["cache"],
         environment: { DB_CONNECTION: "sqlite" },
         routes: defaultRoutes,
       },
@@ -60,7 +60,7 @@ export const source = {
       artisan: {
         service: "appserver",
         description: "Run a Laravel Artisan command inside the appserver service.",
-        cmds: ["php artisan"],
+        cmd: [":php-local", "artisan"],
         wrapper: true,
       },
       composer: composerTool,
@@ -79,7 +79,7 @@ export const source = {
             via: "cli",
             command: "php artisan queue:work",
             restart: "unless-stopped",
-            dependsOn: ["cache"],
+            depends_on: ["cache"],
             environment: { DB_CONNECTION: "sqlite" },
             appMount: { target: "/app", includes: ["vendor"] },
           },
@@ -123,14 +123,14 @@ export const source = {
           when: `{{ eq(options.database, "${database}") }}`,
           config: {
             services: {
-              appserver: { environment, dependsOn: ["database", "cache"] },
+              appserver: { environment, depends_on: ["database", "cache"] },
               database: { type: "{{ recipe.database }}" },
             },
           },
         },
         {
           when: `{{ and(options.worker, eq(options.database, "${database}")) }}`,
-          config: { services: { worker: { environment, dependsOn: ["database", "cache"] } } },
+          config: { services: { worker: { environment, depends_on: ["database", "cache"] } } },
         },
       ];
     }),

@@ -1,5 +1,5 @@
 /** `lando app:config:lint` result rendering. */
-import type { ConfigLintResult } from "@lando/sdk/schema";
+import { type ConfigLintResult, formatValidationIssuePath } from "@lando/sdk/schema";
 
 import { renderConfigLintViolations } from "./config-lint-rendering";
 
@@ -9,10 +9,14 @@ export const renderConfigLintResult = (
   result: ConfigLintResult,
   _format: AppConfigLintFormat = "text",
 ): string => {
-  if (result.violations.length === 0) {
-    return `${result.file}: no config lint findings.`;
-  }
   const findings = renderConfigLintViolations(result.violations, result.file);
-  const header = `${result.file}: ${findings.length} config lint finding${findings.length === 1 ? "" : "s"}.`;
-  return [header, ...findings].join("\n");
+  const header =
+    findings.length === 0
+      ? `${result.file}: no config lint findings.`
+      : `${result.file}: ${findings.length} config lint finding${findings.length === 1 ? "" : "s"}.`;
+  const skips = (result.skipped ?? []).map(
+    ({ stage, path, message }) =>
+      `  ${stage}${path === undefined ? "" : ` [${formatValidationIssuePath(path)}]`}: ${message}`,
+  );
+  return [header, ...findings, ...(skips.length === 0 ? [] : ["", "Not checked:", ...skips])].join("\n");
 };

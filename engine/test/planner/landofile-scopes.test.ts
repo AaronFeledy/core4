@@ -5,9 +5,9 @@ import { AppPlan, ServiceName } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import {
   configExpressionIssuePath,
-  deferredSiteKey,
   materializeLandofileScopes,
   materializeServiceScopeSites,
+  pathIsBlocked,
   serviceCredsScopeForPlan,
   serviceScopeContext,
 } from "../../src/planner/landofile-scopes.ts";
@@ -22,7 +22,8 @@ test("keeps literal dots and numeric string keys in planner lint paths", () => {
   });
   const path = configExpressionIssuePath(error);
   expect(path).toEqual(["services", "web.v2", "environment", "0"]);
-  expect(deferredSiteKey(path)).not.toBe(deferredSiteKey(["services", "web", "v2", "environment", 0]));
+  expect(pathIsBlocked([path], ["services", "web", "v2", "environment", "0"])).toBe(false);
+  expect(pathIsBlocked([path], ["services", "web.v2", "environment", 0])).toBe(false);
 });
 
 test("advances recorded identity and connection sites without rescanning produced strings", async () => {
@@ -40,6 +41,7 @@ test("advances recorded identity and connection sites without rescanning produce
                 web: {
                   environment: {
                     DATA: "{{ env.LANE_B_ENGINE_DATA }}",
+                    DB_PORT: "{{ services.db.port }}",
                     URL: "pg://{{ url.encodeComponent(services.db.creds.password) }}:{{ services.db.port }}",
                   },
                 },
@@ -59,7 +61,7 @@ test("advances recorded identity and connection sites without rescanning produce
       }),
     );
     expect(identity.compiled.stage).toBe("identity-scoped");
-    expect(identity.pendingSites).toHaveLength(1);
+    expect(identity.pendingSites).toHaveLength(2);
     const result = await Effect.runPromise(
       materializeServiceScopeSites({
         value: identity.landofile,
@@ -70,6 +72,7 @@ test("advances recorded identity and connection sites without rescanning produce
           ...identity,
           services: {
             db: {
+              url: { _tag: "RouteText", parts: [{ service: "db", encoding: "raw" }] },
               creds: { user: "lando", database: "app", password: { _tag: "SecretRef", reference: "DB" } },
               port: 5544,
             },
@@ -84,6 +87,7 @@ test("advances recorded identity and connection sites without rescanning produce
           web: {
             environment: {
               DATA: "{{ services.notAuthored.creds.password }}",
+              DB_PORT: "5544",
               URL: {
                 _tag: "BoundText",
                 parts: ["pg://", { reference: "DB", encoding: "uri-component" }, ":5544"],
@@ -134,6 +138,7 @@ test("reconstructs trusted scope only from persisted connection facts including 
   });
   const scope = serviceCredsScopeForPlan(plan);
   expect(scope.db).toEqual({
+    url: { _tag: "RouteText", parts: [{ service: "db", encoding: "raw" }] },
     creds: { user: "lando", database: "app", password: { _tag: "SecretRef", reference: "DB" } },
     port: 5544,
   });
@@ -168,6 +173,8 @@ test("locates canonical decode failures without rendering scope values into erro
   if (Result.isFailure(result)) {
     expect(result.failure.path).toEqual(["services", "web", "environment", "BAD"]);
     expect(result.failure.filePath).toBe("/app/.lando.local.yml");
+    expect(result.failure.expression).toBe("{{ app }}");
+    expect(result.failure.remediation).toMatch(/\S/);
     expect(result.failure.message).not.toContain("DO_NOT_RENDER_SCOPE_BYTES");
   }
 });
@@ -203,6 +210,7 @@ test("locates forbidden binding helpers at the canonical destination", async () 
           ...identity,
           services: {
             db: {
+              url: { _tag: "RouteText", parts: [{ service: "db", encoding: "raw" }] },
               creds: { user: "lando", database: "app", password: { _tag: "SecretRef", reference: "DB" } },
               port: 5432,
             },

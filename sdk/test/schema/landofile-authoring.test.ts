@@ -667,6 +667,9 @@ describe("Landofile authoring schemas", () => {
         case "Arrays":
           for (const element of [...ast.elements, ...ast.rest]) visit(element);
           return;
+        case "Declaration":
+          ast.typeParameters.forEach(visit);
+          return;
         case "Suspend":
           visit(ast.thunk());
           return;
@@ -736,24 +739,28 @@ describe("Landofile authoring schemas", () => {
     });
     expect(shape).toHaveProperty(
       ["$defs", "DeprecationNoticeAuthoring", "properties", "severity", "anyOf"],
-      ["info", "warn", "error"].map((severity) => ({
-        anyOf: [{ type: "string", enum: [severity] }, { $ref: "#/$defs/AuthoringExpressionEncoded" }],
-      })),
+      ["info", "warn", "error"].flatMap((severity) => [
+        { type: "string", enum: [severity] },
+        { $ref: "#/$defs/AuthoringExpressionEncoded" },
+      ]),
     );
     expect(fragment).toHaveProperty(["$defs", "DeprecationNoticeAuthoringFragment", "properties", "note"]);
     expect(fragment).not.toHaveProperty(["$defs", "DeprecationNoticeAuthoringFragment", "required"]);
-    for (const [document, taskDefinition, noticeDefinition, noticePath] of [
-      [shape, "ToolingTaskInputAuthoring", "DeprecationNoticeAuthoring", ["anyOf"]],
+    for (const [document, taskDefinition, noticeBranches] of [
+      [shape, "ToolingTaskInputAuthoring", [{ $ref: "#/$defs/DeprecationNoticeAuthoring" }]],
       [
         fragment,
         "ToolingTaskInputAuthoringFragment",
-        "DeprecationNoticeAuthoringFragment",
-        ["anyOf", 2, "anyOf"],
+        [
+          { $ref: expect.stringMatching(/^#\/\$defs\/LandofileOverrideWire(?:_\d+)?$/u) },
+          { $ref: "#/$defs/LandofileResetWire" },
+          { $ref: "#/$defs/DeprecationNoticeAuthoringFragment" },
+        ],
       ],
     ] as const) {
       expect(document).toHaveProperty(
-        ["$defs", taskDefinition, "anyOf", 0, "anyOf", 0, "properties", "deprecated", ...noticePath],
-        [{ $ref: `#/$defs/${noticeDefinition}` }, { type: "string", pattern: expect.any(String) }],
+        ["$defs", taskDefinition, "anyOf", 0, "properties", "deprecated", "anyOf"],
+        [...noticeBranches, { type: "string", pattern: expect.any(String) }],
       );
     }
     expect(shape).toHaveProperty(["properties", "tooling", "anyOf", 0, "additionalProperties"], {

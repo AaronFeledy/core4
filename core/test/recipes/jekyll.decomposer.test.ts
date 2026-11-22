@@ -63,7 +63,7 @@ describe("jekyll decomposition", () => {
               "apt-get update && apt-get install -y --no-install-recommends build-essential libssl-dev zlib1g-dev",
             ],
           },
-          command: "bundle exec jekyll serve --host 0.0.0.0 --port 4000",
+          command: "bundle exec jekyll serve --host 0.0.0.0 --port {{ service.port }}",
           port: 4000,
         },
         web: {

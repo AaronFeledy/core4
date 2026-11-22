@@ -88,7 +88,7 @@ export const prepareIncludeAcquisition = (
               return { ...issue, path: issuePath, source: { ...source, path: issuePath } };
             }),
           }),
-          source,
+          { kind: "missing-content", source },
         );
         continue;
       }
@@ -105,7 +105,7 @@ export const prepareIncludeAcquisition = (
             }),
             source,
           ),
-          source,
+          { kind: "missing-content", source },
         );
         continue;
       }

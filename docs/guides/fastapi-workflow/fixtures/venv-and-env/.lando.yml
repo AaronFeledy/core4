@@ -12,18 +12,11 @@ services:
     routes:
       - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
         scheme: both
-    dependsOn:
+    depends_on:
       - database
       - cache
-    entrypoint:
-      - sh
-      - -c
-      - '([ -x /app/.venv/bin/pip ] || /usr/local/bin/python -m venv /app/.venv) && exec "$@"'
-      - --
     command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000", --reload]
     environment:
-      VIRTUAL_ENV: /app/.venv
-      PATH: /app/.venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
       DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
       REDIS_URL: redis://cache:6379/0
 tooling:

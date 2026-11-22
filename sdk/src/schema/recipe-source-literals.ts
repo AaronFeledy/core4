@@ -3,6 +3,7 @@ import type { ExpressionNode } from "../expressions/ast.ts";
 import { evaluateExpressionEither } from "../expressions/evaluator.ts";
 import { parseExpressionEither } from "../expressions/parser.ts";
 import { expressionInterpolationsTouchOnlyScopes, expressionScopeMembers } from "../expressions/scopes.ts";
+import { servicePortExpression } from "../landofile/execution-sites.ts";
 import type { LandofileSourceValue } from "./landofile-source.ts";
 import type { RecipeSource } from "./recipe-source.ts";
 import { type RecipeSourceCompileError, recipeSourceFailure } from "./recipe-source-error.ts";
@@ -12,13 +13,14 @@ export const validateSourceConfig = (
   value: LandofileSourceValue,
   path: readonly (string | number)[] = [],
 ): Result.Result<void, RecipeSourceCompileError> => {
-  const fail = () => Result.fail(recipeSourceFailure(source.id, "config-invalid", path.join(".")));
+  const fail = () => Result.fail(recipeSourceFailure(source.id, "config-invalid", path));
   if (typeof value === "string") {
     const parsed = parseExpressionEither(value, {
       filePath: `recipe:${source.id}`,
       bareShellParameters: "preserve",
     });
     if (Result.isFailure(parsed)) return fail();
+    const self = servicePortExpression(parsed.success, path);
     const bindingSite =
       (path[0] === "services" &&
         ((path[2] === "environment" && path.length === 4) ||
@@ -31,6 +33,7 @@ export const validateSourceConfig = (
         "env",
         "services",
         "proxy",
+        ...(self === "supported" || self === "url" ? ["service"] : []),
         ...(bindingSite ? ["secrets"] : []),
       ]) ||
       parsed.success.segments.some(
@@ -72,7 +75,7 @@ export const lowerSourceConfig = (
       {},
     );
     if (Result.isFailure(encoded) || typeof encoded.success !== "string")
-      return Result.fail(recipeSourceFailure(recipeId, "config-invalid", "config"));
+      return Result.fail(recipeSourceFailure(recipeId, "config-invalid", ["config"]));
     return Result.succeed({ kind: "Literal", value: `lando:authoring:base64:${encoded.success}` });
   }
   if (value === null || typeof value !== "object") return Result.succeed({ kind: "Literal", value });

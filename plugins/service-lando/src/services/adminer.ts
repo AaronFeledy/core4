@@ -10,12 +10,13 @@ import type {
 import { Effect } from "effect";
 
 import { adminerPlugin } from "./_adminer-plugin.ts";
+import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 import { landoImageFilesBuildStep } from "./_image-files.ts";
 import {
   assertListenerConfig,
   launcherAuthority,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -40,16 +41,16 @@ export const adminerServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, ADMINER_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "http",
       }).map((endpoint) => ({ ...endpoint, scan: { path: "/?manifest=1" } })),
     ),
   apply: serviceFeatureApply(FEATURE_ID, "Adminer service feature failed to apply", (ctx) => {
     const service = ctx.normalizedConfig;
-    const port = plannedPort(service, ADMINER_LISTENER);
+    const port = selectPort(service);
     ctx.setArtifact({ kind: "ref", ref: service.image ?? IMAGE });
     ctx.setHealthcheck(tcpProbe(port, 20));
-    ctx.setWorkingDirectory(PortablePath.make(service.workingDirectory ?? DOCROOT));
+    ctx.setWorkingDirectory(PortablePath.make(service.working_dir ?? DOCROOT));
     if (service.command === undefined) {
       ctx.setCommand([
         "php",
@@ -76,10 +77,16 @@ export const adminerServiceFeature: ServiceFeatureDefinition = {
   }),
 };
 
+const selectPort = primaryPortSelector(ADMINER_LISTENER);
 const makeAdminerServiceType = (id: string): ServiceType => ({
   id,
   name: "adminer",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
+    "Adminer",
+    "Put flags in command: or remove extraArgs.",
+  ),
   versions: ["6"],
   artifacts: { "6": IMAGE },
   identity: {

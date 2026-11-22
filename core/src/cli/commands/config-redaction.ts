@@ -1,43 +1,39 @@
 import { collectSecretEnvValues, collectSecretStructuralValues } from "@lando/redaction/service";
+import { type ValidationIssuePath, parseValidationIssuePath } from "@lando/sdk/schema";
 import { isSecretStructuralName } from "@lando/sdk/secrets";
 
-const collectConfigValues = (result: unknown, path = "", sensitive = false): string[] => {
+const collectConfigValues = (
+  result: unknown,
+  path: ValidationIssuePath = [],
+  sensitive = false,
+): string[] => {
   if (typeof result === "string") {
-    if (path === "tracing.otlp.headers" || path.startsWith("tracing.otlp.headers.")) return [result];
-    const [root, ...rest] = path.split(".");
-    if (root === "appEnv" || root === "appLabels")
-      return collectSecretEnvValues({ [rest.join(".")]: result });
-    // Under a secret-named ancestor every leaf is sensitive, so classify it as a password field.
-    const name = sensitive ? "password" : (path.split(".").at(-1) ?? "");
+    const [root, second, third] = path;
+    if (root === "tracing" && second === "otlp" && third === "headers") return [result];
+    if (root === "serviceDefaults" && (second === "environment" || second === "labels"))
+      return collectSecretEnvValues({ [String(third ?? "")]: result });
+    const name = sensitive ? "password" : String(path.at(-1) ?? "");
     return collectSecretStructuralValues({ [name]: result });
   }
   if (typeof result !== "object" || result === null) return [];
   const tokens: string[] = [];
   for (const [key, value] of Object.entries(result)) {
-    const nextPath = path === "" ? key : `${path}.${key}`;
-    tokens.push(...collectConfigValues(value, nextPath, sensitive || isSecretStructuralName(key)));
+    tokens.push(...collectConfigValues(value, [...path, key], sensitive || isSecretStructuralName(key)));
   }
   return tokens;
 };
 
 export const configRedactionTokens = (result: unknown): readonly string[] => {
   if (typeof result !== "object" || result === null) return [];
-  const tokens = [
+  const path =
+    "key" in result && typeof result.key === "string" ? parseValidationIssuePath(result.key) : undefined;
+  return [
     ...collectConfigValues("config" in result ? result.config : undefined),
     ...collectConfigValues("raw" in result ? result.raw : undefined),
     ...collectConfigValues(
       "value" in result ? result.value : undefined,
-      "key" in result && typeof result.key === "string" ? result.key : "",
+      path,
+      path?.some((part) => typeof part === "string" && isSecretStructuralName(part)),
     ),
   ];
-  // A set result carries a dot-path beside a scalar rather than its enclosing map.
-  if (
-    "key" in result &&
-    typeof result.key === "string" &&
-    "value" in result &&
-    typeof result.value === "string"
-  ) {
-    tokens.push(...collectConfigValues(result.value, result.key));
-  }
-  return tokens;
 };

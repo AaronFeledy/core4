@@ -1,14 +1,8 @@
 import { Result } from "effect";
 import { guideCommandArgv } from "../../core/src/docs/guide-compiler/command-argv.ts";
+import { type CoverageLintDocument, e2eCommandArgvs } from "./coverage-lint-input.ts";
 import { type GuideLintDiagnostic, diagnostic } from "./lint-diagnostic.ts";
 import type { MdxNode } from "./mdx.ts";
-import type { GuideScenarioAst } from "./model.ts";
-
-export interface InstallLintDocument {
-  readonly sourcePath: string;
-  readonly root: MdxNode;
-  readonly guide?: GuideScenarioAst;
-}
 
 /** A Composer package token, without its optional inline version constraint. */
 const packageName = (token: string): string => {
@@ -28,26 +22,14 @@ const installKey = (argv: readonly string[]): string | undefined => {
 };
 
 export const lintInstallCoverage = (
-  documents: readonly InstallLintDocument[],
+  documents: readonly CoverageLintDocument[],
 ): readonly GuideLintDiagnostic[] => {
   const covered = new Set<string>();
   for (const { guide } of documents) {
     if (guide === undefined) continue;
-    const e2eScenarios = new Set(
-      guide.scenarios
-        .filter((scenario) => (scenario.layer ?? guide.frontmatter.defaultLayer) === "e2e")
-        .map((scenario) => scenario.id),
-    );
-    for (const { scenarioId, resolved } of guide.cells) {
-      if (!e2eScenarios.has(scenarioId) || resolved.variant?.skip !== undefined || resolved.skipOnly)
-        continue;
-      for (const step of resolved.steps)
-        for (const component of step.components) {
-          // Resolved argv already expands Variable.value, unquotes words, and excludes skipped steps.
-          if (component.kind !== "Run" && component.kind !== "Verify") continue;
-          const key = installKey(component.argv ?? []);
-          if (key !== undefined) covered.add(key);
-        }
+    for (const argv of e2eCommandArgvs(guide)) {
+      const key = installKey(argv);
+      if (key !== undefined) covered.add(key);
     }
   }
 
@@ -57,7 +39,8 @@ export const lintInstallCoverage = (
     const visit = (node: MdxNode): void => {
       if (node.name === "Guide") return;
       if (node.type === "code" && languages.has(node.lang ?? "") && typeof node.value === "string") {
-        for (const line of node.value.replace(/\\\r?\n/g, "").split(/\r?\n/)) {
+        for (const raw of node.value.replace(/\\\r?\n/g, "").split(/\r?\n/)) {
+          const line = raw.replace(/^\s*\$ /, "");
           if (!/^\s*lando\s/.test(line)) continue;
           const argv = guideCommandArgv(line);
           if (Result.isFailure(argv)) continue;

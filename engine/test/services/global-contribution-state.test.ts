@@ -57,13 +57,13 @@ test.each([undefined, { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwo
         loadServiceConfig: (entry) =>
           entry.contribution.id === "disabled"
             ? Effect.die("disabled module evaluated")
-            : Effect.succeed({ type: "compose", dependsOn: [{ service: "disabled" }] }),
+            : Effect.succeed({ type: "compose", depends_on: [{ service: "disabled" }] }),
       }),
     );
 
     const projected = projectEffectiveGlobalResolution(resolution, {
       ...resolution.composableServices,
-      disabled: { type: "compose", dependsOn: [{ service: "consumer" }] },
+      disabled: { type: "compose", depends_on: [{ service: "consumer" }] },
     });
 
     for (const result of [resolution, projected]) {

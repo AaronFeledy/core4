@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
-
 import { CONTAINER_HELPER_JOB_ID, renderContainerHelperJob } from "./_container-helper-workflow.ts";
 import { createJourneyWorkflowBuilder } from "./_journey-workflow.ts";
+import { pinnedAction } from "./action-pins.ts";
 import { PLATFORM_READINESS_CELLS, type PlatformReadinessCell } from "./ci-platforms.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -32,7 +32,7 @@ ${renderCadenceIf(cell.cadence)}    needs: [${CONTAINER_HELPER_JOB_ID}]
     env:
       COMPOSER_PROCESS_TIMEOUT: "2000"
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
 
 ${isolateRootsStep}
 
@@ -56,7 +56,7 @@ ${renderSetupStep(cell, binary)}
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: ${pinnedAction("actions/upload-artifact")}
         with:
           name: drupal-journey-${cell.id}
           path: \${{ runner.temp }}/drupal-journey.json

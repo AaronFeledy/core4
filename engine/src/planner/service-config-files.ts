@@ -27,7 +27,7 @@ export const resolveServiceConfigSources = Effect.fnUntraced(function* (input: {
       new LandofileValidationError({
         message: `${issue} ${message}`,
         remediation: "Use a readable source inside the app and a path relative to the app root.",
-        file: `${input.appRoot}/.lando.yml`,
+        file: input.appRoot,
         issues: [validationIssue(["services", input.serviceName, "config", key], message)],
       });
     const io = <A>(path: string, operation: () => Promise<A>): Effect.Effect<A, LandofileValidationError> =>

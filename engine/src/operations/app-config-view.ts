@@ -8,7 +8,7 @@ import {
 import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { encodeLandofileSourceValue } from "@lando/sdk/landofile";
-import { LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
+import { LandofileShape, LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { getAtPath } from "../config-write/dot-path.ts";
@@ -18,6 +18,7 @@ import {
   collectAuthoredRedactionTokens,
   mergeLandofileRedactionValues,
   registerLandofileRedaction,
+  registerResolvedLandofileRedaction,
 } from "../services/app-plan-redaction.ts";
 import { findDiscoveredLandofilePath, scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
 
@@ -163,22 +164,26 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
       const loadedLandofile = yield* loadUserLandofile(service);
       const landofile = loadedLandofile.document;
       const provenance = provenanceOf(loadedLandofile);
-      const sourceValues = yield* Effect.forEach(provenance?.documents ?? [], (document) =>
-        authoredSourceDocument(document).pipe(
-          Effect.map((authored) => collectAuthoredRedactionTokens(authored.value, authored.provenance)),
-        ),
-      );
-      const redactionTokens = yield* attachRedaction(
-        collectAuthoredRedactionTokens(landofile, provenance),
-        ...sourceValues,
-      );
+      const { substring: redactionTokens } = yield* registerResolvedLandofileRedaction(loadedLandofile);
       const metadata = {
         app: landofile.name ?? "",
         sources: provenance?.includeSources ?? [],
         redactionTokens,
       };
       if (selector === undefined) return { source, ...metadata, landofile };
-      const selected = getAtPath(landofile, selector);
+      const encoded = yield* Schema.encodeEffect(LandofileShape)(landofile, {
+        onExcessProperty: "error",
+      }).pipe(
+        mapFailures(
+          (cause) =>
+            new ConfigError({
+              message: "Cannot encode the resolved Landofile for inspection.",
+              cause,
+              remediation: "Run `lando app:config:lint` to check the Landofile and its sources.",
+            }),
+        ),
+      );
+      const selected = getAtPath(encoded, selector);
       return {
         source,
         ...metadata,

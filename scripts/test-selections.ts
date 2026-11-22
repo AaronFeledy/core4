@@ -50,6 +50,24 @@ export const TEST_SELECTIONS = [
     jobs: [{ workflow: "ci.yml", job: "static-checks-platform" }],
   },
   {
+    id: "native-lock",
+    paths: [
+      "state-store/test/state/native-lock.test.ts",
+      "state-store/test/state/native-lock-errors.test.ts",
+      "state-store/test/state/native-lock-reliability.test.ts",
+    ],
+    unit: "exclude",
+    jobs: [{ workflow: "ci.yml", job: "static-checks-platform" }],
+    needs: "Kernel advisory locks across processes on every OS",
+  },
+  {
+    id: "compiled-native-lock",
+    paths: ["state-store/test/state/native-lock-compiled.test.ts"],
+    unit: "exclude",
+    jobs: builds,
+    needs: "Compiled advisory-lock holder fixture (bun build --compile)",
+  },
+  {
     id: "process-signals",
     paths: ["core/test/cli/process-signals.test.ts"],
     jobs: [{ workflow: "ci.yml", job: "process-signal-tests-darwin" }],
@@ -134,13 +152,19 @@ export const TEST_SELECTIONS = [
   },
   {
     id: "providers-lando",
-    paths: ["plugins/provider-lando/test/*.integration.test.ts"],
+    paths: [
+      "plugins/provider-lando/test/*.integration.test.ts",
+      "container-runtime/test/dependency-environments.integration.test.ts",
+    ],
     jobs: live,
     needs: "Live managed Podman runtime; some cases require native opt-ins",
   },
   {
     id: "providers-docker",
-    paths: ["plugins/provider-docker/test/*.integration.test.ts"],
+    paths: [
+      "plugins/provider-docker/test/*.integration.test.ts",
+      "container-runtime/test/dependency-environments.integration.test.ts",
+    ],
     jobs: live,
     needs: "LANDO_TEST_DOCKER_SOCKET",
   },

@@ -549,7 +549,13 @@ describe("application listener authority", () => {
           appName: "myapp",
           metadata: METADATA,
         });
-        expect(plan.listenerAuthority).toEqual({ owner: "application", daemon, port: 43210, variables });
+        expect(plan.listenerAuthority).toEqual({
+          owner: "application",
+          daemon,
+          port: 43210,
+          variables,
+          ...(authorship === "keep-alive" ? { keepAlive: true } : {}),
+        });
         if (process.command !== undefined) expect(plan.command).toEqual(process.command);
         if (process.entrypoint !== undefined) expect(plan.entrypoint).toEqual(process.entrypoint);
       });

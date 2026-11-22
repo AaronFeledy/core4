@@ -1,7 +1,7 @@
 ---
 id: php
 provider: test
-timeout: 90000
+timeout: 240000
 tags: [docs, php, service, runtime]
 ---
 
@@ -120,6 +120,20 @@ curl -fsS <app-url>/https-check.php
 ```
 
 The response reports `"https":"on"`, `"scheme":"https"`, and `"port":"443"` (or the public fallback port). Delete `https-check.php` when you're done. If curl reports a certificate error, follow [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
+
+  <Scenario id="apache-https-through-router" layer="e2e" render={false} reason="Check Apache reports HTTPS when requested through Lando's router">
+    <Step name="start-apache">
+      <UseFixture name="php-demo" />
+      <Run command="lando start --format=json" />
+    </Step>
+    <Step name="request-https-check">
+      <Fetch url="{{route:app}}/https-check.php" expect={{ status: 200, body: { regex: "\"https\":\"on\",\"scheme\":\"https\",\"port\":\"[0-9]+\"" } }} />
+    </Step>
+    <Step name="destroy-app">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes --format=json" />
+    </Step>
+  </Scenario>
 
 With `via: fpm`, TLS terminates at the router and the nginx service in front of PHP projects the public values. Lando's generated FastCGI configuration sets `HTTPS`, `REQUEST_SCHEME`, and `SERVER_PORT` from the router's forwarded scheme and port, replacing a spoofed client header, and sets `SERVER_NAME` to the requested host. A direct request to a published port without forwarded headers keeps the listener's actual scheme and port, and an invalid forwarded port falls back to `443` or `80` and then the listener port.
 

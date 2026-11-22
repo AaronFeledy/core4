@@ -9,6 +9,6 @@ services:
     type: postgres
   api:
     type: "node:22"
-    dependsOn:
+    depends_on:
       database:
         condition: service_started

@@ -66,7 +66,7 @@ describe("node-api decomposition", () => {
               "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
           },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
-          dependsOn: ["database"],
+          depends_on: ["database"],
         },
         database: { type: "{{ recipe.database }}" },
       },
@@ -91,10 +91,10 @@ describe("node-api decomposition", () => {
       Schema.Struct({ services: Schema.Record(Schema.String, Schema.Unknown) }),
     )(authoringOf(noDatabase));
     expect(Object.keys(authoring.services)).toEqual(["api"]);
-    const api = Schema.decodeUnknownSync(Schema.Struct({ dependsOn: Schema.optionalKey(Schema.Unknown) }))(
+    const api = Schema.decodeUnknownSync(Schema.Struct({ depends_on: Schema.optionalKey(Schema.Unknown) }))(
       authoring.services.api,
     );
-    expect(api.dependsOn).toBeUndefined();
+    expect(api.depends_on).toBeUndefined();
     expect(authoring.services.api).toHaveProperty("environment", { API_FRAMEWORK: "{{ recipe.framework }}" });
   });
 

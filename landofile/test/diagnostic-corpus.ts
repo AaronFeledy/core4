@@ -40,6 +40,7 @@ const reviewed = [
   {},
   { cmd: "echo ok" },
   { dockerfile: "Dockerfile" },
+  { app: "echo ok" },
 ];
 const missingRequired = (ast: SchemaAST.AST, value: unknown): boolean => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;

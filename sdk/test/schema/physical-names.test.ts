@@ -1,16 +1,31 @@
 import { describe, expect, test } from "bun:test";
 import { sha256Hex } from "@lando/sdk/digest";
 import {
+  PHYSICAL_VOLUME_LOCK_TIER,
+  defaultRouteHostname,
   landoAppStoreName,
   landoCacheStoreName,
+  landoDependencyEnvironmentStoreName,
   landoServiceContainerName,
   landoServiceHomeStoreName,
   landoServiceShadowStoreName,
   landoServiceStorageName,
   landoServiceStoreName,
+  physicalVolumeLockTier,
 } from "@lando/sdk/schema";
 
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
+
+test.each([
+  ["WEB--API", "web--api"],
+  ["8.3", "8.3"],
+  ["pma_theme", "pma-theme"],
+  ["-Web__API-", "web-api"],
+  ["a".repeat(64), "a".repeat(63)],
+  ["_", sha256Hex("_").slice(0, 8)],
+])("derives the default hostname for %s", (service, label) => {
+  expect(defaultRouteHostname(service, "demo", "custom.test")).toBe(`${label}.demo.custom.test`);
+});
 
 const strings = (alphabet: string, maxLength: number): ReadonlyArray<string> => {
   const out: string[] = [];
@@ -160,5 +175,59 @@ describe("derived stores", () => {
     expect(landoAppStoreName("foo", "bar-web")).toBe("lando-foo_bar-web");
     expect(landoAppStoreName("foo", "bar-web")).not.toBe(landoAppStoreName("foo-bar", "web"));
     expect(landoAppStoreName("foo", "web")).not.toBe(landoServiceStorageName("foo", "web", "/data"));
+  });
+});
+
+describe("physical volume name classification", () => {
+  test("cache, ordinary and reserved global-app volume derivations occupy separate tiers", () => {
+    // Given every other store-name derivation for the same short/long pairs and keys.
+    const cacheKeys = [
+      "composer",
+      "nuget",
+      "Foo",
+      `${"a".repeat(80)}x`,
+      `${"a".repeat(47)}-!`,
+      "cache",
+      "global",
+      "x",
+    ];
+    const cacheNames = new Set(cacheKeys.map(landoCacheStoreName));
+    for (const [slug, service] of [
+      ...pairs,
+      ["cache", "composer"],
+      ["cache-composer", "abcd1234"],
+      ["global", "proxy"],
+      ["global", "A".repeat(80)],
+    ] as const) {
+      const expected =
+        slug === "global" ? PHYSICAL_VOLUME_LOCK_TIER.globalApp : PHYSICAL_VOLUME_LOCK_TIER.default;
+      const stores = [
+        landoServiceStoreName(slug, service, "data"),
+        landoServiceHomeStoreName(slug, service),
+        landoServiceHomeStoreName(slug, service, "root"),
+        landoServiceShadowStoreName(slug, service, "/data"),
+        landoServiceStorageName(slug, service, "/data"),
+        landoAppStoreName(slug, service),
+        landoDependencyEnvironmentStoreName(slug, "python", "a".repeat(40)),
+      ];
+      for (const name of stores) expect(physicalVolumeLockTier(name), name).toBe(expected);
+    }
+    for (const name of cacheNames) {
+      expect(physicalVolumeLockTier(name)).toBe(PHYSICAL_VOLUME_LOCK_TIER.cache);
+    }
+  });
+
+  test.each([
+    "lando-cache",
+    "lando-cache-",
+    "lando-cache--web",
+    "lando-cache-foo--gggggggg",
+    "lando-cache-foo--abcd12345",
+    "lando-global_",
+    "lando-global--proxy",
+    "lando-global--proxy--",
+    "lando-globals--proxy--data",
+  ])("keeps non-volume namespace lookalike %s in the ordinary tier", (name) => {
+    expect(physicalVolumeLockTier(name)).toBe(PHYSICAL_VOLUME_LOCK_TIER.default);
   });
 });

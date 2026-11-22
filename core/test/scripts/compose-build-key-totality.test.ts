@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
-import { BuildBlock } from "@lando/sdk/schema";
+import { BuildBlock, validationIssuesFromCause } from "@lando/sdk/schema";
 import { Result, Schema, SchemaIssue } from "effect";
 
 const supportedBuildKeys = ["args", "context", "dockerfile", "dockerfile_inline", "target"] as const;
@@ -58,14 +58,17 @@ describe("Compose build-key totality", () => {
         const result = Schema.decodeUnknownResult(BuildBlock)(input, options);
         expect(Result.isFailure(result)).toBe(true);
         if (!Result.isFailure(result)) continue;
-        const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
-          .issues.map(({ message }) => message)
-          .join("\n");
-        expect(message).toContain(authoredKey);
-        expect(message).toContain("mixes two key families");
-        expect(message).toContain("Compose image-build keys");
-        expect(message).toContain("Lando build-script keys");
-        expect(message).toContain("image:");
+        // Raw formatter consumers still learn which key failed.
+        expect(
+          SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
+            .issues.map(({ message }) => message)
+            .join("\n"),
+        ).toContain(authoredKey);
+        expect(validationIssuesFromCause(result.failure, { input })).toMatchObject([
+          disposition === "normalized"
+            ? { path: [], reason: "build.mixed-families" }
+            : { path: [authoredKey], reason: "build.unsupported-key" },
+        ]);
 
         const composeOnlyResult = Schema.decodeUnknownResult(BuildBlock)(
           { [authoredKey]: buildValue(matrixKey) },
@@ -73,10 +76,11 @@ describe("Compose build-key totality", () => {
         );
         expect(Result.isSuccess(composeOnlyResult)).toBe(disposition === "normalized");
         if (disposition === "rejected" && Result.isFailure(composeOnlyResult)) {
-          const rejectedMessage = SchemaIssue.makeFormatterStandardSchemaV1()(composeOnlyResult.failure.issue)
-            .issues.map(({ message: issue }) => issue)
-            .join("\n");
-          expect(rejectedMessage).toContain(authoredKey);
+          expect(
+            validationIssuesFromCause(composeOnlyResult.failure, {
+              input: { [authoredKey]: buildValue(matrixKey) },
+            }),
+          ).toMatchObject([{ path: [authoredKey], reason: "build.unsupported-key" }]);
         }
       }
     }

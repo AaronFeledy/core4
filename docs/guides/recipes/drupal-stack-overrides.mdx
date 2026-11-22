@@ -13,7 +13,7 @@ Init prompts for Drupal 10 or 11, PHP 8.1 through 8.6, Apache or nginx plus FPM,
 
 ## See the generated defaults
 
-The generated Landofile is an Apache-backed `appserver` on `php:8.4`, webroot `web`, `allowOverride: true`, `composer: "2"`, a `database` service with `type: mariadb:11.4`, plus `drush` and `composer` tooling that call project-local `vendor/bin/drush` and `composer`.
+The generated Landofile is an Apache-backed `appserver` on `php:8.4`, webroot `web`, `allowOverride: true`, `composer: "2"`, a `database` service with `type: mariadb:11.4`, plus `drush`, `phpcs`, `phpcbf`, and `phpstan` tooling that run the project-local tools through `:drupal-local`, and `composer`.
 
 <Guide>
   <Scenario id="default-recipe-output" render>
@@ -55,12 +55,12 @@ services:
 
 ## Swap the database engine
 
-The default `database` service is `type: mariadb:11.4`. Swap `type:` to another engine or pin an image. With a custom MySQL image, set the PHP service's `db_client` to a compatible version because Lando cannot infer client compatibility from that image. Starting does not migrate old data.
+The default `database` service is `type: mariadb:11.4`. Swap `type:` to another engine or pin an image. With a custom MySQL image, set the PHP service's `dbClient` to a compatible version because Lando cannot infer client compatibility from that image. Starting does not migrate old data.
 
 ```yaml
 services:
   appserver:
-    db_client: mysql:8.4
+    dbClient: mysql:8.4
   database:
     type: mysql
     image: mysql:8.4
@@ -82,13 +82,13 @@ services:
 
 ## Run two database services
 
-Add a second database service and put it on the appserver `dependsOn` list. Select the PHP client explicitly for the custom MySQL image.
+Add a second database service and put it on the appserver `depends_on` list. Select the PHP client explicitly for the custom MySQL image.
 
 ```yaml
 services:
   appserver:
-    db_client: mysql:8.0
-    dependsOn:
+    dbClient: mysql:8.0
+    depends_on:
       - database
       - database-legacy
   database:
@@ -110,13 +110,13 @@ services:
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database-legacy\":\\s*\\{[^}]*\"type\":\\s*\"mysql\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dependsOn\":.*\"database-legacy\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"depends_on\":.*\"database-legacy\"" } }} />
     </Step>
   </Scenario>
 
 ## Set a Drush URI and move the webroot
 
-The generated `drush` task gets the current app URL from `lando open --print`, including a nondefault proxy port. Set `DRUSH_OPTIONS_URI` under `services.appserver.environment` to use a specific URL instead. Include the port when the proxy uses one. Moving the webroot to `docroot` does not require changing the generated Drush task: `vendor/bin/drush` remains at the Composer project root.
+The generated `drush` task gets the current app URL from `lando open --print`, including a nondefault proxy port. Set `DRUSH_OPTIONS_URI` under `services.appserver.environment` only to pin a different URL, such as a custom domain; Drush then uses that value instead of the live one. Moving the webroot to `docroot` does not require changing the generated Drush task: `vendor/bin/drush` remains at the Composer project root.
 
 ```yaml
 services:

@@ -2,6 +2,7 @@ import { LandofileValidationError, NotImplementedError } from "@lando/sdk/errors
 import {
   type PortablePath,
   type ServiceConfig,
+  type StorageScope,
   type ValidationIssuePath,
   containerDestinationRefusalMessage,
   landoCacheStoreName,
@@ -10,6 +11,38 @@ import {
 } from "@lando/sdk/schema";
 import { kebab } from "./naming.ts";
 import type { AuthoredStorageInfo } from "./service-types.ts";
+
+type Store = {
+  readonly name: string;
+  readonly scope: StorageScope;
+  readonly kind?: "data" | "cache";
+  readonly key?: string;
+};
+
+export const collectPlannedStores = (appRoot: string) => {
+  const entries = new Map<string, { readonly store: Store; readonly service: string }>();
+  const add = (store: Store, service: string): LandofileValidationError | undefined => {
+    const previous = entries.get(store.name);
+    if (previous === undefined) {
+      entries.set(store.name, { store, service });
+      return;
+    }
+    if (
+      previous.store.scope === store.scope &&
+      previous.store.kind === store.kind &&
+      previous.store.key === store.key
+    )
+      return;
+    const message = `Store ${store.name} has conflicting scope, kind, or key definitions in services ${previous.service} and ${service}.`;
+    return new LandofileValidationError({
+      file: appRoot,
+      message,
+      issues: [previous.service, service].map((name) => validationIssue(["services", name], message)),
+      remediation: "Use the same scope, kind, and key for a shared store, or choose distinct store names.",
+    });
+  };
+  return { add, values: () => [...entries.values()].map(({ store }) => store) };
+};
 
 const GLOBAL_SCOPE_REMEDIATION =
   "Use scope: app or scope: service. Storage scope: global is deferred until global app support lands.";
@@ -30,7 +63,7 @@ export const plannedContainerDestination = (
     return new LandofileValidationError({
       message: containerDestinationRefusalMessage(parsed.reason, target),
       remediation: "Use an absolute in-container destination without parent traversal.",
-      file: `${appRoot}/.lando.yml`,
+      file: appRoot,
       issues: [validationIssue(issue, containerDestinationRefusalMessage(parsed.reason, target))],
     });
   }
@@ -54,13 +87,13 @@ export const authoredStorageScopes = (
       return {
         byStore,
         invalidCacheEntry: new LandofileValidationError({
-          message: `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}] in ${appRoot}/.lando.yml. Cache storage is shared across apps by design.`,
+          message: `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}]. Cache storage is shared across apps by design.`,
           remediation: "Remove scope: service from cache storage; caches are shared across apps.",
-          file: `${appRoot}/.lando.yml`,
+          file: appRoot,
           issues: [
             validationIssue(
               ["services", serviceName, "storage", index, "scope"],
-              `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}] in ${appRoot}/.lando.yml. Cache storage is shared across apps by design.`,
+              `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}]. Cache storage is shared across apps by design.`,
             ),
           ],
         }),
@@ -85,12 +118,11 @@ export const authoredStorageScopes = (
 };
 
 export const rejectGlobalScope = (
-  appRoot: string,
   serviceName: string,
   entry: { index: number; store?: string },
 ): NotImplementedError =>
   new NotImplementedError({
-    message: `Service ${serviceName} declares storage scope: global at services.${serviceName}.storage[${entry.index}]${entry.store ? ` (store ${entry.store})` : ""} in ${appRoot}/.lando.yml.`,
+    message: `Service ${serviceName} declares storage scope: global at services.${serviceName}.storage[${entry.index}]${entry.store ? ` (store ${entry.store})` : ""}.`,
     commandId: "landofile.parse",
     remediation: GLOBAL_SCOPE_REMEDIATION,
   });

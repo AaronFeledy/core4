@@ -36,6 +36,7 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | `@lando/core/services` | Public service tags from §3.4, including registries, planning, lifecycle, IO, rendering, interaction, redaction, telemetry, diagnostics, tunnel, and MCP services plus §4.2 pluggable tags. |
 | `@lando/core/paths` | `resolveLandoRoots`, `makeLandoPaths`, `normalizeHostPlatform`, `LandoRoots`, `LandoPaths`, and `RootOverrides` (§7.5.1). |
 | `@lando/core/schema` | Published schemas from §7.8. |
+| `@lando/sdk/schema/standard` | Standard Schema V1 and Standard JSON Schema V1 views; both supported JSON Schema input drafts share the authoring projection (§7.8). |
 | `@lando/core/landofile` | `emitLandofileYaml`, `emitLandofileYamlEither`, `parseLandofile`, and `LandofileEmitError` (§7.8.1). |
 | `@lando/core/secrets` | Everything `@lando/sdk/secrets` exports, including `createRedactor` (whose `Redactor` carries `redactString`, `redactPrefix`, and `redactValue`), `createSecretRedactor`, `createPayloadRedactor`, `redactValueWith`, `redactSecretField`, `findOpenSecretConstruct`, `maskOpenSecretConstruct`, `RedactionProfile`, the canonical pattern catalog, `REDACTED`, the secret-name recognizers (`isSecretFieldName`, `isSecretEnvName`, `isSecretStructuralName`), and the published default credentials (`DEFAULT_PASSWORD`, `MINIO_DEFAULT_PASSWORD`, `MSSQL_DEFAULT_PASSWORD`, `PUBLIC_DEFAULT_CREDENTIALS`, `isPublicDefaultCredential`) (§3.7). |
 | `@lando/core/errors` | Published tagged errors. |
@@ -47,6 +48,8 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | `@lando/core/docs/redactions` | Canonical transcript redactions (§19.6); unstable, outside the semver-stable set. |
 
 The removed `@lando/core/oclif` adapter is not public. Anything not listed above is internal and MAY change between patch versions. Public schema types are inferred from schemas; parallel hand-written public types MUST NOT be introduced. App-handle operation results (`StartAppResult`, `StopAppResult`, `RestartAppResult`, `RebuildAppResult`, `DestroyAppResult`, `InfoAppResult`, `ExecAppResult`, `ToolingResult`, `ShareStopAppResult`, and the app remote results) are Effect Schemas exported from `@lando/sdk/schema` and registered in `publicSchemaRegistry`; `@lando/sdk/app` re-exports their inferred types, and the matching CLI commands use the same schemas as their `resultSchema`. The renderer, event, subscriber, and plugin-context additions named in §8.9 and §9 remain additive compatibility-governed SDK surfaces. The remote-sync design keeps data movement in `RemoteSource`/`Dataset` and application-code movement in `CodeSync` (§10.12).
+
+Embedders consume the same structured diagnostic coordinates: route conflict paths and files (§6.6), ownership and recipe compile path segments (§8.11.1, §8.8), and the raw selector string on a Landofile write failure (§8.11.1). The unreleased replacements are listed in §18.1.
 
 ### 16.3 The `LandoRuntime` factory
 
@@ -143,7 +146,7 @@ App lifecycle hosts SHOULD use `App` methods. `@lando/core/cli` is the stable co
 
 `meta:setup`, `apps:init`, `meta:events:follow`, `meta:shellenv`, and `meta:uninstall` are not exported as command functions. Hosts compose their underlying services, provide `InteractionService` for init, subscribe to `EventService`, or keep installation concerns outside the runtime as applicable.
 
-The optional `invokeOperation` helper from `@lando/core/cli/operations` returns `{ ok: false, error, additionalErrors }` when §8.11.1's annotation-based projection selects a typed primary failure. `additionalErrors` is always present, possibly empty, with `{ role, error }` entries. These values remain host-owned, without serialization or automatic redaction; `renderError` receives only the primary failure. Projected defects and interruption-only causes propagate as defects with the original Cause attached.
+The optional `invokeOperation` helper from `@lando/core/cli/operations` returns `{ ok: false, error, additionalErrors }` when §8.11.1's annotation-based projection selects a typed primary failure. `additionalErrors` is always present, possibly empty, with `{ role, error }` entries. These values remain host-owned, without serialization or automatic redaction; `renderError` receives only the primary failure. An elected typed primary (§8.11.1), which the runtime turned into a defect because cleanup or a sibling also failed, is returned only when the caller's optional `isError` guard accepts it, so `error` and `renderError` never receive an unproven value. Projected defects and unaccepted elected primaries propagate as defects with the original Cause attached; interruption-only causes stay interruptions.
 
 ### 16.8 Testing
 
@@ -174,7 +177,7 @@ The optional `invokeOperation` helper from `@lando/core/cli/operations` returns 
 - Manifest plugins are compatibility-checked through `requires."@lando/core"`; hosts supplying raw Layers own compatibility.
 - Persisted schemas and caches carry version discriminators; hosts retaining caches across versions MUST honor §12.2.
 - Docs component/redaction entry points are unstable; the core runtime, services, schema, errors, events, paths, landofile, and CLI entry points are semver-stable within a major.
-- Unreleased endpoint and route-filter discriminators use `kind` on authored, plan, and applied surfaces (`EndpointPlan.kind`, `RouteFilter.kind`, `RouteFilterKind`); plugin `declareEndpoints` returns encoded `EndpointDeclaration` wire values. Applied-state v7 migrates to v8 on read; app-plan cache 57 and scratch plan envelope 2 discard older frames. There is no live dual-key API (§18.1, §5.5.2, §12.1).
+- Unreleased endpoint and route-filter discriminators use `kind` on authored, plan, and applied surfaces (`EndpointPlan.kind`, `RouteFilter.kind`, `RouteFilterKind`); plugin `declareEndpoints` returns encoded `EndpointDeclaration` wire values. Applied-state v7 migrates to v8 on read; the current app-plan cache revision (§12.1) and scratch plan envelope 2 discard older frames. There is no live dual-key API (§18.1, §5.5.2, §12.1).
 
 ### 16.10 Non-goals
 

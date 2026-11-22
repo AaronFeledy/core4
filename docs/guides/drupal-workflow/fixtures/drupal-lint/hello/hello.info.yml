@@ -1,0 +1,5 @@
+name: Hello
+type: module
+description: Says hello.
+core_version_requirement: ^11
+package: Custom

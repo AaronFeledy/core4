@@ -44,8 +44,8 @@ const splitMappingEntry = (
   entry: string,
   separator: "equals" | "host",
 ): readonly [string, string] | undefined => {
-  const equalsIndex = entry.indexOf("=");
-  const index = separator === "host" && equalsIndex < 0 ? entry.indexOf(":") : equalsIndex;
+  // The address can contain colons (IPv6) or equals signs (deferred expression text).
+  const index = separator === "host" ? entry.search(/[:=]/) : entry.indexOf("=");
   if (index <= 0 || index === entry.length - 1) return undefined;
   return [entry.slice(0, index), entry.slice(index + 1)];
 };
@@ -53,33 +53,39 @@ const splitMappingEntry = (
 const isStringList = (input: unknown): input is ReadonlyArray<string> =>
   Array.isArray(input) && input.every((entry) => typeof entry === "string");
 
-export const ComposeScalarMapField = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)]).pipe(
-  Schema.decodeTo(
-    ComposeScalarMap,
-    SchemaTransformation.transformEffect({
-      decode: (input, _options) => {
-        if (!isStringList(input)) return Effect.succeed(input);
-        const entries: Array<readonly [string, string]> = [];
-        for (const entry of input) {
-          const pair = splitMappingEntry(entry, "equals");
-          if (pair === undefined) {
-            return Effect.fail(
-              new SchemaIssue.InvalidValue(
-                { message: "Landofile service map entries must use KEY=value." },
-                input,
-              ),
-            );
+const COMPOSE_SCALAR_MAP_DESCRIPTION =
+  "Scalar key/value map as an object or KEY=value list; canonicalized to a string map.";
+
+export const ComposeScalarMapField = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)])
+  .annotate({ description: COMPOSE_SCALAR_MAP_DESCRIPTION })
+  .pipe(
+    Schema.decodeTo(
+      ComposeScalarMap,
+      SchemaTransformation.transformEffect({
+        decode: (input, _options) => {
+          if (!isStringList(input)) return Effect.succeed(input);
+          const entries: Array<readonly [string, string]> = [];
+          for (const entry of input) {
+            const pair = splitMappingEntry(entry, "equals");
+            if (pair === undefined) {
+              return Effect.fail(
+                new SchemaIssue.InvalidValue(
+                  { message: "Landofile service map entries must use KEY=value." },
+                  input,
+                ),
+              );
+            }
+            entries.push(pair);
           }
-          entries.push(pair);
-        }
-        const record = Object.fromEntries(entries);
-        if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);
-        return Effect.succeed(record);
-      },
-      encode: (record) => Effect.succeed(record),
-    }),
-  ),
-);
+          const record = Object.fromEntries(entries);
+          if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);
+          return Effect.succeed(record);
+        },
+        encode: (record) => Effect.succeed(record),
+      }),
+    ),
+  )
+  .annotate({ description: COMPOSE_SCALAR_MAP_DESCRIPTION });
 
 export const ComposeSysctlsField = ComposeScalarMapField.annotate({
   description: "Kernel parameters as a Compose scalar map or KEY=value list; canonicalized to a scalar map.",

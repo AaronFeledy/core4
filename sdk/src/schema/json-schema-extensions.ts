@@ -1,17 +1,25 @@
 import { Predicate } from "effect";
 
-export const repairTemplateLiteralExtensionRecords = (value: unknown): void => {
+export const repairTemplateLiteralExtensionRecords = (
+  value: unknown,
+  options?: { readonly compactUnrestrictedValues: boolean },
+): void => {
   if (Array.isArray(value)) {
-    for (const entry of value) repairTemplateLiteralExtensionRecords(entry);
+    for (const entry of value) repairTemplateLiteralExtensionRecords(entry, options);
     return;
   }
   if (!Predicate.isObject(value)) return;
   const patternProperties = value.patternProperties;
   if (Predicate.isObject(patternProperties) && Object.hasOwn(patternProperties, "^x-[\\s\\S]*?$")) {
     const { "^x-[\\s\\S]*?$": extension, ...patterns } = patternProperties;
-    value.patternProperties = { ...patterns, "^x-": extension };
+    const unrestricted =
+      Predicate.isObject(extension) && Object.keys(extension).every((key) => key === "description");
+    value.patternProperties = {
+      ...patterns,
+      "^x-": options?.compactUnrestrictedValues && unrestricted ? true : extension,
+    };
   }
-  for (const nested of Object.values(value)) repairTemplateLiteralExtensionRecords(nested);
+  for (const nested of Object.values(value)) repairTemplateLiteralExtensionRecords(nested, options);
 };
 
 export const repairLandofileExtensions = (schema: unknown): void => {

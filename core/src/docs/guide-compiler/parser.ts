@@ -30,7 +30,7 @@ const structureChildren: Readonly<Record<string, readonly string[]>> = {
   Skip: ["Step"],
   Tab: ["Step"],
   Tabs: ["Tab"],
-  Step: ["Run", "Verify", "Cleanup", "Variable", "UseFixture", "Inspect", "Inline"],
+  Step: ["Run", "Verify", "Fetch", "Cleanup", "Variable", "UseFixture", "Inspect", "Inline"],
 };
 
 const parseComponent = (node: MdxNode, sourcePath: string): GuideStepComponent | undefined => {
@@ -51,6 +51,13 @@ const parseComponent = (node: MdxNode, sourcePath: string): GuideStepComponent |
         source: node,
         kind: "Verify",
         props: decodeOrThrow(Components.decodeVerifyPropsEither(props), { sourcePath, node }),
+        line,
+      };
+    case "Fetch":
+      return {
+        source: node,
+        kind: "Fetch",
+        props: decodeOrThrow(Components.decodeFetchPropsEither(props), { sourcePath, node }),
         line,
       };
     case "Cleanup":

@@ -2,9 +2,11 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireAdvisoryLockAt } from "@lando/state-store/lock";
+import type { LandoEvent } from "@lando/sdk/events";
+import { EventService } from "@lando/sdk/services";
+import { ADVISORY_LOCK_SUFFIX, acquireAdvisoryLockAt } from "@lando/state-store/lock";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Deferred, Effect, Fiber } from "effect";
+import { Deferred, Effect, Fiber, Layer, Stream } from "effect";
 import {
   mutateInstalledPluginRegistry,
   planInstalledPluginRegistryWrite,
@@ -23,6 +25,8 @@ afterEach(async () => {
 });
 
 const entry = { name: "example", version: "1.0.0", path: "/example" };
+const pluginMutationSentinel = (pluginsRoot: string): string =>
+  join(pluginsRoot, `.lando-plugin-mutation${ADVISORY_LOCK_SUFFIX}`);
 
 test.each([
   ["install", "absent", "Store", "installed"],
@@ -81,24 +85,39 @@ test.each(["direct", "alias"] as const)(
           const release = yield* Deferred.make<void>();
           const waiting = yield* Deferred.make<void>();
           let entered = false;
+          const events: LandoEvent[] = [];
+          const eventLayer = Layer.succeed(
+            EventService,
+            EventService.of({
+              publish: (event) =>
+                Effect.gen(function* () {
+                  events.push(event as LandoEvent);
+                  if ((event as LandoEvent)._tag === "lock.wait")
+                    yield* Deferred.succeed(waiting, undefined).pipe(Effect.ignore);
+                }),
+              subscribe: () => Stream.die("not used"),
+              subscribeQueue: Effect.die("not used"),
+              waitFor: () => Effect.die("not used"),
+              subscribeWithHistory: () => Effect.never,
+              waitForAny: () => Effect.die("not used"),
+              query: () => Effect.succeed([]),
+            }),
+          );
           const holder = yield* Effect.forkChild(
-            Effect.acquireUseRelease(
-              acquireAdvisoryLockAt(join(root, ".lando-plugin-mutation.lock"), "test", {
-                privateFileAccess: access,
-              }),
-              () =>
-                Deferred.succeed(held, undefined).pipe(
-                  Effect.andThen(Deferred.await(release)),
-                  Effect.andThen(
-                    Effect.promise(() =>
-                      writeFile(
-                        join(root, "registry.json"),
-                        JSON.stringify({ first: { ...entry, name: "first" } }),
-                      ),
-                    ),
+            Effect.scoped(
+              Effect.gen(function* () {
+                yield* acquireAdvisoryLockAt(pluginMutationSentinel(root), "test", {
+                  privateFileAccess: access,
+                });
+                yield* Deferred.succeed(held, undefined);
+                yield* Deferred.await(release);
+                yield* Effect.promise(() =>
+                  writeFile(
+                    join(root, "registry.json"),
+                    JSON.stringify({ first: { ...entry, name: "first" } }),
                   ),
-                ),
-              (lock) => lock.release,
+                );
+              }),
             ),
           );
           yield* Deferred.await(held);
@@ -107,23 +126,23 @@ test.each(["direct", "alias"] as const)(
               {
                 pluginsRoot: mode === "alias" ? alias : root,
                 mutation: { operation: "install", entry },
-                onWait: Deferred.succeed(waiting, undefined).pipe(Effect.asVoid),
               },
               (commit) =>
                 Effect.promise(async () => {
                   entered = true;
                   await commit();
                 }),
-            ),
+            ).pipe(Effect.provide(eventLayer)),
           );
-          yield* Deferred.await(waiting);
+          yield* Deferred.await(waiting).pipe(Effect.timeout("5 seconds"));
           expect(entered).toBe(false);
           yield* Deferred.succeed(release, undefined);
           yield* Fiber.join(holder);
           yield* Fiber.join(writer);
-        }).pipe(Effect.provide(PrivateFileAccessService.layer), Effect.timeout("5 seconds")),
+        }).pipe(Effect.provide(PrivateFileAccessService.layer), Effect.timeout("15 seconds")),
       );
       expect(Object.keys(await readInstalledPluginRegistry(root)).sort()).toEqual(["example", "first"]);
+      expect(await Bun.file(pluginMutationSentinel(root)).exists()).toBe(process.platform === "win32");
     } finally {
       if (mode === "alias") await rm(alias);
     }

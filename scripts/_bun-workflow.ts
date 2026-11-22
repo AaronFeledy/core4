@@ -1,6 +1,7 @@
+import { pinnedAction } from "./action-pins.ts";
 // Keep the Bun version and install policy consistent across workflow jobs.
 export const setupBunSteps = `      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ${pinnedAction("oven-sh/setup-bun")}
         with:
           bun-version-file: .bun-version
 

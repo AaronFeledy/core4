@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { CheckResult } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 
-test.each(["ready", "app-error", "service-error", "lando-error"] as const)(
+test.each(["ready", "expected", "app-error", "service-error", "lando-error"] as const)(
   "round-trips HTTP check verdict %s",
   (verdict) => {
     const input: typeof CheckResult.Encoded = {
@@ -20,7 +20,7 @@ test.each(["ready", "app-error", "service-error", "lando-error"] as const)(
   },
 );
 
-test.each([{ kind: "tcp" }, { verdict: "expected" }, { statusCode: "500" }, { service: 5 }])(
+test.each([{ kind: "tcp" }, { verdict: "pending" }, { statusCode: "500" }, { service: 5 }])(
   "rejects invalid check fields %j",
   (fields) => {
     const input = {

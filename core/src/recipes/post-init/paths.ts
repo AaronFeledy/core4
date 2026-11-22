@@ -19,7 +19,7 @@ const isInside = (parent: string, candidate: string) =>
 
 const nearestExistingRealpath = async (target: string): Promise<string> => {
   let current = target;
-  for (;;) {
+  while (true) {
     const resolved = await realpathOrUndefined(current);
     if (resolved !== undefined) return resolved;
     const parent = dirname(current);

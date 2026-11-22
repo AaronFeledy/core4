@@ -260,6 +260,14 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
 
           const appPlan = await planLandofile(landofile);
           if (sqlite) expectSqliteRecipePlan(appPlan, recipeId);
+          if (recipeId === "hugo" || recipeId === "jekyll") {
+            const builder = Object.values(appPlan.services).find((service) => service.name === "builder");
+            expect(builder?.command).toBe(
+              recipeId === "hugo"
+                ? "hugo server --bind 0.0.0.0 --port 1313"
+                : "bundle exec jekyll serve --host 0.0.0.0 --port 4000",
+            );
+          }
           expect(appPlan.name, `[${recipeId}] AppPlanner.plan returned wrong app name`).toBe(
             answersEntry.name,
           );

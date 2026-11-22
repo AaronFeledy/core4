@@ -10,7 +10,6 @@ import { emitYamlDocument } from "@lando/sdk/yaml";
 import { Effect, Layer, Result, Schema } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import { resolveKnownEventSet } from "../../src/planner/event-set.ts";
-import { deferredSiteKey } from "../../src/planner/landofile-scopes.ts";
 import { validateResolvedLandofile } from "../../src/planner/resolved-validation.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
@@ -155,12 +154,12 @@ test("lint permits service default membership and declared external networks", a
   );
 });
 
-test("top-level env file failures aggregate with independent service and route issues", async () => {
+test("serviceDefaults env file failures aggregate with independent service and route issues", async () => {
   await withApp(
-    "env_file: [missing.env]\nservices:\n  db:\n    type: validation\n    environment: {FAIL: yes}\n  web:\n    type: validation\n    routes: [bad_host!]\n",
+    "serviceDefaults:\n  env_file: [missing.env]\nservices:\n  db:\n    type: validation\n    environment: {FAIL: yes}\n  web:\n    type: validation\n    routes: [bad_host!]\n",
     async (root) => {
       const { lint } = await compareIssues(root, [
-        ["env_file", 0],
+        ["serviceDefaults", "env_file", 0],
         ["services", "db", "port"],
         ["services", "web", "routes", 0],
       ]);
@@ -365,14 +364,12 @@ test("local override routes retain layer attribution in lint and planning", asyn
   });
 });
 
-test("all unsupported authored healthcheck kinds are reported together", async () => {
+test("authored HTTP and TCP healthchecks do not block resolution", async () => {
   await withApp(
     "services:\n  a: {type: validation, healthcheck: {kind: http, url: 'http://localhost'}}\n  b: {type: validation, healthcheck: {kind: tcp, port: 80}}\n",
     async (root) => {
-      await compareIssues(root, [
-        ["services", "a", "healthcheck", "kind"],
-        ["services", "b", "healthcheck", "kind"],
-      ]);
+      const result = await Effect.runPromise(planning(root).pipe(Effect.result));
+      expect(Result.isSuccess(result)).toBe(true);
     },
   );
 });
@@ -425,7 +422,7 @@ test("a blocked descendant site suppresses checks on its ancestor path", () => {
     services: { web: { networks: { a: {}, b: {} } } },
     networks: { a: { external: true, name: "shared" }, b: { external: true, name: "shared" } },
   });
-  const validate = (blocked: ReadonlySet<string>) =>
+  const validate = (blocked: readonly (readonly (string | number)[])[]) =>
     validateResolvedLandofile({
       landofile,
       landofilePath: "/app/.lando.yml",
@@ -433,10 +430,25 @@ test("a blocked descendant site suppresses checks on its ancestor path", () => {
       appSlug: "app",
     }).issues.filter((issue) => issue.rule === "landofile.network");
   // When the second network's name is a blocked deferred site / Then its ancestor check is skipped
-  expect(validate(new Set())).toHaveLength(1);
-  expect(validate(new Set([deferredSiteKey(["networks", "b", "name"])]))).toEqual([]);
+  expect(validate([])).toHaveLength(1);
+  expect(validate([["networks", "b", "name"]])).toEqual([]);
+  expect(validate([["networks", "a", "name"]])).toEqual([]);
   // And a sibling key that only shares a prefix is not treated as a descendant
-  expect(validate(new Set([deferredSiteKey(["networks", "bb", "name"])]))).toHaveLength(1);
+  expect(validate([["networks", "bb", "name"]])).toHaveLength(1);
+});
+
+test.each([
+  { site: ["networks", "shared", "external"], value: { networks: { shared: { name: "physical" } } } },
+  {
+    site: ["services", "web", "readiness", "command"],
+    value: { services: { web: { readiness: { target: "host", kind: "command" } } } },
+  },
+])("does not infer cross-field errors from a placeholder at $site", ({ site, value }) => {
+  const landofile = Schema.decodeUnknownSync(LandofileShape)(value);
+  const validate = (blocked: readonly (readonly string[])[]) =>
+    validateResolvedLandofile({ landofile, landofilePath: "/app/.lando.yml", blocked }).issues;
+  expect(validate([])).toHaveLength(1);
+  expect(validate([site])).toEqual([]);
 });
 
 test("authored host readiness string command is scanned for Bun Shell dialect", async () => {

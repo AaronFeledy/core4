@@ -9,7 +9,11 @@ import { toolingInputRedactionTokens } from "@lando/landofile/tooling-input-reda
 import { classifyLoweredEnvRedaction, planRedactionValues } from "@lando/redaction/plan-values";
 import { RedactionService } from "@lando/redaction/service";
 import * as RendererOutput from "@lando/renderer/output";
-import { commandFailureCause } from "@lando/sdk/command-result";
+import {
+  FailureRoleAnnotation,
+  commandFailureCause,
+  failureOutcomeFromCause,
+} from "@lando/sdk/command-result";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { Renderer } from "@lando/sdk/services";
 import { Cause, Context, Effect, Layer } from "effect";
@@ -224,8 +228,17 @@ export const makeEventCommandExecutor = (
           };
         }
         if (Cause.hasInterruptsOnly(exit.cause)) return yield* Effect.interrupt;
-        // Nested defects stay typed failures so event-step error mapping still applies.
-        return yield* Effect.failCause(commandFailureCause(exit.cause));
+        const failure = failureOutcomeFromCause(exit.cause);
+        const [reason] = exit.cause.reasons;
+        // Only a lone, unscoped defect is converted for event-step mapping; mixed Causes stay fatal.
+        return yield* Effect.failCause(
+          failure.kind === "defect" &&
+            reason !== undefined &&
+            exit.cause.reasons.length === 1 &&
+            Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) === undefined
+            ? commandFailureCause(exit.cause)
+            : exit.cause,
+        );
       }).pipe(
         Effect.provide(RedactionService.layer),
         Effect.provide(Context.add(runtimeContext, EventCommandExecutor, this)),

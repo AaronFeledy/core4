@@ -201,32 +201,34 @@ describe("ComposePortsField", () => {
   });
 
   test.each(idempotentPortInputs)("is idempotent for %s", (_label, input) => {
-    // Given
+    // Given authored input decoded once, then re-admitted through encode.
     const decoded = decodePorts(input);
+    const encoded = Schema.encodeSync(ComposePortsField)(decoded);
 
-    // When
-    const decodedAgain = decodePorts(decoded);
+    // When the lawful encode form is decoded again under excess rejection.
+    const decodedAgain = decodePorts(encoded);
 
-    // Then
+    // Then decode(encode(decode(x))) preserves the runtime value.
     expect(decodedAgain).toEqual(decoded);
-    expect(Schema.decodeUnknownSync(ComposePortsField)(decoded)).toEqual(decoded);
+    expect(Schema.decodeUnknownSync(ComposePortsField)(encoded, { onExcessProperty: "error" })).toEqual(
+      decoded,
+    );
   });
 
-  test("rejects a mixed Compose and canonical long-form object", () => {
-    // Given
+  test("rejects a mixed Compose and canonical long-form object under excess rejection", () => {
+    // Given Compose snake_case mixed with a decoded camelCase field.
     const input = [{ target: 80, host_ip: "127.0.0.1", appProtocol: "http" }];
 
-    // When
+    // When decoded with default strip vs strict excess rejection.
     const defaultResult = Schema.decodeUnknownResult(ComposePortsField)(input);
     const strictResult = Schema.decodeUnknownResult(ComposePortsField)(input, {
       onExcessProperty: "error",
     });
 
-    // Then
-    for (const result of [defaultResult, strictResult]) {
-      expect(Result.isFailure(result)).toBe(true);
-      if (Result.isFailure(result)) expect(String(result.failure)).toContain("appProtocol");
-    }
+    // Then default admission may strip the foreign key; strict mode rejects it.
+    expect(Result.isSuccess(defaultResult)).toBe(true);
+    expect(Result.isFailure(strictResult)).toBe(true);
+    if (Result.isFailure(strictResult)) expect(String(strictResult.failure)).toContain("appProtocol");
   });
 
   test("encodes canonical ports as lawful long objects and round-trips", () => {

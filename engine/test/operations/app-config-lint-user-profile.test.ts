@@ -44,7 +44,7 @@ test("lints user includes against runtime roots rather than a conflicting proces
   }
 });
 
-test("reports an array-position expression failure with a numeric path segment", async () => {
+test("reports an array-position expression failure with a numeric path segment and remediation", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-expression-lint-index-"));
   try {
     await writeFile(
@@ -74,9 +74,19 @@ test("reports an array-position expression failure with a numeric path segment",
         rule: "landofile.expression",
         severity: "error",
         message: expect.any(String),
+        suggestion: expect.stringMatching(/\S/),
         scopes: ["effective"],
         source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["tooling", "seed", "cmds", 1] },
       },
+    ]);
+    expect(result.skipped).toMatchObject([
+      {
+        stage: "resolve",
+        reason: "earlier-errors",
+        path: ["tooling", "seed", "cmds", 1],
+        source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["tooling", "seed", "cmds", 1] },
+      },
+      { stage: "planning", reason: "earlier-errors" },
     ]);
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -300,6 +300,22 @@ describe("one secret-named-field rule in machine envelopes", () => {
     expect(yaml).toEqual(json);
   });
 
+  test("masks literal bytes beside a public route reference under a secret-named key", () => {
+    const resultSchema = Schema.Record(Schema.String, EnvironmentValue);
+    const reference = { service: "web", encoding: "raw" } as const;
+    const publicUrl = { _tag: "RouteText", parts: [reference] } as const;
+    const expandedEnvValue = "review-token-canary";
+    const { json, yaml } = emit(
+      { APP_TOKEN: { ...publicUrl, parts: [reference, expandedEnvValue] }, APP_URL: publicUrl },
+      resultSchema,
+    );
+    expect(json.result).toEqual({
+      APP_TOKEN: { ...publicUrl, parts: [reference, REDACTED] },
+      APP_URL: publicUrl,
+    });
+    expect(yaml).toEqual(json);
+  });
+
   test("keeps a secret descriptor under a secret-named key and still decodes", () => {
     // Given
     const resultSchema = Schema.Struct({ password: SecretRef });

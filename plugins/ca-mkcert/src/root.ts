@@ -14,8 +14,6 @@ import { type MkcertContext, SETUP_REMEDIATION, caError, failureDetail } from ".
 import { MKCERT_TOOL_VERSION, readInstalledMkcertStatus } from "./provision.ts";
 
 const ROOT_FILE = "rootCA.pem";
-/** Setup waits this long for another process that is creating the shared root. */
-const ROOT_LOCK_TIMEOUT_MS = 120_000;
 
 const readRootFile = (path: string): Promise<string | undefined> =>
   readFile(path, "utf8").catch((cause: unknown) => {
@@ -85,7 +83,8 @@ export const makeMkcertRoot = (
       yield* issueInto(caroot, ["localhost"], async () => undefined);
     });
     yield* withAdvisoryLockUsing(privateFileAccess, {
-      timeoutMs: ROOT_LOCK_TIMEOUT_MS,
+      wait: "operation",
+      resource: "the local certificate authority",
     })(join(caroot, "lando-root"), "mkcert-root", createWhenMissing).pipe(
       mapFailures((cause) =>
         cause._tag === "CaError"

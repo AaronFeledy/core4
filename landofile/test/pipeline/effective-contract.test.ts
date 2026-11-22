@@ -46,9 +46,9 @@ test.each([
     { ports: [{ name: "web", target: 81, protocol: "udp" }] },
   ],
   [
-    { build: { context: "./site" } },
+    { build: { context: "./site", args: { BASE: "lower", MODE: "original" } } },
     { build: { args: { MODE: "local" } } },
-    { build: { context: "./site", args: { MODE: "local" } } },
+    { build: { context: "./site", args: { BASE: "lower", MODE: "local" } } },
   ],
   [
     { ulimits: { nofile: { soft: 30, hard: 50 } } },
@@ -73,19 +73,28 @@ test.each([
 );
 
 test.each([
-  [{ workingDirectory: "/lower" }, { working_dir: "/alias" }, { workingDirectory: "/alias" }],
+  [{ context: "./site", args: { BASE: "lower" } }, "./other", { context: "./other" }],
   [
-    { workingDirectory: "/lower" },
-    { working_dir: "/alias", workingDirectory: "/canonical" },
-    { workingDirectory: "/canonical" },
+    { context: "./site", args: ["BASE=lower"] },
+    { args: ["MODE=local"] },
+    { context: "./site", args: { MODE: "local" } },
   ],
-  [{ envFile: ["lower.env"] }, { env_file: ["higher.env"] }, { envFile: ["higher.env"] }],
+  [{ app: ["echo lower"] }, { app: ["echo higher"] }, { app: ["echo higher"] }],
+  [{ artifact: ["echo lower"] }, { artifact: [] }, { artifact: [] }],
+])("replaces a lower build scalar or list instead of merging it (%#)", async (lower, higher, expected) => {
+  const result = await Effect.runPromise(load({ build: lower }, { build: higher }));
+  expect(result.document.services?.[ServiceName.make("web")]?.build).toEqual(expected);
+});
+
+test.each([
+  [{ working_dir: "/lower" }, { working_dir: "/higher" }, { working_dir: "/higher" }],
+  [{ env_file: ["lower.env"] }, { env_file: ["higher.env"] }, { env_file: ["higher.env"] }],
   [
-    { dependsOn: ["db"] },
+    { depends_on: ["db"] },
     { depends_on: ["cache"] },
-    { dependsOn: [{ service: "db" }, { service: "cache" }] },
+    { depends_on: [{ service: "db" }, { service: "cache" }] },
   ],
-])("canonicalizes only service aliases before merging (%#)", async (lower, higher, expected) => {
+])("merges Compose service keys before decoding (%#)", async (lower, higher, expected) => {
   const result = await Effect.runPromise(load(lower, higher));
   expect(result.document.services?.[ServiceName.make("web")]).toMatchObject(expected);
 });

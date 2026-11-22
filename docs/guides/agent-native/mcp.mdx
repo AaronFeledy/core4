@@ -231,9 +231,9 @@ to the matching output stream; it is not a separate command result.
 
 Container output is decoded incrementally as UTF-8. Invalid or incomplete final
 byte sequences become replacement characters, so progress notifications are not
-a binary transfer channel. Continuous output is buffered to a newline or 64 KiB;
-the remaining tail is sent when the command finishes. Log records are delivered
-without waiting for a newline. Known secret values are masked even when split
+a binary transfer channel. Lando buffers continuous output to a newline or 64 KiB
+and sends the remaining tail before replying to a call that isn't cancelled.
+Log records don't wait for a newline. Lando masks known secrets even when split
 between output chunks. A credential shape that wraps onto the next line, such as
 a quoted `password=` value, is masked as one value. Lando holds that unfinished
 value for at most half a second, then sends the masked line and hides the rest
@@ -257,9 +257,10 @@ Without a progress token, only live notifications are omitted. Final output,
 status, and diagnostics are still returned. Cancel one unwanted request with
 `notifications/cancelled` and its `requestId`; the session stays open for your
 other requests. Closing stdin cancels every active call and releases its
-provider reads, including idle log followers. Either way, a cancelled call gets
-no fabricated result, and a change the command had already applied to the app
-stays applied. Progress notifications you already received remain valid.
+provider reads, including idle log followers. Once Lando processes cancellation,
+it sends no reply or new progress for that call. It discards buffered output
+and any output produced during cleanup. Progress already sent may still arrive,
+and cancelling doesn't undo changes the command already made to the app.
 Cancelling an exec or tooling call also stops the command inside the container
 and everything it started, so a port it held is free for your next call; you
 don't need to kill leftover processes yourself.

@@ -13,9 +13,9 @@ import {
 } from "../../src/cache/command-index.ts";
 
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
-  test("uses version thirteen for dependency-keyed environment freshness", () => {
+  test("uses version fifteen so indexes without launcher diagnostics are regenerated", () => {
     // Given / When / Then
-    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(14n);
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(15n);
   });
 
   test.each([2n, 3n, 4n, 5n, 6n])(

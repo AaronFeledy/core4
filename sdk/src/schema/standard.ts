@@ -1,7 +1,7 @@
-import { JsonSchema, Result, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { GlobalConfig } from "./config.ts";
-import { getEditorJsonSchema } from "./json-schema-editor.ts";
+import { getAuthoringInputJsonSchema, getDraft07InputJsonSchema } from "./json-schema-editor.ts";
 import { LandofileAuthoringShape } from "./landofile-authoring.ts";
 import { PluginManifest } from "./plugin.ts";
 import { RecipeManifest } from "./recipe.ts";
@@ -48,36 +48,37 @@ export const RecipeManifestStandardSchema = /* @__PURE__ */ standardSchema(
   /* @__PURE__ */ RecipeManifest.annotate({}),
 );
 
-// JSON Schema conversion is deferred by Effect until input() or output() is called.
-export const LandofileStandardJSONSchema: ReturnType<
-  typeof Schema.toStandardJSONSchemaV1<typeof LandofileAuthoringShape>
-> = /* @__PURE__ */ Schema.toStandardJSONSchemaV1(/* @__PURE__ */ LandofileAuthoringShape.annotate({})).pipe(
-  (view) =>
-    Object.assign(view, {
-      "~standard": {
-        ...view["~standard"],
-        jsonSchema: {
-          ...view["~standard"].jsonSchema,
-          input(options: Parameters<(typeof view)["~standard"]["jsonSchema"]["input"]>[0]) {
-            if (options.target === "draft-07") return getEditorJsonSchema("LandofileShape");
-            if (options.target === "draft-2020-12") {
-              const document = JsonSchema.fromSchemaDraft07(getEditorJsonSchema("LandofileShape"));
-              return {
-                ...document.schema,
-                $schema: JsonSchema.META_SCHEMA_URI_DRAFT_2020_12,
-                ...(Object.keys(document.definitions).length === 0 ? {} : { $defs: document.definitions }),
-              };
-            }
-            return Schema.toStandardJSONSchemaV1(LandofileAuthoringShape.annotate({}))[
-              "~standard"
-            ].jsonSchema.input(options);
-          },
+const standardAuthoringJsonSchema = <S extends Schema.Constraint>(
+  schema: S,
+  name: "LandofileShape" | "GlobalConfig",
+) => {
+  const view = Schema.toStandardJSONSchemaV1(schema);
+  const jsonSchema = view["~standard"].jsonSchema;
+  return Object.assign(view, {
+    "~standard": {
+      ...view["~standard"],
+      jsonSchema: {
+        ...jsonSchema,
+        input(options: Parameters<typeof jsonSchema.input>[0]) {
+          if (options.target === "draft-07") return getDraft07InputJsonSchema(name);
+          if (options.target === "draft-2020-12") return getAuthoringInputJsonSchema(name);
+          return jsonSchema.input(options);
         },
       },
-    }),
+    },
+  });
+};
+
+// JSON Schema conversion is deferred until input() or output() is called.
+export const LandofileStandardJSONSchema: ReturnType<
+  typeof Schema.toStandardJSONSchemaV1<typeof LandofileAuthoringShape>
+> = /* @__PURE__ */ standardAuthoringJsonSchema(
+  /* @__PURE__ */ LandofileAuthoringShape.annotate({}),
+  "LandofileShape",
 );
-export const GlobalConfigStandardJSONSchema = /* @__PURE__ */ Schema.toStandardJSONSchemaV1(
+export const GlobalConfigStandardJSONSchema = /* @__PURE__ */ standardAuthoringJsonSchema(
   /* @__PURE__ */ GlobalConfig.annotate({}),
+  "GlobalConfig",
 );
 export const PluginManifestStandardJSONSchema = /* @__PURE__ */ Schema.toStandardJSONSchemaV1(
   /* @__PURE__ */ PluginManifest.annotate({}),

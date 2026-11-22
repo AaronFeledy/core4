@@ -24,6 +24,14 @@ export const ConfigLintRuleDescriptor = Schema.Struct({
   examplePaths: Schema.NonEmptyArray(Schema.String).annotate({
     description: "Representative paths, written the way `lando app:config:lint` prints them.",
   }),
+  reasons: Schema.optionalKey(
+    Schema.NonEmptyArray(
+      Schema.Struct({
+        id: Schema.String.annotate({ description: "Stable cause id within the rule." }),
+        summary: Schema.String.annotate({ description: "What triggers this reason." }),
+      }),
+    ),
+  ).annotate({ description: "Documented machine-readable causes within the rule, not an exhaustive enum." }),
 }).annotate({
   identifier: "ConfigLintRuleDescriptor",
   title: "Config lint rule descriptor",
@@ -50,8 +58,31 @@ export const CONFIG_LINT_RULES = {
     stages: ["fragment", "effective", "planning"],
     severities: ["error"],
     summary:
-      "Unknown keys, wrong literal types, and missing required fields in authored files, effective configuration, or the final plan; unsupported planning operations.",
+      "Unknown keys, invalid service keys, wrong literal types, and missing required fields in authored files, effective configuration, or the final plan; unsupported planning operations.",
     examplePaths: ["services.web.imgae"],
+    reasons: [
+      { id: "environment.bare-entry", summary: "An environment list entry has no `=`." },
+      { id: "environment.empty-name", summary: "An environment map key or assignment name is empty." },
+      {
+        id: "environment.reserved-name",
+        summary: "An environment map key or assignment name is `__proto__`.",
+      },
+      { id: "environment.null-value", summary: "An environment map entry has a null value." },
+      { id: "build.unsupported-key", summary: "The build object contains an unsupported key." },
+      {
+        id: "build.mixed-families",
+        summary: "The build object combines Compose image-build and Lando build-script keys.",
+      },
+      {
+        id: "build.dockerfile-conflict",
+        summary: "The build object sets both `dockerfile` and `dockerfile_inline`.",
+      },
+      { id: "build.empty", summary: "The build object has no keys." },
+      {
+        id: "key.renamed",
+        summary: "An authored key uses a removed spelling; the suggestion names the canonical key.",
+      },
+    ],
   },
   "landofile.compose-rejection": {
     stages: ["fragment"],
@@ -90,8 +121,8 @@ export const CONFIG_LINT_RULES = {
     stages: ["resolve", "planning"],
     severities: ["error"],
     summary:
-      "No two services claim the same name on one network, ignoring case; no two services would share a container name; and no authored name takes Lando's container-name shape `lando-<app>--<service>`.",
-    examplePaths: ["services.api.hostnames[0]"],
+      "Derived internal service names must fit within 253 characters. Network names must not collide across services, ignoring case. Container names must be unique, and the shape `lando-<app>--<service>` is reserved.",
+    examplePaths: ["services.web", "services.api.hostnames[0]"],
   },
   "landofile.route": {
     stages: ["resolve", "planning"],
@@ -124,16 +155,14 @@ export const CONFIG_LINT_RULES = {
   "landofile.healthcheck": {
     stages: ["resolve", "planning"],
     severities: ["error"],
-    summary:
-      "An authored healthcheck `kind: http` or `kind: tcp`, or a final healthcheck execution target, which the healthcheck runner does not support.",
-    examplePaths: ["services.web.healthcheck.kind"],
+    summary: "Invalid native healthcheck policy, such as a missing HTTP URL, TCP listener port, or command.",
+    examplePaths: ["services.web.healthcheck.url", "services.web.healthcheck.port"],
   },
   "landofile.readiness": {
     stages: ["resolve", "planning"],
     severities: ["error"],
-    summary:
-      "An authored readiness `kind: http` or `kind: tcp`, or a final readiness execution target, which the healthcheck runner does not support.",
-    examplePaths: ["services.web.readiness.kind"],
+    summary: "Invalid startup readiness policy, such as a missing HTTP URL, TCP listener port, or command.",
+    examplePaths: ["services.web.readiness.url", "services.web.readiness.port"],
   },
   "landofile.event": {
     stages: ["resolve", "planning"],
@@ -218,20 +247,20 @@ export const CONFIG_LINT_RULES = {
     stages: ["resolve"],
     severities: ["error"],
     summary: "A declared env file is missing or cannot be read.",
-    examplePaths: ["env_file[0]", "services.web.envFile[0]"],
+    examplePaths: ["serviceDefaults.env_file[0]", "services.web.env_file[0]"],
   },
   "env-file.syntax": {
     stages: ["resolve"],
     severities: ["error"],
     summary: "Invalid env-file entries, including a bare name without `=` or unmatched quotes.",
-    examplePaths: ["env_file[0]", "services.web.envFile[0]"],
+    examplePaths: ["serviceDefaults.env_file[0]", "services.web.env_file[0]"],
   },
   "env-file.literal": {
     stages: ["resolve"],
     severities: ["warning"],
     summary:
       "Double-quoted escapes change a value, or an unquoted or double-quoted value contains `${`, which env files never interpolate.",
-    examplePaths: ["env_file[0]", "services.web.envFile[0]"],
+    examplePaths: ["serviceDefaults.env_file[0]", "services.web.env_file[0]"],
   },
   "unsupported-expression": {
     stages: ["load", "global-config"],

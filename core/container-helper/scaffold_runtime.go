@@ -13,29 +13,29 @@ import (
 // outputCommand runs a query command and returns its stdout; stderr still
 // reaches the caller so a failure keeps its own diagnosis.
 func (s *scaffold) outputCommand(dir string, name string, args ...string) (string, error) {
-	binary, err := lookPathIn(s.streams.env, name)
+	command, err := s.scaffoldCommand(dir, name, args...)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", name, err)
+		return "", err
 	}
-	command := exec.Command(binary, args...)
-	command.Dir = dir
-	command.Stdin = s.streams.stdin
 	var stdout bytes.Buffer
 	command.Stdout = &stdout
-	command.Stderr = s.streams.stderr
-	command.Env = environSlice(s.streams.env)
 	err = command.Run()
 	return stdout.String(), err
 }
 
 func (s *scaffold) runCommand(dir string, name string, args ...string) error {
-	return s.streams.runCommand(dir, name, args...)
+	command, err := s.scaffoldCommand(dir, name, args...)
+	if err != nil {
+		return err
+	}
+	return command.Run()
 }
 
-func (streams helperIO) runCommand(dir string, name string, args ...string) error {
+func (s *scaffold) scaffoldCommand(dir string, name string, args ...string) (*exec.Cmd, error) {
+	streams := s.streams
 	binary, err := lookPathIn(streams.env, name)
 	if err != nil {
-		return fmt.Errorf("%s: %w", name, err)
+		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	command := exec.Command(binary, args...)
 	command.Dir = dir
@@ -43,7 +43,12 @@ func (streams helperIO) runCommand(dir string, name string, args ...string) erro
 	command.Stdout = streams.stdout
 	command.Stderr = streams.stderr
 	command.Env = environSlice(streams.env)
-	return command.Run()
+	if s.lock != nil {
+		// A surviving child keeps the same open file description locked if
+		// the helper dies. Unrelated execs do not inherit the CLOEXEC fd.
+		command.ExtraFiles = []*os.File{s.lock.file}
+	}
+	return command, nil
 }
 
 func identityOf(info os.FileInfo) fileIdentity {

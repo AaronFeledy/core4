@@ -91,6 +91,14 @@ test("locates a deferred scope in its overlay (#2225)", async () => {
   ]);
 });
 
+test("reports only the invocation refusal for a self-port expression in tooling", async () => {
+  await write(".lando.yml", 'name: scopes\ntooling:\n  inspect:\n    cmd: "echo {{ service.port }}"\n');
+  const { result } = await lint();
+  expect(result.violations.map(({ rule, reason, path }) => ({ rule, reason, path }))).toEqual([
+    { rule: "landofile.load", reason: "NotImplementedError", path: ["tooling", "inspect", "cmd"] },
+  ]);
+});
+
 test("retains same-message refusals from the same included file in distinct layers (#2225)", async () => {
   await write(".lando.yml", "name: scopes\nincludes: [fragment.yml]\n");
   await write(".lando.local.yml", "includes: [fragment.yml]\n");

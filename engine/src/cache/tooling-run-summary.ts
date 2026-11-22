@@ -50,7 +50,10 @@ const simpleCommandProgram = (cmd: string): string | undefined => {
   return words.find((candidate) => !/^[A-Za-z_][A-Za-z0-9_]*=/u.test(candidate));
 };
 
-export const toolingRunSummary = (task: NormalizedToolingTask): ToolingRunSummary | undefined => {
+export const toolingRunSummary = (
+  task: NormalizedToolingTask,
+  launcherProgram?: string,
+): ToolingRunSummary | undefined => {
   if (task.steps.length === 0 || task.steps.length > 1000) return undefined;
   const targets: ToolingRunTarget[] = [];
   const seen = new Set<string>();
@@ -65,7 +68,7 @@ export const toolingRunSummary = (task: NormalizedToolingTask): ToolingRunSummar
   const step = task.steps.length === 1 ? task.steps[0] : undefined;
   let program: string | undefined;
   if (step !== undefined) {
-    program = step.argv === undefined ? simpleCommandProgram(step.cmd) : step.argv[0];
+    program = launcherProgram ?? (step.argv === undefined ? simpleCommandProgram(step.cmd) : step.argv[0]);
     if (program !== undefined && !/^[A-Za-z0-9_./][A-Za-z0-9_.+/-]*$/u.test(program)) program = undefined;
   }
   return {

@@ -136,7 +136,7 @@ Required behavior:
 - Strict preparation and previews use read-only, pinned-cache-only Landofile acquisition. Ordinary execution retains normal remote-include acquisition: missing pinned content and new requests may populate immutable include cache, while the compiled candidate retains selected pin proposals. Candidate validation precedes root, canonical, and bind-source creation, including for a not-yet-created global root. Include pins publish only after finalization and successful generated/user configuration publication; intentional pin publication advances only its lockfile witness. Publication verifies captured source bytes and path identities, preserves generated-file ownership checks, and writes the validated content verbatim; inconsistent content or changed source/capability evidence requires explicit fresh preparation. An identical generated file is not rewritten. These checks do not replace the later startup admission or live readiness checks.
 - Bind sources written as `~` or `~/...` MUST resolve against the user's home, not the global root, and MUST NOT be created by generated-layer reconciliation.
 - `providerId` resolves the provider holding the applied global plan for the canonical global root, else the host provider (§5). It reads applied state only and MUST NOT construct, initialize, or contact a runtime.
-- Failures are tagged as listed in §20.13.
+- Failures are tagged as listed in §20.13. Public service URL bindings in a global Landofile fail planning, before provider mutation, with a `ConfigExpressionError` located at the consuming environment value.
 
 ### 20.6 Lifecycle
 
@@ -180,7 +180,7 @@ Both cold startup and warm reuse MUST read prior applied state strictly; an unre
 
 User and scratch activation MUST close the race between a successful global ensure and their own build/apply. After build, the final activation boundary installs its required-id reservation before the final `ensureRunning`, then verifies fresh admission before its actual provider-apply and route-publication body. The reservation remains active through that body. A consumer cannot apply or publish against a dependency disabled since its earlier ensure or adopt a resource while policy cleanup is handing it off. The disable preflight, policy-mutation claim, and this final admission check form one safety contract; consumer scanning alone is insufficient.
 
-Direct Landofile `dependsOn` syntax for global services is not part of this contract (§14.2).
+Direct Landofile `depends_on` syntax for global services is not part of this contract (§14.2).
 
 The §10.4 SSH sidecar is not declared through `requires.globalServices`. The SSH overlay ensures the sidecar best-effort through `SshService.setup`, only when its agent does not answer, and its failure never aborts user-app start. The bundled sidecar's `setup` calls `ensureRunning`, so that start emits its own `pre-global-start`/`post-global-start` pair (`triggeredBy: "ensure-running"`).
 
@@ -210,7 +210,7 @@ Bootstrap levels for these commands are declared once in the §8.1 command regis
 
 | Canonical id | Alias | Contract |
 |---|---|---|
-| `meta:global:config` | `global:config` | Read or write the canonical global Landofile using current contribution eligibility; policy is separate. `set`, `unset`, and `edit` follow the §8.2.1 shared mutation workflow, including its format-preserving, fail-closed write and no-op rules. The generated layer is read-only. |
+| `meta:global:config` | `global:config` | Read (`view`, `get`) or write the canonical global Landofile using current contribution eligibility; policy is separate. `set`, `unset`, and `edit` follow the §8.2.1 shared mutation workflow, including its format-preserving, fail-closed write and no-op rules. The generated layer is read-only. |
 | `meta:global:destroy` | `global:destroy` | Destroy services and resources; requires confirmation unless `--yes`, and a non-interactive run without it fails with the `--yes` remediation. `--provider=<id>` restricts applied evidence and cleanup to that provider. `--volumes` removes service- and app-scoped data volumes; `--purge` also removes built images. Both follow §20.9. |
 | `meta:global:disable` | `global:disable` | Save disabled intent for explicit selectors or `--all`, remove ownership-verified selected containers and routes, and regenerate. Named volumes and unselected services survive. Partial work follows §20.3.2. |
 | `meta:global:enable` | `global:enable` | Enable explicit selectors or `--all` and regenerate eligible configuration without starting. Package selection applies to current and future owned contributions (§20.3.1). |
@@ -232,7 +232,7 @@ Enable, disable, and reconcile accept `--dry-run`. A preview returns `dryRun: tr
 
 A dry-run nested in the activation's Effect context MUST report intersecting in-process reservations. A separate process observes available policy and runtime impact without acquiring a mutation lease or inspecting another process's private reservations. Its preview MUST NOT imply admission to mutate during that activation; a real mutation acquires its own lease and repeats admission against current state.
 
-Policy and service configuration are independent: `meta:global:config` view, validation, and writes MUST use the same eligibility resolver as startup. `describe` is schema-only (§8.2.1) and does not consult eligibility. Editing an override MUST NOT enable its contribution. Data deletion belongs to `meta:global:destroy --yes --volumes` or `--yes --purge` under §20.9, never to contribution disablement.
+Policy and service configuration are independent: `meta:global:config` view, get, validation, and writes MUST use the same eligibility resolver as startup. `get` is a read-only selection from the same effective Landofile as `view`; it selects `key ?? --path` and returns `{ subcommand: "get", key, value? }`. The selected value retains its type; a miss omits `value` and produces empty text. `view --path` selects from that same document and returns `{ source: "global", path, value? }` rather than the full view. Neither read changes contribution eligibility. Both collect redaction tokens from the retained Landofile stack before selecting (§8.2.1). `describe` is schema-only (§8.2.1) and does not consult eligibility. Editing an override MUST NOT enable its contribution. Data deletion belongs to `meta:global:destroy --yes --volumes` or `--yes --purge` under §20.9, never to contribution disablement.
 
 #### 20.7.1 Top-level alias reservation
 
@@ -268,11 +268,11 @@ Ordinary global destroy MUST retain service- and app-scoped data (§5.3.1); that
 
 #### 20.10.1 Default `RouterService` layer
 
-The default `RouterService` layer (`@lando/proxy-traefik`) realizes routes through the `traefik` service in the global app. `@lando/proxy-traefik` contributes both `globalServices: traefik` and `routerServices: traefik`; an unpaired contribution fails with `ProxyContributionPairError`. `RouterService.setup` ensures the service is running, and route application uses the service's standard managed mounts. The §10.2 interface is unchanged.
+The default `RouterService` layer (`@lando/proxy-traefik`) realizes routes through the `traefik` service in the global app. `@lando/proxy-traefik` contributes both `globalServices: traefik` and `routerServices: traefik`; an unpaired contribution fails with `ProxyContributionPairError`. `RouterService.setup` ensures the service is running, and route application uses the service's standard managed mounts (§10.2).
 
 Routed user and scratch apps MUST use the host provider. Nonempty routes with an enabled router on another provider MUST fail planning with `RouteProviderMismatchError` (§10.2), never route through host-published ports.
 
-The router's own `traefik` and `traefik-diagnostics` global services author `routes: []` (§6.6), so global ready output and `lando global:info` list Traefik's published host connections (§6.10) and never a generated `<service>.global.<domain>` hostname the router does not serve. The router-owned dashboard keeps its own route above `ROUTE_PRIORITY_MAX` (§10.2).
+The router's own `traefik` and `traefik-diagnostics` global services author `routes: []` (§6.6), so global ready output and `lando global:info` list Traefik's published host connections (§6.10) and never a generated default hostname (§6.6) the router does not serve. The router-owned dashboard keeps its own route above `ROUTE_PRIORITY_MAX` (§10.2).
 
 Alternative `RouterService` implementations MAY avoid `GlobalAppService`. Selection follows §4.3: global `defaultRouterService`, then a unique host-family `defaultFor.platform` match, then a sole installed implementation, with no Landofile implementation choice.
 
@@ -292,7 +292,7 @@ Alternative `RouterService` implementations MAY avoid `GlobalAppService`. Select
 
 #### 20.11.1 `@lando/service-mailpit` (canonical reference)
 
-Bundled Mailpit and the SSH sidecar use functional startup checks. Mailpit uses its image's `/mailpit readyz` command; this is in-container readiness, not proof of cross-app SMTP or router reachability. The SSH sidecar uses the identities response check in §10.4, which proves the agent replies but does not require a particular key. Services without enabled command readiness retain process settling under §6.7.
+Bundled Mailpit and the SSH sidecar use functional startup checks. Mailpit uses its image's `/mailpit readyz` command; this is in-container readiness, not proof of cross-app SMTP or router reachability. The SSH sidecar uses the identities response check in §10.4, which proves the agent replies but does not require a particular key. Services without an enabled readiness probe retain process settling under §6.7.
 
 The bundled `@lando/service-mailpit` plugin is the reference pairing of a `ServiceType`, enabled `globalServices: mailpit` contribution, `AppFeature.requires.globalServices`, and plugin-owned tooling commands. Its feature projects Mailpit connection values into selected user services without requiring user Landofile changes. Its web route is `mailpit.{{ proxy.defaultDomain }}`, resolved during global planning; a domain change moves it when global routes are next published (§20.6.5).
 
@@ -305,6 +305,8 @@ The bundled `@lando/service-mailpit` plugin is the reference pairing of a `Servi
 All errors are tagged and include remediation where applicable:
 
 - `AppIdReservedError`
+- `ConfigExpressionError`, located at the consuming environment value when a global Landofile binds a public service URL.
+- `RouteUrlBindingError`, a defensive activation refusal shared with user apps (§7.3.1). Global planning rejects every public URL binding, so a global start, rebuild, or ensure reaches it only if an unplanned `RouteText` descriptor reaches activation; it never replaces the planning `ConfigExpressionError`.
 - `GlobalServiceCollisionError`
 - `GlobalServiceCapabilityError`
 - `GlobalServiceConfigError`
@@ -330,7 +332,7 @@ This surface also uses the shared `CommandAliasConflictError` and `ConfigExpress
 - Multi-host shared global apps are not supported.
 - The global root is not independently relocatable; changing `<userDataRoot>` relocates it (§7.5).
 - Independent per-app global-provider overrides and multiple providers within the global app are unsupported. Global placement follows §20.1.
-- Explicit Landofile `dependsOn: ["global:<service>"]` is not a contract; only `AppFeature.requires.globalServices` applies.
+- Explicit Landofile `depends_on: ["global:<service>"]` is not a contract; only `AppFeature.requires.globalServices` applies.
 - Users cannot promote user-app services into the global app.
 - Plugins MUST NOT register canonical ids under `meta:global:*`; they MAY operate on the global app through commands in their own namespaces.
 - `globalServices:` contributions are not sandboxed; isolation is cooperative (§10.9.1).

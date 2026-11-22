@@ -1,5 +1,10 @@
 import { sha256Hex } from "../digest/index.ts";
 
+export const landoDependencyEnvironmentStoreName = (dataSlug: string, kind: string, digest: string): string =>
+  `lando-${segment(dataSlug, 57)}--env--${segment(kind, 32)}-${digest.slice(0, 16)}`;
+
+import { DOMAIN_NAME_PATTERN } from "./hostname.ts";
+
 const PREFIX = "lando-";
 const DNS_LABEL_MAX_LENGTH = 63;
 const HASH_LENGTH = 8;
@@ -47,6 +52,14 @@ export const landoServiceStoreName = (slug: string, service: string, role: strin
 export const normalizeAppSlug = (name: string, appRoot: string): string =>
   segment(name, 57) || sha256Hex(appRoot).slice(0, HASH_LENGTH);
 
+export const defaultRouteHostname = (service: string, appSlug: string, domain: string): string => {
+  const lower = service.toLowerCase();
+  const servicePart = lower.split(".").every((label) => DOMAIN_NAME_PATTERN.test(label))
+    ? lower
+    : segment(service, DNS_LABEL_MAX_LENGTH) || sha256Hex(service).slice(0, HASH_LENGTH);
+  return `${servicePart}.${appSlug}.${domain}`;
+};
+
 const canonicalOrHashed = (value: string): string =>
   CANONICAL.test(value) && value.length <= 64
     ? value
@@ -72,8 +85,75 @@ export const landoServiceStorageName = (slug: string, service: string, target: s
 export const landoAppStoreName = (slug: string, source: string): string =>
   `${PREFIX}${slug}_${canonicalOrHashed(source)}`;
 
+const CACHE_STORE_PREFIX = `${PREFIX}cache-`;
+const GLOBAL_APP_VOLUME_PREFIX = `${PREFIX}global`;
+
 /** Cache keys deliberately share a namespace across apps. */
-export const landoCacheStoreName = (key: string): string => `lando-cache-${canonicalOrHashed(key)}`;
+export const landoCacheStoreName = (key: string): string => `${CACHE_STORE_PREFIX}${canonicalOrHashed(key)}`;
+
+const HASH = /^[0-9a-f]{8}$/u;
+const isCanonicalOrHashed = (name: string): boolean => {
+  const [part = "", hash, ...extra] = name.split("--");
+  return (
+    extra.length === 0 &&
+    CANONICAL.test(part) &&
+    (hash === undefined ? part.length <= 64 : part.length <= 48 && HASH.test(hash))
+  );
+};
+
+const isGlobalAppVolumeName = (name: string): boolean => {
+  if (!name.startsWith(GLOBAL_APP_VOLUME_PREFIX)) return false;
+  const suffix = name.slice(GLOBAL_APP_VOLUME_PREFIX.length);
+  if (suffix.startsWith("_")) return isCanonicalOrHashed(suffix.slice(1));
+  if (!suffix.startsWith("--")) return false;
+  const [service = "", ...parts] = suffix.slice(2).split("--");
+  if (!CANONICAL.test(service)) return false;
+  const containerLength = GLOBAL_APP_VOLUME_PREFIX.length + 2 + service.length;
+  const hasRole = (role: ReadonlyArray<string>) => {
+    const [kind = "", value = ""] = role;
+    if (role.length === 1) return kind.length <= DNS_LABEL_MAX_LENGTH && CANONICAL.test(kind);
+    if (role.length !== 2) return false;
+    if (kind === "home" && value === "default") return true;
+    const limit = kind === "home" ? 32 : kind === "shadow" || kind === "storage" ? 48 : 0;
+    const segment = value.slice(0, -(HASH_LENGTH + 1));
+    return (
+      segment.length <= limit &&
+      CANONICAL.test(segment) &&
+      value.at(-(HASH_LENGTH + 1)) === "-" &&
+      HASH.test(value.slice(-HASH_LENGTH))
+    );
+  };
+  return (
+    (containerLength <= DNS_LABEL_MAX_LENGTH && hasRole(parts)) ||
+    (containerLength + 2 + HASH_LENGTH <= DNS_LABEL_MAX_LENGTH &&
+      HASH.test(parts[0] ?? "") &&
+      hasRole(parts.slice(1)))
+  );
+};
+
+/**
+ * Canonical physical-volume lock tier from the native volume name. Lower tiers
+ * acquire first. Global-app volumes sit between ordinary app/service stores and
+ * shared caches so a nested global ensure can take its keys while a user start
+ * already holds tier-0 locks without inverting lock order.
+ */
+export const PHYSICAL_VOLUME_LOCK_TIER = {
+  default: 0,
+  globalApp: 1,
+  cache: 2,
+} as const;
+export type PhysicalVolumeLockTier =
+  (typeof PHYSICAL_VOLUME_LOCK_TIER)[keyof typeof PHYSICAL_VOLUME_LOCK_TIER];
+
+export const physicalVolumeLockTier = (nativeName: string): PhysicalVolumeLockTier => {
+  if (
+    nativeName.startsWith(CACHE_STORE_PREFIX) &&
+    isCanonicalOrHashed(nativeName.slice(CACHE_STORE_PREFIX.length))
+  )
+    return PHYSICAL_VOLUME_LOCK_TIER.cache;
+  if (isGlobalAppVolumeName(nativeName)) return PHYSICAL_VOLUME_LOCK_TIER.globalApp;
+  return PHYSICAL_VOLUME_LOCK_TIER.default;
+};
 
 /**
  * The canonical in-network alias of a planned service, which also names the

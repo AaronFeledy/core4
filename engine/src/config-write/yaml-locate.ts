@@ -1,5 +1,6 @@
+import { splitMappingEntry } from "@lando/sdk/landofile";
+import type { ValidationIssuePath } from "@lando/sdk/schema";
 import { Result } from "effect";
-import type { PathSegment } from "./dot-path";
 
 export interface UnsupportedEdit {
   readonly reason: string;
@@ -68,6 +69,7 @@ export const scanYamlLines = (source: string): Result.Result<readonly YamlLine[]
 
 export interface LocatedEntry {
   readonly line: YamlLine;
+  readonly keyEnd: number;
   readonly valueStart: number;
   readonly valueEnd: number;
   readonly value: string;
@@ -78,28 +80,32 @@ export interface LocatedEntry {
 export interface LocatedEdit {
   readonly entry?: LocatedEntry | undefined;
   readonly parent?: LocatedEntry | undefined;
-  readonly remaining: readonly PathSegment[];
+  readonly remaining: ValidationIssuePath;
   readonly entries: readonly LocatedEntry[];
   readonly indent: number;
   /** The parent is an empty `{}` mapping (e.g. left by an unset); a set must rewrite it as a block mapping. */
   readonly emptyFlowParent?: boolean;
 }
 
-const entriesIn = (lines: readonly YamlLine[], segment: PathSegment) => {
+const entriesIn = (lines: readonly YamlLine[], segment: string | number) => {
   const indent = lines.find((line) => line.code.trim() !== "")?.indent ?? 0;
   const entries: LocatedEntry[] = [];
   const keys = new Set<string>();
   for (const [lineIndex, line] of lines.entries()) {
     if (line.code.trim() === "" || line.indent !== indent) continue;
-    const prefix =
-      segment.kind === "index" ? /^-\s+/.exec(line.body) : /^([A-Za-z0-9_.-]+):(?:\s+|$)/.exec(line.body);
-    if (prefix === null) return unsupported("Quoted keys or uncertain block syntax on the edited path.");
-    const key = prefix[1] ?? String(entries.length);
-    if (keys.has(key) || key === "<<") return unsupported("Duplicate or merge keys in an affected mapping.");
+    const mapping = typeof segment === "string" ? splitMappingEntry(line.body) : undefined;
+    const listItem = typeof segment === "number" && /^-\s+/.test(line.body);
+    if (mapping === undefined && !listItem) return unsupported("Uncertain block syntax on the edited path.");
+    const key = mapping?.key ?? String(entries.length);
+    if (keys.has(key) || mapping?.isMergeKey)
+      return unsupported("Duplicate or merge keys in an affected mapping.");
     keys.add(key);
-    const raw = line.body.slice(prefix[0].length);
+    const prefixLength = mapping === undefined ? 1 : mapping.rawKey.length + 1;
+    const keyEnd = line.start + line.indent + prefixLength;
+    const afterKey = line.body.slice(prefixLength);
+    const raw = afterKey.trimStart();
     const value = raw.slice(0, commentOffset(raw)).trimEnd();
-    const valueStart = line.start + line.indent + prefix[0].length;
+    const valueStart = keyEnd + afterKey.length - raw.length;
     let boundary = lineIndex + 1;
     while (boundary < lines.length) {
       const child = lines[boundary];
@@ -110,6 +116,7 @@ const entriesIn = (lines: readonly YamlLine[], segment: PathSegment) => {
     const last = children.filter((child) => child.code.trim() !== "").at(-1);
     entries.push({
       line,
+      keyEnd,
       valueStart,
       valueEnd: valueStart + value.length,
       value,
@@ -122,7 +129,7 @@ const entriesIn = (lines: readonly YamlLine[], segment: PathSegment) => {
 
 export const locateYamlEdit = (
   lines: readonly YamlLine[],
-  segments: readonly PathSegment[],
+  segments: ValidationIssuePath,
 ): Result.Result<LocatedEdit, UnsupportedEdit> => {
   let scope = lines;
   let parent: LocatedEntry | undefined;
@@ -132,9 +139,9 @@ export const locateYamlEdit = (
     const found = entriesIn(scope, segment);
     if (Result.isFailure(found)) return Result.fail(found.failure);
     const { entries, keys, indent } = found.success;
-    const entry = segment.kind === "key" ? entries[keys.indexOf(segment.key)] : entries[segment.index];
+    const entry = typeof segment === "string" ? entries[keys.indexOf(segment)] : entries[segment];
     if (entry === undefined) {
-      if (segment.kind === "index")
+      if (typeof segment === "number")
         return unsupported("Sparse or missing list indices cannot be edited safely.");
       return Result.succeed({
         parent,
@@ -146,7 +153,7 @@ export const locateYamlEdit = (
     if (/^[!&*]|^<<:/.test(entry.value))
       return unsupported("Tags, anchors, aliases or merge keys on the edited path.");
     const final = i === segments.length - 1;
-    if (!final && entry.value === "{}" && segments[i + 1]?.kind === "key" && entry.children.length === 0)
+    if (!final && entry.value === "{}" && typeof segments[i + 1] === "string" && entry.children.length === 0)
       return Result.succeed({
         parent: entry,
         remaining: segments.slice(i + 1),
@@ -157,7 +164,7 @@ export const locateYamlEdit = (
     const wholeFlowValue = /^\[.*\]$|^\{.*\}$/.test(entry.value);
     if (/^[[{]/.test(entry.value) && !(final && wholeFlowValue))
       return unsupported("Flow collections on the edited path.");
-    if (segment.kind === "index" && /^[\w.-]+:\s/.test(entry.value))
+    if (typeof segment === "number" && splitMappingEntry(entry.value) !== undefined)
       return unsupported("List-item mappings cannot be edited safely.");
     if (final) return Result.succeed({ entry, parent, remaining: [], entries, indent });
     if (entry.value !== "")

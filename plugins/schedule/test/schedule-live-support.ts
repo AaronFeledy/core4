@@ -234,7 +234,7 @@ export const landofile = (input: {
     `      TZ: ${SCHEDULE_ZONE}`,
     "    ports:",
     `      - "127.0.0.1:${input.port}:80"`,
-    "    dependsOn:",
+    "    depends_on:",
     "      - db",
     ...jobsFor(input.mode, input.image),
     "  db:",

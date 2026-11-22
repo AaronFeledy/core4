@@ -16,13 +16,18 @@ import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
+  MYSQL_FAMILY_EXTRA_ARGS,
+  configFileDbExtraArgsRemediation,
+  isNonCatalogArtifact,
+} from "./_extra-args.ts";
+import {
   addEnvRecord,
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { assertListenerConfig, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -110,12 +115,13 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
 
   applyAuthoredProcessFields(ctx);
 
-  if (
-    addServerConfigMount(ctx, MYSQL_CONFIG_TARGET) &&
-    service.command === undefined &&
-    service.entrypoint === undefined
-  ) {
-    ctx.setCommand(["mysqld", `--port=${port}`]);
+  const catalogImages = Object.values(MYSQL_ARTIFACTS);
+  const custom = isNonCatalogArtifact(service, catalogImages);
+  const processOwned = service.command !== undefined || service.entrypoint !== undefined;
+  const serverConfig = addServerConfigMount(ctx, MYSQL_CONFIG_TARGET);
+  const hasExtraArgs = (service.extraArgs?.length ?? 0) > 0;
+  if (!processOwned && (serverConfig || (!custom && hasExtraArgs))) {
+    ctx.setCommand(["mysqld", `--port=${port}`], custom ? undefined : MYSQL_FAMILY_EXTRA_ARGS);
   }
 };
 
@@ -152,10 +158,13 @@ const mysqlToolingForConnection: NonNullable<ServiceType["toolingForConnection"]
         },
       };
 
+const selectPort = primaryPortSelector(MYSQL_LISTENER);
 const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
   id,
   name: "mysql",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: configFileDbExtraArgsRemediation(Object.values(MYSQL_ARTIFACTS), "MySQL"),
   versions: MYSQL_VERSIONS,
   artifacts: MYSQL_ARTIFACTS,
   identity: rootIdentity(),
@@ -180,7 +189,7 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
     }
     return serviceTypeResolve(id, "mysql service type failed to resolve", () => {
       const creds = mysqlCredsFor(dataNameFor(input), input.service);
-      const port = plannedPort(input.service, MYSQL_LISTENER);
+      const port = selectPort(input.service);
       assertListenerConfig(input.service, MYSQL_LISTENER);
       return {
         base: "lando",

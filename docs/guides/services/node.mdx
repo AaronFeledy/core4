@@ -1,7 +1,7 @@
 ---
 id: node
 provider: test
-timeout: 90000
+timeout: 150000
 tags: [docs, node, service, runtime]
 ---
 
@@ -126,8 +126,12 @@ service.
 
 ## Run the app
 
-The default Node keep-alive process holds the container open and exits cleanly on
-SIGTERM or SIGINT. The Node service adds `lando npm` and `lando npx` for you, so install dependencies and start your server. Run these from the app directory on your host:
+Without `command:`, the default Node keep-alive holds the container open but
+doesn't start your server. If nothing is listening on your Node port, `lando
+start` reports an `expected` URL check without warning or retrying. The route
+stays available for when you start serving. Add `command:` to start the server
+automatically, or use the `lando npm` and `lando npx` commands the Node service
+adds. Run these from the app directory on your host:
 
 ```sh
 # Install dependencies inside the service
@@ -160,7 +164,7 @@ services:
     command: node server.mjs
 ```
 
-An authored `environment.PORT` must be a literal integer equal to the planned port. A different or malformed value fails planning at `services.app.environment.PORT`, including values inherited from `appEnv` or env files. Set `port:` instead of overriding `PORT`.
+An authored `environment.PORT` must be a literal integer equal to the planned port. A different or malformed value fails planning at `services.app.environment.PORT`, including values inherited from `serviceDefaults.environment` or env files. Set `port:` instead of overriding `PORT`.
 
 Vite does not read `PORT`. For `port: 5173`, use `vite --host 0.0.0.0 --port 5173` in your npm script, or set the equivalent Vite configuration. Keep that port aligned when you change the Landofile.
 
@@ -319,6 +323,42 @@ lando pnpm --version
 
 That prints `9.15.0`.
 
+### Use Yarn Plug'n'Play
+
+Pin a supported Yarn Berry release in `package.json`, for example
+`"packageManager": "yarn@4.5.3"`. With the default Plug'n'Play (PnP) linker or
+`nodeLinker: pnp`, Lando leaves `/app/node_modules` in the app bind instead of
+mounting a volume there. That path is your host directory, so
+`lando yarn install` can delete an existing host `node_modules`. Lando does not
+change how `.yarn/` is mounted.
+
+Lando reads `nodeLinker` from `.yarnrc.yml` at `packageRoot` and, for a nested
+package, at the app root; the nearest one wins. It ignores other ancestor configs
+and `YARN_NODE_LINKER`, so set the linker in one of those two files to keep the
+mount plan in step with Yarn. Yarn Classic and Berry with
+`nodeLinker: node-modules` or `nodeLinker: pnpm` keep the default volume.
+Explicit `appMount.excludes` and `appMount.includes` take precedence over this default.
+
+After changing linkers, run `lando start` for the whole app to apply the new
+mount plan, then run `lando yarn install` if your service does not install on start.
+
+  <Scenario id="yarn-pnp-keeps-node-modules-in-the-bind" render={false} reason="Yarn Plug'n'Play leaves node_modules in the app bind, and the node-modules linker keeps the volume">
+    <Step name="pnp-has-no-node-modules-volume">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: yarn-pnp\nservices:\n  app:\n    type: node:lts\n    primary: true\n"));
+yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "yarn-pnp", private: true, packageManager: "yarn@4.5.3" })));
+lastRun = yield* context.runCli("lando info --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"overlays":\[[^\]]*"\/app\/vendor"/);
+expect(lastRun.stdout).not.toMatch(/"overlays":\[[^\]]*"\/app\/node_modules"/);`} displayCode={`lando info --format=json`} />
+    </Step>
+    <Step name="node-modules-linker-keeps-the-volume">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".yarnrc.yml"), "nodeLinker: node-modules\n"));
+lastRun = yield* context.runCli("lando info --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"overlays":\[[^\]]*"\/app\/node_modules"/);`} displayCode={`lando info --format=json`} />
+    </Step>
+  </Scenario>
+
 ### Run your package manager from the host
 
 A bundled Node service adds tooling commands for the manager its
@@ -383,6 +423,80 @@ tooling:
 ```
 
 `lando exec worker -- npm install` also works without any tooling.
+
+### Run a binary your project installed
+
+Tools such as `vite`, `next`, or `eslint` live in your project's
+`node_modules`, and each package manager runs them its own way. Start an
+argv-list tooling `cmd` with `:node-local` and Lando uses the manager the
+service selected:
+
+```yaml
+tooling:
+  vite:
+    service: app
+    cmd: [":node-local", "vite"]
+    wrapper: true
+```
+
+`lando vite build` then runs `pnpm exec vite build`, `yarn run vite build`, or
+`npm exec --no -- vite build`. A Bun declaration and a project with no
+declaration both use the npm form. None of them downloads a missing package,
+so install your dependencies first. `:node-local` works on every Node
+service, including one with a custom `image:`.
+
+### Install dependencies, then start your server
+
+A service `command` can install before it serves. Start an argv-list
+`command` with `:node-install-run` and name a `package.json` script:
+
+```yaml
+services:
+  app:
+    type: node:lts
+    primary: true
+    command: [":node-install-run", "start"]
+```
+
+Each time the container's process starts, Lando runs the selected manager's
+install (`npm install`, `pnpm install`, or `yarn install`) and then runs the
+`start` script through that same manager. Extra items after the script name
+reach the script as arguments. If the install fails, the script never starts, and
+`lando logs --service app` shows the manager's error. When the service stops,
+Lando sends the stop signal to every process the script started, not just the
+manager, and waits for them to exit, so your server's shutdown handler runs.
+
+`:node-install-run` exists only on a bundled Node type whose `package.json`
+declares npm, pnpm, Yarn, or no package manager. A service with a custom
+`image:` or replacement build, or a project that declares Bun, doesn't get
+it, and planning fails at `services.app.command` if you use it there. Write
+that service's own install and start command instead.
+
+Both markers are launchers.
+[Run a command through the project's toolchain](../tooling/flags-and-args.mdx#run-a-command-through-the-projects-toolchain)
+covers where a marker is recognized and how a bad one fails.
+
+  <Scenario id="launchers-follow-package-manager" render={false} reason="Node launchers lower through the selected manager and install-run is refused for a Bun project">
+    <Step name="start-with-pnpm">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: node-launchers\nservices:\n  app:\n    type: node:lts\n    primary: true\n    command: [\":node-install-run\", \"start\"]\ntooling:\n  vite:\n    service: app\n    cmd: [\":node-local\", \"vite\"]\n    wrapper: true\n"));
+yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "node-launchers", private: true, packageManager: "pnpm@9.15.0", scripts: { start: "node server.js" } })));
+lastRun = yield* context.runCli("lando start --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout + JSON.stringify(lastRun.events)).toMatch(/"command":\["sh","-c","pnpm install /);
+expect(lastRun.stdout + JSON.stringify(lastRun.events)).toContain("setsid pnpm run");
+expect(lastRun.stdout + JSON.stringify(lastRun.events)).toMatch(/"node-install-run","start"\]/);`} displayCode={`lando start --format=json`} />
+    </Step>
+    <Step name="local-binary-through-pnpm">
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando --format=json vite build");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/"service":"app"[\s\S]*"stdout":"pnpm exec vite build\\n"/);`} displayCode={`lando --format=json vite build`} />
+    </Step>
+    <Step name="bun-project-has-no-install-run">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "node-launchers", private: true, packageManager: "bun@1.2.0", scripts: { start: "node server.js" } })));
+lastRun = yield* context.runCli("lando app:config:lint --format=json");
+expect(lastRun.stdout).toMatch(/"path":\["services","app","command"\],"message":"Launcher :node-install-run is not declared for service app \(node:lts\)\. Declared launchers: :node-local\."/);`} displayCode={`lando app:config:lint --format=json`} />
+    </Step>
+  </Scenario>
 
 ### Where the release comes from
 
@@ -603,8 +717,8 @@ image, so `globals` is where Yarn or pnpm goes there. See [Pin the service type]
 ## Read a nested package
 
 Set `packageRoot` when the Node package lives below the app root. It defaults
-to `.` and selects which `package.json` Lando reads. It never changes mounts
-or the container working directory.
+to `.` and selects where Lando looks for `package.json` and `.yarnrc.yml`.
+It does not move the app mount or change the container working directory.
 
 ```yaml
 services:

@@ -31,7 +31,7 @@ const loadEnvFiles = Effect.fnUntraced(function* (
       new LandofileValidationError({
         message: `${input.owner} declares env_file, but the FileSystem service is unavailable. Provide FileSystem so env files can be read.`,
         remediation: "Provide FileSystem so env files can be read.",
-        file: `${input.appRoot}/.lando.yml`,
+        file: input.appRoot,
         issues: [
           validationIssue(
             input.issuePath,
@@ -92,8 +92,8 @@ export const loadTopLevelEnvFiles = (input: {
   loadEnvFiles({
     ...input,
     owner: "The Landofile",
-    readContext: "declared by the Landofile",
-    issuePath: ["env_file"],
+    readContext: "declared by serviceDefaults.env_file",
+    issuePath: ["serviceDefaults", "env_file"],
   });
 
 export const loadServiceEnvFiles = (input: {
@@ -110,11 +110,11 @@ export const loadServiceEnvFiles = (input: {
 > =>
   loadEnvFiles({
     appRoot: input.appRoot,
-    envFiles: input.service.envFile ?? [],
+    envFiles: input.service.env_file ?? [],
     fileSystem: input.fileSystem,
     owner: `Service ${input.serviceName}`,
     readContext: `for service ${input.serviceName}`,
-    issuePath: ["services", input.serviceName, "envFile"],
+    issuePath: ["services", input.serviceName, "env_file"],
   }).pipe(
     Effect.map(({ environment, inputs }) => ({
       environment: { ...environment, ...(input.service.environment ?? {}) },

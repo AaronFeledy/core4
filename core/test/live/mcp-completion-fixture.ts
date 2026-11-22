@@ -60,7 +60,7 @@ export const mcpCompletionFixture = async () => {
       "    image: docker.io/library/alpine:3.21",
       "    home: false",
       "    appMount: false",
-      "    workingDirectory: /",
+      "    working_dir: /",
       "    primary: true",
       `    command: [sh, -c, ${JSON.stringify("printf 'quiet-ready\\n'; exec sleep infinity")}]`,
       "    environment:",

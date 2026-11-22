@@ -1,0 +1,238 @@
+---
+id: extra-args
+provider: test
+timeout: 90000
+tags: [docs, services, extraArgs, launcher]
+---
+
+# Append flags with extraArgs
+
+Use `extraArgs:` when you want one more daemon flag and still want Lando's launcher. Lando keeps the port, persistence, password, and config-file flags it already owns, then appends your argv list. Replace the whole launcher with `command:` only when you need a different process.
+
+```yaml
+name: redis-extra-args
+services:
+  cache:
+    type: redis
+    port: 6380
+    extraArgs:
+      - --maxmemory
+      - 10mb
+```
+
+`extraArgs:` is an argv list only. Each element is a text site: the same expression rules as a `command:` list element, including `{{ service.port }}` and numeric rendering. A higher Landofile layer replaces the whole list. An empty list clears it.
+
+Save that Landofile, then check the plan without starting containers:
+
+```sh
+lando app:config:lint --format=json
+lando app:cache:refresh --format=json
+```
+
+Lint must report `"valid": true`. Refresh must exit 0. The planned command keeps Lando's Redis flags and ends with your args, for example `redis-server --appendonly yes --port 6380 --maxmemory 10mb`.
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="redis-extra-args" />
+    </Step>
+    <Step name="lint-and-plan">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:config get services.cache.extraArgs --format=json" expect={{ stdout: { regex: "\"value\":\\s*\\[\\s*\"--maxmemory\"\\s*,\\s*\"10mb\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="planned-argv" render={false} reason="Assert planned Redis command keeps Lando flags and appends extraArgs">
+    <Step name="plan-argv">
+      <UseFixture name="redis-extra-args" />
+      <Run
+        runtime="library"
+        displayCode={`# Planned command includes Lando launcher flags plus extraArgs.`}
+        code={`{
+yield* Effect.promise(() => import("@lando/core/bundled-plugins"));
+const { AbsolutePath, ServiceName } = yield* Effect.promise(() => import("@lando/core/schema"));
+const appRoot = join(context.testDir, "redis-extra-args");
+const previousCwd = process.cwd();
+process.chdir(appRoot);
+try {
+  const layer = LandoCore.makeLandoRuntime({
+    bootstrap: "app",
+    plugins: { policy: "bundled-only" },
+    cwd: appRoot,
+    config: {
+      userDataRoot: AbsolutePath.make(join(context.testDir, ".lando-data")),
+      userCacheRoot: AbsolutePath.make(join(context.testDir, ".lando-cache")),
+      systemPluginRoot: AbsolutePath.make(join(context.testDir, ".lando-system")),
+    },
+  });
+  const plan = yield* Effect.gen(function* () {
+    const landofile = yield* Effect.flatMap(LandoCore.LandofileService, (service) => service.discover);
+    const registry = yield* LandoCore.RuntimeProviderRegistry;
+    const capabilities = yield* registry.capabilities;
+    const planner = yield* LandoCore.AppPlanner;
+    return yield* planner.plan(landofile, capabilities);
+  }).pipe(Effect.provide(layer));
+  const command = plan.services[ServiceName.make("cache")]?.command;
+  if (command === undefined) throw new Error("expected planned command for cache");
+  expect(command).toEqual([
+    "redis-server",
+    "--appendonly",
+    "yes",
+    "--port",
+    "6380",
+    "--maxmemory",
+    "10mb",
+  ]);
+} finally {
+  process.chdir(previousCwd);
+}
+}`}
+      />
+    </Step>
+  </Scenario>
+
+## Supported types
+
+These catalog types accept a non-empty `extraArgs:` list on a Lando-owned launcher:
+
+| Type | What Lando still owns | Typical extra args |
+| --- | --- | --- |
+| `redis` | port, `persist:`, `creds.password` | `--maxmemory`, `--maxmemory-policy` |
+| `valkey` | port, append-only persistence | same style as Redis |
+| `memcached` | port | `-m`, `-c` |
+| `minio` | API and console bind addresses | server flags after the image entrypoint |
+| `postgres` | planned port, `config.server` | `-c max_connections=200` |
+| `mysql` | planned port, `config.server` | `--max-connections=77` |
+| `mariadb` | planned port, `config.server` | `--max-connections=77` |
+| `mongodb` | planned port, `config.server` | `--wiredTigerCacheSizeGB`, `0.5` |
+
+Catalog database types use an args-only generated launcher that preserves the image entrypoint, pins the planned port, and keeps any `config.server` flag. Custom images and Compose builds of those types reject the key.
+
+Everything else rejects a non-empty list at `services.<name>.extraArgs` with a located `LandofileValidationError` and type-specific remediation. That includes Solr, Varnish, nginx, Apache, PHP, language runtimes, raw `lando` and `compose`, and image-default env-configured types such as Elasticsearch, RabbitMQ, and Mailpit.
+
+## Keep Lando's launcher
+
+Leave `command:` and `entrypoint:` unset. Lando owns the process argv, pins the planned port, and appends `extraArgs:` after its own flags. Shell-wrapped launchers (Redis with a password, MinIO's `sh -c` entrypoint) pass your tokens as positional parameters so a shell never re-parses them.
+
+Do not put a listener flag Lando already owns in `extraArgs:` (`--port` for Redis or Valkey, `-p` for Memcached, `--address` for MinIO, `-c port=` for Postgres, and the matching MySQL, MariaDB, and MongoDB port flags). Set `port:` instead. Lint and planning name the offending index.
+
+## When to use command instead
+
+Author `command:` when you replace the process entirely. Then you own every flag, including the port. Use `{{ service.port }}` so the listener stays tied to `port:`:
+
+```yaml
+services:
+  cache:
+    type: redis
+    port: 6380
+    command: [redis-server, --port, "{{ service.port }}", --maxmemory, 10mb]
+```
+
+See [Your service's own port](../landofile/expressions.mdx#your-services-own-port). Redis rejects `command:` together with managed `creds.password` or `persist:`; put those flags in `command:` yourself, or stay on `extraArgs:` and keep Lando's launcher.
+
+A non-empty `extraArgs:` with any effective authored `command:` or `entrypoint:` fails at `services.<name>.extraArgs` with remediation to put the flags in `command:`.
+
+  <Scenario id="reject-with-command" render={false} reason="extraArgs with authored command must fail lint at the field with exit 1">
+    <Step name="scaffold-conflict">
+      <UseFixture name="extra-args-with-command" />
+    </Step>
+    <Step name="lint-conflict">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"cache\",\\s*\"extraArgs\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-conflict">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+
+  <Scenario id="reject-with-command-exit" render={false} reason="Negative lint must exit 1 when extraArgs conflicts with command">
+    <Step name="exit-one">
+      <UseFixture name="extra-args-with-command" />
+      <Run
+        runtime="library"
+        displayCode={`lando app:config:lint --format=json
+# Exit status is 1 when extraArgs conflicts with command.`}
+        code={`{
+const run = yield* context.runCli("lando app:config:lint --format=json");
+expect(run.exitCode).toBe(1);
+const body = JSON.parse(run.stdout);
+expect(body.result?.valid ?? body.ok).toBe(false);
+}`}
+      />
+    </Step>
+  </Scenario>
+  <Scenario id="reject-unsupported-type" render={false} reason="extraArgs on a type without a Lando launcher slot fails at the field">
+    <Step name="scaffold-unsupported">
+      <UseFixture name="extra-args-unsupported" />
+    </Step>
+    <Step name="lint-unsupported">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"extraArgs\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-unsupported">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="postgres-config-and-extra-args" layer="e2e" timeout={300000} render={false} reason="Check PostgreSQL login, listener, settings, and data across stop and start">
+    <Step name="start">
+      <UseFixture name="postgres-extra-args" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
+    </Step>
+    <Step name="check-and-write">
+      <Verify command={`lando psql -h db -At -c "SELECT concat_ws(':', inet_server_port(), current_setting('work_mem'), current_setting('max_connections'))"`} expect={{ stdout: { regex: "\\b5433:12MB:77\\b" } }} />
+      <Run command={`lando psql -h db -v ON_ERROR_STOP=1 -c "CREATE TABLE marker (id integer PRIMARY KEY); INSERT INTO marker VALUES (1979);"`} />
+    </Step>
+    <Step name="stop-and-start">
+      <Run command="lando stop" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
+    </Step>
+    <Step name="check-persisted">
+      <Verify command={`lando psql -h db -At -c "SELECT concat_ws(':', inet_server_port(), current_setting('work_mem'), current_setting('max_connections'), id) FROM marker"`} expect={{ stdout: { regex: "\\b5433:12MB:77:1979\\b" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="mysql-config-and-extra-args" layer="e2e" timeout={300000} render={false} reason="Check MySQL login, listener, settings, and data across stop and start">
+    <Step name="start">
+      <UseFixture name="mysql-extra-args" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
+    </Step>
+    <Step name="check-and-write">
+      <Verify command={`lando mysql -NB -e "SELECT CONCAT_WS(':', @@port, @@global.wait_timeout, @@global.max_connections)"`} expect={{ stdout: { regex: "\\b3307:1234:77\\b" } }} />
+      <Run command={`lando mysql -e "CREATE TABLE marker (id integer PRIMARY KEY); INSERT INTO marker VALUES (1979);"`} />
+    </Step>
+    <Step name="stop-and-start">
+      <Run command="lando stop" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
+    </Step>
+    <Step name="check-persisted">
+      <Verify command={`lando mysql -NB -e "SELECT CONCAT_WS(':', @@port, @@global.wait_timeout, @@global.max_connections, id) FROM marker"`} expect={{ stdout: { regex: "\\b3307:1234:77:1979\\b" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Per-type guides
+
+- [Add Redis](./redis.mdx)
+- [Add Valkey](./valkey.mdx)
+- [Add Memcached](./memcached.mdx)
+- [Add MinIO](./minio.mdx)
+- [Add Postgres](./postgres.mdx)
+- [Add MySQL](./mysql.mdx)
+- [Add MariaDB](./mariadb.mdx)
+- [Add MongoDB](./mongodb.mdx)

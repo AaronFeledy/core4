@@ -65,7 +65,7 @@ export const collectPublicCredentialValues = (
 };
 
 const collectHeuristicValues = (
-  sourceEnv: Record<string, string | undefined> | undefined,
+  sourceEnv: Readonly<Record<string, unknown>> | undefined,
   publicValues: ReadonlySet<string> | undefined,
   recognizes: (name: string) => boolean,
 ): string[] => {
@@ -75,6 +75,7 @@ const collectHeuristicValues = (
   for (const [key, value] of Object.entries(sourceEnv)) {
     if (
       recognizes(key) &&
+      typeof value === "string" &&
       nonEmpty(value) &&
       !isPublicDefaultCredential(value) &&
       !localPublicValues.has(value) &&
@@ -90,7 +91,28 @@ const collectHeuristicValues = (
 export const collectSecretEnvValues = (
   sourceEnv: Record<string, string | undefined> | undefined,
   publicValues?: ReadonlySet<string>,
-): string[] => collectHeuristicValues(sourceEnv, publicValues, isSecretEnvName);
+): string[] => {
+  const values = collectHeuristicValues(sourceEnv, publicValues, isSecretEnvName);
+  if (sourceEnv === undefined) return values;
+  // Discover exact values at collection time, not while scanning each output payload.
+  for (const raw of Object.values(sourceEnv)) {
+    if (!raw?.trimStart().startsWith("{")) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      if (error instanceof SyntaxError) continue;
+      throw error;
+    }
+    if (typeof parsed === "object" && parsed !== null) {
+      const entries: [string, unknown][] = Object.entries(parsed);
+      if (entries.every(([, value]) => typeof value === "string")) {
+        values.push(...collectHeuristicValues(Object.fromEntries(entries), publicValues, isSecretEnvName));
+      }
+    }
+  }
+  return values;
+};
 
 export const collectSecretStructuralValues = (
   fields: Record<string, string | undefined> | undefined,

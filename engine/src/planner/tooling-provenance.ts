@@ -83,6 +83,13 @@ export const resolveEffectiveTooling = (input: ToolingComposition) => {
   }
   return {
     tasks,
+    launcherServices: Object.fromEntries(
+      input.services.flatMap(({ name, serviceTypeId, launchers }) =>
+        serviceTypeId === undefined
+          ? []
+          : [[name, { serviceTypeId, ...(launchers === undefined ? {} : { launchers }) }]],
+      ),
+    ),
     beforeDefaults,
     provenance,
     internalNames: [...(input.provenance?.internalToolingTasks ?? [])],

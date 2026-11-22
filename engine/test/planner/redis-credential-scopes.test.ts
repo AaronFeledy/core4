@@ -59,6 +59,7 @@ test.each([...cases])(
     expect(plan.services[ServiceName.make("cache")]?.environment.REDISCLI_AUTH).toEqual(password);
     expect(effectiveToolingForPlan(plan)?.["redis-cli"]?.env?.REDISCLI_AUTH).toEqual(password);
     expect(serviceCredsScopeForPlan(plan).cache).toEqual({
+      url: { _tag: "RouteText", parts: [{ service: "cache", encoding: "raw" }] },
       creds: { user: "default", database: "0", password },
     });
   },
@@ -120,7 +121,7 @@ test("publishes no credentials when Redis has no password", async () => {
   // Given / When
   const plan = await Effect.runPromise(planRedis(undefined));
   // Then
-  expect(serviceCredsScopeForPlan(plan)).not.toHaveProperty("cache");
+  expect(serviceCredsScopeForPlan(plan).cache).not.toHaveProperty("creds");
 });
 
 test("rejects a credential expression when Redis has no password", async () => {

@@ -1,7 +1,6 @@
 ---
 id: drupal
 provider: test
-timeout: 900000
 tags: [recipe, drupal, php]
 ---
 
@@ -32,6 +31,8 @@ lando drupal-scaffold
 lando drush --version
 ```
 
+The scaffold also installs Drupal Coder and PHPStan and writes `phpcs.xml.dist` and `phpstan.neon.dist`, so `lando phpcs`, `lando phpcbf`, and `lando phpstan` check your custom modules and themes. See [Lint PHP](https://aaronfeledy.github.io/core4/guides/recipes/drupal-workflow/#lint-php).
+
 ## Choose stack options
 
 `--yes` uses Drupal 11, PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Pass `--answer` for nginx plus FPM, another PHP, or another database. PHP 8.6 is a valid `--answer=php=8.6`.
@@ -53,7 +54,7 @@ lando init --recipe drupal --name=my-drupal-app --yes \
 For day-to-day tooling and database hosts, see [Run the Drupal recipe](https://aaronfeledy.github.io/core4/guides/recipes/drupal-workflow/).
 
 <Guide>
-  <Scenario id="reader-path" layer="e2e" tags={["@smoke"]} render>
+  <Scenario id="reader-path" layer="e2e" timeout={900000} tags={["@smoke"]} render>
     <Step name="scaffold">
       <Variable name="appName" value="drupal" display="my-drupal-app" />
       <Run command="lando init --recipe drupal --name={{appName}} --yes" />
@@ -66,6 +67,12 @@ For day-to-day tooling and database hosts, see [Run the Drupal recipe](https://a
       <Verify command="lando exec appserver -- test -f /app/composer.json" />
       <Verify command="lando exec appserver -- test -x /app/vendor/bin/drush" />
     </Step>
+    <Hidden reason="The scaffold installs Coder and PHPStan and the lint tasks find them">
+      <Step name="lint-tools">
+        <Verify command="lando phpcs -i" expect={{ stdout: { regex: "Drupal, DrupalPractice" } }} />
+        <Verify command="lando phpstan --version" expect={{ stdout: { regex: "PHPStan" } }} />
+      </Step>
+    </Hidden>
     <Step name="check-drush">
       <Run command="lando drush --version" />
     </Step>

@@ -52,7 +52,7 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
       new LandofileValidationError({
         message: `Service ${grant.service} grants Compose config ${grant.source}, which is not defined under top-level configs. Add configs.${grant.source}.file or remove the grant.`,
         remediation: `Add configs.${grant.source}.file or remove the grant.`,
-        file: `${input.appRoot}/.lando.yml`,
+        file: input.appRoot,
         issues: [
           validationIssue(
             ["services", grant.service, "configs"],
@@ -73,7 +73,7 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
         message:
           "The Landofile declares configs, but the FileSystem service is unavailable. Provide FileSystem so config files can be read.",
         remediation: "Provide FileSystem so config files can be read.",
-        file: `${input.appRoot}/.lando.yml`,
+        file: input.appRoot,
         issues: [
           validationIssue(
             ["configs"],
@@ -92,7 +92,7 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
         new LandofileValidationError({
           message: `Compose config ${name} uses external: true, which Lando does not realize. Remove external and set file: to a path under the app root.`,
           remediation: "Remove external and set file: to a path under the app root.",
-          file: `${input.appRoot}/.lando.yml`,
+          file: input.appRoot,
           issues: [
             validationIssue(
               ["configs", name, "external"],
@@ -107,7 +107,7 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
         new LandofileValidationError({
           message: `Compose config ${name} is missing file:. Set file: to a readable path under the app root.`,
           remediation: "Set file: to a readable path under the app root.",
-          file: `${input.appRoot}/.lando.yml`,
+          file: input.appRoot,
           issues: [
             validationIssue(
               ["configs", name, "file"],

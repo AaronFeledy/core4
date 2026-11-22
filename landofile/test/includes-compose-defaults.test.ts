@@ -45,7 +45,7 @@ test.each([`include: [${fragment}]`, `includes:\n  - source: ./${fragment}\n    
       type: "compose",
       appMount: false,
       image: "axllent/mailpit:v1.27",
-      envFile: ["./sibling/.env.mail"],
+      env_file: ["./sibling/.env.mail"],
       volumes: [{ type: "bind", source: "./sibling/data", target: "/data" }],
     });
     expect(document.services?.[mail]?.home).toBeUndefined();
@@ -55,7 +55,7 @@ test.each([`include: [${fragment}]`, `includes:\n  - source: ./${fragment}\n    
         layer: "canonical",
         path: ["services", "mail"],
       });
-    expect(getLandofileValueSource(provenanceIn(compiled), ["services", "mail", "envFile", 0])).toEqual({
+    expect(getLandofileValueSource(provenanceIn(compiled), ["services", "mail", "env_file", 0])).toEqual({
       file: join(root, fragment),
       layer: "canonical",
       path: ["services", "mail", "env_file", 0],
@@ -80,7 +80,7 @@ test("rebases compose include paths when the app root is a symlink alias", async
       }),
     );
     expect(document.services?.[mail]).toMatchObject({
-      envFile: ["./sibling/.env.mail"],
+      env_file: ["./sibling/.env.mail"],
       volumes: [{ type: "bind", source: "./sibling/data", target: "/data" }],
     });
   } finally {
@@ -155,7 +155,7 @@ test.each([`includes: [${fragment}]`, `includes:\n  - source: ${fragment}\n    k
       expect(service?.appMount).toBeUndefined();
     }
     expect(document.services?.[mail]).toMatchObject({
-      envFile: [".env.mail"],
+      env_file: [".env.mail"],
       volumes: [{ type: "bind", source: "./data", target: "/data" }],
     });
   },
@@ -189,7 +189,7 @@ test.each(["services:\n  mail: !override", "services: !override\n  mail:"])(
     expect(document.services?.[mail]).toMatchObject({
       type: "compose",
       appMount: false,
-      envFile: ["./sibling/.env.mail"],
+      env_file: ["./sibling/.env.mail"],
       volumes: [{ type: "bind", source: "./sibling/data", target: "/data" }],
     });
   },
@@ -218,7 +218,7 @@ test("rebases nested Compose includes exactly once from each declaring directory
   const { document } = await load();
   // Then
   expect(document.services?.[mail]).toMatchObject({
-    envFile: ["./a/shared/.env"],
+    env_file: ["./a/shared/.env"],
     build: { context: "./a/b/image", dockerfile: "../Dockerfile" },
   });
   expect(document.configs).toMatchObject({ config: { file: "./a/b/config" } });

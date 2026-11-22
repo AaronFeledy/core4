@@ -1,7 +1,6 @@
 ---
 id: app-lifecycle
 provider: test
-timeout: 300000
 tags: [docs, tutorial, lifecycle]
 ---
 
@@ -72,6 +71,53 @@ lando ssh --service db
 Tooling aliases declared under `tooling:` run inside their target service.
 `lando npm install`, `lando psql`, and so on.
 
+## Start one service
+
+If you only need Postgres, start `db` from the app directory. Repeat `-s` (or `--service`) to name more than one service. Lando also starts their prerequisites and sidecars.
+
+```sh
+lando start -s db --format=json
+lando info --format=json
+lando start
+```
+
+On a fresh app, `result.servicesStarted` lists `db`, and `result.servicesStayedDown` lists `app`. In `lando info`, `app` still appears with status `stopped`. The last command brings up the rest of the app. Start `db` alone again and the running `app` stays running, so there is no `servicesStayedDown` field. See [Start one service in the CLI guide](../cli/everyday-commands.mdx#start-one-service) for hook and file-sync behavior.
+
+  <Scenario id="start-one-service" render>
+    <Step name="start-db">
+      <UseFixture name="app-lifecycle-demo" />
+      <Verify command="lando start -s db --format=json" expect={{ stdout: { regex: "\"servicesStarted\":\\s*\\[\\s*\\{\\s*\"name\":\\s*\"db\"[\\s\\S]*\"servicesStayedDown\":\\s*\\[\\s*\"app\"\\s*\\]" } }} />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect">
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"app\"(?:(?!\"service\")[\\s\\S])*?\"status\":\\s*\"stopped\"" } }} />
+    </Step>
+    <Step name="start-rest">
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"servicesStarted\":[\\s\\S]*\"name\":\\s*\"app\"" } }} />
+    </Step>
+    <Step name="keep-running-sibling">
+      <Verify command="lando start -s db --format=json" expect={{ stdout: { not: { regex: "\"servicesStayedDown\"" } } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="start-unknown-service" render={false} reason="Reject service names absent from the Landofile">
+    <Step name="unknown-service">
+      <UseFixture name="app-lifecycle-demo" />
+      <Verify command="lando start -s missing --format=json" expectExit={1} expect={{ stdout: { regex: "ServiceNotFoundError" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="start-scoped-hook-skip" render={false} reason="A post-start hook targeting the stopped primary service is skipped">
+    <Step name="configure-hook">
+      <UseFixture name="app-lifecycle-demo" />
+      <Run command='lando app:config:set events.post-start "[\"echo post-start\"]" --format=json' />
+    </Step>
+    <Step name="start-db">
+      <Verify command="lando start -s db --format=json" expect={{ stdout: { regex: "Skipped events\\.post-start\\[0\\]: service app is not running" } }} />
+      <Verify event="post-start" />
+    </Step>
+  </Scenario>
+
 ## Restart and rebuild
 
 `lando rebuild` and `lando destroy` ask for confirmation first. Pass `-y` to skip the prompt in scripts.
@@ -109,7 +155,7 @@ lando restart -s app
 lando exec app -- printenv GREETING
 ```
 
-  <Scenario id="restart-one-service" layer="e2e" render>
+  <Scenario id="restart-one-service" layer="e2e" timeout={300000} render>
     <Step name="start">
       <UseFixture name="app-lifecycle-demo" />
       <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" } }} />
@@ -152,7 +198,7 @@ If the removed service was the last one that used `lando` from inside a containe
 
 Lando removes a container only when its labels prove it belongs to this app. If a container for a removed service carries labels that say otherwise, such as another provider's, `lando start` stops before removing anything and names that container. Inspect it with your container runtime and remove it yourself if it is a leftover, then run `lando start` again.
 
-  <Scenario id="remove-a-service" layer="e2e" render>
+  <Scenario id="remove-a-service" layer="e2e" timeout={300000} render>
     <Step name="start">
       <UseFixture name="app-lifecycle-demo" />
       <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" } }} />
@@ -296,7 +342,7 @@ The same loop, end to end, against the default `lando` provider. `start`
 reports the app ready, `info` shows both services `running`, `stop` names what
 it stopped. Results stay on stdout; progress goes to stderr:
 
-  <Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>
+  <Scenario id="real-provider-loop" layer="e2e" timeout={300000} tags={["@smoke"]} render>
     <Step name="start">
       <UseFixture name="app-lifecycle-demo" />
       <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: { regex: "complete" } }} />
@@ -307,6 +353,14 @@ it stopped. Results stay on stdout; progress goes to stderr:
     <Step name="stop">
       <Verify command="lando stop" expect={{ stdout: { regex: "stopped: app-lifecycle-demo" }, stderr: "" }} />
     </Step>
+    <Hidden reason="Start one service on the real provider, then the rest without touching it">
+      <Step name="start-one-service">
+        <Verify command="lando start -s db --format=json" expect={{ stdout: { regex: "\"servicesStayedDown\":\\s*\\[\\s*\"app\"\\s*\\]" } }} />
+      </Step>
+      <Step name="start-the-rest">
+        <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"db\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"kept\"" } }} />
+      </Step>
+    </Hidden>
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y --volumes" />

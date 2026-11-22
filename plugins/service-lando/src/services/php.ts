@@ -2,21 +2,25 @@ import type { ServiceConfig } from "@lando/sdk/schema";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
+import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { apacheGeneratedCertificateEndpoint } from "./apache-native-tls.ts";
+import { drupalLocalLauncher } from "./drupal-local-launcher.ts";
 import { resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
 import { PHP_COMPOSER_CACHE, PHP_FEATURE_ID } from "./php-feature.ts";
+import { phpLocalLauncher } from "./php-local-launcher.ts";
 import { assertPhpComposerCompatible, resolvePhpComposer } from "./php-prerequisites.ts";
 import { PHP_RUNTIME_POLICY_KEY, resolvePhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
-  PHP_LISTENERS,
   SUPPORTED_PHP_VERSIONS,
   type SupportedPhpVersion,
   assertPhpViaKeys,
   phpImageFor,
+  phpListenPort,
   phpLogSources,
+  phpPlannedPort,
   resolvePhpVia,
 } from "./php-via.ts";
 import { assertPhpXdebugSupported, phpXdebugTooling, resolvePhpXdebug } from "./php-xdebug.ts";
@@ -71,6 +75,14 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   id: `php:${version}`,
   name: `php:${version}`,
   base: "lando",
+  extraArgsRemediation: (config) =>
+    UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION(
+      config.via === "cli" ? "PHP CLI" : "PHP",
+      config.via === "cli"
+        ? "CLI mode keeps a keep-alive process; put flags in command: or remove extraArgs."
+        : "Put flags in command: or configure via:/port:/webroot: settings.",
+    ),
+  plannedPort: phpPlannedPort,
   versions: SUPPORTED_PHP_VERSIONS,
   artifacts: PHP_ARTIFACTS,
   // Verified /etc/passwd in php:8.3-apache-bookworm and php:8.3-fpm-bookworm (linux/amd64):
@@ -94,17 +106,18 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       assertPhpViaKeys(via, input.service);
       const xdebug = resolvePhpXdebug(input.service.xdebug);
       assertPhpXdebugSupported(resolvedVersion, xdebug);
-      resolvePhpDbClient(input.service.db_client);
+      resolvePhpDbClient(input.service.dbClient);
       const webroot = resolveWebroot("PHP", input.service.webroot, input.service.appMount);
       const allowOverride = input.service.allowOverride ?? false;
       const policy = resolvePhpRuntimePolicy(input.service, resolvedVersion, via);
       const owned = via === "apache" && policy.processAuthority === "lando";
       const generatedCertificateEndpoint = apacheGeneratedCertificateEndpoint({
-        plainPort: input.service.port ?? PHP_LISTENERS.apache.port,
+        plainPort: phpListenPort("apache", input.service.port),
         owned,
       });
       return {
         base: "lando" as const,
+        launchers: { ":php-local": phpLocalLauncher, ":drupal-local": drupalLocalLauncher },
         normalizedConfig: {
           ...input.service,
           type: `php:${resolvedVersion}`,

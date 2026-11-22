@@ -1,6 +1,6 @@
 import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
-import { getLandofileValueSource } from "@lando/landofile/validation";
+import { getLandofileValueSource, landofileValidationError, pathsOverlap } from "@lando/landofile/validation";
 import { type ExpressionTemplate, parseExpressionEither } from "@lando/sdk/expressions";
 import type {
   ConfigLintRuleId,
@@ -10,7 +10,7 @@ import type {
   ValidationIssue,
   ValidationIssuePath,
 } from "@lando/sdk/schema";
-import { Result } from "effect";
+import { Effect, Result } from "effect";
 import {
   type BunShellDialectIssue,
   bunShellDialectIssues,
@@ -19,6 +19,7 @@ import {
 import { compileEventStepLeaf } from "../tooling/step-compiler.ts";
 import type { EffectiveTooling } from "./effective-tooling.ts";
 import { RESERVED_EVENT_NAMES } from "./event-names.ts";
+import { pathIsBlocked } from "./landofile-scopes.ts";
 import type { PlannerIssue } from "./resolved-validation.ts";
 import { enabledToolingEntries } from "./tooling-composition.ts";
 import { type EffectiveToolingResolution, toolingIssueSource } from "./tooling-provenance.ts";
@@ -36,6 +37,8 @@ export interface HostShellResolution {
   readonly landofile: LandofileShape;
   readonly provenance?: LandofileProvenance | undefined;
   readonly toolingResolution: EffectiveToolingResolution;
+  /** Load-failure destinations; deferred expressions are tracked separately in `sites`. */
+  readonly blocked?: readonly ValidationIssuePath[] | undefined;
 }
 
 /** A host command Lando can check before it runs. */
@@ -48,8 +51,7 @@ export interface HostCommand {
 const isDynamic = (sites: readonly HostShellSite[], path: ValidationIssuePath): boolean =>
   sites.some(
     (site) =>
-      path.length <= site.path.length &&
-      path.every((part, index) => site.path[index] === part) &&
+      pathsOverlap(path, site.path) &&
       site.template.segments.some((segment) => segment.kind === "InterpolationSegment"),
   );
 
@@ -77,7 +79,10 @@ export const hostToolingCommands = (
       return typeof value === "object" &&
         (value.service === ":host" ||
           (value.service === undefined && normalized.success.service?.kind === "host")) &&
-        !isDynamic(sites, path)
+        (sites.length === 0 ||
+          (!isDynamic(sites, path) &&
+            !isDynamic(sites, ["tooling", name, "vars", key, "service"]) &&
+            (value.service !== undefined || !isDynamic(sites, ["tooling", name, "service"]))))
         ? [{ path, command: value.sh }]
         : [];
     });
@@ -87,7 +92,10 @@ export const hostToolingCommands = (
         const path = toolingCommandPath(name, task, index);
         return (step.service ?? normalized.success.service)?.kind === "host" &&
           step.argv === undefined &&
-          !isDynamic(sites, path)
+          (sites.length === 0 ||
+            (!isDynamic(sites, path) &&
+              !isDynamic(sites, ["tooling", name, "cmds", index, "service"]) &&
+              (step.service !== undefined || !isDynamic(sites, ["tooling", name, "service"]))))
           ? [{ path, command: step.cmd }]
           : [];
       }),
@@ -105,7 +113,9 @@ export const hostEventCommands = (
       const leaf = compileEventStepLeaf(step, index);
       if (typeof step === "string" || leaf.kind !== "cmd" || leaf.service !== ":host") return [];
       const path = [root, name, index, "cmd" in step && step.cmd !== undefined ? "cmd" : "defer"];
-      return isDynamic(sites, path) ? [] : [{ path, command: leaf.command }];
+      return sites.length > 0 && (isDynamic(sites, path) || isDynamic(sites, [root, name, index, "service"]))
+        ? []
+        : [{ path, command: leaf.command }];
     }),
   );
 
@@ -131,9 +141,11 @@ export const hostShellIssues = (
   sites: readonly HostShellSite[],
 ): ReadonlyArray<PlannerIssue> => {
   const { landofile } = resolution;
+  const blocked = resolution.blocked;
   const { tasks, provenance } = resolution.toolingResolution;
   return [...hostToolingCommands(tasks, sites), ...hostEventCommands(landofile.events ?? {}, sites)].flatMap(
     (command) => {
+      if (pathIsBlocked(blocked, command.path)) return [];
       const source =
         command.path[0] === "tooling"
           ? toolingIssueSource(provenance, String(command.path[1]), command.path.slice(2))
@@ -250,4 +262,24 @@ export const hostEventsShellIssues = (
       events.indexOf(String(left.path[1])) - events.indexOf(String(right.path[1])) ||
       Number(left.path[2]) - Number(right.path[2]),
   );
+};
+
+/**
+ * Every hostEvents name is a lifecycle event, so a bad host step stops the app's plan like a project
+ * lifecycle step would; commands that only read config are unaffected. Checked before the steps
+ * compile, so an unreadable expression is reported against config.yml.
+ */
+export const checkHostEventsShell = (hostEvents: HostEvents, configFile: string) => {
+  const issues = hostEventsShellIssues(hostEvents).map((issue) => ({
+    ...issue,
+    source: { layer: "config-file" as const, file: configFile, path: issue.path },
+  }));
+  return issues.length === 0
+    ? Effect.void
+    : Effect.fail(
+        landofileValidationError(configFile, issues, {
+          headline: "Global config hostEvents has steps that cannot run as written",
+          remediation: "Fix each listed hostEvents step in config.yml, then rerun the command.",
+        }),
+      );
 };

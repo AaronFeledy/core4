@@ -9,7 +9,7 @@ import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { consumeSites, survivingSites } from "../compiled-sites.ts";
 import { includeConditionPath } from "../include-condition-shape.ts";
-import { loadPathBlocked } from "../load-failures.ts";
+import { loadExpressionFailureKind, loadPathBlocked } from "../load-failures.ts";
 import { normalizeEnvironmentSites } from "../normalize-environment-sites.ts";
 import type { AuthoredDocument } from "../provenance.ts";
 import {
@@ -82,7 +82,7 @@ export const materializeLandofileLayer = Effect.fnUntraced(function* (
             filePath: "file" in site.source ? site.source.file : _file,
             remediation: "Use a boolean or a whole-value {{ ... }} expression over recipe and env.",
           }),
-          site.source,
+          { kind: loadExpressionFailureKind(site.path), source: site.source },
         );
         consumed.add(site.id);
         continue;
@@ -107,7 +107,7 @@ export const materializeLandofileLayer = Effect.fnUntraced(function* (
             filePath: "file" in site.source ? site.source.file : _file,
             remediation: "Record recipe options before using recipe expressions.",
           }),
-          site.source,
+          { kind: loadExpressionFailureKind(site.path), source: site.source },
         );
         consumed.add(site.id);
         continue;
@@ -130,7 +130,7 @@ export const materializeLandofileLayer = Effect.fnUntraced(function* (
                 remediation: result.failure.remediation,
               })
             : result.failure,
-          site.source,
+          { kind: loadExpressionFailureKind(site.path), source: site.source },
         );
         consumed.add(site.id);
         continue;
@@ -151,7 +151,7 @@ export const materializeLandofileLayer = Effect.fnUntraced(function* (
               filePath: "file" in site.source ? site.source.file : _file,
               remediation: "Return true or false; use boolean() to convert environment text.",
             }),
-            site.source,
+            { kind: loadExpressionFailureKind(site.path), source: site.source },
           );
           consumed.add(site.id);
           continue;

@@ -13,14 +13,20 @@ Prerequisite: a running, installed WordPress app from [Run the WordPress recipe]
 
 ## Add Node and npm tooling
 
-Merge a `node` service and `npm` tooling into `.lando.yml`:
+Merge a `node` service, one `appserver` variable, and `npm` tooling into `.lando.yml`:
 
 ```yaml
 services:
+  appserver:
+    environment:
+      VITE_DEV_SERVER_URL: "{{ services.node.url }}"
   node:
     type: "node:22"
     port: 5173
     primary: false
+    environment:
+      VITE_DEV_SERVER_URL: "{{ services.node.url }}"
+      WORDPRESS_URL: "{{ services.appserver.url }}"
     routes:
       - hostname: "vite.{{ app.name }}.{{ proxy.defaultDomain }}"
         scheme: both
@@ -41,7 +47,14 @@ lando info
 
 `lando info` lists routes for both `appserver` (`https://wp-vite.lndo.site`) and `node` (`https://vite.wp-vite.lndo.site`). The Node service stays idle until you run Vite; its route cannot serve assets yet. `port: 5173` declares the internal HTTP endpoint, not a host port binding.
 
-Use the actual HTTPS URLs from `lando info`. The examples below assume port 443. Lando can use fallback ports, including 8080 for HTTP and 8443 for HTTPS. If info shows `:8443`, include it in both origins below and set `hmr.clientPort` to `8443`; keep the internal `server.port` at `5173`.
+`{{ services.<name>.url }}` is the URL the router publishes for that service, the same one `lando info` prints. Lando fills it in when it creates the container, so Vite and the theme read both origins from the environment instead of from values you type:
+
+```sh
+lando exec node -- printenv VITE_DEV_SERVER_URL WORDPRESS_URL
+lando exec appserver -- printenv VITE_DEV_SERVER_URL
+```
+
+When something else owns 443, each URL carries the port the router took, such as `:8443`, and the curl commands below need that port too. If the router later moves to another port, the next `lando start` recreates both services with the new URLs.
 
 ## Scaffold a Vite theme
 
@@ -99,6 +112,10 @@ Save that JSON as `package.json`.
 // vite.config.js
 import { defineConfig } from 'vite';
 
+const devServer = new URL(process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173');
+const wordpress = new URL(process.env.WORDPRESS_URL ?? 'http://localhost');
+const secure = devServer.protocol === 'https:';
+
 export default defineConfig({
   root: '.',
   base: './',
@@ -116,19 +133,19 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
-    allowedHosts: ['vite.wp-vite.lndo.site'],
-    origin: 'https://vite.wp-vite.lndo.site',
-    cors: { origin: 'https://wp-vite.lndo.site' },
+    allowedHosts: [devServer.hostname],
+    origin: devServer.origin,
+    cors: { origin: wordpress.origin },
     hmr: {
-      host: 'vite.wp-vite.lndo.site',
-      protocol: 'wss',
-      clientPort: 443,
+      host: devServer.hostname,
+      protocol: secure ? 'wss' : 'ws',
+      clientPort: Number(devServer.port) || (secure ? 443 : 80),
     },
   },
 });
 ```
 
-Swap `wp-vite` for your app name and adjust the domain if you've changed it. `cors.origin` is the WordPress origin, not the Vite origin. Vite's default CORS policy does not allow this cross-origin module load. Keep an explicit origin and hostname allowlist, not `true`.
+Nothing here names your app, domain, or router port. The `localhost` fallbacks only keep `npm run build` working where the variables aren't set, such as a deploy pipeline. `URL.port` is empty when the router is on the scheme's default port, so `clientPort` falls back to `443` or `80`. Keep `server.port` at `5173`; that's the port inside the container. `cors.origin` is the WordPress origin, not the Vite origin. Vite's default CORS policy does not allow this cross-origin module load. Keep an explicit origin and hostname allowlist, not `true`.
 
 Lando's proxy terminates HTTPS and forwards HTTP and WebSocket upgrades to Node on `5173`. Vite therefore listens on `0.0.0.0` without `server.https`; the browser connects using `wss` on the proxy's HTTPS port. `strictPort` prevents Vite from silently moving away from the declared endpoint. The relative `base` keeps built asset URLs inside the theme's `dist` directory.
 
@@ -160,19 +177,19 @@ lando exec node -- node --version
 
 ## Enqueue Vite in development
 
-Point the theme at the Vite origin while you develop. Use the HTTPS URL `lando info` prints for `node` (include the port when info shows one):
+Point the theme at the Vite origin while you develop. PHP reads it from the `VITE_DEV_SERVER_URL` variable you put on `appserver`:
 
 ```php
 <?php
 declare(strict_types=1);
 
 const VITE_THEME_DEV = true;
-const VITE_THEME_ORIGIN = 'https://vite.wp-vite.lndo.site';
 
 add_action( 'wp_enqueue_scripts', static function (): void {
-	if ( VITE_THEME_DEV ) {
-		wp_enqueue_script_module( 'vite-client', VITE_THEME_ORIGIN . '/@vite/client', array(), null );
-		wp_enqueue_script_module( 'vite-theme-main', VITE_THEME_ORIGIN . '/src/main.js', array(), null );
+	$vite_origin = rtrim( (string) getenv( 'VITE_DEV_SERVER_URL' ), '/' );
+	if ( VITE_THEME_DEV && '' !== $vite_origin ) {
+		wp_enqueue_script_module( 'vite-client', $vite_origin . '/@vite/client', array(), null );
+		wp_enqueue_script_module( 'vite-theme-main', $vite_origin . '/src/main.js', array(), null );
 		return;
 	}
 
@@ -207,7 +224,7 @@ add_action( 'wp_enqueue_scripts', static function (): void {
 
 ```
 
-Save this as `functions.php`. `wp_enqueue_script_module()` emits `type="module"` in development and production and requires WordPress 6.5+. No `script_loader_tag` filter is needed.
+Save this as `functions.php`. Where the variable is missing, such as on a production host, the theme falls through to the built files. `wp_enqueue_script_module()` emits `type="module"` in development and production and requires WordPress 6.5+. No `script_loader_tag` filter is needed.
 
 Activate the theme:
 
@@ -262,6 +279,8 @@ lando app:config --format=json
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"port\":\\s*5173" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"vite\\.\\{\\{ app\\.name \\}\\}\\.\\{\\{ proxy\\.defaultDomain \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"VITE_DEV_SERVER_URL\":\\s*\"\\{\\{ services\\.node\\.url \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"WORDPRESS_URL\":\\s*\"\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"framework\":\\s*\"wordpress\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
@@ -269,6 +288,20 @@ lando app:config --format=json
     </Step>
     <Step name="cleanup">
       <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="runtime-urls" layer="e2e" timeout={300000} render={false} reason="Check that PHP and Node receive the Vite URL and Node receives the WordPress URL">
+    <Step name="start">
+      <UseFixture name="wordpress-vite" />
+      <Run command="lando start --format=json" />
+    </Step>
+    <Step name="check-urls">
+      <Verify command="lando exec node -- printenv VITE_DEV_SERVER_URL WORDPRESS_URL" expect={{ stdout: { regex: "^https://vite\\.wordpress-vite\\.lndo\\.site(?::[0-9]+)?/?\\r?\\nhttps://wordpress-vite\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
+      <Verify command="lando exec appserver -- printenv VITE_DEV_SERVER_URL" expect={{ stdout: { regex: "^https://vite\\.wordpress-vite\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes --format=json" />
     </Step>
   </Scenario>
 </Guide>

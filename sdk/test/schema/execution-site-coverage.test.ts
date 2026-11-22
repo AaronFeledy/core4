@@ -41,7 +41,6 @@ const commandKeys = new Set([
   "artifact",
   "args",
   "dockerfile_inline",
-  "dockerfileInline",
   "healthcheck",
   "readiness",
   "raw",
@@ -119,6 +118,7 @@ test("every authored command string has execution semantics", () => {
 test.each([
   [["services", "web", "command"], "service-command", []],
   [["services", "web", "command", 0], "service-command", [0]],
+  [["services", "web", "extraArgs", 0], "service-extra-args", [0]],
   [["services", "web", "entrypoint"], "service-entrypoint", []],
   [["services", "web", "entrypoint", 0], "service-entrypoint", [0]],
   [["services", "web", "healthcheck"], "healthcheck", []],
@@ -138,7 +138,6 @@ test.each([
   [["services", "web", "build", "args", "TOKEN"], "build-arg", ["TOKEN"]],
   [["services", "web", "build", "args", 0], "build-arg", [0]],
   [["services", "web", "build", "dockerfile_inline"], "build-dockerfile", []],
-  [["services", "web", "build", "dockerfileInline"], "build-dockerfile", []],
   [["tooling", "deploy"], "tooling-task", []],
   [["tooling", "deploy", "cmd"], "tooling-cmd", []],
   [["tooling", "deploy", "cmd", 0], "tooling-cmd", [0]],

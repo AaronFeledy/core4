@@ -1,9 +1,9 @@
 import { configRedactionTokens } from "../../../commands/config-redaction";
+import { renderGlobalConfigResult } from "../../../commands/meta/global-config";
 import {
   type GlobalConfigResult,
   GlobalConfigResultSchema,
-  renderGlobalConfigResult,
-} from "../../../commands/meta/global-config";
+} from "../../../commands/meta/global-config-result";
 import { runGlobalConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { Args } from "../../../spec/metadata";

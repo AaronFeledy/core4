@@ -2,6 +2,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type AppliedAppPlan,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -31,7 +32,7 @@ export const service: ServicePlan = {
   metadata,
   extensions: {},
 };
-export const plan: AppPlan = {
+export const plan: AppliedAppPlan = {
   valueModel: 1,
   id: AppId.make("values"),
   name: "values",

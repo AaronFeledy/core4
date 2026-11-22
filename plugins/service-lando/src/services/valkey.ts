@@ -1,8 +1,9 @@
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { RESERVED_LONG_PORT, extraArgsCommandOptions } from "./_extra-args.ts";
 import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
-import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 
@@ -14,19 +15,31 @@ export const VALKEY_LISTENER = {
   launcher: { setting: (port: number) => `--port ${port}` },
 } as const;
 export const DEFAULT_PORT = VALKEY_LISTENER.port;
+const selectPort = primaryPortSelector(VALKEY_LISTENER);
 const DATA_TARGET = PortablePath.make("/data");
 export const VALKEY_FEATURE_ID = "service-lando.valkey";
 
 const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = plannedPort(service, VALKEY_LISTENER);
+  const port = selectPort(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   if (service.command !== undefined) {
     ctx.setCommand(service.command);
     ctx.setListenerAuthority(launcherAuthority(VALKEY_LISTENER, port));
   } else {
-    ctx.setCommand(["valkey-server", "--appendonly", "yes", "--port", String(port)]);
+    ctx.setCommand(
+      ["valkey-server", "--appendonly", "yes", "--port", String(port)],
+      extraArgsCommandOptions([
+        RESERVED_LONG_PORT,
+        {
+          form: "long",
+          name: "appendonly",
+          remediation: "Valkey always enables appendonly; remove --appendonly from extraArgs.",
+          takesValue: true,
+        },
+      ]),
+    );
   }
   ctx.addStorage({
     store: ctx.serviceStoreName("valkey-data"),
@@ -45,7 +58,7 @@ export const valkeyServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, VALKEY_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "tcp",
       }),
     ),
@@ -56,6 +69,7 @@ export const valkeyServiceType: ServiceType = {
   id: "valkey",
   name: "valkey",
   base: "lando",
+  plannedPort: selectPort,
   identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) =>

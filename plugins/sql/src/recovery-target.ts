@@ -42,7 +42,7 @@ export type SqlRecoveryDeps = SqlMover &
       destination?: string,
     ) => Effect.Effect<VolumeInfo | undefined, unknown>;
     readonly withVolumeLock: <A, E>(
-      instanceId: string,
+      request: { readonly key: string; readonly name: string },
       body: Effect.Effect<A, E>,
     ) => Effect.Effect<A, E | unknown>;
     readonly initialization: (identity: VolumeIdentity) => Effect.Effect<VolumeInitialization, unknown>;

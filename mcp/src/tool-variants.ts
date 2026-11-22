@@ -46,7 +46,6 @@ export const makeToolVariant = (entry: McpCommandEntry, appKey: string | undefin
 };
 
 const decodeToolJson = Schema.decodeUnknownSync(McpSchema.ToolJson);
-const decodeOutputJson = Schema.decodeUnknownSync(McpSchema.ToolOutputJson);
 
 /** The single advertised tool for `variants`, plus the contracts it advertises. */
 export const unionTool = (
@@ -92,13 +91,13 @@ export const unionTool = (
           description: `Input for ${variant.label}.`,
         })),
       }),
-      outputSchema: decodeOutputJson({
+      outputSchema: {
         type: "object",
         anyOf: unique.map((variant) => ({
           ...variant.outputSchema,
           description: `Result from ${variant.label}.`,
         })),
-      }),
+      } satisfies Schema.JsonObject,
     }),
     signatures,
   };

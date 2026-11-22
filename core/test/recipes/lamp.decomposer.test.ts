@@ -28,7 +28,7 @@ const expectedServices = {
     webroot: "{{ recipe.webroot }}",
     composer: "{{ recipe.composer }}",
     port: 80,
-    dependsOn: ["database"],
+    depends_on: ["database"],
     routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
   },
   database: { type: "{{ recipe.database }}" },

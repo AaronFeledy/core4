@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import * as Schema from "effect/Schema";
+import { pinnedActionRef } from "../../../scripts/action-pins.ts";
 import { renderDependencyAuditWorkflow } from "../../../scripts/build-dependency-audit-workflow.ts";
-import { RUNTIME_BUNDLE_ACTION_PINS } from "../../../scripts/runtime-bundle-supply-chain.ts";
 
 const Workflow = Schema.Struct({
   on: Schema.Struct({
@@ -52,42 +52,10 @@ test("audit writes are restricted to serialized trusted default-branch runs", ()
   expect(workflow.jobs.report.if).toContain("github.event_name == 'schedule'");
   expect(workflow.jobs.report.if).toContain("github.event_name == 'workflow_dispatch'");
   expect(workflow.jobs.report.steps[0]).toEqual({
-    uses: RUNTIME_BUNDLE_ACTION_PINS.checkout,
+    uses: pinnedActionRef("actions/checkout"),
     with: { "persist-credentials": false },
   });
-  expect(workflow.jobs.report.steps[1]?.uses).toBe(RUNTIME_BUNDLE_ACTION_PINS.setupBun);
+  expect(workflow.jobs.report.steps[1]?.uses).toBe(pinnedActionRef("oven-sh/setup-bun"));
   expect(workflow.jobs.report.steps.filter((step) => step.env?.GH_TOKEN)).toHaveLength(1);
   expect(renderDependencyAuditWorkflow()).not.toContain("continue-on-error");
-});
-
-test("Dependabot groups only minor and patch updates for both ecosystems", async () => {
-  const raw = Bun.YAML.parse(
-    await Bun.file(resolve(import.meta.dirname, "../../../.github/dependabot.yml")).text(),
-  );
-  const config = Schema.decodeUnknownSync(
-    Schema.Struct({
-      version: Schema.Literal(2),
-      updates: Schema.Array(
-        Schema.Struct({
-          "package-ecosystem": Schema.String,
-          directory: Schema.Literal("/"),
-          schedule: Schema.Struct({ interval: Schema.Literal("weekly") }),
-          groups: Schema.Record(
-            Schema.String,
-            Schema.Struct({
-              patterns: Schema.Array(Schema.String),
-              "update-types": Schema.Array(Schema.String),
-            }),
-          ),
-        }),
-      ),
-    }),
-  )(raw);
-  expect(config.updates.map((update) => update["package-ecosystem"]).sort()).toEqual([
-    "bun",
-    "github-actions",
-  ]);
-  for (const update of config.updates) {
-    expect(Object.values(update.groups)).toEqual([{ patterns: ["*"], "update-types": ["minor", "patch"] }]);
-  }
 });

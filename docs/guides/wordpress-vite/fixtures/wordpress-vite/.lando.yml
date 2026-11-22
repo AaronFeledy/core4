@@ -5,7 +5,9 @@ services:
     primary: true
     framework: wordpress
     port: 80
-    dependsOn:
+    environment:
+      VITE_DEV_SERVER_URL: "{{ services.node.url }}"
+    depends_on:
       - database
     routes:
       - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
@@ -16,6 +18,9 @@ services:
     type: "node:22"
     port: 5173
     primary: false
+    environment:
+      VITE_DEV_SERVER_URL: "{{ services.node.url }}"
+      WORDPRESS_URL: "{{ services.appserver.url }}"
     routes:
       - hostname: "vite.{{ app.name }}.{{ proxy.defaultDomain }}"
         scheme: both

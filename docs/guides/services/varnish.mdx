@@ -99,7 +99,7 @@ services:
     port: 8080
 ```
 
-Lando's launcher starts `varnishd` with `-a :8080` and keeps the management interface on `localhost:6082`. Port `6082` fails during planning while Lando owns the launcher, because that interface already binds it. An authored `command:` or `entrypoint:` drops the reservation: you own the flags, and Lando never appends `-a` for you. When startup fails with an authored launcher, remediation names the setting to pass, such as `-a :8080`.
+Lando's launcher starts `varnishd` with `-a :8080` and keeps the management interface on `localhost:6082`. Port `6082` fails during planning while Lando owns the launcher, because that interface already binds it. An authored `command:` or `entrypoint:` drops the reservation. Pass `-a ":{{ service.port }}"` to bind the [planned HTTP port](../landofile/expressions.mdx#your-services-own-port); Lando never appends `-a` for you. When startup fails with an authored launcher, remediation names the setting to pass, such as `-a :8080`.
 
 Apply the change with `lando rebuild`, then open the Varnish URL from `lando info`.
 

@@ -34,7 +34,7 @@ export const source = {
         framework: "django",
         port: 8000,
         environment,
-        dependsOn: ["cache"],
+        depends_on: ["cache"],
         routes: defaultRoutes,
       },
       cache: { type: "redis" },
@@ -46,7 +46,12 @@ export const source = {
         cmds: ["python manage.py"],
         wrapper: true,
       },
-      pip: { service: "web", description: "Run pip inside the web service.", cmds: ["pip"], wrapper: true },
+      pip: {
+        service: "web",
+        description: "Run pip in the shared Python environment.",
+        cmds: ["python -m pip"],
+        wrapper: true,
+      },
     },
   },
   variants: [
@@ -57,10 +62,11 @@ export const source = {
           worker: {
             type: "python:3.12",
             framework: "django",
-            command: "celery -A app worker --loglevel=info",
+            command: "exec celery -A config worker --loglevel=info",
+            endpoints: [],
             restart: "unless-stopped",
             environment,
-            dependsOn: ["cache"],
+            depends_on: ["cache"],
           },
         },
       },
@@ -68,12 +74,12 @@ export const source = {
     {
       when: '{{ eq(options.database, "postgres") }}',
       config: {
-        services: { web: { dependsOn: ["database", "cache"] }, database: { type: "postgres" } },
+        services: { web: { depends_on: ["database", "cache"] }, database: { type: "postgres" } },
       },
     },
     {
       when: '{{ and(options.celery, eq(options.database, "postgres")) }}',
-      config: { services: { worker: { dependsOn: ["database", "cache"] } } },
+      config: { services: { worker: { depends_on: ["database", "cache"] } } },
     },
     {
       when: '{{ eq(options.database, "sqlite") }}',

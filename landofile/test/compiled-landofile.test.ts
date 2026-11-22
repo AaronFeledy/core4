@@ -154,11 +154,7 @@ test("rebases keyed arrays and aliases through includes, override and reset", as
         templates: { modules: [] },
       }),
     );
-    expect(compiled.pendingSites.map((site) => site.path)).toContainEqual([
-      "services",
-      "web",
-      "workingDirectory",
-    ]);
+    expect(compiled.pendingSites.map((site) => site.path)).toContainEqual(["services", "web", "working_dir"]);
     expect(compiled.pendingSites.map((site) => site.path)).toContainEqual([
       "services",
       "web",
@@ -277,11 +273,11 @@ test("uses the same captured environment for mixed-scope sites", async () => {
 
 test("maps schema-transform destinations from surviving origins rather than equal string contents", async () => {
   const compiled = await load({
-    env_file: "{{ app.name }}",
+    serviceDefaults: { env_file: "{{ app.name }}" },
     services: {
       web: {
         appMount: "{{ app.name }}",
-        envFile: "{{ app.name }}",
+        env_file: "{{ app.name }}",
         healthcheck: { test: ["CMD-SHELL", "echo {{ app.name }}"] },
         security: { cas: "{{ app.name }}" },
         configs: ["{{ app.name }}"],
@@ -289,9 +285,9 @@ test("maps schema-transform destinations from surviving origins rather than equa
     },
   });
   expect(compiled.pendingSites.map((site) => site.path)).toEqual([
-    ["env_file", 0],
+    ["serviceDefaults", "env_file", 0],
     ["services", "web", "appMount", "target"],
-    ["services", "web", "envFile", 0],
+    ["services", "web", "env_file", 0],
     ["services", "web", "healthcheck", "command"],
     ["services", "web", "security", "ca", 0],
     ["services", "web", "configs", 0, "source"],

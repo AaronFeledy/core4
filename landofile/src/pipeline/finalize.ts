@@ -1,20 +1,31 @@
 import { isPlainRecord, mergeValuesWithOrigins, valueOriginAt } from "@lando/sdk/landofile";
 import { AbsolutePath, LandofileShape, LoadScopedLandofile, type ParsedPendingSite } from "@lando/sdk/schema";
 import type { Logger } from "@lando/sdk/services";
-import { type Context, Effect } from "effect";
+import { type Context, Effect, Result } from "effect";
 import { captureCompilationContext, composedCarrier } from "../compilation.ts";
 import { survivingSites } from "../compiled-sites.ts";
 import { composeKeyRejectedError, firstComposeRejection } from "../compose/rejections.ts";
 import { decodedPendingSites } from "../decoded-sites.ts";
 import { unionEnvironmentDependencies } from "../environment-dependencies.ts";
+import { prepareDeferredExtraHosts } from "../extra-host-sites.ts";
 import type { LandofileRelaxedRead } from "../include-context.ts";
 import { ownVersionConstraintEntries } from "../include-fragment.ts";
 import { includeAcquisitionView } from "../include-layer-overlays.ts";
+import {
+  type LandofileLintDiagnostic,
+  type LoadUnavailableSite,
+  diagnosticUnavailableSites,
+} from "../lint-diagnostic.ts";
 import { healthcheckDialectIssues } from "../lint-healthcheck.ts";
 import { attributeLintIssue } from "../lint-source.ts";
 import { prepareIncludeAcquisition } from "../load-acquisition.ts";
 import type { LandofileLoadPolicy } from "../load-expression-file.ts";
-import { type LoadFailureRecorder, createLoadFailureRecorder, finishLoadStage } from "../load-failures.ts";
+import {
+  type LoadFailureRecorder,
+  type RecordedLoadFailure,
+  createLoadFailureRecorder,
+  finishLoadStage,
+} from "../load-failures.ts";
 import { loadVersionConstraints } from "../load-version-constraints.ts";
 import {
   type AuthoredDocument,
@@ -23,6 +34,7 @@ import {
   normalizeLocalIncludePaths,
   normalizeReferencedFiles,
 } from "../provenance.ts";
+import { hostReadinessPortSite, servicePortSiteError } from "../service-port-sites.ts";
 import { applyToolingIncludeDefaults } from "../tooling-include-defaults.ts";
 import { resolveToolingIncludes, winningInternalToolingTasks } from "../tooling-includes.ts";
 import { rejectUnsupportedToolingFeatures, scanToolingForUnsupported } from "../tooling-unsupported.ts";
@@ -51,12 +63,15 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     readonly logger?: Context.Service.Shape<typeof Logger> | undefined;
     /** Observe the assembled document after tooling composition, before final refusal checks. */
     readonly onAssembled?: (document: AuthoredDocument) => void;
+    readonly onDiagnostic?: (diagnostic: LandofileLintDiagnostic) => void;
+    readonly onLoadBlocked?: (cause: RecordedLoadFailure | undefined) => void;
   },
 ) {
   // Replacement origins on overridden keys make every origin-filtered site consumer drop the
   // displaced expressions; shadowed `lando:` sites stay in scope for constraint accumulation.
   const document = applyFinalizeOverrides(authoredDocument, context.overrides);
   const recorder = context.recorder ?? context.scope?.recorder ?? createLoadFailureRecorder();
+  if (context.onDiagnostic !== undefined) recorder.diagnostic = true;
   const scope = {
     ...(context.scope ??
       (yield* buildLandofileLoadScope([{ file, value: document.value }], context.env, context.pendingSites))),
@@ -181,71 +196,105 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   };
   context.onAssembled?.(assembled);
   const effectiveOrigins = assembled.provenance.origins;
-  yield* context.rootDocuments === undefined
-    ? finishLoadStage(file, recorder)
-    : finishClassifiedLoadStage(file, recorder, {
+  const effectiveSites = survivingSites(effectiveOrigins, scope.pendingSites ?? []);
+  const hostPortSite = hostReadinessPortSite(assembled.value, effectiveSites);
+  if (hostPortSite !== undefined)
+    recorder.record(servicePortSiteError(hostPortSite.source, "host-readiness"));
+  const extraHosts = prepareDeferredExtraHosts(assembled.value, effectiveSites, {
+    file,
+    env: scope.env,
+    recipe: scope.recipe,
+    recorder,
+  });
+  const load =
+    context.rootDocuments === undefined
+      ? finishLoadStage(file, recorder)
+      : finishClassifiedLoadStage(file, recorder, {
+          appRoot: context.appRoot,
+          documents: context.rootDocuments,
+        });
+  let diagnosticUnavailable: readonly LoadUnavailableSite[] | undefined;
+  const finalize = Effect.gen(function* () {
+    yield* Effect.forEach(recorder.effectiveChecks, (check) => check);
+    const unsupportedPath = scanToolingForUnsupported(assembled.value)[0]?.path ?? [];
+    yield* rejectUnsupportedToolingFeatures(
+      valueOriginAt(effectiveOrigins, unsupportedPath).source.file,
+      assembled.value,
+    );
+    const compose = firstComposeRejection(assembled.value);
+    if (compose !== undefined) {
+      return yield* Effect.fail(
+        composeKeyRejectedError({
+          source: valueOriginAt(effectiveOrigins, compose.path).source.file,
+          match: compose,
+        }),
+      );
+    }
+    const dialectIssues = healthcheckDialectIssues(assembled, diagnosticUnavailable);
+    if (dialectIssues.length > 0) {
+      return yield* Effect.fail(
+        landofileValidationError(file, dialectIssues, {
+          headline: "Landofile mixes probe dialects within a source",
+          remediation:
+            "Use the replacement keys in each finding, or write the entire probe in Compose syntax with `test:`.",
+          location: (issue) => {
+            const { line } = attributeLintIssue(issue, "effective", assembled.provenance.documents);
+            return line === undefined || issue.source === undefined || !("file" in issue.source)
+              ? undefined
+              : `${issue.source.file}:${line}`;
+          },
+        }),
+      );
+    }
+    const validated = yield* validateLandofile(file, extraHosts.value, assembled.provenance);
+    const defaults = applyToolingIncludeDefaults(validated, tooling.defaults, {
+      included: tooling.tooling.value,
+      authored: ownOrigins,
+      effective: effectiveOrigins,
+    });
+    const decoded = defaults.document;
+    const compiled = LoadScopedLandofile.make({
+      stage: "load-scoped",
+      document: decoded,
+      pendingSites: [
+        ...decodedPendingSites(extraHosts.value, decoded, {
+          sites: effectiveSites,
+          extraHosts: extraHosts.prepared,
+        }),
+        ...survivingSites(defaults.addedOrigins, scope.pendingSites ?? []),
+      ],
+      context: { appRoot: AbsolutePath.make(context.appRoot), env: scope.env },
+      provenance: {
+        ...assembled.provenance,
+        landofilePath: file,
+        origins: defaults.origins,
         appRoot: context.appRoot,
-        documents: context.rootDocuments,
-      });
-  yield* Effect.forEach(recorder.effectiveChecks, (check) => check);
-  const unsupportedPath = scanToolingForUnsupported(assembled.value)[0]?.path ?? [];
-  yield* rejectUnsupportedToolingFeatures(
-    valueOriginAt(effectiveOrigins, unsupportedPath).source.file,
-    assembled.value,
-  );
-  const compose = firstComposeRejection(assembled.value);
-  if (compose !== undefined) {
-    return yield* Effect.fail(
-      composeKeyRejectedError({
-        source: valueOriginAt(effectiveOrigins, compose.path).source.file,
-        match: compose,
-      }),
-    );
-  }
-  const dialectIssues = healthcheckDialectIssues(assembled);
-  if (dialectIssues.length > 0) {
-    return yield* Effect.fail(
-      landofileValidationError(file, dialectIssues, {
-        headline: "Landofile mixes probe dialects within a source",
-        remediation:
-          "Use the replacement keys in each finding, or write the entire probe in Compose syntax with `test:`.",
-        location: (issue) => {
-          const { line } = attributeLintIssue(issue, "effective", assembled.provenance.documents);
-          return line === undefined || issue.source === undefined || !("file" in issue.source)
-            ? undefined
-            : `${issue.source.file}:${line}`;
-        },
-      }),
-    );
-  }
-  const validated = yield* validateLandofile(file, assembled.value, assembled.provenance);
-  const defaults = applyToolingIncludeDefaults(validated, tooling.defaults, {
-    included: tooling.tooling.value,
-    authored: ownOrigins,
-    effective: effectiveOrigins,
+        environmentDependencies: unionEnvironmentDependencies(
+          assembled.provenance.environmentDependencies,
+          ...(scope.environmentRecorder === undefined ? [] : [scope.environmentRecorder.dependencies()]),
+        ),
+      } satisfies LandofileProvenance,
+    });
+    return compiled;
   });
-  const decoded = defaults.document;
-  const compiled = LoadScopedLandofile.make({
-    stage: "load-scoped",
-    document: decoded,
-    pendingSites: [
-      ...decodedPendingSites(
-        assembled.value,
-        decoded,
-        survivingSites(effectiveOrigins, scope.pendingSites ?? []),
-      ),
-      ...survivingSites(defaults.addedOrigins, scope.pendingSites ?? []),
-    ],
-    context: { appRoot: AbsolutePath.make(context.appRoot), env: scope.env },
-    provenance: {
-      ...assembled.provenance,
-      origins: defaults.origins,
-      appRoot: context.appRoot,
-      environmentDependencies: unionEnvironmentDependencies(
-        assembled.provenance.environmentDependencies,
-        ...(scope.environmentRecorder === undefined ? [] : [scope.environmentRecorder.dependencies()]),
-      ),
-    } satisfies LandofileProvenance,
-  });
-  return compiled;
+  if (context.onDiagnostic === undefined) {
+    yield* load;
+    return yield* finalize;
+  }
+  const loaded = yield* load.pipe(Effect.result);
+  if (Result.isSuccess(loaded)) return yield* finalize;
+  const identityPending = effectiveSites.some((site) => site.path[0] === "name");
+  const unavailable =
+    !recorder.diagnostic || identityPending
+      ? Result.fail(recorder.entries.find((entry) => entry.kind !== "local") ?? recorder.entries[0])
+      : diagnosticUnavailableSites(assembled, recorder.entries);
+  if (Result.isSuccess(unavailable)) {
+    diagnosticUnavailable = unavailable.success;
+    const diagnostic = yield* finalize.pipe(Effect.result);
+    if (Result.isSuccess(diagnostic))
+      context.onDiagnostic({ landofile: diagnostic.success, unavailable: unavailable.success });
+  } else {
+    context.onLoadBlocked?.(unavailable.failure);
+  }
+  return yield* Effect.fail(loaded.failure);
 });

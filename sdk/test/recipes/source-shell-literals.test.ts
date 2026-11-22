@@ -8,6 +8,30 @@ const context = { sourceKind: "local", packageName: "example", assets: [] } as c
 const base = { id: "example", title: "Example", description: "Example", version: "1.0.0" };
 const renderContext = { appRoot: AbsolutePath.make("/app"), env: { HOME: "/host-home" } };
 
+test("carries the recipe's authored service port expression to planning", () => {
+  const command = ["redis-server", "--port", "{{ service.port }}"];
+  const config = { services: { cache: { type: "redis", command } } };
+  const manifest = Result.getOrThrow(compileRecipeSource({ ...base, config }, context));
+  const compiled = Result.getOrThrow(renderCompiledRecipeSnapshot(manifest.snapshot, {}, renderContext));
+  expect(compiled.document).toEqual(config);
+  expect(compiled.pendingSites.map((site) => site.path)).toEqual([["services", "cache", "command", 2]]);
+});
+
+test.each([
+  [{ environment: { PORT: "{{ service.port }}" } }, ["environment", "PORT"]],
+  [{ command: ["redis-server", "--port", "{{ service.name }}"] }, ["command", 2]],
+] as const)("rejects a recipe self expression at %j (%j)", (service, path) => {
+  const config = { services: { cache: { type: "redis", ...service } } };
+  expect(compileRecipeSource({ ...base, config }, context)).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "RecipeSourceCompileError",
+      reason: "config-invalid",
+      path: ["services", "cache", ...path],
+    },
+  });
+});
+
 test.each(["${HOME}", "${HOME:-fallback}", "${HOME-fallback}", "${HOME:?required}", "${HOME:+alt}"])(
   "rejects active shell syntax %s before emitting an unrenderable snapshot",
   (parameter) => {
@@ -18,7 +42,11 @@ test.each(["${HOME}", "${HOME:-fallback}", "${HOME-fallback}", "${HOME:?required
     // Then
     expect(result).toMatchObject({
       _tag: "Failure",
-      failure: { _tag: "RecipeSourceCompileError", reason: "config-invalid", path: "services.app.command" },
+      failure: {
+        _tag: "RecipeSourceCompileError",
+        reason: "config-invalid",
+        path: ["services", "app", "command"],
+      },
     });
   },
 );
@@ -40,7 +68,7 @@ test("rejects active shell syntax even in an unselected binding-site variant", (
     failure: {
       _tag: "RecipeSourceCompileError",
       reason: "config-invalid",
-      path: "services.app.environment.HOME",
+      path: ["services", "app", "environment", "HOME"],
     },
   });
 });

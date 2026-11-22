@@ -21,14 +21,14 @@ test("preparation preserves authored forms and original alias origins inside ove
   expect(result.value).toEqual({
     services: {
       web: override({
-        workingDirectory: "/site",
+        working_dir: "/site",
         appMount: "/site",
         primary: "{{ recipe.flag }}",
-        envFile: ["local.env"],
+        env_file: ["local.env"],
       }),
     },
   });
-  expect(valueOriginAt(result.origins, ["services", "web", "envFile"]).source).toEqual({
+  expect(valueOriginAt(result.origins, ["services", "web", "env_file"]).source).toEqual({
     file: "/app/.lando.local.yml",
     layer: "local",
     path: ["services", "web", "env_file"],

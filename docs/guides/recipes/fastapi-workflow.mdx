@@ -15,7 +15,7 @@ cd fastapi-demo
 lando start
 ```
 
-`--yes` accepts every prompt default. The named init creates `fastapi-demo/` and writes only `.lando.yml` there. Change into that directory before app commands. Start brings up Python, Postgres, and Redis, running `python -m venv /app/.venv` if `/app/.venv/bin/pip` is not executable. The recipe puts its `bin` directory first on `PATH`, so `lando pip`, `lando uvicorn`, and bare commands inside `web` use that environment. Restart and a plain `lando destroy` keep it. `lando destroy --volumes` or `--purge` removes it, and the next start recreates an empty venv. `web` still idles until you serve an app, so the URL answers only after uvicorn runs. No application files or dependencies are installed automatically, even if `requirements.txt` exists.
+`--yes` accepts every prompt default. The named init creates `fastapi-demo/` and writes only `.lando.yml` there. Start brings up Python, Postgres, and Redis. The stock [Python service](../services/python.mdx) gives `web` an active `/app/.venv` that survives rebuilds. `lando pip`, `lando uvicorn`, and bare commands inside `web` use it. No application files or dependencies are installed automatically, even if `requirements.txt` exists. The URL answers after you start uvicorn.
 
 If something else owns 80 or 443, Lando takes the next free port (usually `:8080` / `:8443`), and `lando info` shows it.
 
@@ -42,9 +42,10 @@ def root():
 Add `.venv/` to `.gitignore`. Keep `requirements.txt` in git for reproducible installs on a fresh clone or after `lando destroy --volumes` removes the overlay:
 
 ```sh
-lando pip freeze > requirements.txt
-lando pip install -r requirements.txt
+lando pip freeze --local > requirements.txt
 ```
+
+On a fresh clone, `lando start` installs `requirements.txt` before `web` starts. Run `lando restart` after editing the file in a running app.
 
 Check the installed tools and both backing services:
 
@@ -120,16 +121,15 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. The rec
       <UseFixture name="venv-and-env" />
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\\[\\s*\"uvicorn\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"VIRTUAL_ENV\":\\s*\"/app/\\.venv\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"PATH\":\\s*\"/app/\\.venv/bin:" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pip\":\\s*\\{[^}]*\"cmds\":\\s*\\[\\s*\"pip\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uvicorn\":\\s*\\{[^}]*\"cmds\":\\s*\\[\\s*\"uvicorn\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DATABASE_URL\":\\s*\"postgresql://\\{\\{ services\\.database\\.creds\\.user \\}\\}:\\{\\{ services\\.database\\.creds\\.password \\}\\}@database:5432/\\{\\{ services\\.database\\.creds\\.database \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"REDIS_URL\":\\s*\"redis://cache:6379/0\"" } }} />
     </Step>
     <Step name="plan">
-      <Run command="lando app:cache:refresh" />
-      <Run command="lando info" />
+      <Run command={`lando app:config:set services.web.command '[uvicorn, app.main:app, --host, 0.0.0.0, --port, "{{ service.port }}", --reload]' --format=json`} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/app/\\.venv\"" } }} />
     </Step>
   </Scenario>
 
@@ -142,15 +142,15 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. The rec
 
 ## Serve on every start
 
-Install dependencies before setting a serving command. The recipe creates the venv, but it does not install `requirements.txt` for you. Keep the generated entrypoint and environment; give `web` a bare uvicorn `command` in `.lando.yml`:
+Install dependencies before setting a serving command. Give `web` a bare uvicorn `command` in `.lando.yml`:
 
 ```yaml
 services:
   web:
-    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000", --reload]
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "{{ service.port }}", --reload]
 ```
 
-Start to pick up the new command:
+The [port expression](../landofile/expressions.mdx#your-services-own-port) passes the `web` service's planned port to Uvicorn. Start to pick up the new command:
 
 ```sh
 lando start
@@ -173,7 +173,7 @@ Put host `database` in your SQLAlchemy / psycopg DSN, not `127.0.0.1` or `localh
 
 ## Hand FastAPI its settings with env vars
 
-The recipe doesn't set connection URLs on `web`. Add them under the generated `web.environment`, keeping `VIRTUAL_ENV` and `PATH`, and let Lando fill the Postgres credentials from the `database` service:
+The recipe doesn't set connection URLs on `web`. Add `environment` under `services.web` and let Lando fill the Postgres credentials from the `database` service:
 
 ```yaml
 services:

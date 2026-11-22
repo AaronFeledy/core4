@@ -217,7 +217,7 @@ describe("ruby:3.3 ServiceType", () => {
       type: "ruby:3.3",
       framework: "rails",
       webroot: "frontend/public",
-      workingDirectory: "/work",
+      working_dir: "/work",
       environment: { RAILS_ENV: "production", FOO: "bar", BINDING: "127.0.0.2" },
     });
 

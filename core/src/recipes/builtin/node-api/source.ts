@@ -47,7 +47,7 @@ export const source = {
       when: '{{ ne(options.database, "none") }}',
       config: {
         services: {
-          api: { environment: { DATABASE_URL: postgresUrl }, dependsOn: ["database"] },
+          api: { environment: { DATABASE_URL: postgresUrl }, depends_on: ["database"] },
           database: { type: "{{ recipe.database }}" },
         },
       },

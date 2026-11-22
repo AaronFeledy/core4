@@ -119,13 +119,21 @@ export const buildStartSummary = (
               ? result.checks?.find((check) => checkEndpoint(result, check) === url)
               : undefined;
           let suffix = "";
+          const redirect =
+            check?.statusCode !== undefined && check.statusCode >= 300 && check.statusCode < 400;
           if (check !== undefined) {
             switch (check.verdict) {
               case "ready":
-                suffix = check.statusCode === undefined ? "" : ` ${check.statusCode}`;
+                suffix = check.statusCode === undefined ? "" : ` ${check.detail ?? check.statusCode}`;
+                break;
+              case "expected":
+                suffix = ` · expected${check.detail === undefined ? "" : `: ${check.detail}`}`;
                 break;
               case "app-error":
-                suffix = ` ${check.statusCode} from your app`;
+                suffix =
+                  redirect && check.detail !== undefined
+                    ? ` · ${check.detail}`
+                    : ` ${check.statusCode} from your app`;
                 break;
               case "service-error":
                 suffix = ` ${check.statusCode} from the web server`;
@@ -152,16 +160,36 @@ export const buildStartSummary = (
         rows,
         ...(rows.length === 0 ? { notes: ["No services were started."] } : {}),
       },
+      ...(result.servicesStayedDown === undefined || result.servicesStayedDown.length === 0
+        ? []
+        : [
+            {
+              title: "Stayed down",
+              rows: result.servicesStayedDown.map((name) => ({ label: name })),
+              notes: ["Run `lando start` to start them."],
+            },
+          ]),
     ],
   };
 };
+
+export const expectedCheckMessages = (checks: readonly CheckResult[] = []): string[] =>
+  checks.flatMap((check) =>
+    check.verdict === "expected" ? [check.message ?? check.detail ?? `${check.url} · expected`] : [],
+  );
 
 const renderPlainStartAppResult = (result: StartAppResult): string => {
   const services = serviceRowsText(result.servicesStarted);
   const ready = result.servicesStarted.every((service) =>
     ["running", "healthy", "ready", "completed"].includes(service.state),
   );
-  return lifecycleLine(ready ? "ready" : "started", result.app, services);
+  const started = lifecycleLine(ready ? "ready" : "started", result.app, services);
+  const stayedDown = result.servicesStayedDown;
+  const summary =
+    stayedDown === undefined || stayedDown.length === 0
+      ? started
+      : `${started}; stayed down: ${stayedDown.join(", ")}`;
+  return [summary, ...expectedCheckMessages(result.checks)].join("\n");
 };
 
 export const renderStartAppResult = (result: StartAppResult, ctx?: RenderContext): string => {

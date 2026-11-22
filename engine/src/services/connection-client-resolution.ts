@@ -1,7 +1,7 @@
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
-import type { ServiceType, ServiceTypeResolution } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { ServiceLaunchers, type ServiceType, type ServiceTypeResolution } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 export const normalizeConnectionClients = Effect.fnUntraced(function* (
   declaration: Pick<ServiceType, "id" | "toolingForConnection">,
@@ -14,6 +14,16 @@ export const normalizeConnectionClients = Effect.fnUntraced(function* (
   },
 ) {
   const { raw, parent, inheritedFactory } = contribution;
+  if (raw.launchers !== undefined && !Schema.is(ServiceLaunchers)(raw.launchers)) {
+    return yield* Effect.fail(
+      new ServiceTypeError({
+        serviceType: declaration.id,
+        message:
+          "Invalid service launcher table. Each key must be a lowercase colon-prefixed kebab name other than :host, with a non-empty argv prefix.",
+        remediation: "Correct the service type's launcher declaration or update its plugin.",
+      }),
+    );
+  }
   if (raw.connection !== undefined && raw.nonSqlCreds !== undefined) {
     return yield* Effect.fail(
       new ServiceTypeError({

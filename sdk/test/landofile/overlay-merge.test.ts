@@ -18,7 +18,6 @@ const identities = [
   { field: "endpoints", key: "name" },
   { field: "logs", key: "id" },
   { field: "routes", key: "hostname" },
-  { field: "dependsOn", key: "service" },
 ] as const;
 
 describe("mergeLandofiles", () => {
@@ -82,14 +81,26 @@ describe("mergeLandofiles", () => {
     },
   );
 
-  test("keeps dependsOn identity merging by service", () => {
-    // Given dependencies with distinct service identities.
-    const base = { dependsOn: [{ service: "a", condition: "started" }, { service: "b" }] };
-    const local = { dependsOn: [{ service: "a", condition: "healthy" }] };
-    // When the dependency lists merge.
+  test("keeps depends_on identity merging by service", () => {
+    // Given dependencies with distinct service identities as condition maps.
+    const base = { depends_on: { a: { condition: "started" }, b: {} } };
+    const local = { depends_on: { a: { condition: "healthy" } } };
+    // When the dependency maps merge.
     const result = mergeValues(ServiceConfig, base, local);
-    // Then the matching dependency updates while the other remains.
-    expect(result).toEqual({ dependsOn: [{ service: "a", condition: "healthy" }, { service: "b" }] });
+    // Then the match updates, the survivor keeps a default condition, and form stays a Compose map.
+    expect(result).toEqual({
+      depends_on: { a: { condition: "healthy" }, b: { condition: "service_started" } },
+    });
+  });
+
+  test("keeps depends_on string-list identity merging by service name", () => {
+    // Given string-list dependencies with a shared service name.
+    const base = { depends_on: ["a", "b"] };
+    const local = { depends_on: ["a", "c"] };
+    // When the lists merge.
+    const result = mergeValues(ServiceConfig, base, local);
+    // Then matching names collapse and the merged document stays a string list.
+    expect(result).toEqual({ depends_on: ["a", "b", "c"] });
   });
 
   test("clears base object routes when the local layer supplies an empty array", () => {

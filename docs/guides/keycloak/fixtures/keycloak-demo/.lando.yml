@@ -1,0 +1,31 @@
+name: keycloak-demo
+services:
+  keycloak:
+    type: compose
+    image: quay.io/keycloak/keycloak:26.8
+    command: start-dev --import-realm
+    appMount: false
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: local-development-only
+      KC_HEALTH_ENABLED: "true"
+      KC_HOSTNAME: "{{ service.url }}"
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_PROXY_HEADERS: xforwarded
+      APP_URL: "{{ services.app.url }}"
+    volumes:
+      - ./realm:/opt/keycloak/data/import:ro
+    endpoints:
+      - http:8080
+    readiness:
+      kind: http
+      url: http://localhost:9000/health/ready
+      intervalSeconds: 5
+      retries: 40
+  app:
+    type: "node:22"
+    environment:
+      OIDC_ISSUER: "{{ services.keycloak.url }}/realms/demo"
+    depends_on:
+      keycloak:
+        condition: service_healthy

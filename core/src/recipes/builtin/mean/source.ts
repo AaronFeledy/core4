@@ -16,14 +16,14 @@ export const source = {
         type: "node:{{ recipe.node }}",
         primary: true,
         port: 3000,
-        command: "npm install --no-audit --no-fund && exec node server.js",
+        command: [":node-install-run", "start"],
         environment: {
           NODE_ENV: "development",
           PORT: 3000,
           MONGO_URL:
             "mongodb://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?authSource=admin",
         },
-        dependsOn: ["database"],
+        depends_on: ["database"],
         routes: defaultRoutes,
       },
       database: { type: "mongodb" },
@@ -42,7 +42,7 @@ export const source = {
       when: "{{ options.redis }}",
       config: {
         services: {
-          api: { environment: { REDIS_URL: "redis://cache:6379" }, dependsOn: ["cache"] },
+          api: { environment: { REDIS_URL: "redis://cache:6379" }, depends_on: ["cache"] },
           cache: { type: "redis" },
         },
       },

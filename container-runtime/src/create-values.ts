@@ -1,4 +1,11 @@
-import { type AppPlan, ServiceName, type ServicePlan, probeTargetError } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  ComposeDurationSecondsField,
+  ServiceName,
+  type ServicePlan,
+  probeTargetError,
+} from "@lando/sdk/schema";
+import { Predicate, Result, Schema } from "effect";
 import { compileServiceProbe } from "./service-probe.ts";
 
 export const normalizeCommand = (
@@ -17,18 +24,32 @@ export const normalizeEntrypoint = (
   return [...entrypoint];
 };
 
+/** Native StartInterval nanoseconds from the healthcheck compose extension only. */
+export const nativeStartIntervalNs = (service?: Pick<ServicePlan, "extensions">): number | undefined => {
+  const compose = service?.extensions.compose;
+  if (!Predicate.isObject(compose)) return undefined;
+  const healthcheck = compose.healthcheck;
+  if (!Predicate.isObject(healthcheck) || typeof healthcheck.start_interval !== "string") return undefined;
+  const decoded = Schema.decodeUnknownResult(ComposeDurationSecondsField)(healthcheck.start_interval);
+  if (Result.isFailure(decoded)) return undefined;
+  return decoded.success * 1_000_000_000;
+};
+
 export const containerHealthcheck = (
   healthcheck: ServicePlan["healthcheck"],
   plan?: Pick<AppPlan, "slug" | "networking">,
-  service?: Pick<ServicePlan, "name" | "endpoints">,
+  service?: Pick<ServicePlan, "name" | "endpoints" | "extensions">,
 ) => {
   if (healthcheck === undefined) return undefined;
   const invalid = probeTargetError(healthcheck, service?.name ?? ServiceName.make("unknown"), "healthcheck");
   if (invalid !== undefined) throw invalid;
+  const startInterval = nativeStartIntervalNs(service);
   switch (healthcheck.kind) {
     case "none":
       return { Test: ["NONE"] };
-    case "command": {
+    case "command":
+    case "http":
+    case "tcp": {
       const command = compileServiceProbe(healthcheck, plan, service);
       if (command === undefined) return undefined;
       return {
@@ -39,10 +60,8 @@ export const containerHealthcheck = (
         ...(healthcheck.startPeriodSeconds === undefined
           ? {}
           : { StartPeriod: healthcheck.startPeriodSeconds * 1_000_000_000 }),
+        ...(startInterval === undefined ? {} : { StartInterval: startInterval }),
       };
     }
-    case "http":
-    case "tcp":
-      return undefined;
   }
 };

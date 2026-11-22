@@ -135,16 +135,17 @@ export const prepareHealthcheckAttempt = Effect.fnUntraced(function* (input: {
   }
   const compiled = yield* Effect.try({
     try: () => compileServiceProbe(probe, input.plan, input.plan?.services[service]),
-    catch: () =>
+    catch: (cause) =>
       new HealthcheckError({
         service: String(service),
-        message: "The service probe listener could not be resolved.",
-        remediation: "Supply the full application plan and a declared service listener.",
+        message: "The service probe could not be compiled.",
+        remediation:
+          cause instanceof Error ? cause.message : "Review the service probe and application plan.",
       }),
   });
   if (compiled === undefined) return yield* Effect.fail(unsupportedHealthcheckTarget(service, probe));
   return {
-    rendered: compiled.join(" "),
+    rendered: probe.kind === "http" ? "HTTP probe" : compiled.join(" "),
     run: Effect.suspend(() =>
       input.exec(
         {

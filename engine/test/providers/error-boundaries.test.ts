@@ -472,34 +472,43 @@ test("capability construction failures retain their original debug cause after c
   expect(result.failure.cause).toBe(original);
 });
 
-test.each(["effect", "stream"] as const)("%s defects are not sanitized", async (kind) => {
-  // Given
-  const defect = new ProviderUnavailableError(errorFields);
-  const provider = {
-    ...TestRuntimeProvider,
-    start: () => Effect.die(defect),
-    exportArtifact: () => Stream.die(defect),
-  };
-  // When
-  const exit = await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        yield* (yield* RedactionService).registerValues([canary]);
-        const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
-        return yield* Effect.exit(
-          kind === "effect"
-            ? selected.start(target)
-            : Stream.runDrain(selected.exportArtifact({ providerId: plan.provider, ref: "image" })),
-        );
-      }),
-    ).pipe(Effect.provide(registryLayer(provider))),
-  );
-  // Then
-  if (Exit.isSuccess(exit)) throw new Error("Expected defect");
-  const found = Cause.findDie(exit.cause);
-  expect(Result.isFailure(found) ? undefined : found.success.defect).toBe(defect);
-  expect(defect.message).toContain(canary);
-});
+test.each(["effect", "stream"] as const)(
+  "%s provider defects are redacted and other defects pass through",
+  async (kind) => {
+    // Given one provider-error defect and one unexpected defect.
+    const providerDefect = new ProviderUnavailableError(errorFields);
+    const crash = new Error(canary);
+    const cause = Cause.combine(Cause.die(providerDefect), Cause.die(crash));
+    const provider = {
+      ...TestRuntimeProvider,
+      start: () => Effect.failCause(cause),
+      exportArtifact: () => Stream.failCause(cause),
+    };
+    // When
+    const exit = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          yield* (yield* RedactionService).registerValues([canary]);
+          const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
+          return yield* Effect.exit(
+            kind === "effect"
+              ? selected.start(target)
+              : Stream.runDrain(selected.exportArtifact({ providerId: plan.provider, ref: "image" })),
+          );
+        }),
+      ).pipe(Effect.provide(registryLayer(provider))),
+    );
+    // Then both stay defects; the provider error is rebuilt without the secret, the crash is untouched.
+    if (Exit.isSuccess(exit)) throw new Error("Expected defect");
+    const defects = exit.cause.reasons.filter(Cause.isDieReason).map((reason) => reason.defect);
+    expect(defects).toHaveLength(2);
+    expect(defects[0]).toBeInstanceOf(ProviderUnavailableError);
+    expect(defects[0]).not.toBe(providerDefect);
+    expect(defects[0]).toHaveProperty("message", "failed [redacted]");
+    expect(JSON.stringify(defects[0])).not.toContain(canary);
+    expect(defects[1]).toBe(crash);
+  },
+);
 
 test("interruption remains interruption", async () => {
   // Given

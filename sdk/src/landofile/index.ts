@@ -1,6 +1,7 @@
 // `@lando/sdk/landofile` — canonical pure Landofile emit/parse (no Effect layers,
 // filesystem, or CLI). `@lando/core/landofile` re-exports for in-tree writers.
 
+export { EnvironmentAssignment } from "../schema/environment-input.ts";
 export {
   LANDOFILE_MERGE_DIRECTIVE,
   LandofileOverride,
@@ -92,6 +93,7 @@ export {
   type ParseOptions,
   detectLandofileTags,
   parseLandofile,
+  splitMappingEntry,
 } from "./parser.ts";
 export {
   expandRouteSchemes,

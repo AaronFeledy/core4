@@ -105,7 +105,11 @@ describe("buildStartSummary url ranking and counterparts", () => {
 describe("renderStartAppResult endpoint hyperlinks", () => {
   test("keeps separate verdicts for routes sharing an authority", () => {
     const service = ServiceName.make("web");
-    const urls = ["https://my-app.lndo.site/alpha", "https://my-app.lndo.site/beta"];
+    const urls = [
+      "https://my-app.lndo.site/alpha",
+      "https://my-app.lndo.site/beta",
+      "https://my-app.lndo.site/idle",
+    ];
     const result: StartAppResult = {
       app: "my-app",
       servicesStarted: [{ name: service, state: "running", connections: connections(urls) }],
@@ -114,13 +118,15 @@ describe("renderStartAppResult endpoint hyperlinks", () => {
         kind: "http",
         service,
         url: `${url}/health`,
-        verdict: index === 0 ? "ready" : "app-error",
-        statusCode: index === 0 ? 200 : 500,
+        verdict: index === 0 ? "ready" : index === 1 ? "app-error" : "expected",
+        statusCode: index === 0 ? 200 : index === 1 ? 500 : 502,
+        ...(index === 2 ? { detail: "lando npm start" } : {}),
       })),
     };
     expect(buildStartSummary(result).sections[0]?.rows.map((row) => row.label)).toEqual([
       "https://my-app.lndo.site/alpha 200",
       "https://my-app.lndo.site/beta 500 from your app",
+      "https://my-app.lndo.site/idle · expected: lando npm start",
     ]);
   });
   test("gives a route the verdict of its own check, not a longer sibling route's", () => {

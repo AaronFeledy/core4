@@ -21,7 +21,7 @@ If something else owns 80 or 443, Lando falls back to the next free port, starti
 
 ## Scaffold and install Drupal CMS
 
-Init only writes the Landofile and the PHP ini. Pull Drupal CMS 2 and project-local Drush into the app root, then install with the starter recipe:
+Init only writes the Landofile and the PHP ini. Pull Drupal CMS 2, project-local Drush, and the PHP lint tools into the app root, then install with the starter recipe:
 
 ```sh
 lando drupal-cms-scaffold
@@ -60,7 +60,7 @@ Each prints `200`. Anything else means Drupal didn't render the page, so check `
 | --- | --- |
 | `appserver` | `php:8.4`, `framework: drupal`, webroot `web`, Composer `2`, Apache on port `80`, depends on `database`, `.lando/php/drupal-cms.ini` at 512M, Git installed at build for the pinned SVG Image source |
 | `database` | `type: mariadb:11.4` |
-| Tooling | `lando drush`, `lando composer`, `lando drupal-cms-scaffold`, and `lando drupal-cms-install` on `appserver`, plus `lando mariadb` from the database service |
+| Tooling | `lando drush`, `lando composer`, `lando phpcs`, `lando phpcbf`, `lando phpstan`, `lando drupal-cms-scaffold`, and `lando drupal-cms-install` on `appserver`, plus `lando mariadb` from the database service |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, or `--answer=database=postgres:16` when you want those instead. `--answer=php=8.6` is accepted; Xdebug isn't available there yet.
 
@@ -104,6 +104,10 @@ lando drush status --format=json
 ```
 
 Drush gets `status --format=json` and prints its own JSON. Lando's flags go before the task name: `lando --format=json drush status` returns Lando's result envelope instead.
+
+## Lint PHP
+
+`lando drupal-cms-scaffold` installs Drupal Coder and PHPStan with its Drupal extension and writes `phpcs.xml.dist` and `phpstan.neon.dist` to the app root, so `lando phpcs`, `lando phpcbf`, and `lando phpstan` work as soon as the scaffold finishes. They check your code under `web/modules`, `web/themes`, and `web/profiles` and skip Drupal CMS's `contrib` directories. The tasks, config files, and defaults are the same as on the Drupal recipe; see [Lint PHP on the Drupal recipe](./drupal-workflow.mdx#lint-php).
 
 ## Import, export, and snapshot the database
 
@@ -204,6 +208,9 @@ lando exec appserver -- php -v
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drush\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpcs\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpcbf\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpstan\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-cms-scaffold\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-cms-install\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify file="{{appName}}/.lando/php/drupal-cms.ini" expect={{ regex: "memory_limit\\s*=\\s*512M" }} />

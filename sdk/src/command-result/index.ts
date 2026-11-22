@@ -7,6 +7,8 @@ export {
   resolveCommandCompletion,
 } from "./completion.ts";
 export {
+  ConvertedDefectAnnotation,
+  type FailureOutcome,
   FailureRoleAnnotation,
   type ProjectedFailure,
   annotateFailureRole,
@@ -18,6 +20,7 @@ export {
   mapFailures,
   mapStreamFailures,
   mergeFailure,
+  orDieWithRole,
   primaryFailureReason,
   raceJoined,
   withDeadline,

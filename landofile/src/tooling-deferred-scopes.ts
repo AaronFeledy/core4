@@ -9,6 +9,7 @@ export const deferredToolingScopeError = (
 ): NotImplementedError | undefined => {
   if (!executableExpressionPath(path)) return undefined;
   for (const scope of ["service", "sources", "generates", "checksum", "timestamp"]) {
+    if (scope === "service" && path[0] === "events") continue;
     const reads = expressionScopeMembers(template, scope);
     if (!reads.analyzable || reads.members.size > 0)
       return new NotImplementedError({

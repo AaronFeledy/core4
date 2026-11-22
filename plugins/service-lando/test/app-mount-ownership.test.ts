@@ -61,7 +61,7 @@ describe("app-mount ownership", () => {
         const service: ServiceConfig = {
           appMount: false,
           ...webroot,
-          workingDirectory: PortablePath.make("/custom"),
+          working_dir: PortablePath.make("/custom"),
           ...(type === "lando" ? { image: "alpine:3.21" } : {}),
         };
         // When

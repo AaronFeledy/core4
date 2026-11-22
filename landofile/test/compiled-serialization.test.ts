@@ -21,7 +21,7 @@ test("retains origins across dependency shorthand, label lists and build-argumen
           value: {
             services: {
               web: {
-                dependsOn: ["{{ app.name }}"],
+                depends_on: ["{{ app.name }}"],
                 labels: ["LABEL={{ app.name }}", "bare"],
                 build: { context: ".", args: ["ARG={{ app.name }}"] },
               },
@@ -33,7 +33,7 @@ test("retains origins across dependency shorthand, label lists and build-argumen
     ),
   );
   expect(compiled.pendingSites.map((site) => site.path)).toEqual([
-    ["services", "web", "dependsOn", 0, "service"],
+    ["services", "web", "depends_on", 0, "service"],
     ["services", "web", "labels", "LABEL"],
     ["services", "web", "build", "args", "ARG"],
   ]);
@@ -47,7 +47,7 @@ test("retains origins across dependency shorthand, label lists and build-argumen
   expect(resolved.success.document).toMatchObject({
     services: {
       web: {
-        dependsOn: [{ service: "resolved" }],
+        depends_on: [{ service: "resolved" }],
         labels: { LABEL: "resolved", bare: "" },
         build: { args: { ARG: "resolved" } },
       },

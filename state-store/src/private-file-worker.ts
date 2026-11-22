@@ -125,7 +125,7 @@ const encodedCommand = Buffer.from(OWNER_ONLY_FILE_ACL_WORKER_SCRIPT, "utf16le")
 
 const readLine = async (reader: ByteReader, state: { buffer: string }): Promise<string> => {
   const decoder = new TextDecoder();
-  for (;;) {
+  while (true) {
     const newline = state.buffer.indexOf("\n");
     if (newline >= 0) {
       const line = state.buffer.slice(0, newline).replace(/\r$/u, "");
@@ -204,7 +204,7 @@ export const makePrivateFileAccessWorker = (options: PrivateFileAccessWorkerOpti
     reader = child.stdout.getReader();
     stderrDrained = (async () => {
       const stderr = child.stderr.getReader();
-      for (;;) {
+      while (true) {
         const next = await stderr.read();
         if (next.done) return;
       }

@@ -2,13 +2,13 @@ import { PortablePath } from "@lando/sdk/schema";
 import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { LANGUAGE_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { rootIdentity, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   applicationAuthority,
   assertListenerConfig,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -42,9 +42,9 @@ const applyDotnetFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["9.0"] });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
-  const port = plannedPort(service, DOTNET_LISTENER);
+  const port = selectPort(service);
   ctx.addEnv("ASPNETCORE_HTTP_PORTS", String(port));
-  ctx.setListenerAuthority(applicationAuthority(DOTNET_LISTENER, port));
+  ctx.setListenerAuthority(applicationAuthority(DOTNET_LISTENER, port, service));
   ctx.addStorage({
     store: NUGET_CACHE.store,
     target: NUGET_CACHE.target,
@@ -65,17 +65,20 @@ export const dotnetServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, DOTNET_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "http",
       }),
     ),
   apply: serviceFeatureApply(DOTNET_FEATURE_ID, "dotnet service feature failed to apply", applyDotnetFeature),
 };
 
+const selectPort = primaryPortSelector(DOTNET_LISTENER);
 const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
   id,
   name: "dotnet",
   base: "lando",
+  extraArgsRemediation: LANGUAGE_EXTRA_ARGS_REMEDIATION,
+  plannedPort: selectPort,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),

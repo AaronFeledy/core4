@@ -39,24 +39,25 @@ const writeErrorIssues = (result: Exit.Exit<unknown, unknown>): string => {
 };
 
 describe("meta config set (S4)", () => {
-  test.each(["services.web.type", "services[0].type", "tooling.test.cmd"])(
-    "redirects app-only key %s to app config",
-    async (key) => {
-      await seed("renderer: json\n");
-      const result = await run(
-        Effect.result(config({ subcommand: "set", key, value: "php", configPath: configPath() })),
-      );
-      expect(result._tag).toBe("Failure");
-      if (result._tag !== "Failure") return;
-      expect(result.failure).toMatchObject({
-        _tag: "LandofileWriteValidationError",
-        path: key,
-        issues: [{ path: [key.split(/[.[]/u)[0]] }],
-        remediation: expect.stringContaining(`lando app:config set ${key} <value>`),
-      });
-      expect(await readConfig()).toBe("renderer: json\n");
-    },
-  );
+  test.each([
+    ["services.web.type", "services.web.type"],
+    ["services[0].type", "'services[0].type'"],
+    ["tooling.test.cmd", "tooling.test.cmd"],
+  ])("redirects app-only key %s to app config", async (key, shown) => {
+    await seed("renderer: json\n");
+    const result = await run(
+      Effect.result(config({ subcommand: "set", key, value: "php", configPath: configPath() })),
+    );
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") return;
+    expect(result.failure).toMatchObject({
+      _tag: "LandofileWriteValidationError",
+      path: key,
+      issues: [{ path: [key.split(/[.[]/u)[0]] }],
+      remediation: expect.stringContaining(`lando app:config set ${shown} <value>`),
+    });
+    expect(await readConfig()).toBe("renderer: json\n");
+  });
   test.each(["set", "unset"] as const)("keeps comments through config %s", async (subcommand) => {
     // Given
     await seed("# host\nrenderer: json # chosen\n# tail\n");
@@ -71,7 +72,7 @@ describe("meta config set (S4)", () => {
   test.each([
     ["router.httpPort", "8080", 8080],
     ["gpgAgent.forward", "true", true],
-    ["appEnv", '{"TEAM":"platform"}', { TEAM: "platform" }],
+    ["serviceDefaults.environment", '{"TEAM":"platform"}', { TEAM: "platform" }],
   ])("infers %s without a type override", async (key, value, expected) => {
     // Given
     await seed("renderer: json\n");

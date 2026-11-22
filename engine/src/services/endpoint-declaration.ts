@@ -89,7 +89,7 @@ export const endpointDeclarationValidationError = (appRoot: string, cause: unkno
     ? new LandofileValidationError({
         message: cause.message,
         remediation: cause.remediation,
-        file: `${appRoot}/.lando.yml`,
+        file: appRoot,
         cause,
         issues: cause.issues ?? [],
       })

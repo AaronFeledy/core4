@@ -171,7 +171,7 @@ Open the `app` URL from `lando info`. The sample server answers `hello lando` wi
 
 Lando derives `PORT` from `port:`; see the [service listener reference](../../reference/service-listeners.mdx#node) for defaults and variables. Next.js, Nuxt, and Remix read it, as does the sample's `process.env.PORT`.
 
-The sample reads `PORT` and binds `0.0.0.0`, so changing `port:` changes both its listener and Lando's endpoint. An authored `environment.PORT` must be a literal integer equal to that port; otherwise planning fails at `services.app.environment.PORT`. This also applies to inherited `appEnv` and env-file values. Change `port:` rather than overriding `PORT`.
+The sample reads `PORT` and binds `0.0.0.0`, so changing `port:` changes both its listener and Lando's endpoint. An authored `environment.PORT` must be a literal integer equal to that port; otherwise planning fails at `services.app.environment.PORT`. This also applies to inherited `serviceDefaults.environment` and env-file values. Change `port:` rather than overriding `PORT`.
 
 Vite ignores `PORT`: pass `--host 0.0.0.0 --port 3000` to Vite for this Landofile, or configure its host and port explicitly.
 
@@ -273,7 +273,7 @@ monorepo.
   </Scenario>
 </Guide>
 
-When you're finished, `lando destroy -y` removes the app containers and app-owned networks. Data volumes stay unless you pass `--volumes` or `--purge`; `--purge-caches` removes cache volumes and the built images Lando otherwise keeps for reuse. None of those flags deletes your source files.
+When you're finished, `lando destroy -y` removes the app containers and app-owned networks. Data volumes stay unless you pass `--volumes` or `--purge`. Add `--purge-caches` to remove cache volumes and the built images Lando otherwise keeps for reuse. Lando reports and keeps shared caches that are still in use. None of those flags deletes your source files.
 
 ```sh
 lando destroy -y

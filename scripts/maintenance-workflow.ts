@@ -1,5 +1,5 @@
 import { renderFailureIssueStep } from "./_failure-issue-workflow.ts";
-import { RUNTIME_BUNDLE_ACTION_PINS } from "./runtime-bundle-supply-chain.ts";
+import { pinnedAction } from "./action-pins.ts";
 
 type MaintenanceWorkflow = {
   readonly name: string;
@@ -46,11 +46,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
+      - uses: ${pinnedAction("actions/checkout")}
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun}
+      - uses: ${pinnedAction("oven-sh/setup-bun")}
         with:
           bun-version-file: .bun-version
       - run: bun install --frozen-lockfile

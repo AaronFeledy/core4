@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { AppPlan } from "./app-plan.ts";
+import { AppliedAppPlan } from "./app-plan.ts";
 import { AppId } from "./primitives.ts";
 
 export const UnreadableAppliedState = Schema.Struct({
@@ -13,7 +13,7 @@ export const UnreadableAppliedState = Schema.Struct({
 export type UnreadableAppliedState = typeof UnreadableAppliedState.Type;
 
 export const AppliedStateInventory = Schema.Struct({
-  plans: Schema.Array(AppPlan).annotate({ description: "Readable applied provider plans." }),
+  plans: Schema.Array(AppliedAppPlan).annotate({ description: "Readable applied provider plans." }),
   unreadable: Schema.Array(UnreadableAppliedState).annotate({
     description: "State records whose ownership claims must remain protected.",
   }),
