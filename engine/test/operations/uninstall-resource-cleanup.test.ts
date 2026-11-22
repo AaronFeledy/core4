@@ -1,74 +1,10 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
-import {
-  LANDO_DATA_ROOT_LABEL,
-  LANDO_NETWORK_ROLE_LABEL,
-  LANDO_SHARED_NETWORK_ROLE,
-  landoSharedCrossAppNetworkName,
-} from "@lando/sdk/schema";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 import { makeCleanupDiscoveredApps } from "../../src/install/uninstall-discovery.ts";
-import { cleanupUninstallResources } from "../../src/install/uninstall-resource-cleanup.ts";
-import type { RuntimeExec } from "../../src/install/uninstall-runtime.ts";
 import { uninstall } from "../../src/operations/uninstall.ts";
 import { makeUninstallRoots, sandboxUninstallOptions } from "./uninstall-support.ts";
-
-test("shared-engine purge leaves foreign and unlabeled Lando resources and deletes its bridge last", async () => {
-  const root = "/data/one";
-  const bridge = landoSharedCrossAppNetworkName(root);
-  const containers = new Map([
-    [
-      "mine",
-      {
-        "dev.lando.app": "web",
-        "dev.lando.app-root": "/project",
-        "dev.lando.service": "web",
-        [LANDO_DATA_ROOT_LABEL]: root,
-      },
-    ],
-    [
-      "foreign",
-      {
-        "dev.lando.app": "web",
-        "dev.lando.app-root": "/project",
-        "dev.lando.service": "web",
-        [LANDO_DATA_ROOT_LABEL]: "/data/two",
-      },
-    ],
-    ["legacy", { "dev.lando.app": "web", "dev.lando.app-root": "/project", "dev.lando.service": "web" }],
-  ]);
-  let bridgeExists = true;
-  const exec: RuntimeExec = async (_cmd, args) => {
-    const [kind, operation, ref] = args;
-    let stdout = "";
-    if (kind === "ps") stdout = [...containers.keys()].join("\n");
-    if (kind === "container" && operation === "inspect" && ref !== undefined)
-      stdout = JSON.stringify({ Id: ref, Config: { Labels: containers.get(ref) } });
-    if (kind === "rm") containers.delete(args.at(-1) ?? "");
-    if (kind === "network" && operation === "ls" && bridgeExists) stdout = "bridge-id";
-    if (kind === "network" && operation === "inspect")
-      stdout = JSON.stringify({
-        Id: "bridge-id",
-        Name: bridge,
-        Labels: { [LANDO_DATA_ROOT_LABEL]: root, [LANDO_NETWORK_ROLE_LABEL]: LANDO_SHARED_NETWORK_ROLE },
-      });
-    if (kind === "network" && operation === "rm") {
-      if (containers.has("mine")) throw new Error("bridge is still in use");
-      bridgeExists = false;
-    }
-    return { stdout, stderr: "" };
-  };
-  const report = await cleanupUninstallResources(
-    exec,
-    { cmd: "docker", providerId: "docker", managed: false, argsPrefix: [] },
-    root,
-  );
-  expect([...containers.keys()]).toEqual(["foreign", "legacy"]);
-  expect(bridgeExists).toBe(false);
-  expect(report).toContain("container foreign");
-  expect(report).toContain("container legacy");
-});
 
 for (const scenario of [
   "volume",

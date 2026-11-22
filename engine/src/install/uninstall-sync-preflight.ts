@@ -114,8 +114,13 @@ export const assertUninstallSyncSafe = async (input: {
   readonly userDataRoot: string;
   readonly runtimes: readonly UninstallRuntime[];
   readonly exec: RuntimeExec;
+  readonly hostSyncPresent?: boolean;
 }): Promise<void> => {
   await assertPersistedSyncSafe(input.userDataRoot);
+  if (input.hostSyncPresent)
+    throw uninstallCleanupFailure(
+      "Accelerated sync helper or volume exists for this data root. Run lando stop to flush, then lando destroy --volumes before purging.",
+    );
   for (const runtime of input.runtimes) {
     const run = (args: readonly string[]) => runUninstallRuntime(input.exec, runtime, { args });
     try {

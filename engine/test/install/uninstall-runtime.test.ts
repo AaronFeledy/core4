@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { Effect } from "effect";
 import {
   type UninstallRuntime,
   type UninstallRuntimeSeams,
+  availableUninstallRuntimes,
   defaultRuntimeExec,
   runUninstallRuntime,
   uninstallRuntimes,
@@ -192,6 +193,11 @@ test("uninstallRuntimes uses connection spawn on darwin and win32, linux only on
   const linux = uninstallRuntimes(root, "linux", { PATH: "/usr/bin" });
   const darwin = uninstallRuntimes(root, "darwin", { PATH: "/usr/bin", CONTAINER_HOST: "x" });
   const win32 = uninstallRuntimes(root, "win32", { PATH: "/usr/bin", CONTAINER_HOST: "x" });
+  expect([linux, darwin, win32].map((runtimes) => runtimes.map(({ providerId }) => providerId))).toEqual([
+    ["lando"],
+    ["lando"],
+    ["lando"],
+  ]);
   const managedLinux = linux.find((r) => r.managed);
   const managedDarwin = darwin.find((r) => r.managed);
   const managedWin = win32.find((r) => r.managed);
@@ -211,3 +217,47 @@ test("uninstallRuntimes uses connection spawn on darwin and win32, linux only on
   expect(managedWin.argsPrefix).toEqual(["--connection", "lando-root"]);
   expect(managedWin.cmd.endsWith("podman.exe")).toBe(true);
 });
+
+test.each(["reused", "replaced", "verified"] as const)(
+  "requires a root-owned receipt and a live VM match before using lando-root: %s",
+  async (scenario) => {
+    const root = mkdtempSync(join(tmpdir(), "lando-uninstall-vm-"));
+    const state = join(root, "providers", "provider-lando");
+    mkdirSync(state, { recursive: true });
+    writeFileSync(
+      join(state, "setup-state.json"),
+      JSON.stringify({
+        machine: { name: "lando", createdByLando: scenario !== "reused", createdAt: "recorded" },
+      }),
+    );
+    const calls: string[][] = [];
+    try {
+      const result = availableUninstallRuntimes({
+        userDataRoot: root,
+        platform: "darwin",
+        exec: async (_file, args) => {
+          calls.push([...args]);
+          return {
+            stdout:
+              args[0] === "machine"
+                ? JSON.stringify([{ Created: scenario === "replaced" ? "new" : "recorded" }])
+                : "podman",
+          };
+        },
+      });
+      if (scenario === "replaced")
+        await expect(result).rejects.toMatchObject({ _tag: "UninstallResourceCleanupError" });
+      else expect(await result).toHaveLength(scenario === "verified" ? 1 : 0);
+      expect(calls).toEqual(
+        scenario === "reused"
+          ? []
+          : [
+              ["machine", "inspect", "lando"],
+              ...(scenario === "verified" ? [["--connection", "lando-root", "--version"]] : []),
+            ],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);

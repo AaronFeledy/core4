@@ -18,7 +18,13 @@ type Scenario =
 const withRuntime = async (scenario: Scenario) => {
   const root = mkdtempSync(join(tmpdir(), "lando-uninstall-sync-"));
   const data = join(root, "data");
-  mkdirSync(data, { recursive: true });
+  const state = join(data, "providers", "provider-lando");
+  mkdirSync(state, { recursive: true });
+  const createdAt = "2026-09-23T00:00:00Z";
+  writeFileSync(
+    join(state, "setup-state.json"),
+    JSON.stringify({ machine: { name: "lando", createdByLando: true, createdAt } }),
+  );
   const calls: string[][] = [];
   const probes: Array<{ file: string; env?: NodeJS.ProcessEnv }> = [];
   const exec = async (
@@ -30,6 +36,7 @@ const withRuntime = async (scenario: Scenario) => {
     calls.push(call);
     probes.push({ file, ...(options.env === undefined ? {} : { env: options.env }) });
     if (!file.startsWith(data)) throw absentRuntime();
+    if (args[0] === "machine") return { stdout: JSON.stringify([{ Created: createdAt }]) };
     if (args.includes("--version")) return { stdout: "podman" };
     if (args.includes("df"))
       return {
@@ -124,7 +131,7 @@ describe("uninstall purge sync guard", () => {
     }
   });
 
-  test.each(["docker", "podman", "managed"])(
+  test.each(["managed"] as const)(
     "removes anonymous volumes with scoped Linux cleanup on %s",
     async (runtime) => {
       // Given: only the selected runtime is available, with containers under both Lando labels.
@@ -267,7 +274,6 @@ describe("uninstall purge sync guard", () => {
   test("preserves a recorded Windows machine when its bundled Podman binary is missing", async () => {
     for (const state of [
       { machine: { name: "lando", createdByLando: true, createdAt: "2026-09-23T00:00:00Z" } },
-      { machine: { name: "lando", createdByLando: true } },
     ]) {
       const fixture = await withRuntime("ordinary");
       try {
@@ -300,6 +306,7 @@ describe("uninstall purge sync guard", () => {
       const calls: string[][] = [];
       const exec = async (file: string, args: ReadonlyArray<string>) => {
         calls.push([...args]);
+        if (args[0] === "machine") return { stdout: '[{"Created":"2026-09-23T00:00:00Z"}]' };
         if (file === "podman") throw absentRuntime();
         if (args.includes("--version")) return { stdout: "podman" };
         if (file.startsWith(fixture.data) && args.includes("label=dev.lando.sync.kind=helper"))

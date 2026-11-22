@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -789,7 +788,7 @@ describe("platform-specific uninstall helpers", () => {
   });
 });
 describe("uninstall cgroups delegation drop-in", () => {
-  test("matching delegate.conf is owned and removed", async () => {
+  test("setup-written delegate.conf is manual without a root-owned receipt", async () => {
     const roots = makeUninstallRoots("lando-uninstall-delegate-match-");
     try {
       writeFileSync(roots.cgroupsDelegatePath, CGROUPS_DELEGATE_CONF_CONTENT);
@@ -804,10 +803,10 @@ describe("uninstall cgroups delegation drop-in", () => {
       );
 
       expect(result.failed).toBe(false);
-      expect(existsSync(roots.cgroupsDelegatePath)).toBe(false);
+      expect(readFileSync(roots.cgroupsDelegatePath, "utf8")).toBe(CGROUPS_DELEGATE_CONF_CONTENT);
       expect(result.steps.find((step) => step.id === "cgroups-delegate")).toMatchObject({
-        status: "owned",
-        outcome: "completed",
+        status: "manual",
+        outcome: "manual",
         target: roots.cgroupsDelegatePath,
       });
     } finally {
@@ -815,31 +814,26 @@ describe("uninstall cgroups delegation drop-in", () => {
     }
   });
 
-  test("echo-written delegate.conf is owned and removed", async () => {
+  test("echo-written delegate.conf remains untouched in purge mode", async () => {
     const roots = makeUninstallRoots("lando-uninstall-delegate-echo-");
     try {
-      const echoed = spawnSync("/bin/sh", ["-c", `echo '${CGROUPS_DELEGATE_CONF_CONTENT}'`], {
-        encoding: "buffer",
-      });
-      expect(echoed.status).toBe(0);
-      const echoWritten = echoed.stdout;
-      expect(echoWritten.toString("utf8")).not.toBe(CGROUPS_DELEGATE_CONF_CONTENT);
+      const echoWritten = `${CGROUPS_DELEGATE_CONF_CONTENT}\n`;
       writeFileSync(roots.cgroupsDelegatePath, echoWritten);
 
       const result = await Effect.runPromise(
         uninstall(
           sandboxUninstallOptions(roots, {
             yes: true,
-            keepData: true,
+            purge: true,
           }),
         ),
       );
 
       expect(result.failed).toBe(false);
-      expect(existsSync(roots.cgroupsDelegatePath)).toBe(false);
+      expect(readFileSync(roots.cgroupsDelegatePath, "utf8")).toBe(echoWritten);
       expect(result.steps.find((step) => step.id === "cgroups-delegate")).toMatchObject({
-        status: "owned",
-        outcome: "completed",
+        status: "manual",
+        outcome: "manual",
         target: roots.cgroupsDelegatePath,
       });
     } finally {
@@ -847,14 +841,10 @@ describe("uninstall cgroups delegation drop-in", () => {
     }
   });
 
-  test("owned drop-in unlink EACCES fails the step", async () => {
+  test("a read-only drop-in requires no unlink attempt", async () => {
     const roots = makeUninstallRoots("lando-uninstall-delegate-eacces-");
     try {
-      const echoed = spawnSync("/bin/sh", ["-c", `echo '${CGROUPS_DELEGATE_CONF_CONTENT}'`], {
-        encoding: "buffer",
-      });
-      expect(echoed.status).toBe(0);
-      writeFileSync(roots.cgroupsDelegatePath, echoed.stdout);
+      writeFileSync(roots.cgroupsDelegatePath, CGROUPS_DELEGATE_CONF_CONTENT);
 
       const result = await Effect.runPromise(
         uninstall(
@@ -875,14 +865,14 @@ describe("uninstall cgroups delegation drop-in", () => {
         ),
       );
 
-      expect(result.failed).toBe(true);
+      expect(result.failed).toBe(false);
       expect(existsSync(roots.cgroupsDelegatePath)).toBe(true);
       const step = result.steps.find((entry) => entry.id === "cgroups-delegate");
       expect(step).toMatchObject({
-        status: "owned",
-        outcome: "failed",
+        status: "manual",
+        outcome: "manual",
       });
-      expect(step?.error).toMatch(/EACCES/u);
+      expect(step?.error).toBeUndefined();
     } finally {
       rmSync(roots.root, { recursive: true, force: true });
     }
@@ -904,7 +894,7 @@ describe("uninstall cgroups delegation drop-in", () => {
 
       expect(existsSync(roots.cgroupsDelegatePath)).toBe(true);
       expect(result.steps.find((step) => step.id === "cgroups-delegate")).toMatchObject({
-        status: "user-owned",
+        status: "manual",
         outcome: "manual",
       });
     } finally {

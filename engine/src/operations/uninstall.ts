@@ -82,6 +82,12 @@ export interface DiscoveredApp {
   readonly services: ReadonlyArray<string>;
 }
 
+export interface PreparedUninstallCleanup {
+  readonly apps: readonly DiscoveredApp[];
+  readonly detail: string;
+  readonly cleanup: () => Promise<string>;
+}
+
 export interface UninstallOptions {
   readonly dryRun?: boolean;
   readonly yes?: boolean;
@@ -104,6 +110,10 @@ export interface UninstallOptions {
     userDataRoot: string,
     userCacheRoot: string,
   ) => Promise<ReadonlyArray<DiscoveredApp>>;
+  readonly prepareResourceCleanup?: (
+    dataRoot: string,
+    cacheRoot: string,
+  ) => Promise<PreparedUninstallCleanup>;
   readonly cleanupDiscoveredApps?: (
     apps: ReadonlyArray<DiscoveredApp>,
     userCacheRoot: string,
@@ -254,10 +264,6 @@ Delegate=cpu cpuset io memory pids
 
 export const DEFAULT_CGROUPS_DELEGATE_PATH = "/etc/systemd/system/user@.service.d/delegate.conf";
 
-// Setup writes this via echo, which appends an extra trailing newline.
-const isLandoManagedCgroupsDelegateContent = (content: string): boolean =>
-  content.trim() === CGROUPS_DELEGATE_CONF_CONTENT.trim();
-
 // Lockstep with core/src/cli/commands/shellenv.ts: same delimiters, and the same
 // LANDO_SHELL_PROFILE override setup uses when writing the block.
 // Engine must not import @lando/core.
@@ -395,16 +401,12 @@ const managedProviderMachineStep = (
   }
 };
 
-const cgroupsDelegateStep = (
-  path: string,
-  exists: (path: string) => boolean,
-  readText: (path: string) => string,
-): UninstallPlanStep => {
+const cgroupsDelegateStep = (path: string, exists: (path: string) => boolean): UninstallPlanStep => {
   const base = {
     id: "cgroups-delegate",
     label: "cgroups delegation drop-in",
     target: path,
-    destructive: true,
+    destructive: false,
   };
   if (!exists(path)) {
     return {
@@ -413,25 +415,10 @@ const cgroupsDelegateStep = (
       detail: "No Lando-managed cgroups delegation drop-in is present.",
     };
   }
-  const content = tryReadText(path, readText);
-  if (content === undefined) {
-    return {
-      ...base,
-      status: "user-owned",
-      detail: "Could not read the cgroups delegation drop-in; not removing it.",
-    };
-  }
-  if (isLandoManagedCgroupsDelegateContent(content)) {
-    return {
-      ...base,
-      status: "owned",
-      detail: "Remove the Lando-managed systemd user cgroup delegation drop-in.",
-    };
-  }
   return {
     ...base,
-    status: "user-owned",
-    detail: "The cgroups delegation drop-in exists but is not the Lando-managed content; leave it in place.",
+    status: "manual",
+    detail: `This system-wide drop-in is not recorded as owned by this installation. If no other installation or program needs it, run \`sudo rm -- '${path.replaceAll("'", "'\\''")}'\` and then \`sudo systemctl daemon-reload\`.`,
   };
 };
 
@@ -586,6 +573,7 @@ const buildRunningAppsStep = async (
 interface UninstallPlanBuild {
   readonly steps: ReadonlyArray<UninstallPlanStep>;
   readonly contributionBindings: ReadonlyMap<string, ContributionBinding>;
+  readonly resourceCleanup?: PreparedUninstallCleanup;
 }
 
 export const buildUninstallPlan = async (
@@ -641,11 +629,22 @@ const buildUninstallPlanWithContributions = async (
 
   // keep-data never touches app state, so skip container-runtime discovery
   // entirely; stepWithMode marks the step as preserved.
-  const runningAppsStep = await buildRunningAppsStep(
+  let resourceCleanup: PreparedUninstallCleanup | undefined;
+  const prepare = options.prepareResourceCleanup;
+  const reportApps =
+    prepare === undefined
+      ? options.listDiscoveredApps
+      : async (data: string, cache: string) => {
+          resourceCleanup = await prepare(data, cache);
+          return resourceCleanup.apps;
+        };
+  const discoveredStep = await buildRunningAppsStep(
     userDataRoot,
     userCacheRoot,
-    mode === "keep-data" ? undefined : options.listDiscoveredApps,
+    mode === "keep-data" ? undefined : reportApps,
   );
+  const runningAppsStep =
+    resourceCleanup === undefined ? discoveredStep : { ...discoveredStep, detail: resourceCleanup.detail };
 
   const steps: UninstallPlanStep[] = [
     runningAppsStep,
@@ -729,9 +728,7 @@ const buildUninstallPlanWithContributions = async (
       detail: "Terminate owned host-proxy workers and remove only app-scoped host-proxy sockets and shims.",
     },
     binaryStep,
-    ...(platform === "linux" || platform === "wsl"
-      ? [cgroupsDelegateStep(cgroupsDelegatePath, exists, readText)]
-      : []),
+    ...(platform === "linux" || platform === "wsl" ? [cgroupsDelegateStep(cgroupsDelegatePath, exists)] : []),
     platform === "win32"
       ? {
           ...shellStep,
@@ -800,7 +797,11 @@ const buildUninstallPlanWithContributions = async (
   const insertAt = globalStateIndex === -1 ? steps.length : globalStateIndex;
   const merged = [...steps.slice(0, insertAt), ...contributedSteps, ...steps.slice(insertAt)];
   const withMode = mode === undefined ? merged : merged.map((step) => stepWithMode(step, mode));
-  return { steps: withMode, contributionBindings: bindings };
+  return {
+    steps: withMode,
+    contributionBindings: bindings,
+    ...(resourceCleanup === undefined ? {} : { resourceCleanup }),
+  };
 };
 
 const writeUninstallReport = async (
@@ -891,7 +892,7 @@ const executeUninstall = async (
     throw cause;
   }
 
-  const { steps, contributionBindings } = planBuild;
+  const { steps, contributionBindings, resourceCleanup } = planBuild;
   const shellProfiles = uninstallShellProfiles(options);
   const recordFile = makeLandoPaths({ userDataRoot }).installRecordFile;
   const executed: UninstallStepResult[] = [];
@@ -952,7 +953,10 @@ const executeUninstall = async (
           options.listDiscoveredApps === undefined
             ? []
             : await options.listDiscoveredApps(userDataRoot, userCacheRoot);
-        const detail = await options.cleanupDiscoveredApps?.(apps, userCacheRoot);
+        const detail =
+          resourceCleanup === undefined
+            ? await options.cleanupDiscoveredApps?.(apps, userCacheRoot)
+            : await resourceCleanup.cleanup();
         executed.push({ ...step, outcome: "completed", detail: detail || step.detail });
       } catch (cause) {
         const error = causeMessage(cause);

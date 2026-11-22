@@ -16,7 +16,10 @@ import {
 import { makeLandoPaths, normalizeHostPlatform, runtimeLayoutPaths } from "@lando/paths";
 import { Effect, Result } from "effect";
 
-import { classifyManagedProviderMachine } from "../runtime/managed-provider-machine.ts";
+import {
+  classifyManagedProviderMachine,
+  verifyManagedProviderMachine,
+} from "../runtime/managed-provider-machine.ts";
 import { uninstallCleanupFailure } from "./uninstall-cleanup-error.ts";
 
 export type RuntimeExec = (
@@ -157,8 +160,6 @@ export const uninstallRuntimes = (
     managedSpawn,
   };
   return [
-    { cmd: "docker", providerId: "docker", managed: false, argsPrefix: [] },
-    { cmd: "podman", providerId: "podman", managed: false, argsPrefix: [] },
     managedSpawn === "linux"
       ? {
           ...managedBase,
@@ -191,6 +192,30 @@ export const availableUninstallRuntimes = async (input: {
   for (const base of uninstallRuntimes(input.userDataRoot, input.platform, hostEnv)) {
     let runtime = base;
     try {
+      if (runtime.managedSpawn === "connection") {
+        const machine = classifyManagedProviderMachine(
+          input.userDataRoot,
+          undefined,
+          normalizeHostPlatform({ platform: input.platform }),
+        );
+        const verified = await verifyManagedProviderMachine(machine, async (args) => {
+          try {
+            const { stdout } = await input.exec(runtime.cmd, args, {
+              timeout: 5_000,
+              env: { ...withoutPodmanRedirectsDefined(hostEnv) },
+            });
+            return { exitCode: 0, stdout, stderr: "" };
+          } catch (cause) {
+            if (cause instanceof Error && "code" in cause && typeof cause.code === "number") {
+              const stderr =
+                "stderr" in cause && typeof cause.stderr === "string" ? cause.stderr : cause.message;
+              return { exitCode: cause.code, stderr };
+            }
+            throw cause;
+          }
+        });
+        if (!verified) continue;
+      }
       // Missing managed tree: probe without prepare so absence does not require XDG.
       if (
         runtime.managed &&
@@ -214,7 +239,6 @@ export const availableUninstallRuntimes = async (input: {
           cause,
         );
       }
-      if (!runtime.managed) continue;
       const paths = makeLandoPaths({ userDataRoot: input.userDataRoot });
       try {
         await access(paths.runtimeDir);
