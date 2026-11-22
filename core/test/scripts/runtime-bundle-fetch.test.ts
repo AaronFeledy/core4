@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { RuntimeBundleDownloadError, fetchOverHttps } from "../../../scripts/runtime-bundle-fetch.ts";
+import {
+  RUNTIME_BUNDLE_FETCH_ATTEMPTS,
+  RuntimeBundleDownloadError,
+  debianMetadataCopyrightFallbacks,
+  fetchOverHttps,
+} from "../../../scripts/runtime-bundle-fetch.ts";
 
 describe("fetchOverHttps terminal failures", () => {
   const url = "https://example.test/runtime-artifact.tar.gz";
@@ -90,4 +95,81 @@ describe("fetchOverHttps terminal failures", () => {
       expect(failure.cause).toBeUndefined();
     });
   }
+});
+
+describe("Debian metadata copyright fallbacks", () => {
+  const pin =
+    "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u5_copyright";
+  const historical = "https://sources.debian.org/data/main/g/glibc/2.41-12%2Bdeb13u5/debian/copyright";
+  const payload = new TextEncoder().encode("debian-copyright");
+  const noSleep = async (): Promise<void> => {};
+
+  test("maps ftp-master copyright URLs onto sources.debian.org for the exact version", () => {
+    expect(debianMetadataCopyrightFallbacks(pin)).toEqual([historical]);
+    expect(
+      debianMetadataCopyrightFallbacks(
+        "https://metadata.ftp-master.debian.org/changelogs/main/c/catatonit/catatonit_0.2.1-2_copyright",
+      ),
+    ).toEqual(["https://sources.debian.org/data/main/c/catatonit/0.2.1-2/debian/copyright"]);
+    expect(debianMetadataCopyrightFallbacks("https://example.test/glibc_2.41-12+deb13u5_copyright")).toEqual(
+      [],
+    );
+  });
+
+  test("uses the historical debian/copyright when ftp-master has rotated the pin", async () => {
+    const calls: string[] = [];
+    const bytes = await fetchOverHttps(pin, {
+      sleep: noSleep,
+      fetchImpl: async (url) => {
+        calls.push(url);
+        if (url === pin) return new Response(null, { status: 404 });
+        expect(url).toBe(historical);
+        return new Response(payload, { status: 200 });
+      },
+    });
+    expect(calls).toEqual([pin, historical]);
+    expect(bytes).toEqual(payload);
+  });
+
+  test("keeps the original pin URL when ftp-master and the historical copy are both gone", async () => {
+    const calls: string[] = [];
+    await expect(
+      fetchOverHttps(pin, {
+        sleep: noSleep,
+        fetchImpl: async (url) => {
+          calls.push(url);
+          return new Response(null, { status: 404 });
+        },
+      }),
+    ).rejects.toMatchObject({ status: 404, url: pin, name: "RuntimeBundleDownloadError" });
+    expect(calls).toEqual([pin, historical]);
+  });
+
+  test("does not fall back to sources.debian.org on a ftp-master 500", async () => {
+    const calls: string[] = [];
+    await expect(
+      fetchOverHttps(pin, {
+        sleep: noSleep,
+        fetchImpl: async (url) => {
+          calls.push(url);
+          return new Response(null, { status: 500 });
+        },
+      }),
+    ).rejects.toMatchObject({ status: 500, url: pin, name: "RuntimeBundleDownloadError" });
+    expect(calls).toEqual(Array.from({ length: RUNTIME_BUNDLE_FETCH_ATTEMPTS }, () => pin));
+  });
+
+  test("does not fall back to sources.debian.org on a ftp-master network error", async () => {
+    const calls: string[] = [];
+    await expect(
+      fetchOverHttps(pin, {
+        sleep: noSleep,
+        fetchImpl: async (url) => {
+          calls.push(url);
+          throw new TypeError("socket hang up");
+        },
+      }),
+    ).rejects.toThrow(/socket hang up/u);
+    expect(calls).toEqual(Array.from({ length: RUNTIME_BUNDLE_FETCH_ATTEMPTS }, () => pin));
+  });
 });
