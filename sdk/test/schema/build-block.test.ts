@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Result, Schema, SchemaIssue } from "effect";
 
 import { BuildBlock, LandofileShape, ServiceConfig } from "../../src/schema/landofile.ts";
+import { validationIssuesFromSchemaIssue } from "../../src/schema/validation-issue.ts";
 
 const decodeOptions = [{}, { onExcessProperty: "error" }] as const;
 
@@ -155,12 +156,13 @@ describe("BuildBlock", () => {
       // Then
       expect(Result.isFailure(result)).toBe(true);
       if (!Result.isFailure(result)) continue;
-      const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
-        .issues.map(({ message }) => message)
-        .join("\n");
-      expect(message).toContain("Unsupported Compose build key");
-      expect(String(result.failure)).toContain('["no_cache"]');
-      expect(message).not.toContain("build.dockerfile");
+      expect(validationIssuesFromSchemaIssue(result.failure.issue)).toEqual([
+        expect.objectContaining({
+          kind: "value",
+          reason: "build.unsupported-key",
+          path: ["services", "web", "build", "no_cache"],
+        }),
+      ]);
     }
   });
 
