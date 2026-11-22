@@ -19,31 +19,34 @@ async function* stdinStream() {
 }
 
 describe("managed Windows stdin exec", () => {
-  test("passes argv-precise container, user, cwd, env, and command to Podman CLI", () => {
-    const args = windowsStdinExecArgs(
-      plan,
-      target,
-      { command: ["sh", "-c", "printf '%s' '$HOME'"], cwd: "/app space", env: { FOO: "a b" } },
-      "lando-root",
-    );
+  test.each([undefined, "native-container"])(
+    "passes the pinned container to Podman CLI when supplied (%s)",
+    (expectedContainerId) => {
+      const args = windowsStdinExecArgs(
+        plan,
+        { ...target, ...(expectedContainerId === undefined ? {} : { expectedContainerId }) },
+        { command: ["sh", "-c", "printf '%s' '$HOME'"], cwd: "/app space", env: { FOO: "a b" } },
+        "lando-root",
+      );
 
-    expect(args).toEqual([
-      "--connection",
-      "lando-root",
-      "exec",
-      "-i",
-      "--user",
-      "mysql",
-      "--workdir",
-      "/app space",
-      "--env",
-      "FOO",
-      "lando-demo-app--db",
-      "sh",
-      "-c",
-      "printf '%s' '$HOME'",
-    ]);
-  });
+      expect(args).toEqual([
+        "--connection",
+        "lando-root",
+        "exec",
+        "-i",
+        "--user",
+        "mysql",
+        "--workdir",
+        "/app space",
+        "--env",
+        "FOO",
+        expectedContainerId ?? "lando-demo-app--db",
+        "sh",
+        "-c",
+        "printf '%s' '$HOME'",
+      ]);
+    },
+  );
 
   test("streams stdin to ProcessRunner and preserves stdout, stderr, and exit code", async () => {
     const received: number[] = [];

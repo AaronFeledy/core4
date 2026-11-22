@@ -14,15 +14,8 @@ import {
   ServiceName,
   type ServicePlan,
   type ServiceState,
-  isActiveRunStatus,
-  planAppIdentity,
 } from "@lando/sdk/schema";
-import type {
-  EnvironmentValueResolverSession,
-  ExecChunk,
-  RuntimeProviderShape,
-  ServiceRuntimeInfo,
-} from "@lando/sdk/services";
+import type { EnvironmentValueResolverSession, ExecChunk, RuntimeProviderShape } from "@lando/sdk/services";
 import { Duration, Effect, Option, Ref, Result, Stream } from "effect";
 
 export type DatabaseLogin = "app" | "root";
@@ -84,51 +77,13 @@ export const changedCredentialMembers = (
 
 /** Creds or primary-port descriptors changed between two plans, compared without resolving either. */
 export const connectionChanged = (previous: ServicePlan | undefined, current: ServicePlan): boolean => {
-  if (previous?.connection === undefined || current.connection === undefined) return false;
+  if (current.connection === undefined) return false;
+  if (previous?.connection === undefined) return previous !== undefined;
   return (
     changedCredentialMembers(previous, current).length > 0 ||
+    previous.connection.family !== current.connection.family ||
     previous.connection.port !== current.connection.port
   );
-};
-
-export interface DatabaseCredentialScopeInput {
-  readonly plan: AppPlan;
-  /** The plan the provider had applied before this operation, when one exists. */
-  readonly previousPlan?: AppPlan;
-  /** Observations taken before the apply, from the one list call start already makes. */
-  readonly before: ReadonlyArray<ServiceRuntimeInfo>;
-  /** Runtime observations taken after the apply, keyed by service name. */
-  readonly after: ReadonlyMap<string, ServiceRuntimeInfo>;
-}
-
-/**
- * The database services whose observed answer this operation can change: ones it created,
- * recreated, or started, ones with no pre-apply applied plan entry, and ones whose connection
- * descriptors changed. A service that was already running unchanged is left to `lando doctor`.
- */
-export const databaseCredentialCheckScope = (input: DatabaseCredentialScopeInput): readonly string[] => {
-  const appRoot = planAppIdentity(input.plan).appRoot;
-  const before = new Map(
-    input.before
-      .filter(
-        (observation) =>
-          observation.containerId !== undefined &&
-          observation.app === input.plan.id &&
-          observation.appRoot === appRoot,
-      )
-      .map((observation) => [String(observation.service), observation]),
-  );
-  return Object.values(input.plan.services)
-    .filter((service) => {
-      if (service.connection === undefined) return false;
-      const previous = input.previousPlan?.services[service.name];
-      if (previous === undefined || connectionChanged(previous, service)) return true;
-      const prior = before.get(String(service.name));
-      if (prior === undefined || !isActiveRunStatus(prior.status)) return true;
-      const containerId = input.after.get(String(service.name))?.containerId;
-      return containerId === undefined || containerId !== prior.containerId;
-    })
-    .map((service) => String(service.name));
 };
 
 interface LoginCheck {
@@ -313,7 +268,6 @@ const guideUrl = (family: DatabaseFamily): string =>
 export const databaseCredentialRemediation = (
   family: DatabaseFamily,
   state: Exclude<DatabaseClientCheckState, "accepted" | "unverified">,
+  service = "<svc>",
 ): string =>
-  state === "rejected"
-    ? `Restore the previous creds values and run \`lando start\`, or change the user inside the database with an administrator account. Data is retained. See ${guideUrl(family)}.`
-    : `Create the database or grant the configured user access with an administrator account, then retry. Data is retained. See ${guideUrl(family)}.`;
+  `${state === "database-missing" ? "Check that creds.database names the database you intend to use. " : ""}If you edited creds, run \`lando start\`. If you rotated a referenced secret without changing the Landofile, or the running database drifted, run \`lando restart --service ${service}\`. To inspect a repair, run \`lando db:creds:apply --service ${service}\`, then add \`--yes\` to apply. See ${guideUrl(family)}.`;

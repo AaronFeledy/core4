@@ -78,7 +78,10 @@ const eventError = (
     kind: identity.kind,
     exitCode: 1,
     outputTail: redactor.redactString(failure instanceof Error ? failure.message : String(failure)),
-    remediation: `Fix ${label}, then rerun the lifecycle command.`,
+    remediation:
+      failure instanceof ToolingCompileError
+        ? redactor.redactString(failure.remediation)
+        : `Fix ${label}, then rerun the lifecycle command.`,
   });
 };
 

@@ -374,6 +374,8 @@ Command registration and invocation preserve these schema-backed `_tag` values:
 
 A plugin `ExecutableCommandSpec` that declares `yes` MAY set only `type: "boolean"`, `description`, and `default: false`; any other declaration fails to load with `PluginDescriptorMismatchError`. The CLI supplies `-y`, and argv parsing, help, and structured invocation use the same validated declaration.
 
+`db:creds:apply` declares `yes` with description “Apply the previewed changes.” Without `--yes` the command is read-only preview and MUST NOT mutate; with `--yes` it applies the previewed delta after revalidation. It does not use a confirmation prompt: the absence of `--yes` is the non-mutating path. Declaring `yes` still classifies the command as MCP-destructive, and the exact id remains never-allowed even with `--allow` (§10.14). Optional positional `adminPasswordSource` with only allowed value `-` and `stdio: "stdin"` follows the §8.3 grant: the CLI may grant stdin; terminal stdin is refused with command-specific remediation naming a pipe or masked prompt; MCP rejects `-`. The plugin descriptor uses the SDK port's `DatabaseCredentialConvergenceResult` schema through the standard envelope (§8.11), never a hand-encoded body.
+
 ### 8.4 Historical OCLIF integration (removed from shipping dispatch)
 
 The retired OCLIF design used manifest-first routing, Effect lifecycle hooks, namespace topics, and flexible taxonomy. It is historical only; §8.4.1 and §14 Appendix D.1 own the current decision. Retained `src/cli/oclif/` names are native metadata or adapters.
@@ -1222,7 +1224,8 @@ A service's process identity is `ServicePlan.user`, or the image's configured us
 | `build.app` steps | User-command selector, resolved into the build step and its build key so a changed mapping cannot reuse an earlier success. |
 | SQLite operations that create app files | The applied service's project user. |
 | Artifact build steps and the main process | Unchanged process identity. |
-| Readiness probes, native healthchecks, database-credential checks, listener diagnostics, and log reads | Unchanged; a probe keeps its explicit `user` or the process identity. |
+| Readiness probes, native healthchecks, catalog database liveness probes, listener diagnostics, and log reads | Unchanged; a probe keeps its explicit `user` or the process identity. |
+| Catalog database credential convergence and `db:creds:apply` admin batches | Family-specific: socket families use `ExecTarget.user` for the stock OS admin identity (for example PostgreSQL `postgres`, MySQL/MariaDB `mysql`); app password proofs use TCP as specified in §6.12.4. Not the project user. |
 | Scheduled jobs | A job without `user` keeps the parent process identity; its sidecar inherits the parent's namespace mapping. |
 | Data-mover, file-sync helpers, and the container-helper supervisor | Unchanged helper identities. |
 

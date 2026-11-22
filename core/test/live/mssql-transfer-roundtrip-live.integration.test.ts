@@ -7,7 +7,6 @@ import {
   databaseTransferFixture,
   mssqlTransferLandofile,
 } from "./database-transfer-fixture.ts";
-import { countDatabaseCreationRecords } from "./database-transfer-logs.ts";
 import { liveEnabled } from "./scanner-live-fixture.ts";
 
 for (const version of ["2019", "2022"] as const) {
@@ -21,12 +20,21 @@ for (const version of ["2019", "2022"] as const) {
         await Bun.write(join(root, ".lando.yml"), mssqlTransferLandofile(fixture, version));
         const started = await lando(["start", "--format=json"]);
         expect(started.exitCode, started.artifact).toBe(0);
-        const initialLogs = await lando(["logs", "--service=database", "--format=json"]);
-        expect(initialLogs.exitCode, initialLogs.artifact).toBe(0);
-        expect(
-          countDatabaseCreationRecords(initialLogs.stdout, "transfer_journey"),
-          initialLogs.artifact,
-        ).toBe(1);
+        const catalog = [
+          "sqlcmd",
+          "--",
+          "-b",
+          "-h",
+          "-1",
+          "-W",
+          "-d",
+          "master",
+          "-Q",
+          "SET NOCOUNT ON; SELECT CONCAT(database_id, '|', CONVERT(varchar(30), create_date, 126)) FROM sys.databases WHERE database_id = DB_ID(N'transfer_journey');",
+        ];
+        const initialCatalog = await lando(catalog);
+        expect(initialCatalog.exitCode, initialCatalog.artifact).toBe(0);
+        expect(initialCatalog.stdout.trim()).toMatch(/^\d+\|\d{4}-\d{2}-\d{2}T/u);
         const seeded = await lando([
           "consumer-query",
           "--",
@@ -75,7 +83,9 @@ for (const version of ["2019", "2022"] as const) {
         ]);
         expect(restored.exitCode, restored.artifact).toBe(0);
         expect(restored.stdout.trim() === marker, restored.artifact).toBe(true);
-        const warmStartSince = new Date().toISOString();
+        const beforeRestart = await lando(catalog);
+        expect(beforeRestart.exitCode, beforeRestart.artifact).toBe(0);
+        expect(beforeRestart.stdout.trim()).toMatch(/^\d+\|\d{4}-\d{2}-\d{2}T/u);
         const stopped = await lando(["stop", "--format=json"]);
         expect(stopped.exitCode, stopped.artifact).toBe(0);
         const restarted = await lando(["start", "--format=json"]);
@@ -87,14 +97,9 @@ for (const version of ["2019", "2022"] as const) {
         ]);
         expect(persisted.exitCode, persisted.artifact).toBe(0);
         expect(persisted.stdout.trim() === marker, persisted.artifact).toBe(true);
-        const warmLogs = await lando([
-          "logs",
-          "--service=database",
-          `--since=${warmStartSince}`,
-          "--format=json",
-        ]);
-        expect(warmLogs.exitCode, warmLogs.artifact).toBe(0);
-        expect(countDatabaseCreationRecords(warmLogs.stdout, "transfer_journey"), warmLogs.artifact).toBe(0);
+        const afterRestart = await lando(catalog);
+        expect(afterRestart.exitCode, afterRestart.artifact).toBe(0);
+        expect(afterRestart.stdout.trim(), afterRestart.artifact).toBe(beforeRestart.stdout.trim());
       } finally {
         await fixture.cleanup();
       }

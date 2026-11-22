@@ -1,0 +1,7 @@
+name: db-creds-apply-mssql
+services:
+  db:
+    type: mssql
+    creds:
+      database: credential_demo
+      rootPassword: MssqlFixPass1!

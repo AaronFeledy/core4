@@ -16,7 +16,7 @@ import {
 } from "./_feature-helpers.ts";
 import { assertListenerConfig, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { mssqlHealthcheck, mssqlStartupCommand } from "./mssql-startup.ts";
+import { mssqlHealthcheck } from "./mssql-healthcheck.ts";
 
 export const MSSQL_LISTENER = {
   port: 1433,
@@ -31,7 +31,7 @@ export const MSSQL_LISTENER = {
 } as const;
 const DATA_TARGET = PortablePath.make("/var/opt/mssql");
 const SQLCMD = "/opt/mssql-tools18/bin/sqlcmd";
-const MssqlFeatureConfig = Schema.Struct({ ownsStartup: Schema.Boolean });
+const MssqlFeatureConfig = Schema.Struct({});
 const VERSIONS = ["2019", "2022"] as const;
 const ARTIFACTS = {
   "2019": "mcr.microsoft.com/mssql/server:2019-latest",
@@ -62,7 +62,6 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { creds, port } = connectionFor(ctx);
   const environment = service.environment ?? {};
-  const { ownsStartup } = Schema.decodeUnknownSync(MssqlFeatureConfig)(ctx.config);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["2022"] });
   ctx.addEnv("ACCEPT_EULA", environment.ACCEPT_EULA ?? "Y");
@@ -77,10 +76,7 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  ctx.setHealthcheck(commandHealthcheck([...mssqlHealthcheck(creds.database, port)], 30));
-  if (ownsStartup && service.command === undefined && service.entrypoint === undefined) {
-    ctx.setCommand([...mssqlStartupCommand(creds.database, port)]);
-  }
+  ctx.setHealthcheck(commandHealthcheck([...mssqlHealthcheck(port)], 30));
 
   applyAuthoredProcessFields(ctx);
 };
@@ -113,9 +109,7 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
   name: "mssql",
   base: "lando",
   plannedPort: selectPort,
-  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION(
-    "MSSQL environment and the catalog startup wrapper",
-  ),
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("MSSQL environment variables"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: {
@@ -175,11 +169,7 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
         features: [
           {
             id: MSSQL_FEATURE_ID,
-            config: {
-              ownsStartup:
-                input.service.build === undefined &&
-                (input.service.image === undefined || input.service.image === image),
-            },
+            config: {},
           },
         ],
         tooling: mssqlToolingForConnection(ServiceName.make(input.name), { family: "mssql", creds, port }),

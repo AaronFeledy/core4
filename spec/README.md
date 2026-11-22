@@ -121,7 +121,11 @@ If you are looking for a public surface or policy:
 | Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Authored versus resolved service credentials and explicit credential claims | 06 | §6.11 + §6.12.4 |
-| Post-readiness database credential observation, the `LANDO_DATABASE_CREDENTIALS_REJECTED` and `LANDO_DATABASE_MISSING` warnings, and the `database-credentials` doctor section | 06 + 11 | §6.12.4 + §10.9.1 |
+| Catalog database credential convergence on activation, managed `lando_admin`, native-container-bound writes, `credentialChanges`, `db:creds:apply`, and observe-only doctor | 05 + 06 + 08 + 11 | §5.3 + §6.12.4 + §6.15 + §8.3.1 + §10.7 + §10.9.1 |
+| Credential-free catalog database liveness probes and SQL Server stock process/health | 06 | §6.7 + §6.12.1 |
+| `DatabaseCredentialConvergence` SDK port and `UserAppResolver` | 03 + 09 + 10 | §3.2 + §3.4 + §9.2 + §16.3 |
+| Private database admin seed and unchanged applied-state version | 05 + 12 | §5.5.2 + §12.4 |
+| MCP never-allow for `db:creds:apply` and lifecycle convergence distinction | 11 | §10.14 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Stock Python project environment, mount precedence, and Django and FastAPI recipe contracts | 06 + 08 | §6.4 + §6.5 + §6.12.1 + §8.8.10 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |

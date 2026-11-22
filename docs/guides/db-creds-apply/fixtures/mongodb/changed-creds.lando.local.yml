@@ -1,0 +1,4 @@
+services:
+  db:
+    creds:
+      password: mongo-fixture-pass-two

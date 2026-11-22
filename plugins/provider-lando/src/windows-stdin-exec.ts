@@ -24,9 +24,6 @@ export const windowsStdinExecSpawnEnv = (
 
 type Runner = Context.Service.Shape<typeof ProcessRunner>;
 
-const containerName = (plan: AppPlan, target: ExecTarget): string =>
-  serviceContainerName(plan, target.service);
-
 export const windowsStdinExecArgs = (
   plan: AppPlan,
   target: ExecTarget,
@@ -40,7 +37,7 @@ export const windowsStdinExecArgs = (
   ...(target.user === undefined ? [] : ["--user", target.user]),
   ...(command.cwd === undefined ? [] : ["--workdir", command.cwd]),
   ...Object.keys(command.env ?? {}).flatMap((name) => ["--env", name]),
-  containerName(plan, target),
+  target.expectedContainerId ?? serviceContainerName(plan, target.service),
   ...command.command,
 ];
 

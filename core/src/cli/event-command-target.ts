@@ -8,7 +8,7 @@ import {
   PluginDescriptorMismatchError,
   PluginLoadError,
   ToolingCommandLookupError,
-  type ToolingCompileError,
+  ToolingCompileError,
 } from "@lando/sdk/errors";
 import type {
   ExecutableCommandLoader,
@@ -307,6 +307,16 @@ export const resolveEventCommandTarget = (
   const tooling = plan === undefined ? undefined : effectiveToolingForPlan(plan);
   if (!canonicalCommandIdPattern.test(command)) {
     return Effect.fail(lookupFailure({ command, builtIns, graph, tooling }));
+  }
+  if (command === "db:creds:apply") {
+    return Effect.fail(
+      new ToolingCompileError({
+        tool: command,
+        message: "Database credential changes cannot run from a Landofile event step.",
+        remediation:
+          "Remove this event step. Run `lando db:creds:apply` directly from the app directory while the database is running.",
+      }),
+    );
   }
   const builtIn = builtIns.find((candidate) => candidate.spec.id === command);
   if (builtIn !== undefined) {

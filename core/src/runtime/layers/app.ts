@@ -1,6 +1,7 @@
 import { bundledPluginModules } from "@lando/engine/composition";
 import * as GlobalAppRuntimeLayer from "@lando/engine/global-app/runtime";
 import * as SubscriberRuntimeLayer from "@lando/engine/lifecycle/subscribers";
+import * as DatabaseCredentialConvergenceLayer from "@lando/engine/operations/database-credential-convergence";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import * as RouterServiceRegistryLayer from "@lando/engine/subsystems/proxy/registry";
@@ -64,7 +65,13 @@ export const makeAppBootstrapLayer = (inputs: MinimalBootstrapLayerInputs) => {
       ),
     ),
   );
-  const fullAppBase = Layer.mergeAll(appBase, globalAppRuntimeLayer, routerRegistryLayer, routerServiceLayer);
+  const fullAppBase = Layer.mergeAll(
+    appBase,
+    globalAppRuntimeLayer,
+    routerRegistryLayer,
+    routerServiceLayer,
+    DatabaseCredentialConvergenceLayer.layer.pipe(Layer.provide(appBase)),
+  );
   const eventCommandExecutorLayer = EventCommandExecutorLayer.layer.pipe(Layer.provide(fullAppBase));
   const runtimeAppBase = Layer.merge(fullAppBase, eventCommandExecutorLayer);
   const subscriberRuntimeLayer = SubscriberRuntimeLayer.layerWithPrivateFileAccess(

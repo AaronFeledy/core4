@@ -56,4 +56,38 @@ describe("@lando/sql plugin descriptor", () => {
   test("descriptor values are reference-identical to existing exports", () => {
     expect(plugin.manifest).toBe(manifest);
   });
+
+  test("db:creds:apply is declared without mcpAllowed and matches the shared summary", async () => {
+    const contribution = contributionIds(manifest.contributes?.commands);
+    expect(contribution).toContain("db:creds:apply");
+    const entry = (manifest.contributes?.commands ?? []).find(
+      (command) => (typeof command === "string" ? command : command.id) === "db:creds:apply",
+    );
+    expect(entry).toMatchObject({
+      id: "db:creds:apply",
+      summary: "Preview or repair credentials for a running database service.",
+    });
+    expect(entry).not.toHaveProperty("mcpAllowed");
+    expect(plugin.commands?.has("db:creds:apply")).toBe(true);
+
+    const loader = plugin.commands?.get("db:creds:apply");
+    expect(typeof loader).toBe("function");
+    if (typeof loader !== "function") throw new Error("expected db:creds:apply loader");
+    const spec = await loader();
+    expect(spec).toMatchObject({
+      id: "db:creds:apply",
+      namespace: "db",
+      bootstrap: "app",
+      summary: "Preview or repair credentials for a running database service.",
+    });
+    expect(spec.flags).toMatchObject({
+      service: { type: "string" },
+      yes: { type: "boolean", default: false },
+      "admin-user": { type: "string" },
+    });
+    expect(spec.args).toMatchObject({
+      adminPasswordSource: { type: "string", options: ["-"], stdio: "stdin" },
+    });
+    expect(spec.resultSchema).toBeDefined();
+  });
 });

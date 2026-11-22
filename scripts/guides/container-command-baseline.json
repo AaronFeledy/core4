@@ -496,8 +496,6 @@
   ],
   "docs/guides/services/minio.mdx": ["lando mc ready local"],
   "docs/guides/services/mssql.mdx": [
-    "lando exec database -- /opt/mssql-tools18/bin/sqlcmd -S localhost,1433 -U sa -C -P",
-    "lando logs --service database",
     "lando sqlcmd -Q 'SELECT @@VERSION'",
     "lando sqlcmd -d master -Q 'SELECT name, state_desc FROM sys.databases'"
   ],

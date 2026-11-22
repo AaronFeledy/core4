@@ -4,11 +4,12 @@ import {
   type ServiceConfig,
   type ServicePlan,
   canonicalSqlitePath,
+  sameImageReference,
   serviceAppMount,
   validationIssue,
 } from "@lando/sdk/schema";
 import { Effect } from "effect";
-
+import { catalogDatabaseKey } from "../operations/database-convergence/catalog.ts";
 import { applyAuthoredDependencies } from "../services/authored-dependencies.ts";
 import { composeBuildToArtifact, isComposeBuild } from "../services/compose-build-artifact.ts";
 import { mergeComposeKnobs } from "../services/compose-knobs.ts";
@@ -148,10 +149,41 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       yield* applyAuthoredSqlite(applyAuthoredHealthcheck(processPlan, service), service, appRoot),
       service,
     );
-    const authoredServicePlan = mergeComposeKnobs(
+    const mergedServicePlan = mergeComposeKnobs(
       mergeComposeExtension(authoredServicePlanWithoutLabels, service),
       service,
     );
+    const source = mergedServicePlan.artifact;
+    const family = resolution.connection?.family;
+    const catalogRefs =
+      resolvedArtifactTag === undefined ? Object.values(serviceType.artifacts ?? {}) : [resolvedArtifactTag];
+    const catalog =
+      source?.kind === "ref" &&
+      family !== undefined &&
+      (serviceType.id === family ||
+        (resolvedArtifactTag !== undefined && serviceType.id.split(":", 1)[0] === family)) &&
+      catalogRefs.some(
+        (ref) =>
+          sameImageReference(ref, source.ref) &&
+          (service.image === undefined || sameImageReference(ref, service.image)),
+      ) &&
+      service.command === undefined &&
+      service.entrypoint === undefined &&
+      service.config === undefined &&
+      service.build === undefined &&
+      extraArgsProcess === undefined &&
+      !service.storage?.length &&
+      !Object.keys(service.environment ?? {}).some((key) =>
+        /^(?:PGDATA|POSTGRES_(?:HOST_AUTH_METHOD|INITDB_ARGS)|(?:MYSQL|MARIADB)_(?:ALLOW_EMPTY|RANDOM_ROOT|.*_FILE)|MONGO_INITDB_.*_FILE)$/u.test(
+          key,
+        ),
+      );
+    const authoredServicePlan = catalog
+      ? {
+          ...mergedServicePlan,
+          extensions: { ...mergedServicePlan.extensions, [catalogDatabaseKey]: source.ref },
+        }
+      : mergedServicePlan;
     const build = service.build;
     const composeArtifact =
       build !== undefined && isComposeBuild(build) ? composeBuildToArtifact(build, appRoot) : undefined;

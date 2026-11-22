@@ -134,7 +134,9 @@ const findingFor = (
             : [
                 {
                   kind: "manual",
-                  description: redact(databaseCredentialRemediation(outcome.family, outcome.state)),
+                  description: redact(
+                    databaseCredentialRemediation(outcome.family, outcome.state, outcome.service),
+                  ),
                 },
               ],
       };
