@@ -109,7 +109,7 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
   ): Effect.Effect<A, E, R> => body.pipe(Effect.provideService(ActiveLocatedVolumes, volumes));
 
   // Re-observe after acquire; if the locked key set changed, release and retry.
-  for (;;) {
+  while (true) {
     const located = yield* locateCoordinatedVolumes(input, input.provider);
     if (input.cachePolicy === "apply") {
       for (const volume of located) {
