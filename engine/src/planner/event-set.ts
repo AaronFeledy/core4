@@ -17,6 +17,7 @@ import { routerEnabledFrom } from "../config/router-config.ts";
 import { hostProviderIdFrom } from "../providers/host-provider.ts";
 import { resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
+import { planServicePrimary } from "./effective-events.ts";
 import { resolveEffectiveTooling } from "./effective-tooling.ts";
 import { requireServiceProjection } from "./endpoint-availability.ts";
 import { projectEndpoints } from "./endpoint-projection.ts";
@@ -24,6 +25,7 @@ import { validEventNames } from "./event-names.ts";
 import { planningHostShellIssues } from "./host-shell-issues.ts";
 import { effectiveInvocationSites } from "./invocation-authority.ts";
 import { materializeLandofileScopes, pathIsBlocked, serviceScopeContext } from "./landofile-scopes.ts";
+import { primaryServiceName } from "./primary-service.ts";
 import { validateResolvedLandofile } from "./resolved-validation.ts";
 import { applyRouteDemandedCertificates } from "./route-certificate-defaults.ts";
 import { type PlanningUnavailableSite, resolveServiceSeeds } from "./service-seeds.ts";
@@ -223,6 +225,14 @@ const resolveLandofile = Effect.fn("AppPlanner.resolve")(function* (
     toolingResolution: resolveEffectiveTooling({
       landofile,
       provenance,
+      primary: primaryServiceName(
+        Object.fromEntries(
+          effectiveSeeds.services.map(({ name, resolution }) => [
+            name,
+            { primary: planServicePrimary(name, resolution.normalizedConfig.primary) },
+          ]),
+        ),
+      ),
       services: effectiveSeeds.services.map((entry) => ({
         name: entry.name,
         serviceTypeId: entry.serviceType.id,

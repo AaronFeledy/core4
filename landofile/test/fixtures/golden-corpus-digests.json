@@ -1671,6 +1671,10 @@
       "digest": "020dbd6eb1e5586c87e7705c5fc149f0e76115964ef99507d1bc47028552fcca"
     },
     {
+      "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-primary",
+      "digest": "1f22fd1015406e0e727ec31054dd19664ef6b5e966319d047433510cc20e9633"
+    },
+    {
       "fixture": "docs/guides/xhprof-xhgui/fixtures/xhprof-demo",
       "digest": "031653c61f162c7c09b55cd0d6a8097da6c5a47538467235c91da55180531e9e"
     },

@@ -420,7 +420,7 @@ A namespace head owned by plugin command ids and not a core namespace or topic i
 
 ### 8.5 Tooling schema
 
-Catalog-owned Node types contribute wrapper tasks bound to their service: `pnpm` and `pnpx` for pnpm, `yarn` for Yarn, `npm` and `npx` for npm or no declaration, and no manager wrappers for Bun. Replacement images and builds contribute none. Each task name requires exactly one eligible Node owner; an authored task (including a disabled entry) still wins over a contribution.
+Catalog-owned Node types contribute wrapper tasks bound to their service: `pnpm` and `pnpx` for pnpm, `yarn` for Yarn, `npm` and `npx` for npm or no declaration, and no manager wrappers for Bun. Replacement images and builds contribute none. Each task name requires exactly one eligible Node owner, even if one of several claimants is primary (§6.11.3). An authored task (including a disabled entry) still wins over a contribution.
 
 Launcher lowering (§6.11) applies only to tooling `cmd` argv and service `command` argv. String forms, `cmds`, direct event commands, and `app:exec` do not expand markers. The first element after a marker MUST be a non-empty command or script name, not another marker; all later arguments are passed through. The engine never rescans the contributed prefix. Use `./:name` for a literal executable whose name would be reserved in either position. `:host` is a tooling target, never a launcher.
 

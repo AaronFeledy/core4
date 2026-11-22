@@ -172,6 +172,7 @@ If you are looking for a public surface or policy:
 | Token ownership between the dispatcher and a command: command tails for exec/ssh/run, plugin commands, wrappers, and `bun`/`x`; declared tooling flags; unknown-flag rejection | 08 | §8.3, §8.5 |
 | Tooling schemas, named-first binding, boolean projection, sensitivity, retained input revisions, and live MCP catalog replacement | 08 | §8.5.1 |
 | Tooling steps, expressions, events, and scripts | 08 | §8.5 |
+| Service-contributed tooling precedence and ambiguous Node manager tasks | 06 + 08 | §6.11.3 + §8.5 |
 | Bun Shell script metadata, positional policy, sparse named inputs, data-only environment, and disabled refusal | 08 | §8.5.9 |
 | Automatic tooling metadata rebuild, failure reporting, and help recovery | 08 | §8.7 |
 | Strict load failures versus per-task normalization errors, unavailable tasks, and `LANDO_TOOLING_INVALID` | 07 + 08 + 12 | §7.8 + §8.2.1 + §8.5 + §8.7 + §12.2 |

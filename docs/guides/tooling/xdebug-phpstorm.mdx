@@ -29,6 +29,8 @@ The first line of `lando xdebug status`, `on`, and `off` shows the loaded versio
 
 `xdebug: true` enables mode `debug`. A string such as `xdebug: "debug,develop"` sets `xdebug.mode` to that list. `xdebug: false` (the default) installs nothing. Setting `XDEBUG_MODE` in `environment:` does not add the extension.
 
+If more than one PHP service enables Xdebug, `lando xdebug` targets the primary service if it has Xdebug enabled. Otherwise, it targets the first Xdebug-enabled service by name.
+
 ## Listen in PhpStorm
 
 Start listening from `Run > Start Listening for PHP Debug Connections` (or the phone-handset icon) before you trigger a request. PhpStorm listens on port `9003` by default, matching Xdebug 3.
@@ -117,6 +119,15 @@ lando config unset debugger.host
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+  <Scenario id="primary-xdebug-target" render={false} reason="Primary Xdebug target regression">
+    <Step name="scaffold">
+      <UseFixture name="xdebug-primary" />
+    </Step>
+    <Step name="verify-planned-target">
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando help xdebug --format=json");
+expect(JSON.parse(lastRun.stdout).result.target.runs.targets).toEqual([{ kind: "service", name: "web86" }]);`} displayCode={`lando help xdebug --format=json`} />
     </Step>
   </Scenario>
   <Scenario id="invalid-mode-fails" render={false} reason="Unknown xdebug: values must fail closed at plan time with remediation.">
