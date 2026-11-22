@@ -1,4 +1,3 @@
-import { sanitizeStateWriter } from "@lando/sdk/errors";
 import { Context, Effect } from "effect";
 
 export type StateWriterOptions = { readonly writer?: string };
@@ -12,4 +11,4 @@ export const PluginStateWriter = Context.Reference<string | undefined>(
 );
 
 export const resolveStateWriter = (options: StateWriterOptions) =>
-  Effect.map(PluginStateWriter, (override) => sanitizeStateWriter(override ?? options.writer));
+  Effect.map(PluginStateWriter, (override) => override ?? options.writer);

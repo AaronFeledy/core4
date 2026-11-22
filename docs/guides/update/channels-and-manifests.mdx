@@ -36,15 +36,9 @@ Use `lando update --only=plugins --dry-run --format=json` to preview plugin chan
 
 ## Share one data root carefully
 
-Lando keeps durable state under one user data root. Two different Lando builds that share that root can race on the same apps and runtime.
+Let all running Lando commands finish before upgrading with `lando update` or switching source builds. Before making more changes, make sure every shell and tool that shares the data root runs the same build. Rebuild or reinstall any checkout that still uses the old binary against that root.
 
-When you upgrade an installer-managed binary with `lando update`, or switch which checkout's `lando` you run:
-
-1. Let all in-flight Lando commands finish.
-2. Point every shell and tool that shares the data root at the same Lando build before you mutate again.
-3. Prefer one current binary for day-to-day work. Rebuild or reinstall every checkout that still uses the old binary against that root.
-
-An older Lando that shares a data root with a newer one does not always wait on the newer one's locks. Locks moved from `.lock` files to kernel locks on `.lck` sentinels in [dev.1539](https://github.com/AaronFeledy/core4/releases/tag/v4.0.0-dev.1539). Builds from before that change and builds after it do not exclude each other, so mixed-version concurrent mutation is unsupported. Do not delete lock files to "clear" a wait; the OS releases a lock when the holder exits, and removing a sentinel does not free a live holder.
+Don't run commands from different builds that modify the same data root at the same time. Builds before [dev.1539](https://github.com/AaronFeledy/core4/releases/tag/v4.0.0-dev.1539) used `.lock` files and don't honor the newer kernel locks on `.lck` files. Don't delete lock files to end a wait. The OS releases a kernel lock when its holder exits; deleting the file doesn't release a live lock.
 
 If a command says a newer Lando wrote a state file, leave that file in place. Run the build that wrote it, or upgrade this Lando with `lando update`, then retry. Builds that recognize this format refusal won't overwrite or delete the protected record.
 

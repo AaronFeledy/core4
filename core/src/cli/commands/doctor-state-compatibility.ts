@@ -11,7 +11,6 @@ import { Effect, Option, Result } from "effect";
 import { passCheckNamed, warnCheck } from "./doctor-check-builders";
 import type { DoctorFinding } from "./doctor-contract";
 
-/** Cap protected-record findings so a huge inventory cannot flood the report. */
 const MAX_PROTECTED_FINDINGS = 50;
 
 const inventoryUnavailable = (input: {
@@ -34,7 +33,7 @@ const inventoryUnavailable = (input: {
 const protectedRecord = (input: {
   readonly redact: (text: string) => string;
   readonly providerId: string;
-  readonly issue: UnreadableAppliedState;
+  readonly issue: typeof UnreadableAppliedState.Encoded;
 }): DoctorFinding => {
   const { redact, providerId, issue } = input;
   const context: DoctorFinding["context"] = {
@@ -46,11 +45,8 @@ const protectedRecord = (input: {
   if (issue.reason === "newer-version") {
     const writtenBy = issue.writtenBy;
     const remediation = newerStateRemediation({
-      path: issue.path,
-      storedVersion: issue.storedVersion,
-      supportedVersion: issue.supportedVersion,
+      ...issue,
       reader: CORE_VERSION,
-      ...(writtenBy === undefined ? {} : { writtenBy }),
     });
     return warnCheck({
       name: "applied-state",
@@ -88,28 +84,18 @@ const fromInventoryFailure = (input: {
 }): DoctorFinding => {
   const { redact, providerId, failure } = input;
   if (failure instanceof AppliedStateVersionError) {
-    const writtenBy = failure.writtenBy;
-    const remediation = newerStateRemediation({
-      path: failure.path,
-      storedVersion: failure.storedVersion,
-      supportedVersion: failure.supportedVersion,
-      reader: CORE_VERSION,
-      ...(writtenBy === undefined ? {} : { writtenBy }),
-    });
-    return warnCheck({
-      name: "applied-state",
-      subject: redact(failure.path),
-      recovery: "manual",
-      context: {
-        providerId: redact(providerId),
-        path: redact(failure.path),
+    const { path, storedVersion, supportedVersion, appId, writtenBy } = failure;
+    return protectedRecord({
+      redact,
+      providerId,
+      issue: {
         reason: "newer-version",
-        storedVersion: String(failure.storedVersion),
-        supportedVersion: String(failure.supportedVersion),
-        ...(failure.appId === undefined ? {} : { appId: redact(failure.appId) }),
-        ...(writtenBy === undefined ? {} : { writtenBy: redact(writtenBy) }),
+        path,
+        storedVersion,
+        supportedVersion,
+        ...(appId === undefined ? {} : { appId }),
+        ...(writtenBy === undefined ? {} : { writtenBy }),
       },
-      solutions: [{ kind: "manual", description: redact(remediation) }],
     });
   }
   if (failure instanceof ProviderUnavailableError || failure instanceof NoProviderInstalledError) {
@@ -130,11 +116,7 @@ const fromInventoryFailure = (input: {
   });
 };
 
-/**
- * Filesystem-only scan of every installed provider's applied-state inventory.
- * Never selects or builds a provider runtime; warns for protected (newer or
- * damaged) records and incomplete inventory reads.
- */
+/** Reads the filesystem inventory without selecting or building a provider runtime. */
 export const stateCompatibilityDoctor = Effect.fnUntraced(function* (redact: (text: string) => string) {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
   if (Option.isNone(registry))

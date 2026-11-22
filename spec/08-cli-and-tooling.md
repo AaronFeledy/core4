@@ -108,7 +108,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `apps:scratch:stop` | `scratch:stop` | `scratch` | Stop selected or foreground scratch and destroy it |
 | `meta:bun` | `bun` | `minimal` | Transparent embedded Bun argv proxy (§8.2.4) |
 | `meta:config` | `config` | `none` | Read, validate, or repair `<userConfRoot>/config.yml` |
-| `meta:doctor` | `doctor` | `none` | Self-resilient diagnostics (§10.9.1), including a core filesystem-only applied-state compatibility check over each provider's `appliedStateInventory` (warns on protected records with reason, path, optional writer, and remediation; reports unavailable inventory; passes when clean; no provider runtime build) |
+| `meta:doctor` | `doctor` | `none` | Self-resilient diagnostics (§10.9.1), including the filesystem-only `state-compatibility` section for applied state (§5.3) |
 | `meta:snapshots:gc` | `snapshots:gc` | `provider` | Reports orphaned native snapshot images; `--prune` rechecks catalog references and eligibility before no-start removal. Stopped providers are reported unavailable during discovery; a runtime stopping after recheck causes failed removal, never startup or repair (§10.11.2). |
 | `meta:sources:gc` | `sources:gc` | `minimal` | Reports source-store entries unused longer than `--older-than=<days>` (default 30); `--prune` removes them. Entries pinned by any registered `.lando.lock.yml` or leased by a live process are never removed, and an unreadable lockfile withholds git and npm-indexed pruning for the run. Never automatic (§12.8.5). |
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |

@@ -19,5 +19,5 @@ export const newerStateRemediation = (input: {
     reader !== "0.0.0" &&
     writer !== reader
     ? `Lando ${writer} wrote ${path} (format ${storedVersion}; this Lando ${reader} supports ${supportedVersion}). Leave the file in place and run Lando ${writer} or newer (\`lando update\` upgrades an installed Lando).`
-    : `This build supports format ${supportedVersion}; this file uses ${storedVersion}. Leave it in place and run the build that wrote it, or install a build that supports ${storedVersion}.`;
+    : `A newer Lando wrote ${path} (format ${storedVersion}; this build supports ${supportedVersion}). Leave the file in place and run the build that wrote it, or a newer Lando${reader === undefined || reader === "0.0.0" ? "" : " (`lando update` upgrades an installed Lando)"}.`;
 };

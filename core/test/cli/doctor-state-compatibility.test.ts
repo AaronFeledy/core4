@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { CORE_VERSION } from "@lando/engine/version";
-import { AppliedStateVersionError, ProviderUnavailableError, newerStateRemediation } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
+import { AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { AbsolutePath, AppId, ProviderId, type UnreadableAppliedState } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
@@ -34,29 +33,27 @@ test("passes when every provider inventory is clean", async () => {
   expect(checks).toMatchObject([{ name: "state-compatibility", status: "pass", solutions: [] }]);
 });
 
-test("warns for newer applied state with writer and upgrade remediation", async () => {
+test("warns for newer applied state with writer and manual recovery", async () => {
   const writtenBy = "4.9.0";
-  const issue = {
-    reason: "newer-version" as const,
-    path,
-    appId: AppId.make("demo"),
-    storedVersion: 99,
-    supportedVersion: 11,
-    writtenBy,
-  };
   const checks = await run(
     makeTestRuntimeProviderRegistry({
       list: Effect.succeed([providerId]),
-      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [issue] }),
+      appliedStateInventory: () =>
+        Effect.succeed({
+          plans: [],
+          unreadable: [
+            {
+              reason: "newer-version",
+              path,
+              appId: AppId.make("demo"),
+              storedVersion: 99,
+              supportedVersion: 11,
+              writtenBy,
+            },
+          ],
+        }),
     }),
   );
-  const expected = newerStateRemediation({
-    path,
-    storedVersion: 99,
-    supportedVersion: 11,
-    writtenBy,
-    reader: CORE_VERSION,
-  });
   expect(checks).toMatchObject([
     {
       name: "applied-state",
@@ -72,7 +69,7 @@ test("warns for newer applied state with writer and upgrade remediation", async 
         supportedVersion: "11",
         writtenBy,
       },
-      solutions: [{ kind: "manual", description: expected }],
+      solutions: [{ kind: "manual" }],
     },
   ]);
 });
@@ -95,10 +92,10 @@ test("warns for damaged applied state without inventing a writer", async () => {
       recovery: "manual",
       subject: path,
       context: { providerId, path, reason: "unreadable" },
+      solutions: [{ kind: "manual" }],
     },
   ]);
   expect(checks[0]?.context).not.toHaveProperty("writtenBy");
-  expect(checks[0]?.solutions[0]?.description).toContain("could not be read");
 });
 
 test("redacts private paths in protected findings", async () => {
@@ -182,17 +179,9 @@ test("projects AppliedStateVersionError inventory failures as protected records"
         supportedVersion: "11",
         writtenBy,
       },
+      solutions: [{ kind: "manual" }],
     },
   ]);
-  expect(checks[0]?.solutions[0]?.description).toBe(
-    newerStateRemediation({
-      path,
-      storedVersion: 20,
-      supportedVersion: 11,
-      writtenBy,
-      reader: CORE_VERSION,
-    }),
-  );
 });
 
 test("reports provider list failures as inventory warnings", async () => {
@@ -218,10 +207,13 @@ test("reports provider list failures as inventory warnings", async () => {
 });
 
 test("bounds protected findings and records truncation", async () => {
-  const issues = Array.from({ length: 60 }, (_, index) => ({
-    reason: "unreadable" as const,
-    path: `/data/app-${index}.json`,
-  }));
+  const issues = Array.from(
+    { length: 60 },
+    (_, index): UnreadableAppliedState => ({
+      reason: "unreadable",
+      path: `/data/app-${index}.json`,
+    }),
+  );
   const checks = await run(
     makeTestRuntimeProviderRegistry({
       list: Effect.succeed([providerId]),

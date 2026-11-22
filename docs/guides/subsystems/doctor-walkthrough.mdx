@@ -148,15 +148,15 @@ If doctor names a host prerequisite, fix it and rerun `lando setup`. If the mana
 
 ## Check state written by another Lando
 
-Applied-state records say which apps a provider realized. When a newer Lando wrote one of those files, or a record is damaged, this Lando leaves it in place and refuses to change the resources it protects.
+Run this on the host to find applied-state records that Lando can't read safely:
 
 ```sh
 lando doctor --section state-compatibility --format=json
 ```
 
-This section reads every installed provider's applied-state inventory from the filesystem. It doesn't build a provider runtime or select a provider. A clean inventory yields one passing `state-compatibility` check. Each protected record is a `warn` finding named `applied-state` whose context carries `reason` (`newer-version` or `unreadable`), `path`, optional `writtenBy`, and version fields when known. The remediation names the writer and this Lando when both are known and different. Otherwise, it tells you to run the build that wrote the file. An incomplete inventory is reported as `applied-state-inventory`. Doctor reports up to fifty findings from this section, then flags any truncation.
+Doctor checks installed providers' records without selecting a provider or building its runtime. If all inventories are clean, `state-compatibility` passes. An `applied-state-inventory` warning means Doctor couldn't finish an inventory. Doctor reports up to 50 findings and flags any truncation.
 
-Leave protected files in place. For a newer record, run that newer Lando or upgrade with `lando update`. For a damaged record, restore a readable copy from a trusted backup.
+Each `applied-state` warning gives the file's `path` and `reason` (`newer-version` or `unreadable`), plus `writtenBy` and format versions when available. Lando won't change the resources that file protects. Leave newer files in place and run the build that wrote them, or upgrade an installer-managed binary with `lando update`. For damaged files, restore a readable copy from a trusted backup.
 
 ## Inspect leftover snapshot images
 
