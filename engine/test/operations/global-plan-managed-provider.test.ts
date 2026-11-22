@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { AppPlanner, FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 
 import { loadGlobalPlan } from "../../src/operations/global-plan.ts";
@@ -67,12 +68,7 @@ describe("loadGlobalPlan host provider", () => {
         ),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            readAppliedPlanStrict: () => Effect.succeed(undefined),
-            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-            appliedPlansFor: () => Effect.succeed([]),
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          makeTestRuntimeProviderRegistry({
             list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
             capabilities: Effect.succeed({} as never),
             select: (plan) => {

@@ -30,7 +30,7 @@ import {
   mutagenInstalledVersionPath,
 } from "@lando/file-sync-mutagen";
 import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
-import { TestFileSyncEngine } from "@lando/sdk/test";
+import { TestFileSyncEngine, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { resolveHostKey } from "@lando/sdk/tool-provisioning";
 import { type Context, Effect, Layer } from "effect";
 
@@ -62,12 +62,7 @@ Object.assign(slowBindMountProvider, {
 });
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
-  RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -239,14 +234,8 @@ describe("doctor() provider-conflict short-circuit (contract: a detected conflic
       const socket = "/run/user/1000/podman/podman.sock";
       await writeProviderLandoState(dataRoot, socket);
 
-      const registryThatMustNotConstruct = RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+      const registryThatMustNotConstruct = makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make("podman")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () =>
           Effect.die(
             "registry.select() must not be called: a provider conflict was already detected for this id",

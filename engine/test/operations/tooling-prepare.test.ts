@@ -11,7 +11,7 @@ import {
   type ToolingTaskShape,
 } from "@lando/sdk/schema";
 import { ProcessRunner, RuntimeProviderRegistry, ShellRunner, ToolingEngine } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 import { prepareToolingInvocation } from "../../src/operations/tooling-prepare.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
@@ -58,14 +58,8 @@ const run = (
     Layer.succeed(ToolingEngine, ToolingEngine.of({ id: "unused", run: () => Effect.die("host only") })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([plan.provider]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.die("host only"),
       }),
     ),

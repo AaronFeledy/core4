@@ -36,7 +36,7 @@ import {
   StateStore,
   ToolingEngine,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 import {
@@ -312,15 +312,12 @@ const makeLayer = (input: {
         ),
       ),
   };
-  const registry = {
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
+  const registry = makeTestRuntimeProviderRegistry({
     appliedPlansFor: (root: AbsolutePath) =>
       Effect.succeed(
         appliedPlan !== undefined && appliedPlan.identity?.appRoot === root ? [appliedPlan] : [],
       ),
     list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),
     resolveAppliedPlan: (_cwd: AbsolutePath) => Effect.succeed(appliedPlan),
     // Providers answer only for the root they are asked about. Either root field may match, so a
@@ -356,7 +353,7 @@ const makeLayer = (input: {
       }
       return Effect.succeed({ kind: "absent" } as const);
     },
-  };
+  });
   const layer = Layer.mergeAll(
     layerTransactionGuard,
     emptySnapshotsLayer,

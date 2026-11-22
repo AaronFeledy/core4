@@ -45,7 +45,7 @@ import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { makeStateStore } from "@lando/state-store/service";
@@ -340,12 +340,9 @@ const makeScratchForkLayer = (
   ).pipe(Layer.provide(basePlanner));
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      readAppliedPlanStrict: () => Effect.succeed(undefined),
-      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+    makeTestRuntimeProviderRegistry({
       resolveAppliedPlan: (root) =>
         Effect.sync(() => (appliedGlobalPlan?.root === root ? appliedGlobalPlan : undefined)),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: (root) =>
         Effect.sync(() => {
           const plan = options.globalPlan ?? appliedGlobalPlan;

@@ -17,7 +17,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
 import {
   globalConfig,
@@ -55,15 +55,8 @@ const fixture = () =>
     BunFileSystem.layer,
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make("lando")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
       }),
     ),
     Layer.succeed(

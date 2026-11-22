@@ -28,7 +28,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import { parseLandofile } from "@lando/landofile/parser";
 import { makeLandoPaths } from "@lando/paths";
 import { type FileSystem, PathsService } from "@lando/sdk/services";
-import { makeTestRouterService } from "@lando/sdk/test";
+import { makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
@@ -57,12 +57,7 @@ const globalAppLayer = Layer.mergeAll(
   ),
   Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      readAppliedPlanStrict: () => Effect.succeed(undefined),
-      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([ProviderId.make(provider.id)]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),

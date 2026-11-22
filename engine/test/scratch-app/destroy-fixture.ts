@@ -32,7 +32,7 @@ import {
   ScratchAppService,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Effect, Layer, Predicate, Schema, Stream } from "effect";
@@ -203,7 +203,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
         ];
   const providers = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
+    makeTestRuntimeProviderRegistry({
       readAppliedPlanStrict: ({ id, provider }) => {
         const issue = unreadable.find(
           (entry) => (entry.appId === undefined || entry.appId === id) && provider === plan.provider,

@@ -6,7 +6,7 @@ import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
 import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
 
@@ -57,15 +57,8 @@ test("safe-mode doctor inventories the state store supplied by its provider runt
     Layer.succeed(PathsService, makeLandoPaths({ env: {} })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
       }),
     ),
   );

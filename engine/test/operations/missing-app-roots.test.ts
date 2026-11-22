@@ -9,7 +9,7 @@ import {
   type VolumeInfo,
 } from "@lando/sdk/schema";
 import { FileSystem, type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, DateTime, Effect } from "effect";
 import { findMissingAppRoots, scanMissingAppRoots } from "../../src/operations/missing-app-roots.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
@@ -68,17 +68,12 @@ const run = (
       const fs = yield* FileSystem;
       return yield* findMissingAppRoots.pipe(
         Effect.provideService(FileSystem, { ...fs, exists }),
-        Effect.provideService(RuntimeProviderRegistry, {
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          list: Effect.succeed([]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(TestRuntimeProvider),
-          ...(snapshots === undefined ? {} : { observeRuntime: Effect.succeed(snapshots) }),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...(snapshots === undefined ? {} : { observeRuntime: Effect.succeed(snapshots) }),
+          }),
+        ),
       );
     }).pipe(Effect.provide(BunFileSystem.layer)),
   );
@@ -220,22 +215,20 @@ test.each(["none", "plan", "ownership", "unreadable"] as const)(
   async (source) => {
     const inventory = await Effect.runPromise(
       scanMissingAppRoots().pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          list: Effect.succeed([providerId]),
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.die("State inventory must not select a runtime without journal copies"),
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          hasRecordedOwnership: () => Effect.succeed(source === "ownership"),
-          appliedStateInventory: () =>
-            Effect.succeed({
-              plans: source === "plan" ? [plan] : [],
-              unreadable: source === "unreadable" ? [{ path: "/state/broken", reason: "unreadable" }] : [],
-            }),
-          observeRuntime: Effect.succeed([snapshot({ runtimeObserved: false })]),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            list: Effect.succeed([providerId]),
+            select: () => Effect.die("State inventory must not select a runtime without journal copies"),
+            hasRecordedOwnership: () => Effect.succeed(source === "ownership"),
+            appliedStateInventory: () =>
+              Effect.succeed({
+                plans: source === "plan" ? [plan] : [],
+                unreadable: source === "unreadable" ? [{ path: "/state/broken", reason: "unreadable" }] : [],
+              }),
+            observeRuntime: Effect.succeed([snapshot({ runtimeObserved: false })]),
+          }),
+        ),
         Effect.provide(BunFileSystem.layer),
       ),
     );
@@ -253,18 +246,19 @@ test.each([
 ] as const)("scan keeps the %o reason and its remediation", async (issue, errorTag, remediation) => {
   const inventory = await Effect.runPromise(
     scanMissingAppRoots().pipe(
-      Effect.provideService(RuntimeProviderRegistry, {
-        list: Effect.succeed([providerId]),
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.die("State inventory must not select a runtime without journal copies"),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedStateInventory: () =>
-          Effect.succeed({ plans: [], unreadable: [{ path: "/state/broken", reason: "unreadable" }, issue] }),
-        observeRuntime: Effect.succeed([snapshot({ runtimeObserved: true })]),
-      }),
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([providerId]),
+          select: () => Effect.die("State inventory must not select a runtime without journal copies"),
+          appliedStateInventory: () =>
+            Effect.succeed({
+              plans: [],
+              unreadable: [{ path: "/state/broken", reason: "unreadable" }, issue],
+            }),
+          observeRuntime: Effect.succeed([snapshot({ runtimeObserved: true })]),
+        }),
+      ),
       Effect.provide(BunFileSystem.layer),
     ),
   );

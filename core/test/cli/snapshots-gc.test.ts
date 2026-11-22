@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { makeTestDataMover } from "@lando/data-mover/testing";
 import { ProviderId, SnapshotGcReport, type VolumeSnapshotArtifact } from "@lando/sdk/schema";
 import { DataMover, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
 import {
   failOnFailedProvider,
@@ -26,14 +26,8 @@ const runDoctor = (artifacts: ReadonlyArray<VolumeSnapshotArtifact>, running = t
       }),
       Effect.provideService(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([ProviderId.make("test")]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () =>
             Effect.succeed({
               ...TestRuntimeProvider,

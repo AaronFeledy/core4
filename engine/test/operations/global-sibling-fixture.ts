@@ -17,7 +17,7 @@ import {
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { reconcileGlobalSiblings } from "../../src/operations/global-retained-plan.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -63,8 +63,7 @@ export const fixture = (
         return options.observed ?? [observation()];
       }),
   };
-  const registry = RuntimeProviderRegistry.of({
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+  const registry = makeTestRuntimeProviderRegistry({
     readAppliedPlanStrict: () =>
       options.unreadable
         ? Effect.fail(
@@ -78,7 +77,6 @@ export const fixture = (
         : Effect.succeed(undefined),
     appliedPlansFor: () => Effect.succeed(options.prior === undefined ? [] : [options.prior]),
     resolveAppliedPlan: () => Effect.succeed(options.prior),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     list: Effect.succeed([ProviderId.make("lando")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),

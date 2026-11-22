@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { DataTransferError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { ProviderId, type VolumeSnapshotArtifact } from "@lando/sdk/schema";
 import { DataMover, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Option } from "effect";
 import { snapshotGc } from "../../src/operations/snapshot-gc.ts";
 import { emptySnapshots } from "./data-mover-support.ts";
@@ -14,14 +14,8 @@ const orphan: VolumeSnapshotArtifact = {
 };
 
 test("reports providers unavailable when registry construction cannot reach their runtime", async () => {
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("offline")]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () =>
       Effect.fail(
         new ProviderUnavailableError({
@@ -51,12 +45,7 @@ test("reports a stopped native provider as unavailable without invoking data-pla
     ensureReady: Effect.die("must not start"),
   };
   const mover = { ...emptySnapshots, findOrphanedSnapshots: Effect.die("must not inspect stopped runtime") };
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("test")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -91,12 +80,7 @@ test.each([false, true])("reports orphan details and prunes only when requested 
         removed.push(artifact.ref.id);
       }),
   };
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("test")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -125,15 +109,8 @@ test("does not issue a successful removal report when the orphan recheck refuses
     message: "Snapshot became indexed.",
     remediation: "Review the current orphan report.",
   });
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("test")]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    select: () => Effect.succeed(TestRuntimeProvider),
   });
   const result = await Effect.runPromise(
     snapshotGc({ prune: true }).pipe(
@@ -173,12 +150,7 @@ test("reports a failing provider without hiding another provider's orphans", asy
       return [orphan];
     }),
   };
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("broken"), ProviderId.make("healthy")]),
     capabilities: Effect.succeed(healthy.capabilities),
     select: (target) => Effect.succeed(String(target) === "broken" ? broken : healthy),
@@ -214,15 +186,8 @@ test("reports failed removal without counting it when the runtime stops after re
     findOrphanedSnapshots: Effect.succeed([orphan]),
     removeOrphanedSnapshot: () => Effect.fail(failure),
   };
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("test")]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    select: () => Effect.succeed(TestRuntimeProvider),
   });
   // When the engine prunes through its DataMover boundary.
   const report = await Effect.runPromise(

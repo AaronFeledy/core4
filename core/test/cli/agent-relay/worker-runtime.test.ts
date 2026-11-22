@@ -13,6 +13,7 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { AbsolutePath, type AgentSocketBridgeInput, type AppPlan, type ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Layer, Schema } from "effect";
 import {
   runAgentRelayWorkerProcess,
@@ -63,13 +64,7 @@ describe("agent relay worker runtime", () => {
         const redaction = makeRedactionService();
         const registry = Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            readAppliedPlanStrict: () => Effect.succeed(undefined),
-            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
-            list: Effect.succeed([]),
+          makeTestRuntimeProviderRegistry({
             capabilities: Effect.succeed(provider.capabilities),
             select: (plan) => {
               selected.push(plan);
@@ -225,13 +220,7 @@ describe("agent relay worker runtime", () => {
           Effect.provide(RedactionService.layer),
           Effect.provideService(
             RuntimeProviderRegistry,
-            RuntimeProviderRegistry.of({
-              readAppliedPlanStrict: () => Effect.succeed(undefined),
-              appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-              resolveAppliedPlan: () => Effect.succeed(undefined),
-              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-              appliedPlansFor: () => Effect.succeed([]),
-              list: Effect.succeed([]),
+            makeTestRuntimeProviderRegistry({
               capabilities: Effect.succeed(provider.capabilities),
               select: () => Effect.succeed(provider),
             }),
@@ -285,13 +274,7 @@ describe("agent relay worker runtime", () => {
           constructed.push("runtime");
           return Layer.succeed(
             RuntimeProviderRegistry,
-            RuntimeProviderRegistry.of({
-              readAppliedPlanStrict: () => Effect.succeed(undefined),
-              appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-              resolveAppliedPlan: () => Effect.succeed(undefined),
-              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-              appliedPlansFor: () => Effect.succeed([]),
-              list: Effect.succeed([]),
+            makeTestRuntimeProviderRegistry({
               capabilities: Effect.succeed(runtimeProviderService.capabilities),
               select: () => Effect.succeed(runtimeProviderService),
             }),
@@ -351,13 +334,7 @@ describe("agent relay worker runtime", () => {
           constructed.push("runtime");
           return Layer.succeed(
             RuntimeProviderRegistry,
-            RuntimeProviderRegistry.of({
-              readAppliedPlanStrict: () => Effect.succeed(undefined),
-              appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-              resolveAppliedPlan: () => Effect.succeed(undefined),
-              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-              appliedPlansFor: () => Effect.succeed([]),
-              list: Effect.succeed([]),
+            makeTestRuntimeProviderRegistry({
               capabilities: Effect.succeed(runtimeProviderService.capabilities),
               select: () => Effect.succeed(runtimeProviderService),
             }),

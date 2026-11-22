@@ -31,7 +31,7 @@ import * as hostProxyWorker from "@lando/engine/subsystems/host-proxy/worker";
 import { stubContainerHelper } from "@lando/engine/testing/container-helper";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
-import { TestRouterService } from "@lando/sdk/test";
+import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
@@ -295,9 +295,7 @@ const appLayer = (
         Layer.succeed(RuntimeProvider, RuntimeProvider.of(fixtureProvider)),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            readAppliedPlanStrict: () => Effect.succeed(undefined),
-            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+          makeTestRuntimeProviderRegistry({
             resolveAppliedPlan: (root) =>
               (fixtureProvider.appliedPlans ?? Effect.succeed([])).pipe(
                 Effect.map((plans) => plans.find((candidate) => candidate.root === root)),
@@ -1421,12 +1419,7 @@ describe("App handle managed lifecycle scopes", () => {
                   Layer.succeed(RuntimeProvider, RuntimeProvider.of(fixtureProvider)),
                   Layer.succeed(
                     RuntimeProviderRegistry,
-                    RuntimeProviderRegistry.of({
-                      readAppliedPlanStrict: () => Effect.succeed(undefined),
-                      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-                      resolveAppliedPlan: () => Effect.succeed(undefined),
-                      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                      appliedPlansFor: () => Effect.succeed([]),
+                    makeTestRuntimeProviderRegistry({
                       list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
                       capabilities: Effect.succeed(fixtureProvider.capabilities),
                       select: () => Effect.succeed(fixtureProvider),

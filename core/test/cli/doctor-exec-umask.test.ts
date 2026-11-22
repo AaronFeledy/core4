@@ -3,6 +3,7 @@ import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/cor
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { AppId, type GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, Effect, Layer } from "effect";
 import { doctor } from "../../src/cli/commands/doctor.ts";
 
@@ -253,12 +254,7 @@ describe("exec-umask runtime gating", () => {
     Layer.mergeAll(
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([ProviderId.make(provider.id)]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),

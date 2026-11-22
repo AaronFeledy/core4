@@ -18,7 +18,7 @@ import {
   LandofileService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestSshService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry, makeTestSshService } from "@lando/sdk/test";
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { type DoctorFinding, DoctorReportSchema } from "../../src/cli/commands/doctor-contract.ts";
@@ -68,12 +68,8 @@ const applied = globalPlanAt(root, {
   intervalSeconds: 1,
   retries: 1,
 });
-const sidecarRegistry = RuntimeProviderRegistry.of({
-  readAppliedPlanStrict: () => Effect.succeed(undefined),
-  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-  appliedPlansFor: () => Effect.succeed([]),
+const sidecarRegistry = makeTestRuntimeProviderRegistry({
   resolveAppliedPlan: () => Effect.succeed(applied),
-  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   list: Effect.succeed([ProviderId.make("lando")]),
   capabilities: Effect.succeed(runningSidecar.capabilities),
   select: () => Effect.succeed(runningSidecar),
@@ -463,16 +459,15 @@ describe("SSH agent doctor posture", () => {
           yield* TestClock.adjust("30 seconds");
           return yield* Fiber.join(fiber);
         }).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            readAppliedPlanStrict: () => Effect.succeed(undefined),
-            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-            resolveAppliedPlan: () => Effect.succeed(applied),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
-            list: Effect.succeed([provider.id]),
-            capabilities: Effect.succeed(provider.capabilities),
-            select: () => Effect.succeed(provider),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              resolveAppliedPlan: () => Effect.succeed(applied),
+              list: Effect.succeed([provider.id]),
+              capabilities: Effect.succeed(provider.capabilities),
+              select: () => Effect.succeed(provider),
+            }),
+          ),
           Effect.provideService(GlobalAppService, globalApp),
           Effect.provide(TestClock.layer()),
         ),

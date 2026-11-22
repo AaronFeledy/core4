@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { EventService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer } from "effect";
 import { withStreamedTail } from "../../src/operations/event-step-output.ts";
@@ -44,16 +44,12 @@ for (const kind of ["cmd", "task"] as const) {
         EventRuntime.layer,
         Layer.succeed(RedactionService, makeRedactionService()),
         Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
-        Layer.succeed(RuntimeProviderRegistry, {
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          list: Effect.succeed([plan.provider]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(TestRuntimeProvider),
-        }),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            list: Effect.succeed([plan.provider]),
+          }),
+        ),
         Layer.succeed(ToolingEngine, {
           id: "returning-hook",
           run: () =>
@@ -116,16 +112,12 @@ const eventFailureLayer = (stdout: string, stderr: string, live: boolean) => {
     EventRuntime.layer,
     Layer.succeed(RedactionService, makeRedactionService()),
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
-    Layer.succeed(RuntimeProviderRegistry, {
-      readAppliedPlanStrict: () => Effect.succeed(undefined),
-      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      list: Effect.succeed([plan.provider]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      makeTestRuntimeProviderRegistry({
+        list: Effect.succeed([plan.provider]),
+      }),
+    ),
     Layer.succeed(ToolingEngine, {
       id: "failing-hook",
       run: () =>

@@ -3,7 +3,7 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { sha256Hex } from "@lando/sdk/digest";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer } from "effect";
 import { runAppEvent } from "../../src/operations/events.ts";
@@ -41,15 +41,8 @@ test("event lowered env keeps an authorized literal whole-token in failure outpu
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make("test")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
       }),
     ),
     Layer.succeed(

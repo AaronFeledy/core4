@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { makeTestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Option, References, Tracer } from "effect";
 
 import { infoForPlan } from "../../src/operations/info.ts";
@@ -54,12 +54,7 @@ test("nests provider inspection under the operation span when info runs against 
   await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
   const registry = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      readAppliedPlanStrict: () => Effect.succeed(undefined),
-      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),

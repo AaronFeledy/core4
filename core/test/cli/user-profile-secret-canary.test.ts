@@ -39,7 +39,7 @@ import {
   SecretStore,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer, Queue, Stream } from "effect";
@@ -148,12 +148,7 @@ test.each([
       Layer.succeed(RedactionService, makeRedactionService()),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([ProviderId.make("lando")]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),

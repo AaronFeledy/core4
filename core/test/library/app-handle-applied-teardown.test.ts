@@ -7,7 +7,7 @@ import { openLandoRuntime } from "@lando/core";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/core/schema";
 import { RouterService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { TestRouterService } from "@lando/sdk/test";
+import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 
 const providerId = ProviderId.make(TestRuntimeProvider.id);
@@ -62,9 +62,7 @@ const makeHarness = (root: string) => {
     Layer.succeed(RuntimeProvider, provider),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+      makeTestRuntimeProviderRegistry({
         resolveTeardownEvidence: () =>
           Effect.sync(() =>
             appliedPlan === undefined

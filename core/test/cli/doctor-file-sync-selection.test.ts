@@ -8,7 +8,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { definePlugin } from "@lando/sdk/plugins";
 import { GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
 import { ConfigService, FileSyncEngine, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { doctor } from "../../src/cli/commands/doctor.ts";
 
@@ -96,12 +96,7 @@ test.each([
       fileSyncTargets: "prepared-volume" as const,
     },
   };
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("lando")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),

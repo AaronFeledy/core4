@@ -13,7 +13,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Exit, Layer, Queue, Schema } from "effect";
 import * as Builder from "../../src/services/build-orchestrator.ts";
 import * as Events from "../../src/services/event-service.ts";
@@ -76,12 +76,7 @@ test("queued skip publication defects remain cleanup diagnostics after task sett
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

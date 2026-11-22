@@ -26,7 +26,7 @@ import {
   RuntimeProviderRegistry,
   ToolingEngine,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { serviceTypeFacts } from "@lando/service-lando";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
@@ -171,12 +171,7 @@ const run = (landofile: LandofileShape, failOn?: string) => {
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

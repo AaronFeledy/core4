@@ -13,7 +13,7 @@ import {
   StateStore,
   type StateStoreShape,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Layer, Option, Schema } from "effect";
 
 import { buildLogsApp } from "../../src/operations/logs-build.ts";
@@ -53,14 +53,8 @@ const makeLayer = (plan: ReturnType<typeof planWith>, userDataRoot: string, stat
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.die(new TypeError("build logs must not select a provider")),
       }),
     ),

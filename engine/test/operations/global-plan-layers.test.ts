@@ -12,7 +12,7 @@ import {
   PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Schema } from "effect";
 import { type GlobalPolicy, globalPolicyBucket } from "../../src/global-app/enablement.ts";
 import {
@@ -88,14 +88,8 @@ const withGlobalFiles = async <A>(
     Layer.succeed(GlobalAppService, globalApp),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make("lando")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: (plan) => {
           expect(typeof plan === "string" ? plan : plan?.provider).toBe(ProviderId.make("lando"));
           return Effect.succeed(TestRuntimeProvider);

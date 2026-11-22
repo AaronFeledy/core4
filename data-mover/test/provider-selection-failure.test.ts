@@ -10,21 +10,15 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect, Layer, Stream } from "effect";
 import { layer } from "../src/service.ts";
 
 test("missing applied plans preserve the app identity and start remediation", async () => {
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    list: Effect.succeed([]),
+  const registry = makeTestRuntimeProviderRegistry({
     capabilities: Effect.die("No provider was selected"),
     select: () => Effect.die("Do not use the host provider for an unknown app"),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   });
   const result = await Effect.runPromise(
     Effect.result(
@@ -88,15 +82,10 @@ test("an uninspectable provider keeps its own failure tag and remediation", asyn
     message: "DOCKER_HOST points at a missing socket.",
     remediation: "Unset DOCKER_HOST or point it at a running daemon.",
   });
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("docker")]),
     capabilities: Effect.die("No provider was selected"),
     select: () => Effect.succeed({ ...TestRuntimeProvider, appliedPlans: Effect.fail(original) }),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   });
   // When a transfer needs that app's provider.
   const result = await Effect.runPromise(

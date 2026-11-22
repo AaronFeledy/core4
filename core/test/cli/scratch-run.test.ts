@@ -50,6 +50,7 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { ServiceExecError } from "@lando/sdk/errors";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { makeStateStore } from "@lando/state-store/service";
@@ -283,12 +284,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      readAppliedPlanStrict: () => Effect.succeed(undefined),
-      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),

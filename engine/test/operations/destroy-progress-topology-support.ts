@@ -28,7 +28,7 @@ import {
   StateStore,
   type StateStoreShape,
 } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
@@ -154,14 +154,8 @@ export const makeHarness = (
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(provider),
       }),
     ),

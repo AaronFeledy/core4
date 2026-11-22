@@ -26,7 +26,7 @@ import {
   type RuntimeProviderShape,
   ToolingEngine,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Redacted, Schema, Stream } from "effect";
 
@@ -98,12 +98,7 @@ const provider: RuntimeProviderShape = {
 };
 const registryLayer = Layer.succeed(
   RuntimeProviderRegistry,
-  RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(outputRegisteredTestProvider(provider, plan)),
@@ -166,16 +161,14 @@ describe("live plan-secret redaction", () => {
         layer,
         PrivateFileAccessService.layer,
         Layer.succeed(PathsService, paths),
-        Layer.succeed(RuntimeProviderRegistry, {
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          list: Effect.succeed([providerId]),
-          capabilities: Effect.succeed(provider.capabilities),
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          select: () => Effect.succeed(outputRegisteredTestProvider(workerProvider, plan)),
-        }),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            list: Effect.succeed([providerId]),
+            capabilities: Effect.succeed(provider.capabilities),
+            select: () => Effect.succeed(outputRegisteredTestProvider(workerProvider, plan)),
+          }),
+        ),
         Layer.succeed(
           LandofileService,
           LandofileService.of({ discover: Effect.succeed(literalTestLandofile({ name: plan.name })) }),
@@ -214,16 +207,14 @@ describe("live plan-secret redaction", () => {
           Effect.provide(
             Layer.merge(
               layer,
-              Layer.succeed(RuntimeProviderRegistry, {
-                readAppliedPlanStrict: () => Effect.succeed(undefined),
-                appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-                list: Effect.succeed([providerId]),
-                capabilities: Effect.succeed(provider.capabilities),
-                appliedPlansFor: () => Effect.succeed([]),
-                resolveAppliedPlan: () => Effect.succeed(undefined),
-                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                select: () => Effect.succeed(outputRegisteredTestProvider(failedProvider, plan)),
-              }),
+              Layer.succeed(
+                RuntimeProviderRegistry,
+                makeTestRuntimeProviderRegistry({
+                  list: Effect.succeed([providerId]),
+                  capabilities: Effect.succeed(provider.capabilities),
+                  select: () => Effect.succeed(outputRegisteredTestProvider(failedProvider, plan)),
+                }),
+              ),
             ),
           ),
         ),

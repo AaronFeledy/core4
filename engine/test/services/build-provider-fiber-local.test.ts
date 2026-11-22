@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { makeLandoPaths } from "@lando/paths";
 import { ProviderId, ServiceName } from "@lando/sdk/schema";
 import { BuildOrchestrator, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Deferred, Effect, Fiber, Layer } from "effect";
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
 import { withBuildProvider } from "../../src/services/build-orchestrator.ts";
@@ -26,12 +26,7 @@ const makeLayer = (selected: string[]) => {
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([plan.provider]),
         capabilities: Effect.succeed(fallback.capabilities),
         select: (target) =>

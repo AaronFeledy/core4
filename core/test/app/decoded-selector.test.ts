@@ -8,6 +8,7 @@ import { RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { authoredDocumentFrom } from "@lando/landofile/provenance";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
@@ -43,15 +44,8 @@ const appLayer = (root: string) =>
         makeTestStateStore().layer,
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            readAppliedPlanStrict: () => Effect.succeed(undefined),
-            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
+          makeTestRuntimeProviderRegistry({
             list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-            select: () => Effect.succeed(TestRuntimeProvider),
           }),
         ),
       ],

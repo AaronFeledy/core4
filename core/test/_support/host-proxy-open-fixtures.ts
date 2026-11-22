@@ -17,7 +17,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Exit, Layer, Stream } from "effect";
 
 import { type OpenAppOptions, OpenAppResultSchema, openForPlan } from "../../src/cli/commands/open.ts";
@@ -120,14 +120,9 @@ export const commandServices = (
     redactionLayer(),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(provider.capabilities),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         select: () => Effect.succeed(provider),
       }),
     ),

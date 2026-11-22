@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { AppPlanner, RuntimeProvider, RuntimeProviderRegistry, makeLandoRuntime } from "@lando/core";
 import { type LandofileShape, ProviderId, ServiceName } from "@lando/core/schema";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 import { literalLandofile } from "../_support/value-contracts.ts";
@@ -42,15 +43,8 @@ describe("library makeLandoRuntime app bootstrap", () => {
                   Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
                   Layer.succeed(
                     RuntimeProviderRegistry,
-                    RuntimeProviderRegistry.of({
-                      readAppliedPlanStrict: () => Effect.succeed(undefined),
-                      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-                      resolveAppliedPlan: () => Effect.succeed(undefined),
-                      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                      appliedPlansFor: () => Effect.succeed([]),
+                    makeTestRuntimeProviderRegistry({
                       list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-                      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-                      select: () => Effect.succeed(TestRuntimeProvider),
                     }),
                   ),
                 ],

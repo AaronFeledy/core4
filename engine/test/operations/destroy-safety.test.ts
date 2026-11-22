@@ -11,6 +11,7 @@ import {
   physicalVolumeLockKey,
 } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Deferred, Effect, Schema } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp, destroyAppForTarget } from "../../src/operations/destroy.ts";
@@ -36,11 +37,14 @@ test("destroy fails closed before its bracket when only an unfinished root journ
       Effect.gen(function* () {
         const registry = yield* RuntimeProviderRegistry;
         return yield* withResolvedCwd(target.root, destroyApp({ volumes: true })).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...registry,
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...registry,
+              resolveAppliedPlan: () => Effect.succeed(undefined),
+              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            }),
+          ),
           Effect.provideService(LandofileService, {
             discover: Effect.fail(invalid),
           }),
@@ -159,18 +163,21 @@ test("destroy reports unchanged when the provider returns no-op and nothing else
           app: { kind: "user", id: plan.id, root: plan.root },
         },
       ).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          select: () =>
-            Effect.succeed({
-              ...provider,
-              destroy: () =>
-                Effect.sync(() => {
-                  destroys += 1;
-                  return { kind: "no-op", reason: "no-applied-plan" } as const;
-                }),
-            }),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            select: () =>
+              Effect.succeed({
+                ...provider,
+                destroy: () =>
+                  Effect.sync(() => {
+                    destroys += 1;
+                    return { kind: "no-op", reason: "no-applied-plan" } as const;
+                  }),
+              }),
+          }),
+        ),
       );
     }).pipe(Effect.provide(harness.layer)),
   );
@@ -224,10 +231,13 @@ test.each([false, true])(
               app: { kind: "user", id: cachePlan.id, root: cachePlan.root },
             },
           ).pipe(
-            Effect.provideService(RuntimeProviderRegistry, {
-              ...registry,
-              select: () => Effect.succeed({ ...provider, locateVolume: () => Effect.succeed(locator) }),
-            }),
+            Effect.provideService(
+              RuntimeProviderRegistry,
+              makeTestRuntimeProviderRegistry({
+                ...registry,
+                select: () => Effect.succeed({ ...provider, locateVolume: () => Effect.succeed(locator) }),
+              }),
+            ),
             Effect.provideService(StateStore, {
               ...store,
               withLock: (lockKey, body, options) =>

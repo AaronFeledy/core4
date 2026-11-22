@@ -21,7 +21,7 @@ import {
   RuntimeProvider,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { layer as dataMoverLayer } from "../src/service.ts";
@@ -87,9 +87,7 @@ describe("BunDataMover.layer call-time provider", () => {
           ),
       });
       const targets: Array<AppPlan | ProviderId | undefined> = [];
-      const registry = RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+      const registry = makeTestRuntimeProviderRegistry({
         list: Effect.succeed(
           broken === "none" || broken === "data-id" || broken === "stale-service-id"
             ? [ProviderId.make("selected")]
@@ -98,7 +96,6 @@ describe("BunDataMover.layer call-time provider", () => {
         capabilities: Effect.succeed(selected.capabilities),
         appliedPlansFor: () => Effect.succeed([plan]),
         resolveAppliedPlan: () => Effect.succeed(plan),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         select: (target) => {
           const failure = new ProviderUnavailableError({
             providerId: "broken",

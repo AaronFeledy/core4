@@ -8,7 +8,7 @@ import {
   type RouterServiceShape,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRouterService } from "@lando/sdk/test";
+import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import {
   type GlobalRebuildError,
@@ -130,7 +130,7 @@ test("#2138 a selected global start refuses when sibling reconciliation joins a 
   const withRunningMail = Layer.effect(
     RuntimeProviderRegistry,
     Effect.map(RuntimeProviderRegistry, (registry) =>
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         ...registry,
         select: (target) =>
           Effect.map(registry.select(target), (provider) => ({

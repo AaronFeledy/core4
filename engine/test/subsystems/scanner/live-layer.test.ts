@@ -7,7 +7,7 @@ import {
   type RuntimeProviderShape,
   UrlScanner,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
@@ -23,18 +23,13 @@ const registryFor = (
   selected: Array<AppPlan | ProviderId | undefined> = [],
   broken?: "select" | "appliedPlans",
 ) =>
-  RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed(
       broken === undefined
         ? [ProviderId.make(provider.id)]
         : [ProviderId.make("broken"), ProviderId.make(provider.id)],
     ),
     capabilities: Effect.succeed(provider.capabilities),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     select: (target) => {
       const failure = new ProviderUnavailableError({
         providerId: "broken",

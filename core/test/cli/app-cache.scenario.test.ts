@@ -16,6 +16,7 @@ import { appCommandCachePath } from "@lando/engine/cache/paths";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { CacheError } from "@lando/sdk/errors";
 import { ValidationIssue } from "@lando/sdk/schema";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Effect, Layer, Result, Schema } from "effect";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -172,12 +173,7 @@ describe("lando app:cache:refresh", () => {
           ),
           Layer.succeed(
             RuntimeProviderRegistry,
-            RuntimeProviderRegistry.of({
-              readAppliedPlanStrict: () => Effect.succeed(undefined),
-              appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-              resolveAppliedPlan: () => Effect.succeed(undefined),
-              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-              appliedPlansFor: () => Effect.succeed([]),
+            makeTestRuntimeProviderRegistry({
               list: Effect.succeed([providerId]),
               capabilities: Effect.succeed(capabilities),
               select: () => {
@@ -265,12 +261,7 @@ describe("lando app:cache:refresh", () => {
           ),
           Layer.succeed(
             RuntimeProviderRegistry,
-            RuntimeProviderRegistry.of({
-              readAppliedPlanStrict: () => Effect.succeed(undefined),
-              appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-              resolveAppliedPlan: () => Effect.succeed(undefined),
-              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-              appliedPlansFor: () => Effect.succeed([]),
+            makeTestRuntimeProviderRegistry({
               list: Effect.succeed([providerId]),
               capabilities: Effect.succeed(capabilities),
               select: () => Effect.die("provider must not be selected"),

@@ -11,7 +11,7 @@ import {
   appIdentityKey,
 } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, ScratchAppService, type ScratchHandle } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, DateTime, Effect, Layer, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { followScratchLogs, scratchLogs } from "../../src/cli/commands/scratch.ts";
@@ -115,17 +115,13 @@ const harness = (input: { readonly plan?: AppPlan; readonly failing?: boolean })
       ]);
     },
   };
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+  const registry = makeTestRuntimeProviderRegistry({
     resolveAppliedPlan: (lookupRoot, app, lookup) =>
       Effect.sync(() => {
         resolutions.push({ root: lookupRoot, app, lookup });
         return input.plan;
       }),
     select: () => Effect.succeed(provider),
-    appliedPlansFor: () => Effect.succeed([]),
-    list: Effect.succeed([]),
     capabilities: Effect.die("unexpected capabilities"),
     resolveTeardownEvidence: () => Effect.die("unexpected teardown resolution"),
   });

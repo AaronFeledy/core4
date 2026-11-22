@@ -19,6 +19,7 @@ import { formatSummary } from "@lando/renderer/summary";
 import type { InfoAppResult } from "@lando/sdk/app";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Stream } from "effect";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 import { connections } from "./connection-fixtures";
@@ -188,12 +189,7 @@ const makeInfoLayer = () => {
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),

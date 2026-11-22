@@ -28,7 +28,7 @@ import {
   ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, type Context, DateTime, Effect, Layer } from "effect";
 import {
@@ -144,15 +144,8 @@ const runWithFakes = (
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make("test")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
       }),
     ),
     Layer.succeed(
@@ -250,15 +243,8 @@ const eventRuntime = (
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make("test")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
       }),
     ),
     Layer.succeed(
@@ -1038,14 +1024,8 @@ describe("hostEvents runtime", () => {
               eventRuntime(invocations),
               Layer.succeed(
                 RuntimeProviderRegistry,
-                RuntimeProviderRegistry.of({
-                  readAppliedPlanStrict: () => Effect.succeed(undefined),
-                  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-                  appliedPlansFor: () => Effect.succeed([]),
-                  resolveAppliedPlan: () => Effect.succeed(undefined),
-                  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                makeTestRuntimeProviderRegistry({
                   list: Effect.succeed([ProviderId.make("test")]),
-                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                   select: () => Effect.succeed(inspecting),
                 }),
               ),
@@ -1166,14 +1146,8 @@ describe("hostEvents runtime", () => {
             eventRuntime(invocations),
             Layer.succeed(
               RuntimeProviderRegistry,
-              RuntimeProviderRegistry.of({
-                readAppliedPlanStrict: () => Effect.succeed(undefined),
-                appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-                appliedPlansFor: () => Effect.succeed([]),
-                resolveAppliedPlan: () => Effect.succeed(undefined),
-                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+              makeTestRuntimeProviderRegistry({
                 list: Effect.succeed([ProviderId.make("test")]),
-                capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                 select: () => Effect.succeed(inspecting),
               }),
             ),
@@ -1217,14 +1191,8 @@ describe("hostEvents runtime", () => {
               eventRuntime(invocations),
               Layer.succeed(
                 RuntimeProviderRegistry,
-                RuntimeProviderRegistry.of({
-                  readAppliedPlanStrict: () => Effect.succeed(undefined),
-                  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-                  appliedPlansFor: () => Effect.succeed([]),
-                  resolveAppliedPlan: () => Effect.succeed(undefined),
-                  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                makeTestRuntimeProviderRegistry({
                   list: Effect.succeed([ProviderId.make("test")]),
-                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                   select: () => Effect.succeed(inspecting),
                 }),
               ),
@@ -1289,14 +1257,8 @@ describe("hostEvents runtime", () => {
             eventRuntime(invocations),
             Layer.succeed(
               RuntimeProviderRegistry,
-              RuntimeProviderRegistry.of({
-                readAppliedPlanStrict: () => Effect.succeed(undefined),
-                appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-                appliedPlansFor: () => Effect.succeed([]),
-                resolveAppliedPlan: () => Effect.succeed(undefined),
-                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+              makeTestRuntimeProviderRegistry({
                 list: Effect.succeed([ProviderId.make("test")]),
-                capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                 select: () => Effect.succeed(inspecting),
               }),
             ),
@@ -1377,14 +1339,8 @@ describe("scoped start events", () => {
             eventRuntime(invocations),
             Layer.succeed(
               RuntimeProviderRegistry,
-              RuntimeProviderRegistry.of({
-                readAppliedPlanStrict: () => Effect.succeed(undefined),
-                appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-                appliedPlansFor: () => Effect.succeed([]),
-                resolveAppliedPlan: () => Effect.succeed(undefined),
-                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+              makeTestRuntimeProviderRegistry({
                 list: Effect.succeed([ProviderId.make("test")]),
-                capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                 select: () => Effect.succeed(inspecting),
               }),
             ),

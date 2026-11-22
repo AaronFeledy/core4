@@ -31,7 +31,7 @@ import {
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
@@ -234,7 +234,7 @@ const makeFixture = async (directory: string) => {
         });
       }),
   };
-  const registry = RuntimeProviderRegistry.of({
+  const registry = makeTestRuntimeProviderRegistry({
     readAppliedPlanStrict: () =>
       Effect.suspend(() =>
         unreadable
@@ -255,7 +255,6 @@ const makeFixture = async (directory: string) => {
       Effect.succeed({ plans: applied === undefined ? [] : [applied], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed(applied === undefined ? [] : [applied]),
     resolveAppliedPlan: () => Effect.succeed(applied),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.sync(() => capabilities),
     select: () => Effect.succeed(provider),
@@ -957,7 +956,7 @@ test("cold ensure does not publish success when policy changes during readiness"
       ensureGlobalServicesRunning({ services: ["app"] }).pipe(
         Effect.provideService(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({ ...registry, select: () => Effect.succeed(observed) }),
+          makeTestRuntimeProviderRegistry({ ...registry, select: () => Effect.succeed(observed) }),
         ),
         Effect.provide(f.layer),
         Effect.result,

@@ -10,7 +10,7 @@ import {
   ServiceName,
 } from "@lando/sdk/schema";
 import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Clock, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 import {
@@ -64,24 +64,23 @@ const runningProvider = {
     }),
 };
 const withProvider = (provider: typeof TestRuntimeProvider, plan: AppPlan | null = applied) =>
-  Effect.provideService(RuntimeProviderRegistry, {
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: (root, app, lookup) =>
-      Effect.succeed(
-        root === globalRoot && app?.id === applied.id && app.kind === "global" && lookup === "exact"
-          ? (plan ?? undefined)
-          : undefined,
-      ),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    list: Effect.succeed([ProviderId.make(provider.id)]),
-    capabilities: Effect.succeed(provider.capabilities),
-    select: (target) =>
-      Effect.succeed(
-        typeof target !== "string" && target?.provider === provider.id ? provider : TestRuntimeProvider,
-      ),
-  });
+  Effect.provideService(
+    RuntimeProviderRegistry,
+    makeTestRuntimeProviderRegistry({
+      resolveAppliedPlan: (root, app, lookup) =>
+        Effect.succeed(
+          root === globalRoot && app?.id === applied.id && app.kind === "global" && lookup === "exact"
+            ? (plan ?? undefined)
+            : undefined,
+        ),
+      list: Effect.succeed([ProviderId.make(provider.id)]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: (target) =>
+        Effect.succeed(
+          typeof target !== "string" && target?.provider === provider.id ? provider : TestRuntimeProvider,
+        ),
+    }),
+  );
 
 test("builds a read-only passthrough bind when the socket uses a host directory", () => {
   // Given

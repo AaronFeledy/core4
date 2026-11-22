@@ -27,7 +27,7 @@ import {
 } from "@lando/core/services";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Schema, Stream, Struct } from "effect";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -332,12 +332,7 @@ const makeInfoLayer = (
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plannedApp)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(providerCapabilities),
         select: () => Effect.succeed(provider),
@@ -842,12 +837,7 @@ describe("lando info — resolved log sources", () => {
       Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(logPlan)) })),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(caps),
           select: () => Effect.succeed(provider),

@@ -35,7 +35,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
 import { ContainerHelperAssets } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { DateTime, Effect, Layer, Stream } from "effect";
@@ -334,9 +334,7 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
     requiredStartServicesLayer,
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+      makeTestRuntimeProviderRegistry({
         resolveAppliedPlan: (root) => Effect.succeed(root === plannedApp.root ? plannedApp : undefined),
         resolveTeardownEvidence: (root) =>
           Effect.succeed(
@@ -344,7 +342,6 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
               ? { kind: "applied" as const, plan: plannedApp }
               : { kind: "absent" as const },
           ),
-        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
@@ -407,9 +404,7 @@ const makeCachedBuildLayer = () => {
   const paths = Layer.succeed(PathsService, makeLandoPaths());
   const registry = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      readAppliedPlanStrict: () => Effect.succeed(undefined),
-      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+    makeTestRuntimeProviderRegistry({
       resolveAppliedPlan: () => Effect.sync(() => applied),
       resolveTeardownEvidence: () =>
         Effect.sync(() =>

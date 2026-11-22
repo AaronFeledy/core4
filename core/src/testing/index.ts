@@ -31,6 +31,7 @@ export {
 export * as RendererRuntime from "@lando/renderer/runtime";
 export { renderPlain } from "@lando/renderer/runtime";
 export { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
+export { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 export * from "./data-mover";
 export * from "./downloader";
 export * from "./events";

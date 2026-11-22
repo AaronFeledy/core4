@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Stream } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame, followLogsForPlan } from "../../src/operations/logs.ts";
 
@@ -73,12 +73,7 @@ describe("log-follow completion", () => {
           ),
         ),
     };
-    const registry = RuntimeProviderRegistry.of({
-      readAppliedPlanStrict: () => Effect.succeed(undefined),
-      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
+    const registry = makeTestRuntimeProviderRegistry({
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -134,12 +129,7 @@ describe("log-follow completion", () => {
       const layer = Layer.merge(
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            readAppliedPlanStrict: () => Effect.succeed(undefined),
-            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-            appliedPlansFor: () => Effect.succeed([]),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            resolveAppliedPlan: () => Effect.succeed(undefined),
+          makeTestRuntimeProviderRegistry({
             list: Effect.succeed([providerId]),
             capabilities: Effect.succeed(provider.capabilities),
             select: () => Effect.succeed(provider),

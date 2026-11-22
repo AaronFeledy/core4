@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { validateResolvedAppTarget } from "../../src/operations/applied-state-target.ts";
 import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
@@ -46,16 +46,7 @@ test("uses the canonical Windows root when planning a teardown target", async ()
     const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
     await Effect.runPromise(
       validateResolvedAppTarget(target).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          list: Effect.succeed([]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(TestRuntimeProvider),
-        }),
+        Effect.provideService(RuntimeProviderRegistry, makeTestRuntimeProviderRegistry()),
       ),
     );
   } finally {

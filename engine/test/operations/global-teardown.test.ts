@@ -21,7 +21,7 @@ import {
   type ServiceRuntimeInfo,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer } from "effect";
 
@@ -156,13 +156,11 @@ const harnessAt = (
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         readAppliedPlanStrict: ({ id, provider }) =>
           id === appId && provider === providerId && input.receiptError !== undefined
             ? Effect.fail(input.receiptError)
             : Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
         appliedPlansFor: () =>
           Effect.map(provider.appliedPlans, (plans) => plans.filter((plan) => plan.provider === providerId)),
         list: Effect.succeed([providerId, ProviderId.make("docker")]),

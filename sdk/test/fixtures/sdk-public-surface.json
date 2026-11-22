@@ -2344,6 +2344,7 @@
       "makeTestHealthcheckRunner",
       "makeTestRouterService",
       "makeTestRuntimeProvider",
+      "makeTestRuntimeProviderRegistry",
       "makeTestSshService",
       "makeTestUrlScanner",
       "makeToolingEngineContractSuite",

@@ -5,7 +5,7 @@ import {
   type ServiceRuntimeFields,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import {
   readGlobalConsumerImpact,
@@ -151,10 +151,8 @@ test("incomplete roots, foreign provider claims and duplicate identities cannot 
 
 test("strict inspection retains known consumers alongside unreadable evidence and never starts runtimes", async () => {
   const plan = app();
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     appliedPlansFor: () => Effect.die("Root-only enumeration cannot prove consumer absence."),
     resolveAppliedPlan: () => Effect.die("not used"),
     resolveTeardownEvidence: () => Effect.die("not used"),
@@ -185,10 +183,8 @@ test("audits old cross-provider requirement claims but does not probe unrelated 
   const empty = ProviderId.make("unused");
   const legacy = app("legacy-cross-provider", { provider: "docker" });
   const selected: string[] = [];
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId, docker, empty]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     appliedPlansFor: () => Effect.die("not used"),
     resolveAppliedPlan: () => Effect.die("not used"),
     resolveTeardownEvidence: () => Effect.die("not used"),
@@ -213,10 +209,8 @@ test("audits old cross-provider requirement claims but does not probe unrelated 
 });
 
 test("offline inspection is uncertainty and empty selections avoid all provider work", async () => {
-  const registry = RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     appliedPlansFor: () => Effect.die("not used"),
     resolveAppliedPlan: () => Effect.die("not used"),
     resolveTeardownEvidence: () => Effect.die("not used"),
@@ -233,10 +227,13 @@ test("offline inspection is uncertainty and empty selections avoid all provider 
   expect(impact.uncertainties.join(" ")).toContain("unreachable");
   const empty = await Effect.runPromise(
     readGlobalConsumerImpact({ selectedIds: [], routerId: "custom" }).pipe(
-      Effect.provideService(RuntimeProviderRegistry, {
-        ...registry,
-        list: Effect.die("Empty selections must not inspect providers."),
-      }),
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          ...registry,
+          list: Effect.die("Empty selections must not inspect providers."),
+        }),
+      ),
     ),
   );
   expect(empty).toEqual({ consumers: [], uncertainties: [], appliedStateIssues: [] });

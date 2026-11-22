@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { NotImplementedError } from "@lando/sdk/errors";
 import { CurrentExecutableAppPlan } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Result } from "effect";
 import { planDesiredApp, resolveDesiredAppTarget } from "../../src/landofile/app-resolution.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
@@ -15,16 +15,13 @@ const failure = new NotImplementedError({
   commandId: "test",
   remediation: "test",
 });
-const registry = Layer.succeed(RuntimeProviderRegistry, {
-  readAppliedPlanStrict: () => Effect.succeed(undefined),
-  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-  appliedPlansFor: () => Effect.succeed([]),
-  resolveAppliedPlan: () => Effect.succeed(undefined),
-  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-  list: Effect.succeed([plan.provider]),
-  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: () => Effect.die("Provider selection is not part of planning"),
-});
+const registry = Layer.succeed(
+  RuntimeProviderRegistry,
+  makeTestRuntimeProviderRegistry({
+    list: Effect.succeed([plan.provider]),
+    select: () => Effect.die("Provider selection is not part of planning"),
+  }),
+);
 
 test("resolves a user target when the desired Landofile is planned", async () => {
   // Given
@@ -36,19 +33,17 @@ test("resolves a user target when the desired Landofile is planned", async () =>
         return landofile;
       }),
     }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      readAppliedPlanStrict: () => Effect.succeed(undefined),
-      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      list: Effect.succeed([plan.provider]),
-      capabilities: Effect.sync(() => {
-        calls.push("capabilities");
-        return TestRuntimeProvider.capabilities;
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      makeTestRuntimeProviderRegistry({
+        list: Effect.succeed([plan.provider]),
+        capabilities: Effect.sync(() => {
+          calls.push("capabilities");
+          return TestRuntimeProvider.capabilities;
+        }),
+        select: () => Effect.die("Unexpected selection"),
       }),
-      select: () => Effect.die("Unexpected selection"),
-    }),
+    ),
     Layer.succeed(AppPlanner, {
       plan: (input, capabilities) =>
         Effect.sync(() => {

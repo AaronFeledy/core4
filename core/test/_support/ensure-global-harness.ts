@@ -35,6 +35,7 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { RedactionService } from "@lando/redaction/service";
 import type { ServiceRuntimeInfo } from "@lando/sdk/services";
 import { PathsService } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
@@ -243,9 +244,7 @@ export const makeHarness = async (
     Layer.succeed(PluginRegistry, pluginRegistry),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+      makeTestRuntimeProviderRegistry({
         resolveAppliedPlan: (root) =>
           Effect.sync(() => (recordedPlan?.root === root ? recordedPlan : undefined)),
         resolveTeardownEvidence: (root) =>

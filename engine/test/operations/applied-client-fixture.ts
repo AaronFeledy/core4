@@ -21,7 +21,7 @@ import {
   RuntimeProviderRegistry,
   type ServiceType,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { runEventToolingCommand } from "../../src/operations/event-tooling-command.ts";
@@ -226,14 +226,11 @@ export const appliedClientFixture = (
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([base.provider]),
         capabilities: Effect.succeed(provider.capabilities),
         appliedPlansFor: () => Effect.succeed(input.applied === "missing" ? [] : [applied]),
         resolveAppliedPlan: () => Effect.succeed(applied),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         select: () =>
           Effect.sync(() => {
             selections.push(1);

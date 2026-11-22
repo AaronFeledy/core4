@@ -10,7 +10,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
 
 import { infoForPlan } from "../../src/operations/info.ts";
@@ -55,11 +55,11 @@ const demoPlan = (): AppPlan => ({
   extensions: {},
 });
 
-const runInfo = async (registry: ReturnType<typeof RuntimeProviderRegistry.of>) =>
+const runInfo = async (registry: ReturnType<typeof makeTestRuntimeProviderRegistry>) =>
   Effect.runPromise(infoForPlan(demoPlan()).pipe(Effect.provideService(RuntimeProviderRegistry, registry)));
 
 const baseRegistry = (
-  overrides: Partial<ReturnType<typeof RuntimeProviderRegistry.of>> = {},
+  overrides: Partial<ReturnType<typeof makeTestRuntimeProviderRegistry>> = {},
   inspect?: RuntimeProviderShape["inspect"],
 ) => {
   const provider: RuntimeProviderShape = {
@@ -77,12 +77,8 @@ const baseRegistry = (
           publications: { status: "unknown" as const },
         })),
   };
-  return RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
+  return makeTestRuntimeProviderRegistry({
     appliedStateInventory: () => Effect.die("Info must not scan inventory to diagnose a targeted read"),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),

@@ -9,6 +9,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, type Context, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import type { DoctorSectionResult } from "../../src/cli/commands/doctor.ts";
@@ -41,25 +42,25 @@ const buildConfigService = (): Context.Service.Shape<typeof ConfigService> => {
   });
 };
 
-const failingSelectRegistry = () => ({
-  list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: () =>
-    Effect.fail(
-      new ProviderUnavailableError({
-        providerId: TestRuntimeProvider.id,
-        operation: "select",
-        message: "runtime socket is unreachable",
-        remediation: "Install or start the selected runtime provider and confirm it can perform `select`.",
-      }),
-    ),
-});
+const failingSelectRegistry = () =>
+  makeTestRuntimeProviderRegistry({
+    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+    select: () =>
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId: TestRuntimeProvider.id,
+          operation: "select",
+          message: "runtime socket is unreachable",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `select`.",
+        }),
+      ),
+  });
 
-const statusRegistry = (getStatus: typeof TestRuntimeProvider.getStatus) => ({
-  list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: () => Effect.succeed({ ...TestRuntimeProvider, getStatus }),
-});
+const statusRegistry = (getStatus: typeof TestRuntimeProvider.getStatus) =>
+  makeTestRuntimeProviderRegistry({
+    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+    select: () => Effect.succeed({ ...TestRuntimeProvider, getStatus }),
+  });
 
 const doctorModule = (check: PluginDoctorCheckContribution): LandoPluginModule => ({
   name: "@lando/doctor-chaos",
@@ -71,9 +72,9 @@ const doctorModule = (check: PluginDoctorCheckContribution): LandoPluginModule =
   doctorChecks: [check],
 });
 
-const layersFor = (registry: ReturnType<typeof statusRegistry> | ReturnType<typeof failingSelectRegistry>) =>
+const layersFor = (registry: ReturnType<typeof makeTestRuntimeProviderRegistry>) =>
   Layer.mergeAll(
-    Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry as never)),
+    Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
@@ -736,9 +737,8 @@ describe("doctor chaos: whole report", () => {
   test("redacts secrets out of a failure message before it reaches the report", async () => {
     // Given a failure message containing a value the env marks as a secret
     const secret = "super-secret-token-value";
-    const registry = {
+    const registry = makeTestRuntimeProviderRegistry({
       list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
       select: () =>
         Effect.fail(
           new ProviderUnavailableError({
@@ -749,7 +749,7 @@ describe("doctor chaos: whole report", () => {
               "Install or start the selected runtime provider and confirm it can perform `select`.",
           }),
         ),
-    };
+    });
     const layers = layersFor(registry);
 
     // When

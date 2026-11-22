@@ -1,6 +1,7 @@
 import { runtimeProviderService } from "@lando/engine/runtime/bootstrap-layer-support";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { runAgentRelayWorkerProcess } from "../../../src/cli/agent-relay/worker-runtime";
 
@@ -20,13 +21,7 @@ const provider = {
 void runAgentRelayWorkerProcess({
   runtime: Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      readAppliedPlanStrict: () => Effect.succeed(undefined),
-      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
-      list: Effect.succeed([]),
+    makeTestRuntimeProviderRegistry({
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
     }),

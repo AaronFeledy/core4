@@ -22,7 +22,7 @@ import { validateToolInput } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { withOptionalStderrOutput } from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Stream, Struct } from "effect";
 import { execSpec } from "../../src/cli/command-specs/app/exec";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input";
@@ -244,12 +244,7 @@ const makeLayer = (options: {
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(options.provider),
@@ -708,12 +703,7 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     const { provider, calls } = makeProvider([{ exitCode: 0 }]);
     const failingRegistry = Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () =>

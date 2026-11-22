@@ -61,7 +61,7 @@ import { HostProxyWorkerRecord, probeWorker } from "@lando/engine/subsystems/hos
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
 import * as TestLandofileLayers from "../_support/landofile-layer.ts";
@@ -727,9 +727,7 @@ const makeStartLayer = (
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+      makeTestRuntimeProviderRegistry({
         resolveAppliedPlan: (root) =>
           Effect.sync(() => [...recordedPlans.values()].find((applied) => applied.root === root)),
         resolveTeardownEvidence: (root) =>
@@ -1062,9 +1060,7 @@ const makeAutoStartLayer = async (options: {
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        readAppliedPlanStrict: () => Effect.succeed(undefined),
-        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+      makeTestRuntimeProviderRegistry({
         resolveAppliedPlan: (root) =>
           Effect.sync(() => [...recordedPlans.values()].find((applied) => applied.root === root)),
         resolveTeardownEvidence: (root) =>
@@ -2559,12 +2555,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2730,12 +2721,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2892,12 +2878,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -3061,12 +3042,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -3241,12 +3217,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -3458,12 +3429,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -3652,12 +3618,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),

@@ -21,7 +21,7 @@ import {
   StreamFrame,
 } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
-import { yamlRoundTripCorpus, yamlRoundTripRecord } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry, yamlRoundTripCorpus, yamlRoundTripRecord } from "@lando/sdk/test";
 import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import type { DoctorOptions } from "../../src/cli/commands/doctor.ts";
@@ -68,12 +68,7 @@ const resultEnvelope = (ndjson: string) => {
 };
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
-  RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),

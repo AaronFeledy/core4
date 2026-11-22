@@ -40,7 +40,7 @@ const registryLayerFor = (harness: ReturnType<typeof makeHarness>) => {
           appliedPlans: () => Effect.succeed([]),
           appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           readAppliedPlanStrict: () => Effect.succeed(undefined),
-          make: () => harness.runtimeProviderRegistry.select(),
+          make: () => harness.selectProvider(),
         },
       ],
     ]),

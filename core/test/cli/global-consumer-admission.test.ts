@@ -41,7 +41,7 @@ import {
   ShellRunner,
   StateStore,
 } from "@lando/sdk/services";
-import { makeTestRouterService } from "@lando/sdk/test";
+import { makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
@@ -219,7 +219,7 @@ const scratchLayerFor = async (
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         ...registry,
         select: (target) =>
           registry.select(target).pipe(
@@ -378,37 +378,40 @@ test("selected restart rechecks policy after its pre-restart hook before stoppin
     const result = await Effect.runPromise(
       restartApp({ services: [ServiceName.make("web")] }, f.target).pipe(
         Effect.result,
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          resolveAppliedPlan: (root) =>
-            root === f.plan.root ? Effect.succeed(f.plan) : registry.resolveAppliedPlan(root),
-          appliedPlansFor: (root, providerId) =>
-            root === f.plan.root ? Effect.succeed([f.plan]) : registry.appliedPlansFor(root, providerId),
-          select: (target) =>
-            registry.select(target).pipe(
-              Effect.map((provider) => ({
-                ...provider,
-                inspect: (target) =>
-                  target.app === f.plan.id
-                    ? Effect.succeed({
-                        app: f.plan.id,
-                        appRoot: f.plan.root,
-                        service: target.service,
-                        providerId: f.plan.provider,
-                        containerId: "owned-web",
-                        status: "running",
-                        publications: { status: "unknown" as const },
-                      })
-                    : provider.inspect(target),
-                stop: (target) =>
-                  target.app === f.plan.id
-                    ? Effect.sync(() => {
-                        stopped = true;
-                      })
-                    : provider.stop(target),
-              })),
-            ),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            resolveAppliedPlan: (root) =>
+              root === f.plan.root ? Effect.succeed(f.plan) : registry.resolveAppliedPlan(root),
+            appliedPlansFor: (root, providerId) =>
+              root === f.plan.root ? Effect.succeed([f.plan]) : registry.appliedPlansFor(root, providerId),
+            select: (target) =>
+              registry.select(target).pipe(
+                Effect.map((provider) => ({
+                  ...provider,
+                  inspect: (target) =>
+                    target.app === f.plan.id
+                      ? Effect.succeed({
+                          app: f.plan.id,
+                          appRoot: f.plan.root,
+                          service: target.service,
+                          providerId: f.plan.provider,
+                          containerId: "owned-web",
+                          status: "running",
+                          publications: { status: "unknown" as const },
+                        })
+                      : provider.inspect(target),
+                  stop: (target) =>
+                    target.app === f.plan.id
+                      ? Effect.sync(() => {
+                          stopped = true;
+                        })
+                      : provider.stop(target),
+                })),
+              ),
+          }),
+        ),
         Effect.provideService(EventService, {
           ...events,
           publish: (event) =>
@@ -898,7 +901,7 @@ test("a completed sibling activation invalidates the earlier consumer scan befor
     const activationEntered = Deferred.makeUnsafe<void>();
     const releaseActivation = Deferred.makeUnsafe<void>();
     let pause = true;
-    const guarded = RuntimeProviderRegistry.of({
+    const guarded = makeTestRuntimeProviderRegistry({
       ...registry,
       appliedStateInventory: () =>
         Effect.suspend(() => {
@@ -967,7 +970,7 @@ test("policy cleanup keeps its claim until completion and refuses sibling enable
     const cleanup = Deferred.makeUnsafe<void>();
     const resume = Deferred.makeUnsafe<void>();
     let intercept = true;
-    const guarded = RuntimeProviderRegistry.of({
+    const guarded = makeTestRuntimeProviderRegistry({
       ...registry,
       select: (target) =>
         registry.select(target).pipe(

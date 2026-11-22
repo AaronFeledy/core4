@@ -19,6 +19,7 @@ import {
   ProviderId,
   StreamFrame,
 } from "@lando/sdk/schema";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, Effect, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import type { DoctorSectionResult } from "../../src/cli/commands/doctor.ts";
@@ -81,12 +82,7 @@ const resultEnvelope = (ndjson: string) => {
 };
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
-  RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -757,14 +753,8 @@ describe("meta:doctor command", () => {
       try {
         const socket = "/run/user/1000/podman/podman.sock";
         await writeProviderLandoState(dataRoot, socket);
-        const registry = RuntimeProviderRegistry.of({
-          readAppliedPlanStrict: () => Effect.succeed(undefined),
-          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        const registry = makeTestRuntimeProviderRegistry({
           list: Effect.succeed([ProviderId.make("podman")]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.die("provider-podman should not be constructed when conflict is pre-detected"),
         });
         const result = await Effect.runPromise(

@@ -6,6 +6,7 @@ import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { AbsolutePath, ProviderId } from "@lando/core/schema";
 import { Renderer, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Stream } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
@@ -40,12 +41,7 @@ test("App handle exec passes provider stderr through the captured library Render
               Layer.succeed(RuntimeProvider, provider),
               Layer.succeed(
                 RuntimeProviderRegistry,
-                RuntimeProviderRegistry.of({
-                  readAppliedPlanStrict: () => Effect.succeed(undefined),
-                  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-                  resolveAppliedPlan: () => Effect.succeed(undefined),
-                  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                  appliedPlansFor: () => Effect.succeed([]),
+                makeTestRuntimeProviderRegistry({
                   list: Effect.succeed([ProviderId.make(provider.id)]),
                   capabilities: Effect.succeed(provider.capabilities),
                   select: () => Effect.succeed(provider),

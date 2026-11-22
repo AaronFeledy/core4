@@ -2,6 +2,7 @@ import { rm } from "node:fs/promises";
 import type { AppPlan, ServiceHomePlan } from "@lando/sdk/schema";
 import { PortablePath } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
@@ -101,15 +102,18 @@ export const runTransition = async (
   try {
     await Effect.runPromise(
       Effect.forEach(Array.from({ length: repeats }), operation).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...harness.runtimeProviderRegistry,
-          appliedPlansFor: () => Effect.succeed(previous === undefined ? [] : [previous]),
-          resolveAppliedPlan: () =>
-            Effect.sync(() => {
-              appliedReads++;
-              return previous;
-            }),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...harness.runtimeProviderRegistry,
+            appliedPlansFor: () => Effect.succeed(previous === undefined ? [] : [previous]),
+            resolveAppliedPlan: () =>
+              Effect.sync(() => {
+                appliedReads++;
+                return previous;
+              }),
+          }),
+        ),
         Effect.provide(harness.layer),
       ),
     );

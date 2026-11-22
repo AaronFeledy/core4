@@ -3,6 +3,7 @@ import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/cor
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, Effect, Layer } from "effect";
 import { doctor } from "../../src/cli/commands/doctor.ts";
 import { OOM_CHECK_NAME } from "../../src/cli/commands/doctor-oom.ts";
@@ -24,12 +25,7 @@ const diedEvent = (overrides: Record<string, unknown> = {}): Record<string, unkn
 });
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
-  RuntimeProviderRegistry.of({
-    readAppliedPlanStrict: () => Effect.succeed(undefined),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),

@@ -8,6 +8,7 @@ import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { AppPlanner, CommandRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { renderColdAllHelp, renderColdRootHelp } from "../../src/cli/cold-path-output.ts";
 import { HelpCatalogResult, buildHelpCatalog } from "../../src/cli/compiled-help.ts";
@@ -275,16 +276,17 @@ test.each(["missing", "stale", "invalid"] as const)(
         resolveToolingRoute("absent", { cwd, cacheRoot }).pipe(
           Effect.provideService(AppPlanner, { plan: () => blocked("plan") }),
           Effect.provideService(CommandRegistry, { list: blocked("registry") }),
-          Effect.provideService(RuntimeProviderRegistry, {
-            readAppliedPlanStrict: () => Effect.succeed(undefined),
-            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
-            list: blocked("provider"),
-            capabilities: blocked("provider"),
-            appliedPlansFor: () => blocked("provider"),
-            select: () => blocked("provider"),
-            resolveAppliedPlan: () => blocked("provider"),
-            resolveTeardownEvidence: () => blocked("provider"),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              list: blocked("provider"),
+              capabilities: blocked("provider"),
+              appliedPlansFor: () => blocked("provider"),
+              select: () => blocked("provider"),
+              resolveAppliedPlan: () => blocked("provider"),
+              resolveTeardownEvidence: () => blocked("provider"),
+            }),
+          ),
         ),
       );
       if (route._tag !== "cache-miss") throw new TypeError(`Unexpected route ${route._tag}`);
