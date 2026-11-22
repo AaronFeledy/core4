@@ -102,6 +102,8 @@ const fixture = async (source: string, hostEvents: HostEvents = {}) => {
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     resolver,
     Layer.succeed(RuntimeProviderRegistry, {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       appliedPlansFor: () => Effect.succeed([]),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),

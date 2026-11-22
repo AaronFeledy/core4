@@ -341,6 +341,8 @@ const makeScratchForkLayer = (
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: (root) =>
         Effect.sync(() => (appliedGlobalPlan?.root === root ? appliedGlobalPlan : undefined)),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

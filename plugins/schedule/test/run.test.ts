@@ -121,6 +121,8 @@ const makeRuntime = (
     },
   };
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     list: Effect.succeed([]),
     capabilities: Effect.die("unused"),
     appliedPlansFor: () => Effect.die("unused"),

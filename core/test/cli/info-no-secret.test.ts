@@ -189,6 +189,8 @@ const makeInfoLayer = () => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
         resolveAppliedPlan: () => Effect.succeed(undefined),

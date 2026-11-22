@@ -54,6 +54,8 @@ export const fixtureVolume = (ref: VolumeRef = { app: AppId.make("data-app"), st
 });
 
 export const registryLayer = Layer.succeed(RuntimeProviderRegistry, {
+  readAppliedPlanStrict: () => Effect.succeed(undefined),
+  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
   appliedPlansFor: () => Effect.succeed([]),
   resolveAppliedPlan: () => Effect.succeed(undefined),
   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -77,6 +79,8 @@ export const layer = dataMoverLayer.pipe(
     Layer.effect(
       RuntimeProviderRegistry,
       Effect.map(RuntimeProvider, (provider) => ({
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
         appliedPlansFor: () => Effect.succeed([]),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

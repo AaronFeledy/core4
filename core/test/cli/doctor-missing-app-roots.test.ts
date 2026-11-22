@@ -57,6 +57,8 @@ const snapshot = (appRoot = root, cache = false, runtimeObserved = true): Provid
 });
 const registry = (snapshots: ReadonlyArray<ProviderRuntimeSnapshot>) =>
   RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     appliedPlansFor: () => Effect.succeed([]),
@@ -102,10 +104,7 @@ test("returns one redacted manual warning when app state cannot be read", async 
           fsLayer,
           Layer.succeed(
             RuntimeProviderRegistry,
-            RuntimeProviderRegistry.of({
-              ...registry([]),
-              observeRuntime: Effect.fail(error),
-            }),
+            RuntimeProviderRegistry.of({ ...registry([]), observeRuntime: Effect.fail(error) }),
           ),
         ),
       ),

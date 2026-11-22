@@ -23,7 +23,11 @@ import {
   readAppliedPlansFromUserData,
 } from "./list-discovery";
 import { AppsListPathResolver, filterAppsByPath } from "./list-path-filter";
-import { pruneAppliedPlanState } from "./list-prune-state";
+import {
+  type AppsListPruneFailure,
+  type PruneAppliedPlanOutcome,
+  pruneAppliedPlanState,
+} from "./list-prune-state";
 
 export type { AppsListEntry } from "./list-discovery";
 export { appliedPlansDirectory } from "./list-discovery";
@@ -42,9 +46,21 @@ export const AppsListEntrySchema = Schema.Struct({
   scratch: Schema.optionalKey(Schema.Boolean),
 });
 
+export const AppsListPruneFailureSchema = Schema.Struct({
+  reason: Schema.Literal("newer-version"),
+  providerId: Schema.String,
+  path: Schema.String,
+  appId: Schema.optionalKey(Schema.String),
+  storedVersion: Schema.Int,
+  supportedVersion: Schema.Int,
+  message: Schema.String,
+  remediation: Schema.String,
+});
+
 export const AppsListResultSchema = Schema.Struct({
   apps: Schema.Array(AppsListEntrySchema),
   pruned: Schema.optionalKey(Schema.Array(AppsListEntrySchema)),
+  pruneFailures: Schema.optionalKey(Schema.Array(AppsListPruneFailureSchema)),
 });
 
 export interface ListServicesOptions {
@@ -103,10 +119,28 @@ export const renderAppsListResult = (
         .join("  ");
     return [pad(header), ...rows.map(pad)].join("\n");
   })();
-  if (result.pruned === undefined) return inventory;
-  if (result.pruned.length === 0) return `${inventory}\nPruned 0 stale inventory entries.`;
-  const entries = result.pruned.map((entry) => `- ${entry.appId} (${entry.providerId}) ${entry.appRoot}`);
-  return `${inventory}\nPruned ${result.pruned.length} stale inventory ${result.pruned.length === 1 ? "entry" : "entries"}:\n${entries.join("\n")}`;
+  if (result.pruned === undefined && result.pruneFailures === undefined) return inventory;
+  const parts = [inventory];
+  if (result.pruned !== undefined) {
+    if (result.pruned.length === 0) {
+      parts.push("Pruned 0 stale inventory entries.");
+    } else {
+      const entries = result.pruned.map((entry) => `- ${entry.appId} (${entry.providerId}) ${entry.appRoot}`);
+      parts.push(
+        `Pruned ${result.pruned.length} stale inventory ${result.pruned.length === 1 ? "entry" : "entries"}:\n${entries.join("\n")}`,
+      );
+    }
+  }
+  if (result.pruneFailures !== undefined && result.pruneFailures.length > 0) {
+    const failures = result.pruneFailures.map(
+      (failure) =>
+        `- ${failure.path}${failure.appId === undefined ? "" : ` (${failure.appId})`}: ${failure.message} ${failure.remediation}`,
+    );
+    parts.push(
+      `Protected ${result.pruneFailures.length} applied-state ${result.pruneFailures.length === 1 ? "record" : "records"} written by a newer Lando:\n${failures.join("\n")}`,
+    );
+  }
+  return parts.join("\n");
 };
 
 interface PruneServices {
@@ -120,7 +154,7 @@ interface PruneCandidateInput {
   readonly entry: AppsListEntry;
 }
 
-type PruneCandidate<E, R> = (input: PruneCandidateInput) => Effect.Effect<boolean, E, R>;
+type PruneCandidate<E, R> = (input: PruneCandidateInput) => Effect.Effect<PruneAppliedPlanOutcome, E, R>;
 
 const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   options: ListServicesOptions,
@@ -218,6 +252,16 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
         (resource.appRoot === undefined || resource.appRoot === entry.appRoot),
     );
   const pruned: Array<typeof AppsListEntrySchema.Type> = [];
+  const pruneFailures: AppsListPruneFailure[] = [];
+  const failureKey = (failure: AppsListPruneFailure): string =>
+    `${failure.providerId}\0${failure.path}\0${failure.appId ?? ""}\0${failure.storedVersion}`;
+  const seenFailures = new Set<string>();
+  const pushFailure = (failure: AppsListPruneFailure): void => {
+    const key = failureKey(failure);
+    if (seenFailures.has(key)) return;
+    seenFailures.add(key);
+    pruneFailures.push(failure);
+  };
   if (options.prune === true && evidence.providerConfirmed && pruneCandidate !== undefined) {
     const confirmedProviderIds = new Set(evidence.confirmedProviderIds);
     const candidates = apps
@@ -226,8 +270,21 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
       )
       .slice(0, options.pruneLimit ?? 100);
     for (const entry of candidates) {
-      const removed = yield* pruneCandidate({ discoverEvidence, entry });
-      if (removed) pruned.push(entry);
+      const outcome = yield* pruneCandidate({ discoverEvidence, entry });
+      switch (outcome.status) {
+        case "removed":
+          pruned.push(entry);
+          break;
+        case "protected":
+          pushFailure(outcome.failure);
+          break;
+        case "kept":
+          break;
+        default: {
+          const _exhaustive: never = outcome;
+          void _exhaustive;
+        }
+      }
     }
   }
 
@@ -253,7 +310,15 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   );
   const visible =
     pruneCandidate === undefined ? filtered : filtered.filter((entry) => !pruned.includes(entry));
-  return { apps: visible, ...(pruneCandidate === undefined ? {} : { pruned }) };
+  return {
+    apps: visible,
+    ...(pruneCandidate === undefined
+      ? {}
+      : {
+          pruned,
+          ...(pruneFailures.length === 0 ? {} : { pruneFailures }),
+        }),
+  };
 });
 
 export const listServices = Effect.fn("AppsList.listServices")(
@@ -291,7 +356,7 @@ export const listServicesWithPrune = Effect.fn("AppsList.listServicesWithPrune")
               (resource.appRoot === undefined || resource.appRoot === entry.appRoot),
           )
         ) {
-          return false;
+          return { status: "kept" as const };
         }
         const rootGone = yield* Effect.promise(async () => {
           try {
@@ -301,7 +366,7 @@ export const listServicesWithPrune = Effect.fn("AppsList.listServicesWithPrune")
             return true;
           }
         });
-        if (!rootGone) return false;
+        if (!rootGone) return { status: "kept" as const };
         return yield* pruneAppliedPlanState(pruneServices.paths, pruneServices.stateStore, entry);
       }),
     ).pipe(

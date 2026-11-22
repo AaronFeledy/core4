@@ -25,6 +25,8 @@ const buildConfigService = (): Context.Service.Shape<typeof ConfigService> => {
 };
 
 const buildRegistry = () => ({
+  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+  readAppliedPlanStrict: () => Effect.succeed(undefined),
   resolveAppliedPlan: () => Effect.succeed(undefined),
   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   appliedPlansFor: () => Effect.succeed([]),

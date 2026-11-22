@@ -17,6 +17,8 @@ import { layer } from "../src/service.ts";
 
 test("missing applied plans preserve the app identity and start remediation", async () => {
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     list: Effect.succeed([]),
     capabilities: Effect.die("No provider was selected"),
     select: () => Effect.die("Do not use the host provider for an unknown app"),
@@ -87,6 +89,8 @@ test("an uninspectable provider keeps its own failure tag and remediation", asyn
     remediation: "Unset DOCKER_HOST or point it at a running daemon.",
   });
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     list: Effect.succeed([ProviderId.make("docker")]),
     capabilities: Effect.die("No provider was selected"),
     select: () => Effect.succeed({ ...TestRuntimeProvider, appliedPlans: Effect.fail(original) }),

@@ -16,6 +16,8 @@ const failure = new NotImplementedError({
   remediation: "test",
 });
 const registry = Layer.succeed(RuntimeProviderRegistry, {
+  readAppliedPlanStrict: () => Effect.succeed(undefined),
+  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
   appliedPlansFor: () => Effect.succeed([]),
   resolveAppliedPlan: () => Effect.succeed(undefined),
   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -35,6 +37,8 @@ test("resolves a user target when the desired Landofile is planned", async () =>
       }),
     }),
     Layer.succeed(RuntimeProviderRegistry, {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       appliedPlansFor: () => Effect.succeed([]),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

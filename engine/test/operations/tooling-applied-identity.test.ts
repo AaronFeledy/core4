@@ -64,6 +64,8 @@ test("tooling identity never borrows an enclosing app's project user", async () 
   const seen: ToolingInvocation[] = [];
   const lookups: Array<string | undefined> = [];
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed([]),
     capabilities: Effect.die("unused"),
     list: Effect.succeed([nested.provider]),
@@ -157,6 +159,8 @@ test.each([
   const plan = planAt(nestedRoot, node(remove ? null : currentPin, "lando"));
   const applied = planAt(nestedRoot, node(before, provider ?? "lando"));
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed([]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     list: Effect.succeed([plan.provider]),

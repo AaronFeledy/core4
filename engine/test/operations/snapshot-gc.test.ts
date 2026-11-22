@@ -15,6 +15,8 @@ const orphan: VolumeSnapshotArtifact = {
 
 test("reports providers unavailable when registry construction cannot reach their runtime", async () => {
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed([]),
     resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -50,6 +52,8 @@ test("reports a stopped native provider as unavailable without invoking data-pla
   };
   const mover = { ...emptySnapshots, findOrphanedSnapshots: Effect.die("must not inspect stopped runtime") };
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed([]),
     resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -88,6 +92,8 @@ test.each([false, true])("reports orphan details and prunes only when requested 
       }),
   };
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed([]),
     resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -120,6 +126,8 @@ test("does not issue a successful removal report when the orphan recheck refuses
     remediation: "Review the current orphan report.",
   });
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed([]),
     resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -166,6 +174,8 @@ test("reports a failing provider without hiding another provider's orphans", asy
     }),
   };
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed([]),
     resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -205,6 +215,8 @@ test("reports failed removal without counting it when the runtime stops after re
     removeOrphanedSnapshot: () => Effect.fail(failure),
   };
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed([]),
     resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

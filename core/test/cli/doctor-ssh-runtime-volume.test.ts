@@ -82,6 +82,8 @@ test.each([
         Effect.provideService(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            readAppliedPlanStrict: () => Effect.succeed(undefined),
+            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
             resolveAppliedPlan: () => Effect.succeed(plan),
             resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
             appliedPlansFor: () => Effect.succeed([]),
@@ -162,6 +164,8 @@ test.each([true, false])(
             get: (key) => Effect.succeed(config[key]),
           }),
           Effect.provideService(RuntimeProviderRegistry, {
+            readAppliedPlanStrict: () => Effect.succeed(undefined),
+            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
             resolveAppliedPlan: () =>
               Effect.succeed(globalPlanAt(root, converged && publishesReadiness ? readiness : undefined)),
             resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

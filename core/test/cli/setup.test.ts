@@ -122,6 +122,8 @@ const buildSetupLayers = (
   );
 
 const testRuntimeProviderRegistry = {
+  readAppliedPlanStrict: () => Effect.succeed(undefined),
+  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
   resolveAppliedPlan: () => Effect.succeed(undefined),
   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   appliedPlansFor: () => Effect.succeed([]),
@@ -304,6 +306,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -352,6 +356,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -384,6 +390,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -433,6 +441,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -466,6 +476,8 @@ describe("meta:setup command", () => {
       }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -541,6 +553,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -568,6 +582,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -640,6 +656,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -745,6 +763,8 @@ describe("meta:setup command", () => {
         }),
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -822,6 +842,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -890,6 +912,8 @@ describe("meta:setup command", () => {
         getRuntimeServiceStatus: Effect.fail(new Error("status unavailable")),
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -935,6 +959,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -991,6 +1017,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -1044,6 +1072,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -1117,6 +1147,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -1217,6 +1249,8 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("podman")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         resolveAppliedPlan: () => Effect.succeed(undefined),
@@ -1346,6 +1380,8 @@ describe("meta:setup command", () => {
       remediation: "Run `lando poweroff`, then retry setup.",
     });
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -1390,6 +1426,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -1482,6 +1520,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -1532,6 +1572,8 @@ describe("meta:setup command", () => {
       setup: () => Effect.void,
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -1564,6 +1606,8 @@ describe("meta:setup command", () => {
     };
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -1602,6 +1646,8 @@ describe("meta:setup command", () => {
           setup: () => Effect.void,
         };
         const registry = {
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           resolveAppliedPlan: () => Effect.succeed(undefined),
           resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           appliedPlansFor: () => Effect.succeed([]),
@@ -1691,6 +1737,8 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -1781,6 +1829,8 @@ describe("meta:setup command", () => {
           ) as Effect.Effect<void, never, never>,
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -1833,6 +1883,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -1903,6 +1955,8 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -2037,6 +2091,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -2178,6 +2234,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -2221,6 +2279,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -2368,6 +2428,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -2426,6 +2488,8 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -2483,6 +2547,8 @@ describe("meta:setup command", () => {
       setup: () => Effect.die("native bind-mount provider should not run file-sync setup"),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -2527,6 +2593,8 @@ describe("meta:setup command", () => {
         setup: () => Effect.die("--skip-file-sync should not run file-sync setup"),
       };
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -2609,6 +2677,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -2647,6 +2717,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -2677,6 +2749,8 @@ describe("meta:setup command", () => {
             }),
         };
         const registry = {
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           resolveAppliedPlan: () => Effect.succeed(undefined),
           resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           appliedPlansFor: () => Effect.succeed([]),
@@ -2722,6 +2796,8 @@ describe("meta:setup command", () => {
             }),
         };
         const registry = {
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           resolveAppliedPlan: () => Effect.succeed(undefined),
           resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           appliedPlansFor: () => Effect.succeed([]),
@@ -2752,6 +2828,8 @@ describe("meta:setup command", () => {
             }),
         };
         const registry = {
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           resolveAppliedPlan: () => Effect.succeed(undefined),
           resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           appliedPlansFor: () => Effect.succeed([]),
@@ -2784,6 +2862,8 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -2830,6 +2910,8 @@ describe("meta:setup command", () => {
       }),
     );
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -2910,6 +2992,8 @@ describe("meta:setup command", () => {
       }),
     );
     const registry = {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed([]),
@@ -3246,6 +3330,8 @@ describe("meta:setup command", () => {
     const buildRegistryThatCapturesPlan = (provider: typeof TestRuntimeProvider) => {
       const observed: { providerId?: string | undefined } = {};
       const registry = {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),

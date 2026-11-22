@@ -76,6 +76,8 @@ const testProviderLayers = () => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: (root) => Effect.sync(() => plans.get(root)),
         resolveTeardownEvidence: (root) =>
           Effect.sync(() => {

@@ -91,6 +91,8 @@ const scanAgainst = (hostPort: number, scanner: ScanPlan) =>
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            readAppliedPlanStrict: () => Effect.succeed(undefined),
+            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
             list: Effect.succeed([ProviderId.make("test")]),
             capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
             appliedPlansFor: () => Effect.succeed([]),

@@ -88,6 +88,8 @@ describe("BunDataMover.layer call-time provider", () => {
       });
       const targets: Array<AppPlan | ProviderId | undefined> = [];
       const registry = RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         list: Effect.succeed(
           broken === "none" || broken === "data-id" || broken === "stale-service-id"
             ? [ProviderId.make("selected")]

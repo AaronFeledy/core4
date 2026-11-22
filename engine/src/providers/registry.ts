@@ -1,4 +1,3 @@
-import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
 import { hasResourceOwnershipRecords } from "@lando/container-runtime/provider-assembly";
 import { redactProviderError } from "@lando/redaction/provider-error";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -81,7 +80,6 @@ export const makeRuntimeProviderRegistry = (
           ? yield* redaction.value.forProfile("secrets", redactorOptions)
           : createStandaloneRedactor("secrets", redactorOptions);
       const redactFailure = (error: ProviderUnavailableError) => redactProviderError(error, errorRedactor);
-      const redactContributionErrors = mapFailures(redactFailure);
       const appPlanSanitizer = yield* AppPlanSanitizer;
       const stateStore = yield* StateStore;
       const httpClient = yield* HttpClient.HttpClient;
@@ -133,6 +131,22 @@ export const makeRuntimeProviderRegistry = (
           );
         }
 
+        if (
+          typeof contribution.appliedStateInventory !== "function" ||
+          typeof contribution.readAppliedPlanStrict !== "function"
+        ) {
+          return yield* Effect.fail(
+            redactFailure(
+              new ProviderUnavailableError({
+                providerId,
+                operation: "load-contribution",
+                message: `Runtime provider ${providerId} does not implement the required applied-state inventory and strict read callbacks.`,
+                remediation: `Update the ${module.name} plugin to a version that implements appliedStateInventory and readAppliedPlanStrict.`,
+              }),
+            ),
+          );
+        }
+
         const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
           paths.pluginStateDir(module.name),
         ).pipe(
@@ -161,23 +175,24 @@ export const makeRuntimeProviderRegistry = (
           httpClient,
           ...(publishRender === undefined ? {} : { publishRender }),
         });
-        const appliedStateInventory = contribution.appliedStateInventory;
         const resourceOwnership = contribution.resourceOwnership;
         return {
           contribution: {
             ...contribution,
-            appliedPlans: (ctx) => redactContributionErrors(contribution.appliedPlans(ctx)),
-            ...(appliedStateInventory === undefined
-              ? {}
-              : {
-                  appliedStateInventory: (ctx) =>
-                    redactContributionErrors(appliedStateInventory.call(contribution, ctx)),
-                }),
+            appliedPlans: (ctx) => contribution.appliedPlans(ctx).pipe(mapFailures(redactFailure)),
+            appliedStateInventory: (ctx) =>
+              contribution
+                .appliedStateInventory(ctx)
+                .pipe(mapFailures((error) => redactProviderError(error, errorRedactor))),
+            readAppliedPlanStrict: (ctx, appId) =>
+              contribution
+                .readAppliedPlanStrict(ctx, appId)
+                .pipe(mapFailures((error) => redactProviderError(error, errorRedactor))),
             ...(resourceOwnership === undefined
               ? {}
               : {
                   resourceOwnership: (ctx, root) =>
-                    redactContributionErrors(resourceOwnership.call(contribution, ctx, root)),
+                    resourceOwnership.call(contribution, ctx, root).pipe(mapFailures(redactFailure)),
                 }),
           } satisfies typeof contribution,
           context,
@@ -236,45 +251,19 @@ export const makeRuntimeProviderRegistry = (
           providerId: ProviderId,
         ) {
           const { contribution, context } = yield* contributionFor(providerId);
-          if (contribution.appliedStateInventory === undefined)
-            return yield* Effect.fail(
-              redactFailure(
-                new ProviderUnavailableError({
-                  providerId,
-                  operation: "applied-state.list",
-                  message: `Runtime provider ${providerId} does not provide a strict applied-state inventory.`,
-                  remediation:
-                    "Update the provider plugin to support strict applied-state inventory before relying on host-wide ownership checks.",
-                }),
-              ),
-            );
           return yield* contribution
             .appliedStateInventory(context)
-            .pipe(Effect.provideService(PathsService, paths), mapFailures(redactFailure));
+            .pipe(Effect.provideService(PathsService, paths));
         }),
-        assertAppliedStateReadable: Effect.fn("RuntimeProviderRegistry.assertAppliedStateReadable")(
-          function* (plan) {
-            const { contribution, context } = yield* contributionFor(plan.provider);
-            if (contribution.appliedStateInventory === undefined) return;
-            const inventory = yield* contribution
-              .appliedStateInventory(context)
-              .pipe(Effect.provideService(PathsService, paths));
-            const issue = inventory.unreadable.find(
-              (entry) => entry.appId === undefined || entry.appId === plan.id,
-            );
-            if (issue !== undefined)
-              return yield* Effect.fail(
-                redactFailure(
-                  unreadableAppliedStateError({
-                    providerId: plan.provider,
-                    path: issue.path,
-                    layout: issue.appId === undefined ? "record" : "per-app",
-                    appId: plan.id,
-                  }),
-                ),
-              );
-          },
-        ),
+        readAppliedPlanStrict: Effect.fn("RuntimeProviderRegistry.readAppliedPlanStrict")(function* ({
+          id,
+          provider,
+        }) {
+          const { contribution, context } = yield* contributionFor(provider);
+          return yield* contribution
+            .readAppliedPlanStrict(context, id)
+            .pipe(Effect.provideService(PathsService, paths));
+        }),
         list: providerIds,
         hasRecordedOwnership: Effect.fn("RuntimeProviderRegistry.hasRecordedOwnership")((id: ProviderId) =>
           contributionFor(id).pipe(

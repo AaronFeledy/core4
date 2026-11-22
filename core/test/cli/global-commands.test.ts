@@ -650,6 +650,7 @@ const makeHarness = async (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedStateInventory: () =>
@@ -658,7 +659,9 @@ const makeHarness = async (
               ...(options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan]),
               ...(options.consumerPlans ?? []),
             ],
-            unreadable: options.unreadableConsumerState ? [{ path: "/protected/unreadable-app.json" }] : [],
+            unreadable: options.unreadableConsumerState
+              ? [{ path: "/protected/unreadable-app.json", reason: "unreadable" }]
+              : [],
           })),
         appliedPlansFor: () =>
           Effect.sync(() => (options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan])),
@@ -3883,6 +3886,8 @@ describe("meta:global command effects", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            readAppliedPlanStrict: () => Effect.succeed(undefined),
+            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
             resolveAppliedPlan: () => Effect.succeed(undefined),
             resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
             appliedPlansFor: () => Effect.succeed([]),

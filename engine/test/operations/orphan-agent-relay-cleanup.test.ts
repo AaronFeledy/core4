@@ -90,6 +90,8 @@ const layerFor = (root: string) => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),

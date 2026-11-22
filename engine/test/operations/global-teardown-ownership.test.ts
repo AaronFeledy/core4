@@ -158,6 +158,8 @@ const harnessAt = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         appliedPlansFor: () => Effect.succeed(input.applied ? [plan] : []),
         resolveAppliedPlan: () => Effect.succeed(input.applied ? plan : undefined),
         list: Effect.succeed([providerId, ProviderId.make("docker")]),

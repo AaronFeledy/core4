@@ -69,6 +69,8 @@ const layers = (plans: ReadonlyArray<AppPlan>, globalRoot: AbsolutePath = root) 
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         // Exact canonical-root equality, as the production registry filters.

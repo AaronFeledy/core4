@@ -111,6 +111,8 @@ const fixture = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         appliedPlansFor: () => Effect.succeed([]),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         resolveAppliedPlan: () => Effect.succeed(options.applied === true ? plan : undefined),

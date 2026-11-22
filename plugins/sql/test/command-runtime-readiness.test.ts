@@ -110,6 +110,8 @@ test("SQLite command resume waits through the SDK readiness port before returnin
       load: () => Effect.die("unused"),
     }),
     Layer.succeed(RuntimeProviderRegistry, {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       appliedPlansFor: () => Effect.succeed([planned]),

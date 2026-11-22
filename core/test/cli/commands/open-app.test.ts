@@ -211,6 +211,8 @@ describe("openForPlan", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            readAppliedPlanStrict: () => Effect.succeed(undefined),
+            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
             resolveAppliedPlan: () => Effect.succeed(plan),
             appliedPlansFor: () => Effect.succeed([plan]),
             resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan }),

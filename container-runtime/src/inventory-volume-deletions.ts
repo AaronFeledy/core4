@@ -1,4 +1,4 @@
-import type { ProviderUnavailableError } from "@lando/sdk/errors";
+import type { AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AbsolutePath, AppId } from "@lando/sdk/schema";
 import type { DestroyOptions } from "@lando/sdk/services";
 import { Effect } from "effect";
@@ -8,6 +8,7 @@ import {
   type TeardownVolumeRuntime,
   type VolumeDeletionCandidate,
   matchesSharedCache,
+  protectedSkip,
   skippedVolume,
   snapshotVolumeDeletion,
 } from "./teardown-volumes.ts";
@@ -31,7 +32,9 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
   readonly runtime: TeardownVolumeRuntime;
   readonly store: ReturnType<typeof makeResourceOwnershipStore>;
   readonly skipped: SkippedVolume[];
-  readonly checkAppliedState?: (appId: AppId) => Effect.Effect<void, ProviderUnavailableError>;
+  readonly checkAppliedState?: (
+    appId: AppId,
+  ) => Effect.Effect<void, ProviderUnavailableError | AppliedStateVersionError>;
 }) {
   const { root, resources, options, coverage, skipped } = input;
   const volumeRuntime = input.runtime;
@@ -73,7 +76,7 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
         (error) => shared || error.operation === "applied-state.read",
         (error) =>
           Effect.sync(() => {
-            skipped.push(skippedVolume(volume, error.message));
+            skipped.push({ ...skippedVolume(volume, error.message), ...protectedSkip(error) });
             return false;
           }),
       ),

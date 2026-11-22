@@ -69,6 +69,8 @@ const applied = globalPlanAt(root, {
   retries: 1,
 });
 const sidecarRegistry = RuntimeProviderRegistry.of({
+  readAppliedPlanStrict: () => Effect.succeed(undefined),
+  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
   appliedPlansFor: () => Effect.succeed([]),
   resolveAppliedPlan: () => Effect.succeed(applied),
   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -462,6 +464,8 @@ describe("SSH agent doctor posture", () => {
           return yield* Fiber.join(fiber);
         }).pipe(
           Effect.provideService(RuntimeProviderRegistry, {
+            readAppliedPlanStrict: () => Effect.succeed(undefined),
+            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
             resolveAppliedPlan: () => Effect.succeed(applied),
             resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
             appliedPlansFor: () => Effect.succeed([]),

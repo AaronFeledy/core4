@@ -142,6 +142,7 @@ export const makeHarness = (
     readonly resolveAppliedPlan?: typeof RuntimeProviderRegistry.Service.resolveAppliedPlan;
     readonly resolveTeardownEvidence?: typeof RuntimeProviderRegistry.Service.resolveTeardownEvidence;
     readonly resourceOwnership?: typeof RuntimeProviderRegistry.Service.resourceOwnership;
+    readonly readAppliedPlanStrict?: typeof RuntimeProviderRegistry.Service.readAppliedPlanStrict;
     readonly stateStore?: ReturnType<typeof makeTestStateStore>;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
     /** Container-level outcome a fake apply reports; absent means the provider cannot report one. */
@@ -343,6 +344,11 @@ export const makeHarness = (
   const resolveUserAppliedPlan =
     options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp)));
   const runtimeProviderRegistry = {
+    appliedStateInventory: () => Effect.succeed({ plans: options.appliedPlans ?? [], unreadable: [] }),
+    readAppliedPlanStrict:
+      options.readAppliedPlanStrict ??
+      (({ id, provider }: Pick<AppPlan, "id" | "provider">) =>
+        Effect.succeed(options.appliedPlans?.find((plan) => plan.id === id && plan.provider === provider))),
     // Both lookups answer from one applied state, so placement sees the app `resolveAppliedPlan` reports.
     appliedPlansFor: (root: AbsolutePath) =>
       Effect.gen(function* () {

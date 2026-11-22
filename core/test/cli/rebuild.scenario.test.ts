@@ -335,6 +335,8 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: (root) => Effect.succeed(root === plannedApp.root ? plannedApp : undefined),
         resolveTeardownEvidence: (root) =>
           Effect.succeed(
@@ -406,6 +408,8 @@ const makeCachedBuildLayer = () => {
   const registry = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.sync(() => applied),
       resolveTeardownEvidence: () =>
         Effect.sync(() =>

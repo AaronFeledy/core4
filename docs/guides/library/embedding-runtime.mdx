@@ -201,6 +201,9 @@ const providerLayers = [
       const plan = appliedPlans.get(root);
       return plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan };
     }),
+    appliedStateInventory: () => Effect.sync(() => ({ plans: [...appliedPlans.values()], unreadable: [] })),
+    readAppliedPlanStrict: ({ id }) =>
+      Effect.sync(() => [...appliedPlans.values()].find((plan) => plan.id === id)),
   }),
   LandoTesting.withService(RouterService, TestRouterService),
 ];

@@ -128,6 +128,8 @@ const withSwitch = async (
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
           capabilities: Effect.succeed(provider.capabilities),
           appliedPlansFor: (target) => Effect.succeed(globalApplied && target === root ? [global] : []),

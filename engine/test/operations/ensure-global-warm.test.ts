@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { GlobalAppError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { GlobalAppError, appliedStateVersionError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -56,7 +56,7 @@ import { makeTestStateStore } from "../../src/testing/state-store.ts";
 const metadata = { runtime: 4 as const, resolvedAt: DateTime.makeUnsafe(0), source: "warm-test" };
 
 test.each(["cold", "warm"] as const)(
-  "%s ensure rejects unreadable applied state before accepting services",
+  "%s ensure rejects newer applied state before accepting services",
   async (path) => {
     await withFixture(async (f) => {
       if (path === "warm") await f.ensure();
@@ -69,9 +69,12 @@ test.each(["cold", "warm"] as const)(
       expect(result).toMatchObject({
         _tag: "Failure",
         failure: {
-          _tag: "ProviderUnavailableError",
+          _tag: "AppliedStateVersionError",
           providerId: "lando",
           operation: "applied-state.read",
+          storedVersion: 11,
+          supportedVersion: 10,
+          scope: "app",
         },
       });
       expect(f.calls.apply).toBe(applied);
@@ -232,18 +235,21 @@ const makeFixture = async (directory: string) => {
       }),
   };
   const registry = RuntimeProviderRegistry.of({
-    assertAppliedStateReadable: () =>
+    readAppliedPlanStrict: () =>
       Effect.suspend(() =>
         unreadable
           ? Effect.fail(
-              new ProviderUnavailableError({
+              appliedStateVersionError({
                 providerId: "lando",
                 operation: "applied-state.read",
-                message: "Global applied state is unreadable.",
-                remediation: "Restore the global applied state, then run `lando global:start`.",
+                path: "/state/applied-plans/global.json",
+                storedVersion: 11,
+                supportedVersion: 10,
+                scope: "app",
+                appId: "global",
               }),
             )
-          : Effect.void,
+          : Effect.succeed(applied),
       ),
     appliedStateInventory: () =>
       Effect.succeed({ plans: applied === undefined ? [] : [applied], unreadable: [] }),

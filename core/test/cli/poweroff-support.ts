@@ -92,6 +92,7 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
     volumes: [],
   };
   const registry = {
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),

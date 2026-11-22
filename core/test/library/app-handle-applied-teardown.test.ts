@@ -63,6 +63,8 @@ const makeHarness = (root: string) => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveTeardownEvidence: () =>
           Effect.sync(() =>
             appliedPlan === undefined

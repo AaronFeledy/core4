@@ -313,6 +313,8 @@ const makeLayer = (input: {
       ),
   };
   const registry = {
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
     appliedPlansFor: (root: AbsolutePath) =>
       Effect.succeed(
         appliedPlan !== undefined && appliedPlan.identity?.appRoot === root ? [appliedPlan] : [],

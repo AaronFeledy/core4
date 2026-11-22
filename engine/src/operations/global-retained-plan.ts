@@ -32,7 +32,7 @@ export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(
   },
 ) {
   const registry = yield* RuntimeProviderRegistry;
-  yield* registry.assertAppliedStateReadable?.({ id: desired.id, provider: desired.provider }) ?? Effect.void;
+  yield* registry.readAppliedPlanStrict(desired);
   const { plan: prior } = yield* resolveGlobalPlacement();
   if (prior !== undefined && (prior.provider !== desired.provider || prior.root !== desired.root))
     return yield* Effect.fail(

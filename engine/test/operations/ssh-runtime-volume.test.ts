@@ -84,6 +84,8 @@ const appliedGlobal = globalPlanAt(AbsolutePath.make("/global"), {
   retries: 1,
 });
 const registry = (state: "running" | "exited", selected: string[], providerId = appliedGlobal.provider) => ({
+  appliedStateInventory: () => Effect.succeed({ plans: [appliedGlobal], unreadable: [] }),
+  readAppliedPlanStrict: () => Effect.succeed(appliedGlobal),
   appliedPlansFor: () => Effect.succeed([]),
   resolveAppliedPlan: () => Effect.succeed({ ...appliedGlobal, provider: providerId }),
   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

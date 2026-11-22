@@ -39,6 +39,8 @@ const providerReport = async (state: "running" | "idle" | "failure"): Promise<Do
           }),
           Layer.succeed(PathsService, makeLandoPaths({ env: {} })),
           Layer.succeed(RuntimeProviderRegistry, {
+            readAppliedPlanStrict: () => Effect.succeed(undefined),
+            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
             resolveAppliedPlan: () => Effect.succeed(undefined),
             resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
             appliedPlansFor: () => Effect.succeed([]),

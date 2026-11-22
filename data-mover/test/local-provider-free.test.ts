@@ -20,6 +20,8 @@ test("copies local bytes with no RuntimeProvider binding or provider selection",
   const source = resolve(dir, "in.txt");
   const target = resolve(dir, "out.txt");
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     list: Effect.die("Local copy must not enumerate providers"),
     capabilities: Effect.die("Local copy must not inspect provider capabilities"),
     appliedPlansFor: () => Effect.die("Local copy must not inspect applied plans"),

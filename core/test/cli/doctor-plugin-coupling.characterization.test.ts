@@ -63,6 +63,8 @@ Object.assign(slowBindMountProvider, {
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
   RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     appliedPlansFor: () => Effect.succeed([]),
@@ -238,6 +240,8 @@ describe("doctor() provider-conflict short-circuit (contract: a detected conflic
       await writeProviderLandoState(dataRoot, socket);
 
       const registryThatMustNotConstruct = RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),

@@ -276,6 +276,8 @@ test.each(["missing", "stale", "invalid"] as const)(
           Effect.provideService(AppPlanner, { plan: () => blocked("plan") }),
           Effect.provideService(CommandRegistry, { list: blocked("registry") }),
           Effect.provideService(RuntimeProviderRegistry, {
+            readAppliedPlanStrict: () => Effect.succeed(undefined),
+            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
             list: blocked("provider"),
             capabilities: blocked("provider"),
             appliedPlansFor: () => blocked("provider"),

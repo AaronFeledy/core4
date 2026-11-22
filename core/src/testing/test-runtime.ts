@@ -675,6 +675,8 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   });
 
   const runtimeProviderRegistryService = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(runtimeProvider.capabilities),

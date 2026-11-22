@@ -45,6 +45,8 @@ for (const kind of ["cmd", "task"] as const) {
         Layer.succeed(RedactionService, makeRedactionService()),
         Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
         Layer.succeed(RuntimeProviderRegistry, {
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           appliedPlansFor: () => Effect.succeed([]),
           resolveAppliedPlan: () => Effect.succeed(undefined),
           resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -115,6 +117,8 @@ const eventFailureLayer = (stdout: string, stderr: string, live: boolean) => {
     Layer.succeed(RedactionService, makeRedactionService()),
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(RuntimeProviderRegistry, {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       appliedPlansFor: () => Effect.succeed([]),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

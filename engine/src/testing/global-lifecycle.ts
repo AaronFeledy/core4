@@ -104,6 +104,7 @@ export const makeGlobalLifecycleFixture = (
     destroy: () => Effect.die("Selected cleanup must retain applied state and volumes"),
   };
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
     list: Effect.succeed([providerId]),
     select: () => Effect.succeed(provider),
     capabilities: Effect.succeed(provider.capabilities),

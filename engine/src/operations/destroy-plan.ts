@@ -161,7 +161,7 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
     return yield* Effect.fail(desiredResult.failure);
   const authored =
     applied !== undefined && retained === undefined ? yield* resolveLandofileEventPlan(applied) : undefined;
-  if (desired !== undefined) yield* registry.assertAppliedStateReadable?.(desired.plan) ?? Effect.void;
+  if (desired !== undefined) yield* registry.readAppliedPlanStrict(desired.plan);
   const target = retained ?? applied;
   const refs = uniqueDestroyRefs([
     ...recorded,

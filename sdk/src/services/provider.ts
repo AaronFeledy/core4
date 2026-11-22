@@ -1,6 +1,7 @@
 import { Context, type Effect, type Redacted, Schema, type Scope, type Stream } from "effect";
 import type {
   AppResolveError,
+  AppliedStateVersionError,
   ArtifactBuildError,
   ArtifactTransferError,
   EnvironmentValueResolutionError,
@@ -99,6 +100,7 @@ export type ProviderError =
   | ProviderSetupProvisioningError
   | ProviderSetupUnsupportedHostError
   | ProviderUnavailableError
+  | AppliedStateVersionError
   | ServiceExecError
   | ServiceNotFoundError
   | ServiceStartError
@@ -432,15 +434,22 @@ export class RuntimeProviderRegistry extends Context.Service<
     ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
     /** Strict host-wide inventory for one provider, preserving unreadable ownership records.
      * Filesystem-only: never constructs, initializes, or contacts a runtime. */
-    readonly appliedStateInventory?: (
+    readonly appliedStateInventory: (
       providerId: ProviderId,
-    ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError | NoProviderInstalledError>;
+    ) => Effect.Effect<
+      AppliedStateInventory,
+      ProviderUnavailableError | AppliedStateVersionError | NoProviderInstalledError
+    >;
     readonly hasRecordedOwnership?: (
       providerId: ProviderId,
     ) => Effect.Effect<boolean, ProviderUnavailableError | NoProviderInstalledError>;
-    readonly assertAppliedStateReadable?: (
-      plan: Pick<AppPlan, "id" | "provider">,
-    ) => Effect.Effect<void, ProviderUnavailableError | NoProviderInstalledError>;
+    /** Filesystem-only targeted read. Returns undefined only when the app has no record. */
+    readonly readAppliedPlanStrict: (
+      target: Pick<AppPlan, "id" | "provider">,
+    ) => Effect.Effect<
+      AppPlan | undefined,
+      ProviderUnavailableError | AppliedStateVersionError | NoProviderInstalledError
+    >;
     readonly select: (
       target?: AppPlan | ProviderId,
     ) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;

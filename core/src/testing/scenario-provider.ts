@@ -100,6 +100,8 @@ export const makeScenarioProvider = () => {
         .pipe(Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlanCache, target.app, options))),
   };
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: ({ id }) => store.loadAppliedPlanStrict(appliedState, id),
+    appliedStateInventory: () => store.listAppliedPlans(appliedState),
     observeRuntime: Effect.all({ appliedPlans, services: provider.list({}) }).pipe(
       Effect.map(({ appliedPlans, services }) => [
         {

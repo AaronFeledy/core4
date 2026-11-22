@@ -227,6 +227,8 @@ export const appliedClientFixture = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         list: Effect.succeed([base.provider]),
         capabilities: Effect.succeed(provider.capabilities),
         appliedPlansFor: () => Effect.succeed(input.applied === "missing" ? [] : [applied]),

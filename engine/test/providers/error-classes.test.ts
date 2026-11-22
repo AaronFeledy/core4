@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import {
+  AppliedStateVersionError,
   ArtifactBuildError,
   ArtifactTransferError,
   EnvironmentValueResolutionError,
@@ -96,6 +97,16 @@ const cases = {
     }),
   ),
   ProviderUnavailableError: errorCase(ProviderUnavailableError, new ProviderUnavailableError(errorFields)),
+  AppliedStateVersionError: errorCase(
+    AppliedStateVersionError,
+    new AppliedStateVersionError({
+      ...errorFields,
+      path: canary,
+      storedVersion: 11,
+      supportedVersion: 10,
+      scope: "app",
+    }),
+  ),
   ProviderCapabilityError: errorCase(
     ProviderCapabilityError,
     new ProviderCapabilityError({

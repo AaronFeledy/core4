@@ -152,13 +152,14 @@ test("incomplete roots, foreign provider claims and duplicate identities cannot 
 test("strict inspection retains known consumers alongside unreadable evidence and never starts runtimes", async () => {
   const plan = app();
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     appliedPlansFor: () => Effect.die("Root-only enumeration cannot prove consumer absence."),
     resolveAppliedPlan: () => Effect.die("not used"),
     resolveTeardownEvidence: () => Effect.die("not used"),
     appliedStateInventory: () =>
-      Effect.succeed({ plans: [plan], unreadable: [{ path: "/state/broken.json" }] }),
+      Effect.succeed({ plans: [plan], unreadable: [{ path: "/state/broken.json", reason: "unreadable" }] }),
     select: () =>
       Effect.succeed({
         ...TestRuntimeProvider,
@@ -185,6 +186,7 @@ test("audits old cross-provider requirement claims but does not probe unrelated 
   const legacy = app("legacy-cross-provider", { provider: "docker" });
   const selected: string[] = [];
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
     list: Effect.succeed([providerId, docker, empty]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     appliedPlansFor: () => Effect.die("not used"),
@@ -212,6 +214,7 @@ test("audits old cross-provider requirement claims but does not probe unrelated 
 
 test("offline inspection is uncertainty and empty selections avoid all provider work", async () => {
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     appliedPlansFor: () => Effect.die("not used"),
@@ -236,5 +239,5 @@ test("offline inspection is uncertainty and empty selections avoid all provider 
       }),
     ),
   );
-  expect(empty).toEqual({ consumers: [], uncertainties: [] });
+  expect(empty).toEqual({ consumers: [], uncertainties: [], appliedStateIssues: [] });
 });

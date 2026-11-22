@@ -69,6 +69,8 @@ const run = (
       return yield* findMissingAppRoots.pipe(
         Effect.provideService(FileSystem, { ...fs, exists }),
         Effect.provideService(RuntimeProviderRegistry, {
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           appliedPlansFor: () => Effect.succeed([]),
           resolveAppliedPlan: () => Effect.succeed(undefined),
           resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -220,6 +222,7 @@ test.each(["none", "plan", "ownership", "unreadable"] as const)(
       scanMissingAppRoots().pipe(
         Effect.provideService(RuntimeProviderRegistry, {
           list: Effect.succeed([providerId]),
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.die("State inventory must not select a runtime without journal copies"),
           appliedPlansFor: () => Effect.succeed([]),
@@ -229,7 +232,7 @@ test.each(["none", "plan", "ownership", "unreadable"] as const)(
           appliedStateInventory: () =>
             Effect.succeed({
               plans: source === "plan" ? [plan] : [],
-              unreadable: source === "unreadable" ? [{ path: "/state/broken" }] : [],
+              unreadable: source === "unreadable" ? [{ path: "/state/broken", reason: "unreadable" }] : [],
             }),
           observeRuntime: Effect.succeed([snapshot({ runtimeObserved: false })]),
         }),
@@ -239,3 +242,36 @@ test.each(["none", "plan", "ownership", "unreadable"] as const)(
     expect(inventory.scans[0]?.recordedState).toBe(source !== "none");
   },
 );
+
+test.each([
+  [
+    { path: "/state/newer", reason: "newer-version", appId: app, storedVersion: 9, supportedVersion: 1 },
+    "AppliedStateVersionError",
+    "upgrade Lando",
+  ],
+  [{ path: "/state/broken", reason: "unreadable" }, "ProviderUnavailableError", "lando apps:gc"],
+] as const)("scan keeps the %o reason and its remediation", async (issue, errorTag, remediation) => {
+  const inventory = await Effect.runPromise(
+    scanMissingAppRoots().pipe(
+      Effect.provideService(RuntimeProviderRegistry, {
+        list: Effect.succeed([providerId]),
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.die("State inventory must not select a runtime without journal copies"),
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedStateInventory: () =>
+          Effect.succeed({ plans: [], unreadable: [{ path: "/state/broken", reason: "unreadable" }, issue] }),
+        observeRuntime: Effect.succeed([snapshot({ runtimeObserved: true })]),
+      }),
+      Effect.provide(BunFileSystem.layer),
+    ),
+  );
+  expect(inventory.scans[0]).toMatchObject({
+    complete: false,
+    errorTag,
+    message: expect.stringContaining(issue.path),
+  });
+  expect(inventory.scans[0]?.remediation).toContain(remediation);
+});

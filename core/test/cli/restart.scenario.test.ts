@@ -309,6 +309,8 @@ const makeRestartLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan: appliedRecord }),
         appliedPlansFor: () => Effect.succeed([appliedRecord]),
         list: Effect.succeed([providerId]),

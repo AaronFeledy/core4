@@ -24,6 +24,8 @@ const registryFor = (
   broken?: "select" | "appliedPlans",
 ) =>
   RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     list: Effect.succeed(
       broken === undefined
         ? [ProviderId.make(provider.id)]

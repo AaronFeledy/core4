@@ -36,6 +36,8 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
     PlannerLayer.layer.pipe(Layer.provide(Layer.mergeAll(registry, infrastructure))),
     BunFileSystem.layer,
     Layer.succeed(RuntimeProviderRegistry, {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       appliedPlansFor: () => Effect.succeed([]),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

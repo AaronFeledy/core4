@@ -64,7 +64,8 @@ export const fixture = (
       }),
   };
   const registry = RuntimeProviderRegistry.of({
-    assertAppliedStateReadable: () =>
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+    readAppliedPlanStrict: () =>
       options.unreadable
         ? Effect.fail(
             new ProviderUnavailableError({
@@ -74,7 +75,7 @@ export const fixture = (
               remediation: "Restore the global record, then run `lando global:start`.",
             }),
           )
-        : Effect.void,
+        : Effect.succeed(undefined),
     appliedPlansFor: () => Effect.succeed(options.prior === undefined ? [] : [options.prior]),
     resolveAppliedPlan: () => Effect.succeed(options.prior),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

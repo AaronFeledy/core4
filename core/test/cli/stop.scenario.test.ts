@@ -290,6 +290,8 @@ const makeStopLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: (root) =>
           Effect.succeed(
@@ -560,6 +562,8 @@ describe("lando stop", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           resolveAppliedPlan: () => Effect.succeed(undefined),
           resolveTeardownEvidence: (root) =>
             Effect.succeed(
@@ -846,6 +850,8 @@ describe("lando stop", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           resolveAppliedPlan: () => Effect.succeed(undefined),
           resolveTeardownEvidence: (root) =>
             Effect.succeed(

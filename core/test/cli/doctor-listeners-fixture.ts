@@ -114,6 +114,8 @@ export const listenerRegistry = (plan: AppPlan | undefined, provider: RuntimePro
   Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       resolveAppliedPlan: () => Effect.succeed(plan),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed(plan === undefined ? [] : [plan]),

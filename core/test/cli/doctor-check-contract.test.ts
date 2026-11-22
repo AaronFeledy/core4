@@ -35,6 +35,8 @@ import type { DoctorFinding } from "../../src/cli/commands/doctor-contract.ts";
 
 const buildRegistry = (provider: RuntimeProviderShape) =>
   RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     appliedPlansFor: () => Effect.succeed([]),

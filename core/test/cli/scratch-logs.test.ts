@@ -116,6 +116,8 @@ const harness = (input: { readonly plan?: AppPlan; readonly failing?: boolean })
     },
   };
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     resolveAppliedPlan: (lookupRoot, app, lookup) =>
       Effect.sync(() => {
         resolutions.push({ root: lookupRoot, app, lookup });

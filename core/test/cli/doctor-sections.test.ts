@@ -45,6 +45,8 @@ test.each(["none", "config", "runtime"] as const)(
       Effect.gen(function* () {
         const config = yield* Layer.build(configLayer);
         const registry = RuntimeProviderRegistry.of({
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           list: Effect.succeed([]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(TestRuntimeProvider),

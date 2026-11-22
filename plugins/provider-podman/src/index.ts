@@ -1076,6 +1076,7 @@ export const plugin = definePlugin({
         resourceOwnership: (ctx, root) =>
           makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
         appliedStateInventory: (ctx) => listAppliedPlans(ctx.stateStore),
+        readAppliedPlanStrict: (ctx, appId) => loadAppliedPlanStrict(ctx.stateStore, appId),
         appliedPlans: (ctx) => listObservedPlans(ctx.stateStore),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
           const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan } = yield* providerHostInputs;

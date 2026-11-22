@@ -65,6 +65,8 @@ const runningProvider = {
 };
 const withProvider = (provider: typeof TestRuntimeProvider, plan: AppPlan | null = applied) =>
   Effect.provideService(RuntimeProviderRegistry, {
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed([]),
     resolveAppliedPlan: (root, app, lookup) =>
       Effect.succeed(

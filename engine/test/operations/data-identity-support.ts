@@ -33,6 +33,8 @@ export const identityRegistry = (
   snapshots?: readonly ProviderRuntimeSnapshot[],
 ) =>
   RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     list: Effect.succeed([ProviderId.make("lando")]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     appliedPlansFor: () => Effect.succeed(applied),

@@ -61,6 +61,8 @@ const fixture = async (failedService = "mailpit") => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         list: Effect.succeed([plan.provider]),
         capabilities: Effect.succeed(provider.capabilities),
         resolveAppliedPlan: () => Effect.succeed(plan),

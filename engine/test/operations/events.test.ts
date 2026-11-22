@@ -145,6 +145,8 @@ const runWithFakes = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         appliedPlansFor: () => Effect.succeed([]),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -249,6 +251,8 @@ const eventRuntime = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         appliedPlansFor: () => Effect.succeed([]),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -1035,6 +1039,8 @@ describe("hostEvents runtime", () => {
               Layer.succeed(
                 RuntimeProviderRegistry,
                 RuntimeProviderRegistry.of({
+                  readAppliedPlanStrict: () => Effect.succeed(undefined),
+                  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
                   appliedPlansFor: () => Effect.succeed([]),
                   resolveAppliedPlan: () => Effect.succeed(undefined),
                   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -1161,6 +1167,8 @@ describe("hostEvents runtime", () => {
             Layer.succeed(
               RuntimeProviderRegistry,
               RuntimeProviderRegistry.of({
+                readAppliedPlanStrict: () => Effect.succeed(undefined),
+                appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
                 appliedPlansFor: () => Effect.succeed([]),
                 resolveAppliedPlan: () => Effect.succeed(undefined),
                 resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -1210,6 +1218,8 @@ describe("hostEvents runtime", () => {
               Layer.succeed(
                 RuntimeProviderRegistry,
                 RuntimeProviderRegistry.of({
+                  readAppliedPlanStrict: () => Effect.succeed(undefined),
+                  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
                   appliedPlansFor: () => Effect.succeed([]),
                   resolveAppliedPlan: () => Effect.succeed(undefined),
                   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -1280,6 +1290,8 @@ describe("hostEvents runtime", () => {
             Layer.succeed(
               RuntimeProviderRegistry,
               RuntimeProviderRegistry.of({
+                readAppliedPlanStrict: () => Effect.succeed(undefined),
+                appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
                 appliedPlansFor: () => Effect.succeed([]),
                 resolveAppliedPlan: () => Effect.succeed(undefined),
                 resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -1366,6 +1378,8 @@ describe("scoped start events", () => {
             Layer.succeed(
               RuntimeProviderRegistry,
               RuntimeProviderRegistry.of({
+                readAppliedPlanStrict: () => Effect.succeed(undefined),
+                appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
                 appliedPlansFor: () => Effect.succeed([]),
                 resolveAppliedPlan: () => Effect.succeed(undefined),
                 resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

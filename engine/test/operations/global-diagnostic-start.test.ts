@@ -188,6 +188,8 @@ for (const failBuild of [false, true]) {
           plan: () => Effect.succeed({ ...globalPlan, valueModel: 1 as const }),
         }),
         Effect.provideService(RuntimeProviderRegistry, {
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           appliedPlansFor: (requestedRoot) =>
             Effect.sync(() =>
               appliedGlobal === undefined || requestedRoot !== globalRoot ? [] : [appliedGlobal],

@@ -897,6 +897,8 @@ describe("EventCommandExecutorLayer.layer", () => {
     const hostSecret = "event-executor-host-canary";
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -959,6 +961,8 @@ describe("EventCommandExecutorLayer.layer", () => {
     const invocations: ToolingInvocation[] = [];
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -1012,6 +1016,8 @@ describe("EventCommandExecutorLayer.layer", () => {
     );
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),
@@ -1062,6 +1068,8 @@ describe("EventCommandExecutorLayer.layer", () => {
     );
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),

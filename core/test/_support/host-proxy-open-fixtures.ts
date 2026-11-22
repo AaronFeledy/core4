@@ -121,6 +121,8 @@ export const commandServices = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(provider.capabilities),
         resolveAppliedPlan: () => Effect.succeed(undefined),

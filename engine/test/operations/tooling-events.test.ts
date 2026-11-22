@@ -195,6 +195,8 @@ const harness = (input: {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         appliedPlansFor: () => Effect.succeed([]),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -329,6 +331,8 @@ test.each(["command", "task"] as const)(
               Effect.provideService(
                 RuntimeProviderRegistry,
                 RuntimeProviderRegistry.of({
+                  readAppliedPlanStrict: () => Effect.succeed(undefined),
+                  appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
                   appliedPlansFor: () => Effect.succeed([]),
                   resolveAppliedPlan: () => Effect.succeed(undefined),
                   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

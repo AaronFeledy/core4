@@ -199,6 +199,7 @@ const makeHarness = (input: {
       );
     },
     appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
     list: Effect.succeed([providerId, otherProviderId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: (target?: AppPlan | ProviderId) =>

@@ -404,6 +404,8 @@ describe("live volume snapshot round trip", () => {
                       passthroughRedaction,
                       Layer.succeed(PathsService, PathsService.of(paths)),
                       Layer.succeed(RuntimeProviderRegistry, {
+                        readAppliedPlanStrict: () => Effect.succeed(undefined),
+                        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
                         appliedPlansFor: () => Effect.succeed([]),
                         resolveAppliedPlan: () => Effect.succeed(undefined),
                         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

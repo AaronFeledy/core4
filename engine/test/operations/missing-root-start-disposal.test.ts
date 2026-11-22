@@ -228,6 +228,8 @@ test.each([false, true, "unavailable"] as const)(
         DiskStateStore.layerAt(paths.roots),
         BunFileSystem.layer,
         Layer.succeed(RuntimeProviderRegistry, {
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           list: Effect.succeed([acceleratedPlan.provider]),
           select: () =>
             prepared === "unavailable"

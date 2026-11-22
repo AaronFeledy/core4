@@ -33,6 +33,8 @@ const provider = {
 const registry = Layer.succeed(
   RuntimeProviderRegistry,
   RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     list: Effect.succeed([ProviderId.make("lando")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),

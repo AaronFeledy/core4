@@ -23,6 +23,8 @@ test.each([
     const caller = join(root, "caller");
     const calls: unknown[] = [];
     const providerRegistry = Layer.succeed(RuntimeProviderRegistry, {
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
       appliedPlansFor: () => Effect.succeed([]),

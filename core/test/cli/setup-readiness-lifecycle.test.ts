@@ -56,6 +56,8 @@ test.each(["provider", "ca", "selection-failure", "selection-defect"] as const)(
       }),
       Layer.succeed(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
       Layer.succeed(RuntimeProviderRegistry, {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: () => Effect.succeed([]),

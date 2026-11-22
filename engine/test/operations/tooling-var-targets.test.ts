@@ -79,6 +79,8 @@ test.each([":host", "worker"])(
       ProviderExec.layer.pipe(Layer.provide(testEnvironmentResolverLayer)),
       Layer.succeed(HostExecutionDefaults, { cwd: "/project/subdir", env: {}, platform: "linux" }),
       Layer.succeed(RuntimeProviderRegistry, {
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         appliedPlansFor: () => Effect.succeed([]),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

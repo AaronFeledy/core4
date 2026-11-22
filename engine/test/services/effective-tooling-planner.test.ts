@@ -190,6 +190,8 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           appliedPlansFor: () => Effect.succeed([changed]),
           resolveAppliedPlan: () => Effect.succeed(undefined),
           resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -461,6 +463,8 @@ test("fails runTooling reserved when a stale plan predates authored run", async 
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            readAppliedPlanStrict: () => Effect.succeed(undefined),
+            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
             appliedPlansFor: () => Effect.succeed([]),
             resolveAppliedPlan: () => Effect.succeed(undefined),
             resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),

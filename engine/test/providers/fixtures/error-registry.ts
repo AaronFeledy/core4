@@ -52,6 +52,7 @@ interface RegistryOptions {
 
 export const registryLayer = (provider: RuntimeProviderShape, options: RegistryOptions = {}) => {
   const id = ProviderId.make(provider.id);
+  const appliedPlans = options.contribution?.appliedPlans ?? (() => Effect.succeed([plan]));
   const manifest = Schema.decodeUnknownSync(PluginManifest)({
     name: "@test/error-output",
     version: "1.0.0",
@@ -68,6 +69,10 @@ export const registryLayer = (provider: RuntimeProviderShape, options: RegistryO
           {
             id,
             appliedPlans: () => Effect.succeed([plan]),
+            appliedStateInventory: (ctx) =>
+              appliedPlans(ctx).pipe(Effect.map((plans) => ({ plans, unreadable: [] }))),
+            readAppliedPlanStrict: (ctx, id) =>
+              appliedPlans(ctx).pipe(Effect.map((plans) => plans.find((plan) => plan.id === id))),
             make: () => Effect.succeed(provider),
             ...options.contribution,
           },

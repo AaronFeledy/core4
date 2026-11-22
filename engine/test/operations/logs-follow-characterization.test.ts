@@ -74,6 +74,8 @@ describe("log-follow completion", () => {
         ),
     };
     const registry = RuntimeProviderRegistry.of({
+      readAppliedPlanStrict: () => Effect.succeed(undefined),
+      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
       appliedPlansFor: () => Effect.succeed([]),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       resolveAppliedPlan: () => Effect.succeed(undefined),
@@ -133,6 +135,8 @@ describe("log-follow completion", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            readAppliedPlanStrict: () => Effect.succeed(undefined),
+            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
             appliedPlansFor: () => Effect.succeed([]),
             resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
             resolveAppliedPlan: () => Effect.succeed(undefined),

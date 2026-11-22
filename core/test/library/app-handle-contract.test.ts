@@ -432,6 +432,8 @@ describe("@lando/core App-handle library contract", () => {
                 Layer.succeed(
                   RuntimeProviderRegistry,
                   RuntimeProviderRegistry.of({
+                    readAppliedPlanStrict: () => Effect.succeed(undefined),
+                    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
                     resolveAppliedPlan: () => Effect.succeed(undefined),
                     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                     appliedPlansFor: () => Effect.succeed([]),

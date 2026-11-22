@@ -86,6 +86,8 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
       }),
   };
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     list: Effect.sync(() => listed),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -381,7 +383,10 @@ test("an answering runtime does not hide unreadable applied-state records", asyn
         Effect.provideService(RuntimeProviderRegistry, {
           ...registry,
           appliedStateInventory: () =>
-            Effect.succeed({ plans: [], unreadable: [{ path: "/private/applied-state" }] }),
+            Effect.succeed({
+              plans: [],
+              unreadable: [{ path: "/private/applied-state", reason: "unreadable" }],
+            }),
         }),
       );
     }).pipe(Effect.provide(f.layer)),
@@ -390,7 +395,7 @@ test("an answering runtime does not hide unreadable applied-state records", asyn
   expect(prepared.report.scans[0]).toMatchObject({
     runtimeObserved: true,
     complete: false,
-    errorTag: "AppResolveError",
+    errorTag: "ProviderUnavailableError",
   });
 });
 
@@ -427,6 +432,8 @@ test("an owner that cannot start does not block another owner's confirmation", a
       }),
   });
   const registry = RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     list: Effect.succeed([healthy, broken]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: (target) =>

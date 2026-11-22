@@ -160,6 +160,7 @@ const makeHarness = async (input: {
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     appliedStateInventory: () => Effect.succeed({ plans: input.holdingPlans ?? [], unreadable: [] }),
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
     observeRuntime:
       input.observationFailure === undefined
         ? Effect.succeed([snapshot])

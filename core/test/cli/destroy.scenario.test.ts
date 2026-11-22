@@ -401,6 +401,8 @@ const makeDestroyLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: () => Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveTeardownEvidence: () =>
           Effect.succeed(
             options.absent !== true

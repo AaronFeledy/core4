@@ -152,6 +152,13 @@ export const skippedVolume = (volume: VolumeDeletion, reason: string): SkippedVo
   reason,
 });
 
+/** The skip fields that keep a protecting failure's tag and remediation in machine output. */
+export const protectedSkip = (error: {
+  readonly _tag: string;
+  readonly message: string;
+  readonly remediation: string;
+}) => ({ reason: error.message, errorTag: error._tag, remediation: error.remediation });
+
 export const deleteVolumeSnapshot = Effect.fnUntraced(function* (
   runtime: TeardownVolumeRuntime,
   snapshot: ReadonlyArray<VolumeDeletionCandidate>,

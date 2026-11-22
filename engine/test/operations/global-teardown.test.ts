@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
+import { type AppliedStateVersionError, appliedStateVersionError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -90,6 +91,7 @@ const harnessAt = (
     readonly plan?: AppPlan;
     readonly services?: ReadonlyArray<ServiceRuntimeInfo>;
     readonly volumes?: ReadonlyArray<VolumeInfo>;
+    readonly receiptError?: AppliedStateVersionError;
   },
 ) => {
   const root = AbsolutePath.make(join(dataRoot, "global"));
@@ -155,6 +157,11 @@ const harnessAt = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        readAppliedPlanStrict: ({ id, provider }) =>
+          id === appId && provider === providerId && input.receiptError !== undefined
+            ? Effect.fail(input.receiptError)
+            : Effect.succeed(undefined),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         appliedPlansFor: () =>
           Effect.map(provider.appliedPlans, (plans) => plans.filter((plan) => plan.provider === providerId)),
@@ -171,6 +178,28 @@ const harnessAt = (
   );
   return { layer, selected, removedServices, removedVolumes, destroyed };
 };
+
+test.each(["stop", "destroy"] as const)(
+  "global %s refuses a newer receipt without runtime evidence",
+  async (intent) => {
+    await withRoot(async (dataRoot) => {
+      const receiptError = appliedStateVersionError({
+        providerId,
+        operation: "applied-state.read",
+        appId,
+        path: join(dataRoot, "global.json"),
+        storedVersion: 11,
+        supportedVersion: 10,
+        scope: "app",
+      });
+      const { layer } = harnessAt(dataRoot, { receiptError });
+      const refusal = await Effect.runPromise(
+        resolveGlobalTeardown(intent).pipe(Effect.provide(layer), Effect.flip),
+      );
+      expect(refusal).toBe(receiptError);
+    });
+  },
+);
 
 test("global teardown selects only managed-provider evidence at the explicit global root", async () => {
   await withRoot(async (dataRoot, root) => {

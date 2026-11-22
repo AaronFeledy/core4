@@ -99,6 +99,8 @@ const provider: RuntimeProviderShape = {
 const registryLayer = Layer.succeed(
   RuntimeProviderRegistry,
   RuntimeProviderRegistry.of({
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
+    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed([]),
     resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -165,6 +167,8 @@ describe("live plan-secret redaction", () => {
         PrivateFileAccessService.layer,
         Layer.succeed(PathsService, paths),
         Layer.succeed(RuntimeProviderRegistry, {
+          readAppliedPlanStrict: () => Effect.succeed(undefined),
+          appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(provider.capabilities),
           appliedPlansFor: () => Effect.succeed([]),
@@ -211,6 +215,8 @@ describe("live plan-secret redaction", () => {
             Layer.merge(
               layer,
               Layer.succeed(RuntimeProviderRegistry, {
+                readAppliedPlanStrict: () => Effect.succeed(undefined),
+                appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
                 list: Effect.succeed([providerId]),
                 capabilities: Effect.succeed(provider.capabilities),
                 appliedPlansFor: () => Effect.succeed([]),
