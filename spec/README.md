@@ -125,7 +125,7 @@ If you are looking for a public surface or policy:
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Stock Python project environment, mount precedence, and Django and FastAPI recipe contracts | 06 + 08 | §6.4 + §6.5 + §6.12.1 + §8.8.10 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
-| PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, and Mailpit sender diagnostics | 06 | §6.12.5 |
+| PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, stock Xdebug release selection, security baseline, and Mailpit sender diagnostics | 06 | §6.12.5 |
 | Primary listen-port authority, native-variable validation, reserved ports, and Lando-owned clients | 06 | §6.2 + §6.12.1 |
 | MinIO console ports and effective Mailpit/MailHog secondary listeners | 06 | §6.12.1 |
 | Explicit MinIO BYO image/build and typed mail wildcard-bind reachability | 06 | §6.12.1 |
