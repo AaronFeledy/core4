@@ -85,6 +85,8 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       expect(tooling["drupal-scaffold"]?.cmd).toBe(`lando-drupal-scaffold ${drupalVersion}`);
       expect(tooling.drush?.wrapper).toBe(true);
       expect(tooling.composer?.wrapper).toBe(true);
+      expect(tooling.phpcs?.wrapper).toBe(true);
+      expect(tooling.phpcs?.cmd).toEqual([":drupal-local", "phpcs"]);
       expect(services.appserver?.type).toBe(`php:${drupalDefaults.php}`);
       expect(services.appserver?.webroot).toBe(drupalDefaults.webroot);
       expect(services.database?.type).toBe(drupalDefaults.database);
@@ -117,6 +119,8 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
         expect(tooling["drupal-cms-scaffold"]?.cmd).toBe("lando-drupal-cms-scaffold");
         expect(tooling.drush?.wrapper).toBe(true);
         expect(tooling.composer?.wrapper).toBe(true);
+        expect(tooling.phpstan?.wrapper).toBe(true);
+        expect(tooling.phpstan?.cmd).toEqual([":drupal-local", "phpstan"]);
         expect(services.appserver?.type).toBe(`php:${drupalCmsDefaults.php}`);
         expect(services.appserver?.webroot).toBe(drupalCmsDefaults.webroot);
         expect(services.database?.type).toBe(drupalCmsDefaults.database);

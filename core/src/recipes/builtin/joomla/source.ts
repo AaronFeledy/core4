@@ -14,7 +14,7 @@ export const source = {
       joomla: {
         service: "appserver",
         description: "Run the Joomla CLI inside the appserver service.",
-        cmds: ["php cli/joomla.php"],
+        cmd: [":php-local", "cli/joomla.php"],
         wrapper: true,
       },
     },

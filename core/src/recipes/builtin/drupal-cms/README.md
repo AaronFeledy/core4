@@ -27,6 +27,14 @@ The scaffold command handles the empty `vendor` and `node_modules` volumes by
 staging the `composer create-project` output and atomically moving files into
 place, similar to how the `drupal` recipe works.
 
+Right after `create-project`, the staged project allows the
+`dealerdirect/phpcodesniffer-composer-installer` and
+`phpstan/extension-installer` Composer plugins, as `drupal/recommended-project`
+does. It requires `drupal/coder`, `phpstan/phpstan`, `mglaman/phpstan-drupal`,
+and `phpstan/extension-installer` as dev dependencies in the same Composer solve
+and stages `phpcs.xml.dist` and `phpstan.neon.dist`, so `lando phpcs` and
+`lando phpstan` work as soon as the scaffold finishes.
+
 Before promotion, the staged project pins the upstream SVG Image security patch
 (merge request 65) through a first-priority root `package` repository. Its
 metadata is the patch commit's `composer.json` verbatim plus two Lando-authored
@@ -50,7 +58,18 @@ the Composer project (`drupal/cms`) and its bundled install profile / recipes.
 
 ## Generated tooling
 
-- `lando drush`: Drush (via `vendor/bin/drush` after scaffolding).
+- `lando drush`: Drush from the site's `vendor/bin` after scaffolding, from any directory in the app.
 - `lando composer`: Composer inside the appserver.
+- `lando phpcs …` / `lando phpcbf …`: PHP_CodeSniffer from the site's
+  `vendor/bin`, through the `:drupal-local` launcher. The scaffold installs
+  `drupal/coder` and writes `phpcs.xml.dist` (Drupal and DrupalPractice over
+  `web/modules`, `web/themes`, and `web/profiles`, skipping `contrib`). Without a
+  ruleset, Lando adds `--standard=Drupal,DrupalPractice`, Drupal's file
+  extensions, and `--ignore=*/node_modules/*,*/vendor/*`, and with no arguments
+  checks whichever `*/custom` directories exist under the webroot.
+- `lando phpstan …`: PHPStan from the site's `vendor/bin`. The scaffold installs
+  it with `mglaman/phpstan-drupal` and writes `phpstan.neon.dist` (level 1, same
+  directories). The task passes the nearest PHPStan config to `analyse`, because
+  PHPStan only looks in its working directory.
 - `lando drupal-cms-scaffold`: Scaffold Drupal CMS 2 and project-local Drush into the mounted app root. Handles empty volume directories atomically.
 - `lando drupal-cms-install`: Install Drupal CMS 2 using the drupal_cms_starter recipe with wired database credentials.

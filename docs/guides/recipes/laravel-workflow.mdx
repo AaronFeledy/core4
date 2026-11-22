@@ -76,7 +76,7 @@ The appserver sets `uploadDirs: [storage]` beneath webroot `public` to keep PHP 
 | `cache` | `type: redis` |
 | `node` | `node:22`, `primary: false`, no `command`, idle until `lando npm` runs |
 | `worker` (optional) | `php:8.4`, `via: cli`, `command: php artisan queue:work` with `--answer=worker=true` |
-| Tooling | `lando artisan` and `lando composer` on `appserver`. The `node` service adds `lando npm` and `lando npx` |
+| Tooling | `lando artisan` (`php artisan` from the app root, wherever you run it) and `lando composer` on `appserver`. The `node` service adds `lando npm` and `lando npx` |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=database=postgres:16` when you want Postgres instead.
 

@@ -60,7 +60,7 @@ export const source = {
       artisan: {
         service: "appserver",
         description: "Run a Laravel Artisan command inside the appserver service.",
-        cmds: ["php artisan"],
+        cmd: [":php-local", "artisan"],
         wrapper: true,
       },
       composer: composerTool,
