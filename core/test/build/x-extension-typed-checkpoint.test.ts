@@ -23,6 +23,7 @@ import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
+import { evolveSchemaParity } from "./x-extension-schema-parity-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
 import { SERVICE_KEY_PATTERN, evolveHistoricalServiceKeys } from "./x-extension-service-keys-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
@@ -192,12 +193,13 @@ test.each(mutations)(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
       "$.context.services",
     );
-    expect(jsonEquals(expected, current)).toBe(true);
+    const evolved = evolveSchemaParity(expected, "services");
+    expect(jsonEquals(evolved, current)).toBe(true);
     const changed = mutateFirst(current, change);
     expect(changed).not.toBe(current);
     const mutated = normalizeJsonSchema(wireObject(changed));
     expect(jsonEquals(current, mutated)).toBe(false);
-    expect(jsonEquals(expected, mutated)).toBe(false);
+    expect(jsonEquals(evolved, mutated)).toBe(false);
   },
   600_000,
 );
