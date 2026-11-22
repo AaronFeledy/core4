@@ -67,6 +67,7 @@ const observedAdminer = (
   providerId: desired.provider,
   service: adminer.name,
   containerId: "adminer-container",
+  nativeName: "legacy-adminer",
   status: "running",
   labels: {
     [APP_LABEL]: desired.id,
@@ -154,10 +155,38 @@ test("a whole-app start removes a removed service's owned container and drops it
 
 test("upgrade removes an unlabeled service dropped from the recorded plan's successor", async () => {
   const containers = runningContainer();
+  let adoptedRoot = desired.identity?.dataRoot;
   const harness = makeHarness({
     plannedApp: desired,
     resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(withAdminer)),
-    providerOverrides: containers.providerOverrides,
+    providerOverrides: {
+      ...containers.providerOverrides,
+      adoptDataRoot: (plan) =>
+        Effect.sync(() => {
+          adoptedRoot = plan.identity?.dataRoot;
+        }),
+    },
+    resourceOwnership: () =>
+      Effect.sync(() =>
+        adoptedRoot === undefined
+          ? undefined
+          : {
+              appRoot: desired.root,
+              ownerKey: planAppIdentity(desired).ownerKey,
+              providerId: desired.provider,
+              appIds: [desired.id],
+              members: [
+                {
+                  kind: "container" as const,
+                  nativeName: "legacy-adminer",
+                  nativeId: "adminer-container",
+                  dataRoot: adoptedRoot,
+                  appId: desired.id,
+                  service: adminer.name,
+                },
+              ],
+            },
+      ),
   });
   const scoped = {
     ...desired,

@@ -1902,11 +1902,18 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             String(observed.app),
             "removeObservedService",
             appliedPlans.resolveMutationPlan(observed.app).pipe(
-              Effect.flatMap((plan) =>
-                removeObservedContainer(observed, {
-                  ...(podmanApi === undefined ? {} : { api: podmanApi }),
-                  ctx: LANDO_CTX,
-                  dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
+              Effect.flatMap(
+                Effect.fnUntraced(function* (plan) {
+                  const receipts =
+                    observed.appRoot !== undefined && observed.nativeName !== undefined
+                      ? yield* planState.ownership.receiptsAt(observed.appRoot)
+                      : [];
+                  return yield* removeObservedContainer(observed, {
+                    ...(podmanApi === undefined ? {} : { api: podmanApi }),
+                    ctx: LANDO_CTX,
+                    dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
+                    receipts,
+                  });
                 }),
               ),
               Effect.tap(() =>

@@ -57,10 +57,13 @@ type ProviderPlanStateOptions = AppliedPlanCacheOptions &
 
 const makeOwnership = (options: ProviderPlanStateOptions) => {
   const store = makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState);
+  const receiptsAt = (root: AppPlan["root"]) =>
+    store
+      .load(root)
+      .pipe(Effect.map((inventory) => inventory?.adoptions?.flatMap((batch) => batch.receipts) ?? []));
   const receiptsFor = Effect.fnUntraced(function* (plan: AppPlan) {
     if (plan.identity?.dataRoot === undefined) return [];
-    const inventory = yield* store.load(planAppIdentity(plan).appRoot);
-    return inventory?.adoptions?.flatMap((batch) => batch.receipts) ?? [];
+    return yield* receiptsAt(planAppIdentity(plan).appRoot);
   });
   const adopt = Effect.fn("ProviderOwnership.adopt")(function* (
     plan: AppPlan,
@@ -86,6 +89,7 @@ const makeOwnership = (options: ProviderPlanStateOptions) => {
     ...store,
     adopt,
     receiptsFor,
+    receiptsAt,
     prepare: Effect.fn("ProviderOwnership.prepare")(function* (plan: AppPlan, previous?: AppPlan) {
       yield* refuseOtherAppsResources(plan, previous, {
         ctx: options.ctx,

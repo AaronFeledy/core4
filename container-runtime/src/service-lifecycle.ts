@@ -10,7 +10,7 @@ import type {
   ServiceSelector,
 } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
+import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, missingService } from "./engine-errors.ts";
 import { serviceContainerOwnershipProblem } from "./native-ownership.ts";
@@ -170,7 +170,10 @@ export const postExactServiceLifecycle = (
  */
 export const removeObservedContainer = (
   observed: ServiceRuntimeInfo,
-  options: ServiceLifecycleOptions & { readonly dataRoot?: string | undefined },
+  options: ServiceLifecycleOptions & {
+    readonly dataRoot?: string | undefined;
+    readonly receipts?: readonly AdoptionReceipt[];
+  },
 ): Effect.Effect<ObservedServiceRemoval, ProviderError> => {
   const operation = "removeObservedService";
   if (String(observed.providerId) !== options.ctx.providerId) {
@@ -195,13 +198,16 @@ export const removeObservedContainer = (
     return Effect.succeed({ kind: "absent", shutdownObservations: [absentShutdown(identity)] });
   const native = {
     kind: "container",
-    nativeName: containerId,
+    nativeName: observed.nativeName ?? containerId,
     nativeId: containerId,
     labels: observed.labels,
   } as const;
   if (
     options.dataRoot !== undefined &&
-    decideDataRootOwnership(native, { dataRoot: options.dataRoot, receipts: [] }) !== "owned"
+    decideDataRootOwnership(native, {
+      dataRoot: options.dataRoot,
+      receipts: observed.nativeName === undefined ? [] : (options.receipts ?? []),
+    }) !== "owned"
   ) {
     return Effect.fail(
       new ProviderUnavailableError({
@@ -217,7 +223,7 @@ export const removeObservedContainer = (
     app: String(observed.app),
     appRoot: observed.appRoot === undefined ? "" : String(observed.appRoot),
     service: String(observed.service),
-    dataRoot: options.dataRoot,
+    dataRoot: options.dataRoot === undefined ? undefined : observed.labels?.[LANDO_DATA_ROOT_LABEL],
     providerId: options.ctx.providerId,
   });
   if (ownershipProblem !== undefined) {

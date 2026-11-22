@@ -748,11 +748,18 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
         appliedPlans.resolveMutationPlan(observed.app).pipe(
-          Effect.flatMap((plan) =>
-            removeObservedContainer(observed, {
-              api: dockerApi,
-              ctx: DOCKER_CTX,
-              dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
+          Effect.flatMap(
+            Effect.fnUntraced(function* (plan) {
+              const receipts =
+                observed.appRoot !== undefined && observed.nativeName !== undefined
+                  ? yield* planState.ownership.receiptsAt(observed.appRoot)
+                  : [];
+              return yield* removeObservedContainer(observed, {
+                api: dockerApi,
+                ctx: DOCKER_CTX,
+                dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
+                receipts,
+              });
             }),
           ),
         ),
@@ -842,6 +849,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
                     providerId: ProviderId.make(PROVIDER_ID),
                     ...runObservationFromListState(container.state),
                     containerId: container.id,
+                    nativeName: container.name,
                     labels: container.labels,
                     publications,
                   };

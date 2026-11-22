@@ -927,11 +927,18 @@ const assembleRuntimeProvider = (
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
         appliedPlans.resolveMutationPlan(observed.app).pipe(
-          Effect.flatMap((plan) =>
-            removeObservedContainer(observed, {
-              api: podmanApi,
-              ctx: PODMAN_CTX,
-              dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
+          Effect.flatMap(
+            Effect.fnUntraced(function* (plan) {
+              const receipts =
+                observed.appRoot !== undefined && observed.nativeName !== undefined
+                  ? yield* planState.ownership.receiptsAt(observed.appRoot)
+                  : [];
+              return yield* removeObservedContainer(observed, {
+                api: podmanApi,
+                ctx: PODMAN_CTX,
+                dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
+                receipts,
+              });
             }),
           ),
         ),

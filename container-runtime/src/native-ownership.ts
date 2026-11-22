@@ -8,11 +8,16 @@ import {
   planAppIdentity,
 } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
-import { serviceContainerName } from "./container-name.ts";
 import { dataRootLabels } from "./data-root-labels.ts";
 import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
 
 export { matchesDataRoot, ownsSharedCrossAppNetwork } from "./data-root-labels.ts";
+export type { AdoptionReceipt } from "./data-root-ownership.ts";
+export {
+  adoptionReceiptsFromSummary,
+  dataRootRefusal,
+  decideDataRootOwnership,
+} from "./data-root-ownership.ts";
 
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
 import {
@@ -93,7 +98,7 @@ export const ownsServiceContainer = (
       : decideDataRootOwnership(
           {
             kind: "container",
-            nativeName: observation.nativeName ?? serviceContainerName(plan, observation.service),
+            nativeName: observation.nativeName ?? "",
             nativeId: observation.containerId,
             labels,
           },

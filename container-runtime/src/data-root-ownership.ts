@@ -1,4 +1,4 @@
-import { LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
+import { LANDO_DATA_ROOT_LABEL, type ResourceOwnership } from "@lando/sdk/schema";
 
 type NativeKind = "container" | "network" | "volume";
 
@@ -24,6 +24,31 @@ export type DataRootResource = {
 export type DataRootOwnershipContext = {
   readonly dataRoot: string;
   readonly receipts: readonly AdoptionReceipt[];
+};
+
+export const adoptionReceiptsFromSummary = (
+  summary: ResourceOwnership | undefined,
+): readonly AdoptionReceipt[] => {
+  if (summary === undefined) return [];
+  return (summary.members ?? []).flatMap((member): readonly AdoptionReceipt[] => {
+    if (member.dataRoot === undefined) return [];
+    const owner = {
+      appId: member.appId,
+      nativeName: member.nativeName,
+      appRoot: summary.appRoot,
+      providerId: summary.providerId,
+      dataRoot: member.dataRoot,
+    };
+    switch (member.kind) {
+      case "container":
+      case "network":
+        return member.nativeId ? [{ ...owner, kind: member.kind, nativeId: member.nativeId }] : [];
+      case "volume":
+        return [{ ...owner, kind: "volume", volumeInstance: member.volumeInstance }];
+      default:
+        return member.kind satisfies never;
+    }
+  });
 };
 
 export const decideDataRootOwnership = (

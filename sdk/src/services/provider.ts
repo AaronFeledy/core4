@@ -348,6 +348,7 @@ export interface ServiceRuntimeFields {
   /** Native container identity: stable across in-place restarts, different after replacement.
    * Omission means consumers cannot prove that container-local work can be reused. */
   readonly containerId?: string;
+  readonly nativeName?: string;
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
   readonly publications: PublicationObservation;
