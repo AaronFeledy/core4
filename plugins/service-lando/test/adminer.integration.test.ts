@@ -171,6 +171,7 @@ services:
             [...retirement.retained, ...retirement.failed],
             JSON.stringify({ root, endpoint: socket.socketPath, ...retirement }),
           ).toEqual([]);
+          expect(fixtureCleanupFailure).toBeUndefined();
         }
       }
     }
