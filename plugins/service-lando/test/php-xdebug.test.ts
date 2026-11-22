@@ -20,11 +20,6 @@ import {
 } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
-const PHP_XDEBUG_RELEASE = {
-  version: "3.5.3",
-  sha256: "f073de91bea046106abf4d6071c963ea71e58571df6ce58948ceca89d121cb2d",
-  url: "https://pecl.php.net/get/xdebug-3.5.3.tgz",
-} as const;
 const PHP_XDEBUG_CLIENT_HOST = "debugger.lando.internal";
 const PHP_XDEBUG_PORT = 9003;
 
@@ -141,7 +136,9 @@ describe("PHP xdebug option", () => {
     expect(resolution.tooling?.xdebug).toBeUndefined();
   });
 
-  test("Given xdebug true, when planning, then it installs the pinned extension with debug mode and host gateway", async () => {
+  test("Given php:8.2 and xdebug true, when planning, then it installs Xdebug 3.5.3 with debug mode and host gateway", async () => {
+    const url = "https://pecl.php.net/get/xdebug-3.5.3.tgz";
+    const sha256 = "f073de91bea046106abf4d6071c963ea71e58571df6ce58948ceca89d121cb2d";
     const plan = await composePhpPlan({ xdebug: true });
     const steps = buildStepsFor(plan);
     const xdebugStep = steps.find((step) => step.id === "service-lando.php:xdebug");
@@ -152,12 +149,12 @@ describe("PHP xdebug option", () => {
     const command = String(xdebugStep?.command);
 
     expect(xdebugStep?.buildKeyInputs).toEqual({
-      xdebug: { ...PHP_XDEBUG_RELEASE, phpVersion: "8.2", mode: "debug" },
+      xdebug: { version: "3.5.3", sha256, url, phpVersion: "8.2", mode: "debug" },
     });
     expect(xdebugStep?.user).toBe("root");
     expect("privileged" in (rawXdebug ?? {})).toBe(false);
-    expect(command).toContain(PHP_XDEBUG_RELEASE.url);
-    expect(command).toContain(PHP_XDEBUG_RELEASE.sha256);
+    expect(command).toContain(url);
+    expect(command).toContain(sha256);
     expect(command).toContain("xdebug.mode=debug");
     expect(command).toContain(`xdebug.client_host=${PHP_XDEBUG_CLIENT_HOST}`);
     expect(command).toContain(`xdebug.client_port=${PHP_XDEBUG_PORT}`);
@@ -189,7 +186,7 @@ describe("PHP xdebug option", () => {
     expect(String(xdebugStep?.command)).toContain("xdebug.mode=debug,develop");
     expect(String(xdebugStep?.command)).not.toMatch(/[\r\n]/);
     expect(xdebugStep?.buildKeyInputs).toMatchObject({
-      xdebug: { mode: "debug,develop", version: PHP_XDEBUG_RELEASE.version },
+      xdebug: { mode: "debug,develop" },
     });
   });
 
@@ -278,10 +275,19 @@ describe("PHP xdebug option", () => {
     await expectRejectsToThrow(planned, /Unsupported Xdebug mode/);
   });
 
-  test("Given php:8.6 and xdebug true, when planning, then it fails closed because the shipped pin stops at 8.5", async () => {
-    const planned = composePhpPlan({ xdebug: true }, php86ServiceType);
-    await expectRejectsToThrow(planned, /Xdebug is not available on PHP 8\.6/);
-    await expectRejectsToThrow(planned, /Remove xdebug: or set type to php:8\.5/);
+  test("Given php:8.6 and xdebug true, when planning, then it builds Xdebug 3.6.0alpha1 from the pinned tarball", async () => {
+    const url = "https://xdebug.org/files/xdebug-3.6.0alpha1.tgz";
+    const sha256 = "5f464dfbba2f2aec384f9a10cb42cbfb2b3c07274b70491c46080b707271fcde";
+    const plan = await composePhpPlan({ xdebug: true }, php86ServiceType);
+    const step = buildStepsFor(plan).find(({ id }) => id === "service-lando.php:xdebug");
+
+    expect(step?.command).toContain(url);
+    expect(step?.command).toContain(sha256);
+    expect(step?.command).toContain("tar -xzf /tmp/xdebug.tgz -C /tmp");
+    expect(step?.command).toContain("cd /tmp/xdebug-3.6.0alpha1 && phpize");
+    expect(step?.buildKeyInputs).toEqual({
+      xdebug: { version: "3.6.0alpha1", sha256, url, phpVersion: "8.6", mode: "debug" },
+    });
   });
 
   test("Given a custom image and xdebug true, when planning, then it skips the install step without XDEBUG_MODE", async () => {

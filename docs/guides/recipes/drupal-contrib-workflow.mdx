@@ -136,7 +136,7 @@ database schema of an installed site.
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass
 `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`,
 `--answer=database=postgres:16`, or `--answer='drupal=^10'` when you want those
-instead. `--answer=php=8.6` is accepted; Xdebug isn't available there yet.
+instead.
 
 Nginx answers add an `edge` service in front of `appserver` (`via: fpm`) and
 set `SIMPLETEST_BASE_URL` to `http://edge`. `edge` mounts the same `site`

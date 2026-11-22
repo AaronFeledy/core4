@@ -1643,6 +1643,10 @@
       "digest": "497659277c73b4fceb9d7eb115d3f6e744e62ed10368cdddd4b468e169f436cd"
     },
     {
+      "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-php86",
+      "digest": "020dbd6eb1e5586c87e7705c5fc149f0e76115964ef99507d1bc47028552fcca"
+    },
+    {
       "fixture": "docs/guides/xhprof-xhgui/fixtures/xhprof-demo",
       "digest": "031653c61f162c7c09b55cd0d6a8097da6c5a47538467235c91da55180531e9e"
     },

@@ -706,7 +706,6 @@
     "lando db:snapshots --service appserver",
     "lando db:snapshots:prune --service appserver --keep-latest=3 --preview"
   ],
-  "docs/guides/tooling/xdebug-phpstorm.mdx": ["lando xdebug off", "lando xdebug on", "lando xdebug status"],
   "recipes/astro/README.mdx": ["lando astro --version", "lando npm install"],
   "recipes/django/README.mdx": [
     "lando django migrate",

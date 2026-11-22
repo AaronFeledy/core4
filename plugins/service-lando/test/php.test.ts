@@ -393,17 +393,6 @@ describe("php:8.6 ServiceType", () => {
       /cannot run on PHP 8\.6/,
     );
   });
-
-  test("rejects xdebug on php:8.6 because the shipped pin stops at 8.5", async () => {
-    await expectRejectsToThrow(
-      composePhpPlan(php86ServiceType, { type: "php:8.6", xdebug: true }),
-      /Xdebug is not available on PHP 8\.6/,
-    );
-    await expectRejectsToThrow(
-      composePhpPlan(php86ServiceType, { type: "php:8.6", xdebug: true }),
-      /Remove xdebug: or set type to php:8\.5/,
-    );
-  });
 });
 
 describe("php serving modes (via:)", () => {
