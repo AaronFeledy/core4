@@ -40,7 +40,8 @@
     "@types/bun": "^1.4.4",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@typescript/typescript6": "^6.0.2",
-    "mdast-util-to-markdown": "^2.2.3"
+    "mdast-util-to-markdown": "^2.2.3",
+    "saxes": "6.0.0"
   },
   "scripts": {
     "build": "bun run --filter='*' build",
@@ -114,6 +115,7 @@
     "codegen:node-releases": "bun run scripts/build-node-releases.ts",
     "codegen:node-releases-bump-workflow": "bun run scripts/build-node-releases-bump-workflow.ts",
     "update:node-releases": "bun run scripts/update-node-releases.ts",
+    "update:xdebug": "bun run scripts/update-xdebug.ts",
     "codegen:provider-images": "bun run scripts/build-provider-images.ts",
     "codegen:provider-matrix-workflow": "bun run scripts/build-provider-matrix-workflow.ts",
     "codegen:compose-vendor": "bun run scripts/build-compose-vendor.ts",
