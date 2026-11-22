@@ -240,7 +240,7 @@ test.each([
   [
     { path: "/state/newer", reason: "newer-version", appId: app, storedVersion: 9, supportedVersion: 1 },
     "AppliedStateVersionError",
-    "upgrade Lando",
+    "install a build that supports 9",
   ],
   [{ path: "/state/broken", reason: "unreadable" }, "ProviderUnavailableError", "lando apps:gc"],
 ] as const)("scan keeps the %o reason and its remediation", async (issue, errorTag, remediation) => {

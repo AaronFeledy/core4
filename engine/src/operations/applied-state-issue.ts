@@ -1,5 +1,6 @@
 import { ProviderUnavailableError, appliedStateVersionError } from "@lando/sdk/errors";
 import type { ProviderId, UnreadableAppliedState } from "@lando/sdk/schema";
+import { CORE_VERSION } from "../version.ts";
 
 /**
  * The tagged failure an inventory issue stands for: newer state keeps the run-or-upgrade
@@ -15,6 +16,8 @@ export const appliedStateIssueError = (
         path: issue.path,
         storedVersion: issue.storedVersion,
         supportedVersion: issue.supportedVersion,
+        reader: CORE_VERSION,
+        ...(issue.writtenBy === undefined ? {} : { writtenBy: issue.writtenBy }),
         ...(issue.appId === undefined ? {} : { appId: issue.appId }),
         providerId,
         operation: "applied-state.list",
