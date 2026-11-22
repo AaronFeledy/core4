@@ -1,4 +1,3 @@
-import { sameRealpath } from "@lando/paths";
 import {
   LANDO_DATA_ROOT_LABEL,
   LANDO_NETWORK_ROLE_LABEL,
@@ -14,14 +13,6 @@ export const matchesDataRoot = (
   expected: string | undefined,
   recorded: boolean,
 ): boolean => (observed === undefined ? recorded || expected === undefined : observed === expected);
-
-export const inventoryDataRoot = (
-  observed: string | undefined,
-  recorded: string | undefined,
-  local: string | undefined,
-): string | undefined =>
-  recorded ??
-  (observed !== undefined && local !== undefined && sameRealpath(observed, local) ? observed : undefined);
 
 export const sharedNetworkLabels = (dataRoot: string): Readonly<Record<string, string>> => ({
   ...dataRootLabels(dataRoot),

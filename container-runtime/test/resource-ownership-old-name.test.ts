@@ -40,7 +40,7 @@ test.each(["legacy", "local", "peer"] as const)(
     const calls: EngineHttpRequest[] = [];
     const retired: OwnedResource[] = [];
     const observedId = "observed-old-container-id";
-    const userDataRoot = "/data/current";
+    const userDataRoot = AbsolutePath.make("/data/current");
     const cleanup = makeOwnedResourcesCleanup({
       ctx: { providerId: "test", remediation: "Retry cleanup.", env: {} },
       userDataRoot,
@@ -53,6 +53,25 @@ test.each(["legacy", "local", "peer"] as const)(
             providerId: owner.providerId,
             appIds: [owner.appId],
             resources: [container],
+            ...(kind === "legacy"
+              ? {
+                  adoptions: [
+                    {
+                      previousAppId: owner.appId,
+                      dataRoot: userDataRoot,
+                      receipts: [
+                        {
+                          ...owner,
+                          kind: "container" as const,
+                          nativeName: oldNativeName,
+                          nativeId: observedId,
+                          dataRoot: userDataRoot,
+                        },
+                      ],
+                    },
+                  ],
+                }
+              : {}),
           }),
         retire: (_root, resource) =>
           Effect.sync(() => {

@@ -207,6 +207,7 @@ describe("volume lock tier parity", () => {
           runtime,
           store: makeResourceOwnershipStore(plan.provider),
           skipped: [],
+          receipts: [],
         }),
       );
       expect(recorded.candidates).toHaveLength(1);

@@ -2,7 +2,7 @@ import type { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type AbsolutePath, type AppId, LANDO_DATA_ROOT_LABEL, planAppIdentity } from "@lando/sdk/schema";
 import type { DestroyOptions } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { inventoryDataRoot, matchesDataRoot } from "./data-root-labels.ts";
+import { type AdoptionReceipt, decideDataRootOwnership } from "./data-root-ownership.ts";
 import type { makeResourceOwnershipStore } from "./resource-ownership.ts";
 import {
   type SkippedVolume,
@@ -34,6 +34,7 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
   readonly skipped: SkippedVolume[];
   readonly checkAppliedState?: (appId: AppId) => Effect.Effect<void, ProviderUnavailableError>;
   readonly userDataRoot?: string | undefined;
+  readonly receipts: readonly AdoptionReceipt[];
 }) {
   const { root, resources, options, coverage, skipped } = input;
   const volumeRuntime = input.runtime;
@@ -42,6 +43,7 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
   let unverifiedAppVolume = false;
   for (const resource of resources) {
     if (resource.kind !== "volume") continue;
+    const dataRoot = input.userDataRoot ?? resource.dataRoot;
     if (options.appIds !== undefined && !options.appIds.includes(resource.appId)) continue;
     const shared = resource.volumeScope === "global" && resource.volumeClass === "cache";
     if (coverage?.provider === resource.providerId && (shared || coverage.app === resource.appId)) continue;
@@ -76,11 +78,17 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
           : labels["dev.lando.app"] === resource.appId &&
             labels[STORAGE_SCOPE_LABEL] === resource.volumeScope &&
             volumeClassFromLabels(labels) === resource.volumeClass &&
-            matchesDataRoot(
-              labels[LANDO_DATA_ROOT_LABEL],
-              inventoryDataRoot(labels[LANDO_DATA_ROOT_LABEL], resource.dataRoot, input.userDataRoot),
-              true,
-            ) &&
+            (dataRoot === undefined
+              ? labels[LANDO_DATA_ROOT_LABEL] === undefined
+              : decideDataRootOwnership(
+                  {
+                    kind: "volume",
+                    nativeName: resource.nativeName,
+                    labels,
+                    volumeInstance: labels["dev.lando.volume-instance"],
+                  },
+                  { dataRoot, receipts: input.receipts },
+                ) === "owned") &&
             Object.entries(expected).every(
               ([key, value]) => key === LANDO_DATA_ROOT_LABEL || labels[key] === value,
             ),
