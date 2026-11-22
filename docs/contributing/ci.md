@@ -821,7 +821,7 @@ The live Drupal recipe path is a separate gate from compile smoke and from linux
 
 The generated workflow is `.github/workflows/drupal-journey.yml`, produced by `scripts/build-drupal-journey-workflow.ts`. Do not hand-edit the YAML. The gate script is `scripts/drupal-journey.ts`.
 
-The live path is `lando init --recipe drupal`, `lando start`, `lando info`, README scaffold plus Drush (`drupal-scaffold` then `drush`), then `lando destroy -y`. It runs on all six compile targets.
+The live path is `lando init --recipe drupal`, `lando start` (first start scaffolds Drupal and Drush), `lando info`, README Drush check (`drush`), then `lando destroy -y`. It runs on all six compile targets.
 
 The journey runs on its schedule and manual dispatch, not on pull requests. Linux x64 uses Ubuntu 26.04; Linux arm64 uses `ubuntu-24.04-arm`. Darwin and Windows use self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`, restricted to `main`. A missing runner is a job error, not a skip.
 

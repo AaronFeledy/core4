@@ -15,13 +15,12 @@ For a new site, opt in at init. Run these commands from your host:
 lando init --recipe drupal --name=drupal-demo --yes --answer=testing=true
 cd drupal-demo
 lando start
-lando drupal-scaffold
 lando phpunit --version
 ```
 
-Check that `lando phpunit --version` prints a PHPUnit version. With testing enabled, the recipe adds Chrome with 2 GB of shared memory and the `lando phpunit` task. Scaffold installs `drupal/core-dev` and prepares writable test directories. Drupal 10, Drupal 11, and Drupal CMS 2 templates don't declare `drupal/core-dev` by default.
+Check that `lando phpunit --version` prints a PHPUnit version. With testing enabled, the recipe adds Chrome with 2 GB of shared memory and the `lando phpunit` task. The first start installs `drupal/core-dev` and prepares writable test directories. Drupal 10, Drupal 11, and Drupal CMS 2 templates don't declare `drupal/core-dev` by default.
 
-For Drupal CMS, select `--recipe drupal-cms` and run `lando drupal-cms-scaffold` instead. If you chose `--answer=webroot=docroot`, use `docroot` in place of `web` in the test paths below. You can skip site install: browser tests create their own temporary sites. Keep Chrome on the app network and don't publish its ports.
+For Drupal CMS, select `--recipe drupal-cms` and run `lando start` the same way. If you chose `--answer=webroot=docroot`, use `docroot` in place of `web` in the test paths below. You can skip site install: browser tests create their own temporary sites. Keep Chrome on the app network and don't publish its ports.
 
 If the git repository is the module, theme, or profile, use [Run the Drupal contrib recipe](./drupal-contrib-workflow.mdx) instead. That recipe bakes this Chrome service, SIMPLETEST environment, and `lando phpunit` task in.
 
@@ -29,7 +28,7 @@ Editing `recipe.options.testing` after init doesn't change the generated Chrome 
 
 ## Add testing to an existing checkout
 
-Don't rerun scaffold on a project that already has a `composer.json` and site files. If you scaffolded with `testing=true`, skip to [Run a Kernel test](#run-a-kernel-test).
+Don't expect a later start to add test dependencies on a project that already has a `composer.json` and site files. If you initialized with `testing=true`, skip to [Run a Kernel test](#run-a-kernel-test).
 
 From the app directory on your host, install the development dependencies. `-W` allows Composer to update related locked packages, so review the changes to `composer.json` and `composer.lock` before committing:
 
@@ -256,7 +255,6 @@ These checks validate the example Landofile and inspect its resolved Chrome serv
       <Run command="lando app:config:set services.appserver.port 8080 --format=json" />
       <Run command="lando app:config:set services.database.port 3307 --format=json" />
       <Run command="lando start" />
-      <Run command="lando drupal-scaffold" />
     </Step>
     <Step name="test">
       <Verify command="lando phpunit --version" expect={{ stdout: { regex: "PHPUnit" } }} />

@@ -9,11 +9,11 @@ import (
 )
 
 func runDrupalCmsScaffold(args []string, streams helperIO, crash func(string)) int {
-	intent, err := parseDrupalSiteIntent(args,"")
+	intent, err := parseDrupalSiteIntent(args, drupalCmsMajor)
 	if errors.Is(err, errDrupalSiteArgs) {
-		return reportDrupalScaffoldUsage(streams, "drupal-cms-scaffold", drupalCmsScaffoldUsage)
+		return reportDrupalScaffoldUsage(streams, drupalCmsScaffoldUsage)
 	}
-	if err != nil { return scaffoldResult(err,streams) }
+	intent.CMS = true
 	appRoot := envValue(streams.env, "LANDO_DRUPAL_CMS_APP_ROOT")
 	if appRoot == "" {
 		appRoot = "/app"
@@ -23,14 +23,14 @@ func runDrupalCmsScaffold(args []string, streams helperIO, crash func(string)) i
 		"Drupal CMS",
 		"drupal-cms-scaffold",
 		fmt.Sprintf("Drupal CMS is already scaffolded at %s.", appRoot),
-		"recipes/drupal_cms_starter/recipe.yml, " + intent.outputs(),
+		"",
 		appRoot,
 		streams,
 		crash,
 	)
-	err = s.execute(intent.options(s,func(stage string, _ *scaffoldManifest) error {
-		return stageDrupalCms(s,stage,intent)
-	}))
+	err = s.executeDrupalSite(intent, func(stage string, _ *scaffoldManifest) error {
+		return stageDrupalCms(s, stage, intent)
+	})
 	return scaffoldResult(err, streams)
 }
 
@@ -39,7 +39,7 @@ func stageDrupalCms(s *scaffold, stage string, intent drupalSiteIntent) error {
 		s.appRoot,
 		"composer",
 		"create-project",
-		"drupal/cms:^2",
+		"drupal/cms:^"+drupalCmsMajor,
 		stage,
 		"--no-install",
 		"--no-scripts",
@@ -47,9 +47,13 @@ func stageDrupalCms(s *scaffold, stage string, intent drupalSiteIntent) error {
 	); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not stage the project: %w", err)
 	}
-	constraint,err := intent.prepareComposer(stage)
-	if err != nil { return fmt.Errorf("Drupal CMS scaffold could not prepare the Composer layout: %w",err) }
-	if err := intent.relocateCmsProjectFiles(stage); err != nil { return fmt.Errorf("Drupal CMS scaffold could not relocate project files: %w",err) }
+	constraint, err := intent.prepareComposer(stage)
+	if err != nil {
+		return fmt.Errorf("Drupal CMS scaffold could not prepare the Composer layout: %w", err)
+	}
+	if err := intent.relocateCmsProjectFiles(stage); err != nil {
+		return fmt.Errorf("Drupal CMS scaffold could not relocate project files: %w", err)
+	}
 	// Match drupal/recommended-project's allow-plugins so phpcs/phpcbf/phpstan can install their standards.
 	for _, plugin := range []string{
 		"dealerdirect/phpcodesniffer-composer-installer",
@@ -83,7 +87,7 @@ func stageDrupalCms(s *scaffold, stage string, intent drupalSiteIntent) error {
 	); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not require the pinned packages: %w", err)
 	}
-	if err := s.runCommand(s.appRoot, "composer", intent.devArgs(stage,constraint)...); err != nil {
+	if err := s.runCommand(s.appRoot, "composer", intent.devArgs(stage, constraint)...); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not require the project-local lint tools: %w", err)
 	}
 	if err := s.runCommand(
@@ -146,7 +150,7 @@ func stageDrupalCms(s *scaffold, stage string, intent drupalSiteIntent) error {
 	); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold dependency audit failed: %w", err)
 	}
-	return s.stageDrupalSiteFiles(stage,intent)
+	return s.stageDrupalSiteFiles(stage, intent)
 }
 
 func (i drupalSiteIntent) verifyCmsCheckout(s *scaffold, stage string, repository string) error {

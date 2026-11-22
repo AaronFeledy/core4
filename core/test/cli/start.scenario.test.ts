@@ -1456,7 +1456,7 @@ describe("lando start", () => {
       phase: "app",
       message: "App build failed: 0 of 0 build steps failed.",
       failures: [],
-      remediation: "Inspect the reported app-phase build step failures, fix them, and rebuild.",
+      remediation: "Fix each failed build step, then run lando start.",
     });
     const harness = makeStartLayer({ buildAppEffect: Effect.fail(failure) });
 

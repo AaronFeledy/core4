@@ -205,16 +205,7 @@ describe("workflow performance runner", () => {
     expect(supportedJourney?.statistics?.successfulSamples).toBe(1);
     expect(
       report.lanes.find((lane) => lane.id === "drupal-journey")?.samples[0]?.steps.map((step) => step.id),
-    ).toEqual([
-      "init",
-      "start",
-      "info",
-      "scaffold",
-      "composer-json",
-      "drush-bin",
-      "drush-version",
-      "destroy",
-    ]);
+    ).toEqual(["init", "start", "info", "composer-json", "drush-bin", "drush-version", "destroy"]);
     const firstSample = report.lanes[0]?.samples[0];
     if (firstSample === undefined) throw new Error("expected a cold-start sample");
     expect(

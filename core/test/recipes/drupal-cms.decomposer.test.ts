@@ -92,6 +92,7 @@ describe("drupal-cms decomposition", () => {
             artifact: [
               { run: "apt-get update && apt-get install -y --no-install-recommends git", user: "root" },
             ],
+            app: [{ run: 'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=false' }],
           },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
@@ -127,12 +128,6 @@ describe("drupal-cms decomposition", () => {
           cmd: [":drupal-local", "phpstan"],
           wrapper: true,
           description: "Run PHPStan inside the appserver service.",
-        },
-        "drupal-cms-scaffold": {
-          service: "appserver",
-          description: "Scaffold Drupal CMS 2 and project-local Drush into the mounted app root.",
-          arguments: false,
-          cmd: 'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=false',
         },
         "drupal-cms-install": {
           service: "appserver",
@@ -260,11 +255,25 @@ describe("drupal-cms decomposition", () => {
 
   test("keeps the container helper scaffold command through snapshot encoding", () => {
     const rendered = Result.getOrThrow(renderRecipeSnapshot(drupalCmsSnapshot, defaults)) as {
-      tooling: { "drupal-cms-scaffold": { cmd: string } };
+      services: {
+        appserver: {
+          build: {
+            artifact: ReadonlyArray<unknown>;
+            app: ReadonlyArray<{ run: string; user?: string }>;
+          };
+        };
+      };
+      tooling: Record<string, unknown>;
     };
-    expect(rendered.tooling["drupal-cms-scaffold"].cmd).toBe(
-      'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=false',
-    );
+    expect(rendered.services.appserver.build.app).toEqual([
+      { run: 'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=false' },
+    ]);
+    expect(rendered.services.appserver.build.app).toHaveLength(1);
+    expect(rendered.services.appserver.build.app[0]).not.toHaveProperty("user");
+    expect(rendered.services.appserver.build.artifact).toEqual([
+      { run: "apt-get update && apt-get install -y --no-install-recommends git", user: "root" },
+    ]);
+    expect(rendered.tooling["drupal-cms-scaffold"]).toBeUndefined();
   });
 
   test.each([

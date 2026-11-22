@@ -1,7 +1,7 @@
 # Start a Drupal CMS app
 
-Start a Drupal CMS site using the generated stack, then scaffold and install
-the application. You need Lando installed and provider setup complete.
+Start and install a Drupal CMS site. You need Lando installed and provider
+setup complete.
 
 If this README is inside a generated Drupal CMS app, run these commands from
 that app directory:
@@ -20,20 +20,19 @@ lando start
 lando info
 ```
 
-`lando start` prints the app URL(s). `lando info` repeats them.
+`lando start` scaffolds Drupal CMS on first start and prints the app URL(s). `lando info` repeats them.
 
 The scaffold installs Git in `appserver` and pins the upstream SVG Image security patch from [merge request 65](https://git.drupalcode.org/project/svg_image/-/merge_requests/65) at commit `c788b1e2f2be29f62c9812b2b0558472afa61d6d`. This is a `3.x-dev` development build, not a tagged release. It lets Drupal CMS use the fixed `enshrined/svg-sanitize` 1.0 release without ignoring security advisories. The source pin and its package metadata stay in your `composer.json` and `composer.lock`; a mismatch or failed audit stops scaffolding before it touches your app.
 
-After start, scaffold the codebase, then install. Drush comes from the project's Composer manifest:
+After start, install the site. Drush comes from the project's Composer manifest:
 
 ```sh
-lando drupal-cms-scaffold
 lando drupal-cms-install
 lando drush --version
 lando drush user:login --no-browser
 ```
 
-The scaffold also installs Drupal Coder and PHPStan and writes `phpcs.xml.dist` and `phpstan.neon.dist`, so `lando phpcs`, `lando phpcbf`, and `lando phpstan` check your custom modules and themes and skip Drupal CMS's contrib code. See [Lint PHP](https://aaronfeledy.github.io/core4/guides/recipes/drupal-workflow/#lint-php).
+The first start also installs Drupal Coder and PHPStan and writes `phpcs.xml.dist` and `phpstan.neon.dist`, so `lando phpcs`, `lando phpcbf`, and `lando phpstan` check your custom modules and themes and skip Drupal CMS's contrib code. See [Lint PHP](https://aaronfeledy.github.io/core4/guides/recipes/drupal-workflow/#lint-php).
 
 `lando drupal-cms-install` prints the admin username and a generated password when it finishes. Then open the site:
 
@@ -86,7 +85,7 @@ Run that optional command from the parent directory, then `cd my-drupal-cms-app`
 
 For day-to-day tooling and database hosts, see [Run the Drupal CMS recipe](/guides/recipes/drupal-cms-workflow/).
 
-## 1. scaffold
+## 1. init
 
 ```bash
 lando init --recipe drupal-cms --name=my-drupal-cms-app --yes
@@ -98,31 +97,25 @@ lando init --recipe drupal-cms --name=my-drupal-cms-app --yes
 lando start
 ```
 
-## 3. scaffold-cms
-
-```bash
-lando drupal-cms-scaffold
-```
-
-## 4. install-cms
+## 3. install-cms
 
 ```bash
 lando drupal-cms-install
 ```
 
-## 5. check-drush
+## 4. check-drush
 
 ```bash
 lando drush --version
 ```
 
-## 6. init
+## 5. init
 
 ```bash
 lando init --recipe drupal-cms --name=my-drupal-cms-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=webroot=docroot
 ```
 
-## 7. inspect
+## 6. inspect
 
 ```bash
 lando app:config --format=json

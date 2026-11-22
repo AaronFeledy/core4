@@ -84,6 +84,7 @@ type scaffoldOptions struct {
 	generate     func(stage string, manifest *scaffoldManifest) error
 	afterPromote func(manifest *scaffoldManifest) error
 	complete     func(appRoot string) bool
+	receipt      func() ([]byte, error)
 }
 
 type scaffoldAlreadyComplete struct {
@@ -161,27 +162,10 @@ func (s *scaffold) executeLocked(options scaffoldOptions) error {
 	if err != nil {
 		return err
 	}
-	if resumed && options.siteIntent != nil {
-		original := manifest.SiteIntent
-		switch {
-		case original != nil && *original == *options.siteIntent:
-		case manifest.Phase == "staging":
-			resumed = false
-		case original == nil:
-			return errors.New("An earlier scaffold may have promoted files without recording its inputs. Preserve the project and recover that attempt before scaffolding again.")
-		default:
-			return fmt.Errorf("scaffold already in progress: resume with webroot %q, Drupal major %q, and testing=%t", original.Webroot, original.Major, original.Testing)
-		}
-	}
 	hasMarker := s.markerPath != "" && pathExists(s.markerPath)
 	if hasMarker && options.complete(s.appRoot) {
 		s.cleanup()
 		return &scaffoldAlreadyComplete{message: s.completeMessage}
-	}
-	if options.preflight != nil {
-		if err := options.preflight(resumed, manifest); err != nil {
-			return err
-		}
 	}
 	if resumed && hasMarker {
 		// A completion marker whose outputs are gone is repair work, not a
@@ -190,7 +174,16 @@ func (s *scaffold) executeLocked(options scaffoldOptions) error {
 			return err
 		}
 	}
-	if !resumed {
+	return s.executeManifestLocked(options, manifest)
+}
+
+func (s *scaffold) executeManifestLocked(options scaffoldOptions, manifest *scaffoldManifest) error {
+	if options.preflight != nil {
+		if err := options.preflight(manifest != nil, manifest); err != nil {
+			return err
+		}
+	}
+	if manifest == nil {
 		manifest = s.newManifest()
 		manifest.SiteIntent = options.siteIntent
 		if err := s.saveManifest(manifest); err != nil {
@@ -233,7 +226,13 @@ func (s *scaffold) executeLocked(options scaffoldOptions) error {
 			return err
 		}
 	}
-	if !options.complete(s.appRoot) {
+	if options.receipt != nil {
+		applied, err := options.receipt()
+		if err != nil {
+			return err
+		}
+		return s.finish(applied)
+	} else if !options.complete(s.appRoot) {
 		return fmt.Errorf("%s scaffold did not produce %s.", s.label, s.outputs)
 	}
 	return s.finish(manifest.Applied)

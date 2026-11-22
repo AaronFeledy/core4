@@ -80,10 +80,15 @@ test.each([
     // Then
     expect(compiled.pendingSites.map((pending) => pending.path.join("."))).toContain(site);
     expect(loaded.document.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.1");
-    if (id === "drupal")
-      expect(loaded.document.tooling?.["drupal-scaffold"]?.cmd).toBe(
-        'lando-drupal-scaffold 10 "$LANDO_WEBROOT" --testing=false',
-      );
+    if (id === "drupal") {
+      const appserverBuild = loaded.document.services?.[ServiceName.make("appserver")]?.build as {
+        app?: ReadonlyArray<{ run?: string; user?: string }>;
+      };
+      expect(appserverBuild?.app).toEqual([
+        { run: 'lando-drupal-scaffold 10 "$LANDO_WEBROOT" --testing=false' },
+      ]);
+      expect(loaded.document.tooling?.["drupal-scaffold"]).toBeUndefined();
+    }
     if (id === "laravel")
       expect(loaded.document.services?.[ServiceName.make("appserver")]?.schedule).toEqual([
         {

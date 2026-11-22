@@ -83,9 +83,15 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       const routes = services.appserver?.routes as ReadonlyArray<Record<string, unknown>>;
       const drupalVersion = drupalDefaults.drupal;
       if (typeof drupalVersion !== "string") throw new TypeError("Expected a Drupal version default");
-      expect(tooling["drupal-scaffold"]?.cmd).toBe(
-        `lando-drupal-scaffold ${drupalVersion} "$LANDO_WEBROOT" --testing=false`,
-      );
+      const appserverBuild = services.appserver?.build as {
+        app?: ReadonlyArray<{ run?: string; user?: string }>;
+      };
+      expect(appserverBuild?.app).toEqual([
+        { run: `lando-drupal-scaffold ${drupalVersion} "$LANDO_WEBROOT" --testing=false` },
+      ]);
+      expect(appserverBuild?.app).toHaveLength(1);
+      expect(appserverBuild?.app?.[0]).not.toHaveProperty("user");
+      expect(tooling["drupal-scaffold"]).toBeUndefined();
       expect(tooling.drush?.wrapper).toBe(true);
       expect(tooling.composer?.wrapper).toBe(true);
       expect(tooling.phpcs?.wrapper).toBe(true);
@@ -109,9 +115,13 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       // Then
       const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
       const services = landofile.document.services as Record<string, Record<string, unknown>>;
-      expect(tooling["drupal-scaffold"]?.cmd).toBe(
-        'lando-drupal-scaffold 10 "$LANDO_WEBROOT" --testing=false',
-      );
+      const appserverBuild = services.appserver?.build as {
+        app?: ReadonlyArray<{ run?: string; user?: string }>;
+      };
+      expect(appserverBuild?.app).toEqual([
+        { run: 'lando-drupal-scaffold 10 "$LANDO_WEBROOT" --testing=false' },
+      ]);
+      expect(tooling["drupal-scaffold"]).toBeUndefined();
       expect(tooling.phpunit).toBeUndefined();
       expect(services.appserver?.type).toBe("php:8.4");
     });
@@ -133,9 +143,17 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
         const { document } = await Effect.runPromise(
           loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")),
         );
-        expect(document.tooling?.["drupal-cms-scaffold"]?.cmd).toBe(
-          'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=true',
-        );
+        const appserverBuild = document.services?.[ServiceName.make("appserver")]?.build as {
+          app?: ReadonlyArray<{ run?: string; user?: string }>;
+          artifact?: ReadonlyArray<unknown>;
+        };
+        expect(appserverBuild?.app).toEqual([
+          { run: 'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=true' },
+        ]);
+        expect(appserverBuild?.artifact).toEqual([
+          { run: "apt-get update && apt-get install -y --no-install-recommends git", user: "root" },
+        ]);
+        expect(document.tooling?.["drupal-cms-scaffold"]).toBeUndefined();
         expect(document.tooling?.phpunit?.cmd).toEqual([
           "/app/vendor/bin/phpunit",
           "-c",
@@ -160,9 +178,19 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
         const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
         const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
         const services = landofile.document.services as Record<string, Record<string, unknown>>;
-        expect(tooling["drupal-cms-scaffold"]?.cmd).toBe(
-          'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=false',
-        );
+        const appserverBuild = services.appserver?.build as {
+          app?: ReadonlyArray<{ run?: string; user?: string }>;
+          artifact?: ReadonlyArray<unknown>;
+        };
+        expect(appserverBuild?.app).toEqual([
+          { run: 'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=false' },
+        ]);
+        expect(appserverBuild?.app).toHaveLength(1);
+        expect(appserverBuild?.app?.[0]).not.toHaveProperty("user");
+        expect(appserverBuild?.artifact).toEqual([
+          { run: "apt-get update && apt-get install -y --no-install-recommends git", user: "root" },
+        ]);
+        expect(tooling["drupal-cms-scaffold"]).toBeUndefined();
         expect(services.chrome).toBeUndefined();
         expect(tooling.phpunit).toBeUndefined();
         expect(tooling.drush?.wrapper).toBe(true);

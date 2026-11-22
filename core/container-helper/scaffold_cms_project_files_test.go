@@ -71,7 +71,7 @@ func TestCmsRelocationRewritesOnlyDocrootTokens(t *testing.T) {
 	}
 }
 
-func TestLegacyDrupalScaffoldArgumentsReportTaskUsage(t *testing.T) {
+func TestLegacyDrupalScaffoldArgumentsPointToStart(t *testing.T) {
 	for _, legacy := range []struct {
 		task string
 		args []string
@@ -85,7 +85,7 @@ func TestLegacyDrupalScaffoldArgumentsReportTaskUsage(t *testing.T) {
 			if code := fixture.run(t, legacy.task, legacy.args...); code != 64 {
 				t.Fatalf("expected usage exit 64, got %d: %s", code, fixture.stderr.String())
 			}
-			for _, token := range []string{legacy.form, legacy.task + " task cmd", ".lando.yml"} {
+			for _, token := range []string{legacy.form, "Scaffold tasks are no longer provided", "lando start"} {
 				if !strings.Contains(fixture.stderr.String(), token) {
 					t.Fatalf("missing %q in %s", token, fixture.stderr.String())
 				}

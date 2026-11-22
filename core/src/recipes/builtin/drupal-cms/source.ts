@@ -6,12 +6,15 @@ import { DRUPAL_CMS_GIT_ARTIFACT, drupalCmsInstallCommand } from "./commands.ts"
 import { DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET } from "./php-config.ts";
 
 const scaffold = (testing: boolean) => ({
-  tooling: {
-    "drupal-cms-scaffold": {
-      service: "appserver",
-      description: "Scaffold Drupal CMS 2 and project-local Drush into the mounted app root.",
-      arguments: false,
-      cmd: `lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=${testing}`,
+  services: {
+    appserver: {
+      build: {
+        app: [
+          {
+            run: `lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=${testing}`,
+          },
+        ],
+      },
     },
   },
 });
@@ -33,7 +36,10 @@ export const source = {
         mounts: [
           { source: `./${DRUPAL_CMS_PHP_INI_PATH}`, target: DRUPAL_CMS_PHP_INI_TARGET, readOnly: true },
         ],
-        build: { artifact: [DRUPAL_CMS_GIT_ARTIFACT] },
+        build: {
+          artifact: [DRUPAL_CMS_GIT_ARTIFACT],
+          ...scaffold(false).services.appserver.build,
+        },
       },
       database: { type: "{{ recipe.database }}" },
     },
@@ -41,7 +47,6 @@ export const source = {
       drush: siteDrush,
       composer: composerTool,
       ...siteQualityTooling,
-      ...scaffold(false).tooling,
       "drupal-cms-install": {
         service: "appserver",
         dir: "/app",
@@ -53,7 +58,8 @@ export const source = {
   },
   variants: [
     ...drupalWebVariants,
-    ...drupalSiteTestingVariants([{ when: "{{ options.testing }}", config: scaffold(true) }]),
+    ...drupalSiteTestingVariants,
+    { when: "{{ options.testing }}", config: scaffold(true) },
     {
       when: '{{ eq(options.database, "postgres:16") }}',
       config: {
@@ -65,7 +71,7 @@ export const source = {
   postInit: [
     {
       type: "message",
-      text: "Run 'lando start', then scaffold Drupal CMS with 'lando drupal-cms-scaffold', then install with 'lando drupal-cms-install'.",
+      text: "Run 'lando start' to scaffold Drupal CMS, then install with 'lando drupal-cms-install'.",
     },
   ],
 } as const satisfies RecipeSource;

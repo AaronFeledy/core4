@@ -26,7 +26,6 @@ export const WORKFLOW_PERFORMANCE_STEP_IDS = [
   "db:restore",
   "init",
   "info",
-  "scaffold",
   "composer-json",
   "drush-bin",
   "drush-version",

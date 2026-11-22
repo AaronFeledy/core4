@@ -67,25 +67,15 @@ func (s *scaffold) finish(applied []byte) error {
 	s.point("stage-removed")
 	_ = os.Remove(filepath.Join(s.appRoot, scaffoldStageRoot))
 	if s.markerPath != "" {
-		file, err := os.OpenFile(s.markerPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-		if err != nil {
+		if err := writeScaffoldRecord(s.markerPath, applied, 0o644); err != nil {
 			return err
 		}
-		if len(applied) != 0 {
-			if _, err := file.Write(applied); err != nil {
-				return errors.Join(err, file.Close())
-			}
-		}
-		if err := file.Sync(); err != nil {
-			_ = file.Close()
-			return err
-		}
-		if err := file.Close(); err != nil {
-			return err
-		}
-		syncDir(s.appRoot)
 		s.point("complete-marker")
 	}
+	return s.retireManifest()
+}
+
+func (s *scaffold) retireManifest() error {
 	if err := os.Remove(s.manifestPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -99,37 +89,41 @@ func (s *scaffold) saveManifest(manifest *scaffoldManifest) error {
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
-	temporary := fmt.Sprintf("%s.tmp.%d", s.manifestPath, os.Getpid())
-	file, err := os.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
+	if err := writeScaffoldRecord(s.manifestPath, append(data, '\n'), 0o600); err != nil {
 		return err
 	}
-	if _, err := file.Write(data); err != nil {
-		_ = file.Close()
-		_ = os.Remove(temporary)
-		return err
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		_ = os.Remove(temporary)
-		return err
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(temporary)
-		return err
-	}
-	if err := os.Rename(temporary, s.manifestPath); err != nil {
-		_ = os.Remove(temporary)
-		return err
-	}
-	syncDir(s.appRoot)
 	s.point("manifest")
 	return nil
 }
 
+func writeScaffoldRecord(path string, data []byte, mode fs.FileMode) error {
+	dir := filepath.Dir(path)
+	file, err := os.CreateTemp(dir, filepath.Base(path)+".tmp.")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err := file.Write(data); err != nil {
+		return errors.Join(err, file.Close())
+	}
+	if err := file.Chmod(mode); err != nil {
+		return errors.Join(err, file.Close())
+	}
+	if err := file.Sync(); err != nil {
+		return errors.Join(err, file.Close())
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(file.Name(), path); err != nil {
+		return err
+	}
+	syncDir(dir)
+	return nil
+}
+
 func (s *scaffold) loadManifest() (*scaffoldManifest, bool, error) {
-	data, err := os.ReadFile(s.manifestPath)
+	data, err := readScaffoldRecord(s.manifestPath)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, false, nil
 	}
@@ -152,6 +146,11 @@ func (s *scaffold) loadManifest() (*scaffoldManifest, bool, error) {
 			s.label,
 		)
 	}
+	switch manifest.Phase {
+	case "staging", "staged", "promoted":
+	default:
+		return nil, false, fmt.Errorf("Invalid %s scaffold manifest phase: %s", s.label, manifest.Phase)
+	}
 	for _, entry := range manifest.Entries {
 		if err := s.validateStagedName(entry.Name); err != nil {
 			return nil, false, err
@@ -166,6 +165,22 @@ func (s *scaffold) loadManifest() (*scaffoldManifest, bool, error) {
 		manifest.Hooks = map[string]bool{}
 	}
 	return &manifest, true, nil
+}
+
+func readScaffoldRecord(path string) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("scaffold state %s is not a regular file", path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		// Once observed, a vanished record must not be mistaken for absent state.
+		return nil, fmt.Errorf("could not read observed scaffold state %s: %v", path, err)
+	}
+	return data, nil
 }
 
 func (s *scaffold) stageRequired(manifest *scaffoldManifest) bool {

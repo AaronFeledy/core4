@@ -11,7 +11,7 @@ tags: [docs, recipes, drupal, php, database]
 
 Init prompts for Drupal 10 or 11, PHP 8.1 through 8.6, Apache or nginx plus FPM, MariaDB, MySQL, or PostgreSQL, Composer, webroot, and testing.
 
-For a new project, pass `--answer=webroot=docroot` at init to scaffold into `docroot/`. For an existing checkout, run `lando init . --recipe drupal --yes --answer=webroot=docroot` from the project root and skip scaffold. Replace `docroot` with `.` or a nested path if that's where the site lives.
+For a new project, pass `--answer=webroot=docroot` at init so the first start scaffolds into `docroot/`. For an existing checkout, run `lando init . --recipe drupal --yes --answer=webroot=docroot` from the project root; start adopts the tree and leaves your files alone. Replace `docroot` with `.` or a nested path if that's where the site lives.
 
 ## See the generated defaults
 
@@ -182,11 +182,15 @@ services:
       <UseFixture name="existing-docroot" />
       <Run command="lando init . --recipe drupal --name=existing-docroot --yes --answer=webroot=docroot" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"docroot\"" } }} />
-      <Verify file="existing-docroot/composer.json" expect={{ regex: "fixture/existing-drupal" }} />
-      <Verify file="existing-docroot/docroot/index.php" expect={{ regex: "existing-drupal-front-controller" }} />
+      <Verify file="existing-docroot/composer.json" expect={'{ "name": "fixture/existing-drupal" }\n'} />
+      <Verify file="existing-docroot/docroot/index.php" expect={{ regex: "^<\\?php echo \\x27existing-drupal-front-controller\\x27;\\n(?![\\s\\S])" }} />
     </Step>
     <Step name="serve-adopted-docroot">
       <Run command="lando start" />
+      <Verify file="existing-docroot/composer.json" expect={'{ "name": "fixture/existing-drupal" }\n'} />
+      <Verify file="existing-docroot/docroot/index.php" expect={{ regex: "^<\\?php echo \\x27existing-drupal-front-controller\\x27;\\n(?![\\s\\S])" }} />
+      <Verify command="lando exec appserver -- test -e vendor/bin/drush" expectExit={1} />
+      <Verify command="lando exec appserver -- test -e composer.lock" expectExit={1} />
       <Fetch url="{{route:appserver}}/" expect={{ status: 200, body: { regex: "existing-drupal-front-controller" } }} />
     </Step>
     <Step name="cleanup">
