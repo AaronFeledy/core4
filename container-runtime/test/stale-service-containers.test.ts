@@ -111,7 +111,7 @@ const runningInspect = (plan: AppPlan, serviceName: string, id: string): EngineH
 };
 
 describe("selectStaleServiceContainers", () => {
-  test("a scoped apply selects only the old native name recorded for an unlabeled service", () => {
+  test("a scoped apply selects only the receipted native container for an unlabeled service", () => {
     const previous = planOf("old-slug");
     const plan = {
       ...planOf(),
@@ -124,9 +124,19 @@ describe("selectStaleServiceContainers", () => {
       labeled("unrecorded", ["arbitrary-web"], labels),
       labeled("peer-root", [oldName], { ...labels, "dev.lando.data-root": "/data/peer" }),
     ];
-    expect(selectStaleServiceContainers(plan, ctx.providerId, listed, previous)).toEqual([
-      { containerId: "recorded", service: "web", name: oldName },
-    ]);
+    expect(
+      selectStaleServiceContainers(plan, ctx.providerId, listed, [
+        {
+          kind: "container",
+          nativeName: oldName,
+          nativeId: "recorded",
+          dataRoot: plan.identity.dataRoot,
+          appRoot: previous.root,
+          appId: previous.id,
+          providerId: previous.provider,
+        },
+      ]),
+    ).toEqual([{ containerId: "recorded", service: "web", name: oldName }]);
     expect(selectStaleServiceContainers(plan, ctx.providerId, listed)).toEqual([]);
   });
 

@@ -8,6 +8,7 @@ import {
   planAppIdentity,
 } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
+import { serviceContainerName } from "./container-name.ts";
 import { dataRootLabels, matchesDataRoot } from "./data-root-labels.ts";
 import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
 
@@ -71,27 +72,35 @@ export const coherentContainerOwnership = (
   );
 };
 
-export const isRecordedAppPlan = (plan: AppPlan, recorded: AppPlan | undefined): recorded is AppPlan =>
-  recorded !== undefined &&
-  recorded.id === plan.id &&
-  recorded.provider === plan.provider &&
-  planAppIdentity(recorded).appRoot === planAppIdentity(plan).appRoot &&
-  matchesDataRoot(recorded.identity?.dataRoot, plan.identity?.dataRoot, true);
-
 /** Authorizes a planned service-container mutation from native labels plus its observed identity. */
 export const ownsServiceContainer = (
   plan: AppPlan,
   observation: {
     readonly containerId?: string;
+    readonly nativeName?: string;
     readonly service: string;
     readonly labels?: Readonly<Record<string, string>>;
   },
-  recorded = false,
+  receipts: readonly AdoptionReceipt[] = [],
 ): boolean => {
   const labels = observation.labels;
   if (labels === undefined || !observation.containerId) return false;
   const owner = labels[LANDO_DATA_ROOT_LABEL];
-  if (!matchesDataRoot(owner, plan.identity?.dataRoot, recorded)) return false;
+  const dataRoot = plan.identity?.dataRoot;
+  if (
+    dataRoot === undefined
+      ? owner !== undefined
+      : decideDataRootOwnership(
+          {
+            kind: "container",
+            nativeName: observation.nativeName ?? serviceContainerName(plan, observation.service),
+            nativeId: observation.containerId,
+            labels,
+          },
+          { dataRoot, receipts },
+        ) !== "owned"
+  )
+    return false;
   if (
     serviceContainerOwnershipProblem(labels, {
       app: plan.id,

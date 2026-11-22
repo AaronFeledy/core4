@@ -153,7 +153,12 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
   const containers = yield* listLabeledServiceContainers(api, stopCtx, plan.id).pipe(
     mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
   );
-  const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers, options.recordedPlan);
+  const stales = selectStaleServiceContainers(
+    plan,
+    options.ctx.providerId,
+    containers,
+    options.adoptionReceipts,
+  );
   const stale = yield* removeStaleServiceContainers(api, stopCtx, plan, stales).pipe(
     mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
   );

@@ -1491,7 +1491,12 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   }
 
   const containers = yield* listLabeledServiceContainers(api, options.ctx, plan.id);
-  const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers, options.previousPlan);
+  const stales = selectStaleServiceContainers(
+    plan,
+    options.ctx.providerId,
+    containers,
+    options.adoptionReceipts,
+  );
   const staleNameChanged = (yield* removeStaleServiceContainers(api, options.ctx, plan, stales)).changed;
 
   for (const service of Object.values(plan.services)) {

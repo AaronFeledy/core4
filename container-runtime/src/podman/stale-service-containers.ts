@@ -8,9 +8,10 @@ import {
   type ServiceShutdownObservation,
 } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import type { AdoptionReceipt } from "../data-root-ownership.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { APP_LABEL, SERVICE_LABEL } from "../labels.ts";
-import { isRecordedAppPlan, ownsServiceContainer } from "../native-ownership.ts";
+import { ownsServiceContainer } from "../native-ownership.ts";
 import { serviceContainerName } from "../plan.ts";
 import { retainShutdownObservations, stopAndRemoveContainer } from "../stop-container.ts";
 import { listLabeledContainerRows } from "./discover.ts";
@@ -62,7 +63,7 @@ export const selectStaleServiceContainers = (
   plan: AppPlan,
   providerId: string,
   containers: ReadonlyArray<LabeledServiceContainer>,
-  previous?: AppPlan,
+  receipts: readonly AdoptionReceipt[] = [],
 ): ReadonlyArray<StaleServiceContainer> => {
   const ownershipPlan = { ...plan, provider: ProviderId.make(providerId) };
   const planned = new Map(
@@ -77,26 +78,24 @@ export const selectStaleServiceContainers = (
     const service = labels[SERVICE_LABEL];
     if (service === undefined) continue;
     const names = container.names.map(stripName).filter((name) => name.length > 0);
-    const recorded =
-      isRecordedAppPlan(ownershipPlan, previous) &&
-      Object.hasOwn(previous.services, service) &&
-      names.includes(serviceContainerName(previous, service));
+    const name = names[0];
+    if (name === undefined) continue;
     if (
       !ownsServiceContainer(
         ownershipPlan,
         {
           containerId: container.id,
+          nativeName: name,
           service,
           labels,
         },
-        recorded,
+        receipts,
       )
     )
       continue;
     const expected = planned.get(service);
     if (expected === undefined) continue;
-    const name = names[0];
-    if (name === undefined || names.includes(expected)) continue;
+    if (names.includes(expected)) continue;
     selected.push({
       containerId: container.id,
       service,

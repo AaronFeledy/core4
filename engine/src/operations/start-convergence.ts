@@ -1,5 +1,5 @@
 import { ROLE_LABEL } from "@lando/container-runtime/labels";
-import { isRecordedAppPlan, ownsServiceContainer } from "@lando/container-runtime/native-ownership";
+import { ownsServiceContainer } from "@lando/container-runtime/native-ownership";
 import { type EventError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { MessageInfoEvent, PostServiceStopEvent, PreServiceStopEvent } from "@lando/sdk/events";
 import { type AppPlan, type AppRef, planAppIdentity } from "@lando/sdk/schema";
@@ -115,17 +115,7 @@ export const convergeRemovedServices = Effect.fn("AppOperation.convergeRemovedSe
     .sort((left, right) => String(left.service).localeCompare(String(right.service)));
   if (candidates.length === 0) return [];
 
-  const recorded = execution.recordedPlan;
-  const foreign = candidates.find(
-    (observation) =>
-      !ownsServiceContainer(
-        plan,
-        observation,
-        observation.providerId === plan.provider &&
-          isRecordedAppPlan(plan, recorded) &&
-          Object.hasOwn(recorded.services, observation.service),
-      ),
-  );
+  const foreign = candidates.find((observation) => !ownsServiceContainer(plan, observation));
   if (foreign !== undefined) return yield* Effect.fail(ownershipRefusal(plan, foreign));
 
   yield* execution.verifyAdmission;
