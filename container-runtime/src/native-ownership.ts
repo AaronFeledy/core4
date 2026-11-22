@@ -210,8 +210,6 @@ const refused = (
   },
 ) => {
   const root = resource?.labels[APP_ROOT_LABEL];
-  const dataRoot = resource?.labels[LANDO_DATA_ROOT_LABEL];
-  const foreignDataRoot = dataRoot !== undefined && dataRoot !== resource?.expected[LANDO_DATA_ROOT_LABEL];
   const foreign =
     resource !== undefined &&
     root !== undefined &&
@@ -227,11 +225,9 @@ const refused = (
       : resource?.problem === undefined
         ? "Native resource ownership labels or identity could not be verified. No mutation is authorized."
         : `${resource.kind === "container" ? "Container" : "Network"} ${resource.name} failed ownership verification on its ${resource.problem}. No mutation is authorized.`,
-    remediation: foreignDataRoot
-      ? `Use the Lando installation with data root ${dataRoot} to manage this resource.`
-      : foreign
-        ? "Change `name:` in this app's .lando.yml (or destroy the other app) and run `lando start` again."
-        : "Inspect the conflicting native resource and restore its verified Lando ownership or move it out of the planned name before retrying. Unlabeled resources cannot be adopted.",
+    remediation: foreign
+      ? "Change `name:` in this app's .lando.yml (or destroy the other app) and run `lando start` again."
+      : "Inspect the conflicting native resource and restore its verified Lando ownership or move it out of the planned name before retrying. Unlabeled resources cannot be adopted.",
     ...(foreign
       ? { details: { root } }
       : resource?.problem === undefined
@@ -267,8 +263,9 @@ export const verifiedNativeId = Effect.fnUntraced(function* (
   const dataRoot = expected[LANDO_DATA_ROOT_LABEL];
   const native = { kind: resource.kind, nativeName: name, nativeId: id, labels };
   if (
-    dataRoot !== undefined &&
-    decideDataRootOwnership(native, { dataRoot, receipts: resource.receipts ?? [] }) !== "owned"
+    dataRoot === undefined
+      ? labels[LANDO_DATA_ROOT_LABEL] !== undefined
+      : decideDataRootOwnership(native, { dataRoot, receipts: resource.receipts ?? [] }) !== "owned"
   ) {
     return yield* new ProviderUnavailableError({
       providerId: ctx.providerId,
@@ -360,9 +357,12 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
       const dataRoot = target.labels[LANDO_DATA_ROOT_LABEL];
       const native = { kind: "network", nativeName: target.name, nativeId: id, labels } as const;
       if (
-        dataRoot !== undefined &&
-        decideDataRootOwnership(native, { dataRoot, receipts: exactName ? (target.receipts ?? []) : [] }) !==
-          "owned"
+        dataRoot === undefined
+          ? labels[LANDO_DATA_ROOT_LABEL] !== undefined
+          : decideDataRootOwnership(native, {
+              dataRoot,
+              receipts: exactName ? (target.receipts ?? []) : [],
+            }) !== "owned"
       ) {
         return yield* new ProviderUnavailableError({
           providerId: ctx.providerId,
@@ -379,7 +379,6 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
       if (
         !id ||
         (target.exactName === true && !exactName) ||
-        (dataRoot === undefined && labels[LANDO_DATA_ROOT_LABEL] !== undefined) ||
         (!unscopedUnnamedLabels && !matchesPrivateNetworkLabels(labels, target.labels))
       )
         return yield* Effect.fail(refused(ctx, { ...target, labels, expected: target.labels }));

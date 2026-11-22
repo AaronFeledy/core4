@@ -120,11 +120,12 @@ export const ensurePrivateNetwork = Effect.fnUntraced(function* (
   const dataRoot = labels[LANDO_DATA_ROOT_LABEL];
   const resource = { kind: "network", nativeName: name, nativeId, labels: actual } as const;
   if (
-    dataRoot !== undefined &&
-    decideDataRootOwnership(resource, {
-      dataRoot,
-      receipts: input.sharedDataRoot === undefined ? (input.adoptionReceipts ?? []) : [],
-    }) !== "owned"
+    dataRoot === undefined
+      ? actual[LANDO_DATA_ROOT_LABEL] !== undefined
+      : decideDataRootOwnership(resource, {
+          dataRoot,
+          receipts: input.sharedDataRoot === undefined ? (input.adoptionReceipts ?? []) : [],
+        }) !== "owned"
   ) {
     return yield* new ProviderUnavailableError({
       providerId: ctx.providerId,
@@ -139,10 +140,9 @@ export const ensurePrivateNetwork = Effect.fnUntraced(function* (
     );
   }
   if (
-    (dataRoot === undefined && actual[LANDO_DATA_ROOT_LABEL] !== undefined) ||
-    (input.sharedDataRoot === undefined
+    input.sharedDataRoot === undefined
       ? !matchesPrivateNetworkLabels(actual, labels)
-      : !ownsSharedCrossAppNetwork(input.sharedDataRoot, name, actual))
+      : !ownsSharedCrossAppNetwork(input.sharedDataRoot, name, actual)
   ) {
     return yield* fail("another project owns this network.", input.conflictRemediation ?? retry);
   }
