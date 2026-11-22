@@ -30,6 +30,25 @@ describe("config key schema navigation", () => {
     expect(result.schema).toMatchObject({ type: "integer", minimum: 1, maximum: 65535 });
   });
 
+  test("describes a key with its own annotation, not its base type's", () => {
+    // Effect keeps the base type's description on the node and appends field annotations to allOf.
+    const document = {
+      properties: {
+        httpPort: {
+          description: "TCP or UDP port number.",
+          type: "integer",
+          allOf: [{ description: "an integer" }, { minimum: 1, description: "Router HTTP port." }],
+        },
+        scanner: { anyOf: [{ enum: [false] }, { properties: { timeoutMs: { description: "Deadline." } } }] },
+      },
+    };
+    const port = describePath(document, ["httpPort"]);
+    expect(port.description).toBe("Router HTTP port.");
+    expect(port.schema).toMatchObject({ type: "integer", minimum: 1, description: "Router HTTP port." });
+    expect(port.schema).not.toHaveProperty("allOf");
+    expect(describePath(document, ["scanner", "timeoutMs"]).description).toBe("Deadline.");
+  });
+
   test("uses additionalProperties only when neither a property nor a pattern matches", () => {
     const document = {
       properties: { fixed: { type: "string" } },
