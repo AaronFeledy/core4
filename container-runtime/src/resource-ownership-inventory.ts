@@ -49,10 +49,37 @@ export const OwnedResource = Schema.Union([
   Schema.Struct({ ...VolumeIdentity.fields, identityDigest: Schema.String }),
 ]);
 export type OwnedResource = typeof OwnedResource.Type;
-export const RESOURCE_OWNERSHIP_VERSION = 2;
+const ReceiptOwner = {
+  nativeName: Schema.NonEmptyString,
+  dataRoot: AbsolutePath,
+  providerId: ProviderId,
+  appRoot: AbsolutePath,
+  appId: AppId,
+};
+const AdoptionReceipt = Schema.Union([
+  Schema.Struct({
+    ...ReceiptOwner,
+    kind: Schema.Literals(["container", "network"]),
+    nativeId: Schema.NonEmptyString,
+  }),
+  Schema.Struct({
+    ...ReceiptOwner,
+    kind: Schema.Literal("volume"),
+    volumeInstance: Schema.optionalKey(Schema.String),
+  }),
+]);
+export const AdoptionBatch = Schema.Struct({
+  previousAppId: AppId,
+  dataRoot: AbsolutePath,
+  receipts: Schema.Array(AdoptionReceipt),
+});
+export type AdoptionBatch = typeof AdoptionBatch.Type;
+
+export const RESOURCE_OWNERSHIP_VERSION = 3;
 export const ResourceOwnershipInventory = Schema.Struct({
   ...ResourceOwnership.fields,
   resources: Schema.Array(OwnedResource),
+  adoptions: Schema.optionalKey(Schema.Array(AdoptionBatch)),
 });
 export type ResourceInventory = typeof ResourceOwnershipInventory.Type;
 
@@ -150,6 +177,17 @@ export const validate = (inventory: ResourceInventory, root: AbsolutePath, provi
       !inventory.appIds.includes(resource.appId)
     )
       throw ownershipFailure(providerId);
+  }
+  for (const batch of inventory.adoptions ?? []) {
+    for (const receipt of batch.receipts) {
+      if (
+        receipt.appRoot !== root ||
+        receipt.providerId !== providerId ||
+        receipt.dataRoot !== batch.dataRoot ||
+        (receipt.kind === "network" && isSharedNetwork({}, receipt.nativeName))
+      )
+        throw ownershipFailure(providerId);
+    }
   }
   return inventory;
 };

@@ -14,6 +14,17 @@ export const ResourceOwnershipMember = Schema.Struct({
   service: Schema.optionalKey(
     ServiceName.annotate({ description: "Service name for container inventory members." }),
   ),
+  dataRoot: Schema.optionalKey(
+    AbsolutePath.annotate({
+      description: "Data root that verified adoption of this native resource; absent on intent rows.",
+    }),
+  ),
+  nativeId: Schema.optionalKey(
+    Schema.String.annotate({ description: "Verified native ID of an adopted container or network." }),
+  ),
+  volumeInstance: Schema.optionalKey(
+    Schema.String.annotate({ description: "Verified instance label of an adopted volume that carries one." }),
+  ),
 });
 export type ResourceOwnershipMember = typeof ResourceOwnershipMember.Type;
 
@@ -24,7 +35,8 @@ export const ResourceOwnership = Schema.Struct({
   appIds: Schema.Array(AppId).annotate({ description: "App identities represented by the inventory." }),
   members: Schema.optionalKey(
     Schema.Array(ResourceOwnershipMember).annotate({
-      description: "Member-scoped inventory rows used as historical proof for unlabeled runtime resources.",
+      description:
+        "Cleanup intent and verified adoption receipts. Only members with a data root are receipts.",
     }),
   ),
 });

@@ -22,7 +22,7 @@ const container = {
 } as const;
 const network = { kind: "network", nativeName: "demo-net", nativeId: "network-id", labels: {} } as const;
 const volume = { kind: "volume", nativeName: "demo-db", volumeInstance: "instance-id", labels: {} } as const;
-const table: readonly [string, DataRootResource, string, string][] = [
+const table: readonly [string, DataRootResource, string, ReturnType<typeof decideDataRootOwnership>][] = [
   [
     "owns an equal label without a receipt",
     { ...container, nativeName: "new", labels: { [LANDO_DATA_ROOT_LABEL]: dataRoot } },
