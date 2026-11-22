@@ -67,7 +67,6 @@ import {
   decodeNativeObservation,
   inspectOwnedNativeId,
   isSharedNetwork,
-  matchesDataRoot,
   verifiedNativeId,
 } from "../native-ownership.ts";
 import {
@@ -1014,25 +1013,16 @@ const startService = Effect.fnUntraced(function* (
   );
 
   const inspected = inspectedBeforeSchedule ?? (yield* inspectContainer(deps, name));
-  const previous = deps.options.previousPlan;
-  const legacy =
-    inspected.labels?.[LANDO_DATA_ROOT_LABEL] === undefined &&
-    previous !== undefined &&
-    previous.root === plan.root &&
-    previous.provider === plan.provider &&
-    previous.id === plan.id &&
-    matchesDataRoot(previous.identity?.dataRoot, plan.identity?.dataRoot, true) &&
-    Object.hasOwn(previous.services, service.name) &&
-    serviceContainerName(previous, service.name) === name;
   const expected: Readonly<Record<string, string>> = containerOwnershipLabels(plan, service.name);
-  const { [LANDO_DATA_ROOT_LABEL]: _dataRoot, ...historicalLabels } = expected;
   const existingId = inspected.exists
-    ? yield* verifiedNativeId(
-        JSON.stringify(inspected.body),
-        legacy ? historicalLabels : expected,
-        deps.options.ctx,
-      )
+    ? yield* verifiedNativeId(JSON.stringify(inspected.body), expected, deps.options.ctx, {
+        kind: "container",
+        name,
+        receipts: deps.options.adoptionReceipts ?? [],
+      })
     : undefined;
+  const needsDataRootLabel =
+    plan.identity?.dataRoot !== undefined && inspected.labels?.[LANDO_DATA_ROOT_LABEL] === undefined;
   const published = service.endpoints.flatMap((endpoint) =>
     endpoint.kind === "published" ? [endpoint] : [],
   );
@@ -1046,7 +1036,10 @@ const startService = Effect.fnUntraced(function* (
   let replacedReason: ServiceContainerChange["reason"];
   let before = inspected;
   let startedIdentity: string | undefined = before.exists ? existingId : undefined;
-  if (before.exists && (legacy || deps.options.reconcile === true || recreateReasons.length > 0)) {
+  if (
+    before.exists &&
+    (needsDataRootLabel || deps.options.reconcile === true || recreateReasons.length > 0)
+  ) {
     yield* prepareCreationEnvironment(deps, plan, service);
     if (existingId !== undefined) {
       yield* stopContainerSilent(deps, existingId);

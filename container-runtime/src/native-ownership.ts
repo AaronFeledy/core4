@@ -9,6 +9,7 @@ import {
 } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
 import { dataRootLabels, matchesDataRoot } from "./data-root-labels.ts";
+import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
 
 export { matchesDataRoot, ownsSharedCrossAppNetwork } from "./data-root-labels.ts";
 
@@ -235,7 +236,11 @@ export const verifiedNativeId = Effect.fnUntraced(function* (
   body: string,
   expected: Readonly<Record<string, string>>,
   ctx: ProviderErrorContext,
-  resource: { readonly kind: "container" | "network"; readonly name?: string } = {
+  resource: {
+    readonly kind: "container" | "network";
+    readonly name?: string;
+    readonly receipts?: readonly AdoptionReceipt[];
+  } = {
     kind: "container",
   },
 ) {
@@ -251,6 +256,18 @@ export const verifiedNativeId = Effect.fnUntraced(function* (
     (typeof observedName === "string" && observedName.length > 0
       ? observedName.replace(/^\//u, "")
       : "resource");
+  const dataRoot = expected[LANDO_DATA_ROOT_LABEL];
+  const native = { kind: resource.kind, nativeName: name, nativeId: id, labels };
+  if (
+    dataRoot !== undefined &&
+    decideDataRootOwnership(native, { dataRoot, receipts: resource.receipts ?? [] }) !== "owned"
+  ) {
+    return yield* new ProviderUnavailableError({
+      providerId: ctx.providerId,
+      operation: "resource-ownership",
+      ...dataRootRefusal(native),
+    });
+  }
   const ownershipProblem =
     expected[APP_LABEL] === undefined
       ? Object.entries(expected).some(([key, value]) => labels[key] !== value)
@@ -261,7 +278,7 @@ export const verifiedNativeId = Effect.fnUntraced(function* (
           appRoot: expected[APP_ROOT_LABEL] ?? "",
           service: expected[SERVICE_LABEL] ?? "",
           providerId: ctx.providerId,
-          dataRoot: expected[LANDO_DATA_ROOT_LABEL],
+          dataRoot: dataRoot === undefined ? undefined : labels[LANDO_DATA_ROOT_LABEL],
         });
   const scratchExpected = expected[SCRATCH_LABEL];
   const scratchMatches =
