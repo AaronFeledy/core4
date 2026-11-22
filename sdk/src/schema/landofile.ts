@@ -301,7 +301,7 @@ const ComposeEnvFileInput = Schema.Union([Schema.String, Schema.Array(Schema.Str
   .annotate({ description: COMPOSE_ENV_FILE_DESCRIPTION });
 
 const TOP_LEVEL_ENV_FILE_DESCRIPTION =
-  "One or more app-root-relative env-file paths under serviceDefaults applied to every user-app service below each service's own env_file and environment.";
+  "One or more app-root-relative env-file paths loaded into every service of this app, below each service's own env_file and environment; a later file wins.";
 
 const TopLevelEnvFileInput = Schema.Union([Schema.String, Schema.Array(Schema.String)])
   .annotate({
@@ -1328,7 +1328,7 @@ const LandofileShapeBase = Schema.Struct({
   }),
   serviceDefaults: Schema.optionalKey(LandofileServiceDefaults).annotate({
     description:
-      "Cross-service defaults for this app. serviceDefaults.env_file loads app-root-relative env files into every user-app service below each service's own env_file and environment.",
+      "Cross-service defaults for this app. serviceDefaults.env_file loads app-root-relative env files into every service of this app, below each service's own env_file and environment.",
   }),
   sshAgent: Schema.optionalKey(SshAgentConfig).annotate({
     description: "App SSH-agent forwarding policy, overriding global settings per field.",

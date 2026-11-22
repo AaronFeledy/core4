@@ -150,7 +150,7 @@ const ComposePortInput = Schema.Union([Schema.String, Schema.Number, ComposePort
 
 // JSON Schema publishes the encoded side, so both sides of each field carry the description.
 export const COMPOSE_PORTS_DESCRIPTION =
-  'Published container ports as Compose short strings ("8080:80", "127.0.0.1:8080:80/udp", "80", ranges) or long objects; canonicalized to target/published/hostIp/protocol entries that normalize into endpoints.';
+  'Published container ports as Compose short strings ("8080:80", "127.0.0.1:8080:80/udp", "80", ranges) or long objects; long objects take target, published, host_ip, protocol, and app_protocol. Lando turns each into an endpoint.';
 
 export const ComposePortsField = layerMerge(Schema.Array(ComposePortInput), PORT_MERGE)
   .annotate({ description: COMPOSE_PORTS_DESCRIPTION })
