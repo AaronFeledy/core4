@@ -3,7 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
+import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
 import { makeCleanupDiscoveredApps } from "@lando/engine/install/uninstall-discovery";
+import type { ProviderPurgeHook } from "@lando/sdk/plugins";
+import { Effect } from "effect";
 
 const absentRuntime = () => Object.assign(new Error("runtime unavailable"), { code: "ENOENT" });
 
@@ -64,6 +68,103 @@ const withRuntime = async (scenario: Scenario) => {
 
 const destructive = (call: string[]): boolean =>
   call.includes("stop") || call.includes("rm") || call.includes("prune");
+
+test.each(["current", "peer"] as const)(
+  "Windows guards only this data root's sync on a reused VM: %s",
+  async (syncOwner) => {
+    const root = mkdtempSync(join(tmpdir(), "lando-reused-vm-sync-"));
+    const data = join(root, "data");
+    const state = join(data, "providers", "provider-lando");
+    mkdirSync(state, { recursive: true });
+    writeFileSync(
+      join(state, "setup-state.json"),
+      JSON.stringify({ machine: { name: "lando", createdByLando: false } }),
+    );
+    const order: string[] = [];
+    let ownedPresent = true;
+    const purge: ProviderPurgeHook = (input) => {
+      const syncRoot = syncOwner === "current" ? input.dataRoot : join(root, "peer");
+      const api: EngineHttpApi = {
+        request: ({ method, path }) =>
+          Effect.sync(() => {
+            const json = (value: unknown, status = 200) => ({ status, body: JSON.stringify(value) });
+            if (path === "/_ping") {
+              order.push("preflight:vm");
+              return json(null);
+            }
+            if (path.startsWith("/containers/json?")) return json(ownedPresent ? [{ Id: "owned" }] : []);
+            if (path === "/containers/owned/json")
+              return json({
+                Id: "owned",
+                Config: {
+                  Labels: {
+                    "dev.lando.app": "web",
+                    "dev.lando.app-root": root,
+                    "dev.lando.service": "web",
+                    "dev.lando.data-root": input.dataRoot,
+                  },
+                },
+              });
+            if (method === "POST" && path.startsWith("/containers/owned/stop")) {
+              order.push("stop:owned");
+              return json(null, 204);
+            }
+            if (method === "DELETE" && path.startsWith("/containers/owned?")) {
+              ownedPresent = false;
+              return json(null, 204);
+            }
+            if (path.startsWith("/volumes?")) return json({ Volumes: [{ Name: "sync" }] });
+            if (path === "/volumes/sync")
+              return json({
+                Name: "sync",
+                Labels: { "dev.lando.data-root": syncRoot, "dev.lando.sync.kind": "volume" },
+              });
+            if (path.startsWith("/images/json?") || path.startsWith("/networks?")) return json([]);
+            throw new Error(`Unexpected request ${method} ${path}`);
+          }),
+      };
+      return preflightDataRootPurge(
+        api,
+        { providerId: "lando", env: {}, remediation: "Retry" },
+        { ...input, endpoint: "fixture-vm" },
+      );
+    };
+    const cleanup = makeCleanupDiscoveredApps(
+      data,
+      async () => {
+        throw new Error("Reused VM must not use lando-root or verify whole storage");
+      },
+      "win32",
+      {},
+      [
+        { providerId: "lando", purge },
+        {
+          providerId: "docker",
+          purge: () =>
+            Effect.sync(() => {
+              order.push("preflight:docker");
+              return { kind: "skipped", endpoint: "fixture-docker", reason: "Unavailable" };
+            }),
+        },
+      ],
+    );
+    try {
+      if (syncOwner === "current")
+        await expect(cleanup([], join(root, "cache"))).rejects.toThrow(
+          "Accelerated sync helper or volume exists for this data root",
+        );
+      else await cleanup([], join(root, "cache"));
+      expect(ownedPresent).toBe(syncOwner === "current");
+      expect(order).toEqual(
+        syncOwner === "current"
+          ? ["preflight:vm", "preflight:docker"]
+          : ["preflight:vm", "preflight:docker", "stop:owned"],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 describe("uninstall purge sync guard", () => {
   for (const scenario of [
