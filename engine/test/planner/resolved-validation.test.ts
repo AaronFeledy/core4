@@ -154,12 +154,12 @@ test("lint permits service default membership and declared external networks", a
   );
 });
 
-test("top-level env file failures aggregate with independent service and route issues", async () => {
+test("serviceDefaults env file failures aggregate with independent service and route issues", async () => {
   await withApp(
-    "env_file: [missing.env]\nservices:\n  db:\n    type: validation\n    environment: {FAIL: yes}\n  web:\n    type: validation\n    routes: [bad_host!]\n",
+    "serviceDefaults:\n  env_file: [missing.env]\nservices:\n  db:\n    type: validation\n    environment: {FAIL: yes}\n  web:\n    type: validation\n    routes: [bad_host!]\n",
     async (root) => {
       const { lint } = await compareIssues(root, [
-        ["env_file", 0],
+        ["serviceDefaults", "env_file", 0],
         ["services", "db", "port"],
         ["services", "web", "routes", 0],
       ]);

@@ -5,6 +5,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type AppliedAppPlan,
   ProviderId,
   ServiceName,
   appIdentityKey,
@@ -23,15 +24,16 @@ const cache = {
 
 test("records selected runtime metadata, carries unselected services, and keeps removed ones", async () => {
   // Given an applied three-service app and newer, unrealized intent for the selected and unselected ones.
-  const applied: AppPlan = {
-    ...plan,
+  const { events: _events, ...realized } = plan;
+  const applied: AppliedAppPlan = {
+    ...realized,
     services: {
       [web.name]: { ...web, artifact: { kind: "ref", ref: "web:v1" } },
       [db.name]: db,
       [cache.name]: cache,
     },
   };
-  let persisted: AppPlan | undefined = applied;
+  let persisted: AppliedAppPlan | undefined = applied;
   const cacheStore = makeAppliedPlanCache({
     providerId: plan.provider,
     providerName: "test",

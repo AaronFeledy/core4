@@ -53,33 +53,39 @@ const splitMappingEntry = (
 const isStringList = (input: unknown): input is ReadonlyArray<string> =>
   Array.isArray(input) && input.every((entry) => typeof entry === "string");
 
-export const ComposeScalarMapField = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)]).pipe(
-  Schema.decodeTo(
-    ComposeScalarMap,
-    SchemaTransformation.transformEffect({
-      decode: (input, _options) => {
-        if (!isStringList(input)) return Effect.succeed(input);
-        const entries: Array<readonly [string, string]> = [];
-        for (const entry of input) {
-          const pair = splitMappingEntry(entry, "equals");
-          if (pair === undefined) {
-            return Effect.fail(
-              new SchemaIssue.InvalidValue(
-                { message: "Landofile service map entries must use KEY=value." },
-                input,
-              ),
-            );
+const COMPOSE_SCALAR_MAP_DESCRIPTION =
+  "Scalar key/value map as an object or KEY=value list; canonicalized to a string map.";
+
+export const ComposeScalarMapField = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)])
+  .annotate({ description: COMPOSE_SCALAR_MAP_DESCRIPTION })
+  .pipe(
+    Schema.decodeTo(
+      ComposeScalarMap,
+      SchemaTransformation.transformEffect({
+        decode: (input, _options) => {
+          if (!isStringList(input)) return Effect.succeed(input);
+          const entries: Array<readonly [string, string]> = [];
+          for (const entry of input) {
+            const pair = splitMappingEntry(entry, "equals");
+            if (pair === undefined) {
+              return Effect.fail(
+                new SchemaIssue.InvalidValue(
+                  { message: "Landofile service map entries must use KEY=value." },
+                  input,
+                ),
+              );
+            }
+            entries.push(pair);
           }
-          entries.push(pair);
-        }
-        const record = Object.fromEntries(entries);
-        if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);
-        return Effect.succeed(record);
-      },
-      encode: (record) => Effect.succeed(record),
-    }),
-  ),
-);
+          const record = Object.fromEntries(entries);
+          if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);
+          return Effect.succeed(record);
+        },
+        encode: (record) => Effect.succeed(record),
+      }),
+    ),
+  )
+  .annotate({ description: COMPOSE_SCALAR_MAP_DESCRIPTION });
 
 export const ComposeSysctlsField = ComposeScalarMapField.annotate({
   description: "Kernel parameters as a Compose scalar map or KEY=value list; canonicalized to a scalar map.",

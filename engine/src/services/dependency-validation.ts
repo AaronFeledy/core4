@@ -38,7 +38,7 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
               file: appRoot,
               issues: [
                 validationIssue(
-                  ["services", dependentName, "dependsOn"],
+                  ["services", dependentName, "depends_on"],
                   `Service ${dependentName} depends on missing service ${targetName} with condition ${dependency.condition}. Add service ${targetName} to services or set required: false on this dependency.`,
                 ),
               ],
@@ -59,7 +59,7 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
             message,
             remediation,
             file: appRoot,
-            issues: [validationIssue(["services", dependentName, "dependsOn"], message)],
+            issues: [validationIssue(["services", dependentName, "depends_on"], message)],
           }),
         );
       }
@@ -99,7 +99,7 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
         file: appRoot,
         issues: [
           validationIssue(
-            ["services", dependentName, "dependsOn"],
+            ["services", dependentName, "depends_on"],
             `Dependency cycle detected: ${description}. Remove or redirect one dependency edge; required: false does not break a dependency cycle.`,
           ),
         ],

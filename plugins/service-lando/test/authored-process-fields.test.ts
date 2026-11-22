@@ -37,7 +37,7 @@ describe.each([...serviceTypes])("%s authored process fields", (_id, serviceType
     const authored = {
       command: ["custom-command", "--custom-argument"],
       entrypoint: ["custom-entrypoint"],
-      workingDirectory: PortablePath.make("/custom-directory"),
+      working_dir: PortablePath.make("/custom-directory"),
       user: "custom-user",
     };
 
@@ -45,7 +45,7 @@ describe.each([...serviceTypes])("%s authored process fields", (_id, serviceType
 
     expect(plan.command).toEqual(authored.command);
     expect(plan.entrypoint).toEqual(authored.entrypoint);
-    expect(plan.workingDirectory).toBe(authored.workingDirectory);
+    expect(plan.workingDirectory).toBe(authored.working_dir);
     expect(plan.user).toBe(authored.user);
   });
 

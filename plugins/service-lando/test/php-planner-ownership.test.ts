@@ -115,11 +115,11 @@ describe("PHP ownership through AppPlanner", () => {
 
   test.each(["auto", "postgres:16"])(
     "skips contextual database-client %s through the real AppFeature",
-    async (db_client) => {
+    async (dbClient) => {
       // Given: a stock control proves the AppFeature actually runs for this selection.
       const services = {
-        [web]: phpConfig({ build: { context: "." }, db_client }),
-        [stock]: phpConfig({ db_client }),
+        [web]: phpConfig({ build: { context: "." }, dbClient }),
+        [stock]: phpConfig({ dbClient }),
         [ServiceName.make("db")]: { type: "postgres:16" },
       };
       // When

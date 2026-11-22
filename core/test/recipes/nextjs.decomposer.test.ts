@@ -62,7 +62,7 @@ describe("nextjs decomposition", () => {
           port: 3000,
           environment: { NEXTAUTH_PROVIDER: "{{ recipe.auth }}" },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
-          dependsOn: ["database"],
+          depends_on: ["database"],
         },
         database: { type: "{{ recipe.database }}" },
       },
@@ -93,10 +93,10 @@ describe("nextjs decomposition", () => {
       Schema.Struct({ services: Schema.Record(Schema.String, Schema.Unknown) }),
     )(authoringOf(noDatabase));
     expect(Object.keys(authoring.services)).toEqual(["web"]);
-    const web = Schema.decodeUnknownSync(Schema.Struct({ dependsOn: Schema.optionalKey(Schema.Unknown) }))(
+    const web = Schema.decodeUnknownSync(Schema.Struct({ depends_on: Schema.optionalKey(Schema.Unknown) }))(
       authoring.services.web,
     );
-    expect(web.dependsOn).toBeUndefined();
+    expect(web.depends_on).toBeUndefined();
   });
 
   test("preserves authoring data when only Node and auth tokens vary", () => {

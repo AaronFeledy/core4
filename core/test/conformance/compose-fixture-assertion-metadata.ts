@@ -21,9 +21,9 @@ export const COMPOSE_FIXTURE_ASSERTIONS: Readonly<Record<string, ComposeFixtureA
   build: { assertion: "artifact-build" },
   command: { assertion: "direct" },
   configs: { assertion: "configs" },
-  depends_on: { assertion: "dependencies", configTarget: "dependsOn" },
+  depends_on: { assertion: "dependencies" },
   entrypoint: { assertion: "direct" },
-  env_file: { assertion: "environment", configTarget: "envFile" },
+  env_file: { assertion: "environment" },
   environment: { assertion: "environment" },
   expose: { assertion: "internal-endpoints" },
   healthcheck: { assertion: "healthcheck" },
@@ -35,5 +35,5 @@ export const COMPOSE_FIXTURE_ASSERTIONS: Readonly<Record<string, ComposeFixtureA
   tmpfs: { assertion: "tmpfs" },
   user: { assertion: "direct" },
   volumes: { assertion: "volumes" },
-  working_dir: { assertion: "direct", configTarget: "workingDirectory" },
+  working_dir: { assertion: "direct" },
 };

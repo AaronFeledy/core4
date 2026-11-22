@@ -923,7 +923,10 @@ const assembleRuntimeProvider = (
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(
-          (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
+          (target.plan === undefined
+            ? resolvePlan(target.app)
+            : Effect.succeed<AppPlan | undefined>(target.plan)
+          ).pipe(
             Effect.map((plan) => {
               if (plan !== undefined)
                 return logs(plan, target, logOptions, {

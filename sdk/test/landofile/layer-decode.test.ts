@@ -4,21 +4,20 @@ import { Cause, Effect } from "effect";
 
 const decode = (value: unknown) => Effect.runSync(decodeLandofileLayer(".lando.local.yml", value));
 
-test("canonical authored resets beat service aliases", () => {
+test("canonical authored resets beat sibling service fields", () => {
   const result = decode({
     services: {
       web: {
         working_dir: override("/app"),
         env_file: override([".env"]),
-        depends_on: ["db"],
-        dependsOn: reset(),
+        depends_on: reset(),
       },
     },
   });
   expect(result).toHaveProperty(["services", "web"], {
-    workingDirectory: override("/app"),
-    envFile: override([".env"]),
-    dependsOn: reset(),
+    working_dir: override("/app"),
+    env_file: override([".env"]),
+    depends_on: reset(),
   });
 });
 
@@ -28,7 +27,7 @@ test("whole-field overrides wrap decoded transformed values", () => {
   });
   expect(result).toHaveProperty(["services", "web"], {
     environment: override({ FOO: "bar" }),
-    dependsOn: override([{ service: "db" }]),
+    depends_on: override([{ service: "db" }]),
   });
 });
 
@@ -44,7 +43,7 @@ test.each([
   { services: { web: { endpoints: [override("ui=http:80")] } } },
   { services: { web: { endpoints: [{ kind: "internal", name: override("ui") }] } } },
   { services: { web: { routes: [{ hostname: override("web.test") }] } } },
-  { services: { web: { dependsOn: { db: { condition: reset() } } } } },
+  { services: { web: { depends_on: { db: { condition: reset() } } } } },
   {
     services: {
       web: { routes: [{ hostname: "web.test", filters: [{ kind: "stripPrefix", prefix: reset() }] }] },
@@ -66,23 +65,30 @@ test("reset suppresses a decode-synthesized default", () => {
   });
 });
 
-test("an authored canonical key wins without promoting the losing alias", () => {
-  // Given both spellings, with the canonical spelling reset.
-  const result = decode({ services: { web: { working_dir: "/alias", workingDirectory: reset() } } });
-  // Then only the canonical reset remains.
-  expect(result).toHaveProperty(["services", "web"], { workingDirectory: reset() });
+test("an authored canonical reset is retained on the Compose member", () => {
+  // Given a canonical Compose member reset.
+  const result = decode({ services: { web: { working_dir: reset() } } });
+  // Then the reset remains on that member.
+  expect(result).toHaveProperty(["services", "web"], { working_dir: reset() });
 });
 
-test("an alias-only reset maps to the canonical member", () => {
-  // Given resets authored with Compose spellings; when decoded.
-  const result = decode({ services: { web: { env_file: reset(), depends_on: reset() } } });
-  // Then the directives land on canonical members.
-  expect(result).toHaveProperty(["services", "web"], { envFile: reset(), dependsOn: reset() });
+test("legacy camelCase service keys are unknown authored targets", () => {
+  // Given resets authored with removed Lando camelCase aliases.
+  expect(() => decode({ services: { web: { envFile: reset(), dependsOn: reset() } } })).toThrow(
+    "Unknown authored target key",
+  );
+  expect(() => decode({ services: { web: { workingDirectory: reset() } } })).toThrow(
+    "Unknown authored target key",
+  );
+  // A foreign camelCase sibling next to a canonical member still fails layer admission.
+  expect(() => decode({ services: { web: { workingDirectory: "/alias", working_dir: reset() } } })).toThrow(
+    "Invalid Landofile layer",
+  );
 });
 
 test.each([
   { services: { web: { environment: [reset()] } } },
-  { services: { web: { dependsOn: [{ service: reset() }] } } },
+  { services: { web: { depends_on: [{ service: reset() }] } } },
   {
     services: {
       web: {

@@ -51,6 +51,8 @@ import {
 import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
+import { schemaDigest } from "./x-extension-schema-parity-edit.ts";
+import { evolveSchemaParity, parityContext } from "./x-extension-schema-parity-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
 import { SERVICE_KEY_PATTERN, evolveHistoricalServiceKeys } from "./x-extension-service-keys-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
@@ -128,12 +130,14 @@ const historicalLandofile = (): JsonSchema =>
     ),
   );
 
-const expectedLandofile = (): JsonSchema =>
+const beforeSchemaParity = (): JsonSchema =>
   evolveHistoricalExtraArgs(
     evolveHistoricalRouteText(
       evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historicalLandofile(), "bare")),
     ),
   );
+
+const expectedLandofile = (): JsonSchema => evolveSchemaParity(beforeSchemaParity(), "bare");
 
 describe("closed x-* extension artifact repair", () => {
   test("pins the independently reviewed tooling sensitivity delta and source provenance", async () => {
@@ -242,12 +246,8 @@ describe("closed x-* extension artifact repair", () => {
     expect(context.additionalProperties).toBe(false);
     expect(context.patternProperties).toEqual({ [EXTENSION_PATTERN]: {} });
     const properties = requireObject(context.properties, "context properties");
-    expect(Object.keys(properties).sort()).toEqual([...captured.contextPropertyKeys].sort());
-    expect(
-      createHash("sha256")
-        .update(JSON.stringify(blankContextBody(context)))
-        .digest("hex"),
-    ).toBe(captured.contextBodySha256);
+    expect(Object.keys(properties).sort()).toEqual(parityContext.keys);
+    expect(schemaDigest(blankContextBody(context))).toBe(parityContext.bodySha256);
     const historical = { ...context, propertyNames: captured.contextPropertyNames };
     Reflect.deleteProperty(historical, "additionalProperties");
     Reflect.deleteProperty(historical, "patternProperties");
@@ -310,6 +310,8 @@ describe("closed x-* extension artifact repair", () => {
       "output",
     );
     expect(findings.map((finding) => `${finding.changeKind} ${finding.path}`).sort()).toEqual([
+      "property-added $.landofile.serviceDefaults",
+      "property-removed $.landofile.env_file",
       "unsupported-construct $.landofile.events.post-destroy.items.anyOf",
       "unsupported-construct $.landofile.events.post-init.items.anyOf",
       "unsupported-construct $.landofile.events.post-rebuild.items.anyOf",

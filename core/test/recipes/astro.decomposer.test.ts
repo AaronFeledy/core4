@@ -85,10 +85,10 @@ describe("astro decomposition", () => {
     )(authoringOf(withDatabase));
     expect(Object.keys(authoring.services)).toEqual(["web", "database"]);
     expect<unknown>(authoring.services.database).toEqual({ type: "{{ recipe.database }}" });
-    const web = Schema.decodeUnknownSync(Schema.Struct({ dependsOn: Schema.optionalKey(Schema.Unknown) }))(
+    const web = Schema.decodeUnknownSync(Schema.Struct({ depends_on: Schema.optionalKey(Schema.Unknown) }))(
       authoring.services.web,
     );
-    expect<unknown>(web.dependsOn).toEqual(["database"]);
+    expect<unknown>(web.depends_on).toEqual(["database"]);
   });
 
   test("preserves authoring data when only the Node token varies", () => {

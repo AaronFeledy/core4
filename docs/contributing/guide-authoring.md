@@ -224,7 +224,7 @@ without starting a shell:
 When an attribute needs both quote characters, use a template literal:
 
 ```mdx
-<Run command={`lando config set appEnv '{"TEAM":"platform"}'`} />
+<Run command={`lando config set serviceDefaults.environment '{"TEAM":"platform"}'`} />
 ```
 
 ### What a default scenario runs

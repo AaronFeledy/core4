@@ -57,7 +57,7 @@ test("a stopped app with no live resources still reserves its name without autho
     expect(result.failure.remediation).toMatch(/Change.*name:.*\.lando\.yml.*destroy.*other/iu);
     expect(mutations).toEqual([]);
     expect(await Effect.runPromise(store.summary(rootB))).toBeUndefined();
-    expect(await Effect.runPromise(loadAppliedPlan(state, appA.id))).toEqual(appA);
+    expect<AppPlan | undefined>(await Effect.runPromise(loadAppliedPlan(state, appA.id))).toEqual(appA);
   });
 });
 

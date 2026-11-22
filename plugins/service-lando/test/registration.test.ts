@@ -759,7 +759,7 @@ describe("@lando/service-lando registration", () => {
       runtime: 4,
       services: {
         [ServiceName.make("web")]: { type: "php:8.2" },
-        [ServiceName.make("api")]: { type: "php:8.3", db_client: "postgres:16" },
+        [ServiceName.make("api")]: { type: "php:8.3", dbClient: "postgres:16" },
         [ServiceName.make("db")]: { type: "mysql" },
         [ServiceName.make("cache")]: { type: "redis" },
       },

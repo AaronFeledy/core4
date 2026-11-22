@@ -23,7 +23,7 @@ test("reading the global diagnostic contribution leaves a fresh host root untouc
     expect(config.healthcheck).toMatchObject({ kind: "command" });
     expect(config.home).toBe(false);
     expect(config.routes).toEqual([]);
-    expect(buildTraefikServiceConfig({ http: 8080, https: 8443 }).dependsOn).toEqual([
+    expect(buildTraefikServiceConfig({ http: 8080, https: 8443 }).depends_on).toEqual([
       { service: "traefik-diagnostics", condition: "service_healthy", required: true },
     ]);
     expect(buildTraefikServiceConfig({ http: 8080, https: 8443 }).home).toBe(false);

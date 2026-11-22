@@ -308,7 +308,7 @@ for (const ids of [[], ["global"], ["user-app"], ["global", "user-app"]]) {
     using f = fixture();
     f.write(
       recordPath,
-      JSON.stringify({ version: 1, data: Object.fromEntries(ids.map((id) => [id, f.plan(id)])) }),
+      JSON.stringify({ version: 1, data: Object.fromEntries(ids.map((id) => [id, { id }])) }),
     );
     // When
     const result = f.discover();
@@ -360,7 +360,7 @@ for (const contents of [
   '{"version":1,"data":null}',
   '{"version":1,"data":[]}',
   '{"version":1,"data":{"global":null}}',
-  '{"version":1,"data":{"global":{"id":"global"}}}',
+  '{"version":1,"data":{"global":{"id":null}}}',
 ]) {
   test(`fails closed with a tagged error for malformed record ${contents}`, async () => {
     // Given

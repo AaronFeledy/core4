@@ -117,7 +117,7 @@ The blob overrides `$database` in `settings.php`. If you change the database nam
 
 ## Add Bee and its database client names
 
-Lando enables Apache's `mod_rewrite` for clean URLs when it builds the stock PHP service. Add Bee and the `mysql` and `mysqldump` names Bee's `db-*` commands call. The MariaDB 11.4 client Lando installs on `appserver` (`db_client: auto`) names those `mariadb` and `mariadb-dump`. Add these root `build.artifact` steps:
+Lando enables Apache's `mod_rewrite` for clean URLs when it builds the stock PHP service. Add Bee and the `mysql` and `mysqldump` names Bee's `db-*` commands call. The MariaDB 11.4 client Lando installs on `appserver` (`dbClient: auto`) names those `mariadb` and `mariadb-dump`. Add these root `build.artifact` steps:
 
 ```yaml
 services:

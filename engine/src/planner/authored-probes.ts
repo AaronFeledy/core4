@@ -13,6 +13,7 @@ const mergeProbe = (authored: HealthcheckInput, existing?: HealthcheckPlan): Hea
   const url = authored.url ?? inherited?.url;
   const port = authored.port ?? inherited?.port;
   const startPeriodSeconds = authored.startPeriodSeconds ?? existing?.startPeriodSeconds;
+  const startIntervalSeconds = authored.startIntervalSeconds ?? existing?.startIntervalSeconds;
   const executionTarget = authored.target ?? existing?.executionTarget;
   const user = authored.user ?? (authored.target === "host" ? undefined : existing?.user);
   return {
@@ -26,6 +27,7 @@ const mergeProbe = (authored: HealthcheckInput, existing?: HealthcheckPlan): Hea
     ...(url === undefined ? {} : { url }),
     ...(port === undefined ? {} : { port }),
     ...(startPeriodSeconds === undefined ? {} : { startPeriodSeconds }),
+    ...(startIntervalSeconds === undefined ? {} : { startIntervalSeconds }),
     ...(authored.command === undefined &&
     authored.port === undefined &&
     authored.target !== "host" &&

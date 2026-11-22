@@ -10,7 +10,7 @@ services:
     port: 80
     environment:
       DRUSH_OPTIONS_URI: https://drupal-stack-overrides.lndo.site
-    dependsOn:
+    depends_on:
       - database
   database:
     type: mariadb

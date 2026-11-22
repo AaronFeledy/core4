@@ -106,7 +106,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       assertPhpViaKeys(via, input.service);
       const xdebug = resolvePhpXdebug(input.service.xdebug);
       assertPhpXdebugSupported(resolvedVersion, xdebug);
-      resolvePhpDbClient(input.service.db_client);
+      resolvePhpDbClient(input.service.dbClient);
       const webroot = resolveWebroot("PHP", input.service.webroot, input.service.appMount);
       const allowOverride = input.service.allowOverride ?? false;
       const policy = resolvePhpRuntimePolicy(input.service, resolvedVersion, via);

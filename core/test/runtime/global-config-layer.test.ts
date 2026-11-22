@@ -13,7 +13,7 @@ test("library host config reaches ConfigService beyond the old override subset",
     configSources: { user: false, env: false },
     config: {
       router: { httpPort: 8123 },
-      appEnv: { CUSTOM: "host" },
+      serviceDefaults: { environment: { CUSTOM: "host" } },
       userDataRoot: "/host/lando-data",
     },
   });
@@ -27,7 +27,7 @@ test("library host config reaches ConfigService beyond the old override subset",
   );
   // Then arbitrary host fields survive and both services share the root authority.
   expect(result.config.router?.httpPort).toBe(8123);
-  expect(result.config.appEnv).toEqual({ CUSTOM: "host" });
+  expect(result.config.serviceDefaults?.environment).toEqual({ CUSTOM: "host" });
   expect(String(result.config.userDataRoot)).toBe("/host/lando-data");
   expect(result.roots.userDataRoot).toBe("/host/lando-data");
 });

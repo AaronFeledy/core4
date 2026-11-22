@@ -103,7 +103,7 @@ const dependencyBlockers = (
   for (const [id, service] of Object.entries(authored ?? {})) {
     if (selected.has(id) || enabled.get(id) === false) continue;
     if (
-      service.dependsOn?.some(
+      service.depends_on?.some(
         (dependency) => dependency.required !== false && selected.has(dependency.service),
       )
     )

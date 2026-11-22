@@ -125,7 +125,7 @@ const forkLandofile = [
   "    image: node:20-alpine",
   "    primary: true",
   "    home: false",
-  "    dependsOn:",
+  "    depends_on:",
   "      - database",
   "  database:",
   "    type: postgres",

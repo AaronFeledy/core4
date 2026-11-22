@@ -35,7 +35,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   };
   const loadedTopLevelEnvFiles = yield* loadTopLevelEnvFiles({
     appRoot,
-    envFiles: landofile.env_file ?? [],
+    envFiles: landofile.serviceDefaults?.env_file ?? [],
     fileSystem,
   }).pipe(Effect.result);
   if (Result.isFailure(loadedTopLevelEnvFiles)) record(loadedTopLevelEnvFiles.failure);

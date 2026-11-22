@@ -72,7 +72,7 @@ describe("meta config set (S4)", () => {
   test.each([
     ["router.httpPort", "8080", 8080],
     ["gpgAgent.forward", "true", true],
-    ["appEnv", '{"TEAM":"platform"}', { TEAM: "platform" }],
+    ["serviceDefaults.environment", '{"TEAM":"platform"}', { TEAM: "platform" }],
   ])("infers %s without a type override", async (key, value, expected) => {
     // Given
     await seed("renderer: json\n");

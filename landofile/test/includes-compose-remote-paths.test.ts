@@ -74,7 +74,7 @@ test.each(["git", "npm"] as const)(
     // Then
     expect(document.services?.[ServiceName.make("parent")]).toMatchObject({
       type: "compose",
-      envFile: [".env.parent"],
+      env_file: [".env.parent"],
       build: { context: ".", dockerfile: "Dockerfile" },
     });
     expect(document.services?.[ServiceName.make("child")]?.volumes).toMatchObject([{ source: "./data" }]);

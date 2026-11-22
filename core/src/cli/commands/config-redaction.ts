@@ -10,8 +10,8 @@ const collectConfigValues = (
   if (typeof result === "string") {
     const [root, second, third] = path;
     if (root === "tracing" && second === "otlp" && third === "headers") return [result];
-    if (root === "appEnv" || root === "appLabels")
-      return collectSecretEnvValues({ [String(second ?? "")]: result });
+    if (root === "serviceDefaults" && (second === "environment" || second === "labels"))
+      return collectSecretEnvValues({ [String(third ?? "")]: result });
     const name = sensitive ? "password" : String(path.at(-1) ?? "");
     return collectSecretStructuralValues({ [name]: result });
   }

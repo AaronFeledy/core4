@@ -2,7 +2,6 @@ import { Schema } from "effect";
 
 import { defineTransitions } from "../transitions/index.ts";
 
-import { NetworkConfig } from "./config.ts";
 import { FileSyncMode as FileSyncModeSchema } from "./file-sync.ts";
 import { AppRef } from "./networking.ts";
 import { AbsoluteContainerPath, AbsolutePath, PortablePath, ServiceName } from "./primitives.ts";
@@ -40,18 +39,6 @@ export const FileSyncEngineCapabilities = Schema.Struct({
   progressReporting: Schema.Boolean,
 });
 export type FileSyncEngineCapabilities = Schema.Schema.Type<typeof FileSyncEngineCapabilities>;
-
-/**
- * Setup options for `FileSyncEngine.setup`. Mirrors the
- * `ProviderSetupOptions` shape so `lando setup` can pass through the same
- * `--force` flag.
- */
-export const FileSyncSetupOptions = Schema.Struct({
-  /** Re-run setup even if the engine reports `isAvailable: true`. */
-  force: Schema.Boolean,
-  network: Schema.optionalKey(NetworkConfig),
-});
-export type FileSyncSetupOptions = Schema.Schema.Type<typeof FileSyncSetupOptions>;
 
 /**
  * Target the engine should sync into. `volume` is a provider-owned named

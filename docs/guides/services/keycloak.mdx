@@ -44,7 +44,7 @@ services:
     type: "node:22"
     environment:
       OIDC_ISSUER: "{{ services.keycloak.url }}/realms/demo"
-    dependsOn:
+    depends_on:
       keycloak:
         condition: service_healthy
 ```
@@ -57,7 +57,7 @@ services:
 - `KC_PROXY_HEADERS: xforwarded` tells Keycloak to read the `X-Forwarded-*` headers the Lando proxy sends, so it knows browser requests arrive over HTTPS. Without it, Keycloak logs `Non-secure context detected` and issues cookies that browsers leave out of cross-origin POST requests.
 - `APP_URL` and `OIDC_ISSUER` use `{{ services.<name>.url }}` to give each service the other's browser URL. The realm file reads `APP_URL`, and your app checks tokens against `OIDC_ISSUER`.
 - `http:8080` under `endpoints` declares Keycloak's HTTP listener, so Lando routes `https://keycloak.keycloak-demo.lndo.site` to port `8080`. The management port, `9000`, stays off the router.
-- `KC_HEALTH_ENABLED` turns on `/health/ready` on Keycloak's management port. The image has no `curl`, and `kind: http` doesn't need it: Lando's helper inside the container sends the request. `lando start` waits for it, and `dependsOn` with `condition: service_healthy` holds `app` until it passes.
+- `KC_HEALTH_ENABLED` turns on `/health/ready` on Keycloak's management port. The image has no `curl`, and `kind: http` doesn't need it: Lando's helper inside the container sends the request. `lando start` waits for it, and `depends_on` with `condition: service_healthy` holds `app` until it passes.
 - `./realm` is bind-mounted read-only, so the realm file stays in your repo. `appMount: false` keeps the rest of your source out of the Keycloak container.
 - `app` stands in for your application. A `node:22` service with no `command:` stays idle so you can run scripts in it, and `lando start` reports that nothing listens on its port yet. Your PHP, Python, or Node app reaches Keycloak at the same URLs.
 

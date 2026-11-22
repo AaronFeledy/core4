@@ -20,7 +20,7 @@ export const applyAuthoredProcessFields = (
         if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
         break;
       case "workingDirectory":
-        if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
+        if (service.working_dir !== undefined) ctx.setWorkingDirectory(service.working_dir);
         break;
       case "user":
         if (service.user !== undefined) ctx.setUser(service.user);

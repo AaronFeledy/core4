@@ -131,13 +131,19 @@ Podman Desktop fake-client and remediation cases MUST run in unit shards. Real d
 
 ### 13.2 Schema and documentation gates
 
+Schema snapshot generation MUST run the naming gate on both published editor documents after checking public annotations (§7.8). The actual findings MUST equal the exact ledger of path, rule, and owning issue. Only outstanding #2107 and #2108 findings may be ledgered. Both a new finding and an obsolete ledger row fail generation.
+
 The schema snapshot is the complete generated set: public SDK JSON Schemas and index, command-result Schemas and index, and decoded bundled-plugin manifest fixtures. Generated schema and command trees are derived build outputs, not Git sources of truth; committed fixtures receive pure drift checks, while gitignored outputs receive deterministic regeneration and consumer validation.
 
 `check:schema-compatibility` MUST compare head artifacts with artifacts regenerated from the configured base ref in an isolated checkout using that ref's own source and lockfile. A failed baseline materialization fails closed; a base predating a generator is reported as an explicit skipped family. CI MAY cache a verified base regeneration but MUST fall back to regeneration on a miss.
 
 Changes are classified as `compatible`, `breaking`, or `unknown` using explicit input/output polarity. Unaccepted `breaking` and `unknown` changes fail. Exceptions MUST name an exact surface, change kind, JSON path, and justification; wildcards and whole-schema exceptions are forbidden.
 
+The schema coverage gate checks the canonical plan import graph and follows Effect Schema links from the actual applied-state, desired-cache, registered durable bucket, and named extension codecs. It MUST detect authored-input markers across transforms and recursive schemas. Applied-state compatibility follows `AppliedAppPlan` in both revisions, not changes confined to desired event hooks.
+
 Every public schema MUST have canonical annotations, stable JSON Schema output, successful examples, and round-trip tests. Generated schema, command, API, event, service, template-step, and error references MUST build without hand edits. The Starlight site MUST build authored Markdown/MDX together with generated references and required public guide transcripts.
+
+Schema publication MUST gate field descriptions on the registered Landofile authoring and GlobalConfig inputs and their editor artifacts, not just the Effect Schema AST (§7.8). The description-debt ledger MUST equal the observed missing paths: new paths fail the gate and repaired paths must be removed. The input parity gate checks each published dialect against its stage oracle and expected verdicts, including documented semantic gaps (§7.8).
 
 ### 13.3 Type gates
 

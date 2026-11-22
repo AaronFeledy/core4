@@ -211,7 +211,7 @@ describe("LandofileService layer", () => {
           "    volumes:",
           "      - ./src:/app",
           "    command: npm start",
-          "    dependsOn:",
+          "    depends_on:",
           "      - db",
           "  db:",
           "    image: postgres:16",
@@ -234,7 +234,7 @@ describe("LandofileService layer", () => {
         { type: "bind", source: "./src", target: "/app", readOnly: false, createHostPath: true },
       ]);
       expect(web?.command).toBe("npm start");
-      expect(web?.dependsOn).toEqual([{ service: "db" }]);
+      expect(web?.depends_on).toEqual([{ service: "db" }]);
       expect(db?.image).toBe("postgres:16");
       expect(db?.environment).toEqual({ POSTGRES_PASSWORD: "lando" });
     });
@@ -714,9 +714,13 @@ describe("LandofileService layer — reserved section rejection (US-014)", () =>
   });
 
   test.each([
-    ["scalar", ["env_file: ./.env.local"], ["./.env.local"]],
-    ["list", ["env_file:", "  - ./.env", "  - ./.env.local"], ["./.env", "./.env.local"]],
-  ] as const)("accepts top-level env_file from %s input", async (_form, envFileLines, expected) => {
+    ["scalar", ["serviceDefaults:", "  env_file: ./.env.local"], ["./.env.local"]],
+    [
+      "list",
+      ["serviceDefaults:", "  env_file:", "    - ./.env", "    - ./.env.local"],
+      ["./.env", "./.env.local"],
+    ],
+  ] as const)("accepts serviceDefaults.env_file from %s input", async (_form, envFileLines, expected) => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -727,7 +731,7 @@ describe("LandofileService layer — reserved section rejection (US-014)", () =>
       const exit = await discoverExit();
       expect(Exit.isSuccess(exit)).toBe(true);
       if (Exit.isSuccess(exit)) {
-        expect(exit.value.env_file).toEqual(expected);
+        expect(exit.value.serviceDefaults?.env_file).toEqual(expected);
       }
     });
   });

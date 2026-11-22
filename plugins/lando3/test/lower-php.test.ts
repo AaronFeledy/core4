@@ -41,7 +41,7 @@ describe("lowerPhpOptions", () => {
       environment: {
         XDEBUG_CONFIG: "client_host=host.lando.internal client_port=9003",
       },
-      db_client: "mysql:8.4",
+      dbClient: "mysql:8.4",
     });
     expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
       { kind: "needs-review", keyPath: [...ctx.keyPath, "type"] },

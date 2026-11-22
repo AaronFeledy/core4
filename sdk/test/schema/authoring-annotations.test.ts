@@ -25,11 +25,18 @@ const visitPath = (visited: WeakMap<object, Set<string>>, node: object, path: st
   return true;
 };
 
-const declaredAnnotations = (root: SchemaAST.AST): ReadonlySet<string> => {
+const declaredAnnotations = (root: SchemaAST.AST, authoredSyntaxOnly: boolean): ReadonlySet<string> => {
   const found = new Set<string>();
   const visited = new WeakMap<object, Set<string>>();
   const walk = (ast: SchemaAST.AST, path: string, ancestors: ReadonlySet<SchemaAST.AST>): void => {
     if (ancestors.has(ast) || !visitPath(visited, ast, path)) return;
+    const identifier = SchemaAST.resolveIdentifier(ast);
+    if (
+      authoredSyntaxOnly &&
+      identifier !== undefined &&
+      /^(?:SecretRef|BoundText|RouteText|ImportRef)Authoring$/u.test(identifier)
+    )
+      return;
     const seen = new Set(ancestors).add(ast);
     const merge = getLayerMergeRule(ast);
     if (merge !== undefined) found.add(annotation(path, "x-lando-merge", merge));
@@ -100,7 +107,7 @@ const publishedAnnotations = (root: unknown): ReadonlySet<string> => {
 
 for (const name of Object.keys(authoringSchemas) as (keyof typeof authoringSchemas)[]) {
   test(`${name} publishes every declared merge rule and deprecation at its authored path`, () => {
-    const expected = declaredAnnotations(authoringSchemas[name].ast);
+    const expected = declaredAnnotations(authoringSchemas[name].ast, name === "LandofileAuthoringShape");
     const actual = publishedAnnotations(getJsonSchema(name));
     expect([...expected].filter((entry) => !actual.has(entry))).toEqual([]);
   }, 30_000);

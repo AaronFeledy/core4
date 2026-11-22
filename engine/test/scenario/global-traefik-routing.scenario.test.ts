@@ -14,6 +14,7 @@ import {
   PluginManifest,
   type ProviderCapabilities,
   ProviderId,
+  ServiceConfig,
   ServiceName,
 } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService } from "@lando/sdk/services";
@@ -311,7 +312,7 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
   });
 });
 
-import { planTestLandofile } from "../compiled-landofile.ts";
+import { planLiteralTestLandofile, planTestLandofile } from "../compiled-landofile.ts";
 
 test.each(["127.0.0.1", "192.0.2.24", "0.0.0.0", "::"])(
   "plans Traefik %s publication through the provider request",
@@ -327,20 +328,26 @@ test.each(["127.0.0.1", "192.0.2.24", "0.0.0.0", "::"])(
         }),
       ),
     );
-    const plan = await planApp(
-      {
-        name: "global",
-        services: {
-          traefik,
-          "traefik-diagnostics": {
-            type: "compose",
-            image: "nginx:alpine",
-            home: false,
-            healthcheck: { kind: "command", command: ["true"] },
-          },
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "global",
+      services: {
+        traefik: Schema.encodeUnknownSync(ServiceConfig)(traefik),
+        "traefik-diagnostics": {
+          type: "compose",
+          image: "nginx:alpine",
+          home: false,
+          healthcheck: { kind: "command", command: ["true"] },
         },
       },
-      providerLandoCapabilitiesForPlatform("linux"),
+    });
+    const plan = await Effect.runPromise(
+      Effect.flatMap(AppPlanner, (planner) =>
+        planLiteralTestLandofile(planner, landofile, providerLandoCapabilitiesForPlatform("linux")),
+      ).pipe(
+        Effect.provide(AppPlannerLayer.layer),
+        Effect.provide(PluginRegistryLayer.layer),
+        Effect.provideService(HostProviderOverride, ProviderId.make("lando")),
+      ),
     );
     const service = plan.services[ServiceName.make("traefik")];
     if (service === undefined) throw new Error("missing Traefik plan");

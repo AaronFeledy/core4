@@ -44,7 +44,7 @@ const expected = {
       composer: "{{ recipe.composer }}",
       allowOverride: true,
       port: 80,
-      dependsOn: [{ service: "cache" }, { service: "database" }],
+      depends_on: ["cache", "database"],
       environment: {
         DB_CONNECTION: "mysql",
         DB_HOST: "database",
@@ -127,7 +127,7 @@ describe("Laravel deterministic decomposition", () => {
           via: "cli",
           command: "php artisan queue:work",
           restart: "unless-stopped",
-          dependsOn: [{ service: "cache" }, { service: "database" }],
+          depends_on: ["cache", "database"],
           environment: { ...expected.services.appserver.environment, DB_CONNECTION: "pgsql" },
           appMount: { target: "/app", includes: ["vendor"] },
         },
