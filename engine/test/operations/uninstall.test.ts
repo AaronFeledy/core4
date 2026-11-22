@@ -788,49 +788,21 @@ describe("platform-specific uninstall helpers", () => {
   });
 });
 describe("uninstall cgroups delegation drop-in", () => {
-  test("setup-written delegate.conf is manual without a root-owned receipt", async () => {
-    const roots = makeUninstallRoots("lando-uninstall-delegate-match-");
+  test.each([
+    ["setup-written", CGROUPS_DELEGATE_CONF_CONTENT, { keepData: true }],
+    ["echo-written", `${CGROUPS_DELEGATE_CONF_CONTENT}\n`, { purge: true }],
+    ["different", "[Service]\nDelegate=cpu\n", { keepData: true }],
+  ] as const)("%s delegate.conf is manual and left untouched", async (_kind, content, mode) => {
+    const roots = makeUninstallRoots("lando-uninstall-delegate-");
     try {
-      writeFileSync(roots.cgroupsDelegatePath, CGROUPS_DELEGATE_CONF_CONTENT);
+      writeFileSync(roots.cgroupsDelegatePath, content);
 
       const result = await Effect.runPromise(
-        uninstall(
-          sandboxUninstallOptions(roots, {
-            yes: true,
-            keepData: true,
-          }),
-        ),
+        uninstall(sandboxUninstallOptions(roots, { yes: true, ...mode })),
       );
 
       expect(result.failed).toBe(false);
-      expect(readFileSync(roots.cgroupsDelegatePath, "utf8")).toBe(CGROUPS_DELEGATE_CONF_CONTENT);
-      expect(result.steps.find((step) => step.id === "cgroups-delegate")).toMatchObject({
-        status: "manual",
-        outcome: "manual",
-        target: roots.cgroupsDelegatePath,
-      });
-    } finally {
-      rmSync(roots.root, { recursive: true, force: true });
-    }
-  });
-
-  test("echo-written delegate.conf remains untouched in purge mode", async () => {
-    const roots = makeUninstallRoots("lando-uninstall-delegate-echo-");
-    try {
-      const echoWritten = `${CGROUPS_DELEGATE_CONF_CONTENT}\n`;
-      writeFileSync(roots.cgroupsDelegatePath, echoWritten);
-
-      const result = await Effect.runPromise(
-        uninstall(
-          sandboxUninstallOptions(roots, {
-            yes: true,
-            purge: true,
-          }),
-        ),
-      );
-
-      expect(result.failed).toBe(false);
-      expect(readFileSync(roots.cgroupsDelegatePath, "utf8")).toBe(echoWritten);
+      expect(readFileSync(roots.cgroupsDelegatePath, "utf8")).toBe(content);
       expect(result.steps.find((step) => step.id === "cgroups-delegate")).toMatchObject({
         status: "manual",
         outcome: "manual",
@@ -873,30 +845,6 @@ describe("uninstall cgroups delegation drop-in", () => {
         outcome: "manual",
       });
       expect(step?.error).toBeUndefined();
-    } finally {
-      rmSync(roots.root, { recursive: true, force: true });
-    }
-  });
-
-  test("different delegate.conf content is not deleted", async () => {
-    const roots = makeUninstallRoots("lando-uninstall-delegate-other-");
-    try {
-      writeFileSync(roots.cgroupsDelegatePath, "[Service]\nDelegate=cpu\n");
-
-      const result = await Effect.runPromise(
-        uninstall(
-          sandboxUninstallOptions(roots, {
-            yes: true,
-            keepData: true,
-          }),
-        ),
-      );
-
-      expect(existsSync(roots.cgroupsDelegatePath)).toBe(true);
-      expect(result.steps.find((step) => step.id === "cgroups-delegate")).toMatchObject({
-        status: "manual",
-        outcome: "manual",
-      });
     } finally {
       rmSync(roots.root, { recursive: true, force: true });
     }

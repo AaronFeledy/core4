@@ -109,8 +109,7 @@ const offlinePreparation = makePrepareUninstallCleanup(
   "linux",
 );
 
-const withoutHostRuntimes = (input: unknown) =>
-  uninstall(uninstallOptionsFromInput(input, offlinePreparation));
+const uninstallOffline = (input: unknown) => uninstall(uninstallOptionsFromInput(input, offlinePreparation));
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -1210,7 +1209,7 @@ describe("meta:uninstall", () => {
       mkdirSync(userConfRoot, { recursive: true });
 
       const result = await Effect.runPromise(
-        withoutHostRuntimes({
+        uninstallOffline({
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
@@ -1254,7 +1253,7 @@ describe("meta:uninstall", () => {
       );
 
       const result = await Effect.runPromise(
-        withoutHostRuntimes({
+        uninstallOffline({
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
@@ -1296,7 +1295,7 @@ describe("meta:uninstall", () => {
       );
 
       const result = await Effect.runPromise(
-        withoutHostRuntimes({
+        uninstallOffline({
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,

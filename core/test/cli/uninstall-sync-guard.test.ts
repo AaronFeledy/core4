@@ -232,99 +232,60 @@ describe("uninstall purge sync guard", () => {
     }
   });
 
-  test.each(["managed"] as const)(
-    "removes anonymous volumes with scoped Linux cleanup on %s",
-    async (runtime) => {
-      // Given: only the selected runtime is available, with containers under both Lando labels.
-      const fixture = await withRuntime("ordinary");
-      try {
-        const command = runtime === "managed" ? join(fixture.data, "runtime", "bin", "podman") : runtime;
-        const prefix =
-          runtime === "managed"
-            ? [
-                "--root",
-                join(fixture.data, "runtime", "storage"),
-                "--runroot",
-                join(fixture.data, "runtime", "run"),
-                "--config",
-                join(fixture.data, "runtime", "config"),
-                "--storage-opt",
-                `overlay.mount_program=${join(fixture.data, "runtime", "bin", "fuse-overlayfs")}`,
-              ]
-            : [];
-        const calls: string[][] = [];
-        const exec = async (file: string, args: ReadonlyArray<string>) => {
-          if (file !== command) throw absentRuntime();
-          if (args.includes("--version")) return { stdout: "podman" };
-          calls.push([...args]);
-          if (args.includes("ps"))
-            return {
-              stdout:
-                args.includes(`label=dev.lando.data-root=${fixture.data}`) ||
-                args.includes("label=dev.lando.app")
-                  ? "current-id\nsecond-id\n"
-                  : "legacy-id\n",
-            };
-          if (args.includes("inspect")) {
-            const id = args.at(-1) ?? "";
-            return {
-              stdout: JSON.stringify([
-                {
-                  Id: `exact-${id}`,
-                  Config: {
-                    Labels:
-                      runtime === "managed"
-                        ? { "com.lando.app": "legacy" }
-                        : {
-                            "dev.lando.app": "demo",
-                            "dev.lando.app-root": fixture.root,
-                            "dev.lando.service": "web",
-                            "dev.lando.data-root": fixture.data,
-                          },
-                  },
-                },
-              ]),
-            };
-          }
-          if (args.includes("df"))
-            return {
-              stdout: JSON.stringify([
-                { Type: "Containers", Total: 0 },
-                { Type: "Local Volumes", Total: 0 },
-              ]),
-            };
-          return { stdout: "" };
-        };
-        // When: purge sweeps the runtime through injected execution only.
-        await makeCleanupDiscoveredApps(fixture.data, exec, "linux")([]);
-        // Then: candidate labels discover only; inspected exact IDs authorize removal.
-        expect(calls.filter((call) => call.includes("inspect") || call.includes("rm"))).toEqual([
-          [...prefix, "container", "inspect", "current-id"],
-          [...prefix, "rm", "-f", "--volumes", "exact-current-id"],
-          [...prefix, "container", "inspect", "second-id"],
-          [...prefix, "rm", "-f", "--volumes", "exact-second-id"],
-          ...(runtime === "managed"
-            ? [
-                [...prefix, "container", "inspect", "legacy-id"],
-                [...prefix, "rm", "-f", "--volumes", "exact-legacy-id"],
-              ]
-            : []),
-        ]);
-        if (runtime !== "managed")
-          expect(calls[0]).toEqual([
-            ...prefix,
-            "ps",
-            "-a",
-            "--filter",
-            `label=dev.lando.data-root=${fixture.data}`,
-            "--format",
-            "{{.ID}}",
-          ]);
-      } finally {
-        rmSync(fixture.root, { recursive: true, force: true });
-      }
-    },
-  );
+  test("removes anonymous volumes with scoped Linux cleanup on managed", async () => {
+    // Given: only the managed runtime is available, with containers under both Lando labels.
+    const fixture = await withRuntime("ordinary");
+    try {
+      const command = join(fixture.data, "runtime", "bin", "podman");
+      const prefix = [
+        "--root",
+        join(fixture.data, "runtime", "storage"),
+        "--runroot",
+        join(fixture.data, "runtime", "run"),
+        "--config",
+        join(fixture.data, "runtime", "config"),
+        "--storage-opt",
+        `overlay.mount_program=${join(fixture.data, "runtime", "bin", "fuse-overlayfs")}`,
+      ];
+      const calls: string[][] = [];
+      const exec = async (file: string, args: ReadonlyArray<string>) => {
+        if (file !== command) throw absentRuntime();
+        if (args.includes("--version")) return { stdout: "podman" };
+        calls.push([...args]);
+        if (args.includes("ps"))
+          return { stdout: args.includes("label=dev.lando.app") ? "current-id\nsecond-id\n" : "legacy-id\n" };
+        if (args.includes("inspect")) {
+          const id = args.at(-1) ?? "";
+          return {
+            stdout: JSON.stringify([
+              { Id: `exact-${id}`, Config: { Labels: { "com.lando.app": "legacy" } } },
+            ]),
+          };
+        }
+        if (args.includes("df"))
+          return {
+            stdout: JSON.stringify([
+              { Type: "Containers", Total: 0 },
+              { Type: "Local Volumes", Total: 0 },
+            ]),
+          };
+        return { stdout: "" };
+      };
+      // When: purge sweeps the runtime through injected execution only.
+      await makeCleanupDiscoveredApps(fixture.data, exec, "linux")([]);
+      // Then: candidate labels discover only; inspected exact IDs authorize removal.
+      expect(calls.filter((call) => call.includes("inspect") || call.includes("rm"))).toEqual([
+        [...prefix, "container", "inspect", "current-id"],
+        [...prefix, "rm", "-f", "--volumes", "exact-current-id"],
+        [...prefix, "container", "inspect", "second-id"],
+        [...prefix, "rm", "-f", "--volumes", "exact-second-id"],
+        [...prefix, "container", "inspect", "legacy-id"],
+        [...prefix, "rm", "-f", "--volumes", "exact-legacy-id"],
+      ]);
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
 
   test("preserves runtime for saved accelerated or unreadable plans", async () => {
     for (const body of [
@@ -373,31 +334,23 @@ describe("uninstall purge sync guard", () => {
   });
 
   test("preserves a recorded Windows machine when its bundled Podman binary is missing", async () => {
-    for (const state of [
-      { machine: { name: "lando", createdByLando: true, createdAt: "2026-09-23T00:00:00Z" } },
-    ]) {
-      const fixture = await withRuntime("ordinary");
+    const fixture = await withRuntime("ordinary");
+    try {
+      const calls: string[][] = [];
+      const exec = async (_file: string, args: ReadonlyArray<string>) => {
+        calls.push([...args]);
+        throw absentRuntime();
+      };
+      let failure: unknown;
       try {
-        const stateDir = join(fixture.data, "providers", "provider-lando");
-        mkdirSync(stateDir, { recursive: true });
-        writeFileSync(join(stateDir, "setup-state.json"), JSON.stringify(state));
-        const calls: string[][] = [];
-        const exec = async (file: string, args: ReadonlyArray<string>) => {
-          calls.push([...args]);
-          if (file.endsWith("podman.exe")) throw absentRuntime();
-          throw absentRuntime();
-        };
-        let failure: unknown;
-        try {
-          await makeCleanupDiscoveredApps(fixture.data, exec, "win32")([]);
-        } catch (cause) {
-          failure = cause;
-        }
-        expect(String(failure)).toContain("recorded Windows managed machine");
-        expect(calls.some(destructive)).toBe(false);
-      } finally {
-        rmSync(fixture.root, { recursive: true, force: true });
+        await makeCleanupDiscoveredApps(fixture.data, exec, "win32")([]);
+      } catch (cause) {
+        failure = cause;
       }
+      expect(String(failure)).toContain("recorded Windows managed machine");
+      expect(calls.some(destructive)).toBe(false);
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
     }
   });
 

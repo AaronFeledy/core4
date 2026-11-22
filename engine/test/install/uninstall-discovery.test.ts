@@ -4,11 +4,7 @@ import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
 import type { LandoPluginModule, ProviderPurgeHook } from "@lando/sdk/plugins";
 import { ProviderId } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import {
-  makeListDiscoveredApps,
-  makePrepareUninstallCleanup,
-  providerPurgeHooks,
-} from "../../src/install/uninstall-discovery.ts";
+import { makePrepareUninstallCleanup, providerPurgeHooks } from "../../src/install/uninstall-discovery.ts";
 
 const missingRuntime = async () => {
   throw Object.assign(new Error("not installed"), { code: "ENOENT" });
@@ -59,8 +55,8 @@ test("descriptor-only discovery reports this root's app without constructing a r
       ],
     ]),
   };
-  const list = makeListDiscoveredApps(missingRuntime, "linux", {}, providerPurgeHooks([descriptor]));
-  expect(await list("/uninstall-test-data", "/uninstall-test-cache")).toEqual([
+  const prepare = makePrepareUninstallCleanup(providerPurgeHooks([descriptor]), missingRuntime, "linux");
+  expect((await prepare("/uninstall-test-data", "/uninstall-test-cache")).apps).toEqual([
     { appId: "app", appName: "app", providerId, appRoot: "/project", services: [] },
   ]);
 });

@@ -132,16 +132,6 @@ export const makePrepareUninstallCleanup =
     };
   };
 
-export const makeListDiscoveredApps =
-  (
-    exec: RuntimeExec = defaultRuntimeExec,
-    platform: NodeJS.Platform = process.platform,
-    seams: UninstallRuntimeSeams = {},
-    hooks: readonly UninstallProviderHook[] = [],
-  ) =>
-  async (userDataRoot: string, userCacheRoot: string): Promise<readonly DiscoveredApp[]> =>
-    (await makePrepareUninstallCleanup(hooks, exec, platform, seams)(userDataRoot, userCacheRoot)).apps;
-
 export const makeCleanupDiscoveredApps =
   (
     userDataRoot = makeLandoPaths().roots.userDataRoot,
