@@ -308,7 +308,6 @@ const inputInvalid = [
 const structuralFixtureOverrides = new Map([
   ["docs/guides/expressions/fixtures/expressions-typed-values/.lando.yml", false],
   ["docs/guides/config-views/fixtures/layered/.lando.yml", false],
-  ["docs/guides/expressions/fixtures/expressions-service-port-misuse/.lando.yml", true],
 ]);
 
 async function loadCorpus() {

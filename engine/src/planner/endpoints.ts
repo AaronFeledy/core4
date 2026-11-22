@@ -413,6 +413,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ...planned,
       environment: sortRecord(planned.environment),
       ...(logSources.length === 0 ? {} : { logSources }),
+      ...(entry.plannedPort === undefined ? {} : { plannedPort: entry.plannedPort }),
     };
 
     const withArtifact = resolveServiceArtifact(servicePlan, entry, input.manifests);

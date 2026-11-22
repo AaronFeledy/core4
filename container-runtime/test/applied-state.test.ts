@@ -115,6 +115,14 @@ const v1PlanBase = {
 };
 
 describe("applied plan state layouts", () => {
+  test("reads a v11 service plan without inventing a planned port", () => {
+    const encoded = Schema.encodeSync(AppPlan)(legacyPlan());
+    const service = Object.values(encoded.services)[0];
+    if (service === undefined) throw new Error("The historical plan fixture must contain a service.");
+    const migrated = migrateAppliedPlan(encoded, 11)?.services[ServiceName.make(service.name)];
+    expect(migrated).toBeDefined();
+    expect(migrated?.plannedPort).toBeUndefined();
+  });
   test("v10 historical events cannot block recovery of the realized plan", () => {
     const plan = legacyPlan();
     const raw = {
@@ -602,7 +610,7 @@ describe("applied plan records", () => {
       layout === "per-app"
         ? Schema.decodeUnknownSync(AppliedPlan)(raw)
         : Schema.decodeUnknownSync(AppliedPlans)(raw)[plan.id];
-    expect(APPLIED_STATE_VERSION).toBe(11);
+    expect(APPLIED_STATE_VERSION).toBe(12);
     expect(decoded).toEqual(Schema.decodeUnknownSync(AppliedAppPlan)(historicalWriterValue));
     expect(decoded).toEqual(record);
   });
