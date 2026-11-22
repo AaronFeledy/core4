@@ -40,7 +40,7 @@ describe("scanner", () => {
     );
     // Then retries cap at 20 and one deadline covers all 21 attempts.
     expect(result.patch).toEqual({
-      scanner: { path: "/health", okCodes: [200, 301], retries: 20, timeout: 21000 },
+      scanner: { path: "/health", okCodes: [200, 301], retries: 20, timeoutMs: 21000 },
     });
     expect(summary(result.diagnostics)).toEqual([
       "dropped services.web.scanner.okCodes.2",
@@ -52,7 +52,7 @@ describe("scanner", () => {
 
   test("uses the default retry budget when only a timeout is authored", () => {
     const result = lowerScannerAndHome({ scanner: { timeout: 500_000 } }, ctx);
-    expect(result.patch).toEqual({ scanner: { timeout: 600_000 } });
+    expect(result.patch).toEqual({ scanner: { timeoutMs: 600_000 } });
   });
 
   test("respells a scanner path and refuses one Lando 4 cannot hold", () => {
@@ -273,7 +273,7 @@ describe("converted Landofile", () => {
           appserver: {
             type: "php:8.3",
             user: "www-data",
-            scanner: { okCodes: [401], retries: 3, timeout: 8000 },
+            scanner: { okCodes: [401], retries: 3, timeoutMs: 8000 },
             environment: { XDEBUG_MODE: "debug" },
           },
           node: { type: "node:22", scanner: false },

@@ -40,17 +40,17 @@ describe("volume coordination fiber-local state", () => {
     const locks: string[] = [];
     const recordingStore: StateStoreShape = {
       ...store,
-      withLock: (lockKey, body) =>
+      withLock: (lockKey, body, options) =>
         Effect.suspend(() => {
           locks.push(lockKey);
-          return store.withLock(lockKey, body);
+          return store.withLock(lockKey, body, options);
         }),
     };
     // When
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         yield* verifyActiveVolumeCoordination(provider);
-        yield* withPhysicalVolumeLock(recordingStore, key("alpha"), Effect.void);
+        yield* withPhysicalVolumeLock(recordingStore, { key: key("alpha"), name: "alpha" }, Effect.void);
         const bound = yield* withPlanVolumeCoordination({
           plan: planFor("alpha"),
           provider,
@@ -60,7 +60,7 @@ describe("volume coordination fiber-local state", () => {
             const child = yield* Effect.forkChild(
               withPhysicalVolumeLock(
                 recordingStore,
-                key("alpha"),
+                { key: key("alpha"), name: "alpha" },
                 verifyActiveVolumeCoordination(provider).pipe(Effect.as("inherited")),
               ),
             );
@@ -68,7 +68,7 @@ describe("volume coordination fiber-local state", () => {
           }),
         });
         yield* verifyActiveVolumeCoordination(provider);
-        yield* withPhysicalVolumeLock(recordingStore, key("alpha"), Effect.void);
+        yield* withPhysicalVolumeLock(recordingStore, { key: key("alpha"), name: "alpha" }, Effect.void);
         return bound;
       }).pipe(Effect.timeout("2 seconds")),
     );
@@ -181,11 +181,11 @@ describe("volume coordination fiber-local state", () => {
           let attempts = 0;
           const observingStore: StateStoreShape = {
             ...store,
-            withLock: (key, body) =>
+            withLock: (key, body, options) =>
               Effect.suspend(() => {
                 attempts++;
                 return (attempts === 2 ? Deferred.succeed(secondAttempt, undefined) : Effect.void).pipe(
-                  Effect.andThen(store.withLock(key, body)),
+                  Effect.andThen(store.withLock(key, body, options)),
                 );
               }),
           };

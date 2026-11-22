@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import { FailureRoleAnnotation } from "@lando/sdk/command-result";
+import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, Context, Effect, Exit, Stream } from "effect";
@@ -59,10 +59,42 @@ test.each(["effect", "stream", "availability"] as const)(
       cause: debugCause,
     });
     expect(Context.getOrUndefined(Cause.reasonAnnotations(first), FailureRoleAnnotation)).toBe("rollback");
-    expect(second).toBe(defectReason);
+    if (second === undefined || !Cause.isDieReason(second)) throw new Error("Expected the defect second");
+    expect(second.defect).toBeInstanceOf(ProviderUnavailableError);
+    expect(second.defect).toMatchObject({ message: "[redacted]", remediation: "debug", operation: "defect" });
+    expect(Context.getOrUndefined(Cause.reasonAnnotations(second), FailureRoleAnnotation)).toBe("cleanup");
     expect(third).toBe(interruptReason);
   },
 );
+
+test("a provider failure Effect carries as a defect after its cleanup died is still redacted", async () => {
+  // Given a provider whose typed failure is elected into a defect because its own finalizer died.
+  const secret = "elected-provider-canary";
+  const error = new ProviderUnavailableError({
+    providerId: "test",
+    operation: "start",
+    message: secret,
+    remediation: "Retry.",
+  });
+  const provider = withProviderErrorRedaction(
+    {
+      ...TestRuntimeProvider,
+      start: () => Effect.fail(error).pipe(Effect.ensuring(Effect.die(new Error("release crashed")))),
+    },
+    createStandaloneRedactor("secrets", { redactionTokens: [secret] }),
+  );
+  const exit = await Effect.runPromiseExit(provider.start(target));
+  if (!Exit.isFailure(exit)) throw new Error("Expected failure");
+  // Then the secret never leaves the registry, and the failure still projects as the typed primary.
+  expect(
+    JSON.stringify(exit.cause.reasons.map((reason) => (Cause.isDieReason(reason) ? reason.defect : reason))),
+  ).not.toContain(secret);
+  expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
+    kind: "typed",
+    source: "elected",
+    error: { _tag: "ProviderUnavailableError", message: "[redacted]", operation: "start" },
+  });
+});
 
 test("native restore forwards the caller's pre-publication check and keeps its failure unredacted", async () => {
   const secret = "restore-before-commit-canary";

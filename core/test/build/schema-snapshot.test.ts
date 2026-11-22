@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { JsonSchemaName } from "@lando/sdk/schema";
@@ -15,7 +15,7 @@ import {
   schemaArtifactFilename,
   validatePublicSchemaAnnotations,
 } from "@lando/sdk/schema";
-import { Predicate, Schema, SchemaTransformation } from "effect";
+import { Effect, Predicate, Schema, SchemaTransformation } from "effect";
 import * as AST from "effect/SchemaAST";
 import compiledCommands from "../../src/cli/compiled-commands.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
@@ -67,15 +67,19 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
     ];
   };
   const unexplained = new Map(nullNodes(document, "$"));
+  const resolveRef = (ref: string): unknown => {
+    let resolved: unknown = document;
+    for (const segment of ref.slice(2).split("/")) {
+      const key = decodeURIComponent(segment).replace(/~1/g, "/").replace(/~0/g, "~");
+      resolved = Predicate.isObject(resolved) ? resolved[key] : undefined;
+    }
+    return resolved;
+  };
   const visit = (ast: AST.AST, target: unknown, path: string): void => {
     if (!Predicate.isObject(target) || !hasNullOrRef(target)) return;
     if (typeof target.$ref === "string") {
       expect(target.$ref.startsWith("#/"), path).toBe(true);
-      let resolved: unknown = document;
-      for (const segment of target.$ref.slice(2).split("/")) {
-        const key = decodeURIComponent(segment).replace(/~1/g, "/").replace(/~0/g, "~");
-        resolved = Predicate.isObject(resolved) ? resolved[key] : undefined;
-      }
+      const resolved = resolveRef(target.$ref);
       expect(Predicate.isObject(resolved), `${path}: unresolved ${target.$ref}`).toBe(true);
       visit(ast, resolved, `${path}(${target.$ref})`);
       return;
@@ -85,19 +89,11 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
     seen.add(target);
     visited.set(ast, seen);
     if (unexplained.has(target) && Schema.is(Schema.make(ast))(null)) unexplained.delete(target);
-    const projection = ast.annotations?.jsonSchemaProjection;
-    if (Predicate.isObject(projection)) {
-      const explicitPaths = new Set(nullNodes(projection, path).map(([, candidate]) => candidate));
-      for (const [node, candidate] of nullNodes(target, path)) {
-        if (explicitPaths.has(candidate)) unexplained.delete(node);
-      }
-      return;
-    }
     if (Array.isArray(target.allOf)) {
       target.allOf.forEach((branch, index) => {
         visit(ast, branch, `${path}.allOf[${index}]`);
       });
-      return;
+      if (Object.keys(target).every((key) => key === "allOf")) return;
     }
     if (AST.isDeclaration(ast) && ast.annotations?.toCodecJson !== undefined) {
       visit(AST.toEncoded(Schema.toCodecJson(Schema.make(ast)).ast), target, path);
@@ -106,17 +102,76 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
     } else if (AST.isUnion(ast)) {
       const branches = target.anyOf ?? target.oneOf;
       // Effect retains Never as { not: {} }; only optional Undefined disappears.
-      const members = ast.types.filter((member) => !(AST.isOptional(ast) && AST.isUndefined(member)));
+      const unionMembers = (union: AST.Union): readonly AST.AST[] =>
+        union.types.filter((member) => !(AST.isOptional(union) && AST.isUndefined(member)));
+      const members = unionMembers(ast);
       const onlyMember = members.length === 1 ? members[0] : undefined;
       if (onlyMember !== undefined) {
         visit(onlyMember, target, path);
         return;
       }
       if (Array.isArray(branches)) {
-        expect(branches.length, `${path}: union alignment`).toBe(members.length);
-        members.forEach((member, index) => {
+        // Effect splices a nested union's alternatives into the parent anyOf, in place, unless it
+        // emits that union as one schema: a named `$ref`, an annotated union, or a collapsed one.
+        // The encoded AST no longer carries those names, so the emitted branch picks which reading
+        // to try first, and an alignment must account for every branch exactly once.
+        const unionBehind = (member: AST.AST): AST.Union | undefined => {
+          let current = member;
+          // A JSON codec can resolve to another declaration; stop once a step makes no progress.
+          for (const passed = new Set<AST.AST>(); !passed.has(current); ) {
+            passed.add(current);
+            if (AST.isSuspend(current)) current = current.thunk();
+            else if (current.encoding !== undefined) current = AST.toEncoded(current);
+            else if (AST.isDeclaration(current) && current.annotations?.toCodecJson !== undefined)
+              current = AST.toEncoded(Schema.toCodecJson(Schema.make(current)).ast);
+            else return AST.isUnion(current) ? current : undefined;
+          }
+          return undefined;
+        };
+        const wholeUnion = (branch: unknown, refs: ReadonlySet<string> = new Set()): boolean => {
+          if (!Predicate.isObject(branch)) return false;
+          if (typeof branch.$ref === "string")
+            return (
+              !refs.has(branch.$ref) && wholeUnion(resolveRef(branch.$ref), new Set(refs).add(branch.$ref))
+            );
+          return Array.isArray(branch.anyOf) || Array.isArray(branch.enum) || "const" in branch;
+        };
+        // The queue is a shared linked list, so each (queue position, branch) pair is solved once.
+        interface Queue {
+          readonly member: AST.AST;
+          readonly rest: Queue | undefined;
+        }
+        type Alignment = ReadonlyArray<readonly [AST.AST, number]> | undefined;
+        const solved = new WeakMap<Queue, Map<number, Alignment>>();
+        const enqueue = (list: readonly AST.AST[], rest: Queue | undefined): Queue | undefined =>
+          list.reduceRight<Queue | undefined>((tail, member) => ({ member, rest: tail }), rest);
+        const align = (queue: Queue | undefined, at: number): Alignment => {
+          if (queue === undefined) return at === branches.length ? [] : undefined;
+          if (at >= branches.length) return undefined;
+          const memo = solved.get(queue) ?? new Map<number, Alignment>();
+          solved.set(queue, memo);
+          if (memo.has(at)) return memo.get(at);
+          const { member, rest } = queue;
+          const whole = (): Alignment => {
+            const tail = align(rest, at + 1);
+            return tail === undefined ? undefined : [[member, at] as const, ...tail];
+          };
+          const union = unionBehind(member);
+          const split = (): Alignment =>
+            union === undefined ? undefined : align(enqueue(unionMembers(union), rest), at);
+          const result =
+            union === undefined
+              ? whole()
+              : wholeUnion(branches[at])
+                ? (whole() ?? split())
+                : (split() ?? whole());
+          memo.set(at, result);
+          return result;
+        };
+        const aligned = align(enqueue(members, undefined), 0);
+        expect(aligned, `${path}: union alignment`).toBeDefined();
+        for (const [member, index] of aligned ?? [])
           visit(member, branches[index], `${path}.anyOf[${index}]`);
-        });
       } else {
         // Collapsed literal unions have no child schemas to inspect.
         expect(
@@ -151,17 +206,16 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
   return [...unexplained.values()];
 };
 
-// Generate once because the output is deterministic, every derived family is
-// inspected below, and each invocation costs about two seconds.
-let generatorRan = false;
+// Generation can take 5–9 seconds on slower runners. Bound both the child
+// and the hook/test that owns it without raising the suite's default timeout.
+const generatorTimeoutMs = 15_000;
+const generatorTestTimeoutMs = 20_000;
 const runGenerator = (): void => {
-  if (generatorRan) {
-    return;
-  }
   const proc = Bun.spawnSync([process.execPath, generatorPath], {
     cwd: repoRoot,
     stdout: "pipe",
     stderr: "pipe",
+    timeout: generatorTimeoutMs,
   });
 
   expect({
@@ -169,13 +223,13 @@ const runGenerator = (): void => {
     stdout: proc.stdout.toString(),
     stderr: proc.stderr.toString(),
   }).toMatchObject({ exitCode: 0 });
-  generatorRan = true;
 };
 
 describe("schema snapshot artifact-set gate", () => {
+  beforeAll(runGenerator, generatorTestTimeoutMs);
+
   test("authored-input artifacts advertise null only where the encoded source accepts it", async () => {
     // Given the emitted authored-input artifact families, including registered lockfiles.
-    runGenerator();
     const names = JSON_SCHEMA_NAMES.filter(
       (name) =>
         /^(LandofileShape|LandofileAuthoring(?:Shape|Fragment)(?:Wire)?|GlobalConfig|PluginManifest|RecipeManifest|IncludeEntry|ToolingIncludeShape)$/.test(
@@ -234,7 +288,9 @@ describe("schema snapshot artifact-set gate", () => {
     const hidden = Schema.Struct({ value: Schema.NullOr(Schema.String) }).annotate({
       identifier: "ReplacedSource",
     });
-    const schema = Schema.Struct({ hidden }).annotate({ jsonSchemaProjection: { type: "string" } });
+    const schema = Schema.declareConstructor<unknown>()([hidden], () => (value) => Effect.succeed(value), {
+      toCodecJson: () => new AST.Link(Schema.String.ast, SchemaTransformation.passthrough()),
+    });
     const artifact = getJsonSchemaWithDeprecations(schema);
     expect(artifact).toMatchObject({ type: "string" });
     expect(artifact.$defs).toBeUndefined();
@@ -263,7 +319,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("bundled plugin manifest fixture freezes every in-binary plugin manifest", async () => {
-    runGenerator();
     const bundledPluginManifests = JSON.parse(
       await readFile(bundledPluginManifestsPath, "utf8"),
     ) as ReadonlyArray<{ readonly name: string }>;
@@ -272,7 +327,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("command schema index freezes a result schema for every canonical command id", async () => {
-    runGenerator();
     const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
       Record<string, string>
     >;
@@ -297,8 +351,6 @@ describe("schema snapshot artifact-set gate", () => {
   test(
     "public registry drives schema names and metadata index",
     async () => {
-      runGenerator();
-
       const generated = JSON.parse(
         await readFile(metadataIndexPath, "utf8"),
       ) as typeof publicSchemaMetadataIndex;
@@ -342,11 +394,9 @@ describe("schema snapshot artifact-set gate", () => {
     expect(page?.content).toContain(
       "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
     );
-    expect(page?.content).toContain(
-      "| `since` | Yes | `string` | a string matching the RegExp ^(0\\|[1-9]\\d*)\\.(0\\|[1-9]\\d*)\\.(0\\|[1-9]\\d*)$ | — | — | — | — |",
-    );
-    expect(page?.content).toContain(
-      "| `severity` | No | `string` | — | — | `info`, `warn`, `error` | — | — |",
+    expect(page?.content).toMatch(/\| `since` \| Yes \| `string` \| (?!— \|)[^|]+ \|/u);
+    expect(page?.content).toMatch(
+      /\| `severity` \| No \| `string` \| [^|]+ \| `warn` \| `info`, `warn`, `error` \|/u,
     );
 
     const primitivePage = pages.find((entry) => entry.id === "AppId");
@@ -391,15 +441,15 @@ describe("schema snapshot artifact-set gate", () => {
         jsonSchema: {
           type: "object",
           properties: {
-            value: { type: "number", default: 7, enum: [7] },
+            value: { type: "number", allOf: [{ description: "Published value.", default: 7 }], enum: [7] },
             note: { type: "string" },
           },
         },
       },
     );
 
-    expect(rendered).toContain("| `value` | Yes | `number` | Documented value. | `7` | `7` | — | — |");
-    expect(rendered).toContain("| `note` | No | `string` | Optional note. | — | — | — | — |");
+    expect(rendered).toContain("| `value` | Yes | `number` | Published value. | `7` | `7` | — | — |");
+    expect(rendered).toContain("| `note` | No | `string` | — | — | — | — | — |");
   });
 
   test("reference renderer resolves property refs against the full JSON Schema document", () => {
@@ -415,14 +465,19 @@ describe("schema snapshot artifact-set gate", () => {
             value: { $ref: "#/$defs/NamedValue" },
           },
           $defs: {
-            NamedValue: { type: "string", default: "alpha", enum: ["alpha", "beta"] },
+            NamedValue: {
+              type: "string",
+              description: "Published value.",
+              default: "alpha",
+              enum: ["alpha", "beta"],
+            },
           },
         },
       },
     );
 
     expect(rendered).toContain(
-      "| `value` | Yes | `string` | Documented value. | `alpha` | `alpha`, `beta` | — | — |",
+      "| `value` | Yes | `string` | Published value. | `alpha` | `alpha`, `beta` | — | — |",
     );
     expect(rendered).not.toContain('`"alpha"`');
   });
@@ -450,7 +505,7 @@ describe("schema snapshot artifact-set gate", () => {
     );
 
     expect(fieldRendered).toContain(
-      '| `value` | Yes | `string` | Documented value. | — | — | `alpha`, `{"nested":true}` | — |',
+      '| `value` | Yes | `string` | — | — | — | `alpha`, `{"nested":true}` | — |',
     );
     expect(rootRendered).toContain('| `string` | — | — | `root`, `{"nested":true}` |');
     expect(fieldRendered).not.toContain('`"alpha"`');
@@ -497,6 +552,7 @@ describe("schema snapshot artifact-set gate", () => {
           type: "object",
           properties: {
             value: {
+              description: "Published union value.",
               anyOf: [
                 { const: false },
                 { enum: ["ready", "done"] },
@@ -509,7 +565,7 @@ describe("schema snapshot artifact-set gate", () => {
     );
 
     expect(rendered).toContain(
-      "| `value` | Yes | `boolean`, `string`, `object` | Documented union value. | — | `false`, `ready`, `done` | — | — |",
+      "| `value` | Yes | `boolean`, `string`, `object` | Published union value. | — | `false`, `ready`, `done` | — | — |",
     );
   });
 
@@ -561,8 +617,8 @@ describe("schema snapshot artifact-set gate", () => {
     expect(rendered).toContain(
       "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
     );
-    expect(rendered).toContain("| `command` | No | `string` | Command to execute. | — | — | — | — |");
-    expect(rendered).toContain("| `shell` | No | `string` | Shell command to execute. | — | — | — | — |");
+    expect(rendered).toContain("| `command` | No | `string` | — | — | — | — | — |");
+    expect(rendered).toContain("| `shell` | No | `string` | — | — | — | — | — |");
   });
 
   test("reference renderer marks root union fields required only when present and required in every branch", () => {
@@ -604,13 +660,9 @@ describe("schema snapshot artifact-set gate", () => {
       },
     );
 
-    expect(rendered).toContain("| `shared` | No | `string` | Shared field. | — | — | — | — |");
-    expect(rendered).toContain(
-      "| `requiredOnly` | No | `string` | Required variant field. | — | — | — | — |",
-    );
-    expect(rendered).toContain(
-      "| `optionalOnly` | No | `string` | Optional variant field. | — | — | — | — |",
-    );
+    expect(rendered).toContain("| `shared` | No | `string` | — | — | — | — | — |");
+    expect(rendered).toContain("| `requiredOnly` | No | `string` | — | — | — | — | — |");
+    expect(rendered).toContain("| `optionalOnly` | No | `string` | — | — | — | — | — |");
   });
 
   test("reference renderer surfaces deprecated schema and field callouts", () => {
@@ -645,8 +697,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("generator writes generated schema reference docs", async () => {
-    runGenerator();
-
     const generated = await Bun.file(deprecationNoticeReferencePath).text();
     const expected = renderPublicSchemaReferencePages().find(
       (entry) => entry.id === "DeprecationNotice",
@@ -780,8 +830,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("generator emits the deprecation notice schema artifact", async () => {
-    runGenerator();
-
     const artifact = JSON.parse(await readFile(deprecationNoticeArtifactPath, "utf8")) as Record<
       string,
       unknown
@@ -791,8 +839,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("generator emits a draft 2020-12 schema artifact for every public SDK schema", async () => {
-    runGenerator();
-
     for (const schemaName of JSON_SCHEMA_NAMES) {
       const artifact = JSON.parse(await readFile(schemaArtifactPath(schemaName), "utf8")) as Record<
         string,
@@ -804,7 +850,6 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("derived schema artifact paths are ignored while the generator-owned fixture remains visible", async () => {
-    runGenerator();
     const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
       Record<string, string>
     >;
@@ -867,33 +912,29 @@ describe("schema snapshot artifact-set gate", () => {
     });
   });
 
-  test("generator is deterministic and idempotent across the schema artifact set", async () => {
-    runGenerator();
-    const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
-      Record<string, string>
-    >;
-    const generatedPaths = [
-      "sdk/test/fixtures/bundled-plugin-manifests.json",
-      "dist/schemas/index.json",
-      ...JSON_SCHEMA_NAMES.map((schemaName) => `dist/schemas/${schemaArtifactFilename(schemaName)}`),
-      "dist/command-schemas/index.json",
-      ...Object.values(commandSchemaIndex),
-    ].sort();
-    const before = await Promise.all(
-      generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
-    );
+  test(
+    "generator is deterministic and idempotent across the schema artifact set",
+    async () => {
+      const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
+        Record<string, string>
+      >;
+      const generatedPaths = [
+        "sdk/test/fixtures/bundled-plugin-manifests.json",
+        "dist/schemas/index.json",
+        ...JSON_SCHEMA_NAMES.map((schemaName) => `dist/schemas/${schemaArtifactFilename(schemaName)}`),
+        "dist/command-schemas/index.json",
+        ...Object.values(commandSchemaIndex),
+      ].sort();
+      const before = await Promise.all(
+        generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
+      );
 
-    const secondRun = Bun.spawnSync([process.execPath, generatorPath], {
-      cwd: repoRoot,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    expect({ exitCode: secondRun.exitCode, stderr: secondRun.stderr.toString() }).toMatchObject({
-      exitCode: 0,
-    });
-    const after = await Promise.all(
-      generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
-    );
-    expect(after).toEqual(before);
-  });
+      runGenerator();
+      const after = await Promise.all(
+        generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
+      );
+      expect(after).toEqual(before);
+    },
+    generatorTestTimeoutMs,
+  );
 });

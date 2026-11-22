@@ -17,6 +17,7 @@ import { Effect, Predicate, Ref, type Scope, Stream } from "effect";
 import { VerifiedStreamError, persistenceError } from "./errors.ts";
 
 export { VerifiedStreamError } from "./errors.ts";
+export { mapVerifiedStreamFailures } from "./map-failures.ts";
 
 export interface VerifiedStreamResult {
   readonly sha256: string;

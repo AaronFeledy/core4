@@ -68,7 +68,7 @@ const makeSharedStateStore = (onAttempt: (count: number) => Effect.Effect<void>)
           locks.set(key, lock);
         }
         if (key === routeReloadLockKey()) {
-          expect(options?.timeoutMs).toBe(120_000);
+          expect(options?.wait).toBe("operation");
           attempts++;
           yield* onAttempt(attempts);
         }

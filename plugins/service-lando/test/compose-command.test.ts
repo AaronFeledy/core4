@@ -74,13 +74,13 @@ describe("Compose process argv", () => {
     const fields = {
       command: "worker --serve",
       user: "worker",
-      workingDirectory: PortablePath.make("/work"),
+      working_dir: PortablePath.make("/work"),
     };
     // When
     const service = await plan(fields);
     // Then
     expect(service.user).toBe(fields.user);
-    expect(service.workingDirectory).toBe(fields.workingDirectory);
+    expect(service.workingDirectory).toBe(fields.working_dir);
   });
 
   test.each(["command", "entrypoint"] as const)(

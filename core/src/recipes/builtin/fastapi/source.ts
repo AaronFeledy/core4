@@ -15,7 +15,7 @@ export const source = {
         type: "python:3.12",
         framework: "fastapi",
         port: 8000,
-        dependsOn: ["database", "cache"],
+        depends_on: ["database", "cache"],
         routes: defaultRoutes,
       },
       database: { type: "postgres" },

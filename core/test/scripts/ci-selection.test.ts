@@ -436,10 +436,10 @@ describe("CI selection", () => {
 });
 
 describe("platform build path selection", () => {
-  test("selects broad CI for build job tests and their transitive relative imports", async () => {
+  test("selects broad CI for build and native lock tests and their transitive relative imports", async () => {
     const files = await collectTestFiles();
-    const buildSelections = TEST_SELECTIONS.filter(({ jobs }) =>
-      jobs.some(({ job }) => job.startsWith("build-")),
+    const buildSelections = TEST_SELECTIONS.filter(
+      ({ id, jobs }) => id === "native-lock" || jobs.some(({ job }) => job.startsWith("build-")),
     );
     const paths = new Set(buildSelections.flatMap((selection) => resolveTestSelection(selection, files)));
     expect(paths.size).toBeGreaterThan(0);
@@ -469,6 +469,7 @@ describe("platform build path selection", () => {
 
   test.each([
     "engine/src/runtime/libc.ts",
+    "state-store/src/native-lock.ts",
     "core/test/build/host-execution-compiled.integration.test.ts",
     "core/test/build/opentui-compiled-acceptance.integration.test.ts",
     "core/test/build/renderer-output-compiled.integration.test.ts",

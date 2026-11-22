@@ -43,7 +43,7 @@ const seedScratchPlan = (instanceRoot: string, plan: AppPlan): Promise<void> =>
         root: { path: AbsolutePath.make(instanceRoot) },
         key: "plan.bin",
         schema: AppPlanSchema,
-        version: 2,
+        version: 3,
         codec: "binary",
         mode: 0o600,
         onCorrupt: "quarantine",

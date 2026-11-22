@@ -205,4 +205,21 @@ describe("@lando/core/cli/operations package export", () => {
       additionalErrors: [{ role: "peer", error: defect }],
     });
   });
+
+  test("an elected diagnostic outside the witnessed error type stays on the failure channel", async () => {
+    const diagnostic = { _tag: "UnexpectedError", message: "unexpected", remediation: "Report the defect." };
+    const operation = Effect.fail("typed-error").pipe(Effect.ensuring(Effect.die(diagnostic)));
+    const exit = await Effect.runPromiseExit(
+      invokeOperation(operation, {
+        isError: (error): error is string => typeof error === "string",
+        renderError: (error) => error.toUpperCase(),
+      }),
+    );
+    if (!Exit.isFailure(exit)) throw new Error("expected an unwitnessed failure");
+    expect(Cause.squash(exit.cause)).toBe("typed-error");
+    expect(exit.cause.reasons).toMatchObject([
+      { _tag: "Die", defect: "typed-error" },
+      { _tag: "Die", defect: diagnostic },
+    ]);
+  });
 });

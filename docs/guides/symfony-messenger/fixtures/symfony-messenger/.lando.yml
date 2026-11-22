@@ -30,7 +30,7 @@ services:
       target: /app
       includes:
         - vendor
-    dependsOn:
+    depends_on:
       - database
       - cache
     routes:
@@ -52,7 +52,7 @@ services:
       target: /app
       includes:
         - vendor
-    dependsOn:
+    depends_on:
       database:
         condition: service_healthy
 tooling:
@@ -63,8 +63,9 @@ tooling:
     wrapper: true
     service: appserver
   console:
-    cmds:
-      - "php bin/console"
+    cmd:
+      - :php-local
+      - bin/console
     description: "Run the Symfony console inside the appserver service."
     wrapper: true
     service: appserver

@@ -6,6 +6,7 @@ import {
   annotateFailureRole,
   failureDefectCause,
   failureOutcomeFromCause,
+  primaryFailureReason,
 } from "@lando/sdk/command-result";
 import { ProcessTimeoutError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ExecChunk } from "@lando/sdk/services";
@@ -282,7 +283,11 @@ test.each([1, 2])(
       const source = sourceAt(depth);
       let nextId = 0;
       const makeSafe = (evidence: CommandOutputFailure) => ({ ...failure(evidence), id: nextId++ });
-      const consumer = { _tag: "ConsumerFailure", message: "consumer-owned" };
+      const consumer = {
+        _tag: "ConsumerFailure",
+        message: "consumer-owned",
+        remediation: "Fix the consumer.",
+      };
       const observed = commandOutputStream(source, { failure: makeSafe });
       const exit: Exit.Exit<unknown, unknown> =
         mode === "interrupt"
@@ -308,24 +313,24 @@ test.each([1, 2])(
         depth + (mode === "consumer" || mode === "natural" ? 1 : 0),
       );
       if (mode === "interrupt") expect(Cause.hasInterrupts(exit.cause)).toBe(true);
-      if (mode === "consumer") expect(failureOutcomeFromCause(exit.cause).error).toBe(consumer);
+      const outcome = failureOutcomeFromCause(exit.cause);
+      if (mode === "consumer") {
+        expect(outcome.kind).toBe("typed");
+        expect(outcome.error).toBe(consumer);
+      }
       if (mode === "natural")
         expect(failureOutcomeFromCause(exit.cause).error).toMatchObject({ reason: "exit", exitCode: 7 });
-      const cleanup = exit.cause.reasons.filter(
-        (reason) =>
-          !Cause.isInterruptReason(reason) &&
-          !(
-            Cause.isFailReason(reason) &&
-            (reason.error === consumer ||
-              (mode === "natural" && reason.error === failureOutcomeFromCause(exit.cause).error))
-          ),
+      const primaryIsCleanup = mode === "take" || mode === "interrupt";
+      expect(outcome.additionalErrors.map(({ role }) => role)).toEqual(
+        Array.from({ length: depth - Number(primaryIsCleanup) }, () => "cleanup"),
       );
-      expect(
-        cleanup.every(
-          (reason) =>
-            Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) === "cleanup",
-        ),
-      ).toBe(true);
+      if (primaryIsCleanup) {
+        const primary = primaryFailureReason(exit.cause);
+        if (primary === undefined) throw new Error("Expected a primary cleanup failure");
+        expect(Context.getOrUndefined(Cause.reasonAnnotations(primary), FailureRoleAnnotation)).toBe(
+          "cleanup",
+        );
+      }
     }
   },
 );

@@ -1,6 +1,7 @@
 import type { InvocationProgram } from "@lando/landofile/compiled-sites";
 import type {
   AppPlan,
+  CompiledEventStep,
   EventStep,
   EventStepPlan,
   EventStepStatus,
@@ -83,7 +84,7 @@ const compileHostStep = (input: {
   readonly key: string;
   readonly skipHostEvents: boolean;
 }): EventStepPlan => {
-  const step = input.step;
+  const step: CompiledEventStep = input.step;
   if (input.skipHostEvents) {
     return {
       step,
@@ -107,7 +108,7 @@ const compileHostStep = (input: {
   return { step, source: "host", sourceIndex: input.sourceIndex, status: "active" };
 };
 
-const compileProjectStep = (step: EventStep, sourceIndex: number): EventStepPlan => ({
+const compileProjectStep = (step: CompiledEventStep, sourceIndex: number): EventStepPlan => ({
   step,
   source: "project",
   sourceIndex,

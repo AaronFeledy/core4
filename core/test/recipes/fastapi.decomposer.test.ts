@@ -58,7 +58,7 @@ describe("fastapi decomposition", () => {
           type: "python:3.12",
           framework: "fastapi",
           port: 8000,
-          dependsOn: ["database", "cache"],
+          depends_on: ["database", "cache"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "postgres" },

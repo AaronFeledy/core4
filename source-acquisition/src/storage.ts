@@ -1,5 +1,5 @@
 import { lstat, mkdir, readFile, realpath, rename, rm, utimes, writeFile } from "node:fs/promises";
-import { mapFailures } from "@lando/sdk/command-result";
+import { mapFailures, orDieWithRole } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { isErrnoCode } from "@lando/sdk/errors";
 import { Clock, Effect, Schema } from "effect";
@@ -72,7 +72,8 @@ export const makeStorage = (
         return directory;
       }),
       body,
-      (directory) => io("staging", () => rm(directory, { recursive: true, force: true })).pipe(Effect.orDie),
+      (directory) =>
+        io("staging", () => rm(directory, { recursive: true, force: true })).pipe(orDieWithRole("cleanup")),
     );
   const writeLease = (pending?: SourceKey) =>
     stage((directory) =>

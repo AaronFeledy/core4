@@ -24,7 +24,7 @@ export const scanMissingAppRoots = Effect.fn("AppOperation.scanMissingAppRoots")
       (state.success.plans.length > 0 || state.success.unreadable.length > 0);
     const result = yield* (
       registry.observeRuntime ??
-      Effect.succeed([
+      Effect.succeed<readonly ProviderRuntimeSnapshot[]>([
         {
           providerId: id,
           runtimeObserved: false,

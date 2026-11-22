@@ -1,5 +1,5 @@
 import { SchemaAST as AST, Schema } from "effect";
-import { LandofileShape, SERVICE_CONFIG_ALIASES } from "../schema/landofile.ts";
+import { LandofileShape } from "../schema/landofile.ts";
 import { resolveLayerMergeRule } from "./layer-merge-rules.ts";
 import { isLandofileOverride } from "./merge-directives.ts";
 import { isPlainRecord } from "./record.ts";
@@ -43,14 +43,6 @@ export const isAuthoredKey = (path: DirectivePath): boolean => {
   return nodes.length > 0;
 };
 
-/** Rewrite service aliases to the paths retained by native layer decoding. */
-export const canonicalDirectivePath = (path: DirectivePath): DirectivePath =>
-  path.map((segment, index) =>
-    index === 2 && path[0] === "services" && typeof segment === "string"
-      ? (SERVICE_CONFIG_ALIASES.find(([alias]) => alias === segment)?.[1] ?? segment)
-      : segment,
-  );
-
 /** Explain an unsupported directive placement, or return undefined for a stable member path. */
 export const directivePathProblem = (input: unknown, path: DirectivePath): string | undefined => {
   if (!isAuthoredKey(path)) return "Unknown authored target key.";
@@ -58,7 +50,7 @@ export const directivePathProblem = (input: unknown, path: DirectivePath): strin
   for (let index = 0; index < path.length; index += 1) {
     const segment = path[index];
     if (segment === undefined) return "Missing directive path.";
-    const prefix = canonicalDirectivePath(path.slice(0, index));
+    const prefix = path.slice(0, index);
     if (typeof segment === "number") {
       const rule = resolveLayerMergeRule(LandofileShape, prefix).descriptor;
       const entry: unknown = Array.isArray(current) ? current[segment] : undefined;
@@ -74,10 +66,7 @@ export const directivePathProblem = (input: unknown, path: DirectivePath): strin
     } else {
       if (!isPlainRecord(current)) return "Directive crosses a reshaped value.";
       if (index > 0 && typeof path[index - 1] === "number") {
-        const rule = resolveLayerMergeRule(
-          LandofileShape,
-          canonicalDirectivePath(path.slice(0, index - 1)),
-        ).descriptor;
+        const rule = resolveLayerMergeRule(LandofileShape, path.slice(0, index - 1)).descriptor;
         if (rule.kind === "keyed") {
           const identityFields = {
             "route-match": ["hostname", "scheme", "pathPrefix"],
@@ -91,7 +80,7 @@ export const directivePathProblem = (input: unknown, path: DirectivePath): strin
             return "Cannot change a keyed-list identity field; override the containing collection.";
         }
       }
-      if (prefix.at(-1) === "dependsOn" && !Array.isArray(current))
+      if (prefix.at(-1) === "depends_on" && !Array.isArray(current))
         return "Directive crosses the dependency-map decode boundary.";
       if (
         prefix.at(-1) === "security" &&

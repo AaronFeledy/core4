@@ -7,13 +7,14 @@ import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   addEnvRecord,
   commandHealthcheck,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { assertListenerConfig, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { mssqlHealthcheck, mssqlStartupCommand } from "./mssql-startup.ts";
 
@@ -106,10 +107,15 @@ const mssqlToolingForConnection: NonNullable<ServiceType["toolingForConnection"]
         },
       };
 
+const selectPort = primaryPortSelector(MSSQL_LISTENER);
 const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
   id,
   name: "mssql",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION(
+    "MSSQL environment and the catalog startup wrapper",
+  ),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: {
@@ -151,7 +157,7 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
         defaults: defaultCreds(appName),
         ...(input.service.creds === undefined ? {} : { authored: input.service.creds }),
       });
-      const port = plannedPort(input.service, MSSQL_LISTENER);
+      const port = selectPort(input.service);
       assertListenerConfig(input.service, MSSQL_LISTENER);
       return {
         base: "lando",

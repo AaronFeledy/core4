@@ -19,7 +19,7 @@ export const source = {
         framework: "wordpress",
         uploadDirs: ["wp-content/uploads"],
         port: 80,
-        dependsOn: ["database"],
+        depends_on: ["database"],
         routes: defaultRoutes,
       },
       database: { type: "mariadb" },
@@ -37,7 +37,7 @@ export const source = {
   variants: [
     {
       when: "{{ options.redis }}",
-      config: { services: { appserver: { dependsOn: ["cache"] }, cache: { type: "redis" } } },
+      config: { services: { appserver: { depends_on: ["cache"] }, cache: { type: "redis" } } },
     },
   ],
   postInit: [

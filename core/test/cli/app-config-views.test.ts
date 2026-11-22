@@ -76,7 +76,7 @@ describe("raw and merged inspection", () => {
     const merged = await run({ source: "merged" });
     expect(merged).toMatchObject({
       source: "merged",
-      landofile: { services: { web: { primary: "maybe", workingDirectory: "/site" } } },
+      landofile: { services: { web: { primary: "maybe", working_dir: "/site" } } },
     });
   });
 

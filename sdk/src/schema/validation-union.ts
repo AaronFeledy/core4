@@ -173,6 +173,26 @@ const candidateAst = (issue: SchemaIssue.Issue): SchemaAST.AST | undefined => {
   }
 };
 
+export const selectByContainer = (children: readonly SchemaIssue.Issue[], input: unknown) => {
+  const container = Array.isArray(input) ? "Arrays" : isPlainRecord(input) ? "Objects" : undefined;
+  if (container === undefined) return children;
+  const incompatible = (child: SchemaIssue.Issue): boolean => {
+    const issue = throughSemanticSite(child);
+    switch (issue._tag) {
+      case "InvalidType":
+        return issue.ast._tag !== container;
+      case "AnyOf":
+        return issue.issues.length > 0 && issue.issues.every(incompatible);
+      case "Encoding":
+        return incompatible(issue.issue);
+      default:
+        return false;
+    }
+  };
+  const matching = children.filter((child) => !incompatible(child));
+  return matching.length === 0 ? children : matching;
+};
+
 const rejectsDiscriminator = (issue: SchemaIssue.Issue): boolean => {
   const transparent = throughSemanticSite(issue);
   if (transparent !== issue) return rejectsDiscriminator(transparent);

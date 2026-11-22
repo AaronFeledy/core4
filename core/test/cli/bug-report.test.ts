@@ -107,7 +107,7 @@ describe("buildBugReport: envelope extraction", () => {
         remediation: "Set a portable path.",
         issues: [
           {
-            path: ["services", "web", "workingDirectory"],
+            path: ["services", "web", "working_dir"],
             message: "Expected string.",
             source: {
               file: "/app/.lando.local.yml",
@@ -115,13 +115,23 @@ describe("buildBugReport: envelope extraction", () => {
               path: ["services", "web", "working_dir"],
             },
           },
+          {
+            path: ["services", "web", "environment", "REGION"],
+            message: "Expected string.",
+            source: {
+              file: "/app/.lando.local.yml",
+              layer: "local",
+              path: ["services", "web", "environment", 0],
+            },
+          },
         ],
       },
       context: ctx(),
     });
     const plain = renderPlainBugReport(report);
-    expect(plain).toContain("/app/.lando.local.yml: services.web.workingDirectory: Expected string.");
-    expect(plain).toContain("authored services.web.working_dir");
+    expect(plain).toContain("/app/.lando.local.yml: services.web.working_dir: Expected string.");
+    expect(plain).not.toContain("authored services.web.working_dir");
+    expect(plain).toContain("authored services.web.environment[0]");
     expect(report.remediation).toBe("Set a portable path.");
   });
   test("escapes generic terminal controls when an arbitrary tagged error renders", () => {

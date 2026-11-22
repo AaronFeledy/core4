@@ -54,7 +54,11 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { VerifiedStreamError, persistVerifiedStream } from "@lando/sdk/verified-stream";
+import {
+  VerifiedStreamError,
+  mapVerifiedStreamFailures,
+  persistVerifiedStream,
+} from "@lando/sdk/verified-stream";
 import { findRealpathAncestor, resolveStatePath } from "@lando/state-store/paths";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { withPhysicalVolumeLock, withPhysicalVolumeLocks } from "@lando/state-store/volume-lock";
@@ -225,7 +229,7 @@ const webStreamBytesCapped = async (input: CappedWebStreamBytesInput): Promise<U
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
   try {
-    for (;;) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) {
         const output = new Uint8Array(totalBytes);
@@ -583,13 +587,13 @@ const archiveTap = () => {
 
 type VolumeEndpointRef = { readonly app: AppId; readonly store: string };
 
-const coordinationKeyFor = (
+const volumeLockRequestFor = (
   provider: Context.Service.Shape<typeof RuntimeProvider>,
   ref: VolumeEndpointRef,
-): Effect.Effect<string, DataTransferError> =>
+): Effect.Effect<{ readonly key: string; readonly name: string }, DataTransferError> =>
   provider.locateVolume(ref).pipe(
     mapFailures((cause) => providerFailure("locateVolume", cause)),
-    Effect.map((locator) => locator.coordinationKey),
+    Effect.map((locator) => ({ key: locator.coordinationKey, name: locator.nativeName })),
   );
 
 const volumeLockFailure = <E>(cause: E | StateStoreError) =>
@@ -605,17 +609,28 @@ const mapLockFailure = <A, E, R>(effect: Effect.Effect<A, E | StateStoreError, R
  */
 const withVolumeTransactionLock = <A, E, R>(
   stateStore: Context.Service.Shape<typeof StateStore>,
-  coordinationKey: string,
+  request: { readonly key: string; readonly name: string },
   body: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | StateStoreError, R> =>
-  withPhysicalVolumeLock(stateStore, coordinationKey, withVolumeTransaction(coordinationKey, body));
+  withPhysicalVolumeLock(
+    stateStore,
+    { key: request.key, name: request.name, mode: "exclusive" },
+    withVolumeTransaction(request.key, body),
+  );
 
 const withVolumeTransactionLocks = <A, E, R>(
   stateStore: Context.Service.Shape<typeof StateStore>,
-  coordinationKeys: ReadonlyArray<string>,
+  requests: ReadonlyArray<{ readonly key: string; readonly name: string }>,
   body: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | StateStoreError, R> =>
-  withPhysicalVolumeLocks(stateStore, coordinationKeys, withVolumeTransactions(coordinationKeys, body));
+  withPhysicalVolumeLocks(
+    stateStore,
+    requests.map((request) => ({ key: request.key, name: request.name, mode: "exclusive" as const })),
+    withVolumeTransactions(
+      requests.map((request) => request.key),
+      body,
+    ),
+  );
 
 /**
  * Hold every involved volume's physical lock, acquired in sorted order, for the whole
@@ -630,8 +645,8 @@ const withEndpointVolumeLocks = Effect.fnUntraced(function* <A, E, R>(input: {
   const refs = input.endpoints.flatMap((endpoint) =>
     endpoint._tag === "volume" ? [{ app: endpoint.app, store: endpoint.store }] : [],
   );
-  const keys = yield* Effect.forEach(refs, (ref) => coordinationKeyFor(input.provider, ref));
-  return yield* withVolumeTransactionLocks(input.stateStore, keys, input.body);
+  const requests = yield* Effect.forEach(refs, (ref) => volumeLockRequestFor(input.provider, ref));
+  return yield* withVolumeTransactionLocks(input.stateStore, requests, input.body);
 });
 
 /** Hold a volume's physical lock while a caller-owned stream is consumed. */
@@ -644,13 +659,13 @@ const streamUnderVolumeLock = <A, E, R>(input: {
   Stream.scoped(
     Stream.unwrap(
       Effect.gen(function* () {
-        const coordinationKey = yield* coordinationKeyFor(input.provider, input.ref);
+        const request = yield* volumeLockRequestFor(input.provider, input.ref);
         const queue = yield* Queue.bounded<A, E | DataTransferError | StateStoreError | Cause.Done>(16);
         // The exit covers lock acquisition as well as the stream, so a lock failure ends the
         // consumer's queue instead of leaving it waiting forever.
         yield* withVolumeTransactionLock(
           input.stateStore,
-          coordinationKey,
+          request,
           Stream.runForEach(input.stream, (item) => Queue.offer(queue, item)),
         ).pipe(
           Effect.onExit((exit) =>
@@ -870,11 +885,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         body,
         destinationPath: target.path,
         expectedSha256: spec.expectedDigest,
-      }).pipe(
-        mapFailures((error) =>
-          error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
-        ),
-      );
+      }).pipe(mapVerifiedStreamFailures((error) => mapVerifiedError(error, spec)));
       return { accelerated: false, sizeBytes: result.sizeBytes, digest: result.sha256 };
     }
     case "hostArchive": {
@@ -896,11 +907,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           path: target.path,
         }),
         destinationPath: target.path,
-      }).pipe(
-        mapFailures((error) =>
-          error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
-        ),
-      );
+      }).pipe(mapVerifiedStreamFailures((error) => mapVerifiedError(error, spec)));
       return {
         accelerated: false,
         sizeBytes: staged.verified.sizeBytes,
@@ -1309,7 +1316,7 @@ export const makeDataMoverService = (
           }),
         );
       }
-      const coordinationKey = yield* coordinationKeyFor(provider, store);
+      const volumeLock = yield* volumeLockRequestFor(provider, store);
       const snapshotId = randomUUID();
       let rollbackNative: VolumeSnapshotRef | undefined;
       let rollbackArchive: string | undefined;
@@ -1489,9 +1496,7 @@ export const makeDataMoverService = (
           }),
         ),
       );
-      return yield* mapLockFailure(
-        withVolumeTransactionLock(persistence.stateStore, coordinationKey, capture),
-      );
+      return yield* mapLockFailure(withVolumeTransactionLock(persistence.stateStore, volumeLock, capture));
     }),
     restore: Effect.fn("DataMover.restore")(function* (handle, store, opts) {
       const provider = yield* selectedProvider;
@@ -1534,7 +1539,7 @@ export const makeDataMoverService = (
         );
       const target = yield* observeTarget();
       yield* requireSnapshotTargetOwner(info, target);
-      const coordinationKey = yield* coordinationKeyFor(provider, store);
+      const volumeLock = yield* volumeLockRequestFor(provider, store);
 
       if (info.native === undefined) {
         const archiveFormat = info.format ?? "tar";
@@ -1556,7 +1561,7 @@ export const makeDataMoverService = (
         yield* mapLockFailure(
           withVolumeTransactionLock(
             persistence.stateStore,
-            coordinationKey,
+            volumeLock,
             Effect.gen(function* () {
               const tap = archiveTap();
               const archived = tap.stream(byteStreamFromHost(archivePath));
@@ -1682,7 +1687,7 @@ export const makeDataMoverService = (
       yield* mapLockFailure(
         withVolumeTransactionLock(
           persistence.stateStore,
-          coordinationKey,
+          volumeLock,
           Effect.gen(function* () {
             if (opts?.mode === "seed") yield* seedAdmission;
             yield* provider

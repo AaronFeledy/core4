@@ -20,7 +20,7 @@ Use the URLs and connection details from `lando info` to reach your services. Wh
 
 | Command | What it does |
 | --- | --- |
-| `lando start` | Start this app and apply changed container create configuration. Unchanged containers and named volumes stay. Alias of `app:start`. |
+| `lando start` | Start this app and apply changed container create configuration. Unchanged containers and named volumes stay. Pass `-s` / `--service` to start named services and their prerequisites. Alias of `app:start`. |
 | `lando info` | Print services, URLs, and connection details. Alias of `app:info`. |
 | `lando exec -- <cmd>` | Run a one-off command in the primary service; `-s` / `--service` selects another service. Alias of `app:exec`. |
 | `lando logs` | Stream service logs. Alias of `app:logs`. |
@@ -82,6 +82,16 @@ If a `post-stop` step fails after the app stops, `lando stop` still exits zero. 
 All of these keep named volumes and drop a removed container's anonymous volumes. For what counts as retained storage, how to declare it, and how to read `services[].mounts` in `lando info --format=json`, see [Keep data across stop, restart, and destroy](../tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
 
 The `stopped:` and `destroyed:` lines repeat how the runtime said each container ended, such as `app (exit 143)` after SIGTERM, and `--format=json` carries the same facts under `result.shutdownObservations`. Lando reports the code; it does not decide whether the stop was clean. Exit `0` is not proof your app finished its cleanup, and `137` alone is not proof Lando killed it. Only an explicit `OOMKilled` report or a failed inspection adds a warning. See [Read what stop reports](../tutorial/app-lifecycle.mdx#read-what-stop-reports).
+
+### Start one service
+
+`lando start --service web` (or `-s`, repeatable) starts the services you name plus their prerequisites and sidecars. Lando leaves the other services and their published routes alone. If an earlier start with a different selection was interrupted, Lando finishes that start first and tells you which command it finished. `lando info` still lists planned services with no container as `stopped` when the runtime confirms they're absent. Run bare `lando start` to bring up the rest of the app.
+
+The app's pre-start and post-start hooks still run. Lando skips a hook step that directly targets an unselected service it verifies is not running. Tooling tasks and Lando commands still run as authored.
+
+Selected start prepares accelerated mounts for services that had no sync session. If a selected service's existing accelerated mounts changed or were removed, run bare `lando start` so Lando can reconcile them safely.
+
+With `--format=json`, `result.servicesStarted` lists the services in the start, and `result.servicesStayedDown` lists only unselected services verified absent, exited, created but not started, dead, or paused. Lando omits the field when none qualify. Follow [Start one service](../tutorial/app-lifecycle.mdx#start-one-service) for an example.
 
 ### Restart or rebuild one service
 
@@ -148,15 +158,25 @@ Replace `web` with the service the error names.
 
 ## Wait for another command to finish
 
-`start`, `stop`, `restart`, `rebuild`, and `destroy` take a per-app advisory lock so two processes cannot apply provider state at the same time. A second command waits and prints that another Lando command holds the app lock. After two minutes it fails. Set `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds) to wait longer or shorter.
+`start`, `stop`, `restart`, `rebuild`, and `destroy` lock the app while they change it, so two commands can't apply provider state to the same app at the same time. A second command waits. If the wait lasts more than a second, it prints what it's waiting for, then continues as soon as that command finishes.
 
-Read-only commands (`info`, `logs`, `app:config:lint`) do not take the lock.
+Read-only commands (`info`, `logs`, `app:config:lint`) don't take the lock.
 
-Lando reclaims a lock left by a killed command without printing a wait message. You don't need to delete the lock file.
+Lando gives up after two minutes and fails with an error that names the lock, how long it waited, and, when it can tell, the process holding it. Set `LANDO_LOCK_TIMEOUT_MS` to change that limit for every Lando lock a command can wait on for a whole operation, such as the app lock, a shared volume, or the router. It takes milliseconds from `0` to `600000`; `0` fails at once instead of waiting:
+
+```sh
+LANDO_LOCK_TIMEOUT_MS=600000 lando start
+```
+
+Different apps don't wait on each other's app locks. If they share a package cache such as Composer's `lando-cache-composer`, their hooks and image builds can run at the same time, even before the cache exists. The only start phase that locks the cache is the one that creates or starts containers. Apps take turns in that phase when the cache is new, or whenever they use Docker. With Lando's managed provider or Podman, they can share that phase once the cache exists.
+
+`lando stop` and `lando destroy` without `--purge-caches` don't lock the shared cache. `lando destroy --purge-caches` works from any app that uses the cache, even if another app created it. It waits for that container startup phase to finish and removes the cache when no container is using it. If another container still uses it, or Lando can't confirm the volume is its shared cache, Lando keeps it, says why, and finishes the rest of the teardown.
+
+The operating system releases a lock when the command holding it exits, even if it was killed or the machine crashed, so a killed command never leaves a lock held and there's nothing to delete. Lando needs its data directory on a local disk for this; on a filesystem that can't hold locks, it stops with an error that says so.
 
 User apps share a mutation lock by canonical (realpath) app root, so changing `name:` in the same folder does not bypass a running command's lock. Scratch apps use their id plus canonical root because they can share a user app's folder. If you move the app directory while a mutate is running, a command against the new path sees a different key and does not wait on the first lock.
 
-A mutating command that shells out to another `lando` mutate on the same app reuses the lock it already holds. It does not deadlock.
+A `lando` command that a running mutation starts for the same app, such as a child `lando` launched from an [event step](../landofile/events.mdx), fails right away instead of waiting on its parent, which can't finish until the child does. Run that mutation after the parent finishes. In-process `command:` steps and SDK calls run inside the parent command and reuse its lock.
 
 ## Tear down
 

@@ -30,7 +30,7 @@ export const optionalWebDatabase = {
   when: '{{ ne(options.database, "none") }}',
   config: {
     services: {
-      web: { dependsOn: ["database"] },
+      web: { depends_on: ["database"] },
       database: { type: "{{ recipe.database }}" },
     },
   },

@@ -1,13 +1,20 @@
 import { sameRealpath } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { FileSyncStartError } from "@lando/sdk/errors";
-import { type AppPlan, type AppRef, fileSyncInvalidationRequired } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { type AppPlan, type AppRef, type ServiceName, fileSyncInvalidationRequired } from "@lando/sdk/schema";
+import {
+  type AppliedFileSyncInspection,
+  type FileSyncEngineShape,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 import { Effect } from "effect";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
-import { type PendingStart, matchesRecordedTargets } from "./accelerated-start-record.ts";
-import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
+import {
+  type PendingStart,
+  matchesRecordedTargets,
+  recordedStartCommand,
+} from "./accelerated-start-record.ts";
 import { acquireFileSyncEngine, requireFileSyncProvider } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
@@ -18,21 +25,32 @@ const resumeError = (record: PendingStart, message: string, cause?: unknown) =>
   new FileSyncStartError({
     engineId: record.engineId,
     message,
-    remediation: `Restore attempt ${record.attemptId}'s recorded provider, engine, mount settings and owned session state, then run \`lando start\` (or restart/rebuild). Unknown resources have been left untouched.`,
+    remediation: `Restore attempt ${record.attemptId}'s recorded provider, engine, mount settings and owned session state, then run \`${recordedStartCommand(record)}\`. Unknown resources have been left untouched.`,
     ...(cause === undefined ? {} : { cause }),
   });
 
 export const recordedSessionInventory = Effect.fnUntraced(function* (
   app: AppRef,
-  record: PendingStart,
-  plan: AppPlan,
+  pending: { readonly record: PendingStart; readonly plan: AppPlan },
+  options: {
+    readonly prior?: AppliedFileSyncInspection | undefined;
+    readonly engine?: FileSyncEngineShape;
+  } = {},
 ) {
+  const { record, plan } = pending;
+  const { prior } = options;
   const bundle = yield* fileSyncBundle(plan);
   if (bundle.kind !== "accelerated" || bundle.id !== record.engineId)
     return yield* Effect.fail(resumeError(record, "The recorded engine disagrees with the executable plan."));
-  const engine = yield* acquireFileSyncEngine(record.engineId).pipe(
-    mapFailures((cause) => resumeError(record, "Resume requires the recorded file-sync engine.", cause)),
-  );
+  if (prior?.status === "accelerated" && prior.engineId !== record.engineId)
+    return yield* Effect.fail(resumeError(record, "Applied and pending file-sync engines disagree."));
+  const applied = prior?.status === "accelerated" ? prior.sessions : [];
+  const expected = [...applied, ...bundle.sessions];
+  const engine =
+    options.engine ??
+    (yield* acquireFileSyncEngine(record.engineId).pipe(
+      mapFailures((cause) => resumeError(record, "Resume requires the recorded file-sync engine.", cause)),
+    ));
   const sessions = yield* engine.listSessions({ app });
   const identities = new Set<string>();
   const refs = new Set<string>();
@@ -52,19 +70,22 @@ export const recordedSessionInventory = Effect.fnUntraced(function* (
         spec.app.kind !== app.kind ||
         spec.app.id !== app.id ||
         !sameRealpath(spec.app.root, app.root) ||
-        !record.sessions.some(({ name }) => name === identity) ||
-        !bundle.sessions.some((session) => sameFileSyncSessionSpec(session, spec))
+        !expected.some((session) => sameFileSyncSessionSpec(session, spec))
       );
     })
   )
     return yield* Effect.fail(
       resumeError(record, "Unknown file-sync sessions exist for this app; resume is blocked."),
     );
-  return { engine, sessions };
+  return { engine, sessions, applied, pending: bundle.sessions };
 });
 
-export const verifyPendingStartResume = Effect.fnUntraced(function* (app: AppRef, plan: AppPlan) {
-  const record = yield* readPendingAcceleratedStart(app, plan);
+export const verifyPendingStartResume = Effect.fnUntraced(function* (
+  app: AppRef,
+  plan: AppPlan,
+  services?: readonly ServiceName[],
+) {
+  const record = yield* readPendingAcceleratedStart(app, plan, services);
   if (record === null) return null;
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry
@@ -92,12 +113,20 @@ export const verifyPendingStartResume = Effect.fnUntraced(function* (app: AppRef
     return yield* Effect.fail(
       resumeError(record, "The provider ownership manifest records foreign ownership."),
     );
-  const { engine, sessions } = yield* recordedSessionInventory(app, record, plan);
   const prior = yield* provider.inspectAppliedFileSync(plan);
+  const { engine, sessions, applied, pending } = yield* recordedSessionInventory(
+    app,
+    { record, plan },
+    { prior },
+  );
   if (
-    prior.status === "accelerated" &&
-    (prior.engineId !== record.engineId ||
-      (engine.appLifecycle !== undefined && !hasExactFileSyncSessionCoverage(prior.sessions, sessions)))
+    engine.appLifecycle !== undefined &&
+    applied.some((spec) => {
+      if (sessions.some((session) => sameFileSyncSessionSpec(spec, session.spec))) return false;
+      return (
+        record.phase !== "apply-intent" || !pending.some((entry) => sameFileSyncSessionSpec(spec, entry))
+      );
+    })
   )
     return yield* Effect.fail(
       resumeError(record, "Applied accelerated state has missing or changed durable sessions."),

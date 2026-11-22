@@ -648,21 +648,26 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           remediation: "Restore Lando's private plugin state store before changing global services.",
         }),
       );
-    return stateStore.withLock("windows-published-lifecycle", body, { timeoutMs: 120_000 }).pipe(
-      Effect.catchTag("StateStoreError", (cause) =>
-        Effect.fail(
-          new ProviderUnavailableError({
-            providerId,
-            operation,
-            message:
-              "Could not complete the managed Windows published-service operation under its lifecycle lock.",
-            remediation:
-              "Wait for the other global service operation to finish, then retry. If the wait persists, inspect the managed Podman machine and global services.",
-            cause,
-          }),
+    return stateStore
+      .withLock("windows-published-lifecycle", body, {
+        wait: "operation",
+        resource: "Windows port publishing",
+      })
+      .pipe(
+        Effect.catchTag("StateStoreError", (cause) =>
+          Effect.fail(
+            new ProviderUnavailableError({
+              providerId,
+              operation,
+              message:
+                "Could not complete the managed Windows published-service operation under its lifecycle lock.",
+              remediation:
+                "Wait for the other global service operation to finish, then retry. If the wait persists, inspect the managed Podman machine and global services.",
+              cause,
+            }),
+          ),
         ),
-      ),
-    );
+      );
   };
   const withGlobalPublishedLifecycle = <A, E>(
     appId: string,
@@ -1854,6 +1859,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               const physicalPlan = yield* physicalNetworkPlan(plan);
               const result = yield* runtimeBringDown(physicalPlan, {
                 ...(podmanApi === undefined ? {} : { api: podmanApi }),
+                ...(socketPath === undefined
+                  ? {}
+                  : { endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath }),
                 ctx: LANDO_CTX,
                 volumes: destroyOptions.volumes,
                 ...(destroyOptions.purgeCaches === undefined
@@ -1867,6 +1875,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                 kind: "destroyed" as const,
                 volumesRemoved: result.volumesRemoved,
                 shutdownObservations: result.shutdownObservations,
+                ...(result.skipped === undefined ? {} : { skipped: result.skipped }),
               };
             }),
           ),
@@ -1895,7 +1904,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           ),
         logs: (target, logOptions) =>
           Stream.unwrap(
-            (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
+            (target.plan === undefined
+              ? resolvePlan(target.app)
+              : Effect.succeed<AppPlan | undefined>(target.plan)
+            ).pipe(
               Effect.flatMap((plan) =>
                 plan === undefined
                   ? Effect.succeed(Stream.fail(makeNoPlanError(target.app, "logs")))

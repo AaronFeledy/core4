@@ -163,6 +163,16 @@ test("independent service type failure still surfaces beside a load-blocked sibl
   }
 });
 
+test("operational planning fails on the first expression error in reference order", async () => {
+  await expect(
+    resolve({
+      firstDeclared: { type: "partial", command: "{{ services.producer.creds.missing }}" },
+      firstResolved: { type: "partial", command: "{{ service.port }}" },
+      producer: { type: "partial", command: "{{ service.port }}" },
+    }),
+  ).rejects.toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "firstResolved", "command"] });
+});
+
 test("blocked network entry is treated as declared and suppresses external+name findings", () => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     services: { web: { networks: { shared: {} } } },

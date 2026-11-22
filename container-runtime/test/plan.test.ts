@@ -203,8 +203,8 @@ describe("container plan helpers", () => {
       [ServiceName.make("database")]: oldService,
       [ServiceName.make("web")]: changedService,
     });
-    expect(mergeAppliedPlan(undefined, incoming)).toBe(incoming);
-    expect(mergeAppliedPlan(undefined, incoming, { complete: true })).toBe(incoming);
+    expect(incoming).toBe(mergeAppliedPlan(undefined, incoming));
+    expect(incoming).toBe(mergeAppliedPlan(undefined, incoming, { complete: true }));
   });
 
   test("converts env records and mount read-only suffixes", () => {
@@ -528,6 +528,20 @@ describe("container plan helpers", () => {
         Binds: ["/host/app:/app:ro", "/host/cache:/cache", "lando-cache-npm:/home/node/.npm"],
       },
       NetworkingConfig: { EndpointsConfig: { "lando-myapp": {} } },
+    });
+  });
+
+  test("applies extension start_interval as native StartInterval nanoseconds", () => {
+    // Given a planned healthcheck with compose start_interval from Lando startIntervalSeconds.
+    const withStartInterval = {
+      ...service,
+      extensions: { compose: { healthcheck: { start_interval: "2s" } } },
+    };
+    // When
+    const body = containerCreateBodyFragment(plan, withStartInterval);
+    // Then
+    expect(body.Healthcheck).toMatchObject({
+      StartInterval: 2_000_000_000,
     });
   });
 

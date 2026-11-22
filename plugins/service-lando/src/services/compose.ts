@@ -1,8 +1,8 @@
 import { splitComposeCommand } from "@lando/sdk/landofile";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { RAW_BASE_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { ServiceConfigIssue, serviceFeatureApply } from "./_feature-helpers.ts";
-
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const COMPOSE_FEATURE_ID = "service-lando.compose" as const;
@@ -61,7 +61,9 @@ export const composeServiceType: ServiceType = {
   id: "compose",
   name: "compose",
   base: "l337",
+  extraArgsRemediation: RAW_BASE_EXTRA_ARGS_REMEDIATION,
   schema: Schema.Unknown,
+  plannedPort: ({ port }) => port,
   resolve: (input) =>
     Effect.succeed({
       base: "l337",

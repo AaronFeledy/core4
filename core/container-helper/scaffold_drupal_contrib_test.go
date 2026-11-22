@@ -141,7 +141,7 @@ func TestDrupalContribSyncInstallsAroundMountAndMergesDeps(t *testing.T) {
 	if _, exists := manifest["repositories"]; exists {
 		t.Fatalf("unexpected repositories in the promoted manifest: %v", manifest)
 	}
-	for _, name := range []string{"drush", "phpunit", "phpcs"} {
+	for _, name := range []string{"drush", "phpunit", "phpcs", "phpcbf"} {
 		info, err := os.Stat(filepath.Join(f.appRoot, "vendor", "bin", name))
 		if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
 			t.Fatalf("missing executable %s: %v", name, err)

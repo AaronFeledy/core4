@@ -128,7 +128,7 @@ The following extension constraints apply without committing to an implementatio
 | Capability | Constraint |
 |---|---|
 | Persistent local agent | The runtime is transactional with no shared daemon/socket, but runtime, caches, and Scopes MUST permit future warm IPC ownership. No core code may assume one process per command in a way that prevents holding state across calls (e.g. argv stored in module-global mutable state, caches pinned to `process.pid`). The per-app host-proxy worker (§10.10) is not this agent and MUST NOT be relied on as a long-lived runtime cache. |
-| Explicit `dependsOn: ["global:<service>"]` | Add only if usage proves `AppFeature.requires.globalServices` plus explicit global start is insufficient. |
+| Explicit `depends_on: ["global:<service>"]` | Add only if usage proves `AppFeature.requires.globalServices` plus explicit global start is insufficient. |
 | Service-type `topLevelAlias` enforcement | Enforce once the tooling schema lifts the current catalog-wide rejection of `topLevelAlias` (§6.11, §8.5). |
 | OS-keychain credential backend | Add a keychain-backed writable `SecretStore` (macOS Keychain, Windows Credential Manager, Secret Service) as a peer of the file-backed `lando` store once its threat model (§9.5.1) proves insufficient; the file store stays the default until then. |
 | Windows credential ACL and agent interoperability | Before the first bundled hoster connector ships, demonstrate owner-only ACL enforcement for `<userDataRoot>/secrets/` and named-pipe agent interoperability for host `git` on Windows (§9.5.1, §10.4). |

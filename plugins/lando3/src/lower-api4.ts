@@ -91,7 +91,7 @@ export const lowerApi4Service = (
   else if (hasPlainObjectPrototype(image) && !isLegacyTagged(image)) {
     const build: Record<string, unknown> = { context: "." };
     for (const [key, target] of [
-      ["imagefile", "dockerfileInline"],
+      ["imagefile", "dockerfile_inline"],
       ["dockerfile", "dockerfile"],
     ] as const) {
       if (typeof image[key] === "string") {
@@ -155,7 +155,7 @@ export const lowerApi4Service = (
   }
   if (service.working_dir !== undefined) {
     cursor.take(["working_dir"]);
-    patch.workingDirectory = service.working_dir;
+    patch.working_dir = service.working_dir;
     rewrite(["working_dir"]);
   }
   if (service.environment !== undefined) {

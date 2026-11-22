@@ -68,7 +68,11 @@ for (const command of ["stop", "destroy"] as const) {
         lockDirectory,
         ...(command === "destroy" ? ["cache"] : []),
       ]);
-      expect(await readdir(join(dataRoot, lockDirectory))).toEqual([]);
+      const sentinel = Bun.file(
+        join(dataRoot, lockDirectory, `${appMutationLockKey("global", globalRoot)}.lck`),
+      );
+      expect(await sentinel.exists()).toBe(process.platform === "win32");
+      if (process.platform === "win32") expect(await sentinel.text()).toBe("");
       await expect(stat(globalRoot)).rejects.toMatchObject({ code: "ENOENT" });
     });
   });

@@ -174,7 +174,7 @@ for (const order of ["boundary-first", "provider-first"] as const)
       resultFormat: "json",
       signal: controller.signal,
       io,
-      failureExitCode: () => 23,
+      failureExitCode: (error) => (error === primary ? 23 : undefined),
       setExitCode: (code) => codes.push(code),
       formatError: () => "unused",
     });

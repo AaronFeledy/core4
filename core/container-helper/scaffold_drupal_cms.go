@@ -22,7 +22,7 @@ func runDrupalCmsScaffold(args []string, streams helperIO, crash func(string)) i
 		"Drupal CMS",
 		"drupal-cms-scaffold",
 		fmt.Sprintf("Drupal CMS is already scaffolded at %s.", appRoot),
-		"composer.json, vendor/bin/drush, and web/",
+		"composer.lock, recipes/drupal_cms_starter/recipe.yml, " + drupalScaffoldOutputs,
 		appRoot,
 		streams,
 		crash,
@@ -49,6 +49,15 @@ func stageDrupalCms(s *scaffold, stage string) error {
 	); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not stage the project: %w", err)
 	}
+	// Match drupal/recommended-project's allow-plugins so phpcs/phpcbf/phpstan can install their standards.
+	for _, plugin := range []string{
+		"dealerdirect/phpcodesniffer-composer-installer",
+		"phpstan/extension-installer",
+	} {
+		if err := s.runCommand(s.appRoot, "composer", "--working-dir="+stage, "config", "--no-plugins", "allow-plugins."+plugin, "true"); err != nil {
+			return fmt.Errorf("Drupal CMS scaffold could not allow the %s Composer plugin: %w", plugin, err)
+		}
+	}
 	repository := cmsSvgRepositoryJSON()
 	if err := s.runCommand(
 		s.appRoot,
@@ -72,6 +81,10 @@ func stageDrupalCms(s *scaffold, stage string) error {
 		"drupal/drupal_cms_starter:^2",
 	); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not require the pinned packages: %w", err)
+	}
+	lintArgs := append([]string{"--working-dir=" + stage, "require", "--dev", "--no-update"}, drupalLintPackages[:]...)
+	if err := s.runCommand(s.appRoot, "composer", lintArgs...); err != nil {
+		return fmt.Errorf("Drupal CMS scaffold could not require the project-local lint tools: %w", err)
 	}
 	if err := s.runCommand(
 		s.appRoot,
@@ -148,16 +161,13 @@ func stageDrupalCms(s *scaffold, stage string) error {
 			return fmt.Errorf("Drupal CMS scaffold did not stage %s.", path)
 		}
 	}
-	if !executableFile(filepath.Join(stage, "vendor", "bin", "drush")) {
-		return errors.New("Drupal CMS scaffold did not stage vendor/bin/drush.")
-	}
 	if !isDirectory(filepath.Join(stage, "web")) {
 		return errors.New("Drupal CMS scaffold did not stage web/.")
 	}
 	if !isRegularFile(filepath.Join(stage, "recipes", "drupal_cms_starter", "recipe.yml")) {
 		return errors.New("Drupal CMS scaffold did not install the drupal_cms_starter recipe.")
 	}
-	return nil
+	return s.stageDrupalLintFiles(stage)
 }
 
 func verifyCmsCheckout(s *scaffold, stage string, repository string) error {

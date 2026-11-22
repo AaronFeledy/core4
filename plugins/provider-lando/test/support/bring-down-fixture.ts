@@ -1,3 +1,4 @@
+import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
@@ -128,12 +129,7 @@ export const makeFakeApi = () => {
   >();
   const volumes = new Set<string>(plan.stores.map((store) => store.name));
   const volumeLabels = new Map<string, Readonly<Record<string, string>>>(
-    plan.stores.map((store) => [
-      store.name,
-      {
-        "dev.lando.volume-selector": volumeSelector(plan.id, store.kind === "cache" ? "cache" : "data"),
-      },
-    ]),
+    plan.stores.map((store) => [store.name, volumeCreationLabels(plan, store)]),
   );
   const calls: EngineHttpRequest[] = [];
   const api: PodmanApiClient = {
@@ -217,11 +213,18 @@ export const makeFakeApi = () => {
           containers.delete(name);
           return { status: deleted ? 204 : 404, body: "" };
         }
+        if (request.path === "/volumes")
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Volumes: [...volumes].map((Name) => ({ Name, Labels: volumeLabels.get(Name) })),
+            }),
+          };
         if (request.method === "GET" && request.path.startsWith("/volumes/")) {
           const volume = decodeURIComponent(request.path.slice("/volumes/".length).replace(/\/json$/u, ""));
           return {
             status: volumes.has(volume) ? 200 : 404,
-            body: JSON.stringify({ Labels: volumeLabels.get(volume) ?? {} }),
+            body: JSON.stringify({ Name: volume, Labels: volumeLabels.get(volume) ?? {} }),
           };
         }
         if (request.method === "DELETE" && request.path.startsWith("/volumes/")) {

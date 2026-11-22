@@ -1,7 +1,7 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import type { AppId, AppPlan, ProviderId } from "@lando/sdk/schema";
+import type { AppId, AppPlan, AppliedAppPlan, ProviderId } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import { mergeAppliedPlan } from "./plan.ts";
@@ -14,10 +14,10 @@ export interface AppliedPlanCacheOptions {
   readonly load: (
     state: PluginStateStore,
     appId: AppId,
-  ) => Effect.Effect<AppPlan | undefined, ProviderUnavailableError>;
+  ) => Effect.Effect<AppliedAppPlan | undefined, ProviderUnavailableError>;
   readonly persist: (
     state: PluginStateStore,
-    plan: AppPlan,
+    plan: AppliedAppPlan,
   ) => Effect.Effect<unknown, ProviderUnavailableError>;
   readonly remove: (state: PluginStateStore, appId: AppId) => Effect.Effect<void, ProviderUnavailableError>;
 }
@@ -25,16 +25,17 @@ export interface AppliedPlanCacheOptions {
 const LOCK_REMEDIATION = "Retry after the concurrent app operation completes.";
 
 export const makeAppliedPlanCache = (options: AppliedPlanCacheOptions) => {
-  const plans = new Map<AppId, AppPlan>();
+  const plans = new Map<AppId, AppliedAppPlan>();
   const state = options.appliedPlanState;
-  const sanitize = (plan: AppPlan): AppPlan => {
-    const { events: _events, ...applied } = options.sanitizeAppliedPlan?.(plan) ?? plan;
+  const sanitize = (plan: AppliedAppPlan): AppliedAppPlan => {
+    if (options.sanitizeAppliedPlan === undefined) return plan;
+    const { events: _events, ...applied } = options.sanitizeAppliedPlan(plan);
     return applied;
   };
 
   const resolveMutationPlan = (
     appId: AppId,
-  ): Effect.Effect<AppPlan | undefined, ProviderUnavailableError> => {
+  ): Effect.Effect<AppliedAppPlan | undefined, ProviderUnavailableError> => {
     if (state === undefined) return Effect.sync(() => plans.get(appId));
     return options.load(state, appId).pipe(
       Effect.map((loaded) => (loaded === undefined ? undefined : sanitize(loaded))),
@@ -49,7 +50,7 @@ export const makeAppliedPlanCache = (options: AppliedPlanCacheOptions) => {
   };
   // Observation reuses the cached plan (rememberPlan and forgetPlan keep it current);
   // only mutation pays for a fresh strict read, and unreadable state observes as unknown.
-  const resolvePlan = (appId: AppId): Effect.Effect<AppPlan | undefined> => {
+  const resolvePlan = (appId: AppId): Effect.Effect<AppliedAppPlan | undefined> => {
     const cached = plans.get(appId);
     if (cached !== undefined) return Effect.succeed(cached);
     return resolveMutationPlan(appId).pipe(Effect.catch(() => Effect.succeed(undefined)));

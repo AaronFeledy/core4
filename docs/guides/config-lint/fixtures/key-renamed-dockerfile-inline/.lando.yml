@@ -1,0 +1,7 @@
+# lando-lint: expect-invalid key.renamed
+name: diagnostic-reason
+services:
+  web:
+    image: alpine
+    build:
+      dockerfileInline: FROM alpine

@@ -15,6 +15,7 @@ import {
   ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
+import { StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Effect } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
@@ -31,11 +32,8 @@ export const withInventory = async <A>(use: (fixture: ReturnType<typeof fixtureA
 const fixtureAt = (directory: string) => {
   const root = AbsolutePath.make(directory);
   const stateRoot = AbsolutePath.make(join(directory, "plugin-state"));
-  const state = makePluginStateStore(
-    makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
-    stateRoot,
-    ownerOnlyFileAccess,
-  );
+  const stateStore = makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
+  const state = makePluginStateStore(stateStore, stateRoot, ownerOnlyFileAccess);
   const store = makeResourceOwnershipStore("docker", state);
   const plan: AppPlan = {
     valueModel: 1,
@@ -66,11 +64,14 @@ const fixtureAt = (directory: string) => {
           : { status: 200, body: JSON.stringify(observation) };
       }),
   };
-  const cleanup = makeOwnedResourcesCleanup({
+  const clean = makeOwnedResourcesCleanup({
     store,
     api,
+    endpointNamespace: `test:${directory}`,
     ctx: { providerId: "docker", remediation: "Retry cleanup.", env: {} },
   });
+  const cleanup: typeof clean = (root, options) =>
+    clean(root, options).pipe(Effect.provideService(StateStore, stateStore));
   const path = join(stateRoot, "resource-ownership", `${plan.identity?.ownerKey}.json`);
   const network = (appId = plan.id) => ({
     Id: `network-${appId}`,

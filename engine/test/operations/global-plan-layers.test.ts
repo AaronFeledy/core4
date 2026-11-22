@@ -630,7 +630,7 @@ test("authored dependencies repair a contribution's blocked default graph before
     const module = join(root, "router.ts");
     await writeFile(
       module,
-      `export default (await import(${JSON.stringify(Bun.resolveSync("effect", import.meta.dir))})).Effect.succeed({type:"lando",dependsOn:[{service:"diagnostics"}]});`,
+      `export default (await import(${JSON.stringify(Bun.resolveSync("effect", import.meta.dir))})).Effect.succeed({type:"lando",depends_on:[{service:"diagnostics"}]});`,
     );
     setCatalog([
       Schema.decodeUnknownSync(PluginManifest)({
@@ -647,9 +647,9 @@ test("authored dependencies repair a contribution's blocked default graph before
     ]);
     await writeFile(
       join(root, ".lando.dist.yml"),
-      "services:\n  mailpit:\n    type: lando\n    dependsOn: [diagnostics]\n",
+      "services:\n  mailpit:\n    type: lando\n    depends_on: [diagnostics]\n",
     );
-    await writeFile(join(root, ".lando.yml"), "services:\n  mailpit:\n    dependsOn: []\n");
+    await writeFile(join(root, ".lando.yml"), "services:\n  mailpit:\n    depends_on: []\n");
     const loaded = await read();
     if (!loaded.materialized) throw new Error("Expected global Landofile");
     expect(loaded.resolution.entries.find((row) => row.id === "mailpit")).toMatchObject({
@@ -658,7 +658,7 @@ test("authored dependencies repair a contribution's blocked default graph before
       requiredServices: [],
       dependencyEvidence: "resolved",
     });
-    expect(loaded.landofile.document.services?.[ServiceName.make("mailpit")]?.dependsOn).toEqual([]);
+    expect(loaded.landofile.document.services?.[ServiceName.make("mailpit")]?.depends_on).toEqual([]);
   });
 });
 
@@ -668,7 +668,7 @@ test("the composed reader prunes dependents of unsupported contributions while r
       const module = join(root, "router.ts");
       await writeFile(
         module,
-        `export default (await import(${JSON.stringify(Bun.resolveSync("effect", import.meta.dir))})).Effect.succeed({type:"lando",dependsOn:[{service:"diagnostics"}]});`,
+        `export default (await import(${JSON.stringify(Bun.resolveSync("effect", import.meta.dir))})).Effect.succeed({type:"lando",depends_on:[{service:"diagnostics"}]});`,
       );
       setCatalog([
         Schema.decodeUnknownSync(PluginManifest)({
@@ -685,7 +685,7 @@ test("the composed reader prunes dependents of unsupported contributions while r
       ]);
       await writeFile(
         join(root, ".lando.dist.yml"),
-        "services:\n  mailpit:\n    type: lando\n    dependsOn: [diagnostics]\n",
+        "services:\n  mailpit:\n    type: lando\n    depends_on: [diagnostics]\n",
       );
       await writeFile(
         join(root, ".lando.yml"),
@@ -713,7 +713,7 @@ test("the composed reader preserves exact deferred dependency sites for the plan
       [
         "services:",
         "  mailpit:",
-        "    dependsOn:",
+        "    depends_on:",
         '      - "{{ app.name }}"',
         "  global:",
         "    type: lando",
@@ -726,7 +726,7 @@ test("the composed reader preserves exact deferred dependency sites for the plan
     expect(loaded.landofile.pendingSites.map((site) => site.path)).toContainEqual([
       "services",
       "mailpit",
-      "dependsOn",
+      "depends_on",
       0,
       "service",
     ]);
@@ -745,7 +745,7 @@ test("literal missing dependencies still fail before the planner", async () => {
   await withGlobalFiles(async ({ root, read }) => {
     await writeFile(
       join(root, ".lando.yml"),
-      'services:\n  mailpit:\n    dependsOn: ["{{ app.name }}", missing]\n',
+      'services:\n  mailpit:\n    depends_on: ["{{ app.name }}", missing]\n',
     );
     await expect(read()).rejects.toMatchObject({ _tag: "GlobalAppError", operation: "resolution" });
   });

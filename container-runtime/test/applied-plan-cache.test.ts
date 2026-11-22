@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AppId, type AppPlan, type AppliedAppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import { makeAppliedPlanCache } from "../src/applied-plan-cache.ts";
@@ -9,7 +9,7 @@ import { plan as valuePlan, service as valueService } from "./fixtures/environme
 
 const appId = AppId.make("app");
 
-const appPlan = (name: string, services: ReadonlyArray<string>): AppPlan => ({
+const appPlan = (name: string, services: ReadonlyArray<string>): AppliedAppPlan => ({
   ...valuePlan,
   id: appId,
   name,
@@ -77,7 +77,7 @@ describe("applied plan cache", () => {
         extensions: { eventSites: ["stale"], retainedTooling: { task: "cleanup" } },
       };
       const written: AppPlan[] = [];
-      let stored: AppPlan | undefined;
+      let stored: AppliedAppPlan | undefined;
       const cache = makeAppliedPlanCache({
         providerId: desired.provider,
         providerName: "test",
@@ -104,7 +104,7 @@ describe("applied plan cache", () => {
     },
   );
   test("reuses the cached plan for observation and reads fresh state for mutation", async () => {
-    const stored = new Map<AppId, AppPlan>([[appId, appPlan("stored", ["db"])]]);
+    const stored = new Map([[appId, appPlan("stored", ["db"])]]);
     let loads = 0;
     const cache = makeAppliedPlanCache({
       providerId: ProviderId.make("docker"),
@@ -129,7 +129,7 @@ describe("applied plan cache", () => {
   });
 
   test("merges and persists the sanitized plan when it does not name every service", async () => {
-    const stored = new Map<AppId, AppPlan>([[appId, appPlan("stored", ["db"])]]);
+    const stored = new Map([[appId, appPlan("stored", ["db"])]]);
     const persisted: AppPlan[] = [];
     let loads = 0;
     const cache = makeAppliedPlanCache({
@@ -159,7 +159,7 @@ describe("applied plan cache", () => {
   });
 
   test("verifies the previous plan even when the incoming plan is complete", async () => {
-    const stored = new Map<AppId, AppPlan>([[appId, appPlan("stored", ["db"])]]);
+    const stored = new Map([[appId, appPlan("stored", ["db"])]]);
     const persisted: AppPlan[] = [];
     let loads = 0;
     const cache = makeAppliedPlanCache({
@@ -187,7 +187,7 @@ describe("applied plan cache", () => {
   });
 
   test("forgets a plan from the cache and from state", async () => {
-    const stored = new Map<AppId, AppPlan>([[appId, appPlan("stored", ["db"])]]);
+    const stored = new Map([[appId, appPlan("stored", ["db"])]]);
     const removed: AppId[] = [];
     let loads = 0;
     const cache = makeAppliedPlanCache({
@@ -217,7 +217,7 @@ describe("applied plan cache", () => {
   });
 
   test("keeps the cached plan when state removal fails", async () => {
-    let stored: AppPlan | undefined;
+    let stored: AppliedAppPlan | undefined;
     const cache = makeAppliedPlanCache({
       providerId: ProviderId.make("podman"),
       providerName: "provider-podman",

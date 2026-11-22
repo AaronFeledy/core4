@@ -140,13 +140,13 @@ test("friendly aliases replace generic ancestry without stale variable descendan
   // Given a generic map replaced whole by a friendly alias.
   const env = {
     LANDO_CONFIG__APP_LABELS: '{"com.example.owner":"old"}',
-    LANDO_APP_LABELS: '{"new":"value"}',
+    LANDO_SERVICE_DEFAULTS_LABELS: '{"new":"value"}',
   };
   // When applying aliases.
   const overlay = envOverlayWithVariables(env);
   // Then both effective content and provenance belong solely to the friendly alias.
-  expect(overlay.tree.appLabels).toEqual({ new: "value" });
-  expect([...overlay.variables.values()]).toEqual(["LANDO_APP_LABELS"]);
+  expect(overlay.tree).toEqual({ serviceDefaults: { labels: { new: "value" } } });
+  expect([...overlay.variables.values()]).toEqual(["LANDO_SERVICE_DEFAULTS_LABELS"]);
 });
 
 test("replacement clears descendant origins while map merge preserves siblings", () => {

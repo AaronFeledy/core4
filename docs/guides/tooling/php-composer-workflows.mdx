@@ -48,8 +48,17 @@ on the same provider. Lando mounts `lando-cache-composer` at
 `/var/lib/lando/composer-cache` and sets `COMPOSER_CACHE_DIR` to that path unless
 you set it in the service's `environment:`. A custom image or replacement build
 doesn't get this default. The shared cache survives rebuilds and ordinary
-`lando destroy` runs. `lando destroy --purge-caches` can remove it when no other
-container is using it, so other apps may need to download packages again.
+`lando destroy` runs. Apps sharing the cache can run their start hooks and
+image builds at the same time. They may wait for each other while Lando creates
+or starts their containers, not for the rest of the start. See
+[Wait for another command to finish](../cli/everyday-commands.mdx#wait-for-another-command-to-finish).
+
+Run `lando destroy --purge-caches` from any app configured to use the cache,
+even if another app created it. Lando removes the shared cache when no container
+uses it. If another container still uses it, or Lando can't confirm the volume
+is its shared cache, Lando keeps it, says why, and finishes the rest of the
+teardown. After a purge, other apps may need to download packages
+again.
 
 ## Install global tools in the image
 

@@ -163,8 +163,9 @@ export const expressionInterpolationsTouchOnlyScopes = (
 export const expressionScopeMembers = (
   ast: ExpressionTemplate | ExpressionNode,
   scope: string,
+  access: "member" | "direct-property" = "member",
 ): { readonly members: ReadonlySet<string>; readonly analyzable: boolean } => {
-  const { paths, analyzable } = expressionScopeMemberPaths(ast, scope);
+  const { paths, analyzable } = expressionScopeMemberPaths(ast, scope, access);
   return { members: new Set(paths.map(([name]) => name)), analyzable };
 };
 
@@ -187,13 +188,19 @@ export const expressionScopeRoots = (ast: ExpressionTemplate | ExpressionNode): 
 export const expressionScopeMemberPaths = (
   ast: ExpressionTemplate | ExpressionNode,
   scope: string,
+  access: "member" | "direct-property" = "member",
 ): { readonly paths: readonly (readonly [string, string | undefined])[]; readonly analyzable: boolean } => {
   const paths: (readonly [string, string | undefined])[] = [];
   let analyzable = true;
   const visitPath = (head: string, segments: ReadonlyArray<PathSegment>): void => {
     if (head !== scope) return;
-    const first = staticSegment(segments[0]);
-    if (first !== undefined) paths.push([first, staticSegment(segments[1])]);
+    const first = segments[0];
+    if (access === "direct-property" && (segments.length !== 1 || first?.type !== "prop")) {
+      analyzable = false;
+      return;
+    }
+    const member = staticSegment(first);
+    if (member !== undefined) paths.push([member, staticSegment(segments[1])]);
     else analyzable = false;
   };
   const visit = (node: ExpressionNode): void => {

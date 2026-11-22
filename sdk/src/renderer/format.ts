@@ -1,3 +1,6 @@
+import { Schema } from "effect";
+
+import { LockWaitEvent, type LockWaitHolder } from "../events/lock.ts";
 import type { LandoEvent } from "../services/index.ts";
 
 type RenderableEvent = LandoEvent & { readonly _tag: string };
@@ -16,6 +19,7 @@ const isMessageEvent = (event: LandoEvent): boolean =>
 const isPaintBannerEvent = (event: LandoEvent): boolean => event._tag === "paint.banner";
 const isImagePullProgressEvent = (event: LandoEvent): boolean => event._tag === "image-pull-progress";
 const isNotifyDesktopEvent = (event: LandoEvent): boolean => event._tag === "notify.desktop";
+export const isLockWaitEvent = Schema.is(LockWaitEvent);
 const isCodeSnippetEvent = (event: LandoEvent): boolean => event._tag === "code.snippet";
 const isDiffRenderEvent = (event: LandoEvent): boolean => event._tag === "diff.render";
 const isMarkdownBlockEvent = (event: LandoEvent): boolean => event._tag === "markdown.block";
@@ -28,6 +32,7 @@ const isRenderableEvent = (event: LandoEvent): boolean =>
   isPaintBannerEvent(event) ||
   isImagePullProgressEvent(event) ||
   isNotifyDesktopEvent(event) ||
+  isLockWaitEvent(event) ||
   isRichRenderEvent(event);
 
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
@@ -38,6 +43,44 @@ export const formatDurationSuffix = (durationMs: number | undefined): string => 
   if (durationMs < 1000) return ` (${Math.round(durationMs)}ms)`;
   return ` (${(durationMs / 1000).toFixed(1)}s)`;
 };
+
+/** Human duration for waits: 0.4s, 9.5s, 16s, 2m, 2m 5s. */
+export const formatWaitDuration = (ms: number): string => {
+  const seconds = Math.max(0, ms) / 1_000;
+  if (seconds < 10) return `${Math.round(seconds * 10) / 10}s`;
+  const whole = Math.round(seconds);
+  if (whole < 60) return `${whole}s`;
+  const rest = whole % 60;
+  return rest === 0 ? `${Math.floor(whole / 60)}m` : `${Math.floor(whole / 60)}m ${rest}s`;
+};
+
+const lockHolderName = (holder: LockWaitHolder): string => {
+  const command = holder.command ?? "another Lando command";
+  return holder.app === undefined ? command : `${command} in ${holder.app}`;
+};
+
+const lockHolderAge = (holder: LockWaitHolder): string =>
+  `(pid ${holder.pid}, running ${formatWaitDuration(holder.heldMs)})`;
+
+/** `lando start in alpha (pid 691865, running 16s)`. */
+export const formatLockHolder = (holder: LockWaitHolder): string =>
+  `${lockHolderName(holder)} ${lockHolderAge(holder)}`;
+
+/** The phrase after "Waiting for": `lando start in alpha to finish (pid 691865, running 16s)`. */
+export const formatLockWaitPhrase = (
+  wait: Pick<LockWaitEvent, "resource" | "subject" | "holder">,
+): string => {
+  const holder = wait.holder;
+  // Shared holders write no record, and neither does an exclusive holder in its first instant.
+  if (holder === undefined) return `${wait.resource}, which other Lando commands are using`;
+  const action = wait.subject === "app" ? "to finish" : `to release ${wait.resource}`;
+  return `${lockHolderName(holder)} ${action} ${lockHolderAge(holder)}`;
+};
+
+export const formatLockWaitNotice = (event: LockWaitEvent): string =>
+  event.reminder
+    ? `Still waiting for ${formatLockWaitPhrase(event)}; giving up in ${formatWaitDuration(event.remainingMs)}.`
+    : `Waiting for ${formatLockWaitPhrase(event)}.`;
 
 export const formatPlainEvent = (event: RenderableEvent): string | null => {
   switch (event._tag) {
@@ -101,6 +144,10 @@ export const formatPlainEvent = (event: RenderableEvent): string | null => {
     }
     case "paint.banner": {
       return null;
+    }
+    case "lock.wait": {
+      if (!isLockWaitEvent(event)) return null;
+      return `${event.reminder ? "ℹ" : "⚠"} ${formatLockWaitNotice(event)}`;
     }
     case "image-pull-progress": {
       const reference = asString(event.reference) ?? "image";

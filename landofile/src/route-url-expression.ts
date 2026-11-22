@@ -5,13 +5,9 @@ import {
   expressionScopeMembers,
 } from "@lando/sdk/expressions";
 
-/** The only destination for a public route URL: a map-form service environment value. */
-export const isServiceEnvironmentValuePath = (path: readonly (string | number)[]): boolean =>
-  path.length === 4 &&
-  path[0] === "services" &&
-  typeof path[1] === "string" &&
-  path[2] === "environment" &&
-  typeof path[3] === "string";
+import { isServiceEnvironmentValuePath } from "@lando/sdk/landofile/execution-sites";
+
+export { isServiceEnvironmentValuePath };
 
 export const ROUTE_URL_SITE_REMEDIATION =
   "Use {{ service.url }} for the current service or {{ services.<name>.url }} for a named service under services.<svc>.environment.<NAME> in map form, then have the process read $NAME from its environment.";

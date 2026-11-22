@@ -4,9 +4,9 @@ import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { DatabaseConnection, ServiceCreds } from "./database-connection.ts";
 import { Environment } from "./environment-value.ts";
+import { EventsPlan } from "./event-plan.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { FileSyncPolicy } from "./file-sync-policy.ts";
-import { EventsPlan } from "./landofile-events.ts";
 import { ListenerAuthority } from "./listener.ts";
 import { LogSource } from "./log-source.ts";
 import { DataStorePlan, MountPlan } from "./mounts.ts";
@@ -543,8 +543,17 @@ export const AppPlan = Schema.Struct({
 });
 export type AppPlan = typeof AppPlan.Type;
 
+const { events: eventPlanField, ...appliedPlanFields } = AppPlan.fields;
+
+export const AppliedAppPlan = Schema.Struct(appliedPlanFields).annotate({
+  identifier: "AppliedAppPlan",
+  description: "Provider realization without invocation-time event hooks.",
+});
+export type AppliedAppPlan = typeof AppliedAppPlan.Type & { readonly events?: never };
+
 export const CurrentExecutableAppPlan = Schema.Struct({
-  ...AppPlan.fields,
+  ...appliedPlanFields,
+  events: eventPlanField,
   valueModel: Schema.Literal(1).annotate({
     description: "Required current descriptor model marker; never defaulted during decoding.",
   }),

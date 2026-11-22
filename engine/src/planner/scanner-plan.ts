@@ -19,7 +19,7 @@ const overlay = (prior: ScanPlan, layer: ScannerConfig | undefined): ScanPlan =>
     path: layer.path ?? prior.path,
     okCodes: layer.okCodes ?? prior.okCodes,
     retries: layer.retries ?? prior.retries,
-    timeoutMs: layer.timeout ?? prior.timeoutMs,
+    timeoutMs: layer.timeoutMs ?? prior.timeoutMs,
   };
 };
 
