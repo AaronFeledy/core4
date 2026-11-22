@@ -1,5 +1,6 @@
 import type { SchemaAST } from "effect";
 import { SchemaIssue } from "effect";
+import { isLandofileOverride } from "../landofile/merge-directives.ts";
 import { isPlainRecord } from "../landofile/record.ts";
 import {
   PLAIN_TEXT_SLOT_REJECTION,
@@ -11,13 +12,19 @@ import {
 import { isMergeDirectiveMemberAst } from "./landofile-directive.ts";
 import type { ValidationIssuePath } from "./validation-issue.ts";
 
-export const valueAt = (root: unknown, path: ReadonlyArray<PropertyKey>): unknown => {
+export const valueAt = (
+  root: unknown,
+  path: ReadonlyArray<PropertyKey>,
+  unwrapOverrides = false,
+): unknown => {
   let current = root;
   for (const key of path) {
+    while (unwrapOverrides && isLandofileOverride(current)) current = current.value;
     if (Array.isArray(current) && typeof key === "number") current = current[key];
     else if (isPlainRecord(current) && typeof key === "string") current = current[key];
     else return undefined;
   }
+  while (unwrapOverrides && isLandofileOverride(current)) current = current.value;
   return current;
 };
 

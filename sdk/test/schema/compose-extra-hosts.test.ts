@@ -21,6 +21,12 @@ const expected = {
   },
 } as const;
 
+test("uses the colon before an equals sign in the address template", () => {
+  const expression = "{{ app.name == 'demo' ? '::1' : '::2' }}";
+  const decoded = Schema.decodeUnknownSync(ServiceConfig)({ extra_hosts: [`db:${expression}`] });
+  expect(decoded.extra_hosts).toEqual({ db: expression });
+});
+
 for (const options of [{}, { onExcessProperty: "error" }] as const) {
   describe(`Compose extra hosts (${options.onExcessProperty ?? "default"})`, () => {
     test("preserves address order and multiplicity when list hosts repeat", () => {

@@ -214,7 +214,8 @@ const makeFakeApi = () => {
         const image = pulledImageInspect(pulledImages, request);
         if (image !== undefined) return image;
         if (request.path === "/info" && request.method === "GET") return engineInfoResponse();
-        if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
+        if (request.path === "/volumes")
+          return { status: 200, body: JSON.stringify({ Volumes: [...createdVolumes.values()] }) };
         if (request.path === "/volumes/create") {
           const body = Schema.decodeUnknownSync(
             Schema.Struct({ Name: Schema.String, Labels: Schema.Record(Schema.String, Schema.String) }),
@@ -410,7 +411,8 @@ const makeFakeApiWithHooks = () => {
           return { status: 200, body: "[]" };
         }
         if (request.path === "/info" && request.method === "GET") return engineInfoResponse();
-        if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
+        if (request.path === "/volumes")
+          return { status: 200, body: JSON.stringify({ Volumes: [...createdVolumes.values()] }) };
         if (request.path === "/volumes/create") {
           const body = Schema.decodeUnknownSync(
             Schema.Struct({ Name: Schema.String, Labels: Schema.Record(Schema.String, Schema.String) }),

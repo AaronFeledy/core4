@@ -71,7 +71,7 @@ test("invalid ordinary install leaves fresh root and seeded policy untouched", a
       ),
     ).toBe(false);
     expect((await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(f.layer)))).revision).toBe(0);
-  }, 'dependsOn: [{ service: "absent", condition: "service_started", required: true }],');
+  }, 'depends_on: [{ service: "absent", condition: "service_started", required: true }],');
 });
 
 test("a changed authored input rejects prepared publication until explicit fresh preparation", async () => {

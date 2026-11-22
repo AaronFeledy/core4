@@ -157,7 +157,7 @@ test.each(["stdout", "stderr"] as const)(
         await child.stderr.cancel();
         remaining = (async () => {
           const chunks: Uint8Array[] = [];
-          for (;;) {
+          while (true) {
             const next = await reader.read();
             if (next.done) return Buffer.concat(chunks).toString();
             chunks.push(next.value);

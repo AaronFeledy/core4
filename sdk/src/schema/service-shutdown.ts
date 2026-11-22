@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { TaggedErrorJson } from "./machine-output.ts";
 import { AppId, ProviderId, ServiceName } from "./primitives.ts";
+import { OwnedResourcesCleanupResult } from "./resource-ownership.ts";
 import { VolumeRemovalCounts } from "./volume-removal.ts";
 
 // ==== Shutdown observations
@@ -78,6 +79,7 @@ export const DestroyOutcome = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("destroyed").annotate({ description: "The provider destroyed applied resources." }),
     volumesRemoved: VolumeRemovalCounts,
+    skipped: OwnedResourcesCleanupResult.fields.skipped,
     shutdownObservations,
   }),
   Schema.Struct({

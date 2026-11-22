@@ -5,7 +5,7 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
-
+import { LANGUAGE_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   addEnvRecord,
@@ -64,8 +64,10 @@ export const APP_MOUNT_TARGET = "/app";
 const DEFAULT_KEEP_ALIVE = ["tail", "-f", "/dev/null"] as const;
 
 export const makeLanguageRuntime = <V extends string, F extends string>(spec: LanguageRuntimeSpec<V, F>) => {
+  const frameworkFor = (raw: string | undefined) =>
+    spec.frameworks.find((candidate) => candidate === (raw ?? "none"));
   const validateFramework = (raw: string | undefined): F => {
-    const framework = spec.frameworks.find((candidate) => candidate === (raw ?? "none"));
+    const framework = frameworkFor(raw);
     if (framework !== undefined) return framework;
     throw new ServiceConfigIssue(
       ["framework"],
@@ -73,7 +75,6 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
       `Set framework to one of: ${spec.frameworks.join(", ")} (got ${raw}).`,
     );
   };
-
   const validateVersion = (declaredType: string | undefined, fallback: V): V => {
     const prefix = `${spec.language}:`;
     if (declaredType === undefined || !declaredType.startsWith(prefix)) return fallback;
@@ -134,6 +135,11 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     id: `${spec.language}:${version}`,
     name: `${spec.language}:${version}`,
     base: "lando",
+    extraArgsRemediation: LANGUAGE_EXTRA_ARGS_REMEDIATION,
+    plannedPort: (service) => {
+      const framework = frameworkFor(service.framework);
+      return framework === undefined ? undefined : plannedPort(service, spec.presets[framework]);
+    },
     versions: spec.versions,
     artifacts: spec.artifacts,
     identity: rootIdentity(),

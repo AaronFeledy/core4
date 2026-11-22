@@ -65,7 +65,7 @@ describe("node-postgres decomposition", () => {
           environment: { NODE_ENV: "development" },
           volumes: ["./:/app"],
           command: ["node", "/app/server.js"],
-          dependsOn: ["database"],
+          depends_on: ["database"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "postgres" },

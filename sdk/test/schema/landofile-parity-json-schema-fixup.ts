@@ -60,9 +60,22 @@ function collapseRecordAllOf(
 ): JsonSchema.JsonSchema | undefined {
   if (!Predicate.isObject(restSchema) || !Predicate.isObject(restSchema.additionalProperties))
     return undefined;
-  const matchesEveryProperty = Object.values(properties).every(
-    (property) => JSON.stringify(property) === JSON.stringify(restSchema.additionalProperties),
-  );
+  const matchesEveryProperty = Object.values(properties).every((property) => {
+    if (!Predicate.isObject(property)) return false;
+    const { allOf, ...constraints } = property;
+    const annotationOnly =
+      Array.isArray(allOf) &&
+      allOf.every(
+        (entry: unknown) =>
+          Predicate.isObject(entry) &&
+          typeof entry.description === "string" &&
+          Object.keys(entry).length === 1,
+      );
+    return (
+      JSON.stringify(annotationOnly ? constraints : property) ===
+      JSON.stringify(restSchema.additionalProperties)
+    );
+  });
   if (!matchesEveryProperty) return undefined;
   expect(Object.keys(restSchema).sort()).toEqual(["additionalProperties", "type"]);
   expect(restSchema.type).toBe("object");
@@ -121,7 +134,7 @@ function openExtensionRecord(
 ): JsonSchema.JsonSchema {
   const patterns = Object.entries(patternProperties);
   for (const [, value] of patterns) {
-    expect(Predicate.isObject(value)).toBe(true);
+    expect(value === true || Predicate.isObject(value)).toBe(true);
     if (Predicate.isObject(value)) {
       expect(Object.keys(value).filter((key) => !["$id", "title", "description"].includes(key))).toEqual([]);
     }

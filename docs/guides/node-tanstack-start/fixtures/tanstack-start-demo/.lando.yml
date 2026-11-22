@@ -6,7 +6,7 @@ services:
     port: 3000
     environment:
       DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
-    dependsOn:
+    depends_on:
       database:
         condition: service_healthy
   database:

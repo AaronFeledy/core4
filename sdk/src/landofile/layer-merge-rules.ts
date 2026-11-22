@@ -34,7 +34,10 @@ const fieldKey =
   (item: unknown): string | undefined =>
     isPlainRecord(item) ? identityText(item[field]) : undefined;
 const dependencyEntries = (value: unknown): ReadonlyArray<unknown> | undefined => {
-  if (Array.isArray(value)) return value.map((item) => (typeof item === "string" ? { service: item } : item));
+  if (Array.isArray(value)) {
+    if (!value.every((item): item is string => typeof item === "string")) return undefined;
+    return value.map((service) => ({ service }));
+  }
   if (!isPlainRecord(value) || Object.hasOwn(value, "__proto__")) return undefined;
   const projected = [];
   for (const [service, spec] of Object.entries(value)) {

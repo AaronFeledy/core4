@@ -138,7 +138,7 @@ test("committed proof walks authored directives and list env without proving unr
   const document = {
     name: "unrelated-name",
     "x-credentials": { password: "extension-only" },
-    appEnv: { DB_PASSWORD: "global-only" },
+    serviceDefaults: { environment: { DB_PASSWORD: "global-only" } },
     services: {
       db: {
         creds: override({ password: "wordpress" }),

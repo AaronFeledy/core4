@@ -24,7 +24,9 @@ const isBindAddress = (value: string): boolean => {
 };
 
 /** Host IP address used for explicit endpoint publication. */
-export const BindAddress = Schema.String.pipe(
+export const BindAddress = Schema.String.annotate({
+  description: "IPv4 or IPv6 host address to bind a published port to.",
+}).pipe(
   Schema.check(
     Schema.makeFilter(isBindAddress, {
       message: "Expected an IPv4 or IPv6 bind address.",
@@ -35,21 +37,24 @@ export const BindAddress = Schema.String.pipe(
 export type BindAddress = typeof BindAddress.Type;
 
 export const EndpointPublication = Schema.Struct({
-  /** Omitted means the loopback policy default (`127.0.0.1`). */
-  bindAddress: Schema.optionalKey(BindAddress),
-  /** Omitted means the provider assigns a host port during materialization. */
-  hostPort: Schema.optionalKey(PortNumber),
+  bindAddress: Schema.optionalKey(BindAddress).annotateKey({
+    description: "Host IP address for this publication. Omitted means the loopback policy default 127.0.0.1.",
+  }),
+  hostPort: Schema.optionalKey(PortNumber).annotateKey({
+    description:
+      "Host port to publish. Omitted means the provider assigns a host port during materialization.",
+  }),
 });
 export type EndpointPublication = typeof EndpointPublication.Type;
 
 const commonFields = {
-  name: Schema.optionalKey(Schema.String).annotate({ description: "Optional endpoint name." }),
+  name: Schema.optionalKey(Schema.String).annotateKey({ description: "Optional endpoint name." }),
 };
 const applicationProtocolField = {
-  primary: Schema.optionalKey(Schema.Literal(true)).annotate({
+  primary: Schema.optionalKey(Schema.Literal(true)).annotateKey({
     description: "Marks the logical primary network listener, independently of publication count.",
   }),
-  appProtocol: Schema.optionalKey(Schema.String).annotate({
+  appProtocol: Schema.optionalKey(Schema.String).annotateKey({
     description: "Optional application-layer protocol metadata.",
   }),
 };

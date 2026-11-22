@@ -1,6 +1,6 @@
 import { RedactionService } from "@lando/redaction/service";
 import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
-import { identityRedactor } from "@lando/sdk/command-result";
+import { identityRedactor, orDieWithRole } from "@lando/sdk/command-result";
 import { FileIoError, ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
 import { REDACTED, isSecretFieldName } from "@lando/sdk/secrets";
 import {
@@ -9,7 +9,6 @@ import {
   ProcessRunner,
   type ProcessSpawnOptions,
   type ProcessStreamChunk,
-  type ProcessStreamEvent,
 } from "@lando/sdk/services";
 import { Context, Effect, Layer, Stream } from "effect";
 import {
@@ -18,7 +17,8 @@ import {
   captureScopedHostExecutionContext,
 } from "./host-execution-context.ts";
 import { PreparedProcessBinding } from "./prepared-process.ts";
-import { runProcess, streamProcess } from "./process-execution.ts";
+import { openProcessStream, runProcess } from "./process-execution.ts";
+import { prepareProcessSpawn } from "./process-spawn-context.ts";
 import { type RunnerRedactionCarrier, runnerEnvRedaction } from "./runner-redaction.ts";
 import { environmentForRedaction } from "./tooling-input-environment.ts";
 
@@ -154,30 +154,44 @@ const scopedProcessStream = (
       const binding = yield* PreparedProcessBinding;
       const prepared = binding?.request === input ? binding : undefined;
       const captured = prepared?.context ?? (yield* captureScopedHostExecutionContext(snapshot));
-      const controller = yield* Effect.acquireRelease(
-        Effect.sync(() => new AbortController()),
-        (controller) => Effect.sync(() => controller.abort()),
-      );
-      const signal =
-        input.signal === undefined ? controller.signal : AbortSignal.any([input.signal, controller.signal]);
-      const iterator = streamProcess({ ...snapshot, signal }, captured, {
-        includeExitCode,
-        bunCommandEnv: execution.bunCommandEnv,
-        ...(prepared === undefined ? {} : { prepared: prepared.spawn }),
-      });
-      const iterable: AsyncIterable<ProcessStreamEvent> = {
-        [Symbol.asyncIterator]: () => ({
-          next: () => iterator.next(),
-          return: () => {
-            controller.abort();
-            return iterator.return(undefined);
-          },
-        }),
-      };
-      return Stream.fromAsyncIterable(iterable, (cause) =>
+      const onError = (cause: unknown) =>
         cause instanceof ProcessTimeoutError || cause instanceof ProcessExecError
           ? cause
-          : execError(snapshot, cause),
+          : execError(snapshot, cause);
+      return Stream.unwrap(
+        Effect.gen(function* () {
+          const context =
+            prepared?.spawn ??
+            (yield* Effect.acquireRelease(
+              Effect.tryPromise({
+                try: () =>
+                  prepareProcessSpawn(captured, {
+                    bunCommandEnv: execution.bunCommandEnv,
+                    ...(snapshot.signal === undefined ? {} : { signal: snapshot.signal }),
+                  }),
+                catch: onError,
+              }),
+              (context) => Effect.promise(() => context[Symbol.asyncDispose]()),
+            ));
+          const child = yield* Effect.acquireRelease(
+            Effect.try({
+              try: () =>
+                openProcessStream(
+                  { ...snapshot, cwd: context.cwd, env: context.env },
+                  captured.platform,
+                  includeExitCode,
+                ),
+              catch: onError,
+            }),
+            (child) =>
+              Effect.promise(child.close).pipe(
+                Effect.interruptible,
+                Effect.timeout(1500),
+                orDieWithRole("cleanup"),
+              ),
+          );
+          return Stream.fromAsyncIterable(child.iterable, onError);
+        }),
       ).pipe(
         Stream.catch((error) =>
           Stream.fromEffect(

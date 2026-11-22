@@ -26,6 +26,6 @@ services:
     type: "node:22"
     environment:
       OIDC_ISSUER: "{{ services.keycloak.url }}/realms/demo"
-    dependsOn:
+    depends_on:
       keycloak:
         condition: service_healthy

@@ -537,6 +537,8 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("      - name: Native Windows private-file ACL tests");
     expect(staticChecksPlatform).toContain("        if: startsWith(matrix.platform, 'windows-')");
     expect(staticChecksPlatform).toContain("        run: bun run test:selection windows-private-file-access");
+    expect(staticChecksPlatform).toContain("        run: bun run test:selection native-lock");
+    expect(staticChecksPlatform).toContain("      - name: Native advisory lock (two-process)");
     expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform).toContain("      - name: Typecheck\n        run: bun run typecheck\n");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
@@ -718,6 +720,8 @@ describe("ci workflow", () => {
       expect(build).toContain("        run: bun run test:selection compiled-host-execution");
       // Native FFI calling conventions differ per platform, so every build lane round-trips them.
       expect(build).toContain("        run: bun run test:selection compiled-renderer-output");
+      expect(build).toContain("        run: bun run test:selection compiled-native-lock");
+      expect(build).toContain("      - name: Verify compiled two-process native lock");
       expect(build.indexOf(`Build ${target} binary`)).toBeLessThan(
         build.indexOf("Verify compiled host execution"),
       );

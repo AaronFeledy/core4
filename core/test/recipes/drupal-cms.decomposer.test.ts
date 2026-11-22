@@ -32,7 +32,6 @@ const {
   manifest,
 } = bundledRecipe("drupal-cms");
 
-import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
 import { makeRecipeConfigTranslator } from "../../src/recipes/config-translator.ts";
 
 const defaults = { ...drupalCmsDefaults };
@@ -91,7 +90,7 @@ describe("drupal-cms decomposition", () => {
           allowOverride: true,
           uploadDirs: ["sites/*/files"],
           port: 80,
-          dependsOn: ["database"],
+          depends_on: ["database"],
           mounts: [
             { source: `./${DRUPAL_CMS_PHP_INI_PATH}`, target: DRUPAL_CMS_PHP_INI_TARGET, readOnly: true },
           ],
@@ -108,7 +107,7 @@ describe("drupal-cms decomposition", () => {
         drush: {
           service: "appserver",
           description: "Run Drush inside the appserver service.",
-          cmds: [DRUSH_TOOLING_COMMAND],
+          cmd: [":drupal-local", "drush"],
           wrapper: true,
         },
         composer: {
@@ -116,6 +115,24 @@ describe("drupal-cms decomposition", () => {
           description: "Run Composer inside the appserver service.",
           cmds: ["composer"],
           wrapper: true,
+        },
+        phpcs: {
+          service: "appserver",
+          cmd: [":drupal-local", "phpcs"],
+          wrapper: true,
+          description: "Run PHP_CodeSniffer inside the appserver service.",
+        },
+        phpcbf: {
+          service: "appserver",
+          cmd: [":drupal-local", "phpcbf"],
+          wrapper: true,
+          description: "Run phpcbf inside the appserver service.",
+        },
+        phpstan: {
+          service: "appserver",
+          cmd: [":drupal-local", "phpstan"],
+          wrapper: true,
+          description: "Run PHPStan inside the appserver service.",
         },
         "drupal-cms-scaffold": {
           service: "appserver",

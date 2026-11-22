@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { failureOutcomeFromCause, orDieWithRole } from "@lando/sdk/command-result";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { BuildOrchestrator } from "@lando/sdk/services";
@@ -20,7 +21,9 @@ for (const scenario of [
   { name: "direct interrupt", inspect: interrupt, tags: ["Interrupt"], typed: false },
   {
     name: "typed failure with cleanup defect",
-    inspect: Effect.fail(providerError).pipe(Effect.ensuring(Effect.die(defect))),
+    inspect: Effect.fail(providerError).pipe(
+      Effect.ensuring(Effect.die(defect).pipe(orDieWithRole("cleanup"))),
+    ),
     tags: ["Fail", "Die"],
     typed: true,
   },
@@ -53,12 +56,13 @@ for (const scenario of [
       expect(commands).toBe(0);
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isSuccess(exit)) throw new TypeError("inspection unexpectedly recovered");
-      expect(exit.cause.reasons.map((reason) => reason._tag)).toEqual([...scenario.tags]);
-      expect(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).toEqual(
-        scenario.typed ? [providerError] : [],
-      );
-      expect(exit.cause.reasons.filter(Cause.isDieReason).map((reason) => reason.defect)).toEqual(
-        scenario.tags.some((tag) => tag === "Die") ? [defect] : [],
+      const outcome = failureOutcomeFromCause(exit.cause);
+      const hasDefect = scenario.tags.some((tag) => tag === "Die");
+      expect(outcome.kind).toBe(scenario.typed ? "typed" : hasDefect ? "defect" : "none");
+      if (scenario.typed) expect(outcome.error).toBe(providerError);
+      else if (hasDefect) expect(outcome.error).toBe(defect);
+      expect(outcome.additionalErrors).toEqual(
+        scenario.typed && hasDefect ? [{ role: "cleanup", error: defect }] : [],
       );
       expect(exit.cause.reasons.filter(Cause.isInterruptReason).map((reason) => reason.fiberId)).toEqual(
         scenario.tags.some((tag) => tag === "Interrupt") ? [2297] : [],

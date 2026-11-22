@@ -2,6 +2,7 @@ import * as LandoEventService from "@lando/engine/services/event-service";
 import { RedactionService } from "@lando/redaction/service";
 import {
   type CompletedCommandResult,
+  type FailureOutcome,
   failureOutcomeFromCause,
   normalizeDefect,
   redactValueWithPolicy,
@@ -91,16 +92,12 @@ export const withCommandEventService = <A, E, R>(
   );
 
 const failureIdentity = (
-  cause: Cause.Cause<unknown>,
+  failure: FailureOutcome,
 ): Pick<CliCommandErrorEvent, "failureTag" | "additionalFailures"> => {
-  if (Cause.hasInterruptsOnly(cause)) return { failureTag: "Interrupted" };
-  const failure = failureOutcomeFromCause(cause, normalizeDefect);
   const tagOf = (value: unknown): string =>
     typeof value === "object" && value !== null && "_tag" in value && typeof value._tag === "string"
       ? value._tag
-      : cause.reasons.some((reason) => Cause.isDieReason(reason) && reason.defect === value)
-        ? "Defect"
-        : "Failure";
+      : "Failure";
   const additionalFailures = failure.additionalErrors.map(({ error, role }) => ({
     failureTag: tagOf(error),
     role,
@@ -196,13 +193,15 @@ export const runCommandLifecycle: <A, E, R>(
       });
     } else {
       const failure = failureOutcomeFromCause(outcome.cause, normalizeDefect);
+      const interrupted = failure.kind === "none" && Cause.hasInterruptsOnly(outcome.cause);
+      let exitCode = 1;
+      if (interrupted) exitCode = options.interruptionExitCode?.() ?? 1;
+      else if (failure.kind === "typed") exitCode = options.failureExitCode?.(failure.error) ?? 1;
       yield* publishRedacted(CliCommandErrorEvent, {
         _tag: `cli-${options.invocation.commandId}-error`,
         ...terminal,
-        exitCode: Cause.hasInterruptsOnly(outcome.cause)
-          ? (options.interruptionExitCode?.() ?? 1)
-          : (options.failureExitCode?.(failure.error) ?? 1),
-        ...failureIdentity(outcome.cause),
+        exitCode,
+        ...(interrupted ? { failureTag: "Interrupted" } : failureIdentity(failure)),
       });
     }
     return outcome;

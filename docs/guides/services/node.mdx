@@ -164,7 +164,7 @@ services:
     command: node server.mjs
 ```
 
-An authored `environment.PORT` must be a literal integer equal to the planned port. A different or malformed value fails planning at `services.app.environment.PORT`, including values inherited from `appEnv` or env files. Set `port:` instead of overriding `PORT`.
+An authored `environment.PORT` must be a literal integer equal to the planned port. A different or malformed value fails planning at `services.app.environment.PORT`, including values inherited from `serviceDefaults.environment` or env files. Set `port:` instead of overriding `PORT`.
 
 Vite does not read `PORT`. For `port: 5173`, use `vite --host 0.0.0.0 --port 5173` in your npm script, or set the equivalent Vite configuration. Keep that port aligned when you change the Landofile.
 

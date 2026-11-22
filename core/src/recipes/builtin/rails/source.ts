@@ -34,7 +34,7 @@ export const source = {
             "gem install rails --no-document",
           ],
         },
-        dependsOn: ["cache"],
+        depends_on: ["cache"],
         routes: defaultRoutes,
       },
       cache: { type: "redis" },
@@ -66,7 +66,7 @@ export const source = {
       when: '{{ eq(options.database, "postgres") }}',
       config: {
         services: {
-          web: { environment: { DATABASE_URL: postgresUrl }, dependsOn: ["database", "cache"] },
+          web: { environment: { DATABASE_URL: postgresUrl }, depends_on: ["database", "cache"] },
           database: { type: "postgres" },
         },
       },

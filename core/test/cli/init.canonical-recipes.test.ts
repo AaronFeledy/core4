@@ -115,7 +115,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "appserver", type: "php:8.3" },
       { name: "database", type: "mariadb:11.4" },
     ],
-    expectedTooling: ["drush", "composer", "drupal-scaffold"],
+    expectedTooling: ["drush", "composer", "phpcs", "phpcbf", "phpstan", "drupal-scaffold"],
   },
   {
     recipe: "drupal-cms",
@@ -124,7 +124,15 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "appserver", type: "php:8.3" },
       { name: "database", type: "mariadb:11.4" },
     ],
-    expectedTooling: ["drush", "composer", "drupal-cms-scaffold", "drupal-cms-install"],
+    expectedTooling: [
+      "drush",
+      "composer",
+      "phpcs",
+      "phpcbf",
+      "phpstan",
+      "drupal-cms-scaffold",
+      "drupal-cms-install",
+    ],
   },
   {
     recipe: "drupal-contrib",
@@ -347,6 +355,15 @@ describe("lando init — canonical common-stack recipes", () => {
           const actualToolingIds = Object.keys(tooling).sort();
           const expectedToolingIds = [...canonical.expectedTooling].sort();
           expect(actualToolingIds).toEqual(expectedToolingIds);
+          if (["drupal", "drupal-cms", "drupal-contrib"].includes(canonical.recipe)) {
+            for (const tool of ["drush", "phpcs", "phpcbf", "phpstan"]) {
+              expect(tooling[tool]).toMatchObject({
+                service: "appserver",
+                cmd: [":drupal-local", tool],
+                wrapper: true,
+              });
+            }
+          }
         }
       });
     });

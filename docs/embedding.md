@@ -142,7 +142,20 @@ and runtime setup.
 - `cleanup`: releasing resources or bookkeeping.
 - `peer`: a sibling failure.
 
-Interruptions are excluded. Primary-error selection prefers the first unannotated typed failure, then the first unannotated defect, then the first typed failure or defect.
+Interruptions are excluded. Primary-error selection prefers the first unannotated typed failure, then the first unannotated defect, then the first typed failure or defect. A typed failure stays primary when its cleanup or a concurrent sibling also fails, even though Effect then reports it as a defect.
+
+In that case the helper cannot prove from the cause alone that the value is your operation's error type. Pass `isError` to accept it:
+
+```ts
+import { invokeOperation, startApp } from "@lando/core/cli/operations";
+import { ServiceNotReadyError } from "@lando/sdk/errors";
+
+const result = yield* invokeOperation(startApp(), {
+  isError: (error): error is ServiceNotReadyError => error instanceof ServiceNotReadyError,
+});
+```
+
+Without `isError`, such a failure propagates as a defect with the original cause attached.
 
 This matches CLI and MCP projection, but the helper does not serialize or automatically redact the values. Handle them accordingly before displaying or recording them. `renderError` receives only the primary failure. A projected defect or interruption propagates as a defect with the original cause attached instead of returning the result object.
 

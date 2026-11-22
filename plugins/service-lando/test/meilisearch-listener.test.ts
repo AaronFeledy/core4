@@ -69,7 +69,7 @@ test.each(["appEnv", "app-file", "service-file"])("rejects Meilisearch mismatch 
     await Bun.write(file, "MEILI_HTTP_ADDR=0.0.0.0:7702\n");
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "inherited-meili",
-      ...(source === "app-file" ? { env_file: [file] } : {}),
+      ...(source === "app-file" ? { serviceDefaults: { env_file: [file] } } : {}),
       services: {
         search: {
           type: "meilisearch",
@@ -80,7 +80,9 @@ test.each(["appEnv", "app-file", "service-file"])("rejects Meilisearch mismatch 
       },
     });
     const config = Schema.decodeUnknownSync(GlobalConfig)({
-      appEnv: source === "appEnv" ? { MEILI_HTTP_ADDR: "0.0.0.0:7702" } : {},
+      ...(source === "appEnv"
+        ? { serviceDefaults: { environment: { MEILI_HTTP_ADDR: "0.0.0.0:7702" } } }
+        : {}),
     });
     const dependencies = Layer.mergeAll(
       PluginRegistryLayer.layer,

@@ -26,10 +26,10 @@ const contribution = (
   id: string,
   options: Partial<PendingGlobalServiceContribution["contribution"]> = {},
 ): PendingGlobalServiceContribution => ({ plugin: "@example/global", contribution: { id, ...options } });
-const service = (dependsOn: ServiceConfig["dependsOn"] = []): ServiceConfig => ({
+const service = (depends_on: ServiceConfig["depends_on"] = []): ServiceConfig => ({
   type: "compose",
   image: "example:1",
-  dependsOn,
+  depends_on,
 });
 const resolve = (
   contributions: ReadonlyArray<PendingGlobalServiceContribution>,

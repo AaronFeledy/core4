@@ -47,8 +47,13 @@ export interface ListenerContract {
 
 type AuthorityOf<O extends ListenerAuthority["owner"]> = Extract<ListenerAuthority, { readonly owner: O }>;
 
-export const plannedPort = (service: ServiceConfig, listener: ListenerContract): PortNumber =>
+export const plannedPort = (service: Pick<ServiceConfig, "port">, listener: ListenerContract): PortNumber =>
   PortNumber.make(service.port ?? listener.port);
+
+export const primaryPortSelector =
+  (listener: ListenerContract) =>
+  (service: Pick<ServiceConfig, "port">): PortNumber =>
+    plannedPort(service, listener);
 
 /** The application owns the listener; Lando projects the contract's port variables. */
 export const applicationAuthority = (

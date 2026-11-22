@@ -189,9 +189,14 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
       golden: [diagnostic(`${key}: []\n`, "dropped", [key])],
     }),
   ),
+  {
+    pattern: ["env_file"],
+    disposition: "target",
+    owner: "lower-top-level",
+    golden: [output("env_file: [.env]\n", ["serviceDefaults", "env_file"], [".env"])],
+  },
   ...(
     [
-      ["env_file", "[.env]", [".env"]],
       ["volumes", "{data: null}", { data: {} }],
       ["networks", "{net: null}", { net: {} }],
       ["x-vars", "[test]", ["test"]],
@@ -267,7 +272,7 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
       ["webroot", "web", "webroot", "web"],
       ["composer_version", "'2.7.7'", "composer", { version: "2.7.7" }],
       ["composer", "{phpunit/phpunit: '^11'}", "composer", { packages: { "phpunit/phpunit": "^11" } }],
-      ["db_client", "mysql:8.4", "db_client", "mysql:8.4"],
+      ["db_client", "mysql:8.4", "dbClient", "mysql:8.4"],
     ] as const
   ).map(
     ([key, value, target, expected]): DispositionEntry => ({
@@ -467,7 +472,7 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
       output(
         service("type: node:22, scanner: {okCodes: [200], retry: 2, timeout: 1000, path: health}"),
         ["services", "s", "scanner"],
-        { okCodes: [200], retries: 2, timeout: 3000, path: "/health" },
+        { okCodes: [200], retries: 2, timeoutMs: 3000, path: "/health" },
       ),
     ],
   },
@@ -709,7 +714,7 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
     [
       ["image", "'nginx:1.27'", "image", "nginx:1.27"],
       ["primary", "true", "primary", true],
-      ["working_dir", "/tmp", "workingDirectory", "/tmp"],
+      ["working_dir", "/tmp", "working_dir", "/tmp"],
       ["hostnames", "[example.test]", "hostnames", ["example.test"]],
       ["certs", "false", "certs", false],
       ["labels", "{team: dev}", "labels", { team: "dev" }],
@@ -1047,7 +1052,7 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
       golden: [
         output(
           service("api: 4, image: {imagefile: 'FROM nginx', args: {VERSION: bookworm}}"),
-          ["services", "s", "build", key === "args" ? "args" : "dockerfileInline"],
+          ["services", "s", "build", key === "imagefile" ? "dockerfile_inline" : key],
           key === "args" ? { VERSION: "bookworm" } : "FROM nginx",
         ),
       ],

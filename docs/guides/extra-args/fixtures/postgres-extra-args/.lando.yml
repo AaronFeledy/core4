@@ -1,0 +1,13 @@
+name: postgres-extra-args
+services:
+  db:
+    type: postgres
+    port: 5433
+    creds:
+      user: guide_db
+      database: guide_db
+    config:
+      server: ./postgresql.conf
+    extraArgs:
+      - -c
+      - max_connections=77

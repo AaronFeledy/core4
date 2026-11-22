@@ -65,7 +65,7 @@ export const phpAppserver = (framework: string) => ({
   framework,
   webroot: "{{ recipe.webroot }}",
   composer: "{{ recipe.composer }}",
-  dependsOn: ["database"],
+  depends_on: ["database"],
 });
 
 export const drupalOptions = {

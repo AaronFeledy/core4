@@ -25,14 +25,17 @@ URL. The site lives in a named volume at `/app`, and your extension is mounted
 at `/app/web/modules/custom/<project>` (or `themes` / `profiles`). Drupal core
 and `vendor/` stay in that volume, so your repository holds only your extension.
 
-Run tests and linters from the extension root. Paths are relative to where you
-run them, and your `phpcs.xml.dist` and `phpstan.neon.dist` apply:
+Run tests from the extension root. Paths are relative to where you run them:
 
 ```sh
 lando drush status
 lando phpunit tests/src/Unit
-lando phpcs --standard=Drupal,DrupalPractice .
 ```
+
+`lando phpcs`, `lando phpcbf`, and `lando phpstan` read your extension's
+`phpcs.xml.dist` and `phpstan.neon.dist`. Without them, `lando phpcs` checks the
+extension against Drupal and DrupalPractice, and a bare `lando phpstan` analyses
+it at level 0. See [Lint PHP](../../docs/guides/recipes/drupal-contrib-workflow.mdx#lint-php).
 
 The site requires your extension's `require` and `require-dev` entries but
 never installs the extension as a Composer package. Every `lando start` brings

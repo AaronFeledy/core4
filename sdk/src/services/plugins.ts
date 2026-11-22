@@ -14,6 +14,7 @@ import type {
   LogSource,
   PlanMetadata,
   PluginManifest,
+  PortNumber,
   ProviderCapabilities,
   ProviderId,
   ServiceConfig,
@@ -206,6 +207,12 @@ export interface ServiceType {
     connection: DatabaseConnection,
   ) => Readonly<Record<string, ToolingTaskShape>>;
   readonly projectFiles?: (service: ServiceConfig) => ReadonlyArray<ServiceTypeProjectFileDeclaration>;
+  /** User guidance when this configuration has no launcher that accepts extraArgs. */
+  readonly extraArgsRemediation?: string | ((config: ServiceConfig) => string);
+  /** Pure selection of the container port for service.port, independent of endpoint declarations. */
+  readonly plannedPort?: (
+    service: Pick<ServiceConfig, "port" | "framework" | "via" | "type">,
+  ) => PortNumber | undefined;
   readonly schema: Schema.Codec<unknown, unknown>;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
 }

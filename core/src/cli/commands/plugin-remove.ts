@@ -20,6 +20,7 @@ import { resolvePluginsRoot } from "./plugin-roots";
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
 const RESERVED_PLUGIN_ROOT_NAMES = new Set([
   ".lando-plugin-mutation",
+  ".lando-plugin-mutation.lck",
   ".lando-plugin-mutation.lock",
   "node_modules",
   "package.json",

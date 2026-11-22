@@ -33,7 +33,7 @@ const expectRejects = async (promise: Promise<unknown>, pattern: RegExp): Promis
           suggestion: Schema.String,
         }),
       )(error);
-      expect(issue.path).toEqual(["db_client"]);
+      expect(issue.path).toEqual(["dbClient"]);
       expect(`${issue.message} ${issue.suggestion}`).toMatch(pattern);
     },
   );
@@ -70,7 +70,7 @@ describe("MySQL PHP client selection", () => {
 
   test("Given a custom MySQL image and explicit PHP client, when planning, then it preserves both choices", async () => {
     const appPlan = await planMysqlApp({
-      [ServiceName.make("app")]: { type: "php:8.3", db_client: "mysql:9.7" },
+      [ServiceName.make("app")]: { type: "php:8.3", dbClient: "mysql:9.7" },
       [ServiceName.make("db")]: { type: "mysql", image: "example/mysql-custom@sha256:deadbeef", home: false },
     });
     const app = appPlan.services[ServiceName.make("app")];
@@ -91,7 +91,7 @@ describe("MySQL PHP client selection", () => {
       [ServiceName.make("db")]: { type: "mysql", image: "example/mysql-custom@sha256:deadbeef", home: false },
     });
 
-    await expectRejects(planned, /unknown MySQL client compatibility.*db_client/i);
+    await expectRejects(planned, /unknown MySQL client compatibility.*dbClient/i);
   });
 
   test("Given mixed managed MySQL series and PHP auto selection, when planning, then it requires explicit compatibility", async () => {
@@ -101,6 +101,6 @@ describe("MySQL PHP client selection", () => {
       [ServiceName.make("analytics")]: { type: "mysql:9.7" },
     });
 
-    await expectRejects(planned, /mixed MySQL series.*db_client/);
+    await expectRejects(planned, /mixed MySQL series.*dbClient/);
   });
 });

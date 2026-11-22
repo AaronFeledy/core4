@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { AppId, landoNetworkingPlan, planAppIdentity } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
@@ -191,13 +192,7 @@ for (const selection of [
       for (const volume of stores)
         observations.set(`/volumes/${volume.name}`, {
           Name: volume.name,
-          Labels: {
-            "dev.lando.app": plan.id,
-            "dev.lando.volume-owner": root,
-            "dev.lando.volume-selector": `docker:${plan.id}:${plan.identity?.ownerKey}:${volume.kind}`,
-            "dev.lando.scope": volume.scope,
-            "dev.lando.volume-instance": `generation-${volume.name}`,
-          },
+          Labels: volumeCreationLabels(plan, volume),
         });
       // When
       const result = await Effect.runPromise(cleanup(root, selection));

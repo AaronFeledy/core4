@@ -61,7 +61,7 @@ export const capabilityPath = (
     }
     if (error.key === "depends_on.*.restart") {
       const service = resolution.services.find((seed) => seed.name === error.service);
-      const dependency = service?.service.dependsOn?.find((entry) => entry.restart !== undefined);
+      const dependency = service?.service.depends_on?.find((entry) => entry.restart !== undefined);
       return dependency === undefined
         ? [...prefix, "depends_on"]
         : [...prefix, "depends_on", dependency.service, "restart"];

@@ -89,9 +89,13 @@ const config = Schema.Record(Schema.String, LandofileSourceValue).annotate({
 export const RecipeConfigLayer = Schema.Struct({
   when: Schema.optionalKey(
     Schema.String.annotate({
-      description: "Options-only structural condition; omission means unconditional.",
+      description:
+        "Options-only structural condition evaluated by the recipe compiler at compile time; omission means unconditional.",
     }),
-  ),
+  ).annotateKey({
+    description:
+      "Options-only structural condition evaluated by the recipe compiler at compile time; omission means unconditional.",
+  }),
   config,
 }).annotate({ identifier: "RecipeConfigLayer", description: "One ordered authored config contribution." });
 export type RecipeConfigLayer = typeof RecipeConfigLayer.Type;
@@ -119,7 +123,11 @@ export const RecipeSource = Schema.Struct({
   variants: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
-        when: Schema.String.annotate({ description: "Options-only structural condition." }),
+        when: Schema.String.annotate({
+          description: "Options-only structural condition evaluated by the recipe compiler at compile time.",
+        }).annotateKey({
+          description: "Options-only structural condition evaluated by the recipe compiler at compile time.",
+        }),
         config,
       }),
     ).annotate({ description: "Ordered conditional overlays applied after base config." }),

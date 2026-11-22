@@ -1300,3 +1300,110 @@ describe("hostEvents runtime", () => {
 });
 
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
+
+describe("scoped start events", () => {
+  const service = (name: string, primary: boolean) => ({
+    name: ServiceName.make(name),
+    type: "test",
+    provider: ProviderId.make("test"),
+    primary,
+    image: "alpine:3",
+    mounts: [],
+    environment: {},
+    endpoints: [],
+    routes: [],
+    dependsOn: [],
+    hostAliases: [],
+    metadata: eventPlan().metadata,
+    extensions: {},
+  });
+  const twoServicePlan = (
+    landofileEvents: NonNullable<Parameters<typeof compileEffectiveEvents>[0]["landofile"]["events"]>,
+    hostEvents: HostEvents = {},
+  ) =>
+    withEventsPlan(
+      { ...eventPlan(), services: { web: service("web", true), worker: service("worker", false) } },
+      compileEffectiveEvents({
+        landofile: { events: landofileEvents },
+        hostEvents,
+        services: { web: { primary: true }, worker: {} },
+      }),
+    );
+  const runPostStart = (
+    plan: ReturnType<typeof twoServicePlan>,
+    statuses: Readonly<Record<string, "running" | "exited">>,
+    services?: ReadonlyArray<string>,
+  ) => {
+    const invocations: ToolingInvocation[] = [];
+    const inspecting = {
+      ...TestRuntimeProvider,
+      inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) =>
+        Effect.succeed({
+          app: plan.id,
+          service: target.service,
+          providerId: ProviderId.make("test"),
+          publications: { status: "unknown" as const },
+          status: statuses[String(target.service)] ?? ("running" as const),
+        }),
+    };
+    const event = PostStartEvent.make({
+      scope: "app",
+      app: { kind: "user", id: plan.id, root: plan.root },
+      plan,
+      timestamp: DateTime.makeUnsafe("2026-08-16T00:00:00Z"),
+      ...(services === undefined ? {} : { services: services.map((name) => ServiceName.make(name)) }),
+    });
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* runAppEvent(plan, "post-start", event);
+        const notices = yield* events.query("message.info");
+        return { notices: notices.map((notice) => notice.body), invocations };
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            eventRuntime(invocations),
+            Layer.succeed(
+              RuntimeProviderRegistry,
+              RuntimeProviderRegistry.of({
+                appliedPlansFor: () => Effect.succeed([]),
+                resolveAppliedPlan: () => Effect.succeed(undefined),
+                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                list: Effect.succeed([ProviderId.make("test")]),
+                capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                select: () => Effect.succeed(inspecting),
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+  };
+
+  test("skips a project step that targets a stopped service outside the scope", async () => {
+    const plan = twoServicePlan({ "post-start": [{ cmd: "echo worker", service: "worker" }] });
+    const result = await runPostStart(plan, { worker: "exited" }, ["web"]);
+    expect(result.notices).toContain("Skipped events.post-start[0]: service worker is not running.");
+    expect(result.invocations).toHaveLength(0);
+  });
+
+  test.each([
+    ["in the scope", { worker: "exited" }, ["web", "worker"]],
+    ["running outside the scope", { worker: "running" }, ["web"]],
+    ["unscoped", { worker: "exited" }, undefined],
+  ] as const)("runs a project step whose target is %s", async (_case, statuses, services) => {
+    const plan = twoServicePlan({ "post-start": [{ cmd: "echo worker", service: "worker" }] });
+    const result = await runPostStart(plan, statuses, services);
+    expect(result.notices.some((body) => body.startsWith("Skipped"))).toBe(false);
+    expect(result.invocations).toHaveLength(1);
+  });
+
+  test("keeps the host-step location and status for a stopped host step outside the scope", async () => {
+    const plan = twoServicePlan({}, { "post-start": [{ cmd: "echo worker", service: "worker" }] });
+    const result = await runPostStart(plan, { worker: "exited" }, ["web"]);
+    expect(result.notices).toContain(
+      "Skipped config.yml hostEvents.post-start[0]: service worker is exited.",
+    );
+    expect(result.invocations).toHaveLength(0);
+  });
+});

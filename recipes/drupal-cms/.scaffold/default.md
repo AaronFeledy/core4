@@ -33,6 +33,8 @@ lando drush --version
 lando drush user:login --no-browser
 ```
 
+The scaffold also installs Drupal Coder and PHPStan and writes `phpcs.xml.dist` and `phpstan.neon.dist`, so `lando phpcs`, `lando phpcbf`, and `lando phpstan` check your custom modules and themes and skip Drupal CMS's contrib code. See [Lint PHP](https://aaronfeledy.github.io/core4/guides/recipes/drupal-workflow/#lint-php).
+
 `lando drupal-cms-install` prints the admin username and a generated password when it finishes. Then open the site:
 
 ```sh

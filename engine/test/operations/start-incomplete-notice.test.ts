@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -177,6 +177,25 @@ describe("incomplete start notice", () => {
     // Then it confirms nothing changed without telling the user to rerun the refused command.
     expect(notices).toEqual(["Restart did not complete. No app resources changed."]);
   });
+
+  test.each(["start", "restart"] as const)(
+    "%s does not recommend rerunning an invalid service selection",
+    async (verb) => {
+      const refused = Effect.fail(
+        new ServiceNotFoundError({
+          providerId,
+          operation: "selectServices",
+          service: "missing",
+          message: "Service is not defined.",
+          remediation: "Choose one of: web.",
+        }),
+      );
+      const { notices } = await run(refused, { command: { verb, services: ["missing"] } });
+      expect(notices).toEqual([
+        `${verb === "start" ? "Start" : "Restart"} did not complete. No app resources changed.`,
+      ]);
+    },
+  );
 
   test("keeps the rerun advice when the remedy names the same command", async () => {
     // Given a refusal whose remedy itself says to rerun the command that failed.

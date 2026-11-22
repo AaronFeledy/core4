@@ -30,7 +30,7 @@ import {
  * `tmpfs` is intentionally absent: planned tmpfs lives on `ServicePlan.mounts`
  * and is realized by the mount renderers, not the Compose knob registry.
  */
-const PodmanComposeKnobs = Schema.Struct(
+export const PodmanComposeKnobs = Schema.Struct(
   Struct.pick(ServiceConfig.fields, [
     "restart",
     "cap_add",

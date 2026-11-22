@@ -274,7 +274,7 @@ const makeHarness = async (
     const path = join(moduleRoot, `${id}-dependency-service.mjs`);
     await writeFile(
       path,
-      `import { Effect } from "effect"; export default Effect.succeed(${JSON.stringify({ api: 4, type: "lando", home: false, dependsOn: dependencies.map((service) => ({ service, condition: "service_started", required: true })) })});`,
+      `import { Effect } from "effect"; export default Effect.succeed(${JSON.stringify({ api: 4, type: "lando", home: false, depends_on: dependencies.map((service) => ({ service, condition: "service_started", required: true })) })});`,
     );
     dependencyModules.set(id, path);
   }
@@ -1497,7 +1497,7 @@ describe("meta:global command effects", () => {
           await materializeDist(harness);
           await writeFile(
             join(harness.dataRoot, "global", ".lando.yml"),
-            "services:\n  proxy:\n    dependsOn:\n      - service: mail\n        condition: service_completed_successfully\n",
+            "services:\n  proxy:\n    depends_on:\n      mail:\n        condition: service_completed_successfully\n",
           );
           // When the real global operation applies, waits, and decorates its result.
           const rows =
@@ -2408,7 +2408,7 @@ describe("meta:global command effects", () => {
       await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
       await writeFile(
         join(harness.dataRoot, "global", ".lando.yml"),
-        "services:\n  proxy:\n    dependsOn:\n      - service: mail\n        condition: service_started\n        required: true\n",
+        "services:\n  proxy:\n    depends_on:\n      mail:\n        condition: service_started\n        required: true\n",
       );
       const before = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)));
       const exit = await Effect.runPromiseExit(
@@ -2774,7 +2774,7 @@ describe("meta:global command effects", () => {
       const before = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)));
       await writeFile(
         join(harness.dataRoot, "global", ".lando.yml"),
-        "services:\n  mail:\n    dependsOn:\n      - service: proxy\n        condition: service_started\n  proxy:\n    dependsOn:\n      - service: mail\n        condition: service_started\n",
+        "services:\n  mail:\n    depends_on: [proxy]\n  proxy:\n    depends_on: [mail]\n",
       );
       const invalid = await Effect.runPromiseExit(
         globalEnable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
@@ -2863,7 +2863,7 @@ describe("meta:global command effects", () => {
         await materializeDist(harness);
         await writeFile(
           join(harness.dataRoot, "global", ".lando.yml"),
-          "services:\n  proxy:\n    dependsOn: []\n",
+          "services:\n  proxy:\n    depends_on: []\n",
         );
         const preview = await Effect.runPromise(
           globalDisable({ selectors: ["mail"], dryRun: true }).pipe(Effect.provide(harness.layer)),
@@ -2892,7 +2892,7 @@ describe("meta:global command effects", () => {
         await mkdir(join(harness.dataRoot, "global"), { recursive: true });
         await writeFile(
           join(harness.dataRoot, "global", ".lando.yml"),
-          "services:\n  mail:\n    dependsOn: []\n",
+          "services:\n  mail:\n    depends_on: []\n",
         );
         const result = await Effect.runPromise(
           globalEnable({ all: true }).pipe(Effect.provide(harness.layer)),

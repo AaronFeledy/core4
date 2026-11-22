@@ -21,4 +21,8 @@ const destroyLine = (result: DestroyAppResult): string => {
 };
 
 export const renderDestroyAppResult = (result: DestroyAppResult): string =>
-  [destroyLine(result), ...builtImageCleanupLines(result.builtImages)].join("\n");
+  [
+    destroyLine(result),
+    ...builtImageCleanupLines(result.builtImages),
+    ...(result.skipped ?? []).map(({ resource, reason }) => `Kept ${resource}: ${reason}.`),
+  ].join("\n");

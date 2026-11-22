@@ -6,7 +6,7 @@ services:
     framework: wordpress
     port: 80
     allowOverride: true
-    dependsOn:
+    depends_on:
       - database
     routes:
       - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"

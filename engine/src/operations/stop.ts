@@ -133,7 +133,9 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
     validatedTarget.plan.provider,
     yield* TeardownProvider,
   );
-  if (placement.plan !== undefined) {
+  const pending =
+    execution.missingRoot === true ? null : (yield* readDiscardableStart(validatedTarget.app)).pending;
+  if (placement.plan !== undefined && (pending === null || pending.phase === "completed")) {
     const desired = validatedTarget.plan;
     // An applied record never carries Landofile events. A target resolved from its Landofile
     // keeps that Landofile's steps while the record still describes the same app and provider.
@@ -151,8 +153,6 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
   }
   const owningProvider = yield* registry.select(validatedTarget.plan);
   yield* registry.assertAppliedStateReadable?.(validatedTarget.plan) ?? Effect.void;
-  const pending =
-    execution.missingRoot === true ? null : (yield* readDiscardableStart(validatedTarget.app)).pending;
   const runtimeState = (yield* owningProvider.getStatus).state;
   if (runtimeState === "running" && placement.superseded.length > 0) {
     // Preserve cross-provider ambiguity and validate inventories before retirement.
@@ -234,6 +234,7 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
       )
     : withPlanVolumeCoordination({
         plan: validatedTarget.plan,
+        additionalPlans: placement.plan === undefined ? [] : [placement.plan],
         provider,
         stateStore,
         body: Effect.fnUntraced(function* () {

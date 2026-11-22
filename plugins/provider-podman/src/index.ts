@@ -381,6 +381,7 @@ export const podmanCapabilitiesForPlatform = (
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
+    serializesVolumeCopyUp: true,
     volumeSnapshot: "none",
     serviceFileCopy: "native",
     artifactExport: true,
@@ -677,7 +678,7 @@ const assembleRuntimeProvider = (
   if (family === "darwin" || family === "win32") {
     // Resolve eagerly so an invalid LANDO_PODMAN_MACHINE surfaces as a typed
     // ProviderUnavailableError instead of throwing synchronously inside the
-    // Effect.mapError below (which would become a Cause.Die defect).
+    // failure mapping below (which would become a Cause.Die defect).
     try {
       desktopMachineName = resolvePodmanDesktopMachine(effectiveEnv);
     } catch (cause) {
@@ -900,14 +901,20 @@ const assembleRuntimeProvider = (
         const previous = yield* appliedPlans.resolveMutationPlan(target.app);
         const plan = target.plan ?? previous;
         if (plan === undefined) return DESTROY_NO_OP;
-        const { shutdownObservations, volumesRemoved } = yield* bringDown(plan, {
+        const { shutdownObservations, volumesRemoved, skipped } = yield* bringDown(plan, {
           api: podmanApi,
+          endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
           ctx: PODMAN_CTX,
           volumes: destroyOptions.volumes,
           ...(destroyOptions.purgeCaches === undefined ? {} : { purgeCaches: destroyOptions.purgeCaches }),
         });
         yield* forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions);
-        return { kind: "destroyed", volumesRemoved, shutdownObservations };
+        return {
+          kind: "destroyed",
+          volumesRemoved,
+          shutdownObservations,
+          ...(skipped === undefined ? {} : { skipped }),
+        };
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
         appliedPlans
@@ -916,7 +923,10 @@ const assembleRuntimeProvider = (
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(
-          (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
+          (target.plan === undefined
+            ? resolvePlan(target.app)
+            : Effect.succeed<AppPlan | undefined>(target.plan)
+          ).pipe(
             Effect.map((plan) => {
               if (plan !== undefined)
                 return logs(plan, target, logOptions, {

@@ -65,16 +65,18 @@ tooling:
   drush-site1:
     service: appserver
     cmd:
-      - vendor/bin/drush
+      - :php-local
+      - drush
       - --uri=https://site1.lndo.site
   drush-site2:
     service: appserver
     cmd:
-      - vendor/bin/drush
+      - :php-local
+      - drush
       - --uri=https://site2.lndo.site
 ```
 
-Each task supplies its site URI, so you do not need to repeat `--uri`.
+Each task supplies its site URI, so you do not need to repeat `--uri`. `:php-local` runs the project's `vendor/bin/drush` from any directory in the app; see [Resolve PHP commands](../tooling/php-command-resolution.mdx).
 
 ## Install each site
 

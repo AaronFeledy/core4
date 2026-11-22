@@ -7,7 +7,7 @@ import { catalogServiceConfig } from "./_catalog.ts";
 // ============================================================================
 
 export const PhpServiceConfig = catalogServiceConfig({
-  extraKeys: ["webroot", "uploadDirs", "allowOverride", "composer", "via", "xdebug", "db_client", "certs"],
+  extraKeys: ["webroot", "uploadDirs", "allowOverride", "composer", "via", "xdebug", "dbClient", "certs"],
   type: Schema.optionalKey(
     Schema.String.pipe(
       Schema.check(

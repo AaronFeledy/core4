@@ -1,0 +1,7 @@
+# lando-lint: expect-invalid build.unsupported-key
+name: diagnostic-reason
+services:
+  web:
+    image: alpine
+    build:
+      typoBuildKey: FROM alpine

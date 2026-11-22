@@ -6,17 +6,17 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
   ServiceConfigIssue,
   commandHealthcheck,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -78,7 +78,7 @@ const opensearchListener = (service: ServiceConfig): ListenerContract => {
 const applyOpenSearchFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   assertListenerConfig(service, opensearchListener(service));
-  const port = plannedPort(service, OPENSEARCH_LISTENER);
+  const port = selectPort(service);
   const transport = transportPort(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -114,7 +114,7 @@ export const opensearchServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: plannedPort(ctx.normalizedConfig, OPENSEARCH_LISTENER),
+        port: selectPort(ctx.normalizedConfig),
         protocol: "http",
       }),
     ),
@@ -137,10 +137,15 @@ const resolveOpenSearchServiceType: ServiceType["resolve"] = (input) =>
     features: [{ id: OPENSEARCH_FEATURE_ID }],
   });
 
+const selectPort = primaryPortSelector(OPENSEARCH_LISTENER);
+const EXTRA_ARGS_REMEDIATION = IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("OpenSearch environment and config");
+
 export const opensearch2ServiceType: ServiceType = {
   id: "opensearch:2",
   name: "opensearch",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,
@@ -152,6 +157,8 @@ export const opensearchServiceType: ServiceType = {
   id: "opensearch",
   name: "opensearch",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: EXTRA_ARGS_REMEDIATION,
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: IDENTITY,

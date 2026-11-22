@@ -22,7 +22,7 @@ import {
 } from "@lando/container-runtime/testing/volume-archive-fake";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import * as BunFileSystem from "@lando/engine/services/file-system";
-import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { makeTestStateStore, withTestVolumeLocks } from "@lando/engine/testing/state-store";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
@@ -65,7 +65,7 @@ const makeRuntimeProvider = (options: Parameters<typeof runtimeProviderFactory>[
     ...options,
     ...supervisedExecFixtureOptions(options?.dockerApi),
     appliedPlanState: options?.appliedPlanState ?? testPluginState(),
-  });
+  }).pipe(Effect.map(withTestVolumeLocks));
 
 const appId = AppId.make("myapp");
 const textEncoder = new TextEncoder();
@@ -316,6 +316,8 @@ const makeFakeApi = () => {
           networks.set(body.Name, { Id: body.Name, ...body });
           return { status: 201, body: "{}" };
         }
+        if (request.path === "/volumes")
+          return { status: 200, body: JSON.stringify({ Volumes: [...createdVolumes.values()] }) };
         if (request.path === "/volumes/create") {
           const name = (request.body as { Name?: string }).Name ?? "";
           const existed = volumes.has(name);
@@ -875,6 +877,13 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
           networks.delete(decodeURIComponent(request.path.slice("/networks/".length)));
           return { status: 204, body: "" };
         }
+        if (request.path === "/volumes")
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Volumes: [...volumes].map((Name) => ({ Name, Labels: volumeLabels.get(Name) })),
+            }),
+          };
         if (request.path === "/volumes/create") {
           const requested = request.body as { Name?: string; Labels?: Readonly<Record<string, string>> };
           const requestedName = requested.Name ?? "";
@@ -1345,6 +1354,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /exec/lando-myapp--web-exec/start",
       "GET /exec/lando-myapp--web-exec/json",
       "GET /containers/lando-myapp--web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
+      "GET /volumes",
       "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dmyapp%22%5D%7D",
       "GET /containers/lando-myapp--web/json",
       "POST /containers/lando-myapp--web-id/stop",
@@ -1753,8 +1763,8 @@ describe("provider-docker RuntimeProvider contract", () => {
         "dev.lando.scope": "global",
         "dev.lando.storage-kind": "cache",
         "dev.lando.store": "lando-cache-npm",
-        "dev.lando.volume-owner": "/canonical/creation-root",
-        "dev.lando.volume-selector": `docker:${appId}:${appIdentityKey("owner", "/canonical/creation-root")}:cache`,
+        "dev.lando.volume-owner": "/.lando/global-cache",
+        "dev.lando.volume-selector": `docker:@global-cache:${appIdentityKey("owner", "/.lando/global-cache")}:cache:global`,
       },
     });
     expect(
@@ -1870,6 +1880,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /exec/lando-myapp--web-exec/start",
       "GET /exec/lando-myapp--web-exec/json",
       "GET /containers/lando-myapp--web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
+      "GET /volumes",
       "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dmyapp%22%5D%7D",
       "GET /containers/lando-myapp--web/json",
       "POST /containers/lando-myapp--web-id/stop",

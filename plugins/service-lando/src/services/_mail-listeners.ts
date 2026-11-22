@@ -5,7 +5,7 @@ import {
   type ListenerContract,
   assertListenerConfig,
   parseWildcardBind,
-  plannedPort,
+  primaryPortSelector,
 } from "./_port-helpers.ts";
 
 export const MAILPIT_LISTENER: ListenerContract = {
@@ -26,10 +26,13 @@ export const MAILHOG_LISTENER: ListenerContract = {
 const nativeBind = (service: ServiceConfig, variable: string, fallback: string) =>
   parseWildcardBind(service.environment?.[variable] ?? fallback, variable);
 
+export const mailpitPlannedPort = primaryPortSelector(MAILPIT_LISTENER);
+export const mailhogPlannedPort = primaryPortSelector(MAILHOG_LISTENER);
+
 export const resolveMailListeners = (service: ServiceConfig, type: "mailpit" | "mailhog") => {
   const prefix = type === "mailpit" ? "MP" : "MH";
   const listener = type === "mailpit" ? MAILPIT_LISTENER : MAILHOG_LISTENER;
-  const smtpPort = plannedPort(service, listener);
+  const smtpPort = (type === "mailpit" ? mailpitPlannedPort : mailhogPlannedPort)(service);
   const smtpVariable = `${prefix}_SMTP_BIND_ADDR`;
   const smtp = nativeBind(service, smtpVariable, `0.0.0.0:${smtpPort}`);
   const ui = nativeBind(service, `${prefix}_UI_BIND_ADDR`, `0.0.0.0:${MAILPIT_WEB_PORT}`);

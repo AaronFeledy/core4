@@ -371,9 +371,7 @@ describe("@lando/sdk package exports", () => {
     expect(coreSchema.publicSchemaMetadataIndex.find((entry) => entry.id === "DeprecationNotice")).toEqual(
       sdkSchema.publicSchemaMetadataIndex.find((entry) => entry.id === "DeprecationNotice"),
     );
-    expect(coreSchema.renderPublicSchemaReferencePages()).toEqual(
-      sdkSchema.renderPublicSchemaReferencePages(),
-    );
+    expect(coreSchema.renderPublicSchemaReferencePages).toBe(sdkSchema.renderPublicSchemaReferencePages);
   });
 
   test("errors entry point exports the canonical tagged errors", async () => {

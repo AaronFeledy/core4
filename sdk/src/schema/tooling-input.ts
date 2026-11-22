@@ -4,48 +4,60 @@ import { ToolingVarLiteral } from "./primitives.ts";
 
 // ==== Authored input declarations
 export const ToolingFlagShape = Schema.Struct({
-  alias: Schema.optionalKey(Schema.String).annotate({ description: "Optional single-token flag alias." }),
-  choices: Schema.optionalKey(Schema.Array(Schema.String)).annotate({ description: "Allowed flag values." }),
-  boolean: Schema.optionalKey(Schema.Boolean).annotate({
+  alias: Schema.optionalKey(Schema.String).annotateKey({ description: "Optional single-token flag alias." }),
+  choices: Schema.optionalKey(Schema.Array(Schema.String)).annotateKey({
+    description: "Allowed flag values.",
+  }),
+  boolean: Schema.optionalKey(Schema.Boolean).annotateKey({
     description: "Whether the flag is a boolean switch.",
   }),
-  required: Schema.optionalKey(Schema.Boolean).annotate({
+  required: Schema.optionalKey(Schema.Boolean).annotateKey({
     description: "Whether the flag must be supplied.",
   }),
-  sensitive: Schema.optionalKey(Schema.Literal(true)).annotate({
+  sensitive: Schema.optionalKey(Schema.Literal(true)).annotateKey({
     description: "Protect supplied values from observable output; secret-like names are always protected.",
   }),
-  description: Schema.optionalKey(Schema.String),
-  default: Schema.optionalKey(ToolingVarLiteral),
+  description: Schema.optionalKey(Schema.String).annotateKey({
+    description: "Help text shown for this flag.",
+  }),
+  default: Schema.optionalKey(ToolingVarLiteral).annotateKey({
+    description: "Value used when the caller omits this flag.",
+  }),
   deprecated: Schema.optionalKey(DeprecationNotice),
 });
 export type ToolingFlagShape = typeof ToolingFlagShape.Type;
 
 export const ToolingArgShape = Schema.Struct({
-  choices: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+  choices: Schema.optionalKey(Schema.Array(Schema.String)).annotateKey({
     description: "Allowed argument values.",
   }),
   order: Schema.optionalKey(
     Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
-  ).annotate({ description: "Positional declaration order." }),
-  sensitive: Schema.optionalKey(Schema.Literal(true)).annotate({
+  ).annotateKey({ description: "Positional declaration order." }),
+  sensitive: Schema.optionalKey(Schema.Literal(true)).annotateKey({
     description: "Protect supplied values from observable output; secret-like names are always protected.",
   }),
-  description: Schema.optionalKey(Schema.String),
-  required: Schema.optionalKey(Schema.Boolean),
-  default: Schema.optionalKey(ToolingVarLiteral),
+  description: Schema.optionalKey(Schema.String).annotateKey({
+    description: "Help text shown for this positional argument.",
+  }),
+  required: Schema.optionalKey(Schema.Boolean).annotateKey({
+    description: "Whether the caller must supply this positional argument.",
+  }),
+  default: Schema.optionalKey(ToolingVarLiteral).annotateKey({
+    description: "Value used when the caller omits this positional argument.",
+  }),
   deprecated: Schema.optionalKey(DeprecationNotice),
 });
 export type ToolingArgShape = typeof ToolingArgShape.Type;
 
 export const ToolingAuthoredInputFields = {
-  flags: Schema.optionalKey(Schema.Record(Schema.String, ToolingFlagShape)).annotate({
+  flags: Schema.optionalKey(Schema.Record(Schema.String, ToolingFlagShape)).annotateKey({
     description: "Named flags accepted by tooling.",
   }),
-  args: Schema.optionalKey(Schema.Record(Schema.String, ToolingArgShape)).annotate({
+  args: Schema.optionalKey(Schema.Record(Schema.String, ToolingArgShape)).annotateKey({
     description: "Named positional arguments accepted by tooling.",
   }),
-  arguments: Schema.optionalKey(Schema.Literal(false)).annotate({
+  arguments: Schema.optionalKey(Schema.Literal(false)).annotateKey({
     description: "Reject caller-supplied positional arguments.",
   }),
 };

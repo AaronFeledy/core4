@@ -314,7 +314,7 @@ const resolveServiceGraph = (
           id,
           [
             ...new Set(
-              (config.dependsOn ?? [])
+              (config.depends_on ?? [])
                 .filter(
                   (dependency, index) =>
                     dependency.required !== false &&
@@ -323,7 +323,7 @@ const resolveServiceGraph = (
                         site.path.length === 5 &&
                         site.path[0] === "services" &&
                         site.path[1] === id &&
-                        site.path[2] === "dependsOn" &&
+                        site.path[2] === "depends_on" &&
                         site.path[3] === index &&
                         site.path[4] === "service",
                     ),
@@ -467,7 +467,7 @@ export const projectEffectiveGlobalResolution = (
         site.path.length === 5 &&
         site.path[0] === "services" &&
         site.path[1] === row.id &&
-        site.path[2] === "dependsOn" &&
+        site.path[2] === "depends_on" &&
         typeof site.path[3] === "number" &&
         site.path[4] === "service",
     );
@@ -483,7 +483,7 @@ export const projectEffectiveGlobalResolution = (
           ? []
           : [
               ...new Set(
-                (config.dependsOn ?? [])
+                (config.depends_on ?? [])
                   .filter((dependency) => dependency.required !== false)
                   .map((dependency) => String(dependency.service)),
               ),
@@ -608,7 +608,7 @@ export const resolveGlobalServices = Effect.fn("GlobalServices.resolve")(functio
     row.dependencyEvidence = "resolved";
     row.requiredServices = [
       ...new Set(
-        (loaded.success.dependsOn ?? [])
+        (loaded.success.depends_on ?? [])
           .filter((dependency) => dependency.required !== false)
           .map((dependency) => String(dependency.service)),
       ),

@@ -23,9 +23,9 @@ test.each([0, 0o755, 0o770, 0o1770, 0o2770, 0o3770, 0o7777])(
     const canonical = [{ type: "tmpfs", target: "/run/app", readOnly: true, tmpfs: { mode } }] as const;
     const decoded = decodeVolumes(raw);
     expect(decoded).toEqual(canonical);
-    expect(decodeVolumes(decoded)).toEqual(canonical);
-    expect(Schema.encodeSync(ComposeVolumesField)(decoded)).toEqual(raw);
-    expect(decodeVolumes(Schema.encodeSync(ComposeVolumesField)(decoded))).toEqual(canonical);
+    const encoded = Schema.encodeSync(ComposeVolumesField)(decoded);
+    expect(encoded).toEqual([...raw]);
+    expect(decodeVolumes(encoded)).toEqual(canonical);
   },
 );
 
@@ -219,11 +219,11 @@ describe("ComposeVolumesField", () => {
       { type: "volume", source: "v", target: "/x", readOnly: false, createHostPath: false },
     ],
     ["tmpfs/createHostPath", { type: "tmpfs", target: "/x", readOnly: false, createHostPath: false }],
-  ] as const)("rejects canonical %s during decode and encode", (_label, input) => {
-    // Given / When / Then
-    expect(Schema.decodeUnknownResult(ComposeVolumesField)([input])._tag).toBe("Failure");
+  ] as const)("rejects decoded-shape %s under authored excess rejection", (_label, input) => {
+    // Given a runtime Type shape presented as authored input.
+    // When decoded under excess rejection.
+    // Then camelCase runtime fields are not authored Compose input.
     expect(decodeVolumesEither([input])._tag).toBe("Failure");
-    expect(Schema.encodeUnknownResult(ComposeVolumesField)([input])._tag).toBe("Failure");
   });
 
   test.each(rejectedShortCases)("S31 rejects short mode %s", (token, matrixKey) => {
@@ -252,30 +252,29 @@ describe("ComposeVolumesField", () => {
   });
 
   test.each(idempotentVolumeInputs)("is idempotent for %s", (_label, input) => {
-    // Given
+    // Given authored input decoded once, then re-admitted through encode.
     const decoded = decodeVolumes(input);
+    const encoded = Schema.encodeSync(ComposeVolumesField)(decoded);
 
-    // When
-    const decodedAgain = decodeVolumes(decoded);
+    // When the lawful encode form is decoded again under excess rejection.
+    const decodedAgain = decodeVolumes(encoded);
 
-    // Then
+    // Then decode(encode(decode(x))) preserves the runtime value.
     expect(decodedAgain).toEqual(decoded);
-    expect(Schema.decodeUnknownSync(ComposeVolumesField)(decoded)).toEqual(decoded);
   });
 
-  test("rejects a mixed Compose and canonical long-form object", () => {
-    // Given
+  test("rejects a mixed Compose and canonical long-form object under excess rejection", () => {
+    // Given Compose snake_case mixed with a decoded camelCase field.
     const input = [{ type: "bind", source: "./src", target: "/app", read_only: true, createHostPath: false }];
 
-    // When
+    // When decoded with default strip vs strict excess rejection.
     const defaultResult = Schema.decodeUnknownResult(ComposeVolumesField)(input);
     const strictResult = decodeVolumesEither(input);
 
-    // Then
-    for (const result of [defaultResult, strictResult]) {
-      expect(Result.isFailure(result)).toBe(true);
-      if (Result.isFailure(result)) expect(String(result.failure)).toContain("createHostPath");
-    }
+    // Then default admission may strip the foreign key; strict mode rejects it.
+    expect(Result.isSuccess(defaultResult)).toBe(true);
+    expect(Result.isFailure(strictResult)).toBe(true);
+    if (Result.isFailure(strictResult)) expect(String(strictResult.failure)).toContain("createHostPath");
   });
 
   test("encodes every entry as a nested long object and round-trips lawfully", () => {

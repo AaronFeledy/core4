@@ -1,0 +1,3 @@
+<?php
+
+echo "console ran from ", getcwd(), PHP_EOL;

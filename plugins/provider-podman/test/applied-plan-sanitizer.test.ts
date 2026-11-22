@@ -256,7 +256,7 @@ test("an overlaid plan applied through provider-podman is persisted without the 
     expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
   );
   expect(overlaid.services[serviceName]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
-  expect(persisted).toEqual(basePlan);
+  expect<AppPlan | undefined>(persisted).toEqual(basePlan);
 });
 
 test.each(["per-app", "record", "memory"] as const)(
@@ -293,7 +293,7 @@ test.each(["per-app", "record", "memory"] as const)(
         return yield* store.loadAppliedPlan(state, desired.id);
       }).pipe(Effect.provide(AppPlanSanitizerLayer.layer)),
     );
-    expect(projected).toEqual(basePlan);
+    expect<AppPlan | undefined>(projected).toEqual(basePlan);
     expect(desired.events?.["pre-stop"]).toHaveLength(1);
     expect(desired.extensions["@lando/core/invocation-authority"]).toMatchObject({
       sites: expect.arrayContaining([

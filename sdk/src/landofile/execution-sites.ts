@@ -1,4 +1,6 @@
 import { SchemaAST as AST, Schema } from "effect";
+import type { ExpressionTemplate } from "../expressions/ast.ts";
+import { expressionScopeMembers } from "../expressions/scopes.ts";
 import { ExecutionSite, getExecutionSite } from "../schema/execution-site.ts";
 import { LandofileShape } from "../schema/landofile.ts";
 import { ValidationIssuePath } from "../schema/validation-issue.ts";
@@ -40,7 +42,6 @@ const branches = (candidate: Candidate, index: number): ReadonlyArray<Candidate>
   }
 };
 
-/** Resolve an authored string site; callers reach this only for values that hold a secret reference outside a binding site. */
 export const executionSiteAt = (path: ReadonlyArray<string | number>): ExecutionSiteMatch | undefined => {
   let candidates = branches({ ast: LandofileShape.ast, match: undefined }, -1);
   for (const [index, key] of path.entries()) {
@@ -58,4 +59,38 @@ export const executionSiteAt = (path: ReadonlyArray<string | number>): Execution
   )
     return undefined;
   return { site: match.site, relativePath: path.slice(match.index + 1) };
+};
+
+export const isServiceEnvironmentValuePath = (path: readonly (string | number)[]): boolean =>
+  path.length === 4 &&
+  path[0] === "services" &&
+  typeof path[1] === "string" &&
+  path[2] === "environment" &&
+  typeof path[3] === "string";
+
+export const servicePortExpression = (template: ExpressionTemplate, path: ReadonlyArray<string | number>) => {
+  if (isServiceEnvironmentValuePath(path)) {
+    const self = expressionScopeMembers(template, "service");
+    if ((self.members.has("url") && self.members.size === 1) || (!self.analyzable && self.members.size === 0))
+      return "url";
+  }
+  const self = expressionScopeMembers(template, "service", "direct-property");
+  if (!self.analyzable) return "unsupported-member";
+  if (self.members.size === 0) return "absent";
+  if (self.members.size !== 1 || !self.members.has("port")) return "unsupported-member";
+  if (path[0] !== "services") return "unsupported-site";
+  const match = executionSiteAt(path);
+  if (
+    match?.site === "service-command" ||
+    match?.site === "service-entrypoint" ||
+    match?.site === "service-extra-args"
+  )
+    return "supported";
+  if (match?.site !== "healthcheck") return "unsupported-site";
+  const [field, index] = match.relativePath;
+  // Compose reserves the first test element for its probe mode marker.
+  if (field === "test") return index === 0 ? "unsupported-site" : "supported";
+  return field === undefined || typeof field === "number" || field === "command"
+    ? "supported"
+    : "unsupported-site";
 };

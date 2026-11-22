@@ -18,6 +18,7 @@ export interface ParseExpressionOptions {
   readonly line?: number;
   readonly column?: number;
   readonly bareShellParameters?: "evaluate" | "preserve";
+  readonly literalSeparator?: { readonly characters: string; readonly onMatch: (offset: number) => void };
 }
 
 interface Position {
@@ -714,7 +715,8 @@ class TemplateParser {
     this.cursor = new SourceCursor(context.source);
   }
 
-  parse(): ExpressionTemplate {
+  parse(literalSeparator?: ParseExpressionOptions["literalSeparator"]): ExpressionTemplate {
+    let separator = literalSeparator;
     while (!this.cursor.isDone()) {
       if (this.cursor.startsWith("{{{{")) {
         this.literal += "{{";
@@ -743,6 +745,13 @@ class TemplateParser {
         continue;
       }
 
+      if (separator !== undefined) {
+        const character = this.cursor.current();
+        if (character !== undefined && separator.characters.includes(character)) {
+          separator.onMatch(this.cursor.offset());
+          separator = undefined;
+        }
+      }
       this.literal += this.cursor.advance(1);
     }
 
@@ -941,7 +950,7 @@ const parseExpressionSync = (source: string, options: ParseExpressionOptions): E
     column: options.column,
     bareShellParameters: options.bareShellParameters ?? "evaluate",
     source,
-  }).parse();
+  }).parse(options.literalSeparator);
 
 export const parseExpression = (
   source: string,

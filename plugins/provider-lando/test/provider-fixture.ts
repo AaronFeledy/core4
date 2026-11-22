@@ -2,9 +2,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fixtureHelperOptionsFor } from "@lando/container-runtime/testing/exec-supervision";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
-import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { makeTestStateStore, withTestVolumeLocks } from "@lando/engine/testing/state-store";
 import { bringUp as apply, makeRuntimeProvider as factory, layer } from "@lando/provider-lando";
 import { AbsolutePath } from "@lando/sdk/schema";
+import { RuntimeProvider } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const state = () =>
@@ -18,12 +20,16 @@ export const makeRuntimeProvider = (options: NonNullable<Parameters<typeof facto
     ...fixtureHelperOptionsFor(options.podmanApi),
     ...options,
     appliedPlanState: options.appliedPlanState ?? state(),
-  });
+  }).pipe(Effect.map(withTestVolumeLocks));
 export const makeProviderLayer = (options: NonNullable<Parameters<typeof layer>[0]>) =>
-  layer({
-    ...fixtureHelperOptionsFor(options.podmanApi),
-    ...options,
-    appliedPlanState: options.appliedPlanState ?? state(),
-  });
+  Layer.effect(RuntimeProvider, Effect.map(RuntimeProvider, withTestVolumeLocks)).pipe(
+    Layer.provide(
+      layer({
+        ...fixtureHelperOptionsFor(options.podmanApi),
+        ...options,
+        appliedPlanState: options.appliedPlanState ?? state(),
+      }),
+    ),
+  );
 export const bringUp: typeof apply = (plan, options) =>
   apply(plan, { ...fixtureHelperOptionsFor(options.api), ...options });

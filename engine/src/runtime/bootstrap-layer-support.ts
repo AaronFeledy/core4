@@ -54,6 +54,7 @@ const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
   bindMountPerformance: "none",
   copyMounts: false,
   copyOnWriteAppRoot: false,
+  serializesVolumeCopyUp: false,
   volumeSnapshot: "none",
   volumeArchive: false,
   serviceFileCopy: "none",

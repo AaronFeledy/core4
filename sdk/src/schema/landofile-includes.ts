@@ -1,17 +1,20 @@
 import { Schema } from "effect";
 import { ToolingVarLiteral } from "./primitives.ts";
 
-const IncludeWhen = Schema.Union([Schema.Boolean, Schema.String]).annotate({
-  description:
-    "Boolean or whole-value {{ ... }} expression over recipe and env that must resolve to a boolean. False skips the include before acquisition; includes update and verify ignore this condition.",
-});
+const INCLUDE_WHEN_DESCRIPTION =
+  "Boolean or whole-value {{ ... }} expression over recipe and env, checked at Landofile load time. False skips the include before acquisition; includes update and verify ignore this condition.";
+
+const IncludeWhen = Schema.Union([
+  Schema.Boolean.annotate({ description: INCLUDE_WHEN_DESCRIPTION }),
+  Schema.String.annotate({ description: INCLUDE_WHEN_DESCRIPTION }),
+]).annotate({ description: INCLUDE_WHEN_DESCRIPTION });
 
 export const ToolingIncludeShape = Schema.Struct({
   file: Schema.String.annotate({
     description:
       "Path to the tooling fragment, resolved relative to the file that declares the include and contained under the app root.",
   }),
-  when: Schema.optionalKey(IncludeWhen),
+  when: Schema.optionalKey(IncludeWhen).annotateKey({ description: INCLUDE_WHEN_DESCRIPTION }),
   optional: Schema.optionalKey(Schema.Boolean).annotate({
     description: "When true, a missing fragment file is skipped instead of failing the load.",
   }),
@@ -36,14 +39,20 @@ export type ToolingIncludeShape = typeof ToolingIncludeShape.Type;
 export const IncludeEntry = Schema.Union([
   Schema.String,
   Schema.Struct({
-    source: Schema.String,
-    when: Schema.optionalKey(IncludeWhen),
+    source: Schema.String.annotateKey({
+      description: "Local fragment path or remote source specifier to resolve during Landofile loading.",
+    }),
+    when: Schema.optionalKey(IncludeWhen).annotateKey({ description: INCLUDE_WHEN_DESCRIPTION }),
     kind: Schema.optionalKey(Schema.Literals(["landofile", "compose", "tooling"])).annotate({
       description:
         'The fragment content semantics: "landofile" is a Landofile fragment; "compose" is a Compose fragment routed through the same parser, rejection, and decode path; "tooling" is a tooling fragment carrying only tooling: and toolingIncludes:. This is not source transport.',
     }),
-    path: Schema.optionalKey(Schema.String),
-    version: Schema.optionalKey(Schema.String),
+    path: Schema.optionalKey(Schema.String).annotateKey({
+      description: "Path to the fragment within the acquired remote source.",
+    }),
+    version: Schema.optionalKey(Schema.String).annotateKey({
+      description: "Version selector for the remote source, resolved when updating include pins.",
+    }),
     namespace: Schema.optionalKey(Schema.String).annotate({
       description:
         'kind: "tooling" only: the sub-namespace included tasks register under. Required unless flatten is true.',

@@ -129,7 +129,12 @@ services:
 ```
 
 Run `lando start`, then `lando info` to inspect the service. The image keeps its
-own entrypoint. Shell build hooks and CA trust-store installation still require
+own entrypoint unless you override it. If you write a `command:` that takes a
+listen port, set `port:` and pass [`{{ service.port }}`](../landofile/expressions.mdx#your-services-own-port)
+as the value for your daemon's port flag. On `type: lando` and `type: compose`,
+`port:` alone does not open or publish a port, add a route, or create a probe.
+
+Shell build hooks and CA trust-store installation still require
 the corresponding tools inside the image; leave them unconfigured for a
 shell-less image. If your host injects custom CAs, set
 `security.inheritNetworkCa: false` on that service. Use `type: compose` to skip
@@ -139,7 +144,7 @@ the Lando feature stack entirely.
   <Scenario id="paste-compose-service" layer="e2e" tags={["@smoke"]} render>
     <Step name="load-compose-service">
       <UseFixture name="compose-service-block-demo" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"extra_hosts\":\\s*\\{[^}]*\"internal\\.test\":\\s*\"127\\.0\\.0\\.1\"[^}]*\\}.*\"published\":\\s*8080.*\"dependsOn\":\\s*\\{.*\"condition\":\\s*\"service_started\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"extra_hosts\":\\s*\\{[^}]*\"internal\\.test\":\\s*\"127\\.0\\.0\\.1\"[^}]*\\}.*\"published\":\\s*8080.*\"depends_on\":\\s*\\{.*\"condition\":\\s*\"service_started\"" } }} />
     </Step>
     <Step name="start-compose-services">
       <Run command="lando start" />

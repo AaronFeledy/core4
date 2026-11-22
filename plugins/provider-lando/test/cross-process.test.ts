@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { access, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { volumeSelectorValue } from "@lando/container-runtime/podman/volume-prune";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
   HOST_PROXY_CONTAINER_LANDO,
@@ -24,7 +24,6 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
-  appIdentityKey,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
@@ -38,8 +37,6 @@ const providerId = ProviderId.make("lando");
 const appId = AppId.make("crossprocessapp");
 const appRoot = AbsolutePath.make("/tmp/lando-crossprocess-app");
 /** The selector the writer produces for this fixture root, derived the way production derives it. */
-const volumeSelector = (id: string, volumeClass: "cache" | "data"): string =>
-  volumeSelectorValue({ providerId, appId: id, ownerKey: appIdentityKey("owner", appRoot), volumeClass });
 
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
@@ -218,9 +215,7 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
   const volumeLabels = new Map<string, Readonly<Record<string, string>>>(
     plan.stores.map((store): readonly [string, Readonly<Record<string, string>>] => [
       store.name,
-      {
-        "dev.lando.volume-selector": volumeSelector(plan.id, store.kind === "cache" ? "cache" : "data"),
-      },
+      volumeCreationLabels(plan, store),
     ]),
   );
   const calls: EngineHttpRequest[] = [];
@@ -231,6 +226,7 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
+        if (request.path === "/info") return { status: 200, body: '{"ID":"test-daemon"}' };
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const reference = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
         const name = Array.from(existing).find((name) => `${name}-id` === reference) ?? reference;
@@ -273,6 +269,13 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
           if (!existed && body.Labels !== undefined) volumeLabels.set(requested, body.Labels);
           return { status: existed ? 409 : 201, body: "{}" };
         }
+        if (request.path === "/volumes")
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Volumes: [...volumes].map((Name) => ({ Name, Labels: volumeLabels.get(Name) })),
+            }),
+          };
         if (request.method === "POST" && request.path.startsWith("/libpod/volumes/prune")) {
           return { status: 200, body: "[]" };
         }
@@ -331,7 +334,7 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
           const volume = decodeURIComponent(request.path.slice("/volumes/".length));
           return {
             status: volumes.has(volume) ? 200 : 404,
-            body: JSON.stringify({ Labels: volumeLabels.get(volume) ?? {} }),
+            body: JSON.stringify({ Name: volume, Labels: volumeLabels.get(volume) ?? {} }),
           };
         }
         if (request.method === "DELETE" && request.path.startsWith("/volumes/")) {

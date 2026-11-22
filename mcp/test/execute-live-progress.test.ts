@@ -59,12 +59,22 @@ describe("nested MCP stream drain lifecycle", () => {
     // Then drain defects share the command Exit rather than escaping transport dispatch.
     expect(order).toEqual(["producer", "flush"]);
     expect(captured !== undefined && Exit.isFailure(captured) && Cause.hasDies(captured.cause)).toBe(true);
-    expect(outcome).toEqual({ _tag: "failure", error: normalizeDefect(defect), additionalErrors: [] });
+    expect<unknown>(outcome).toEqual({
+      _tag: "failure",
+      kind: "defect",
+      error: normalizeDefect(defect),
+      additionalErrors: [],
+    });
   });
 
   test("keeps producer typed failures primary when draining also defects", async () => {
     // Given a typed command failure and a failing final drain.
-    const primary = { _tag: "ExecError", message: "execution failed" };
+    const primary = {
+      _tag: "ExecError",
+      message: "execution failed",
+      remediation: "Repair the command.",
+      code: "exec-failed",
+    };
     const secondary = new Error("flush defect");
     const execute = makeNestedExecute(
       Context.makeUnsafe<unknown>(Context.make(RuntimeCwd, "/captured-app").mapUnsafe),
@@ -96,10 +106,12 @@ describe("nested MCP stream drain lifecycle", () => {
       ),
     );
     // Then neither failure is dropped or promoted above the typed primary.
-    expect(outcome).toEqual({
+    expect<unknown>(outcome).toEqual({
       _tag: "failure",
+      kind: "typed",
+      source: "elected",
       error: primary,
-      additionalErrors: [{ role: "peer", error: normalizeDefect(secondary) }],
+      additionalErrors: [{ role: "cleanup", error: normalizeDefect(secondary) }],
     });
   });
 });

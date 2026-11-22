@@ -2,7 +2,7 @@ import { type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/sc
 
 export const applyAuthoredDependencies = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authoredDependencies = new Map(
-    (service.dependsOn ?? []).map((dependency) => [
+    (service.depends_on ?? []).map((dependency) => [
       dependency.service,
       {
         service: ServiceName.make(dependency.service),

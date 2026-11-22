@@ -25,8 +25,8 @@ export const landoAppMountFeature: ServiceFeatureDefinition = {
     if (config.target === undefined) return;
     const authored = ctx.normalizedConfig.appMount;
     if (authored === false) {
-      if (ctx.base === "lando" && ctx.normalizedConfig.workingDirectory !== undefined) {
-        ctx.setWorkingDirectory(PortablePath.make(ctx.normalizedConfig.workingDirectory));
+      if (ctx.base === "lando" && ctx.normalizedConfig.working_dir !== undefined) {
+        ctx.setWorkingDirectory(PortablePath.make(ctx.normalizedConfig.working_dir));
       }
       return;
     }
@@ -48,7 +48,7 @@ export const landoAppMountFeature: ServiceFeatureDefinition = {
       ctx.addEnv("LANDO_APP_ROOT", target);
       ctx.addEnv("LANDO_PROJECT_MOUNT", target);
       ctx.setWorkingDirectory(
-        PortablePath.make(ctx.normalizedConfig.workingDirectory ?? config.workingDirectory ?? target),
+        PortablePath.make(ctx.normalizedConfig.working_dir ?? config.workingDirectory ?? target),
       );
     }
   }),

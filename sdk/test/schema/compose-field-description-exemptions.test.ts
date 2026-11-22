@@ -7,9 +7,9 @@ import { getJsonSchema, validatePublicSchemaAnnotations } from "../../src/schema
 
 const COMPOSE_WAVE_FIELDS = [
   "build",
-  "dependsOn",
+  "depends_on",
   "environment",
-  "envFile",
+  "env_file",
   "expose",
   "healthcheck",
   "labels",

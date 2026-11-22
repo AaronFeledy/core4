@@ -36,6 +36,7 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | `@lando/core/services` | Public service tags from §3.4, including registries, planning, lifecycle, IO, rendering, interaction, redaction, telemetry, diagnostics, tunnel, and MCP services plus §4.2 pluggable tags. |
 | `@lando/core/paths` | `resolveLandoRoots`, `makeLandoPaths`, `normalizeHostPlatform`, `LandoRoots`, `LandoPaths`, and `RootOverrides` (§7.5.1). |
 | `@lando/core/schema` | Published schemas from §7.8. |
+| `@lando/sdk/schema/standard` | Standard Schema V1 and Standard JSON Schema V1 views; both supported JSON Schema input drafts share the authoring projection (§7.8). |
 | `@lando/core/landofile` | `emitLandofileYaml`, `emitLandofileYamlEither`, `parseLandofile`, and `LandofileEmitError` (§7.8.1). |
 | `@lando/core/secrets` | Everything `@lando/sdk/secrets` exports, including `createRedactor` (whose `Redactor` carries `redactString`, `redactPrefix`, and `redactValue`), `createSecretRedactor`, `createPayloadRedactor`, `redactValueWith`, `redactSecretField`, `findOpenSecretConstruct`, `maskOpenSecretConstruct`, `RedactionProfile`, the canonical pattern catalog, `REDACTED`, the secret-name recognizers (`isSecretFieldName`, `isSecretEnvName`, `isSecretStructuralName`), and the published default credentials (`DEFAULT_PASSWORD`, `MINIO_DEFAULT_PASSWORD`, `MSSQL_DEFAULT_PASSWORD`, `PUBLIC_DEFAULT_CREDENTIALS`, `isPublicDefaultCredential`) (§3.7). |
 | `@lando/core/errors` | Published tagged errors. |
@@ -145,7 +146,7 @@ App lifecycle hosts SHOULD use `App` methods. `@lando/core/cli` is the stable co
 
 `meta:setup`, `apps:init`, `meta:events:follow`, `meta:shellenv`, and `meta:uninstall` are not exported as command functions. Hosts compose their underlying services, provide `InteractionService` for init, subscribe to `EventService`, or keep installation concerns outside the runtime as applicable.
 
-The optional `invokeOperation` helper from `@lando/core/cli/operations` returns `{ ok: false, error, additionalErrors }` when §8.11.1's annotation-based projection selects a typed primary failure. `additionalErrors` is always present, possibly empty, with `{ role, error }` entries. These values remain host-owned, without serialization or automatic redaction; `renderError` receives only the primary failure. Projected defects and interruption-only causes propagate as defects with the original Cause attached.
+The optional `invokeOperation` helper from `@lando/core/cli/operations` returns `{ ok: false, error, additionalErrors }` when §8.11.1's annotation-based projection selects a typed primary failure. `additionalErrors` is always present, possibly empty, with `{ role, error }` entries. These values remain host-owned, without serialization or automatic redaction; `renderError` receives only the primary failure. An elected typed primary (§8.11.1), which the runtime turned into a defect because cleanup or a sibling also failed, is returned only when the caller's optional `isError` guard accepts it, so `error` and `renderError` never receive an unproven value. Projected defects and unaccepted elected primaries propagate as defects with the original Cause attached; interruption-only causes stay interruptions.
 
 ### 16.8 Testing
 

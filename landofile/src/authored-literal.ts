@@ -83,7 +83,9 @@ export const authoredLiteralAt = (
 };
 
 const isEnvMap = (path: ValidationIssuePath): boolean =>
-  (path.length === 1 && (path[0] === "appEnv" || path[0] === "appLabels")) ||
+  (path.length === 2 &&
+    path[0] === "serviceDefaults" &&
+    (path[1] === "environment" || path[1] === "labels")) ||
   (path.length === 2 && path[0] === "toolingDefaults" && path[1] === "env") ||
   (path.length === 3 && path[0] === "tooling" && path[2] === "env") ||
   (path.length === 5 && path[0] === "tooling" && path[2] === "cmds" && path[4] === "env") ||
@@ -130,7 +132,7 @@ export const committedSensitiveLiterals = (
   const values = new Set<string>();
   for (const { path, value } of sensitiveLandofileOccurrences(document)) {
     if (
-      !(isEnvMap(path.slice(0, -1)) && !["appEnv", "appLabels", "hostEvents"].includes(String(path[0]))) &&
+      !(isEnvMap(path.slice(0, -1)) && !["serviceDefaults", "hostEvents"].includes(String(path[0]))) &&
       !(path[0] === "services" && path.length === 4 && path[2] === "creds")
     )
       continue;

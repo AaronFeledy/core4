@@ -37,7 +37,7 @@ export const collectPrivateText = async (
   if (stop?.aborted) cancel();
   else stop?.addEventListener("abort", cancel, { once: true });
   try {
-    for (;;) {
+    while (true) {
       const next = await reader.read();
       if (next.done) break;
       append(next.value);

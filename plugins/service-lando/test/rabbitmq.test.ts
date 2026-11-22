@@ -208,7 +208,7 @@ describe("rabbitmq ServiceType", () => {
           },
           command: ["rabbitmq-server"],
           entrypoint: ["/bin/sh", "-c"],
-          workingDirectory: "/var/lib/rabbitmq",
+          working_dir: "/var/lib/rabbitmq",
           user: "1000:1000",
         });
 
