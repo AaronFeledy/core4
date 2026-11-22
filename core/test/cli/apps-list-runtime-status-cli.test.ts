@@ -241,7 +241,7 @@ test.skipIf(process.platform === "win32")(
 );
 
 test.skipIf(process.platform === "win32")(
-  "source CLI shows pre-upgrade unlabeled running app active and omits peer labeled containers",
+  "source CLI keeps the legacy record but does not credit unreceipted or peer runtime observations",
   async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-list-cli-pre-upgrade-"));
     const paths = makeLandoPaths({
@@ -314,8 +314,9 @@ test.skipIf(process.platform === "win32")(
       const envelope = Schema.decodeUnknownSync(
         Schema.fromJsonString(Schema.Struct({ result: AppsListResultSchema })),
       )(listed.stdout);
-      expect(envelope.result.apps).toMatchObject([{ appId: "legacy", status: "active", appRoot }]);
-      expect(envelope.result.apps.map((app) => app.appId)).not.toContain("peer");
+      expect(envelope.result.apps.map(({ appId, status, appRoot }) => ({ appId, status, appRoot }))).toEqual([
+        { appId: "legacy", status: "stopped", appRoot },
+      ]);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(root, { recursive: true, force: true });
