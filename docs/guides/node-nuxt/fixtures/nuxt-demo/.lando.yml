@@ -4,14 +4,3 @@ services:
     type: "node:22"
     primary: true
     port: 3000
-tooling:
-  npm:
-    cmd: [npm]
-    description: Run npm inside the web service.
-    service: web
-    dir: /app
-  npx:
-    cmd: [npx]
-    description: Run npx inside the web service.
-    service: web
-    dir: /app

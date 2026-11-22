@@ -1004,7 +1004,7 @@
     },
     {
       "fixture": "docs/guides/node-nuxt/fixtures/nuxt-demo",
-      "digest": "a0086ff288a9e375c7525aea0a952389788d588f9c642a07c8d47b103f80186c"
+      "digest": "a6f0df4d3a9ec6729225ff9196fa91403f0a2d460a663a711e7dcb8b27d9eb2e"
     },
     {
       "fixture": "docs/guides/node-playwright/fixtures/playwright-demo",

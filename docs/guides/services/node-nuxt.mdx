@@ -27,17 +27,6 @@ services:
     type: "node:22"
     primary: true
     port: 3000
-tooling:
-  npm:
-    cmd: [npm]
-    description: Run npm inside the web service.
-    service: web
-    dir: /app
-  npx:
-    cmd: [npx]
-    description: Run npx inside the web service.
-    service: web
-    dir: /app
 ```
 
 ```sh
@@ -45,7 +34,7 @@ lando start
 lando exec web -- node --version
 ```
 
-The Node service doesn't add `npm` or `npx` commands, so the Landofile does. They run in `/app` inside `web`, which is your app directory. `web` starts idle, so its URL serves nothing yet.
+The Node service adds `lando npm` and `lando npx`. Run from the app directory, they work in `/app` inside `web`, which is your app directory. `web` starts idle, so its URL serves nothing yet.
 
 ## Scaffold Nuxt
 
@@ -152,8 +141,8 @@ The build writes `.output`, and the second command runs that server on port `310
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*3000" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npx\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando help npm --format=json" expect={{ stdout: { regex: "\"source\":\"tooling\"[\\s\\S]*\"targets\":\\[\\{\"kind\":\"service\",\"name\":\"web\"\\}\\][\\s\\S]*\"program\":\"npm\"" } }} />
+      <Verify command="lando help npx --format=json" expect={{ stdout: { regex: "\"source\":\"tooling\"[\\s\\S]*\"targets\":\\[\\{\"kind\":\"service\",\"name\":\"web\"\\}\\][\\s\\S]*\"program\":\"npx\"" } }} />
     </Step>
   </Scenario>
 
@@ -168,8 +157,8 @@ The build writes `.output`, and the second command runs that server on port `310
     <Hidden reason="Copy the page's config, route, and test from fixture files">
       <Step name="files">
         <Run command="lando exec web -- mkdir -p /app/server/api /app/test" />
-        <Run command="lando exec web -- cp /app/files/nuxt.config.ts /app/nuxt.config.ts" />
-        <Run command="lando exec web -- cp /app/files/hello.get.ts /app/server/api/hello.get.ts" />
+        <Run command="lando exec web -- cp /app/files/nuxt.config.ts.txt /app/nuxt.config.ts" />
+        <Run command="lando exec web -- cp /app/files/hello.get.ts.txt /app/server/api/hello.get.ts" />
         <Run command="lando exec web -- cp /app/files/hello-test.ts.txt /app/test/hello.test.ts" />
       </Step>
     </Hidden>
