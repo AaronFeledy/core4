@@ -26,33 +26,41 @@ const entries = (count: number, value: string) =>
   Object.fromEntries(Array.from({ length: count }, (_, index) => [`KEY_${index}`, value]));
 
 const cases = [
-  { id: "environment: POSIX names only", input: { appEnv: { "NOT-POSIX": "v" } }, accepted: false },
-  { id: "environment: exact core-owned name", input: { appEnv: { LANDO_APP_NAME: "v" } }, accepted: false },
-  { id: "environment: non-core LANDO prefix", input: { appEnv: { LANDO_MY_FLAG: "v" } }, accepted: true },
-  { id: "environment: 256 properties", input: { appEnv: entries(256, "v") }, accepted: true },
-  { id: "environment: 257 properties", input: { appEnv: entries(257, "v") }, accepted: false },
-  { id: "labels: empty name", input: { appLabels: { "": "v" } }, accepted: false },
-  { id: "labels: equals in name", input: { appLabels: { "a=b": "v" } }, accepted: false },
-  { id: "labels: NUL in name", input: { appLabels: { "a\0b": "v" } }, accepted: false },
-  { id: "labels: reserved prefix", input: { appLabels: { "dev.lando.foo": "v" } }, accepted: false },
-  { id: "labels: 256 properties", input: { appLabels: entries(256, "v") }, accepted: true },
-  { id: "labels: 257 properties", input: { appLabels: entries(257, "v") }, accepted: false },
-  { id: "environment: 32 KiB value", input: { appEnv: { KEY: "é".repeat(16_384) } }, accepted: true },
+  { id: "environment: POSIX names only", input: { environment: { "NOT-POSIX": "v" } }, accepted: false },
+  {
+    id: "environment: exact core-owned name",
+    input: { environment: { LANDO_APP_NAME: "v" } },
+    accepted: false,
+  },
+  {
+    id: "environment: non-core LANDO prefix",
+    input: { environment: { LANDO_MY_FLAG: "v" } },
+    accepted: true,
+  },
+  { id: "environment: 256 properties", input: { environment: entries(256, "v") }, accepted: true },
+  { id: "environment: 257 properties", input: { environment: entries(257, "v") }, accepted: false },
+  { id: "labels: empty name", input: { labels: { "": "v" } }, accepted: false },
+  { id: "labels: equals in name", input: { labels: { "a=b": "v" } }, accepted: false },
+  { id: "labels: NUL in name", input: { labels: { "a\0b": "v" } }, accepted: false },
+  { id: "labels: reserved prefix", input: { labels: { "dev.lando.foo": "v" } }, accepted: false },
+  { id: "labels: 256 properties", input: { labels: entries(256, "v") }, accepted: true },
+  { id: "labels: 257 properties", input: { labels: entries(257, "v") }, accepted: false },
+  { id: "environment: 32 KiB value", input: { environment: { KEY: "é".repeat(16_384) } }, accepted: true },
   {
     id: "environment: 31 full-size values",
-    input: { appEnv: entries(31, "é".repeat(16_384)) },
+    input: { environment: entries(31, "é".repeat(16_384)) },
     accepted: true,
   },
 ] as const;
 
 const runtimeOnly = [
   // JSON Schema length counts code points, not UTF-8 bytes.
-  { id: "environment: 16,385 two-byte characters", input: { appEnv: { KEY: "é".repeat(16_385) } } },
+  { id: "environment: 16,385 two-byte characters", input: { environment: { KEY: "é".repeat(16_385) } } },
   // Every value fits individually; serialization of the map adds bytes for keys and punctuation.
-  { id: "environment: 32 full-size values", input: { appEnv: entries(32, "é".repeat(16_384)) } },
-  { id: "labels: 254-byte name", input: { appLabels: { ["é".repeat(127)]: "v" } } },
-  { id: "labels: 4 KiB value exceeded", input: { appLabels: { label: "é".repeat(2_049) } } },
-  { id: "labels: serialized map exceeds 256 KiB", input: { appLabels: entries(64, "é".repeat(2_048)) } },
+  { id: "environment: 32 full-size values", input: { environment: entries(32, "é".repeat(16_384)) } },
+  { id: "labels: 254-byte name", input: { labels: { ["é".repeat(127)]: "v" } } },
+  { id: "labels: 4 KiB value exceeded", input: { labels: { label: "é".repeat(2_049) } } },
+  { id: "labels: serialized map exceeds 256 KiB", input: { labels: entries(64, "é".repeat(2_048)) } },
 ] as const;
 
 async function verdicts(input: unknown) {
@@ -67,7 +75,7 @@ async function verdicts(input: unknown) {
 }
 
 test.each(cases)("GlobalConfig $id", async ({ input, accepted }) => {
-  expect(await verdicts(input)).toEqual({
+  expect(await verdicts({ serviceDefaults: input })).toEqual({
     decode: accepted,
     standard: accepted,
     editor: accepted,
@@ -78,7 +86,7 @@ test.each(cases)("GlobalConfig $id", async ({ input, accepted }) => {
 });
 
 test.each(runtimeOnly)("GlobalConfig runtime-only $id", async ({ input }) => {
-  expect(await verdicts(input)).toEqual({
+  expect(await verdicts({ serviceDefaults: input })).toEqual({
     decode: false,
     standard: false,
     editor: true,
