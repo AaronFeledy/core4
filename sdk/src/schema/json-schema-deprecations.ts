@@ -789,7 +789,7 @@ const descriptionOf = (
   if (seen.has(node)) return undefined;
   const next = new Set(seen).add(node);
   if (typeof node.description === "string" && node.description.trim() !== "") return node.description;
-  const ref = jsonObject(localRefTarget(node, { root }));
+  const ref = jsonObject(localRefTarget(node, root));
   if (ref !== undefined && ref !== node) {
     const description = descriptionOf(ref, root, next);
     if (description !== undefined) return description;
