@@ -64,6 +64,19 @@ test.each(["/data/local", "/data/foreign", undefined])(
 );
 
 const ctx = { providerId: "docker", remediation: "Retry.", env: {} };
+
+test("scoped bring-up refuses a historical bridge reference before runtime contact", async () => {
+  const plan = {
+    ...networkPlan,
+    identity: { ...planAppIdentity(networkPlan), dataRoot: AbsolutePath.make("/data/local") },
+  };
+  const fake = networkApi({});
+
+  const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }).pipe(Effect.result));
+
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "PlanReplanRequiredError" } });
+  expect(fake.requests).toEqual([]);
+});
 test("omits listener advice on network-connect failure", async () => {
   // Given
   const fake = networkApi({ connectStatus: 500 });

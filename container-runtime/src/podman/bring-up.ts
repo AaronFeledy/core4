@@ -26,6 +26,7 @@ import {
   type EndpointPlan,
   type HostPlatform,
   LANDO_DATA_ROOT_LABEL,
+  LANDO_SHARED_CROSS_APP_NETWORK,
   ProviderId,
   type ServiceContainerChange,
   ServiceName,
@@ -1484,6 +1485,15 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       landoServiceNetworkAttachments(plan, service).map(({ name }) => name),
     ),
   );
+  if (plan.identity?.dataRoot !== undefined && networkNames.has(LANDO_SHARED_CROSS_APP_NETWORK)) {
+    return yield* new PlanReplanRequiredError({
+      providerId: options.ctx.providerId,
+      operation: "bringUp.network",
+      app: plan.id,
+      message: `A data-root scoped plan cannot join the historical ${LANDO_SHARED_CROSS_APP_NETWORK} bridge.`,
+      remediation: "Plan the app again with this installation's shared network, then retry.",
+    });
+  }
   const externalNames = new Set(landoExternalNetworkNames(plan));
   for (const name of networkNames) {
     if (!externalNames.has(name)) continue;
