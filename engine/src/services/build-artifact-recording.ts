@@ -1,4 +1,4 @@
-import { mapFailures } from "@lando/sdk/command-result";
+import { mapFailures, orDieWithRole } from "@lando/sdk/command-result";
 import { PathsService } from "@lando/sdk/services";
 import { Cause, Effect, Exit } from "effect";
 import { withBuiltArtifactsLock } from "./build-artifact-lock.ts";
@@ -57,7 +57,7 @@ export const openArtifactBuildRecording = Effect.fnUntraced(function* (
             Effect.provideService(PathsService, paths),
           );
           activity.dropped ||= dropped.length > 0;
-        }).pipe(Effect.orDie),
+        }).pipe(orDieWithRole("cleanup")),
       ),
     ),
   );

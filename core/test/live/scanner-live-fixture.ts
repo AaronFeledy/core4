@@ -110,7 +110,7 @@ export const scannerFixture = Effect.fnUntraced(function* (path: "/scan" | "/fai
         "    scanner:",
         `      path: ${path}`,
         "      retries: 2",
-        "      timeout: 20000",
+        "      timeoutMs: 20000",
         "",
       ].join("\n"),
     ),

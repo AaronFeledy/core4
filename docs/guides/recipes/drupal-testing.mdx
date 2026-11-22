@@ -58,9 +58,10 @@ tooling:
     user: www-data
     description: Run Drupal's PHPUnit suites as the web server user.
     cmd:
-      - vendor/bin/phpunit
+      - :drupal-local
+      - phpunit
       - -c
-      - web/core
+      - /app/web/core
 ```
 
 Apply the changes:
@@ -202,7 +203,7 @@ The `chrome` service uses Selenium's [standalone Chromium image](https://github.
 
 The healthcheck uses the image's `check-grid.sh` script, which checks Selenium's readiness value rather than just a successful HTTP response. Lando waits for that check during start and restart.
 
-The `phpunit` task selects `web/core/phpunit.xml.dist` with `-c web/core` and appends your arguments. PHPUnit preserves environment variables that are already set, so this setup doesn't need a copied `phpunit.xml`.
+The `phpunit` task runs the site's `vendor/bin/phpunit` through `:drupal-local`, selects `web/core/phpunit.xml.dist` with `-c /app/web/core`, and appends your arguments, so test paths are relative to the directory you run it from. PHPUnit preserves environment variables that are already set, so this setup doesn't need a copied `phpunit.xml`.
 
 ## Fix a failed test run
 

@@ -18,7 +18,7 @@ services:
     type: "node:22"
     primary: true
     endpoints: []
-    dependsOn:
+    depends_on:
       ollama:
         condition: service_healthy
 tooling:

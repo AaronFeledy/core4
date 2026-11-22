@@ -62,10 +62,12 @@ export interface GlobalStartOptions {
 export const GlobalStartResultSchema = Schema.Struct({
   app: StartAppResult.fields.app,
   servicesStarted: StartAppResult.fields.servicesStarted,
+  credentialChanges: StartAppResult.fields.credentialChanges,
 });
 export type GlobalStartResult = typeof GlobalStartResultSchema.Type;
 
 export type GlobalStartError =
+  | import("@lando/sdk/errors").RouteUrlBindingError
   | import("@lando/sdk/errors").CaError
   | import("@lando/sdk/services").FileSystemError
   | Effect.Error<ReturnType<typeof installAndLoadGlobalPlan>>
@@ -218,7 +220,13 @@ export const globalStart = Effect.fn("GlobalStart.start")(
             applied.changes,
           ),
         ].sort((left, right) => (planOrder.get(left.name) ?? 0) - (planOrder.get(right.name) ?? 0));
-        return { app: loaded.plan.name, servicesStarted };
+        return {
+          app: loaded.plan.name,
+          servicesStarted,
+          ...(applied.credentialChanges === undefined
+            ? {}
+            : { credentialChanges: applied.credentialChanges }),
+        };
       }),
     );
   },

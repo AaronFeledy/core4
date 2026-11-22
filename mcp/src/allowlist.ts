@@ -12,6 +12,7 @@ export const MCP_ALLOWLIST_FORBIDDEN_IDS: ReadonlyArray<string> = [
   ...APP_CONFIG_MCP_UNSAFE_IDS,
   "app:destroy",
   "apps:poweroff",
+  "db:creds:apply",
   "meta:uninstall",
   "meta:global:disable",
   "meta:global:reconcile",
@@ -23,7 +24,7 @@ const FORBIDDEN_ID_SET = new Set(MCP_ALLOWLIST_FORBIDDEN_IDS);
  * Ids MCP never exposes, whatever their provenance, descriptor, or explicit allowance.
  * Tether is an interactive-only foreground session; no programmatic entry may start it.
  */
-export const MCP_NEVER_ALLOWED_IDS: ReadonlySet<string> = new Set(["app:remote:tether"]);
+export const MCP_NEVER_ALLOWED_IDS: ReadonlySet<string> = new Set(["app:remote:tether", "db:creds:apply"]);
 
 export const isMcpNeverAllowed = (id: string): boolean => MCP_NEVER_ALLOWED_IDS.has(id);
 

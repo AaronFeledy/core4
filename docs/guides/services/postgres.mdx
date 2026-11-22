@@ -78,7 +78,7 @@ The `postgres` type ships the `psql` client task. `lando start` returns only aft
 lando psql
 ```
 
-`lando start` checks the configured login when it started or recreated the database container, or when the planned connection changed since the last apply, and warns when the running server rejects it. An unchanged running database is checked by `lando doctor --app`, `lando restart`, and `lando rebuild`. See [Recover when credentials don't match](#recover-when-credentials-dont-match).
+The `pg_isready` probe checks whether the server accepts connections, not whether your credentials work. See [Recover when credentials don't match](#recover-when-credentials-dont-match).
 
 That's a live session: type queries, page through long results, `\q` to leave. Need one answer, not a session? Pass `-c`:
 
@@ -112,6 +112,23 @@ Lando's planned port, `port:` or the default, beats a port line in your config f
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
+To add daemon flags without replacing Lando's launcher, use
+[`extraArgs:`](./extra-args.mdx):
+
+```yaml
+services:
+  db:
+    type: postgres
+    extraArgs:
+      - -c
+      - max_connections=200
+```
+
+Lando keeps the planned port and any `config.server` flag, then appends your
+list. Do not put `-p`, `-c port=...`, or `-c config_file=...` in `extraArgs:`;
+set `port:` or `config.server` instead. Custom images and Compose builds reject
+the key.
+
 If you also set `command:` or `entrypoint:` on the service, yours wins. Lando won't append the `-c config_file=...` flag to a command you wrote yourself, so pass it in your own command if you still want the file loaded.
 
 ## Change the port
@@ -127,7 +144,7 @@ services:
 
 Other services then connect to `db:5433`, and a `{{ services.db.port }}` expression in their config follows along. Lando sets `PGPORT` from `port:`. An authored `PGPORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.db.environment.PGPORT` with the `port:` value to set. With `config.server`, Lando pins `port:` or the default on its command line.
 
-The service also exposes `LANDO_DB_PORT=5433`. The `psql` task and `lando db:*` commands pass the planned port explicitly, including for local socket connections. If you author `command:` or `entrypoint:`, you own the daemon's flags; make your launcher honor the planned port, including when you load a config file yourself.
+The service also exposes `LANDO_DB_PORT=5433`. The `psql` task and `lando db:*` commands pass the planned port explicitly, including for local socket connections. If you replace `command:` or `entrypoint:`, pass `-p "{{ service.port }}"` to `postgres`, including when you load your own config file. The [port expression](../landofile/expressions.mdx#your-services-own-port) supplies the value, not the flag.
 
 Apply the change with `lando rebuild`, then check the running listener:
 
@@ -153,32 +170,9 @@ lando psql -c 'SHOW port;'
 
 ## Recover when credentials don't match
 
-`creds:` seeds a fresh volume. The image ignores it once the data directory holds data, so changing `creds:` on an existing app changes what Lando's clients send, not the role's stored password. After the service is ready, `lando start` checks the configured login when it started or recreated the container, or when the planned connection changed since the last apply; `lando restart` and `lando rebuild` check the services they restart. Each warns when the server rejects it. The check connects through the container's own network address, the way your app's container does, so the image's password rule applies even though it trusts loopback connections. Without that warning, an authenticated client still fails with `password authentication failed`.
+After editing `creds`, run `lando start`. Lando applies the settings to the catalog server without dropping or renaming existing roles or databases. For these updates, Lando uses a `lando_admin` superuser role with no password over the container's trusted Unix socket. Lando refuses to use this role if the server trusts connections from beyond loopback.
 
-Fix it without losing data, in this order:
-
-1. Put `creds:` back to the values the volume was created with, then run `lando start`.
-2. To keep the new password, sign in with the old one and change it. Replace `<user>` and `<database>`:
-
-   ```sh
-   lando exec db -- psql -U <user> -d <database> -W
-   ```
-
-   Then, in that shell, replace `<new-password>`:
-
-   ```sql
-   ALTER ROLE <user> WITH PASSWORD '<new-password>';
-   ```
-
-   Set `creds:` to the new values and run `lando start` again.
-3. Only when the data is disposable, start over. This deletes the database:
-
-   ```sh
-   lando destroy -y --volumes
-   lando start
-   ```
-
-Lando never picks option 3 for you. `lando doctor --app` runs the same login check against a running app and reports what it observed.
+If start warns that it couldn't update the credentials, follow [Keep database credentials in sync](../tooling/db-creds-apply.mdx) to preview and apply a repair with `lando db:creds:apply`.
 
 ## Pin a version
 

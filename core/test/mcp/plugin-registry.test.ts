@@ -136,6 +136,20 @@ test("a plugin declaring app:remote:tether is never admitted to the MCP registry
   );
 });
 
+test("the bundled db:creds:apply owner stays out of MCP without a conflict diagnostic", async () => {
+  // Given the bundled SQL plugin, which declares db:creds:apply without asking for MCP exposure
+  // When the MCP registry admits bundled plugin commands
+  const registry = await Effect.runPromise(bundledMcpRegistry().pipe(Effect.provide(RedactionService.layer)));
+  // Then the never-allowed id is absent and nothing reports a conflict the owner never requested
+  expect(knownIdsOf(registry).has("db:creds:apply")).toBe(false);
+  expect(registry.diagnostics).not.toContainEqual(
+    expect.objectContaining({
+      _tag: "McpAllowlistConflictError",
+      message: expect.stringContaining("db:creds:apply"),
+    }),
+  );
+});
+
 test("--allow rejects app:remote:tether even when the id is otherwise known", async () => {
   // Given an allow list naming tether and a registry that knows the id
   // When the allow ids are validated

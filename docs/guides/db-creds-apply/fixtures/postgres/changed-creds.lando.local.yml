@@ -1,0 +1,4 @@
+services:
+  db:
+    creds:
+      password: pg-fixture-pass-two

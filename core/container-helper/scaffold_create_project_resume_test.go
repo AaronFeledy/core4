@@ -1,13 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestCreateProjectLockOwnershipRecovery(t *testing.T) {
+func TestCreateProjectLockAdmission(t *testing.T) {
 	t.Run("live owner blocks", func(t *testing.T) {
 		fixture := newScaffoldFixture(t, nil)
 		lock, err := acquireScaffoldLock(fixture.appRoot)
@@ -23,13 +24,10 @@ func TestCreateProjectLockOwnershipRecovery(t *testing.T) {
 			t.Fatalf("unexpected lock error: %s", fixture.stderr.String())
 		}
 	})
-	t.Run("dead owner is recovered", func(t *testing.T) {
+	t.Run("unlocked file ignores stale diagnostics", func(t *testing.T) {
 		fixture := newScaffoldFixture(t, nil)
-		lockDir := filepath.Join(fixture.appRoot, scaffoldLockName)
-		if err := os.MkdirAll(lockDir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(lockDir, "pid"), []byte("999999999\n"), 0o600); err != nil {
+		path := filepath.Join(fixture.appRoot, scaffoldLockName)
+		if err := os.WriteFile(path, []byte(fmt.Sprintf("pid=%d host=old\n", os.Getpid())), 0o600); err != nil {
 			t.Fatal(err)
 		}
 
@@ -38,9 +36,9 @@ func TestCreateProjectLockOwnershipRecovery(t *testing.T) {
 		}
 		fixture.assertNoScaffoldState(t)
 	})
-	t.Run("ownerless lock is recovered", func(t *testing.T) {
+	t.Run("empty unlocked file is reused", func(t *testing.T) {
 		fixture := newScaffoldFixture(t, nil)
-		if err := os.MkdirAll(filepath.Join(fixture.appRoot, scaffoldLockName), 0o700); err != nil {
+		if err := os.WriteFile(filepath.Join(fixture.appRoot, scaffoldLockName), nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
 

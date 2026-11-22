@@ -59,6 +59,12 @@ const mixedResult: StartAppResult = {
 
 const emptyResult: StartAppResult = { app: "my-app", servicesStarted: [] };
 
+const stayedDownResult: StartAppResult = {
+  app: "my-app",
+  servicesStarted: [{ name: "web", state: "running", connections: connections(["http://localhost:3000"]) }],
+  servicesStayedDown: ["redis", "worker"],
+};
+
 const duplicateResult: StartAppResult = {
   app: "my-app",
   servicesStarted: [
@@ -322,6 +328,17 @@ describe("renderStartAppResult non-decorated compatibility", () => {
 
   test("uses ready: when an empty app succeeds", () => {
     expect(renderStartAppResult(emptyResult)).toBe("ready: my-app");
+  });
+
+  test("lists services that stayed down on a selected start", () => {
+    expect(renderStartAppResult(stayedDownResult)).toBe(
+      "ready: my-app - web (running) Host: http://localhost:3000; stayed down: redis, worker",
+    );
+    const plain = visible(renderStartAppResult(stayedDownResult, decorated()));
+    expect(plain).toContain("Stayed down");
+    expect(plain).toContain("redis");
+    expect(plain).toContain("worker");
+    expect(plain).toContain("lando start");
   });
 
   test("stays a plain line in non-TTY lando mode", () => {

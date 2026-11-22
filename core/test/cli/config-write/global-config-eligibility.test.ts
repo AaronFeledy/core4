@@ -32,7 +32,7 @@ let root = "";
 let planned = 0;
 const file = () => join(root, ".lando.yml");
 const original = "services:\n  custom:\n    type: compose\n    image: alpine:3.21\n";
-const invalid = `${original}    dependsOn: [mailpit]\n`;
+const invalid = `${original}    depends_on: [mailpit]\n`;
 const registry = PluginRegistry.of({
   list: Effect.succeed([
     Schema.decodeUnknownSync(PluginManifest)({
@@ -78,7 +78,7 @@ const fixture = () =>
             });
             if (Result.isFailure(consumed)) throw consumed.failure;
             expect(consumed.success.document).toMatchObject({
-              services: { custom: { dependsOn: [{ service: "global" }] } },
+              services: { custom: { depends_on: [{ service: "global" }] } },
             });
             return {
               valueModel: 1 as const,
@@ -124,7 +124,7 @@ for (const dryRun of [false, true]) {
     const result = await run(
       globalConfigSet(
         {
-          key: "services.custom.dependsOn",
+          key: "services.custom.depends_on",
           value: '["mailpit"]',
           type: "json",
           dryRun,
@@ -136,7 +136,7 @@ for (const dryRun of [false, true]) {
       _tag: "Failure",
       failure: {
         _tag: "LandofileWriteValidationError",
-        issues: [{ path: ["services", "custom", "dependsOn"] }],
+        issues: [{ path: ["services", "custom", "depends_on"] }],
       },
     });
     expect(await readFile(file(), "utf8")).toBe(original);
@@ -214,12 +214,12 @@ test("global config get selects a literal dotted key from the effective Landofil
 });
 
 test("candidate validation retains exact deferred dependency sites through save, view and planning", async () => {
-  const deferred = `${original}    dependsOn: ["{{ app.name }}"]\n  global:\n    type: compose\n    image: alpine:3.21\n`;
+  const deferred = `${original}    depends_on: ["{{ app.name }}"]\n  global:\n    type: compose\n    image: alpine:3.21\n`;
   const compiled = await run(compileGlobalConfigDocument(file(), deferred));
   expect(compiled.pendingSites.map((site) => site.path)).toContainEqual([
     "services",
     "custom",
-    "dependsOn",
+    "depends_on",
     0,
     "service",
   ]);

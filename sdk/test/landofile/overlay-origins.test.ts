@@ -156,20 +156,16 @@ test("a reintroduced value replaces its tombstone without losing unrelated delet
 
 test("projections of dependency maps keep the authored field location", () => {
   // Given
-  const base = authored({ dependsOn: { database: { condition: "service_started" } } }, ".lando.yml");
-  const local = authored({ dependsOn: [{ service: "cache" }] }, ".lando.local.yml");
+  const base = authored({ depends_on: { database: { condition: "service_started" } } }, ".lando.yml");
+  const local = authored({ depends_on: ["cache"] }, ".lando.local.yml");
   // When
   const result = mergeValuesWithOrigins(ServiceConfig, base, local);
   // Then
-  expect(valueOriginAt(result.origins, ["dependsOn", 0, "condition"]).source).toEqual({
+  expect(valueOriginAt(result.origins, ["depends_on", "database", "condition"]).source).toEqual({
     file: ".lando.yml",
-    path: ["dependsOn", "database", "condition"],
+    path: ["depends_on", "database", "condition"],
   });
-  expect(valueOriginAt(result.origins, ["dependsOn", 1, "service"]).source.path).toEqual([
-    "dependsOn",
-    0,
-    "service",
-  ]);
+  expect(valueOriginAt(result.origins, ["depends_on", "cache"]).source.path).toEqual(["depends_on", 0]);
 });
 
 test("a root reset removes all inherited child origins", () => {

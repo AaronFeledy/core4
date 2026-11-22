@@ -94,7 +94,11 @@ describe("API-4 service lowering", () => {
   });
   test("rewrites inline Dockerfiles when imagefile is supplied", () => {
     const result = lowerApi4Service({ image: { imagefile: "FROM alpine", args: ["A=x=y"] } }, ctx);
-    expect(result.patch.build).toEqual({ context: ".", dockerfileInline: "FROM alpine", args: { A: "x=y" } });
+    expect(result.patch.build).toEqual({
+      context: ".",
+      dockerfile_inline: "FROM alpine",
+      args: { A: "x=y" },
+    });
     expect(paths(result, "rewritten")).toEqual([path("image", "imagefile")]);
     expect(() => Schema.decodeUnknownSync(ServiceConfig)(result.patch)).not.toThrow();
   });
@@ -309,7 +313,7 @@ describe("API-4 service lowering", () => {
     expect(result.patch).toEqual({
       type: "lando",
       user: "www",
-      workingDirectory: "/app",
+      working_dir: "/app",
       primary: true,
       hostnames: ["app.test"],
       labels: { x: "y" },

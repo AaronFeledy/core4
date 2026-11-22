@@ -36,6 +36,7 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | `@lando/core/services` | Public service tags from §3.4, including registries, planning, lifecycle, IO, rendering, interaction, redaction, telemetry, diagnostics, tunnel, and MCP services plus §4.2 pluggable tags. |
 | `@lando/core/paths` | `resolveLandoRoots`, `makeLandoPaths`, `normalizeHostPlatform`, `LandoRoots`, `LandoPaths`, and `RootOverrides` (§7.5.1). |
 | `@lando/core/schema` | Published schemas from §7.8. |
+| `@lando/sdk/schema/standard` | Standard Schema V1 and Standard JSON Schema V1 views; both supported JSON Schema input drafts share the authoring projection (§7.8). |
 | `@lando/core/landofile` | `emitLandofileYaml`, `emitLandofileYamlEither`, `parseLandofile`, and `LandofileEmitError` (§7.8.1). |
 | `@lando/core/secrets` | Everything `@lando/sdk/secrets` exports, including `createRedactor` (whose `Redactor` carries `redactString`, `redactPrefix`, and `redactValue`), `createSecretRedactor`, `createPayloadRedactor`, `redactValueWith`, `redactSecretField`, `findOpenSecretConstruct`, `maskOpenSecretConstruct`, `RedactionProfile`, the canonical pattern catalog, `REDACTED`, the secret-name recognizers (`isSecretFieldName`, `isSecretEnvName`, `isSecretStructuralName`), and the published default credentials (`DEFAULT_PASSWORD`, `MINIO_DEFAULT_PASSWORD`, `MSSQL_DEFAULT_PASSWORD`, `PUBLIC_DEFAULT_CREDENTIALS`, `isPublicDefaultCredential`) (§3.7). |
 | `@lando/core/errors` | Published tagged errors. |
@@ -89,6 +90,10 @@ Inputs are option objects. One-shot methods require no runtime services after bi
 Remote methods MUST enforce §10.12.8 and retain applied-data/code side effects on failure. General approval MUST NOT assert protected typed confirmation. Non-interactive hosts MUST fail protected operations requiring that confirmation. Tether MUST NOT be exposed as a library method or through programmatic CLI dispatch, even with a custom interactive renderer. Session credentials and named overrides MUST remain with their owning scope; config pull MUST use the private file landing rules, not promise an overlay for a later start (§10.12.7).
 
 **Runtime reuse is the required performance shape for long-lived hosts.** Hosts SHOULD acquire one runtime at the lowest sufficient bootstrap level, reuse it across sequential programs, and close it only at host shutdown. Reuse avoids repeated bootstrap, plugin contribution-graph construction, and cache loading; Landofile app-root discovery stays operation-owned (§7.1) and is the basis of the §2.1 hot-path budgets. Isolation-sensitive tenants or tests use separate roots and runtimes. Hosts driving many scratch apps SHOULD reuse one non-scratch runtime and call `runtime.scratch` (§21.12).
+
+Effect programs MAY use `UserAppResolver` from `commands` bootstrap for canonical user Landofile loading (§7.1). It does not select a provider, create an `App` handle, or grant process stdio (§8.3).
+
+Effect programs at `app` bootstrap MAY use `DatabaseCredentialConvergence` to preview or apply catalog credential deltas for an exact canonical user root and optional service (§6.12.4, §10.7). The port revalidates desired and applied placement itself; callers MUST NOT assert a physical target. Hosts that need interactive fallback supply `readPassword` through `InteractionService` or a granted stdin effect; the port never opens process stdio on its own. Lifecycle convergence on `app.start` / restart / rebuild remains internal to the activation applier and does not require hosts to call this port.
 
 ### 16.4 Plugin behavior in library mode
 
@@ -145,7 +150,7 @@ App lifecycle hosts SHOULD use `App` methods. `@lando/core/cli` is the stable co
 
 `meta:setup`, `apps:init`, `meta:events:follow`, `meta:shellenv`, and `meta:uninstall` are not exported as command functions. Hosts compose their underlying services, provide `InteractionService` for init, subscribe to `EventService`, or keep installation concerns outside the runtime as applicable.
 
-The optional `invokeOperation` helper from `@lando/core/cli/operations` returns `{ ok: false, error, additionalErrors }` when §8.11.1's annotation-based projection selects a typed primary failure. `additionalErrors` is always present, possibly empty, with `{ role, error }` entries. These values remain host-owned, without serialization or automatic redaction; `renderError` receives only the primary failure. Projected defects and interruption-only causes propagate as defects with the original Cause attached.
+The optional `invokeOperation` helper from `@lando/core/cli/operations` returns `{ ok: false, error, additionalErrors }` when §8.11.1's annotation-based projection selects a typed primary failure. `additionalErrors` is always present, possibly empty, with `{ role, error }` entries. These values remain host-owned, without serialization or automatic redaction; `renderError` receives only the primary failure. An elected typed primary (§8.11.1), which the runtime turned into a defect because cleanup or a sibling also failed, is returned only when the caller's optional `isError` guard accepts it, so `error` and `renderError` never receive an unproven value. Projected defects and unaccepted elected primaries propagate as defects with the original Cause attached; interruption-only causes stay interruptions.
 
 ### 16.8 Testing
 

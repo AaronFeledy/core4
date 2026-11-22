@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 import { access, lstat, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AbsolutePath, AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
-import { ScratchAppService } from "@lando/sdk/services";
+import { ScratchAppService, StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
-import { SCRATCH_DESIRED_PLAN_VERSION } from "../../src/scratch-app/plan.ts";
+import { SCRATCH_DESIRED_PLAN_VERSION, openScratchPlan } from "../../src/scratch-app/plan.ts";
 import {
   openArtifactBuildResults,
   recordArtifactBuildResult,
@@ -283,25 +283,38 @@ test.each([false, true])("GC brackets scratch reaps without a task tree, orphan=
   });
 });
 
-test("destroy recovers the applied plan when the desired cache misses an old frame", async () => {
-  // Given a v1 desired plan.bin (discarded) and a matching applied scratch plan with snapshots.
-  await withDestroyFixture({ desiredPlanVersion: 1, appliedPlan: true }, async (f) => {
-    // When explicit destroy completes.
-    await runDestroy(f);
-    // Then teardown owns the applied plan: snapshots go and events carry it.
-    expect(f.removed).toEqual([`${f.id}-snapshot`]);
-    expect(f.calls).toContain("destroy:true");
-    for (const _tag of ["pre-scratch-destroy", "post-scratch-destroy"])
-      expect(f.events.find((event) => event._tag === _tag)).toMatchObject({ plan: f.plan });
-    expect(f.events.find((event) => event._tag === "post-destroy")).toMatchObject({
-      evidence: "applied",
-      outcome: "destroyed",
-    });
-    expect(f.events.at(-1)).toMatchObject({
-      retainedArtifacts: { volumes: false, snapshots: "none" },
-    });
+test("reading v2 desired state returns a miss before interpreting the plan", async () => {
+  await withDestroyFixture({ desiredPlanVersion: 2 }, async (f) => {
+    const bucket = await Effect.runPromise(
+      openScratchPlan(AbsolutePath.make(join(f.instanceRoot, "plan.bin"))).pipe(
+        Effect.provideService(StateStore, f.stateStore),
+      ),
+    );
+    expect(await Effect.runPromise(bucket.get)).toBeNull();
   });
 });
+
+test.each([1, 2])(
+  "destroy recovers the applied plan when the desired cache misses a v%i frame",
+  async (desiredPlanVersion) => {
+    await withDestroyFixture({ desiredPlanVersion, appliedPlan: true }, async (f) => {
+      // When explicit destroy completes.
+      await runDestroy(f);
+      // Then teardown owns the applied plan: snapshots go and events carry it.
+      expect(f.removed).toEqual([`${f.id}-snapshot`]);
+      expect(f.calls).toContain("destroy:true");
+      for (const _tag of ["pre-scratch-destroy", "post-scratch-destroy"])
+        expect(f.events.find((event) => event._tag === _tag)).toMatchObject({ plan: f.plan });
+      expect(f.events.find((event) => event._tag === "post-destroy")).toMatchObject({
+        evidence: "applied",
+        outcome: "destroyed",
+      });
+      expect(f.events.at(-1)).toMatchObject({
+        retainedArtifacts: { volumes: false, snapshots: "none" },
+      });
+    });
+  },
+);
 
 test("GC recovers the applied plan when the desired cache misses an old frame", async () => {
   // Given a dead owner, discarded v1 desired cache, and applied plan receipts/snapshots.

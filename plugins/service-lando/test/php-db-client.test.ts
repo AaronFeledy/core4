@@ -126,12 +126,12 @@ const viewOf = (input: {
   readonly serviceType: string;
   readonly featureIds?: ReadonlyArray<string>;
   readonly image?: string;
-  readonly db_client?: unknown;
+  readonly dbClient?: unknown;
 }): AppFeatureServiceView => {
   const normalizedConfig = Schema.decodeUnknownSync(ServiceConfig)({
     type: input.serviceType,
     ...(input.image === undefined ? {} : { image: input.image }),
-    ...(input.db_client === undefined ? {} : { db_client: input.db_client }),
+    ...(input.dbClient === undefined ? {} : { dbClient: input.dbClient }),
   });
   return {
     serviceName: input.serviceName,
@@ -176,16 +176,16 @@ const applyFeature = (views: ReadonlyArray<AppFeatureServiceView>) => {
   return steps;
 };
 
-describe("PHP db_client option", () => {
-  test("Given omitted db_client, when resolving, then it selects auto", () => {
+describe("PHP dbClient option", () => {
+  test("Given omitted dbClient, when resolving, then it selects auto", () => {
     expect(resolvePhpDbClient(undefined)).toEqual({ mode: "auto" });
   });
 
-  test("Given db_client auto, when resolving, then it selects auto", () => {
+  test("Given dbClient auto, when resolving, then it selects auto", () => {
     expect(resolvePhpDbClient("auto")).toEqual({ mode: "auto" });
   });
 
-  test("Given db_client false, when resolving, then it disables clients", () => {
+  test("Given dbClient false, when resolving, then it disables clients", () => {
     expect(resolvePhpDbClient(false)).toEqual({ mode: "disabled" });
   });
 
@@ -204,17 +204,17 @@ describe("PHP db_client option", () => {
     expect(resolvePhpDbClient("mongodb:7")).toEqual({ mode: "explicit", family: "mongodb", version: "7" });
   });
 
-  test("Given an unknown db_client, when resolving the PHP service, then it fails closed with remediation", async () => {
-    await expectRejectsToThrow(resolvePhp({ db_client: "nope" }), /Unsupported database client/);
+  test("Given an unknown dbClient, when resolving the PHP service, then it fails closed with remediation", async () => {
+    await expectRejectsToThrow(resolvePhp({ dbClient: "nope" }), /Unsupported database client/);
     await expectRejectsToThrow(
-      resolvePhp({ db_client: "nope" }),
+      resolvePhp({ dbClient: "nope" }),
       new RegExp(PHP_DB_CLIENT_REMEDIATION.replaceAll("|", "\\|")),
     );
   });
 
-  test("Given invalid db_client on a custom image, when resolving, then it still fails closed", async () => {
+  test("Given invalid dbClient on a custom image, when resolving, then it still fails closed", async () => {
     await expectRejectsToThrow(
-      resolvePhp({ image: "php:8.2-apache-bookworm", db_client: "oracle:19" }),
+      resolvePhp({ image: "php:8.2-apache-bookworm", dbClient: "oracle:19" }),
       /Unsupported database client/,
     );
   });
@@ -252,7 +252,7 @@ describe("PHP db_client option", () => {
           serviceType: "php:8.2",
           featureIds: [PHP_FEATURE_ID],
           ...stockImage,
-          db_client: "auto",
+          dbClient: "auto",
         }),
         viewOf({ serviceName: "db", serviceType: "mysql" }),
         viewOf({ serviceName: "pg", serviceType: "postgres" }),
@@ -264,13 +264,13 @@ describe("PHP db_client option", () => {
     },
   );
 
-  test("Given db_client false, when the AppFeature applies, then it adds no db-client steps", () => {
+  test("Given dbClient false, when the AppFeature applies, then it adds no db-client steps", () => {
     const steps = applyFeature([
       viewOf({
         serviceName: "web",
         serviceType: "php:8.2",
         featureIds: [PHP_FEATURE_ID],
-        db_client: false,
+        dbClient: false,
       }),
       viewOf({ serviceName: "db", serviceType: "mysql" }),
     ]);
@@ -283,7 +283,7 @@ describe("PHP db_client option", () => {
         serviceName: "web",
         serviceType: "php:8.2",
         featureIds: [PHP_FEATURE_ID],
-        db_client: "mariadb:11.4",
+        dbClient: "mariadb:11.4",
       }),
       viewOf({ serviceName: "cache", serviceType: "redis" }),
     ]);
@@ -302,7 +302,7 @@ describe("PHP db_client option", () => {
         serviceType: "php:8.2",
         featureIds: [PHP_FEATURE_ID],
         image: "registry.example.com/php:8.2-custom",
-        db_client: "auto",
+        dbClient: "auto",
       }),
       viewOf({ serviceName: "db", serviceType: "mysql" }),
     ]);
@@ -312,7 +312,7 @@ describe("PHP db_client option", () => {
         serviceType: "php:8.2",
         featureIds: [PHP_FEATURE_ID],
         image: "registry.example.com/php:8.2-custom",
-        db_client: "postgres:16",
+        dbClient: "postgres:16",
       }),
     ]);
     expect(autoSteps.get("web")).toEqual([]);

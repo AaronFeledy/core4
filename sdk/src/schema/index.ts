@@ -12,6 +12,7 @@ export * from "./build-plan.ts";
 export * from "./certificate-authority-contribution.ts";
 export * from "./command-trace.ts";
 export * from "./compiled-landofile.ts";
+export * from "./compiled-tooling-task.ts";
 export {
   ComposeDevice,
   ComposeDevicesField,
@@ -110,7 +111,9 @@ export {
   PublishedEndpointInput,
 } from "./endpoint.ts";
 export * from "./endpoint-selection.ts";
+export { ToolingEnvironment } from "./environment-input.ts";
 export * from "./environment-value.ts";
+export * from "./event-plan.ts";
 export * from "./execution-site.ts";
 export * from "./file-sync.ts";
 export * from "./file-sync-engine.ts";
@@ -129,7 +132,7 @@ export {
 } from "./hostname.ts";
 export * from "./image-reference.ts";
 export * from "./json-schema.ts";
-export * from "./json-schema-editor.ts";
+export { getEditorJsonSchema } from "./json-schema-editor.ts";
 export * from "./keymap.ts";
 export * from "./keymap-conflict.ts";
 export * from "./landofile.ts";
@@ -186,6 +189,7 @@ export * from "./service-info.ts";
 export * from "./service-launchers.ts";
 export * from "./service-mount.ts";
 export * from "./service-probe.ts";
+export * from "./service-probe-url.ts";
 export * from "./service-resolution.ts";
 export * from "./service-run-observation.ts";
 export * from "./service-shutdown.ts";

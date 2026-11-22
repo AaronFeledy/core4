@@ -39,6 +39,22 @@ const lint = async (yaml: string, env: Readonly<Record<string, string>> = {}) =>
 
 test.each([
   {
+    title: "reports one load violation for each unsupported self-port expression",
+    yaml: `services:
+  cache:
+    type: redis
+    port: "{{ service.port }}"
+    environment:
+      SELF_PORT: "{{ service.port }}"
+    command: [redis-server, --port, "{{ service.name }}"]
+`,
+    expected: [
+      ["landofile.load", ["services", "cache", "port"]],
+      ["landofile.load", ["services", "cache", "environment", "SELF_PORT"]],
+      ["landofile.load", ["services", "cache", "command", 2]],
+    ],
+  },
+  {
     title: "reports an unsupported type alongside an isolated load failure",
     yaml: unavailableService + badType,
     expected: [missingEnv, unsupportedType],
@@ -52,7 +68,7 @@ test.each([
     environment:
       - NOT_A_PAIR
 ${badType}`,
-    expected: [["landofile.validation", ["services", "other", "environment"]], unsupportedType],
+    expected: [["landofile.validation", ["services", "other", "environment", 0]], unsupportedType],
   },
   {
     title: "does not evaluate credentials of a service blocked during loading",
@@ -183,3 +199,66 @@ test("does not resolve effective checks without an established app name", async 
   expect(result.valid).toBe(false);
   expect(findings(result)).toEqual([["landofile.load", ["name"]]]);
 });
+
+const brokenSeeds = `name: demo
+services:
+  raw:
+    type: lando
+    image: busybox:1.37
+    command: [sleep, "{{ service.port }}"]
+  php:
+    type: php:8.4
+    via: cli
+    command: [php, -S, "0.0.0.0:{{ service.port }}"]
+  reader:
+    type: lando
+    image: busybox:1.37
+    environment:
+      FIRST: "{{ services.raw.port }}"
+      SECOND: "{{ services.php.port }}"
+`;
+const rawCommand = ["services", "raw", "command", 1];
+const seedFindings: readonly Finding[] = [
+  ["landofile.expression", rawCommand],
+  ["landofile.expression", ["services", "php", "command", 2]],
+];
+
+test("reports independent expression failures, skips dependents once, and still checks a route sibling", async () => {
+  const result = await lint(`${brokenSeeds}proxy:
+  reader:
+    - hostname: "{{ services.reader.port }}.lndo.site"
+      pathPrefix: no-slash
+`);
+
+  expect(findings(result)).toEqual([
+    ...seedFindings,
+    ["landofile.route", ["proxy", "reader", 0, "pathPrefix"]],
+  ]);
+  expect(result.skipped).toMatchObject([
+    { stage: "resolve", reason: "unavailable", path: ["services", "reader"], source: { path: rawCommand } },
+    { stage: "resolve", reason: "unavailable", path: ["proxy", "reader"], source: { path: rawCommand } },
+    { stage: "planning", reason: "earlier-errors" },
+  ]);
+});
+
+test.each(["services.missing.port", "services[app.name].port"])(
+  "preserves seed findings when %s aborts whole-document resolution",
+  async (reference) => {
+    const result = await lint(`${brokenSeeds}tooling:
+  blocked:
+    service: ":host"
+    cmd: "echo {{ services.reader.port }} {{ flags.name }}"
+  broken:
+    cmd: "echo {{ ${reference} }}"
+`);
+
+    const path = ["tooling", "broken", "cmd"];
+    expect(findings(result)).toEqual([...seedFindings, ["landofile.expression", path]]);
+    expect(result.skipped).toMatchObject([
+      { stage: "resolve", reason: "unavailable", path: ["services", "reader"] },
+      { stage: "resolve", reason: "unavailable", path: ["tooling", "blocked"] },
+      { stage: "resolve", reason: "earlier-errors", path },
+      { stage: "planning", reason: "earlier-errors" },
+    ]);
+  },
+);

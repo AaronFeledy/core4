@@ -41,7 +41,7 @@ services:
       target: /app
       includes:
         - vendor
-    dependsOn:
+    depends_on:
       database:
         condition: service_healthy
 ```
@@ -244,7 +244,7 @@ lando destroy -y
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"console\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{(?:(?!\"worker\":)[\\s\\S])*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"dependsOn\":\\s*\\{\\s*\"database\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"depends_on\":\\s*\\{\\s*\"database\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />

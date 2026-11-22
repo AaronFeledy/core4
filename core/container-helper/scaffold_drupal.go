@@ -44,7 +44,7 @@ func runDrupalScaffold(args []string, streams helperIO, crash func(string)) int 
 		"Drupal",
 		"drupal-scaffold",
 		fmt.Sprintf("Drupal is already scaffolded at %s.", appRoot),
-		"composer.json, vendor/bin/drush, and web/",
+		drupalScaffoldOutputs,
 		appRoot,
 		streams,
 		crash,
@@ -69,16 +69,17 @@ func runDrupalScaffold(args []string, streams helperIO, crash func(string)) int 
 			); err != nil {
 				return fmt.Errorf("Drupal scaffold could not install project-local Drush: %w", err)
 			}
+			lintArgs := append([]string{"--working-dir=" + stage, "require", "--dev"}, drupalLintPackages[:]...)
+			if err := s.runCommand(appRoot, "composer", lintArgs...); err != nil {
+				return fmt.Errorf("Drupal scaffold could not install project-local lint tools: %w", err)
+			}
 			if !isRegularFile(filepath.Join(stage, "composer.json")) {
 				return errors.New("Drupal scaffold did not stage a composer.json.")
-			}
-			if !executableFile(filepath.Join(stage, "vendor", "bin", "drush")) {
-				return errors.New("Drupal scaffold did not stage vendor/bin/drush.")
 			}
 			if !isDirectory(filepath.Join(stage, "web")) {
 				return errors.New("Drupal scaffold did not stage web/.")
 			}
-			return nil
+			return s.stageDrupalLintFiles(stage)
 		},
 		complete: drupalScaffoldComplete,
 	})
@@ -86,6 +87,7 @@ func runDrupalScaffold(args []string, streams helperIO, crash func(string)) int 
 }
 
 func drupalScaffoldComplete(appRoot string) bool {
+	// Existing completion markers predate the lint tools; don't restage those apps.
 	return isRegularFile(filepath.Join(appRoot, "composer.json")) &&
 		executableFile(filepath.Join(appRoot, "vendor", "bin", "drush")) &&
 		isDirectory(filepath.Join(appRoot, "web"))

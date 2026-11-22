@@ -1,0 +1,5 @@
+services:
+  db:
+    creds:
+      user: fixture_after
+      rootPassword: mariadb-root-pass-two

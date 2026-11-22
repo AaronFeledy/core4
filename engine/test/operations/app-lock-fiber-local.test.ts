@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
+import { ADVISORY_LOCK_SUFFIX } from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Fiber, Layer } from "effect";
@@ -29,7 +30,7 @@ test("forked app-lock children reuse the parent's lock, while a later unbound ac
           identity.key,
           "test",
         );
-        const readLock = Effect.promise(() => Bun.file(`${path.file}.lock`).text());
+        const readLock = Effect.promise(() => Bun.file(`${path.file}${ADVISORY_LOCK_SUFFIX}`).text());
         const held = yield* withAppMutationLock(
           app,
           Effect.gen(function* () {

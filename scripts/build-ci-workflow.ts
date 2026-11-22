@@ -94,6 +94,9 @@ ${setupBunSteps}
       - name: Host Bun Shell dialect conformance
         run: ${testSelectionCommand("shell-dialect")}
 
+      - name: Native advisory lock (two-process)
+        run: ${testSelectionCommand("native-lock")}
+
       - name: Lint
         run: bun run lint
 
@@ -270,6 +273,9 @@ ${renderSmokeCommands(platform)}
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
         run: ${testSelectionCommand("compiled-renderer-output")}
+
+      - name: Verify compiled two-process native lock
+        run: ${testSelectionCommand("compiled-native-lock")}
 
       - name: Upload ${platform.id} binary
         if: always()
@@ -509,6 +515,7 @@ ${landoManagedPodmanRuntimeDirCommands}
 ${nodeImagePullLines}
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/adminer:6
+          pull_image quay.io/keycloak/keycloak:26.8
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -980,6 +987,7 @@ name: ci
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:

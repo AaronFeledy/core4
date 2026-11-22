@@ -279,7 +279,7 @@ export const stripLandoShellenvBlock = (
 ): { readonly content: string; readonly stripped: boolean } => {
   let result = content;
   let stripped = false;
-  for (;;) {
+  while (true) {
     const begin = result.indexOf(LANDO_SHELLENV_BEGIN);
     if (begin === -1) break;
     const end = result.indexOf(LANDO_SHELLENV_END, begin + LANDO_SHELLENV_BEGIN.length);

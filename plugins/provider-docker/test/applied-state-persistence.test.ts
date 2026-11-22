@@ -429,7 +429,7 @@ describe("provider-docker applied state persistence", () => {
       expect(failure?.operation).toBe("applied-state.remove");
       expect(failure?.cause).toBeInstanceOf(StateStoreError);
       expect((failure?.cause as StateStoreError | undefined)?.operation).toBe("remove");
-      expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toEqual(plan);
+      expect<AppPlan | undefined>(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toEqual(plan);
     });
   });
 

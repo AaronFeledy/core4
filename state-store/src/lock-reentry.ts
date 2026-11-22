@@ -1,43 +1,20 @@
-import { Effect, type Semaphore } from "effect";
+import { Effect } from "effect";
 
 export const makeLockReentryGuard = () => {
-  // Semaphores are not reentrant: waiting on a permit held by this fiber would deadlock.
-  const lockHolders = new Map<string, number>();
+  const active = new Set<string>();
 
-  return Effect.fnUntraced(function* <A, E, R, LockError>(
-    file: string,
-    body: Effect.Effect<A, E, R>,
-    lock: {
-      readonly semaphore: Semaphore.Semaphore;
-      readonly path: string;
-      readonly acquire: Effect.Effect<void, LockError>;
-      readonly release: Effect.Effect<void>;
-    },
-  ): Effect.fn.Return<A, E | LockError, R> {
+  return Effect.fnUntraced(function* (path: string) {
     const fiberId = yield* Effect.fiberId;
-    if (lockHolders.get(file) === fiberId)
-      return yield* Effect.die(
-        new Error(
-          `Fiber already holds the advisory lock for ${lock.path}. A same-fiber lock re-entry would deadlock; this is a Lando bug.`,
-        ),
-      );
-    return yield* lock.semaphore.withPermits(1)(
-      Effect.suspend(() => {
-        // Recorded as soon as the permit is held, so a re-entry made while still acquiring (from a
-        // wait hook) dies too instead of waiting on this fiber's own permit.
-        lockHolders.set(file, fiberId);
-        return Effect.acquireUseRelease(
-          lock.acquire,
-          () => body,
-          () => lock.release,
-        );
-      }).pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            if (lockHolders.get(file) === fiberId) lockHolders.delete(file);
-          }),
-        ),
-      ),
+    const key = `${fiberId}:${path}`;
+    yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        if (active.has(key))
+          throw new Error(
+            `Fiber already holds the advisory lock for ${path}. Same-fiber lock re-entry would deadlock; this is a Lando bug.`,
+          );
+        active.add(key);
+      }),
+      () => Effect.sync(() => void active.delete(key)),
     );
   });
 };

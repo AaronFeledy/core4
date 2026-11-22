@@ -91,7 +91,10 @@ test("contrib start syncs the site and tooling delivers argv from the right dire
         ],
         cwd: extension,
       },
-      { command: ["/app/vendor/bin/phpcs", "--version"], cwd: extension },
+      {
+        command: ["sh", "-c", expect.any(String), "drupal-local", "phpcs", "--version"],
+        cwd: extension,
+      },
     ]);
   } finally {
     await rm(cwd, { recursive: true, force: true });

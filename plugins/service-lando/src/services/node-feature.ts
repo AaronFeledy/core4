@@ -6,7 +6,7 @@ import {
   type ListenerContract,
   applicationAuthority,
   assertListenerConfig,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -31,6 +31,7 @@ export const NODE_LISTENER = {
   when: "All Node.js services; application-owned listener",
   variables: ["PORT"],
 } as const satisfies ListenerContract;
+export const nodePlannedPort = primaryPortSelector(NODE_LISTENER);
 
 const NodeFeatureConfigSchema = Schema.Struct({
   version: Schema.String,
@@ -56,12 +57,12 @@ const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
 const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { version, packageManager, globals } = ctx.config as NodeFeatureConfig;
-  const port = plannedPort(service, NODE_LISTENER);
+  const port = nodePlannedPort(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? artifactFor(version) });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   ctx.addEnv("PORT", String(port));
-  ctx.setListenerAuthority(applicationAuthority(NODE_LISTENER, port));
+  ctx.setListenerAuthority(applicationAuthority(NODE_LISTENER, port, service));
   applyAuthoredProcessFields(ctx, ["user", "entrypoint"]);
   if (globals.length > 0) {
     ctx.addBuildStep({
@@ -87,7 +88,7 @@ export const nodeServiceFeature: ServiceFeatureDefinition = {
   }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
-      servicePortEndpoints(ctx, { port: plannedPort(ctx.normalizedConfig, NODE_LISTENER), protocol: "http" }),
+      servicePortEndpoints(ctx, { port: nodePlannedPort(ctx.normalizedConfig), protocol: "http" }),
     ),
   apply: serviceFeatureApply(NODE_FEATURE_ID, "service-lando.node failed to apply", applyNodeFeature),
 };

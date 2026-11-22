@@ -15,13 +15,15 @@ import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts
 import { evolveHistoricalDeprecationNotice } from "./x-extension-deprecation-notice-proof.ts";
 import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
-import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
 import { evolveHistoricalIncludeWhen } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
+import { evolveSchemaParity } from "./x-extension-schema-parity-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
 import { evolveHistoricalServiceKeys } from "./x-extension-service-keys-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
@@ -143,8 +145,12 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
     evolveHistoricalEndpointKind(beforeEndpointKind, "wire"),
     source === "fragment" ? "landofile" : source,
   );
-  evolvedTypedCache.set(source, evolved);
-  return evolved;
+  const expected = evolveSchemaParity(
+    evolveHistoricalExtraArgs(evolveHistoricalRouteText(evolved, "authoring")),
+    source,
+  );
+  evolvedTypedCache.set(source, expected);
+  return expected;
 };
 const artifactCache = new Map<string, ReturnType<typeof loadNormalizedArtifact>>();
 const currentArtifact = (surface: string) => {
@@ -219,10 +225,13 @@ describe("embedded wire closed x-* artifact repair", () => {
         ),
       ),
     );
-    const repaired = evolveHistoricalServiceKeys(
-      evolveHistoricalEndpointKind(beforeEndpointKind, "wire"),
-      "services",
+    const historicalRepair = evolveHistoricalExtraArgs(
+      evolveHistoricalRouteText(
+        evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(beforeEndpointKind, "wire"), "services"),
+        "authoring",
+      ),
     );
+    const repaired = evolveSchemaParity(historicalRepair, "services");
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
       "$.context.services",

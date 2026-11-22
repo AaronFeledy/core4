@@ -42,6 +42,7 @@ import type {
   ConfigTranslatorRegistry,
   ContainerHelperAssets,
   DataMover,
+  DatabaseCredentialConvergence,
   Downloader,
   EnvironmentValueResolver,
   EventService,
@@ -68,6 +69,7 @@ import type {
   StateStore,
   Telemetry,
   ToolingEngine,
+  UserAppResolver,
 } from "@lando/sdk/services";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -155,7 +157,7 @@ type PluginRuntimeServices =
   | ConfigTranslatorRegistry
   | PluginContributionGraph
   | BuiltInCommandCatalog;
-type CommandRuntimeServices = PluginRuntimeServices | LandofileService | CommandRegistry;
+type CommandRuntimeServices = PluginRuntimeServices | LandofileService | UserAppResolver | CommandRegistry;
 type ToolingRuntimeServices = CommandRuntimeServices;
 type ProviderRuntimeServices =
   | CommandRuntimeServices
@@ -172,6 +174,7 @@ type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner | BuildOrchest
 type ScratchRuntimeServices =
   | ProviderRuntimeServices
   | LandofileService
+  | UserAppResolver
   | AppPlanner
   | BuildOrchestrator
   | RouterService
@@ -180,9 +183,11 @@ type ScratchRuntimeServices =
   | ScratchResourceScanner
   | ScratchAppService;
 export type AppRuntimeServices =
+  | DatabaseCredentialConvergence
   | ProviderRuntimeServices
   | BuildOrchestrator
   | LandofileService
+  | UserAppResolver
   | CommandRegistry
   | AppPlanner
   | EventService

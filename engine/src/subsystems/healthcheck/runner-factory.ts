@@ -3,7 +3,7 @@ import { RedactionService, createStandaloneRedactor } from "@lando/redaction/ser
 import { FailureRoleAnnotation, mapDefectCause, mapFailures } from "@lando/sdk/command-result";
 import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
 import type { ProbeResult } from "@lando/sdk/probe";
-import type { HealthcheckPlan, ServiceName } from "@lando/sdk/schema";
+import type { ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import {
   HealthcheckRunner,
@@ -32,20 +32,6 @@ interface TimeoutContext {
   readonly result: ProbeResult;
   readonly redactor: Redactor;
 }
-
-const providerExecUnsupported = (plan: HealthcheckPlan, service: ServiceName): HealthcheckError =>
-  new HealthcheckError({
-    message: `The provider-exec healthcheck runner only supports command healthchecks. Configure service ${String(service)} with a command healthcheck, or disable the ${plan.kind} healthcheck for this provider.`,
-    service: String(service),
-    remediation: `Configure service ${String(service)} with a command healthcheck, or disable the ${plan.kind} healthcheck for this provider.`,
-  });
-
-const missingCommand = (service: ServiceName): HealthcheckError =>
-  new HealthcheckError({
-    message: `Command healthcheck for service ${String(service)} requires a command. Add a command healthcheck or disable healthchecks for this service.`,
-    service: String(service),
-    remediation: `Add a command to the healthcheck for service ${String(service)}, or disable healthchecks for this service.`,
-  });
 
 const resolveRedactor = Effect.gen(function* () {
   const redaction = yield* Effect.serviceOption(RedactionService);
@@ -80,7 +66,7 @@ const makeAttempt = Effect.fnUntraced(function* <E extends { readonly message: s
 
 const toProbeError = (service: ServiceName, cause: unknown): HealthcheckError =>
   new HealthcheckError({
-    message: `Healthcheck probe for service ${String(service)} could not run. Re-run the command healthcheck after checking the provider configuration.`,
+    message: `Healthcheck probe for service ${String(service)} could not run. Re-run the probe after checking the provider configuration.`,
     service: String(service),
     remediation: `Inspect \`lando logs -s ${String(service)}\` and the healthcheck probe configuration for service ${String(service)}, then retry.`,
     cause,
@@ -122,17 +108,7 @@ export const makeHealthcheckRunner: (deps: {
     run: Effect.fn("HealthcheckRunner.run")(function* (plan, appId, service, appPlan) {
       if (deps.signal?.aborted === true) return yield* Effect.interrupt;
       yield* validateProbeTarget(plan, service);
-      switch (plan.kind) {
-        case "none":
-          return { healthy: true, service, attempts: 0, lastStatus: "skipped" };
-        case "http":
-        case "tcp":
-          return yield* Effect.fail(providerExecUnsupported(plan, service));
-        case "command":
-          break;
-      }
-
-      if (plan.command === undefined) return yield* Effect.fail(missingCommand(service));
+      if (plan.kind === "none") return { healthy: true, service, attempts: 0, lastStatus: "skipped" };
 
       const prepared = yield* prepareHealthcheckAttempt({
         probe: plan,
@@ -147,13 +123,15 @@ export const makeHealthcheckRunner: (deps: {
       const redactor = yield* resolveRedactor;
       const safeRendered = redactor.redactString(rendered).slice(0, 512);
       const renderedTarget =
-        plan.target === undefined
-          ? "custom probe"
-          : rendered
-              .split(" ")
-              .slice(1, 3)
-              .map((value) => redactor.redactString(value).slice(0, 192))
-              .join(" ");
+        plan.kind !== "command"
+          ? `${plan.kind} probe`
+          : plan.target === undefined
+            ? "custom probe"
+            : rendered
+                .split(" ")
+                .slice(1, 3)
+                .map((value) => redactor.redactString(value).slice(0, 192))
+                .join(" ");
 
       const { result, last } = yield* interruptOnAbort(
         runHealthcheckPhases(

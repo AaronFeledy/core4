@@ -1,5 +1,5 @@
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
-import { LandofileService, Renderer } from "@lando/sdk/services";
+import { Renderer, UserAppResolver } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 
 import { jobsFromLandofile } from "../jobs.ts";
@@ -31,8 +31,8 @@ export const spec = {
   },
   resultSchema: ScheduleListResultSchema,
   run: Effect.fn("Schedule.list")(function* (input) {
-    const landofiles = yield* LandofileService;
-    const landofile = yield* landofiles.discover;
+    const userApps = yield* UserAppResolver;
+    const landofile = yield* userApps.current;
     const service = typeof input.flags.service === "string" ? input.flags.service : undefined;
     const now = yield* DateTime.now;
     const jobs = jobsFromLandofile(landofile.document)

@@ -253,7 +253,7 @@ describe("composed Landofile provenance invariant", () => {
     // Then: authored cursor equality holds without special cases for either transformation.
     expect(assertProvenance(merged, root)).toBeGreaterThanOrEqual(6);
     expect(
-      exactOriginAt(merged.provenance.origins, ["services", "other", "workingDirectory"]).source.path,
+      exactOriginAt(merged.provenance.origins, ["services", "other", "working_dir"]).source.path,
     ).toEqual(["services", "other", "working_dir"]);
     expect(
       exactOriginAt(merged.provenance.origins, ["services", "web", "routes", 0, "port"]).source.path,

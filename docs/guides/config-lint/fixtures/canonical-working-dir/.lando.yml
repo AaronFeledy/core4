@@ -1,0 +1,6 @@
+# lando-lint: expect-valid working_dir
+name: diagnostic-reason
+services:
+  web:
+    image: alpine
+    working_dir: /srv

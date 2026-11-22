@@ -73,7 +73,7 @@ A bundled id shadows a plugin id, and a plugin id shadows an index name; the sha
 
 **Reviewed index.** `SourceIndex` is one JSON document maintained in a public Lando repository, where a merged pull request is the review, and published as a static file at `DEFAULT_SOURCE_INDEX_URL`. An entry carries `name`, `kind` (`template` or `recipe`), `summary`, a pinned locator (full commit or exact npm version with integrity), and the runnable digest (§23.11). Lando fetches it through `HttpClient`, caches it (`source-index`, §12.1), and uses the cache when offline. `--index-url` and global `sources.indexUrl` override the address. Acquired content that does not match the entry's pin or digest fails with `TemplateSourceError` kind `index-mismatch`. An index entry is not consent. Unreviewed templates are reached by their full locator; the index is not a publishing service.
 
-Bundled templates are authored under `templates/<id>/`, compiled at codegen into an embedded catalog (§17.2), and ship a `README.mdx` under §19.13.
+Bundled templates are authored under `templates/<id>/`, compiled at codegen into an embedded catalog (§17.2), and ship a `README.mdx` under §19.13. The bundled `drupal` and `drupal-cms` templates MUST generate a project whose `composer.json` sets `config.allow-plugins` entries `dealerdirect/phpcodesniffer-composer-installer` and `phpstan/extension-installer` to `true` before dependencies install, preserving other entries, requires `drupal/coder`, `phpstan/phpstan`, `mglaman/phpstan-drupal`, and `phpstan/extension-installer` as dev dependencies, and writes the default `phpcs.xml.dist` and `phpstan.neon.dist` that §8.8.10 describes, so the recipes' `phpcs`, `phpcbf`, and `phpstan` tasks work on the generated project and agree with CI and editors. `drupal` inherits the plugin approvals from `drupal/recommended-project`. Recipes and tasks MUST NOT change plugin trust in an existing checkout.
 
 ### 23.4 The manifest
 
@@ -179,7 +179,7 @@ The `lando` manifest key has two members, both optional.
 - `recipe`: a locator or an inline `RecipeSource`, plus `options` mapping recipe option names to expressions. In a new project it produces the root Landofile through the same preparation and publication as `apps:init` (§8.8.7), so recipe provenance, `app:config:explain`, and `app:config:migrate` work unchanged. `--name`, else the destination basename, is the app name.
 - `fragment`: a Landofile fragment (§7.7.2). Lando writes it to `.lando/<instance>.yml` (§23.10) and adds one `includes:` entry to the root Landofile through the comment-preserving editor (§8.2.1).
 
-A fragment cannot carry recipe options, so template values are written into it as plain values. An expression in a fragment that reads only template scopes is evaluated when the template is applied. An expression that reads none of them is written unchanged and resolves at app load. One expression MUST NOT mix the two; that is a `TemplateManifestError`.
+A fragment cannot carry recipe options, so template values are written into it as plain values. An expression in a fragment that reads only template scopes is evaluated when the template is applied. An expression that reads none of the template scopes is written unchanged and follows the ordinary Landofile load and planning rules, including §7.3.1 deferral. One expression MUST NOT mix the two; that is a `TemplateManifestError`.
 
 Rules:
 

@@ -112,6 +112,7 @@ test("an escaped reference stays literal through the load walk", async () => {
 
 test.each([
   [{ services: { app: { command: "echo ${secret:A}" } } }, ["services", "app", "command"]],
+  [{ services: { app: { extraArgs: ["${secret:A}"] } } }, ["services", "app", "extraArgs", 0]],
   [{ services: { app: { build: { app: "echo ${secret:A}" } } } }, ["services", "app", "build", "app"]],
   [{ tooling: { deploy: { cmd: ["echo", "${secret:A}"] } } }, ["tooling", "deploy", "cmd", 1]],
   [{ events: { "post-start": [{ task: "echo ${secret:A}" }] } }, ["events", "post-start", 0, "task"]],

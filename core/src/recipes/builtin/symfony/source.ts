@@ -37,7 +37,7 @@ export const source = {
           DATABASE_URL: `${postgresUrl}?serverVersion=16&charset=utf8`,
           REDIS_URL: "redis://cache:6379",
         },
-        dependsOn: ["database", "cache"],
+        depends_on: ["database", "cache"],
         routes: defaultRoutes,
       },
       database: { type: "{{ recipe.database }}" },
@@ -47,7 +47,7 @@ export const source = {
       console: {
         service: "appserver",
         description: "Run the Symfony console inside the appserver service.",
-        cmds: ["php bin/console"],
+        cmd: [":php-local", "bin/console"],
         wrapper: true,
       },
       composer: composerTool,

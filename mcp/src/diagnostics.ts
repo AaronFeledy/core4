@@ -128,7 +128,7 @@ export const boundDiagnostics = (
     const isTooling = record.kind === "tooling" && record._tag === "ToolingCompileError";
     // A tooling record shrinks to the space the document leaves, down to its bounded summary.
     let budget = MAX_DIAGNOSTICS_BYTES;
-    for (;;) {
+    while (true) {
       const next = {
         ...result,
         diagnostics: [

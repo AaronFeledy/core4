@@ -12,7 +12,7 @@ import (
 )
 
 const drupalContribSyncCommand = "drupal-contrib-sync"
-const drupalContribOutputs = "composer.json, executable vendor/bin/{drush,phpunit,phpcs}, web/core, and web/index.php"
+const drupalContribOutputs = "composer.json, executable vendor/bin/{drush,phpunit,phpcs,phpcbf}, web/core, and web/index.php"
 
 var (
 	contribProjectPattern    = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -69,11 +69,6 @@ func runDrupalContribSync(args []string, streams helperIO, crash func(string)) i
 	if err := o.checkMount(); err != nil {
 		return scaffoldResult(err, streams)
 	}
-	lock, err := acquireScaffoldLock(o.appRoot)
-	if err != nil {
-		return scaffoldResult(err, streams)
-	}
-	defer lock.release()
 	s := newScaffold(
 		drupalContribSyncCommand,
 		"Drupal contrib",
@@ -84,6 +79,10 @@ func runDrupalContribSync(args []string, streams helperIO, crash func(string)) i
 		streams,
 		crash,
 	)
+	if err := s.acquireLock(); err != nil {
+		return scaffoldResult(err, streams)
+	}
+	defer s.releaseLock()
 	// A first build, or one resuming from its manifest, still converges
 	// afterwards: inputs may have changed since the generation it resumed.
 	// A site without a manifest always converges; with no usable marker
@@ -148,7 +147,7 @@ func (o drupalContribOptions) checkMount() error {
 func installDrupalContrib(s *scaffold, manifest *scaffoldManifest, o drupalContribOptions) error {
 	const hook = "composer-install"
 	if !manifest.Hooks[hook] || !drupalContribComplete(s.appRoot) {
-		if err := s.streams.contribComposer(s.appRoot, "install", []string{"install", "--no-interaction"}); err != nil {
+		if err := s.contribComposer(s.appRoot, "install", []string{"install", "--no-interaction"}); err != nil {
 			return err
 		}
 		manifest.Hooks[hook] = true
@@ -173,10 +172,14 @@ func (o drupalContribOptions) prepareTestSite() error {
 }
 
 func drupalContribComplete(root string) bool {
+	// The recipe's tasks run these tools from /app/vendor/bin. PHPStan is left out because
+	// drupal/core-dev only ships it from Drupal 10, so the extension's require-dev supplies it on 9.
+	for _, binary := range []string{"drush", "phpunit", "phpcs", "phpcbf"} {
+		if !executableFile(filepath.Join(root, "vendor", "bin", binary)) {
+			return false
+		}
+	}
 	return isRegularFile(filepath.Join(root, "composer.json")) &&
-		executableFile(filepath.Join(root, "vendor", "bin", "drush")) &&
-		executableFile(filepath.Join(root, "vendor", "bin", "phpunit")) &&
-		executableFile(filepath.Join(root, "vendor", "bin", "phpcs")) &&
 		isDirectory(filepath.Join(root, "web", "core")) &&
 		isRegularFile(filepath.Join(root, "web", "index.php"))
 }

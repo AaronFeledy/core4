@@ -1,0 +1,4 @@
+name: guide-router-page
+services:
+  web:
+    type: static

@@ -6,6 +6,7 @@ import { buildKeyForService } from "@lando/engine/services/build-key";
 import * as FileSystem from "@lando/engine/services/file-system";
 import * as Planner from "@lando/engine/services/planner";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { bringDown, bringUp, makePodmanApiClient, layer as providerLayer } from "@lando/provider-lando";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
@@ -112,6 +113,7 @@ export const acquirePhpStack = Effect.fn("PhpAcceptance.acquire")(function* (
   evidence.cleanup = "pending";
   yield* Effect.addFinalizer(() =>
     bringDown(isolatedPlan, { api, volumes: true, purgeCaches: true }).pipe(
+      Effect.provide(makeTestStateStore().layer),
       Effect.timeout("60 seconds"),
       Effect.tap(() =>
         Effect.forEach(built, (artifact) =>

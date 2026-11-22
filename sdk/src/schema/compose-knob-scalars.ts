@@ -84,24 +84,30 @@ const NonNegativeInt = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(0, { expected: "a non-negative byte size" }),
 );
 
+const BYTE_SIZE_DESCRIPTION =
+  "Size as integer bytes or a Compose byte-size string (for example 512m or 1g); canonicalized to integer bytes.";
+
 const byteSizeField = <Bytes extends Schema.Codec<number, number, never, never>>(bytes: Bytes) =>
-  Schema.Union([Schema.String, bytes]).pipe(
-    Schema.decodeTo(
-      bytes,
-      SchemaTransformation.transformEffect({
-        decode: (input) => {
-          if (typeof input === "number") return Effect.succeed(input);
-          try {
-            return Effect.succeed(parseComposeByteSize(input));
-          } catch (error) {
-            if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
-            throw error;
-          }
-        },
-        encode: (input) => Effect.succeed(input),
-      }),
-    ),
-  );
+  Schema.Union([Schema.String, bytes])
+    .annotate({ description: BYTE_SIZE_DESCRIPTION })
+    .pipe(
+      Schema.decodeTo(
+        bytes,
+        SchemaTransformation.transformEffect({
+          decode: (input) => {
+            if (typeof input === "number") return Effect.succeed(input);
+            try {
+              return Effect.succeed(parseComposeByteSize(input));
+            } catch (error) {
+              if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
+              throw error;
+            }
+          },
+          encode: (input) => Effect.succeed(input),
+        }),
+      ),
+    )
+    .annotate({ description: BYTE_SIZE_DESCRIPTION });
 
 export const ComposeByteSizeField = byteSizeField(NonNegativeInt);
 export type ComposeByteSize = typeof ComposeByteSizeField.Type;

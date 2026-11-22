@@ -129,6 +129,8 @@ Start refuses the switch and leaves everything in place when it can't do that sa
 
 `lando restart -s` and `lando rebuild -s` don't prepare or retire sync targets. When a selected service's accelerated mount is new, changed, or removed, they refuse and tell you to run `lando start`, which prepares a new target and flushes a retired one first.
 
+`lando start -s` prepares targets for selected services that had no accelerated session and reuses unchanged sessions. If a selected service's existing accelerated mounts changed or were removed, run bare `lando start` to flush and retire the old targets. If a start was interrupted, Lando finishes the recorded selection before continuing with a different start, restart, or rebuild.
+
 ## Stop and resume the app
 
 ```sh

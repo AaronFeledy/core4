@@ -131,13 +131,16 @@ test.each(["healthcheck", "readiness"] as const)(
 );
 
 test.each(["healthcheck", "readiness"] as const)(
-  "warns when both %s start-interval aliases survive across sources",
+  "warns when both %s start-interval dialects survive across sources",
   async (role) => {
     await write(
       ".lando.base.yml",
       `services:\n  web:\n    ${role}:\n      test: [CMD, echo]\n      start_interval: 1s\n`,
     );
-    await write(".lando.yml", `name: aliases\nservices:\n  web:\n    ${role}:\n      startInterval: 2s\n`);
+    await write(
+      ".lando.yml",
+      `name: aliases\nservices:\n  web:\n    ${role}:\n      startIntervalSeconds: 2\n`,
+    );
 
     const { result, resolved } = await lint();
 
@@ -146,7 +149,7 @@ test.each(["healthcheck", "readiness"] as const)(
       expect.objectContaining({ rule: `${role}.mixed-dialects`, severity: "warning" }),
     ]);
     expect(Object.values(resolved?.document.services ?? {})[0]?.[role]).toMatchObject({
-      startInterval: "2s",
+      startIntervalSeconds: 2,
     });
   },
 );

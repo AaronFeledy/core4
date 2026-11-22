@@ -391,7 +391,7 @@ describe("static ServiceType", () => {
       type: "static",
       command: ["custom-static-server"],
       entrypoint: ["/bin/sh", "-c"],
-      dependsOn: ["database"],
+      depends_on: ["database"],
     });
 
     expect(plan.command).toEqual(["custom-static-server"]);

@@ -25,7 +25,7 @@ version supports every PHP version. Choose a version supported by your project.
 
 ## Generated tooling
 
-- `lando joomla …` - `php cli/joomla.php` inside the appserver service.
+- `lando joomla …` - `php cli/joomla.php` inside the appserver service, through `:php-local`, from any directory in the app.
 - `lando composer …` - Composer.
 - `lando create-project <package> [<version>]` - Stage a Composer project outside the app root, promote it into `/app` without overwriting `.lando.yml`, then install `vendor` in place (inherited from `lamp`). Add `--no-scripts` to skip the project's Composer hooks.
 - `lando php …` - PHP CLI inside the appserver service.

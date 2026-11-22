@@ -1,0 +1,12 @@
+name: scan-verdicts
+services:
+  redirects:
+    type: node:22
+    command: node redirect.cjs
+    routes:
+      - hostname: redirects.scan-verdicts.lndo.site
+        pathPrefix: /local
+      - hostname: redirects.scan-verdicts.lndo.site
+        pathPrefix: /external
+  idle:
+    type: node:22

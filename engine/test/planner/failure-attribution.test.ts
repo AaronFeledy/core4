@@ -81,3 +81,36 @@ test("uses the discovered file for a route error without a file and keeps explic
   });
   expect(attributePlanningFailure(located, { landofile })).toBe(located);
 });
+
+test("attributes a missing field to the authored object that omits it, not to generated paths", async () => {
+  const landofile = await Effect.runPromise(
+    loadAuthoredDocuments(
+      [
+        {
+          file,
+          value: { name: "attributed", services: { web: { type: "nginx", healthcheck: { kind: "http" } } } },
+        },
+      ],
+      { appRoot: "/app", file },
+    ),
+  );
+  const attributed = attributePlanningFailure(
+    new LandofileValidationError({
+      file: "/app",
+      message: "Service web has an invalid healthcheck probe.",
+      remediation: "Supply an absolute HTTP or HTTPS URL.",
+      issues: [
+        { path: ["services", "web", "healthcheck", "url"], message: "Supply an absolute HTTP or HTTPS URL." },
+        { path: planPath, message: "Invalid generated endpoint." },
+      ],
+    }),
+    { landofile },
+  );
+  expect(attributed).toBeInstanceOf(LandofileValidationError);
+  if (!(attributed instanceof LandofileValidationError)) return;
+  expect(attributed.file).toBe(file);
+  expect(attributed.issues.map((issue) => issue.source?.path)).toEqual([
+    ["services", "web", "healthcheck"],
+    undefined,
+  ]);
+});

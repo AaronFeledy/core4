@@ -56,6 +56,10 @@ your editor reads the same as the schema reference.
 boolean, number, list, or object field it accepts the literal type or one
 whole-value `{{ ... }}` string, so `primary: "{{ recipe.primary }}"` and
 `httpPort: "{{ number(env.PORT) }}"` are valid; `primary: maybe` is not.
+The same rule applies inside a build declaration. For example, `build.args`
+can be `"{{ { MODE: env.BUILD_MODE } }}"` in the Landofile. The runtime schema
+checks the resulting argument map, not the expression that produced it. Use
+`dockerfile_inline` to write the Dockerfile text in the build declaration.
 That whole value is one interpolation and nothing else. Surrounding text,
 including spaces and a trailing newline, is rejected, so
 `"  {{ recipe.flag }}  "` fails at a typed field. `{{-` / `-}}` trim markers

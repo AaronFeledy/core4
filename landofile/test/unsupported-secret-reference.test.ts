@@ -114,7 +114,7 @@ test.each([
       "For runtime use, set services.app.environment.TOKEN to the ${secret:...} reference. For setup that needs it, add an events.post-start step with service app, env.TOKEN set to the reference, and $TOKEN in its cmd; it runs in the started container.",
   },
   {
-    path: ["services", "app", "build", "dockerfileInline"],
+    path: ["services", "app", "build", "dockerfile_inline"],
     extra: " Dockerfile instructions run before secrets resolve and can be recorded in image history.",
     suggestion:
       "For runtime use, set services.app.environment.TOKEN to the ${secret:...} reference. For setup that needs it, add an events.post-start step with service app, env.TOKEN set to the reference, and $TOKEN in its cmd; it runs in the started container.",

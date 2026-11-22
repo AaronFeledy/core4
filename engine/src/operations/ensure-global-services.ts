@@ -69,9 +69,13 @@ export type EnsureGlobalStartedService = StartedService;
 export interface EnsureGlobalServicesResult {
   readonly app: string;
   readonly servicesStarted: ReadonlyArray<EnsureGlobalStartedService>;
+  readonly credentialChanges?: NonNullable<
+    Effect.Success<ReturnType<typeof applyActivation>>["credentialChanges"]
+  >;
 }
 
 export type EnsureGlobalServicesError =
+  | import("@lando/sdk/errors").RouteUrlBindingError
   | import("@lando/sdk/errors").CaError
   | import("@lando/sdk/services").FileSystemError
   | DebuggerHostUnavailableError
@@ -298,6 +302,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
       applyActivation({
         provider,
         plan: runtimePlan,
+        previousPlan: retained.recordedPlan,
         certificates,
         reconcile: false,
         recordedPlan: finalPlan,
@@ -336,7 +341,11 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const afterStartup = yield* captureGlobalEnsureInputs(desiredFinalPlan, loaded.landofile, provider);
     if (beforeStartup !== undefined && afterStartup?.digest === beforeStartup.digest)
       rememberGlobalEnsure(registry, desiredFinalPlan, loaded.landofile, afterStartup, ready);
-    return { app: plan.name, servicesStarted };
+    return {
+      app: plan.name,
+      servicesStarted,
+      ...(applied.credentialChanges === undefined ? {} : { credentialChanges: applied.credentialChanges }),
+    };
   },
   (effect, options: EnsureGlobalServicesOptions) =>
     interruptOnAbort(withGlobalMutation(effect), options.signal),

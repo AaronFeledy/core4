@@ -237,6 +237,7 @@ export interface AppSelector {
 
 export interface ExecTarget extends ServiceSelector {
   readonly user?: string;
+  readonly expectedContainerId?: string;
 }
 
 export interface CommandSpec {

@@ -12,11 +12,17 @@ import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
+import {
+  RESERVED_LONG_PORT,
+  catalogDbExtraArgsRemediation,
+  extraArgsCommandOptions,
+  isNonCatalogArtifact,
+} from "./_extra-args.ts";
 import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 import {
   assertListenerConfig,
   launcherAuthority,
-  plannedPort,
+  primaryPortSelector,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -33,6 +39,7 @@ export const MONGODB_LISTENER = {
   launcher: { setting: (port: number) => `--port ${port}` },
 } as const;
 export const DEFAULT_PORT = MONGODB_LISTENER.port;
+const selectPort = primaryPortSelector(MONGODB_LISTENER);
 const DATA_TARGET = PortablePath.make("/data/db");
 const FAMILY = "mongodb" as const;
 export const MONGODB_FEATURE_ID = "service-lando.mongodb";
@@ -84,22 +91,40 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
     readOnly: false,
   });
 
+  const catalogImages = Object.values(ARTIFACTS);
+  const custom = isNonCatalogArtifact(service, catalogImages);
   const serverConfig = addServerConfigMount(ctx, MONGODB_CONFIG_TARGET);
+  const hasExtraArgs = (service.extraArgs?.length ?? 0) > 0;
+  const processOwned = service.command !== undefined || service.entrypoint !== undefined;
   const ownsLauncher =
-    (serverConfig || service.port !== undefined) &&
-    service.command === undefined &&
-    service.entrypoint === undefined;
+    !processOwned && (serverConfig || service.port !== undefined || (!custom && hasExtraArgs));
   if (ownsLauncher) {
-    ctx.setCommand([
-      "mongod",
-      ...(serverConfig ? ["--config", MONGODB_CONFIG_TARGET] : []),
-      "--port",
-      String(port),
-    ]);
-  } else if (
-    (serverConfig || service.port !== undefined) &&
-    (service.command !== undefined || service.entrypoint !== undefined)
-  ) {
+    ctx.setCommand(
+      ["mongod", ...(serverConfig ? ["--config", MONGODB_CONFIG_TARGET] : []), "--port", String(port)],
+      custom
+        ? undefined
+        : extraArgsCommandOptions([
+            RESERVED_LONG_PORT,
+            {
+              form: "long",
+              name: "config",
+              remediation: "Set config.server instead of --config in extraArgs.",
+              takesValue: true,
+            },
+            {
+              form: "short",
+              name: "f",
+              remediation: "Set config.server instead of -f in extraArgs.",
+              takesValue: true,
+            },
+            {
+              form: "long-prefix",
+              prefix: "bind_ip",
+              remediation: "Lando manages MongoDB bind settings; remove bind_ip flags from extraArgs.",
+            },
+          ]),
+    );
+  } else if ((serverConfig || service.port !== undefined) && processOwned) {
     ctx.setListenerAuthority(launcherAuthority(MONGODB_LISTENER, port));
   }
 
@@ -145,6 +170,11 @@ export const mongodbServiceType: ServiceType = {
   id: "mongodb",
   name: "mongodb",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: catalogDbExtraArgsRemediation(
+    Object.values(ARTIFACTS),
+    "Put MongoDB flags in command:, set config.server or port: so Lando owns the launcher, or remove extraArgs.",
+  ),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
@@ -154,7 +184,7 @@ export const mongodbServiceType: ServiceType = {
     return serviceTypeResolve("mongodb", "mongodb service type failed to resolve", () => {
       const creds = credsFor(input, input.service);
       assertListenerConfig(input.service, MONGODB_LISTENER);
-      const port = plannedPort(input.service, MONGODB_LISTENER);
+      const port = selectPort(input.service);
       return {
         base: "lando",
         connection: { family: "mongodb", creds, port },

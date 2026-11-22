@@ -7,10 +7,11 @@ import {
   serviceFeatureDeclareEndpoints,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-import { resolveMailListeners } from "./_mail-listeners.ts";
+import { mailhogPlannedPort, resolveMailListeners } from "./_mail-listeners.ts";
 
 export { MAILHOG_LISTENER } from "./_mail-listeners.ts";
 
+import { IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const MAILHOG_FEATURE_ID = "service-lando.mailhog";
@@ -48,6 +49,8 @@ export const mailhogServiceType: ServiceType = {
   id: "mailhog",
   name: "mailhog",
   base: "lando",
+  plannedPort: mailhogPlannedPort,
+  extraArgsRemediation: IMAGE_DEFAULT_EXTRA_ARGS_REMEDIATION("MailHog environment"),
   identity: { defaultUser: "mailhog", homes: { mailhog: "/home/mailhog", root: "/root" } },
   schema: MailhogServiceConfig,
   resolve: Effect.fn("MailhogServiceType.resolve")(function* (input) {

@@ -70,6 +70,7 @@ import type {
   SecretReferenceInvalidError,
   SecretStoreError,
   SecretStoreUnavailableError,
+  ServiceNotFoundError,
   ServiceNotReadyError,
   ShellExecError,
   ShellScriptOutsideRootError,
@@ -448,12 +449,14 @@ describe("SDK plan-carrying error channels", () => {
       Equal<
         StartAppError,
         | LegacyStartAppError
+        | import("@lando/sdk/errors").RouteUrlBindingError
         | import("@lando/sdk/errors").CaError
         | import("@lando/sdk/services").FileSystemError
         | ServiceNotReadyError
         | DebuggerHostUnavailableError
         | import("@lando/sdk/errors").AppPlacementError
         | import("@lando/sdk/errors").AppResolveError
+        | ServiceNotFoundError
       >
     >(true);
     expect(true).toBe(true);

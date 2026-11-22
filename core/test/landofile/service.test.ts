@@ -42,9 +42,9 @@ const validationErrorFrom = (exit: Exit.Exit<unknown, unknown>): LandofileValida
 };
 
 describe("LandofileService layer — build shape discrimination boundary", () => {
-  test("a rejected Compose build key still reaches mixed-family remediation at the loader boundary", async () => {
+  test("a supported Compose build key mixed with scripts reaches mixed-family remediation at the loader boundary", async () => {
     await withTempCwd(async (dir) => {
-      // Given: a service build block that mixes a rejected Compose key with the Lando family
+      // Given: a service build block that mixes supported keys from both families
       await writeFile(
         join(dir, ".lando.yml"),
         [
@@ -54,7 +54,7 @@ describe("LandofileService layer — build shape discrimination boundary", () =>
           "    image: node:lts",
           "    build:",
           "      artifact: echo hi",
-          "      no_cache: true",
+          "      target: production",
           "",
         ].join("\n"),
       );
@@ -65,14 +65,10 @@ describe("LandofileService layer — build shape discrimination boundary", () =>
 
       // Then: validationIssues keeps the schema remediation, not the dotted path
       expect(error._tag).toBe("LandofileValidationError");
-      const mixedIssue = error.issues.find((issue) => issue.message.startsWith("Landofile service"));
-      expect(mixedIssue).toBeDefined();
-      expect(mixedIssue?.message.startsWith("Landofile service")).toBe(true);
+      const mixedIssue = error.issues.find((issue) => issue.reason === "build.mixed-families");
+      expect(mixedIssue?.path).toEqual(["services", "web", "build"]);
       expect(mixedIssue?.message).toContain("Compose");
       expect(mixedIssue?.message).toContain("Lando build-script");
-      expect(mixedIssue?.message).toContain("artifact");
-      expect(mixedIssue?.message).toContain("no_cache");
-      expect(mixedIssue?.message).toContain("remove");
       expect(mixedIssue?.message).toContain("image:");
       expect(mixedIssue?.message).not.toContain("build.dockerfile");
       expect(mixedIssue?.message).not.toBe("services.web.build");

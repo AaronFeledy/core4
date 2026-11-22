@@ -28,8 +28,8 @@ test.each([
     await writeFile(
       join(root, ".lando.yml"),
       owner === "app"
-        ? `name: demo\nenv_file: '${path}'\n`
-        : `name: demo\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    envFile: '${path}'\n`,
+        ? `name: demo\nserviceDefaults:\n  env_file: '${path}'\n`
+        : `name: demo\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    env_file: '${path}'\n`,
     );
     await writeFile(join(root, `${value}.env`), "KEY=value\n");
     const result = await lintApp(root);
@@ -42,7 +42,10 @@ test.each([
 test("warns when a double-quoted env value decodes differently from its raw text", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-env-lint-escape-"));
   try {
-    await writeFile(join(root, ".lando.yml"), "name: env-lint-escape\nenv_file: [runtime.env]\n");
+    await writeFile(
+      join(root, ".lando.yml"),
+      "name: env-lint-escape\nserviceDefaults:\n  env_file: [runtime.env]\n",
+    );
     await writeFile(join(root, "runtime.env"), 'PATH="C:\\new"\n');
 
     const result = await lintApp(root);
@@ -50,7 +53,7 @@ test("warns when a double-quoted env value decodes differently from its raw text
     expect(result.valid).toBe(true);
     expect(result.violations).toEqual([
       expect.objectContaining({
-        path: ["env_file", 0],
+        path: ["serviceDefaults", "env_file", 0],
         rule: "env-file.literal",
         severity: "warning",
         message: expect.stringContaining("decodes differently from its raw text"),
@@ -79,7 +82,7 @@ test("attributes deferred-path warnings to the declaring configuration entry", a
       {
         rule: "env-file.literal",
         severity: "warning",
-        path: ["services", "web", "envFile", 0],
+        path: ["services", "web", "env_file", 0],
         source: { file: join(root, ".lando.yml"), path: ["services", "web", "env_file"] },
         message: expect.stringContaining(`${join(root, "demo.env")}:1:`),
       },
@@ -92,7 +95,10 @@ test("attributes deferred-path warnings to the declaring configuration entry", a
 test("keeps escaped literal env-file paths literal after resolution", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-env-lint-literal-path-"));
   try {
-    await writeFile(join(root, ".lando.yml"), "name: demo\nenv_file: '{{{{ app.name }}.env'\n");
+    await writeFile(
+      join(root, ".lando.yml"),
+      "name: demo\nserviceDefaults:\n  env_file: '{{{{ app.name }}.env'\n",
+    );
     await writeFile(join(root, "{{ app.name }}.env"), "KEY=value\n");
     const result = await lintApp(root);
     expect(result).toMatchObject({ valid: true, violations: [] });
@@ -106,7 +112,7 @@ test("does not read env-file sites held behind an unavailable service credential
   try {
     await writeFile(
       join(root, ".lando.yml"),
-      "name: demo\nservices:\n  db:\n    type: missing-type\n  web:\n    type: compose\n    image: alpine\n    home: false\n    envFile: '{{ services.db.creds.password }}.env'\n",
+      "name: demo\nservices:\n  db:\n    type: missing-type\n  web:\n    type: compose\n    image: alpine\n    home: false\n    env_file: '{{ services.db.creds.password }}.env'\n",
     );
     const envReads: string[] = [];
     const result = await Effect.runPromise(
@@ -134,7 +140,10 @@ test("does not read env-file sites held behind an unavailable service credential
 test("warns when an env value contains ${ without failing the lint", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-env-lint-interp-"));
   try {
-    await writeFile(join(root, ".lando.yml"), "name: env-lint-interp\nenv_file: [runtime.env]\n");
+    await writeFile(
+      join(root, ".lando.yml"),
+      "name: env-lint-interp\nserviceDefaults:\n  env_file: [runtime.env]\n",
+    );
     await writeFile(join(root, "runtime.env"), "TOKEN=${SECRET}\n");
 
     const result = await lintApp(root);
@@ -142,7 +151,7 @@ test("warns when an env value contains ${ without failing the lint", async () =>
     expect(result.valid).toBe(true);
     expect(result.violations).toEqual([
       expect.objectContaining({
-        path: ["env_file", 0],
+        path: ["serviceDefaults", "env_file", 0],
         rule: "env-file.literal",
         severity: "warning",
         message: expect.stringContaining("${"),
@@ -159,7 +168,10 @@ test("warns when an env value contains ${ without failing the lint", async () =>
 test("treats a bare NAME env line as an error with environment remediation", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-env-lint-bare-"));
   try {
-    await writeFile(join(root, ".lando.yml"), "name: env-lint-bare\nenv_file: [runtime.env]\n");
+    await writeFile(
+      join(root, ".lando.yml"),
+      "name: env-lint-bare\nserviceDefaults:\n  env_file: [runtime.env]\n",
+    );
     await writeFile(join(root, "runtime.env"), "NAME\n");
 
     const result = await lintApp(root);
@@ -167,7 +179,7 @@ test("treats a bare NAME env line as an error with environment remediation", asy
     expect(result.valid).toBe(false);
     expect(result.violations).toEqual([
       expect.objectContaining({
-        path: ["env_file", 0],
+        path: ["serviceDefaults", "env_file", 0],
         rule: "env-file.syntax",
         severity: "error",
         message: expect.stringContaining("Expected KEY=VALUE."),
@@ -182,14 +194,17 @@ test("treats a bare NAME env line as an error with environment remediation", asy
 test("fails lint when a declared env file is missing", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-env-lint-missing-"));
   try {
-    await writeFile(join(root, ".lando.yml"), "name: env-lint-missing\nenv_file: [missing.env]\n");
+    await writeFile(
+      join(root, ".lando.yml"),
+      "name: env-lint-missing\nserviceDefaults:\n  env_file: [missing.env]\n",
+    );
 
     const result = await lintApp(root);
 
     expect(result.valid).toBe(false);
     expect(result.violations).toEqual([
       expect.objectContaining({
-        path: ["env_file", 0],
+        path: ["serviceDefaults", "env_file", 0],
         message: expect.stringContaining("Unable to read env file"),
       }),
     ]);
@@ -222,7 +237,7 @@ test("merges env errors and warnings with fragment, tooling, event and capabilit
       [
         "name: merged",
         "runtime: 4",
-        "env_file: [missing.env, literal.env]",
+        "serviceDefaults:\n  env_file: [missing.env, literal.env]",
         "services:",
         "  web:",
         "    type: compose",
@@ -260,7 +275,9 @@ test("merges env errors and warnings with fragment, tooling, event and capabilit
     expect(rules).toContain("landofile.capability");
     expect(result.violations.some((finding) => finding.path.join(".") === "runtime")).toBe(true);
     expect(result.violations.every((finding) => finding.source !== undefined)).toBe(true);
-    expect(result.violations.filter((finding) => finding.path.join(".") === "env_file.0")).toHaveLength(1);
+    expect(
+      result.violations.filter((finding) => finding.path.join(".") === "serviceDefaults.env_file.0"),
+    ).toHaveLength(1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -299,7 +316,7 @@ test("resolves included Compose env files relative to their Compose document", a
     expect(result.violations.filter((finding) => finding.severity === "error")).toEqual([]);
     expect(result.valid).toBe(true);
     const finding = result.violations.find((issue) => issue.rule === "env-file.literal");
-    expect(finding?.path).toEqual(["services", "web", "envFile", 0]);
+    expect(finding?.path).toEqual(["services", "web", "env_file", 0]);
     expect(finding?.message).toContain(join(root, "compose", "runtime.env"));
     expect(finding?.source).toMatchObject({ file: join(root, "compose", "compose.yml") });
   } finally {
@@ -312,7 +329,7 @@ test("uses one env-file snapshot for diagnostics and service resolution", async 
   try {
     await writeFile(
       join(root, ".lando.yml"),
-      "name: snapshot\nenv_file: runtime.env\nservices:\n  web:\n    type: compose\n    image: alpine\n    env_file: runtime.env\n    home: false\n",
+      "name: snapshot\nserviceDefaults:\n  env_file: runtime.env\nservices:\n  web:\n    type: compose\n    image: alpine\n    env_file: runtime.env\n    home: false\n",
     );
     let reads = 0;
     const result = await Effect.runPromise(

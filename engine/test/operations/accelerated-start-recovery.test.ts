@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ProviderId } from "@lando/sdk/schema";
+import { ProviderId, ServiceName } from "@lando/sdk/schema";
 import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Option } from "effect";
 import {
@@ -19,6 +19,7 @@ import {
   session,
   target,
 } from "./accelerated-start-recovery-support.ts";
+import { web } from "./start-progress-topology-support.ts";
 
 test("retained durable start reuses its two-way session and history", async () => {
   const harness = await Effect.runPromise(recoveryHarness({ replica: false }));
@@ -193,6 +194,30 @@ test("retained destroy safely cleans partial preparation with no volume or sessi
   expect(harness.calls).toEqual(["quiesce-retained", "dispose-targets", "destroy:false"]);
   const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
   expect(pending).toBeNull();
+});
+
+test("stop with an open attempt also stops applied services the Landofile no longer names", async () => {
+  // Given an unfinished attempt whose applied record still has a worker the Landofile removed.
+  const worker = { ...web, name: ServiceName.make("worker"), primary: false, endpoints: [], mounts: [] };
+  const applied = { ...acceleratedPlan, services: { ...acceleratedPlan.services, [worker.name]: worker } };
+  const destroyed: string[][] = [];
+  const harness = await Effect.runPromise(
+    recoveryHarness({
+      harnessOptions: {
+        resolveAppliedPlan: () => Effect.succeed(applied),
+        onDestroy: (destroyTarget) => {
+          destroyed.push(Object.keys(destroyTarget.plan?.services ?? {}).toSorted());
+        },
+      },
+    }),
+  );
+  // When stop is requested.
+  const result = await Effect.runPromiseExit(stopApp({}, target).pipe(Effect.provide(harness.layer)));
+  // Then teardown covers the applied worker as well as the desired services, and the attempt stays.
+  expect(Exit.isSuccess(result)).toBe(true);
+  expect(destroyed).toEqual([[String(web.name), String(worker.name)].toSorted()]);
+  const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
+  expect(pending?.phase).toBe("apply-intent");
 });
 
 test("stop before any session exists stops writers without draining", async () => {

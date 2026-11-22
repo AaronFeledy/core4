@@ -19,7 +19,7 @@ services:
   appserver:
     allowOverride: true
     composer: "{{ recipe.composer }}"
-    dependsOn:
+    depends_on:
       - database
     framework: none
     port: 80

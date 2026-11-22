@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { bringDown, makePodmanApiClient } from "@lando/provider-lando";
+import { AppId } from "@lando/sdk/schema";
 import { Clock, Effect } from "effect";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
-import { plan, volumeSelector } from "./support/bring-down-fixture.ts";
+import { plan } from "./support/bring-down-fixture.ts";
 
 const volumePruneEligibility = liveIntegrationEligibility([
   {
@@ -16,7 +19,7 @@ const volumePruneEligibility = liveIntegrationEligibility([
 describe("provider-lando bringDown", () => {
   test.skipIf(!volumePruneEligibility.available)(
     liveIntegrationTestName(
-      "prunes only explicitly created current-app/provider volumes when enabled",
+      "deletes only verified current-app/provider volumes when enabled",
       volumePruneEligibility,
     ),
     async () => {
@@ -36,11 +39,7 @@ describe("provider-lando bringDown", () => {
             path: "/volumes/create",
             body: {
               Name: owned,
-              Labels: {
-                "dev.lando.app": "bringdownapp",
-                "dev.lando.provider": "lando",
-                "dev.lando.volume-selector": volumeSelector(plan.id, "data"),
-              },
+              Labels: volumeCreationLabels(plan, { name: owned, scope: "app", kind: "data" }),
             },
           }),
         );
@@ -50,16 +49,19 @@ describe("provider-lando bringDown", () => {
             path: "/volumes/create",
             body: {
               Name: other,
-              Labels: {
-                "dev.lando.app": "other",
-                "dev.lando.provider": "lando",
-                "dev.lando.volume-selector": volumeSelector("other", "data"),
-              },
+              Labels: volumeCreationLabels(
+                { ...plan, id: AppId.make("other") },
+                { name: other, scope: "app", kind: "data" },
+              ),
             },
           }),
         );
 
-        await Effect.runPromise(bringDown(plan, { api, volumes: true }));
+        await Effect.runPromise(
+          bringDown(plan, { api, volumes: true, endpointNamespace: socketPath ?? "" }).pipe(
+            Effect.provide(makeTestStateStore().layer),
+          ),
+        );
 
         const ownedAfter = await Effect.runPromise(liveRequest({ method: "GET", path: `/volumes/${owned}` }));
         const otherAfter = await Effect.runPromise(liveRequest({ method: "GET", path: `/volumes/${other}` }));

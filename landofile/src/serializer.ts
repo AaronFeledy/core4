@@ -24,6 +24,14 @@ export const compiledLandofileSource = (compiled: CompiledLandofile): Record<str
                   : `url.encodeComponent(secrets[${JSON.stringify(part.reference)}])`,
             )
             .join(", ")}) }}`;
+        case "RouteText":
+          return `{{ concat(${value.parts
+            .map((part) => {
+              if (typeof part === "string") return JSON.stringify(part);
+              const expression = `services[${JSON.stringify(part.service)}].url`;
+              return part.encoding === "raw" ? expression : `url.encodeComponent(${expression})`;
+            })
+            .join(", ")}) }}`;
         default:
           return value satisfies never;
       }

@@ -419,26 +419,15 @@ describe("retained lint snapshot", () => {
     ).toContain(join(root, "fragment.yml"));
   });
 
-  test("keeps authored alias and effective paths distinct at retained-content coordinates", async () => {
+  test("merges fragment and effective findings for one invalid Compose key", async () => {
     await write(".lando.base.yml", "services:\n  web:\n    working_dir: 5\n");
     await write(".lando.yml", "name: snapshot\n");
     const snapshot = await lint();
     expect(snapshot.result.violations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          scopes: ["fragment"],
+          scopes: ["fragment", "effective"],
           path: ["services", "web", "working_dir"],
-          source: {
-            file: join(root, ".lando.base.yml"),
-            layer: "base",
-            path: ["services", "web", "working_dir"],
-          },
-          line: 3,
-          column: 5,
-        }),
-        expect.objectContaining({
-          scopes: ["effective"],
-          path: ["services", "web", "workingDirectory"],
           source: {
             file: join(root, ".lando.base.yml"),
             layer: "base",

@@ -48,6 +48,7 @@ const composeHealthcheckFixtures = [
     expectedErrorFragment: "user",
   },
   { name: "false disables the probe", input: false, expected: false },
+  { name: "none needs no probe target", input: { kind: "none" }, expected: false },
   {
     name: "string is a shell command",
     input: "pg_isready",
@@ -61,13 +62,20 @@ const composeHealthcheckFixtures = [
   { name: "bare NONE is an executable", input: ["NONE"], expected: { kind: "command", command: ["NONE"] } },
   {
     name: "none preserves supplied timing metadata",
-    input: { kind: "none", command: "x", url: "http://x", port: 80, intervalSeconds: 2, startInterval: "5s" },
-    expected: { kind: "none", intervalSeconds: 2, startInterval: "5s" },
+    input: {
+      kind: "none",
+      command: "x",
+      url: "http://x",
+      port: 80,
+      intervalSeconds: 2,
+      startIntervalSeconds: 5,
+    },
+    expected: { kind: "none", intervalSeconds: 2, startIntervalSeconds: 5 },
   },
   {
     name: "disable preserves normalized timing metadata",
     input: { disable: true, test: "x", interval: "5s", start_interval: "1s" },
-    expected: { kind: "none", intervalSeconds: 5, startInterval: "1s" },
+    expected: { kind: "none", intervalSeconds: 5, start_interval: "1s" },
   },
   { name: "empty shorthand string", input: "", expectedErrorFragment: "must not be empty" },
   { name: "empty shorthand argv", input: [], expectedErrorFragment: "must not be empty" },
@@ -143,7 +151,7 @@ const composeHealthcheckFixtures = [
   {
     name: "start_interval stays a raw string without startIntervalSeconds",
     input: { start_interval: "5s" },
-    expected: { startInterval: "5s" },
+    expected: { start_interval: "5s" },
   },
   {
     name: "none validates and preserves shared metadata",
@@ -155,7 +163,7 @@ const composeHealthcheckFixtures = [
       retries: "3",
       start_interval: "5s",
     },
-    expected: { kind: "none", retries: 3, startInterval: "5s" },
+    expected: { kind: "none", retries: 3, start_interval: "5s" },
   },
   {
     name: "command selects Lando precedence over disable",
@@ -186,6 +194,16 @@ const composeHealthcheckFixtures = [
     name: "startPeriodSeconds selects Lando precedence",
     input: { ...ignoredComposeKeys, startPeriodSeconds: 9 },
     expected: { startPeriodSeconds: 9 },
+  },
+  {
+    name: "startIntervalSeconds selects Lando numeric start interval",
+    input: { startIntervalSeconds: 2, start_interval: "5s" },
+    expected: { startIntervalSeconds: 2, start_interval: "5s" },
+  },
+  {
+    name: "startIntervalSeconds alone is a Lando timing field",
+    input: { startIntervalSeconds: 2 },
+    expected: { startIntervalSeconds: 2 },
   },
   { name: "boolean true disables the check", input: { disable: true }, expected: false },
   { name: "string true disables the check", input: { disable: "true" }, expected: false },
@@ -224,11 +242,23 @@ describe("HealthcheckInput", () => {
     { kind: "none", interval: "bad" },
     { kind: "none", command: [] },
     { kind: "none", command: "" },
+    { kind: "none", url: "/health" },
+    { kind: "none", url: "ftp://localhost/health" },
+    { kind: "none", url: "http:///localhost/health" },
+    { kind: "none", port: 0 },
+    { kind: "none", port: 65536 },
+    { kind: "none", port: 80.5 },
     { test: ["NONE"], retries: "bad" },
     { test: ["NONE"], timeout: "bad" },
   ])("rejects malformed siblings before disabling: %j", (input) => {
     const result = Schema.decodeUnknownResult(HealthcheckInput)(input, { onExcessProperty: "error" });
     expect(Result.isFailure(result)).toBe(true);
+  });
+  test.each([
+    { kind: "tcp", url: "/health", port: 80 },
+    { kind: "http", url: "https://localhost/health", port: 0 },
+  ])("validates supplied fields even when the probe kind does not use them: %j", (input) => {
+    expect(Schema.decodeUnknownResult(HealthcheckInput)(input)._tag).toBe("Failure");
   });
   test.each(acceptedFixtures)("normalizes and wires ServiceConfig: $name", ({ input, expected }) => {
     // Given / When
@@ -292,7 +322,8 @@ describe("HealthcheckInput", () => {
       timeoutSeconds: 5,
       retries: 3,
       startPeriodSeconds: 2,
-      startInterval: "5s",
+      startIntervalSeconds: 5,
+      start_interval: "5s",
     } as const satisfies typeof HealthcheckInput.Type;
 
     const encoded = Schema.encodeSync(HealthcheckInput)(canonical);
@@ -306,6 +337,7 @@ describe("HealthcheckInput", () => {
       timeoutSeconds: 5,
       retries: 3,
       startPeriodSeconds: 2,
+      startIntervalSeconds: 5,
       start_interval: "5s",
     });
     expect(Schema.encodeSync(ServiceConfig)({ healthcheck: canonical })).toEqual({ healthcheck: encoded });

@@ -17,13 +17,13 @@ export const OwnedResourcesCleanupResult = Schema.Struct({
   skipped: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
-        appId: AppId.annotate({ description: "App whose unreadable state protects this resource." }),
+        appId: AppId.annotate({ description: "App whose teardown considered this resource." }),
         resource: Schema.String.annotate({ description: "Native resource name retained without mutation." }),
         reason: Schema.String.annotate({
-          description: "Unreadable-state refusal explaining why cleanup skipped this resource.",
+          description: "Why cleanup retained this resource, such as in use or unreadable applied state.",
         }),
       }),
-    ).annotate({ description: "Protected resources skipped because their applied state is unreadable." }),
+    ).annotate({ description: "Resources retained without failing teardown." }),
   ),
   servicesRemoved: Schema.Array(ServiceName).annotate({
     description: "Services whose observed containers were removed.",

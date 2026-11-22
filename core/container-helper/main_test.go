@@ -38,7 +38,7 @@ func TestDispatchRoles(t *testing.T) {
 		if code := dispatch("helper", args, helperIO{stdout: &out, stderr: &stderr}); code != 64 || out.Len() != 0 {
 			t.Fatalf("usage code=%d", code)
 		}
-		for _, role := range []string{"lando", "host-proxy", "exec-run", "log-file"} {
+		for _, role := range []string{"lando", "host-proxy", "exec-run", "log-file", "probe-http", "probe-tcp"} {
 			if !strings.Contains(stderr.String(), role) {
 				t.Fatalf("usage missing %q: %s", role, stderr.String())
 			}

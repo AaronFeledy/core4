@@ -306,8 +306,8 @@ describe("ci workflow", () => {
     const jobs = findIndentedBlock(workflow, "jobs");
     const providerLandoE2e = findIndentedBlock(jobs, "provider-lando-e2e-linux-x64", 2);
 
-    expect(appLifecycleGuide).toContain(
-      '<Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>',
+    expect(appLifecycleGuide).toMatch(
+      /<Scenario id="real-provider-loop" layer="e2e"[^>]* tags=\{\["@smoke"\]\}/,
     );
     expect(workflow).toContain("name: nightly");
     expect(providerLandoE2e).toContain("    runs-on: ubuntu-26.04");
@@ -522,6 +522,7 @@ describe("ci workflow", () => {
     const unitTests = findIndentedBlock(jobs, "unit-tests-linux-x64", 2);
 
     expect(triggers).toContain("  pull_request:");
+    expect(triggers).toContain("  merge_group:");
     expect(triggers).toContain("    branches: [main]");
     expect(triggers).toContain("  push:");
     expect(triggers).toContain("  workflow_dispatch:");
@@ -536,6 +537,8 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("      - name: Native Windows private-file ACL tests");
     expect(staticChecksPlatform).toContain("        if: startsWith(matrix.platform, 'windows-')");
     expect(staticChecksPlatform).toContain("        run: bun run test:selection windows-private-file-access");
+    expect(staticChecksPlatform).toContain("        run: bun run test:selection native-lock");
+    expect(staticChecksPlatform).toContain("      - name: Native advisory lock (two-process)");
     expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform).toContain("      - name: Typecheck\n        run: bun run typecheck\n");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
@@ -717,6 +720,8 @@ describe("ci workflow", () => {
       expect(build).toContain("        run: bun run test:selection compiled-host-execution");
       // Native FFI calling conventions differ per platform, so every build lane round-trips them.
       expect(build).toContain("        run: bun run test:selection compiled-renderer-output");
+      expect(build).toContain("        run: bun run test:selection compiled-native-lock");
+      expect(build).toContain("      - name: Verify compiled two-process native lock");
       expect(build.indexOf(`Build ${target} binary`)).toBeLessThan(
         build.indexOf("Verify compiled host execution"),
       );

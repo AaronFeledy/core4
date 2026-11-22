@@ -9,6 +9,7 @@ import {
   AxisToken,
   CleanupProps,
   ComponentId,
+  FetchProps,
   GuideProps,
   HiddenProps,
   InlineProps,
@@ -26,7 +27,11 @@ import {
 } from "../docs/components/props.ts";
 import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 import { PublicTranscript, Transcript } from "../docs/transcript.ts";
-import { EnvironmentValueResolutionError, PlanReplanRequiredError } from "../errors/environment-value.ts";
+import {
+  EnvironmentValueResolutionError,
+  PlanReplanRequiredError,
+  RouteUrlBindingError,
+} from "../errors/environment-value.ts";
 import {
   AppDataIdentityError,
   AppPlacementError,
@@ -54,6 +59,8 @@ import {
   DeprecationUsedEvent,
   DiffRenderEvent,
   LandoEvent,
+  LockWaitEvent,
+  LockWaitHolder,
   ManagedFileConflictDetectedEvent,
   ManagedFileSkippedEvent,
   MarkdownBlockEvent,
@@ -144,6 +151,7 @@ import {
 } from "../events/index.ts";
 import { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
 import { ExecutionSiteMatch } from "../landofile/execution-sites.ts";
+import { DatabaseCredentialConvergenceResult } from "../services/database-credential-convergence.ts";
 import {
   AgentSocketBridgeInput,
   AgentSocketBridgeResult,
@@ -156,6 +164,7 @@ import {
 } from "./agent-forwarding.ts";
 import {
   AppPlan,
+  AppliedAppPlan,
   CurrentExecutableAppPlan,
   FileSyncPlan,
   ServiceHomePlan,
@@ -288,9 +297,12 @@ import {
   BoundTextReference,
   Environment,
   EnvironmentValue,
+  RouteText,
+  RouteUrlPart,
   SecretRef,
   SecretReference,
 } from "./environment-value.ts";
+import { EventStepPlan, EventStepSource, EventStepStatus, EventsPlan } from "./event-plan.ts";
 import { ExecutionSite } from "./execution-site.ts";
 import { FailureRole } from "./failure-role.ts";
 import {
@@ -318,7 +330,12 @@ import {
 } from "./host-events.ts";
 import { HostTerminal } from "./host-terminal.ts";
 import { CertificateName, DomainName, HostAliasName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
-import { getJsonSchemaWithDeprecations, renderSchemaReferenceMarkdown } from "./json-schema-deprecations.ts";
+import {
+  getJsonSchemaWithDeprecations,
+  publishedFieldMetadata,
+  renderSchemaReferenceMarkdown,
+} from "./json-schema-deprecations.ts";
+import { getAuthoringInputJsonSchema, projectAuthoringVariant } from "./json-schema-editor.ts";
 import {
   repairLandofileExtensions,
   repairTemplateLiteralExtensionRecords,
@@ -363,7 +380,6 @@ import {
   LandofileAuthoringShapeWire,
 } from "./landofile-authoring.ts";
 import { AuthoringExpression, AuthoringExpressionExpectedType } from "./landofile-authoring-expression.ts";
-import { EventStepPlan, EventStepSource, EventStepStatus, EventsPlan } from "./landofile-events.ts";
 import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
   LandofileSourceDocument,
@@ -650,12 +666,15 @@ const basePublicSchemaRegistry = schemaRegistry({
   SecretRef,
   BoundTextReference,
   BoundText,
+  RouteText,
+  RouteUrlPart,
   EnvironmentValue,
   Environment,
   ServiceCreds,
   ServiceCredsConfig,
   DatabaseConnection,
   DatabaseClientCreds,
+  DatabaseCredentialConvergenceResult,
   DatabaseClientCheckState,
   DatabaseClientCheckResult,
   DatabaseLocalCheck,
@@ -674,6 +693,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceScopedLandofile,
   CompiledLandofile,
   EnvironmentValueResolutionError,
+  RouteUrlBindingError,
   PlanReplanRequiredError,
   SshAgentConfig,
   GpgAgentConfig,
@@ -704,6 +724,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   StepProps,
   RunProps,
   VerifyProps,
+  FetchProps,
   CleanupProps,
   VariableProps,
   HiddenProps,
@@ -735,6 +756,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   BuildPlan,
   BuildStep,
   AppPlan,
+  AppliedAppPlan,
   ProviderSetupPlan,
   ServicePlan,
   ServiceHomePlan,
@@ -1110,6 +1132,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   MessageInfoEvent,
   MessageWarnEvent,
   MessageErrorEvent,
+  LockWaitEvent,
+  LockWaitHolder,
   PaintBannerEvent,
   NotifyDesktopEvent,
   CommandInvocationCorrelation,
@@ -1605,8 +1629,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "DatasetArtifactFormat.archiveFormat",
   "DatasetArtifactFormat.endpoint",
   "DatasetArtifactFormat.mediaType",
-  "DatasetBinding.path",
-  "DatasetBinding.service",
   "DatasetCapabilities.apply",
   "DatasetCapabilities.capture",
   "DatasetCapabilities.destructiveApply",
@@ -1627,7 +1649,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "RemoteCapabilities.protectedByDefault",
   "RemoteCapabilities.push",
   "RemoteCapabilities.tool",
-  "RemoteConfig.source",
   "RemoteEnvironment.datasets",
   "RemoteEnvironment.default",
   "RemoteEnvironment.id",
@@ -1744,12 +1765,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "DependencyPlan.condition",
   "DependencyPlan.required",
   "DependencyPlan.service",
-  "DeprecationNotice.docsUrl",
-  "DeprecationNotice.note",
-  "DeprecationNotice.removeIn",
-  "DeprecationNotice.replacement",
-  "DeprecationNotice.severity",
-  "DeprecationNotice.ticket",
   "DeprecationUse.app",
   "DeprecationUse.callsite",
   "DeprecationUse.id",
@@ -1760,11 +1775,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "InternalEndpoint._tag",
   "InternalEndpoint.name",
   "InternalEndpoint.protocol",
-  "EndpointInput.name",
-  "EndpointInput.port",
-  "EndpointInput.protocol",
-  "EndpointInput.socketPath",
-  "EndpointInput.appProtocol",
   "EndpointPlan.name",
   "EndpointPlan.appProtocol",
   "EndpointPlan.port",
@@ -1797,15 +1807,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "FileSyncSessionSpec.service",
   "FileSyncSessionSpec.source",
   "FileSyncSessionSpec.target",
-  "GlobalConfig.defaultProviderId",
-  "GlobalConfig.mcp",
-  "GlobalConfig.network",
-  "GlobalConfig.renderer",
-  "GlobalConfig.systemPluginRoot",
-  "GlobalConfig.telemetry",
-  "GlobalConfig.userCacheRoot",
-  "GlobalConfig.userConfRoot",
-  "GlobalConfig.userDataRoot",
   "GlobalServiceContribution.commands",
   "GlobalServiceContribution.conflicts",
   "GlobalServiceContribution.deprecated",
@@ -1823,14 +1824,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "GuideFrontmatter.tabs",
   "GuideFrontmatter.tags",
   "GuideFrontmatter.variants",
-  "HealthcheckInput.command",
-  "HealthcheckInput.intervalSeconds",
-  "HealthcheckInput.kind",
-  "HealthcheckInput.port",
-  "HealthcheckInput.retries",
-  "HealthcheckInput.startPeriodSeconds",
-  "HealthcheckInput.timeoutSeconds",
-  "HealthcheckInput.url",
   "HealthcheckPlan.command",
   "HealthcheckPlan.intervalSeconds",
   "HealthcheckPlan.kind",
@@ -1877,26 +1870,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "LandofileExpressionParseError.line",
   "LandofileExpressionParseError.message",
   "LandofileExpressionParseError.remediation",
-  "LandofileShape.agentEnv",
-  "LandofileShape.configs",
-  "LandofileShape.include",
-  "LandofileShape.includes",
-  "LandofileShape.name",
-  "LandofileShape.networks",
-  "LandofileShape.provider",
-  "LandofileShape.providers",
-  "LandofileShape.proxy",
-  "LandofileShape.recipe",
-  "LandofileShape.remotes",
-  "LandofileShape.runtime",
-  "LandofileShape.secrets",
-  "LandofileShape.services",
-  "LandofileShape.sshAgent",
-  "LandofileShape.sync",
-  "LandofileShape.tooling",
-  "LandofileShape.toolingEngine",
-  "LandofileShape.version",
-  "LandofileShape.volumes",
   "ManagedFile.base",
   "ManagedFile.content",
   "ManagedFile.format",
@@ -1937,19 +1910,11 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "MessageWarnEvent._tag",
   "MessageWarnEvent.body",
   "MessageWarnEvent.timestamp",
-  "NetworkCaConfig.certs",
-  "NetworkCaConfig.injectIntoServices",
-  "NetworkCaConfig.trustHost",
-  "NetworkConfig.ca",
-  "NetworkConfig.proxy",
-  "NetworkProxyConfig.http",
-  "NetworkProxyConfig.https",
-  "NetworkProxyConfig.injectIntoServices",
-  "NetworkProxyConfig.noProxy",
   "NotifyConfig.commands",
   "NotifyConfig.enabled",
   "NotifyConfig.thresholdMs",
   "NotifyDesktopEvent._tag",
+  "LockWaitEvent._tag",
   "CodeSnippetEvent._tag",
   "DiffRenderEvent._tag",
   "MarkdownBlockEvent._tag",
@@ -2430,50 +2395,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ScenarioProps.reason",
   "ScenarioProps.render",
   "ScenarioProps.tags",
-  "ServiceConfig.api",
-  "ServiceConfig.appMount",
-  "ServiceConfig.command",
-  "ServiceConfig.cores",
-  "ServiceConfig.endpoints",
-  "ServiceConfig.entrypoint",
-  "ServiceConfig.framework",
-  "ServiceConfig.image",
-  "ServiceConfig.logs",
-  "ServiceConfig.mounts",
-  "ServiceConfig.port",
-  "ServiceConfig.primary",
-  "ServiceConfig.providers",
-  "ServiceConfig.routes",
-  "ServiceConfig.storage",
-  "ServiceConfig.type",
-  "ServiceConfig.user",
-  "ServiceConfig.workingDirectory",
-  "ServiceConfigInput.api",
-  "ServiceConfigInput.appMount",
-  "ServiceConfigInput.build",
-  "ServiceConfigInput.command",
-  "ServiceConfigInput.cores",
-  "ServiceConfigInput.dependsOn",
-  "ServiceConfigInput.endpoints",
-  "ServiceConfigInput.entrypoint",
-  "ServiceConfigInput.environment",
-  "ServiceConfigInput.envFile",
-  "ServiceConfigInput.expose",
-  "ServiceConfigInput.framework",
-  "ServiceConfigInput.image",
-  "ServiceConfigInput.labels",
-  "ServiceConfigInput.logs",
-  "ServiceConfigInput.mounts",
-  "ServiceConfigInput.port",
-  "ServiceConfigInput.ports",
-  "ServiceConfigInput.primary",
-  "ServiceConfigInput.providers",
-  "ServiceConfigInput.routes",
-  "ServiceConfigInput.storage",
-  "ServiceConfigInput.type",
-  "ServiceConfigInput.user",
-  "ServiceConfigInput.volumes",
-  "ServiceConfigInput.workingDirectory",
   "ServiceInfo.api",
   "ServiceInfo.app",
   "ServiceInfo.primary",
@@ -2567,7 +2488,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "TunnelStatusEvent.status",
   "TunnelStatusEvent.targetSummary",
   "TunnelStatusEvent.timestamp",
-  "TelemetryConfig.enabled",
   "TemplateRenderContext.appRoot",
   "TemplateRenderContext.bootstrapLevel",
   "TemplateRenderContext.env",
@@ -2575,22 +2495,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "TemplateRenderContext.landofile",
   "TemplateRenderContext.provider",
   "TemplateRenderContext.scope",
-  "ToolingArgShape.default",
-  "ToolingArgShape.deprecated",
-  "ToolingArgShape.description",
-  "ToolingArgShape.required",
-  "ToolingFlagShape.default",
-  "ToolingFlagShape.deprecated",
-  "ToolingFlagShape.description",
-  "ToolingTaskShape.args",
-  "ToolingTaskShape.cmd",
-  "ToolingTaskShape.cmds",
-  "ToolingTaskShape.deprecated",
-  "ToolingTaskShape.description",
-  "ToolingTaskShape.flags",
-  "ToolingTaskShape.service",
-  "ToolingTaskShape.summary",
-  "ToolingTaskShape.vars",
   "UpdateManifestBinaries.darwin-arm64",
   "UpdateManifestBinaries.darwin-x64",
   "UpdateManifestBinaries.linux-arm64",
@@ -2712,6 +2616,7 @@ const validateExamples = (
 export const validatePublicSchemaAnnotations = (
   registry: Record<string, PublicSchema> = publicSchemaRegistry,
   exemptions: PublicSchemaAnnotationExemptions = { fields: PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS },
+  artifacts?: ReadonlyMap<string, unknown>,
 ): ReadonlyArray<PublicSchemaAnnotationIssue> => {
   const issues: PublicSchemaAnnotationIssue[] = [];
   for (const [schemaName, schema] of Object.entries(registry)) {
@@ -2736,10 +2641,31 @@ export const validatePublicSchemaAnnotations = (
 
     issues.push(...validateExamples(schemaName, schemaName, schema));
 
+    const encodedFields = propertySignatures(AST.toEncoded(schema.ast));
     for (const property of propertySignatures(schema.ast)) {
       const name = fieldName(property.name);
       const fieldPath = `${schemaName}.${name}`;
       issues.push(...validateExamples(schemaName, fieldPath, schemaFromAst(property.type)));
+      const encodedField = encodedFields.find(({ name: key }) => key === property.name);
+      const encoded = encodedField?.type;
+      const declaredDefault = encoded?.context?.annotations?.default;
+      if (
+        declaredDefault !== undefined &&
+        (encoded?.context?.annotations?.description !== undefined || hasUsefulFieldDescription(property))
+      ) {
+        const published = publishedFieldMetadata(schema, name, artifacts?.get(schemaName));
+        if (
+          published.description === undefined ||
+          published.defaults.length === 0 ||
+          !published.defaults.every((value) => JSON.stringify(value) === JSON.stringify(declaredDefault))
+        ) {
+          issues.push({
+            schema: schemaName,
+            path: fieldPath,
+            message: "The published field must retain its declared default and description.",
+          });
+        }
+      }
       if (
         !hasUsefulFieldDescription(property) &&
         !inheritsLandofileFieldDescription(schemaName, property.name) &&
@@ -2768,19 +2694,22 @@ export const validatePublicSchemaAnnotations = (
 export const assertPublicSchemaAnnotations = (
   registry: Record<string, PublicSchema> = publicSchemaRegistry,
   exemptions?: PublicSchemaAnnotationExemptions,
+  artifacts?: ReadonlyMap<string, unknown>,
 ): void => {
-  const issues = validatePublicSchemaAnnotations(registry, exemptions);
+  const issues = validatePublicSchemaAnnotations(registry, exemptions, artifacts);
   if (issues.length === 0) return;
   const lines = issues.map((issue) => `- ${issue.path}: ${issue.message}`);
   throw new Error(`Public schema annotation gate failed:\n${lines.join("\n")}`);
 };
 
-export const renderPublicSchemaReferencePages = (): ReadonlyArray<PublicSchemaReferencePage> =>
+export const renderPublicSchemaReferencePages = (
+  artifactFor: (name: JsonSchemaName) => JsonObject = (name) => getJsonSchema(name) as JsonObject,
+): ReadonlyArray<PublicSchemaReferencePage> =>
   publicSchemaMetadataIndex.map((metadata) => ({
     id: metadata.id,
     docsPath: metadata.docsPath,
     content: renderSchemaReferenceMarkdown(metadata.id, publicSchemaRegistry[metadata.id], {
-      jsonSchema: getJsonSchema(metadata.id) as JsonObject,
+      jsonSchema: artifactFor(metadata.id),
       jsonSchemaPath: metadata.jsonSchemaPath,
       title: metadata.title,
       description: metadata.description,
@@ -2788,7 +2717,7 @@ export const renderPublicSchemaReferencePages = (): ReadonlyArray<PublicSchemaRe
   }));
 
 const landofileJsonSchema = () => {
-  const schema = getJsonSchemaWithDeprecations(LandofileShape, { onExcessProperty: "error" });
+  const schema = getJsonSchemaWithDeprecations(LandofileShape);
   repairLandofileExtensions(schema);
   return schema;
 };
@@ -2808,21 +2737,21 @@ const schemaForPublicName = (schemaName: JsonSchemaName) => {
 };
 
 export const getJsonSchema = (schemaName: JsonSchemaName) => {
+  if (schemaName === "LandofileAuthoringShape") return getAuthoringInputJsonSchema("LandofileShape");
+  if (schemaName === "GlobalConfig") return getAuthoringInputJsonSchema("GlobalConfig");
   if (schemaName === "DeprecationNotice") return getJsonSchemaWithDeprecations(DeprecationNoticeJsonShape);
   if (schemaName === "LandofileShape") return landofileJsonSchema();
+  if (schemaName === "ServiceConfig" || schemaName === "ServiceConfigInput") {
+    const schema = getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName]);
+    repairTemplateLiteralExtensionRecords(schema);
+    return schema;
+  }
   if (
-    schemaName === "ServiceConfig" ||
-    schemaName === "ServiceConfigInput" ||
-    schemaName === "LandofileAuthoringShape" ||
     schemaName === "LandofileAuthoringFragment" ||
     schemaName === "LandofileAuthoringShapeWire" ||
     schemaName === "LandofileAuthoringFragmentWire"
   ) {
-    const schema = getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName], {
-      onExcessProperty: "error",
-    });
-    repairTemplateLiteralExtensionRecords(schema);
-    return schema;
+    return projectAuthoringVariant(schemaName, false);
   }
   if (
     schemaName === "ExpressionNode" ||
@@ -2830,5 +2759,5 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
     schemaName === "AuthoringExpression"
   )
     return expressionJsonSchema(schemaName);
-  return getJsonSchemaWithDeprecations(schemaForPublicName(schemaName), { onExcessProperty: "error" });
+  return getJsonSchemaWithDeprecations(schemaForPublicName(schemaName));
 };

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
+import { APPLIED_STATE_VERSION, makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
 import { taggedErrorJson } from "@lando/sdk/command-result";
 import { AbsolutePath, AppId } from "@lando/sdk/schema";
 import { makePluginStateStore } from "@lando/state-store/plugin";
@@ -31,7 +31,7 @@ test.each([
     data: { demo: { id: "demo", services: {}, routes: [] }, [secret]: secret },
     coordinate: "apps[1].id",
   },
-] as const)("reports a safe v8 coordinate for $name", async ({ layout, data, coordinate }) => {
+] as const)("reports a safe current-envelope coordinate for $name", async ({ layout, data, coordinate }) => {
   const root = await mkdtemp(join(tmpdir(), "lando-applied-diagnostic-"));
   const access = { enforce: async () => undefined, verify: async () => undefined };
   const state = makePluginStateStore(
@@ -45,7 +45,7 @@ test.each([
       ? makeAppliedPlanStore({ providerId, layout })
       : makeAppliedPlanStore({ providerId, layout });
   const path = join(root, layout === "record" ? "applied-plans.json" : "applied-plans/demo.json");
-  const bytes = `${JSON.stringify({ version: 8, data })}\n`;
+  const bytes = `${JSON.stringify({ version: APPLIED_STATE_VERSION, data })}\n`;
   try {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, bytes);
@@ -58,7 +58,12 @@ test.each([
     expect(diagnostic).toMatchObject({
       _tag: "ProviderUnavailableError",
       providerId,
-      details: { path, foundVersion: 8, expectedVersion: 8, coordinate },
+      details: {
+        path,
+        foundVersion: APPLIED_STATE_VERSION,
+        expectedVersion: APPLIED_STATE_VERSION,
+        coordinate,
+      },
     });
     expect(failure.message).toContain(coordinate);
     expect(JSON.stringify(diagnostic)).not.toContain(secret);

@@ -172,7 +172,7 @@ const matchesWrappedSuffix = (text: string, start: number, suffix: string): bool
     taken += 1;
   }
   let next = index;
-  for (;;) {
+  while (true) {
     const csiEnd = skipCsiAt(text, next);
     if (csiEnd === undefined) break;
     next = csiEnd;

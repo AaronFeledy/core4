@@ -21,7 +21,9 @@ export const RemoteCapabilities = Schema.Struct({
 export type RemoteCapabilities = typeof RemoteCapabilities.Type;
 
 export const RemoteConfig = Schema.Struct({
-  source: Schema.String,
+  source: Schema.String.annotateKey({
+    description: "Remote source specifier; the selected source plugin interprets its scheme and options.",
+  }),
 }).pipe((self) => Schema.StructWithRest(self, [Schema.Record(Schema.String, Schema.Unknown)]));
 export type RemoteConfig = typeof RemoteConfig.Type;
 
@@ -51,8 +53,12 @@ export const AppRemoteMutationResult = Schema.Struct({
 export type AppRemoteMutationResult = typeof AppRemoteMutationResult.Type;
 
 export const DatasetBinding = Schema.Struct({
-  service: Schema.optionalKey(ServiceName),
-  path: Schema.optionalKey(PortablePath),
+  service: Schema.optionalKey(ServiceName).annotateKey({
+    description: "Service whose data the dataset binding targets.",
+  }),
+  path: Schema.optionalKey(PortablePath).annotateKey({
+    description: "Portable path to the dataset within the target service.",
+  }),
 });
 export type DatasetBinding = typeof DatasetBinding.Type;
 

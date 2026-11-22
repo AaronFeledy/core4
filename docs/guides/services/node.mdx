@@ -126,8 +126,12 @@ service.
 
 ## Run the app
 
-The default Node keep-alive process holds the container open and exits cleanly on
-SIGTERM or SIGINT. The Node service adds `lando npm` and `lando npx` for you, so install dependencies and start your server. Run these from the app directory on your host:
+Without `command:`, the default Node keep-alive holds the container open but
+doesn't start your server. If nothing is listening on your Node port, `lando
+start` reports an `expected` URL check without warning or retrying. The route
+stays available for when you start serving. Add `command:` to start the server
+automatically, or use the `lando npm` and `lando npx` commands the Node service
+adds. Run these from the app directory on your host:
 
 ```sh
 # Install dependencies inside the service
@@ -160,7 +164,7 @@ services:
     command: node server.mjs
 ```
 
-An authored `environment.PORT` must be a literal integer equal to the planned port. A different or malformed value fails planning at `services.app.environment.PORT`, including values inherited from `appEnv` or env files. Set `port:` instead of overriding `PORT`.
+An authored `environment.PORT` must be a literal integer equal to the planned port. A different or malformed value fails planning at `services.app.environment.PORT`, including values inherited from `serviceDefaults.environment` or env files. Set `port:` instead of overriding `PORT`.
 
 Vite does not read `PORT`. For `port: 5173`, use `vite --host 0.0.0.0 --port 5173` in your npm script, or set the equivalent Vite configuration. Keep that port aligned when you change the Landofile.
 

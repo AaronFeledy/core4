@@ -266,7 +266,20 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       ),
     ),
   );
-  const unique = mergeLintFindings(violations);
+  const rejectedExpressionSources = new Set<string>();
+  for (const { rule, reason, source } of violations) {
+    if (rule === "landofile.load" && reason === "unsupported-expression" && source !== undefined)
+      rejectedExpressionSources.add(canonicalJson(source));
+  }
+  for (const { source } of deferredRefusals) rejectedExpressionSources.add(canonicalJson(source));
+  const unique = mergeLintFindings(
+    violations.filter(
+      ({ rule, source }) =>
+        rule !== "landofile.validation" ||
+        source === undefined ||
+        !rejectedExpressionSources.has(canonicalJson(source)),
+    ),
+  );
   const app = Result.isSuccess(finalized)
     ? (finalized.success.document.name ?? "")
     : (documents.map((source) => appNameOf(source.document)).find((name) => name !== "") ?? "");

@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { CATALOG, type CatalogResolution, LEGACY_TYPE_ALIASES, resolveCatalogType } from "../src/catalog.ts";
-import {
-  CAPABILITY_FRAGILE_KEYS,
-  COMPOSE_KEY_RENAMES,
-  dispositionOf,
-} from "../src/compose-disposition-of.ts";
+import { CAPABILITY_FRAGILE_KEYS, dispositionOf } from "../src/compose-disposition-of.ts";
 import { testPorts } from "./fixtures/test-ports.ts";
 
 const phpVersions = ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"];
@@ -108,15 +104,8 @@ describe("local Compose dispositions", () => {
     expect(result).toBe(expected);
   });
 
-  test("exposes renames and provider-fragile fields for override lowering", () => {
-    // Given / When
-    const renames = COMPOSE_KEY_RENAMES;
-    // Then
-    expect(renames).toEqual({
-      working_dir: "workingDirectory",
-      env_file: "envFile",
-      depends_on: "dependsOn",
-    });
+  test("exposes provider-fragile fields for override lowering", () => {
+    // Given / When / Then — Compose keys that match ServiceConfig stay unrenamed.
     expect([...CAPABILITY_FRAGILE_KEYS]).toEqual(["gpus", "deploy"]);
   });
 });

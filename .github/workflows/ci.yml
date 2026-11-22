@@ -3,6 +3,7 @@ name: ci
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:
@@ -35,8 +36,8 @@ jobs:
       - name: Select CI profile
         id: select
         env:
-          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: bun run scripts/select-ci.ts
   static-checks-platform:
     needs: [selection]
@@ -73,6 +74,9 @@ jobs:
 
       - name: Host Bun Shell dialect conformance
         run: bun run test:selection shell-dialect
+
+      - name: Native advisory lock (two-process)
+        run: bun run test:selection native-lock
 
       - name: Lint
         run: bun run lint
@@ -1075,6 +1079,7 @@ jobs:
           pull_image docker.io/library/node:26
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/adminer:6
+          pull_image quay.io/keycloak/keycloak:26.8
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18
@@ -1362,6 +1367,9 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
         run: bun run test:selection compiled-renderer-output
 
+      - name: Verify compiled two-process native lock
+        run: bun run test:selection compiled-native-lock
+
       - name: Upload darwin-arm64 binary
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1444,6 +1452,9 @@ jobs:
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
         run: bun run test:selection compiled-renderer-output
+
+      - name: Verify compiled two-process native lock
+        run: bun run test:selection compiled-native-lock
 
       - name: Upload darwin-x64 binary
         if: always()
@@ -1528,6 +1539,9 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
         run: bun run test:selection compiled-renderer-output
 
+      - name: Verify compiled two-process native lock
+        run: bun run test:selection compiled-native-lock
+
       - name: Upload linux-arm64 binary
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1611,6 +1625,9 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
         run: bun run test:selection compiled-renderer-output
 
+      - name: Verify compiled two-process native lock
+        run: bun run test:selection compiled-native-lock
+
       - name: Upload linux-x64 binary
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1691,6 +1708,9 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
         run: bun run test:selection compiled-renderer-output
 
+      - name: Verify compiled two-process native lock
+        run: bun run test:selection compiled-native-lock
+
       - name: Upload windows-x64 binary
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1770,6 +1790,9 @@ jobs:
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
         run: bun run test:selection compiled-renderer-output
+
+      - name: Verify compiled two-process native lock
+        run: bun run test:selection compiled-native-lock
 
       - name: Upload windows-arm64 binary
         if: always()
@@ -2342,6 +2365,7 @@ jobs:
           pull_image docker.io/library/node:26
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/adminer:6
+          pull_image quay.io/keycloak/keycloak:26.8
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/postgres:18

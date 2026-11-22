@@ -7,14 +7,17 @@ const mergeProbe = (authored: HealthcheckInput, existing?: HealthcheckPlan): Hea
     retries: existing?.retries ?? 5,
   };
   if (authored === false) return { ...base, kind: "none" };
-  const command = authored.command ?? (authored.target === "host" ? undefined : existing?.command);
-  const url = authored.url ?? existing?.url;
-  const port = authored.port ?? existing?.port;
+  const kind = authored.kind ?? existing?.kind ?? "command";
+  const inherited = existing?.kind === kind ? existing : undefined;
+  const command = authored.command ?? (authored.target === "host" ? undefined : inherited?.command);
+  const url = authored.url ?? inherited?.url;
+  const port = authored.port ?? inherited?.port;
   const startPeriodSeconds = authored.startPeriodSeconds ?? existing?.startPeriodSeconds;
+  const startIntervalSeconds = authored.startIntervalSeconds ?? existing?.startIntervalSeconds;
   const executionTarget = authored.target ?? existing?.executionTarget;
   const user = authored.user ?? (authored.target === "host" ? undefined : existing?.user);
   return {
-    kind: authored.kind ?? existing?.kind ?? "command",
+    kind,
     intervalSeconds: authored.intervalSeconds ?? base.intervalSeconds,
     timeoutSeconds: authored.timeoutSeconds ?? base.timeoutSeconds,
     retries: authored.retries ?? base.retries,
@@ -24,8 +27,12 @@ const mergeProbe = (authored: HealthcheckInput, existing?: HealthcheckPlan): Hea
     ...(url === undefined ? {} : { url }),
     ...(port === undefined ? {} : { port }),
     ...(startPeriodSeconds === undefined ? {} : { startPeriodSeconds }),
-    ...(authored.command === undefined && authored.target !== "host" && existing?.target !== undefined
-      ? { target: existing.target }
+    ...(startIntervalSeconds === undefined ? {} : { startIntervalSeconds }),
+    ...(authored.command === undefined &&
+    authored.port === undefined &&
+    authored.target !== "host" &&
+    inherited?.target !== undefined
+      ? { target: inherited.target }
       : {}),
   };
 };

@@ -1,0 +1,10 @@
+name: expressions-public-url-live
+services:
+  web:
+    type: nginx
+    primary: true
+    routes:
+      - hostname: expressions-public-url.lndo.site
+        scheme: both
+    environment:
+      APP_URL: "{{ services.web.url }}"

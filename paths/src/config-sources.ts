@@ -136,7 +136,8 @@ export const mergeGlobalConfigSources = (layers: readonly ConfigLayer[]): Merged
         continue;
       const path = [...origin.path, key];
       const previous = result[key];
-      const whole = path.length === 1 && (key === "appEnv" || key === "appLabels");
+      const whole =
+        path.length === 2 && path[0] === "serviceDefaults" && (key === "environment" || key === "labels");
       if (!whole && configRecord(previous) && configRecord(entry)) {
         result[key] = fold(previous, entry, { layer: origin.layer, path });
       } else {

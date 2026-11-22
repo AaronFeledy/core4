@@ -15,7 +15,7 @@ test.each([
   ["volumes", [{ source: "./data", target: "/data" }], [{ source: "./mailstack/data", target: "/data" }]],
   ["env_file", ".env.mail", "./mailstack/.env.mail"],
   ["env_file", [".env.mail", "../shared/.env"], ["./mailstack/.env.mail", "./shared/.env"]],
-  ["envFile", [".env.mail"], ["./mailstack/.env.mail"]],
+  ["env_file", [".env.mail"], ["./mailstack/.env.mail"]],
   [
     "env_file",
     [{ path: ".env.mail" }, { path: "extra.env", required: false }],
@@ -65,11 +65,11 @@ test.each(["configs", "secrets"])(
 
 test("rebases top-level env files", () => {
   // Given
-  const document = { env_file: [".env.shared"] };
+  const document = { serviceDefaults: { env_file: [".env.shared"] } };
   // When
   const result = composeIncludeDefaults(document, roots);
   // Then
-  expect(result.env_file).toEqual(["./mailstack/.env.shared"]);
+  expect(result.serviceDefaults).toEqual({ env_file: ["./mailstack/.env.shared"] });
 });
 
 test.each(["/var/data", "~/data", "C:\\data", "\\\\server\\share"])(

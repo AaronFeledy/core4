@@ -1,5 +1,5 @@
 import type { RecipeSource } from "@lando/sdk/schema";
-import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
+import { siteDrush, siteQualityTooling } from "../drupal-tooling.ts";
 import { composerTool, drupalOptions, drupalWebVariants, phpAppserver } from "../source-php.ts";
 import { DRUPAL_CMS_GIT_ARTIFACT, drupalCmsInstallCommand } from "./commands.ts";
 import { DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET } from "./php-config.ts";
@@ -25,13 +25,9 @@ export const source = {
       database: { type: "{{ recipe.database }}" },
     },
     tooling: {
-      drush: {
-        service: "appserver",
-        description: "Run Drush inside the appserver service.",
-        cmds: [DRUSH_TOOLING_COMMAND],
-        wrapper: true,
-      },
+      drush: siteDrush,
       composer: composerTool,
+      ...siteQualityTooling,
       "drupal-cms-scaffold": {
         service: "appserver",
         description: "Scaffold Drupal CMS 2 and project-local Drush into the mounted app root.",

@@ -195,7 +195,15 @@ const wrapUnknownEvaluationError = (
   cause: unknown,
 ): LandofileExpressionEvaluationError =>
   isEvaluationError(cause)
-    ? cause
+    ? cause instanceof ConfigExpressionError && cause.path.length === 0
+      ? new ConfigExpressionError({
+          ...cause,
+          message: cause.message,
+          path: options.path ?? [],
+          filePath: options.filePath ?? "",
+          expression: options.expression ?? "",
+        })
+      : cause
     : evalError("Failed to evaluate Landofile expression in the sandboxed evaluator.", options);
 
 const assertArgCount = (
@@ -317,6 +325,8 @@ const resolveSegments = (
   let current = target;
   for (const segment of segments) {
     if (isMissing(current)) return MISSING;
+    if (isEnvironmentBinding(current))
+      throw bindingExpressionError("Member and index access cannot consume a binding.", state.options);
     current = readDynamicSegment(current, segment, state);
   }
   return current;
@@ -1401,11 +1411,18 @@ const evaluateTemplateSync = (
       trimNextLiteral = false;
       if (segment.trimLeft) {
         if (typeof output === "string") output = output.replace(/\s+$/, "");
-        else if (output._tag === "BoundText") {
-          const parts = [...output.parts];
-          const last = parts[parts.length - 1];
-          if (typeof last === "string") parts[parts.length - 1] = last.replace(/\s+$/, "");
-          output = normalizeEnvironmentValue({ _tag: "BoundText", parts });
+        else if (output._tag === "BoundText" || output._tag === "RouteText") {
+          const trim = <A>(input: readonly (string | A)[]): (string | A)[] => {
+            const parts = [...input];
+            const last = parts.at(-1);
+            if (typeof last === "string") parts[parts.length - 1] = last.replace(/\s+$/, "");
+            return parts;
+          };
+          output = normalizeEnvironmentValue(
+            output._tag === "BoundText"
+              ? { _tag: "BoundText", parts: trim(output.parts) }
+              : { _tag: "RouteText", parts: trim(output.parts) },
+          );
         }
       }
       const value = resolveNode(segment.expression, state);

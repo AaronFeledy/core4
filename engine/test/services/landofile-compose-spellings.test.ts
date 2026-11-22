@@ -60,8 +60,8 @@ describe("LandofileService layer — Compose service spellings", () => {
       expect(Exit.isSuccess(exit)).toBe(true);
       if (!Exit.isSuccess(exit)) return;
       const web = exit.value.services?.[ServiceName.make("web")];
-      expect(web?.workingDirectory).toBe(PortablePath.make("/app"));
-      expect(web?.dependsOn).toEqual([{ service: "database", condition: "service_healthy", restart: true }]);
+      expect(web?.working_dir).toBe(PortablePath.make("/app"));
+      expect(web?.depends_on).toEqual([{ service: "database", condition: "service_healthy", restart: true }]);
       expect(web?.environment).toEqual({ NODE_ENV: "development" });
       expect(web?.labels).toEqual({ "com.example.tier": "web" });
     });
@@ -141,7 +141,7 @@ describe("LandofileService layer — Compose service spellings", () => {
         command: ["echo", "lando"],
         intervalSeconds: 30,
         retries: 3,
-        startInterval: "5s",
+        start_interval: "5s",
       });
     });
   });

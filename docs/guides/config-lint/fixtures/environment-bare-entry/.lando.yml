@@ -1,0 +1,6 @@
+# lando-lint: expect-invalid environment.bare-entry
+name: diagnostic-reason
+services:
+  web:
+    image: alpine
+    environment: [FOO]

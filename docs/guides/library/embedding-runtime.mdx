@@ -111,7 +111,7 @@ const runtime = makeLandoRuntime({
   config: {
     userDataRoot: "/srv/lando/data",
     router: { httpPort: 8123 },
-    appEnv: { TEAM: "platform" },
+    serviceDefaults: { environment: { TEAM: "platform" } },
   },
 });
 ```

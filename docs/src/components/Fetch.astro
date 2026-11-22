@@ -1,0 +1,10 @@
+---
+import { componentFramePropsFor } from "./component-frame.ts";
+
+const { dataAttributes, frame } = await componentFramePropsFor(Astro.props, "fetch");
+---
+{frame && (
+  <p {...dataAttributes}>
+    <code>{frame.commandDisplay}</code> <span>{frame.resultSummary}</span>
+  </p>
+)}

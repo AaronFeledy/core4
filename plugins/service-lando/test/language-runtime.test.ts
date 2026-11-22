@@ -223,6 +223,7 @@ for (const fixture of fixtures) {
       });
       // Then
       expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
+      expect(plan.listenerAuthority).toMatchObject({ owner: "application", keepAlive: true });
     });
 
     test(`${fixture.language} ${source} intermediate composition projects webroot only when enabled`, async () => {
@@ -253,12 +254,13 @@ for (const fixture of fixtures) {
       // When
       const plan = await composeServicePlan({
         serviceType,
-        service: { ...input.service, command, entrypoint, workingDirectory: PortablePath.make("/workspace") },
+        service: { ...input.service, command, entrypoint, working_dir: PortablePath.make("/workspace") },
         appRoot: input.appRoot,
         metadata: input.metadata,
       });
       // Then
       expect(plan.command).toEqual(command);
+      expect(plan.listenerAuthority).not.toHaveProperty("keepAlive");
       expect(plan.entrypoint).toEqual(entrypoint);
       expect(String(plan.workingDirectory)).toBe("/workspace");
     });

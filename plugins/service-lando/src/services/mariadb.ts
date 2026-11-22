@@ -16,13 +16,18 @@ import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
+  MYSQL_FAMILY_EXTRA_ARGS,
+  configFileDbExtraArgsRemediation,
+  isNonCatalogArtifact,
+} from "./_extra-args.ts";
+import {
   addEnvRecord,
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { assertListenerConfig, primaryPortSelector, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -118,12 +123,13 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
 
   applyAuthoredProcessFields(ctx);
 
-  if (
-    addServerConfigMount(ctx, MARIADB_CONFIG_TARGET) &&
-    service.command === undefined &&
-    service.entrypoint === undefined
-  ) {
-    ctx.setCommand(["mariadbd", `--port=${port}`]);
+  const catalogImages = Object.values(ARTIFACTS);
+  const custom = isNonCatalogArtifact(service, catalogImages);
+  const processOwned = service.command !== undefined || service.entrypoint !== undefined;
+  const serverConfig = addServerConfigMount(ctx, MARIADB_CONFIG_TARGET);
+  const hasExtraArgs = (service.extraArgs?.length ?? 0) > 0;
+  if (!processOwned && (serverConfig || (!custom && hasExtraArgs))) {
+    ctx.setCommand(["mariadbd", `--port=${port}`], custom ? undefined : MYSQL_FAMILY_EXTRA_ARGS);
   }
 };
 
@@ -165,10 +171,13 @@ const mariadbToolingForConnection: NonNullable<ServiceType["toolingForConnection
         },
       };
 
+const selectPort = primaryPortSelector(MARIADB_LISTENER);
 export const mariadbServiceType: ServiceType = {
   id: "mariadb",
   name: "mariadb",
   base: "lando",
+  plannedPort: selectPort,
+  extraArgsRemediation: configFileDbExtraArgsRemediation(Object.values(ARTIFACTS), "MariaDB"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
@@ -177,7 +186,7 @@ export const mariadbServiceType: ServiceType = {
   resolve: (input) => {
     return serviceTypeResolve("mariadb", "mariadb service type failed to resolve", () => {
       const creds = mariadbCreds(input, input.service);
-      const port = plannedPort(input.service, MARIADB_LISTENER);
+      const port = selectPort(input.service);
       assertListenerConfig(input.service, MARIADB_LISTENER);
       return {
         base: "lando",

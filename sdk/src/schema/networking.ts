@@ -1,10 +1,10 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 import { AgentSocketProviderCapabilities } from "./agent-forwarding.ts";
-
 import { ComposeKnobCapabilities } from "./compose-knob-capabilities.ts";
 import { ComposePreservedPathCapabilities } from "./compose-preserved-path-capabilities.ts";
 import { ComposeProjectFieldCapabilities } from "./compose-project-field-capabilities.ts";
 import { ComposeServiceFieldCapabilities } from "./compose-service-field-capabilities.ts";
+import { withDefaultKey } from "./default-key.ts";
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
 import { CertificateName, HostAliasName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
 import { ListenerObservation } from "./listener-observation.ts";
@@ -76,12 +76,15 @@ export type RouteBackendTls = typeof RouteBackendTls.Type;
  * Route plan — host-facing HTTP/TLS mapping.
  */
 export const RoutePlan = Schema.Struct({
-  priority: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(2)))
-    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 2)))
-    .annotate({
+  priority: Schema.Number.pipe(
+    Schema.check(Schema.isInt()),
+    Schema.check(Schema.isGreaterThanOrEqualTo(2)),
+  ).pipe(
+    withDefaultKey(2, {
       description:
         "Planner-assigned router priority; higher wins. Priority 1 is reserved for diagnostics. Standalone routes default to 2.",
     }),
+  ),
   /** Host header pattern (`*.lndo.site`, `app.example.test`, …). */
   hostname: RouteHostname.annotateKey({
     description:
@@ -123,7 +126,7 @@ export const ScannerConfig = Schema.Union([
     ).annotate({
       description: "Retry budget after the first attempt; N retries allow N+1 attempts.",
     }),
-    timeout: Schema.optionalKey(
+    timeoutMs: Schema.optionalKey(
       Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 1, maximum: 600000 }))),
     ).annotate({
       description: "Overall probe deadline in milliseconds, including all retry attempts.",
@@ -157,7 +160,7 @@ export type ScanPlan = typeof ScanPlan.Type;
 // ============================================================================
 // HTTP app check results
 // ============================================================================
-const ScanVerdictSchema = Schema.Literals(["ready", "app-error", "service-error", "lando-error"]);
+const ScanVerdictSchema = Schema.Literals(["ready", "expected", "app-error", "service-error", "lando-error"]);
 export type ScanVerdict = typeof ScanVerdictSchema.Type;
 
 export const CheckResult = Schema.Struct({
@@ -165,7 +168,9 @@ export const CheckResult = Schema.Struct({
   kind: Schema.Literal("http").annotate({ description: "Observation kind." }),
   service: ServiceName.annotate({ description: "Service that owns the checked endpoint." }),
   url: Schema.String.annotate({ description: "Checked host-facing URL." }),
-  verdict: ScanVerdictSchema.annotate({ description: "Readiness and ownership of the observation." }),
+  verdict: ScanVerdictSchema.annotate({
+    description: "Readiness and ownership of the observation; expected is neutral and has a user next step.",
+  }),
   statusCode: Schema.optionalKey(Schema.Int).annotate({ description: "Observed HTTP response status." }),
   message: Schema.optionalKey(Schema.String).annotate({ description: "Redacted result summary." }),
   detail: Schema.optionalKey(Schema.String).annotate({ description: "Redacted diagnostic detail." }),
@@ -414,6 +419,11 @@ export const ProviderCapabilities = Schema.Struct({
   }),
   copyMounts: Schema.Boolean,
   copyOnWriteAppRoot: Schema.Boolean,
+  serializesVolumeCopyUp: Schema.optionalKey(Schema.Boolean).annotate({
+    title: "Serializes Volume Copy-Up",
+    description:
+      "Whether the provider serializes first-mount image copy-up into a named volume. Omission means serialization is not guaranteed.",
+  }),
   volumeSnapshot: Schema.Literals(["native", "none"]),
   volumeArchive: Schema.optionalKey(Schema.Boolean).annotate({
     description:
@@ -439,12 +449,11 @@ export const ProviderCapabilities = Schema.Struct({
   }),
   privilegedServices: Schema.Boolean,
   architectureEmulation: Schema.Boolean.pipe(
-    Schema.withDecodingDefaultKey(Effect.sync(() => false)),
-  ).annotate({
-    title: "Architecture Emulation",
-    description:
-      "Whether the provider can run container images for a CPU architecture other than the host via emulation.",
-  }),
+    withDefaultKey(false, {
+      description:
+        "Whether the provider can run container images for a CPU architecture other than the host via emulation.",
+    }),
+  ).annotate({ title: "Architecture Emulation" }),
   composeSpec: Schema.Literals(["none", "portable", "native"]),
   composeKnobs: Schema.optionalKey(ComposeKnobCapabilities).annotate({
     title: "Compose Knobs",

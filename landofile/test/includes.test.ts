@@ -219,7 +219,7 @@ describe("resolveLandofileIncludes", () => {
     // Then: nesting and precedence match ordinary includes, while authored paths stay app-relative.
     expect(result.document.services?.[ServiceName.make("api")]).toMatchObject({
       type: "php",
-      envFile: ["./app.env"],
+      env_file: ["./app.env"],
       build: { context: "./docker" },
     });
     expect(serviceType(result, "cache")).toBe("redis");

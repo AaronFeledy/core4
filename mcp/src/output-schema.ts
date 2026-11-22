@@ -129,7 +129,7 @@ export const compactOutputSchema = (schema: Schema.JsonObject): Schema.JsonObjec
         const resource = resourceFor(value, definitions);
         projected.description = [
           value.description,
-          "Nested contents omitted from MCP tool discovery.",
+          "Nested contents omitted.",
           ...(resource === undefined
             ? []
             : [`Full JSON Schema: read MCP resource lando://schemas/${resource}`]),

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { failureOutcomeFromCause, orDieWithRole } from "@lando/sdk/command-result";
 import { CommandStdioError } from "@lando/sdk/errors";
 import { Cause, Context, Effect, Exit, Stream } from "effect";
 import { prepareImportDump } from "../src/dump-file.ts";
@@ -95,22 +96,22 @@ for (const compression of ["none", "gzip", "zstd"] as const) {
     const sourceCleanup = new Error("source cleanup");
     const outerCleanup = new Error("outer cleanup");
     const source = Stream.concat(Stream.make(bytes), Stream.fail(failure)).pipe(
-      Stream.ensuring(Effect.die(sourceCleanup)),
+      Stream.ensuring(Effect.die(sourceCleanup).pipe(orDieWithRole("cleanup"))),
     );
 
     const exit = await Effect.runPromiseExit(
-      Effect.scoped(prepare(source).pipe(Effect.ensuring(Effect.die(outerCleanup)))),
+      Effect.scoped(
+        prepare(source).pipe(Effect.ensuring(Effect.die(outerCleanup).pipe(orDieWithRole("cleanup")))),
+      ),
     );
 
     if (!Exit.isFailure(exit)) throw new Error("expected stdin failure");
-    expect(exit.cause.reasons).toHaveLength(3);
-    const [primary, sourceFinalizer, outerFinalizer] = exit.cause.reasons;
-    if (primary === undefined || sourceFinalizer === undefined || outerFinalizer === undefined) {
-      throw new Error("missing failure or cleanup reason");
-    }
-    expect(Cause.isFailReason(primary) && primary.error).toBe(failure);
-    expect(Cause.isDieReason(sourceFinalizer) && sourceFinalizer.defect).toBe(sourceCleanup);
-    expect(Cause.isDieReason(outerFinalizer) && outerFinalizer.defect).toBe(outerCleanup);
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.kind).toBe("typed");
+    expect(outcome.error).toBe(failure);
+    expect(outcome.additionalErrors.map(({ role }) => role)).toEqual(["cleanup", "cleanup"]);
+    expect(outcome.additionalErrors[0]?.error).toBe(sourceCleanup);
+    expect(outcome.additionalErrors[1]?.error).toBe(outerCleanup);
     expect(await readdir(join(root, "stage"))).toEqual([]);
   });
 
