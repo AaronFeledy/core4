@@ -56,13 +56,16 @@ export const resolveFetchUrl = Effect.fnUntraced(function* (
   return url;
 });
 
-export const readScenarioCa = Effect.fnUntraced(function* (cwd: string) {
-  const { binDir } = makeLandoPaths();
+export const readScenarioCa = Effect.fnUntraced(function* (
+  cwd: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+) {
+  const { binDir } = makeLandoPaths({ env });
   const mkcert = join(binDir, process.platform === "win32" ? "mkcert.exe" : "mkcert");
   return yield* Effect.tryPromise({
     try: async (signal) => {
       // Read the CA installed by setup rather than creating one in the test.
-      const child = Bun.spawn([mkcert, "-CAROOT"], { cwd, signal, stdout: "pipe", stderr: "ignore" });
+      const child = Bun.spawn([mkcert, "-CAROOT"], { cwd, env, signal, stdout: "pipe", stderr: "ignore" });
       const [code, output] = await Promise.all([child.exited, new Response(child.stdout).text()]);
       const root = output.trim();
       if (code !== 0 || root === "") return undefined;

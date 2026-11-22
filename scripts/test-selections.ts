@@ -150,7 +150,7 @@ export const TEST_SELECTIONS = [
     usesInheritedLivePodmanRoots: true,
     paths: ["core/test/live/"],
     jobs: live,
-    needs: "Live provider socket and compiled CLI",
+    needs: "Live provider socket and compiled CLI; shared-engine-data-roots uses the explicit Podman socket",
   },
   {
     id: "providers-lando",
