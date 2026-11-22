@@ -29,7 +29,7 @@ The scaffold also installs Drupal Coder and PHPStan and writes `phpcs.xml.dist` 
 
 ## Choose stack options
 
-`--yes` uses Drupal 11, PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Pass `--answer` for nginx plus FPM, another PHP, or another database. PHP 8.6 is a valid `--answer=php=8.6`.
+`--yes` uses Drupal 11, PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Pass `--answer=webroot=docroot` to use `docroot/` instead. A new scaffold needs one directory name. Pass `--answer=testing=true` to set up PHPUnit and Chrome when scaffolding a new site. To use PHP 8.6, pass `--answer=php=8.6`.
 
 To choose a different stack, use this initialization command instead of the
 default one above. Run it from the parent directory, not inside the app:
@@ -74,7 +74,7 @@ lando drush --version
 ## 5. init
 
 ```bash
-lando init --recipe drupal --name=my-drupal-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=drupal=10 --answer=webroot=web
+lando init --recipe drupal --name=my-drupal-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=drupal=10 --answer=webroot=docroot
 ```
 
 ## 6. inspect

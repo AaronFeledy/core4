@@ -150,12 +150,17 @@ describe("recipe option parity", () => {
       expect(yaml).not.toContain("allowOverride:");
       expect(yaml).toContain('type: "{{ recipe.database }}"');
       expect(yaml).toContain('composer: "2"');
-      expect(yaml).toContain("lando-drupal-scaffold {{ recipe.drupal }}");
+      expect(yaml).toContain("lando-drupal-scaffold");
 
       const landofile = await discoverFrom(result.directory);
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.5");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
-      expect(landofile.tooling?.["drupal-scaffold"]?.cmd).toBe("lando-drupal-scaffold 10");
+      expect(landofile.tooling?.["drupal-scaffold"]?.cmd).toEqual([
+        "lando-drupal-scaffold",
+        "10",
+        "web",
+        "--testing=false",
+      ]);
       expect(landofile.services?.[ServiceName.make("appserver")]?.via).toBe("fpm");
       expect(landofile.services?.[ServiceName.make("edge")]?.type).toBe("nginx");
       expect(landofile.services?.[ServiceName.make("edge")]?.uploadDirs).toEqual(["sites/*/files"]);

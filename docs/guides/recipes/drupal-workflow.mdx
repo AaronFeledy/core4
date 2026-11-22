@@ -30,7 +30,9 @@ lando composer --version
 lando mariadb -e 'SELECT 1 AS ok;'
 ```
 
-Scaffold runs `composer create-project 'drupal/recommended-project'` into a staging dir, requires `drush/drush`, and adds Drupal Coder and PHPStan with its Drupal extension as dev dependencies. It writes a `phpcs.xml.dist` and a `phpstan.neon.dist` for your custom code, then moves the project into the app root without overwriting anything already there, and checks for `composer.json`, the tools in `vendor/bin`, and `web/`. If a run is interrupted, running it again resumes. On a finished tree it fails on purpose.
+Scaffold installs Drupal, Drush, Drupal Coder, and PHPStan in a staging directory before publishing the project. The generated `phpcs.xml.dist` and `phpstan.neon.dist` target custom code under your webroot. To scaffold into `docroot/`, pass `--answer=webroot=docroot` at init. Use one directory name, not a nested path.
+
+If scaffold is interrupted, rerun it with the same options. It won't replace an existing project.
 
 ## Install Drupal with Drush
 
@@ -70,7 +72,7 @@ Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). Both w
 
 ## Connect Drupal to the database
 
-`site:install` writes these into `web/sites/default/settings.php`. Use the same values when you bring an existing project's settings. They cover MariaDB and `mysql:8.0` answers:
+`site:install` writes these into `<webroot>/sites/default/settings.php`. Use the same values when you bring an existing project's settings. They cover MariaDB and `mysql:8.0` answers:
 
 | Setting | Value |
 | --- | --- |
@@ -284,7 +286,7 @@ lando exec appserver -- php -v
   <Scenario id="nginx-postgres" render>
     <Step name="init">
       <Variable name="appName" value="drupal-nginx" display="drupal-nginx" />
-      <Run command="lando init --recipe drupal --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=drupal=10 --answer=webroot=web" />
+      <Run command="lando init --recipe drupal --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=drupal=10 --answer=webroot=docroot" />
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
@@ -334,12 +336,28 @@ lando exec appserver -- php -v
       <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
+  <Scenario id="refuse-nested-scaffold-root" layer="e2e" timeout={600000} render={false} reason="Existing-project paths are accepted at init but not at scaffold">
+    <Step name="validate-scaffold-root">
+      <Run command="lando init . --recipe drupal --name=drupal-nested-root --yes --answer=webroot=public/site" />
+      <Run command="lando start" />
+      <Run command="lando drupal-scaffold --format=json" expectExit={1} />
+      <Verify errorTag="LandoCommandError" expect={{ regex: "^(?=[\\s\\S]*\"ok\":\\s*false)(?=[\\s\\S]*recipe\\.options\\.webroot)" }} />
+      <Verify command="lando exec appserver -- test -e composer.json" expectExit={1} />
+      <Verify command="lando exec appserver -- test -e composer.lock" expectExit={1} />
+      <Verify command="lando exec appserver -- test -e vendor/bin/drush" expectExit={1} />
+      <Verify command="lando exec appserver -- test -e public/site/index.php" expectExit={1} />
+      <Verify command="lando exec appserver -- test -e public/site/core" expectExit={1} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## Run tests
 
-Install `drupal/core-dev` to run Unit tests inside `appserver`. Add the database and web-server
-settings for Kernel and Functional tests, then a browser service for FunctionalJavascript tests.
+Pass `--answer=testing=true` at init to install PHPUnit during scaffold and configure the database, web server, and browser for Drupal's test suites.
 See [Run Drupal tests with PHPUnit and headless Chrome](./drupal-testing.mdx).
 
 ## Compile theme assets

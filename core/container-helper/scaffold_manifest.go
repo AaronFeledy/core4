@@ -24,7 +24,7 @@ func (s *scaffold) newManifest() *scaffoldManifest {
 	}
 }
 
-func (s *scaffold) stage(manifest *scaffoldManifest, generate func(stage string, manifest *scaffoldManifest) error) error {
+func (s *scaffold) stage(manifest *scaffoldManifest, options scaffoldOptions) error {
 	if err := os.RemoveAll(s.stageDir); err != nil {
 		return err
 	}
@@ -39,14 +39,14 @@ func (s *scaffold) stage(manifest *scaffoldManifest, generate func(stage string,
 		return err
 	}
 	s.point("stage-created")
-	if err := generate(s.stageDir, manifest); err != nil {
+	if err := options.generate(s.stageDir, manifest); err != nil {
 		// A generation failure has promoted nothing. A kill does not run
 		// cleanup: the staging phase is replayed from scratch on resume.
 		s.cleanup()
 		return err
 	}
 	s.point("generated")
-	if err := s.classify(manifest); err != nil {
+	if err := s.classify(manifest, options.requiredOutputs); err != nil {
 		s.cleanup()
 		return err
 	}

@@ -1,6 +1,7 @@
 import type { RecipeSource } from "@lando/sdk/schema";
+import { drupalSiteTestingVariants } from "../drupal-testing.ts";
 import { siteDrush, siteQualityTooling } from "../drupal-tooling.ts";
-import { composerTool, drupalOptions, drupalWebVariants, phpAppserver } from "../source-php.ts";
+import { composerTool, drupalSiteOptions, drupalWebVariants, phpAppserver } from "../source-php.ts";
 
 export const source = {
   id: "drupal",
@@ -15,7 +16,7 @@ export const source = {
       default: "11",
       prompt: { message: "Drupal major version" },
     },
-    ...drupalOptions,
+    ...drupalSiteOptions,
   },
   config: {
     runtime: 4,
@@ -28,11 +29,16 @@ export const source = {
         service: "appserver",
         description: "Scaffold Drupal and project-local Drush into the mounted app root.",
         arguments: false,
-        cmd: "lando-drupal-scaffold {{ recipe.drupal }}",
+        cmd: [
+          "lando-drupal-scaffold",
+          "{{ recipe.drupal }}",
+          "{{ recipe.webroot }}",
+          "--testing={{ recipe.testing }}",
+        ],
       },
     },
   },
-  variants: drupalWebVariants,
+  variants: [...drupalWebVariants, ...drupalSiteTestingVariants],
   postInit: [
     {
       type: "message",

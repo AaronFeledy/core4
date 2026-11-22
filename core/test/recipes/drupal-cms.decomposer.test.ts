@@ -11,16 +11,6 @@ import {
   DRUPAL_CMS_PHP_INI_PATH,
   DRUPAL_CMS_PHP_INI_TARGET,
 } from "../../src/recipes/builtin/drupal-cms/php-config.ts";
-
-const DRUPAL_CMS_MYSQL_INSTALL_COMMAND = drupalCmsInstallCommand(
-  "mysql",
-  "{{ services.database.creds.database }}",
-);
-const DRUPAL_CMS_PGSQL_INSTALL_COMMAND = drupalCmsInstallCommand(
-  "pgsql",
-  "{{ services.database.creds.database }}",
-);
-
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
 
 const {
@@ -85,6 +75,10 @@ describe("drupal-cms decomposition", () => {
           type: "php:{{ recipe.php }}",
           primary: true,
           framework: "drupal",
+          environment: {
+            LANDO_DRUPAL_CMS_DB_URL:
+              "mysql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
+          },
           webroot: "{{ recipe.webroot }}",
           composer: "{{ recipe.composer }}",
           allowOverride: true,
@@ -138,13 +132,14 @@ describe("drupal-cms decomposition", () => {
           service: "appserver",
           description: "Scaffold Drupal CMS 2 and project-local Drush into the mounted app root.",
           arguments: false,
-          cmd: "lando-drupal-cms-scaffold",
+          cmd: ["lando-drupal-cms-scaffold", "{{ recipe.webroot }}", "--testing={{ recipe.testing }}"],
         },
         "drupal-cms-install": {
           service: "appserver",
+          dir: "/app",
           description: "Install Drupal CMS 2 using the drupal_cms_starter recipe.",
           arguments: false,
-          cmd: DRUPAL_CMS_MYSQL_INSTALL_COMMAND,
+          cmd: drupalCmsInstallCommand,
         },
       },
     });
@@ -166,9 +161,12 @@ describe("drupal-cms decomposition", () => {
     expect(authoring.services.edge).not.toHaveProperty("primary");
     expect(authoring.services.edge).toHaveProperty("routes");
     expect(authoring.services.edge).toMatchObject({ uploadDirs: ["sites/*/files"] });
-    expect(authoring.tooling["drupal-cms-install"].cmd).toBe(DRUPAL_CMS_PGSQL_INSTALL_COMMAND);
-    expect(authoring.tooling["drupal-cms-install"].cmd).toContain('--db-url="pgsql://lando:');
-    expect(authoring.tooling["drupal-cms-install"].cmd).toContain("{{ services.database.creds.database }}");
+    expect(authoring.services.appserver).toMatchObject({
+      environment: {
+        LANDO_DRUPAL_CMS_DB_URL:
+          "pgsql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
+      },
+    });
   });
 
   test("includes an editable PHP memory limit asset and mount for Apache and FPM", () => {
@@ -216,20 +214,18 @@ describe("drupal-cms decomposition", () => {
     };
     const command = authoring.tooling["drupal-cms-install"].cmd;
 
-    expect(command).toBe(DRUPAL_CMS_MYSQL_INSTALL_COMMAND);
-    expect(command).toStartWith("mkdir -p web/sites/default/files && vendor/bin/drush site:install");
+    expect(command).toBe(drupalCmsInstallCommand);
+    expect(command).toContain('mkdir -p -- "$lando_public" && vendor/bin/drush site:install');
     expect(command).toContain(
       'php:eval \'if (!\\Drupal::service("file.htaccess_writer")->write("public://", FALSE))',
     );
     expect(command).toContain('if test "$LANDO_HOST_OS" = win32; then');
     expect(command).toContain('test ! -L "$lando_path"');
-    expect(command).toContain('test "$lando_public" = "$lando_root/web/sites/default/files"');
+    expect(command).toContain('test "$(realpath -m -- "$lando_public")" = "$lando_public"');
     expect(command).toContain('if test "$lando_mount_uid" -ne 0 && test "$lando_mount_gid" -ne 0; then');
     expect(command).toContain('test "$lando_worker_uid:$lando_worker_gid" = "$lando_mount_owner"');
 
-    expect(command).toContain(
-      'chown -hR -P -- "$lando_worker_user:$lando_worker_group" web/sites/default/files',
-    );
+    expect(command).toContain('chown -hR -P -- "$lando_worker_user:$lando_worker_group" "$lando_public"');
   });
   test("parses generated install tooling through the recipe translator", async () => {
     const translator = makeRecipeConfigTranslator({
@@ -249,14 +245,14 @@ describe("drupal-cms decomposition", () => {
     const authoring = translated.outputs[0]?.fragment as {
       tooling: { "drupal-cms-install": { cmd: string } };
     };
-    expect(authoring.tooling["drupal-cms-install"].cmd).toBe(DRUPAL_CMS_MYSQL_INSTALL_COMMAND);
+    expect(authoring.tooling["drupal-cms-install"].cmd).toBe(drupalCmsInstallCommand);
   });
 
   test.skipIf(process.platform === "win32")(
     "keeps install tooling valid when the dispatcher appends forwarded arguments",
     () => {
       // The tooling dispatcher adds this suffix when the command has no positional references.
-      const compiled = [DRUPAL_CMS_MYSQL_INSTALL_COMMAND, '"$@"'].join(" ");
+      const compiled = [drupalCmsInstallCommand, '"$@"'].join(" ");
       const result = Bun.spawnSync(["sh", "-n", "-c", compiled, "lando-tooling"]);
       expect(result.exitCode, result.stderr.toString()).toBe(0);
     },
@@ -264,9 +260,13 @@ describe("drupal-cms decomposition", () => {
 
   test("keeps the container helper scaffold command through snapshot encoding", () => {
     const rendered = Result.getOrThrow(renderRecipeSnapshot(drupalCmsSnapshot, defaults)) as {
-      tooling: { "drupal-cms-scaffold": { cmd: string } };
+      tooling: { "drupal-cms-scaffold": { cmd: readonly string[] } };
     };
-    expect(rendered.tooling["drupal-cms-scaffold"].cmd).toBe("lando-drupal-cms-scaffold");
+    expect(rendered.tooling["drupal-cms-scaffold"].cmd).toEqual([
+      "lando-drupal-cms-scaffold",
+      "{{ recipe.webroot }}",
+      "--testing={{ recipe.testing }}",
+    ]);
   });
 
   test.each([

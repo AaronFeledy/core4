@@ -28,12 +28,15 @@ lando drupal-cms-scaffold
 lando drupal-cms-install
 ```
 
-`lando drupal-cms-install` runs project-local Drush with the recipe's database credentials. The 512M ini covers that install command and the web PHP process. Drush prints the admin username and a generated password when install finishes.
+`lando drupal-cms-install` runs project-local Drush with the recipe's database credentials. The 512M PHP limit applies to Drush and web requests. Drush prints the admin username and a generated password when install finishes.
 
-On Windows with accelerated project files, the install command also gives the web server ownership of Drupal's public files directory and its contents. That lets uploads and image styles work after a command-line install. Check the default web-server user's access:
+To scaffold and install in `docroot/` instead of `web/`, pass `--answer=webroot=docroot` to `lando init`. For a new scaffold, use one directory name, not a nested path.
 
+On Windows with accelerated project files, the install command also gives the web server ownership of Drupal's public files directory and its contents. That lets uploads and image styles work after a command-line install. Check the default web-server user's access. For a custom webroot such as `docroot`:
+
+{/* lando-lint: not-e2e Windows accelerated-files ownership check; CI does not run Mutagen install-time chown */}
 ```sh
-lando exec --user www-data appserver -- test -w /app/web/sites/default/files
+lando exec --user www-data appserver -- test -w /app/docroot/sites/default/files
 ```
 
 Then confirm the day-to-day tools:
@@ -72,7 +75,7 @@ It also requires the `drupal_cms_starter` recipe that install uses, since `drupa
 
 ## Connect Drupal to the database
 
-`lando drupal-cms-install` writes these into `web/sites/default/settings.php`. Use the same values when you bring an existing project's settings. They cover MariaDB and `mysql:8.0` answers:
+`lando drupal-cms-install` writes these into `<webroot>/sites/default/settings.php`, or `web/sites/default/settings.php` with the default webroot. Use the same values when you bring an existing project's settings. They cover MariaDB and `mysql:8.0` answers:
 
 | Setting | Value |
 | --- | --- |
@@ -231,7 +234,7 @@ lando exec appserver -- php -v
   <Scenario id="nginx-postgres" render>
     <Step name="init">
       <Variable name="appName" value="drupal-cms-nginx" display="drupal-cms-nginx" />
-      <Run command="lando init --recipe drupal-cms --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=webroot=web" />
+      <Run command="lando init --recipe drupal-cms --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=webroot=docroot" />
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
@@ -239,7 +242,23 @@ lando exec appserver -- php -v
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"via\":\\s*\"fpm\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"nginx\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres:16\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "pgsql://lando:" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "LANDO_DRUPAL_CMS_DB_URL" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="serve-docroot" layer="e2e" timeout={1200000} render={false} reason="Install and serve Drupal CMS from its chosen webroot">
+    <Step name="start">
+      <Run command="lando init --recipe drupal-cms --name=cms-docroot --yes --answer=webroot=docroot --answer=webserver=nginx --answer=database=postgres:16" />
+      <Run command="lando start" />
+    </Step>
+    <Step name="install">
+      <Run command="lando drupal-cms-scaffold" />
+      <Verify command="lando exec appserver -- test -f docroot/index.php" />
+      <Run command="lando drupal-cms-install" />
+      <Fetch url="{{route:edge}}/user/login" expect={{ status: 200, body: { regex: "user-login-form" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 </Guide>

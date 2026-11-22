@@ -7,6 +7,7 @@ import { loadLandofileLayers } from "@lando/landofile/service";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { ConfigTranslateError, RecipeDecomposeError } from "@lando/sdk/errors";
 import type { RecipeDecomposeInput } from "@lando/sdk/schema";
+import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { DRUPAL_CMS_PHP_INI_TARGET } from "../../src/recipes/builtin/drupal-cms/php-config.ts";
@@ -82,7 +83,12 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       const routes = services.appserver?.routes as ReadonlyArray<Record<string, unknown>>;
       const drupalVersion = drupalDefaults.drupal;
       if (typeof drupalVersion !== "string") throw new TypeError("Expected a Drupal version default");
-      expect(tooling["drupal-scaffold"]?.cmd).toBe(`lando-drupal-scaffold ${drupalVersion}`);
+      expect(tooling["drupal-scaffold"]?.cmd).toEqual([
+        "lando-drupal-scaffold",
+        drupalVersion,
+        "web",
+        "--testing=false",
+      ]);
       expect(tooling.drush?.wrapper).toBe(true);
       expect(tooling.composer?.wrapper).toBe(true);
       expect(tooling.phpcs?.wrapper).toBe(true);
@@ -102,13 +108,53 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       // Then
       const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
       const services = landofile.document.services as Record<string, Record<string, unknown>>;
-      expect(tooling["drupal-scaffold"]?.cmd).toBe("lando-drupal-scaffold 10");
+      expect(tooling["drupal-scaffold"]?.cmd).toEqual([
+        "lando-drupal-scaffold",
+        "10",
+        "web",
+        "--testing=false",
+      ]);
       expect(services.appserver?.type).toBe("php:8.4");
     });
   });
 });
 
 describe("the decomposed Drupal CMS Landofile on the native load path", () => {
+  test("connects PHPUnit and Chrome through the relocated nginx site", async () => {
+    await withEncodedApp(
+      {
+        ...drupalCmsDefaults,
+        webroot: "docroot",
+        webserver: "nginx",
+        database: "postgres:16",
+        testing: true,
+      },
+      async (appRoot) => {
+        const { document } = await Effect.runPromise(
+          loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")),
+        );
+        expect(document.tooling?.["drupal-cms-scaffold"]?.cmd).toEqual([
+          "lando-drupal-cms-scaffold",
+          "docroot",
+          "--testing=true",
+        ]);
+        expect(document.tooling?.phpunit?.cmd).toEqual([
+          "/app/vendor/bin/phpunit",
+          "-c",
+          "/app/docroot/core",
+        ]);
+        expect(document.services?.[ServiceName.make("edge")]?.webroot).toBe(PortablePath.make("docroot"));
+        expect(document.services?.[ServiceName.make("chrome")]?.image).toStartWith(
+          "selenium/standalone-chromium:",
+        );
+        expect(document.services?.[ServiceName.make("appserver")]?.environment).toMatchObject({
+          SIMPLETEST_BASE_URL: "http://edge:{{ services.edge.port }}",
+          BROWSERTEST_OUTPUT_DIRECTORY: "/app/docroot/sites/simpletest/browser_output",
+        });
+      },
+      true,
+    );
+  });
   test("loads the scaffold command, PHP mount, and database configuration", async () => {
     await withEncodedApp(
       { ...drupalCmsDefaults },
@@ -116,7 +162,13 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
         const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
         const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
         const services = landofile.document.services as Record<string, Record<string, unknown>>;
-        expect(tooling["drupal-cms-scaffold"]?.cmd).toBe("lando-drupal-cms-scaffold");
+        expect(tooling["drupal-cms-scaffold"]?.cmd).toEqual([
+          "lando-drupal-cms-scaffold",
+          "web",
+          "--testing=false",
+        ]);
+        expect(services.chrome).toBeUndefined();
+        expect(tooling.phpunit).toBeUndefined();
         expect(tooling.drush?.wrapper).toBe(true);
         expect(tooling.composer?.wrapper).toBe(true);
         expect(tooling.phpstan?.wrapper).toBe(true);

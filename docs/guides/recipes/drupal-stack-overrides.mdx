@@ -9,7 +9,9 @@ tags: [docs, recipes, drupal, php, database]
 
 `lando init --recipe drupal` writes PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Edit `.lando.yml` after that, then `lando start`.
 
-Init prompts for Drupal 10 or 11, PHP 8.1 through 8.6, Apache or nginx plus FPM, MariaDB, MySQL, or PostgreSQL, Composer, and webroot. `--yes` keeps Drupal 11, PHP 8.4, Apache, `mariadb:11.4`, Composer 2, and `web`.
+Init prompts for Drupal 10 or 11, PHP 8.1 through 8.6, Apache or nginx plus FPM, MariaDB, MySQL, or PostgreSQL, Composer, webroot, and testing.
+
+For a new project, pass `--answer=webroot=docroot` at init to scaffold into `docroot/`. For an existing checkout, run `lando init . --recipe drupal --yes --answer=webroot=docroot` from the project root and skip scaffold. Replace `docroot` with `.` or a nested path if that's where the site lives.
 
 ## See the generated defaults
 
@@ -114,7 +116,7 @@ services:
     </Step>
   </Scenario>
 
-## Set a Drush URI and move the webroot
+## Set a Drush URI for an existing layout
 
 The generated `drush` task gets the current app URL from `lando open --print`, including a nondefault proxy port. Set `DRUSH_OPTIONS_URI` under `services.appserver.environment` only to pin a different URL, such as a custom domain; Drush then uses that value instead of the live one. Moving the webroot to `docroot` does not require changing the generated Drush task: `vendor/bin/drush` remains at the Composer project root.
 
@@ -173,6 +175,23 @@ services:
       <Run command="lando info --format=json" />
       <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/usr/local/etc/php/conf\\.d/zzz-custom\\.ini\",\\s*\"source\":\\s*\"[^\"]*(?:/|\\\\\\\\)bind-mounted-config(?:/|\\\\\\\\)config(?:/|\\\\\\\\)custom-php\\.ini\",\\s*\"readOnly\":\\s*true" } }} />
       <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/etc/mysql/conf\\.d/zzz-custom\\.cnf\",\\s*\"source\":\\s*\"[^\"]*(?:/|\\\\\\\\)bind-mounted-config(?:/|\\\\\\\\)config(?:/|\\\\\\\\)custom-mariadb\\.cnf\",\\s*\"readOnly\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="adopt-docroot" layer="e2e" timeout={600000} render={false} reason="Serve the existing front controller from the adopted docroot">
+    <Step name="adopt">
+      <UseFixture name="existing-docroot" />
+      <Run command="lando init . --recipe drupal --name=existing-docroot --yes --answer=webroot=docroot" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"docroot\"" } }} />
+      <Verify file="existing-docroot/composer.json" expect={{ regex: "fixture/existing-drupal" }} />
+      <Verify file="existing-docroot/docroot/index.php" expect={{ regex: "existing-drupal-front-controller" }} />
+    </Step>
+    <Step name="serve-adopted-docroot">
+      <Run command="lando start" />
+      <Fetch url="{{route:appserver}}/" expect={{ status: 200, body: { regex: "existing-drupal-front-controller" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 </Guide>

@@ -31,6 +31,8 @@ type scaffoldManifest struct {
 	// Applied is command-owned state recorded while staging and written as the
 	// completion marker's contents, so a later run knows what this one applied.
 	Applied json.RawMessage `json:"applied,omitempty"`
+
+	SiteIntent *drupalSiteIntent `json:"siteIntent,omitempty"`
 }
 
 // scaffoldEntry records one top-level staged path and the exact filesystem
@@ -75,6 +77,9 @@ type scaffold struct {
 }
 
 type scaffoldOptions struct {
+	siteIntent      *drupalSiteIntent
+	requiredOutputs []string
+
 	preflight    func(resumed bool, manifest *scaffoldManifest) error
 	generate     func(stage string, manifest *scaffoldManifest) error
 	afterPromote func(manifest *scaffoldManifest) error
@@ -156,6 +161,18 @@ func (s *scaffold) executeLocked(options scaffoldOptions) error {
 	if err != nil {
 		return err
 	}
+	if resumed && options.siteIntent != nil {
+		original := manifest.SiteIntent
+		switch {
+		case original != nil && *original == *options.siteIntent:
+		case manifest.Phase == "staging":
+			resumed = false
+		case original == nil:
+			return errors.New("An earlier scaffold may have promoted files without recording its inputs. Preserve the project and recover that attempt before scaffolding again.")
+		default:
+			return fmt.Errorf("scaffold already in progress: resume with webroot %q, Drupal major %q, and testing=%t", original.Webroot, original.Major, original.Testing)
+		}
+	}
 	hasMarker := s.markerPath != "" && pathExists(s.markerPath)
 	if hasMarker && options.complete(s.appRoot) {
 		s.cleanup()
@@ -175,16 +192,17 @@ func (s *scaffold) executeLocked(options scaffoldOptions) error {
 	}
 	if !resumed {
 		manifest = s.newManifest()
+		manifest.SiteIntent = options.siteIntent
 		if err := s.saveManifest(manifest); err != nil {
 			return err
 		}
-		if err := s.stage(manifest, options.generate); err != nil {
+		if err := s.stage(manifest, options); err != nil {
 			return err
 		}
 	} else {
 		switch manifest.Phase {
 		case "staging":
-			if err := s.stage(manifest, options.generate); err != nil {
+			if err := s.stage(manifest, options); err != nil {
 				return err
 			}
 		case "staged", "promoted":

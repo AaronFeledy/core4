@@ -9,10 +9,11 @@ import (
 )
 
 func runDrupalCmsScaffold(args []string, streams helperIO, crash func(string)) int {
-	if len(args) > 0 {
-		fmt.Fprintln(streams.stderr, "drupal-cms-scaffold does not accept arguments.")
-		return 1
+	intent, err := parseDrupalSiteIntent(args,"")
+	if errors.Is(err, errDrupalSiteArgs) {
+		return reportDrupalScaffoldUsage(streams, "drupal-cms-scaffold", drupalCmsScaffoldUsage)
 	}
+	if err != nil { return scaffoldResult(err,streams) }
 	appRoot := envValue(streams.env, "LANDO_DRUPAL_CMS_APP_ROOT")
 	if appRoot == "" {
 		appRoot = "/app"
@@ -22,21 +23,18 @@ func runDrupalCmsScaffold(args []string, streams helperIO, crash func(string)) i
 		"Drupal CMS",
 		"drupal-cms-scaffold",
 		fmt.Sprintf("Drupal CMS is already scaffolded at %s.", appRoot),
-		"composer.lock, recipes/drupal_cms_starter/recipe.yml, " + drupalScaffoldOutputs,
+		"recipes/drupal_cms_starter/recipe.yml, " + intent.outputs(),
 		appRoot,
 		streams,
 		crash,
 	)
-	err := s.execute(scaffoldOptions{
-		generate: func(stage string, _ *scaffoldManifest) error {
-			return stageDrupalCms(s, stage)
-		},
-		complete: drupalScaffoldComplete,
-	})
+	err = s.execute(intent.options(s,func(stage string, _ *scaffoldManifest) error {
+		return stageDrupalCms(s,stage,intent)
+	}))
 	return scaffoldResult(err, streams)
 }
 
-func stageDrupalCms(s *scaffold, stage string) error {
+func stageDrupalCms(s *scaffold, stage string, intent drupalSiteIntent) error {
 	if err := s.runCommand(
 		s.appRoot,
 		"composer",
@@ -49,6 +47,9 @@ func stageDrupalCms(s *scaffold, stage string) error {
 	); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not stage the project: %w", err)
 	}
+	constraint,err := intent.prepareComposer(stage)
+	if err != nil { return fmt.Errorf("Drupal CMS scaffold could not prepare the Composer layout: %w",err) }
+	if err := intent.relocateCmsProjectFiles(stage); err != nil { return fmt.Errorf("Drupal CMS scaffold could not relocate project files: %w",err) }
 	// Match drupal/recommended-project's allow-plugins so phpcs/phpcbf/phpstan can install their standards.
 	for _, plugin := range []string{
 		"dealerdirect/phpcodesniffer-composer-installer",
@@ -82,8 +83,7 @@ func stageDrupalCms(s *scaffold, stage string) error {
 	); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not require the pinned packages: %w", err)
 	}
-	lintArgs := append([]string{"--working-dir=" + stage, "require", "--dev", "--no-update"}, drupalLintPackages[:]...)
-	if err := s.runCommand(s.appRoot, "composer", lintArgs...); err != nil {
+	if err := s.runCommand(s.appRoot, "composer", intent.devArgs(stage,constraint)...); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not require the project-local lint tools: %w", err)
 	}
 	if err := s.runCommand(
@@ -98,7 +98,7 @@ func stageDrupalCms(s *scaffold, stage string) error {
 	); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not resolve the pinned packages: %w", err)
 	}
-	if err := verifyCmsProjection(stage, "locked", repository); err != nil {
+	if err := intent.verifyCmsProjection(stage, "locked", repository); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold rejected the pinned drupal/svg_image security patch: %w", err)
 	}
 	if err := s.runCommand(
@@ -115,23 +115,13 @@ func stageDrupalCms(s *scaffold, stage string) error {
 		s.appRoot,
 		"composer",
 		"--working-dir="+stage,
-		"install",
+		"install", // The CMS template aliases post-install-cmd to @post-update-cmd.
 		"--no-interaction",
 	); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not install dependencies: %w", err)
 	}
-	if err := verifyCmsCheckout(s, stage, repository); err != nil {
+	if err := intent.verifyCmsCheckout(s, stage, repository); err != nil {
 		return err
-	}
-	if err := s.runCommand(
-		s.appRoot,
-		"composer",
-		"--working-dir="+stage,
-		"run-script",
-		"post-update-cmd",
-		"--no-interaction",
-	); err != nil {
-		return fmt.Errorf("Drupal CMS scaffold could not run the post-update-cmd hook: %w", err)
 	}
 	if err := s.runCommand(
 		s.appRoot,
@@ -143,7 +133,7 @@ func stageDrupalCms(s *scaffold, stage string) error {
 	); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not run the post-create-project-cmd hook: %w", err)
 	}
-	if err := verifyCmsCheckout(s, stage, repository); err != nil {
+	if err := intent.verifyCmsCheckout(s, stage, repository); err != nil {
 		return err
 	}
 	if err := s.runCommand(
@@ -156,25 +146,14 @@ func stageDrupalCms(s *scaffold, stage string) error {
 	); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold dependency audit failed: %w", err)
 	}
-	for _, path := range []string{"composer.lock", "composer.json"} {
-		if !isRegularFile(filepath.Join(stage, path)) {
-			return fmt.Errorf("Drupal CMS scaffold did not stage %s.", path)
-		}
-	}
-	if !isDirectory(filepath.Join(stage, "web")) {
-		return errors.New("Drupal CMS scaffold did not stage web/.")
-	}
-	if !isRegularFile(filepath.Join(stage, "recipes", "drupal_cms_starter", "recipe.yml")) {
-		return errors.New("Drupal CMS scaffold did not install the drupal_cms_starter recipe.")
-	}
-	return s.stageDrupalLintFiles(stage)
+	return s.stageDrupalSiteFiles(stage,intent)
 }
 
-func verifyCmsCheckout(s *scaffold, stage string, repository string) error {
-	if err := verifyCmsProjection(stage, "installed", repository); err != nil {
+func (i drupalSiteIntent) verifyCmsCheckout(s *scaffold, stage string, repository string) error {
+	if err := i.verifyCmsProjection(stage, "installed", repository); err != nil {
 		return fmt.Errorf("Drupal CMS scaffold rejected the pinned drupal/svg_image security patch: %w", err)
 	}
-	directory := filepath.Join(stage, "web", "modules", "contrib", "svg_image")
+	directory := filepath.Join(stage, i.Webroot, "modules", "contrib", "svg_image")
 	revision, err := s.outputCommand(directory, "git", "-C", directory, "rev-parse", "HEAD")
 	if err != nil {
 		return fmt.Errorf("Drupal CMS scaffold could not inspect the drupal/svg_image checkout: %w", err)

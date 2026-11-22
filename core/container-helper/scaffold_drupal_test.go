@@ -12,49 +12,42 @@ import (
 func TestDrupalScaffoldStagesAndPromotes(t *testing.T) {
 	fixture := newScaffoldFixture(t, map[string]string{"LANDO_TEST_COMPOSER_RECIPE": "drupal"})
 
-	if code := fixture.run(t, "drupal-scaffold", "11"); code != 0 {
+	if code := fixture.run(t, "drupal-scaffold", "11", "/app/docroot", "--testing=false"); code != 0 {
 		t.Fatalf("drupal-scaffold exited %d: %s", code, fixture.stderr.String())
 	}
-	mustEqualStrings(t, fixture.calls(t), []string{"create-project", "require drush/drush", "require --dev " + lintPackageArguments})
-	assertDrupalLintOutputs(t, fixture.appRoot)
-	for _, path := range []string{"composer.json", "vendor/bin/drush", "web", ".lando-drupal-scaffold-complete"} {
+	for _, path := range []string{"composer.json", "vendor/bin/drush", "docroot/index.php", "docroot/core", ".lando-drupal-scaffold-complete"} {
 		if !pathExists(filepath.Join(fixture.appRoot, filepath.FromSlash(path))) {
 			t.Fatalf("missing %s", path)
 		}
 	}
+	data, err := os.ReadFile(filepath.Join(fixture.appRoot,"phpstan.neon.dist"))
+	if err != nil || !strings.Contains(string(data),"docroot/modules") { t.Fatalf("PHPStan config did not follow docroot: %s (%v)", data,err) }
 	if pathExists(filepath.Join(fixture.appRoot, ".lando-drupal-scaffold-manifest")) {
 		t.Fatal("completion left its manifest behind")
 	}
 }
 
-func TestDrupalScaffoldMajorArgumentAndEnvironment(t *testing.T) {
+func TestDrupalScaffoldRejectsInvalidArgumentsBeforeComposer(t *testing.T) {
 	fixture := newScaffoldFixture(t, map[string]string{"LANDO_TEST_COMPOSER_RECIPE": "drupal"})
-	if code := fixture.run(t, "drupal-scaffold", "10"); code != 0 {
+	if code := fixture.run(t, "drupal-scaffold", "10", "web", "--testing=false"); code != 0 {
 		t.Fatalf("drupal-scaffold exited %d: %s", code, fixture.stderr.String())
 	}
 	if len(fixture.calls(t)) == 0 {
 		t.Fatal("the major argument did not reach Composer")
 	}
 
-	other := newScaffoldFixture(t, map[string]string{
-		"LANDO_TEST_COMPOSER_RECIPE": "drupal",
-		"LANDO_DRUPAL_MAJOR":         "11",
-	})
-	if code := other.run(t, "drupal-scaffold"); code != 0 {
-		t.Fatalf("environment major exited %d: %s", code, other.stderr.String())
-	}
-
-	for _, testCase := range [][]string{{}, {"eleven"}, {"10", "11"}} {
+	for _, testCase := range [][]string{{}, {"eleven"}, {"10", "11"}, {"11","public/site","--testing=false"}, {"11","vendor","--testing=false"}} {
 		invalid := newScaffoldFixture(t, map[string]string{"LANDO_TEST_COMPOSER_RECIPE": "drupal"})
 		if code := invalid.run(t, "drupal-scaffold", testCase...); code == 0 {
 			t.Fatalf("%v was accepted", testCase)
 		}
+		if pathExists(filepath.Join(invalid.appRoot,scaffoldLockName)) || pathExists(filepath.Join(invalid.appRoot,scaffoldStageRoot)) { t.Fatalf("invalid argv %v mutated the project",testCase) }
 	}
 }
 
 func TestDrupalScaffoldCompletionAndRepair(t *testing.T) {
 	fixture := newScaffoldFixture(t, map[string]string{"LANDO_TEST_COMPOSER_RECIPE": "drupal"})
-	if code := fixture.run(t, "drupal-scaffold", "11"); code != 0 {
+	if code := fixture.run(t, "drupal-scaffold", "11", "web", "--testing=false"); code != 0 {
 		t.Fatalf("first run exited %d: %s", code, fixture.stderr.String())
 	}
 
@@ -64,7 +57,7 @@ func TestDrupalScaffoldCompletionAndRepair(t *testing.T) {
 		}
 	}
 	callsBeforeRetry := fixture.calls(t)
-	if code := fixture.run(t, "drupal-scaffold", "11"); code == 0 {
+	if code := fixture.run(t, "drupal-scaffold", "11", "web", "--testing=false"); code == 0 {
 		t.Fatal("a completed scaffold was run again")
 	}
 	if !strings.Contains(fixture.stderr.String(), "already scaffolded") {
@@ -76,7 +69,7 @@ func TestDrupalScaffoldCompletionAndRepair(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repair.appRoot, ".lando-drupal-scaffold-complete"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if code := repair.run(t, "drupal-scaffold", "11"); code != 0 {
+	if code := repair.run(t, "drupal-scaffold", "11", "web", "--testing=false"); code != 0 {
 		t.Fatalf("repair run exited %d: %s", code, repair.stderr.String())
 	}
 	if !pathExists(filepath.Join(repair.appRoot, "vendor", "bin", "drush")) {
@@ -86,9 +79,10 @@ func TestDrupalScaffoldCompletionAndRepair(t *testing.T) {
 
 func TestDrupalScaffoldResumesWithoutRestaging(t *testing.T) {
 	fixture := newScaffoldFixture(t, map[string]string{"LANDO_TEST_COMPOSER_RECIPE": "drupal"})
-	fixture.kill(t, "drupal-scaffold", "sibling-promoted", "11")
+	fixture.kill(t, "drupal-scaffold", "sibling-promoted", "11", "web", "--testing=false")
+	if code := fixture.run(t,"drupal-scaffold","11","docroot","--testing=false"); code == 0 || !strings.Contains(fixture.stderr.String(),`resume with webroot "web"`) { t.Fatalf("changed intent did not preserve the interrupted promotion: %s",fixture.stderr.String()) }
 
-	if code := fixture.run(t, "drupal-scaffold", "11"); code != 0 {
+	if code := fixture.run(t, "drupal-scaffold", "11", "web", "--testing=false"); code != 0 {
 		t.Fatalf("resume exited %d: %s", code, fixture.stderr.String())
 	}
 	staged := 0
@@ -105,7 +99,7 @@ func TestDrupalScaffoldResumesWithoutRestaging(t *testing.T) {
 func TestDrupalCmsScaffoldRunsThePinnedSequence(t *testing.T) {
 	fixture := newScaffoldFixture(t, map[string]string{"LANDO_TEST_COMPOSER_RECIPE": "cms"})
 
-	if code := fixture.run(t, "drupal-cms-scaffold"); code != 0 {
+	if code := fixture.run(t, "drupal-cms-scaffold", "docroot", "--testing=false"); code != 0 {
 		t.Fatalf("drupal-cms-scaffold exited %d: %s", code, fixture.stderr.String())
 	}
 	mustEqualStrings(t, fixture.calls(t), []string{
@@ -118,11 +112,16 @@ func TestDrupalCmsScaffoldRunsThePinnedSequence(t *testing.T) {
 		"update",
 		"audit",
 		"install",
-		"run-script post-update-cmd",
 		"run-script post-create-project-cmd",
 		"audit",
 	})
-	assertDrupalLintOutputs(t, fixture.appRoot)
+	assertFileText(t, filepath.Join(fixture.appRoot, "phpcs.xml.dist"), strings.ReplaceAll(drupalPHPCSConfig, "web/", "docroot/"))
+	assertFileText(t, filepath.Join(fixture.appRoot, "phpstan.neon.dist"), strings.ReplaceAll(drupalPHPStanConfig, "web/", "docroot/"))
+	for _, bin := range []string{"drush", "phpcs", "phpcbf", "phpstan"} {
+		if !executableFile(filepath.Join(fixture.appRoot, "vendor", "bin", bin)) {
+			t.Fatalf("missing executable %s", bin)
+		}
+	}
 	data, err := os.ReadFile(filepath.Join(fixture.appRoot, "composer.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +146,7 @@ func TestDrupalCmsScaffoldRunsThePinnedSequence(t *testing.T) {
 		"composer.json",
 		"composer.lock",
 		"vendor/bin/drush",
-		"web",
+		"docroot/index.php",
 		"recipes/drupal_cms_starter/recipe.yml",
 		".lando-drupal-cms-scaffold-complete",
 	} {
@@ -157,6 +156,12 @@ func TestDrupalCmsScaffoldRunsThePinnedSequence(t *testing.T) {
 	}
 	if pathExists(filepath.Join(fixture.appRoot, ".lando-drupal-cms-scaffold-manifest")) {
 		t.Fatal("completion left its manifest behind")
+	}
+	assertFileText(t, filepath.Join(fixture.appRoot, "docroot", "early.txt"), "early\n")
+	for _, path := range []string{"web", "vendor/bin/composer"} {
+		if pathExists(filepath.Join(fixture.appRoot, filepath.FromSlash(path))) {
+			t.Fatalf("unexpected staged output %s was published", path)
+		}
 	}
 }
 
@@ -171,7 +176,7 @@ func TestDrupalCmsScaffoldPublishesNothingWhenGenerationFails(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if code := fixture.run(t, "drupal-cms-scaffold"); code == 0 {
+			if code := fixture.run(t, "drupal-cms-scaffold", "web", "--testing=false"); code == 0 {
 				t.Fatalf("%s did not fail", mode)
 			}
 			assertDirectoryNames(t, fixture.appRoot, []string{"user.txt"})

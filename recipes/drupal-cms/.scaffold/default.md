@@ -69,7 +69,9 @@ writes to the Windows bind mount faster.
 
 ## Choose stack options
 
-`--yes` uses PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. The generated `.lando/php/drupal-cms.ini` sets a 512M PHP memory limit for both Drush and web requests. Edit that file if your site needs another limit. Pass `--answer` to change the stack choices. PHP 8.6 is a valid `--answer=php=8.6`.
+`--yes` uses PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Pass `--answer=webroot=docroot` to use `docroot/` instead. A new scaffold needs one directory name. Pass `--answer=testing=true` to set up PHPUnit and Chrome when scaffolding a new site. To use PHP 8.6, pass `--answer=php=8.6`.
+
+The generated `.lando/php/drupal-cms.ini` sets a 512M PHP memory limit for Drush and web requests. Edit that file to change the limit.
 
 To choose a different stack, use this initialization command instead of the
 default one above. Run it from the parent directory, not inside the app:
@@ -117,7 +119,7 @@ lando drush --version
 ## 6. init
 
 ```bash
-lando init --recipe drupal-cms --name=my-drupal-cms-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=webroot=web
+lando init --recipe drupal-cms --name=my-drupal-cms-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=webroot=docroot
 ```
 
 ## 7. inspect
