@@ -11,7 +11,7 @@ import { removeRuntimeContainer } from "./container-removal.ts";
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { isSuccessStatus } from "./engine-api.ts";
 import { apiResponseFailure, missingApi, missingRequest } from "./engine-errors.ts";
-import { BUILT_ARTIFACT_PREFIX } from "./image-build.ts";
+import { BUILT_ARTIFACT_PREFIX, BUILT_ARTIFACT_STORE_LABEL } from "./image-build.ts";
 import { listContainerArtifacts, normalizeImageRef } from "./image-list.ts";
 import { removeContainerArtifact } from "./image-remove.ts";
 import { APP_LABEL, APP_ROOT_LABEL, PROVIDER_LABEL, VOLUME_INSTANCE_LABEL } from "./labels.ts";
@@ -24,7 +24,6 @@ import {
 import { redactString, redactorFor } from "./redact.ts";
 import { VOLUME_OWNER_LABEL, VOLUME_SELECTOR_LABEL, coherentVolumeOwnership } from "./volume-ownership.ts";
 
-export const BUILT_ARTIFACT_STORE_LABEL = "dev.lando.build-store";
 const operation = "uninstall.purge";
 const kinds = ["container", "network", "volume"] as const;
 type Kind = (typeof kinds)[number];
@@ -133,6 +132,15 @@ export const preflightDataRootPurge = Effect.fn("DataRootPurge.preflight")(funct
     );
     return [...new Set(body.map(({ Id }) => Id))];
   });
+  const listOtherLandoResources = Effect.fnUntraced(function* (kind: Kind, selected: readonly string[]) {
+    const others = new Set<string>();
+    const scoped = new Set(selected);
+    for (const label of landoLabels[kind]) {
+      const listed = yield* list(kind, { label: [label] }).pipe(Effect.result);
+      if (Result.isSuccess(listed)) for (const id of listed.success) if (!scoped.has(id)) others.add(id);
+    }
+    return [...others];
+  });
   const inspect = Effect.fnUntraced(function* (kind: Kind, ref: string) {
     const path = `/${kind}s/${encodeURIComponent(ref)}${kind === "container" ? "/json" : ""}` as const;
     const response = yield* read({ method: "GET", path }, true);
@@ -156,6 +164,8 @@ export const preflightDataRootPurge = Effect.fn("DataRootPurge.preflight")(funct
     const { labels } = resource;
     // A Docker-compatible endpoint can expose objects realized through either host provider.
     const provider = labels[PROVIDER_LABEL] ?? ctx.providerId;
+    if (provider !== ctx.providerId && provider !== "docker" && provider !== "podman" && provider !== "lando")
+      return false;
     switch (resource.kind) {
       case "container":
         return coherentContainerOwnership(labels, provider);
@@ -177,7 +187,9 @@ export const preflightDataRootPurge = Effect.fn("DataRootPurge.preflight")(funct
   const apps = new Map<string, { readonly appId: string; readonly appRoot: string }>();
   let syncPresent = false;
   for (const kind of kinds) {
-    for (const ref of yield* list(kind)) {
+    const selected = yield* list(kind);
+    const others = options.owns === undefined ? [] : yield* listOtherLandoResources(kind, selected);
+    for (const ref of [...selected, ...others]) {
       const found = yield* inspect(kind, ref);
       if (!found || !owns(found)) continue;
       if (syncMarker(found) !== undefined) syncPresent = true;
@@ -207,14 +219,8 @@ export const preflightDataRootPurge = Effect.fn("DataRootPurge.preflight")(funct
         `${kind} discovery`,
         Effect.gen(function* () {
           const candidates = yield* list(kind);
-          const outside = new Set<string>();
-          const selected = new Set(candidates);
-          for (const label of landoLabels[kind]) {
-            const labeled = yield* Effect.result(list(kind, { label: [label] }));
-            if (Result.isSuccess(labeled))
-              for (const id of labeled.success) if (!selected.has(id)) outside.add(id);
-          }
-          outsideScope += outside.size;
+          const outside = yield* listOtherLandoResources(kind, candidates);
+          if (options.owns === undefined) outsideScope += outside.length;
           const bridges: string[] = [];
           const remove = Effect.fnUntraced(function* (ref: string, bridge = false) {
             const resource = `${kind} ${ref}`;
@@ -272,6 +278,9 @@ export const preflightDataRootPurge = Effect.fn("DataRootPurge.preflight")(funct
             if (deleted.status !== 404) removed.push(resource);
           });
           for (const ref of candidates) yield* record(`${kind} ${ref}`, remove(ref));
+          if (options.owns !== undefined) {
+            for (const ref of outside) yield* record(`${kind} ${ref}`, remove(ref));
+          }
           for (const ref of bridges) yield* record(`${kind} ${ref}`, remove(ref, true));
         }),
       );

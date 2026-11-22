@@ -7,8 +7,9 @@ import {
   landoSharedCrossAppNetworkName,
 } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { BUILT_ARTIFACT_STORE_LABEL, preflightDataRootPurge } from "../src/data-root-purge.ts";
+import { type DataRootPurgeOptions, preflightDataRootPurge } from "../src/data-root-purge.ts";
 import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
+import { BUILT_ARTIFACT_STORE_LABEL } from "../src/image-build.ts";
 import { volumeSelectorValue } from "../src/podman/volume-prune.ts";
 
 const dataRoot = "/installation/a";
@@ -32,11 +33,18 @@ const fixture = ({
   foreign = false,
   used = false,
   reachable = true,
+  legacy = false,
 } = {}) => {
-  const containers = new Map([
+  const containers = new Map<string, Readonly<Record<string, string>>>([
     ["owned", { ...appLabels, "dev.lando.service": "web" }],
     ["peer", { ...appLabels, "dev.lando.service": "web", [LANDO_DATA_ROOT_LABEL]: "/installation/b" }],
   ]);
+  if (legacy)
+    containers.set("adopted", {
+      "dev.lando.app": "web",
+      "dev.lando.app-root": appRoot,
+      "dev.lando.service": "web",
+    });
   const networks = new Map([
     [
       "bridge",
@@ -144,8 +152,8 @@ const fixture = ({
   return { api, actions, containers };
 };
 
-const sweep = async (api: EngineHttpApi) => {
-  const prepared = await Effect.runPromise(preflightDataRootPurge(api, ctx, options));
+const sweep = async (api: EngineHttpApi, opts: DataRootPurgeOptions = options) => {
+  const prepared = await Effect.runPromise(preflightDataRootPurge(api, ctx, opts));
   if (prepared.kind !== "reachable") throw new Error(`Fixture unexpectedly skipped: ${prepared.reason}`);
   return Effect.runPromise(prepared.sweep());
 };
@@ -165,10 +173,31 @@ test("deletes only this root's objects in dependency order, with owned images re
   expect([...containers.keys()]).toEqual(["peer"]);
 });
 
+test("an injected ownership decision can admit an exact legacy object without adopting its peers", async () => {
+  const { api, containers } = fixture({ legacy: true });
+  const result = await sweep(api, {
+    ...options,
+    owns: ({ kind, id, labels }) =>
+      labels[LANDO_DATA_ROOT_LABEL] === dataRoot ||
+      (kind === "container" && id === "adopted" && labels[LANDO_DATA_ROOT_LABEL] === undefined),
+  });
+  expect(result.failed).toEqual([]);
+  expect([...containers.keys()]).toEqual(["peer"]);
+});
+
 test("a second sweep of the same engine has no removals", async () => {
   const { api } = fixture();
-  await sweep(api);
-  expect(await sweep(api)).toMatchObject({ removed: [], retained: [], failed: [], outsideScope: 1 });
+  const first = await Effect.runPromise(preflightDataRootPurge(api, ctx, options));
+  const second = await Effect.runPromise(preflightDataRootPurge(api, ctx, options));
+  if (first.kind !== "reachable" || second.kind !== "reachable")
+    throw new Error("Expected both preflights to succeed");
+  await Effect.runPromise(first.sweep());
+  expect(await Effect.runPromise(second.sweep())).toMatchObject({
+    removed: [],
+    retained: [],
+    failed: [],
+    outsideScope: 1,
+  });
 });
 
 test.each([
