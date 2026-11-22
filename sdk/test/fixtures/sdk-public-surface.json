@@ -950,8 +950,10 @@
       "interactionRequiredFields",
       "isErrnoCode",
       "landofileLoadFailures",
+      "newerStateRemediation",
       "promptValidationFields",
-      "safeFileIoError"
+      "safeFileIoError",
+      "sanitizeStateWriter"
     ],
     "./events": [
       "BeforeExitEvent",

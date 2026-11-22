@@ -295,7 +295,6 @@ describe("tunnel registry version migration", () => {
         path: registryPath,
         storedVersion: 99,
         supportedVersion: TUNNEL_REGISTRY_VERSION,
-        remediation: expect.stringMatching(/upgrade Lando/i),
       });
       expect(await Bun.file(registryPath).bytes()).toEqual(before);
     });

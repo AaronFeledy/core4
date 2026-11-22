@@ -18,6 +18,7 @@ import { withAdvisoryLockUsing } from "./lock.ts";
 import { resolveStatePath } from "./paths.ts";
 import { type PrivateFileAccess, PrivateFileAccessService } from "./private-file-access.ts";
 import { validateBucketSpec } from "./spec.ts";
+import { type StateWriterOptions, resolveStateWriter } from "./writer.ts";
 
 const ioError = (operation: string, path: string, cause: unknown): StateStoreError =>
   new StateStoreError({
@@ -74,18 +75,22 @@ const makeDiskBucketBackend = (privateFileAccess: PrivateFileAccess): StateBucke
  * Build the {@link StateStoreShape}: `open` resolves and containment-checks a
  * bucket's path (no read/write IO) and returns a {@link StateBucket} closure.
  */
-export const makeStateStore = (options: {
-  readonly privateFileAccess: PrivateFileAccess;
-  readonly roots?: LandoRoots;
-}): StateStoreShape => {
+export const makeStateStore = (
+  options: {
+    readonly privateFileAccess: PrivateFileAccess;
+    readonly roots?: LandoRoots;
+  } & StateWriterOptions,
+): StateStoreShape => {
   const roots = options.roots;
   return StateStore.of({
     open: Effect.fn("StateStore.open")(
       <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
         resolveStatePath(spec.root, spec.namespace, spec.key, "open", roots).pipe(
           Effect.tap(() => validateBucketSpec(spec)),
-          Effect.map((resolved) =>
-            buildStateBucket(spec, resolved.file, makeDiskBucketBackend(options.privateFileAccess)),
+          Effect.flatMap((resolved) =>
+            Effect.map(resolveStateWriter(options), (writer) =>
+              buildStateBucket(spec, resolved.file, makeDiskBucketBackend(options.privateFileAccess), writer),
+            ),
           ),
         ),
     ),
@@ -103,28 +108,32 @@ export const makeStateStore = (options: {
   });
 };
 
-export const layerWithPrivateFileAccess: Layer.Layer<StateStore, never, PrivateFileAccessService> =
+export const layerWithPrivateFileAccessOptions = (
+  options: StateWriterOptions,
+): Layer.Layer<StateStore, never, PrivateFileAccessService> =>
   Layer.effect(
     StateStore,
     Effect.gen(function* () {
       const privateFileAccess = yield* PrivateFileAccessService;
       const paths = yield* Effect.serviceOption(PathsService);
       return makeStateStore({
+        ...options,
         privateFileAccess,
         ...(Option.isSome(paths) ? { roots: paths.value.roots } : {}),
       });
     }),
   );
 
-export const layer: Layer.Layer<StateStore> = layerWithPrivateFileAccess.pipe(
-  Layer.provide(PrivateFileAccessService.layer),
-);
+export const layerWithPrivateFileAccess = layerWithPrivateFileAccessOptions({});
+export const layerWith = (options: StateWriterOptions): Layer.Layer<StateStore> =>
+  layerWithPrivateFileAccessOptions(options).pipe(Layer.provide(PrivateFileAccessService.layer));
+export const layer = layerWith({});
 
 /** A disk store over roots a caller resolved itself, such as from a CLI invocation's environment. */
-export const layerAt = (roots: LandoRoots): Layer.Layer<StateStore> =>
+export const layerAt = (roots: LandoRoots, options: StateWriterOptions = {}): Layer.Layer<StateStore> =>
   Layer.effect(
     StateStore,
     Effect.gen(function* () {
-      return makeStateStore({ privateFileAccess: yield* PrivateFileAccessService, roots });
+      return makeStateStore({ ...options, privateFileAccess: yield* PrivateFileAccessService, roots });
     }),
   ).pipe(Layer.provide(PrivateFileAccessService.layer));
