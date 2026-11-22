@@ -193,7 +193,7 @@ const assertAgent = Effect.fnUntraced(function* (snapshot: Snapshot, endpoint: s
   const observed = yield* Effect.all({ web: inspect(web.id), agent: inspect(agent.id) });
   const dir = AGENT_SOCKET_CONTAINER_DIR.ssh;
   const agentVolume = observed.agent.Mounts.find(
-    (mount) => mount.Type === "volume" && mount.Destination === "/run/lando/ssh-agent",
+    (mount) => mount.Type === "volume" && mount.Destination === dir,
   )?.Name;
   if (agentVolume === undefined) throw new Error(`No named SSH agent volume for ${routerName}`);
   expect(observed.web.Config.Env).toContain(`SSH_AUTH_SOCK=${dir}/${SSH_AGENT_SOCKET_NAME}`);

@@ -58,7 +58,7 @@ export const resolveFetchUrl = Effect.fnUntraced(function* (
 
 export const readScenarioCa = Effect.fnUntraced(function* (
   cwd: string,
-  env: Readonly<Record<string, string | undefined>> = process.env,
+  env: Readonly<Record<string, string | undefined>>,
 ) {
   const { binDir } = makeLandoPaths({ env });
   const mkcert = join(binDir, process.platform === "win32" ? "mkcert.exe" : "mkcert");

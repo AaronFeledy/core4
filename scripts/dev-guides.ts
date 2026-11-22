@@ -9,6 +9,7 @@ import {
   buildGuideScenarioAst,
   resolveGeneratedGuideTestRoot,
 } from "./build-guide-scenarios.ts";
+import type { TrackTestChild } from "./live-test-roots.ts";
 import { rewriteScenarioSourceMappedOutput } from "./test-reporters/scenario-source-mapper.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -46,7 +47,7 @@ const shutdownHooks = new Set<() => void>();
 const requestShutdown = (signal: "SIGINT" | "SIGTERM"): void => {
   if (shuttingDown) return;
   shuttingDown = true;
-  shutdownCode = signal === "SIGTERM" ? 143 : 130;
+  shutdownCode = signal === "SIGTERM" ? 143 : ABORT_EXIT_CODE;
   if (liveTestInFlight) process.exitCode = shutdownCode;
   activeProc?.kill(signal);
   for (const hook of shutdownHooks) hook();
@@ -87,7 +88,7 @@ export const computeAffectedGuides = (changedPath: string, ctx: AffectedGuidesCo
 const run = async (
   cmd: ReadonlyArray<string>,
   env: Record<string, string | undefined> = {},
-  track?: import("./live-test-roots.ts").TrackTestChild,
+  track?: TrackTestChild,
 ): Promise<RunResult> => {
   if (shuttingDown) {
     return {
@@ -236,7 +237,7 @@ const testGuides = async (guideIds: readonly string[], isAll: boolean): Promise<
     const exitCode = await runWithLiveTestRoots(
       { live: true, cwd: REPO_ROOT, env: process.env },
       async (env, track) => {
-        const result = await run([...command, "--max-concurrency=1"], { ...env }, track);
+        const result = await run([...command, "--max-concurrency=1"], env, track);
         output = result;
         return result.exitCode;
       },

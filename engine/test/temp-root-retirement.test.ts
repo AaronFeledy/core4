@@ -161,6 +161,33 @@ test("keeps the directory if verification cannot read the endpoint", async () =>
   });
 });
 
+test.each([
+  {
+    name: "captures the last stdout line as the purge result",
+    script: `printf 'progress\\n%s\\n' '${success.stdout}'; echo noise >&2`,
+    expected: (directory: string) => ({ removed: [directory], retained: [], failed: [] }),
+  },
+  {
+    name: "reports the exit status and stderr of a failed purge",
+    script: "echo partial-failure >&2; exit 3",
+    expected: () => ({
+      removed: [],
+      retained: [],
+      failed: [expect.objectContaining({ target: "uninstall --purge", reason: "Exit 3. partial-failure" })],
+    }),
+  },
+])("runs purge through the process runner without a CLI double: $name", async ({ script, expected }) => {
+  await fixture(async (input) => {
+    const result = await retireTempRoots(
+      { ...input, command: ["/bin/sh", "-c", script, "purge"] },
+      {
+        engineApi: readOnlyEngine((url) => ({ body: url.pathname === "/volumes" ? { Volumes: null } : [] })),
+      },
+    );
+    expect(result).toEqual(expected(input.directory));
+  });
+});
+
 test.each(["LANDO_TEST_PODMAN_SOCKET", "DOCKER_HOST", "LANDO_TEST_DOCKER_SOCKET"])(
   "rejects mismatched %s before running purge or verification",
   async (key) => {

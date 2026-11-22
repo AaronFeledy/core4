@@ -13,6 +13,7 @@ import { causeMessage } from "@lando/sdk/errors";
 
 type Env = TempRootRetirement["env"];
 type RunnerSignal = "SIGINT" | "SIGTERM";
+const SIGNAL_EXIT_CODES = { SIGINT: 130, SIGTERM: 143 } as const satisfies Record<RunnerSignal, number>;
 type TestChild = Pick<Bun.Subprocess, "kill" | "exited" | "exitCode" | "signalCode">;
 export type TrackTestChild = (child: TestChild) => void;
 
@@ -146,11 +147,8 @@ export async function runWithLiveTestRoots(
       process.off("SIGTERM", onSignal);
     }
   }
-  return received === "SIGINT"
-    ? 130
-    : received === "SIGTERM"
-      ? 143
-      : testExitCode || (retirementFailed ? 1 : 0);
+  if (received !== undefined) return SIGNAL_EXIT_CODES[received];
+  return testExitCode || (retirementFailed ? 1 : 0);
 }
 
 if (import.meta.main) {

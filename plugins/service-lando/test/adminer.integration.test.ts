@@ -166,9 +166,6 @@ services:
             endpoint: socket.socketPath,
             env,
             command: [binary],
-            ...(fixtureCleanupFailure === undefined
-              ? {}
-              : { priorFailures: [{ target: app, reason: fixtureCleanupFailure }] }),
           });
           expect(
             [...retirement.retained, ...retirement.failed],

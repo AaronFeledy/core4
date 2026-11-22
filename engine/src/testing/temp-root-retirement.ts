@@ -5,7 +5,7 @@ import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
 import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import type { ProcessResult, ProcessSpawnOptions } from "@lando/sdk/services";
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 import { artifactBuildStoreKey } from "../services/build-artifact-name.ts";
 import { service as processRunner } from "../services/process-runner.ts";
@@ -75,10 +75,14 @@ interface RetirementDependencies {
   readonly engineApi?: EngineHttpApi;
 }
 
-const Envelope = Schema.fromJsonString(
-  Schema.Union([CommandResultEnvelope, Schema.TaggedStruct("result", { envelope: CommandResultEnvelope })]),
-);
+const Envelope = Schema.fromJsonString(CommandResultEnvelope);
 const PURGE = "uninstall --purge";
+
+const failedWith = (error: TempRootRetirementError): RetirementOutcome => ({
+  removed: [],
+  retained: [],
+  failed: [error],
+});
 
 const bindOwnedRoot = Effect.fnUntraced(function* (input: TempRootRetirement) {
   const { endpoint } = input;
@@ -163,34 +167,12 @@ export const bindTempRootObservation = Effect.fnUntraced(function* (input: TempR
   );
 });
 
-const runProcess = Effect.fnUntraced(function* (input: ProcessSpawnOptions) {
-  const decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
-  const result = yield* processRunner.streamWithExit(input).pipe(
-    Stream.runFold(
-      () => ({ exitCode: 1, stdout: "", stderr: "" }),
-      (result, event) =>
-        "exitCode" in event
-          ? { ...result, exitCode: event.exitCode }
-          : {
-              ...result,
-              [event.kind]: result[event.kind] + decoders[event.kind].decode(event.chunk, { stream: true }),
-            },
-    ),
-  );
-  return {
-    ...result,
-    stdout: result.stdout + decoders.stdout.decode(),
-    stderr: result.stderr + decoders.stderr.decode(),
-  };
-});
-
-export const retireTempRootsEffect = Effect.fnUntraced(function* (
+const retireTempRootsEffect = Effect.fnUntraced(function* (
   input: TempRootRetirement,
   dependencies: RetirementDependencies = {},
 ) {
   const binding = yield* Effect.result(bindOwnedRoot(input));
-  if (binding._tag === "Failure")
-    return { removed: [], retained: [], failed: [binding.failure] } satisfies RetirementOutcome;
+  if (binding._tag === "Failure") return failedWith(binding.failure);
   const { directory, env } = binding.success;
   const [cmd, ...prefix] = input.command;
   const options = {
@@ -205,36 +187,26 @@ export const retireTempRootsEffect = Effect.fnUntraced(function* (
   const runner = dependencies.runCli;
   const purge = yield* Effect.result(
     runner === undefined
-      ? runProcess(options).pipe(retirementFailures(PURGE))
+      ? processRunner.run(options).pipe(retirementFailures(PURGE))
       : Effect.tryPromise({ try: () => runner(options), catch: (cause) => retirementError(PURGE, cause) }),
   );
-  if (purge._tag === "Failure")
-    return { removed: [], retained: [], failed: [purge.failure] } satisfies RetirementOutcome;
+  if (purge._tag === "Failure") return failedWith(purge.failure);
   const { exitCode, stdout, stderr } = purge.success;
-  const decoded = Schema.decodeUnknownOption(Envelope)(stdout.trim().split("\n").at(-1));
-  const envelope =
-    decoded._tag === "Some"
-      ? "envelope" in decoded.value
-        ? decoded.value.envelope
-        : decoded.value
-      : undefined;
+  const envelope = Option.getOrUndefined(
+    Schema.decodeUnknownOption(Envelope)(stdout.trim().split("\n").at(-1)),
+  );
   if (exitCode !== 0 || envelope?.ok !== true) {
     const detail =
       exitCode === 0 && envelope === undefined
         ? "Expected a successful uninstall JSON result."
         : `Exit ${exitCode}.`;
     const output = (stdout.trim() || stderr.trim()).slice(-4096);
-    return {
-      removed: [],
-      retained: [],
-      failed: [retirementError(PURGE, `${detail} ${output}`)],
-    } satisfies RetirementOutcome;
+    return failedWith(retirementError(PURGE, `${detail} ${output}`));
   }
 
   // Purge can remove the Lando roots. Verify with the identity bound before it ran.
   const verified = yield* verifyRootResourcesAbsent(resourceScope(binding.success, dependencies.engineApi));
-  if (verified.retained.length > 0 || verified.failed.length > 0)
-    return { removed: [], ...verified } satisfies RetirementOutcome;
+  if (verified.retained.length > 0 || verified.failed.length > 0) return { removed: [], ...verified };
   const removal = yield* Effect.result(
     Effect.tryPromise({
       try: () => rm(input.directory, { recursive: true, force: true }),
@@ -242,11 +214,11 @@ export const retireTempRootsEffect = Effect.fnUntraced(function* (
     }),
   );
   return removal._tag === "Failure"
-    ? ({ removed: [], retained: [], failed: [removal.failure] } satisfies RetirementOutcome)
+    ? failedWith(removal.failure)
     : ({ removed: [input.directory], retained: [], failed: [] } satisfies RetirementOutcome);
 });
 
-export const retirementReport = (outcome: RetirementOutcome): RetirementResult => ({
+const retirementReport = (outcome: RetirementOutcome): RetirementResult => ({
   ...outcome,
   failed: outcome.failed.map(({ target, message, _tag, remediation }) => ({
     target,
