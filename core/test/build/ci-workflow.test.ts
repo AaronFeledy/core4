@@ -135,6 +135,7 @@ describe("ci workflow", () => {
       "runtime-bundle.yml",
       "tomcat-bump.yml",
       "workflow-performance.yml",
+      "xdebug-bump.yml",
     ]);
   });
 
