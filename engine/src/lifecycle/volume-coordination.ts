@@ -192,6 +192,27 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
 });
 
 /** Launch work must prepare the runtime before volume discovery acquires its locks. */
+export const adoptPlanDataRoot = (
+  provider: Pick<RuntimeProviderShape, "id" | "adoptDataRoot">,
+  plan: AppPlan,
+  stateStore: StateStoreShape,
+) =>
+  provider.adoptDataRoot?.(plan, (key) =>
+    readVolumeInitialization(stateStore, key).pipe(
+      Effect.map((record) => record?.identity.generation),
+      mapFailures(
+        (cause) =>
+          new ProviderUnavailableError({
+            providerId: provider.id,
+            operation: "data-root-adoption",
+            message: "Cannot read the volume initialization witness.",
+            remediation: "Repair the local volume initialization state and try again.",
+            cause,
+          }),
+      ),
+    ),
+  ) ?? Effect.void;
+
 export const withLaunchVolumeCoordination = Effect.fn("Lifecycle.withLaunchVolumeCoordination")(function* <
   A,
   E,
@@ -203,20 +224,6 @@ export const withLaunchVolumeCoordination = Effect.fn("Lifecycle.withLaunchVolum
   readonly stateStore: StateStoreShape;
   readonly body: (coordination: VolumeCoordination) => Effect.Effect<A, E, R>;
 }) {
-  yield* input.provider.adoptDataRoot?.(input.plan, (key) =>
-    readVolumeInitialization(input.stateStore, key).pipe(
-      Effect.map((record) => record?.identity.generation),
-      mapFailures(
-        (cause) =>
-          new ProviderUnavailableError({
-            providerId: input.provider.id,
-            operation: "data-root-adoption",
-            message: "Cannot read the volume initialization witness.",
-            remediation: "Repair the local volume initialization state and try again.",
-            cause,
-          }),
-      ),
-    ),
-  ) ?? Effect.void;
+  yield* adoptPlanDataRoot(input.provider, input.plan, input.stateStore);
   return yield* withPlanVolumeCoordination(input);
 });

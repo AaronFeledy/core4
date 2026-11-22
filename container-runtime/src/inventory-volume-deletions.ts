@@ -46,11 +46,26 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
     const dataRoot = input.userDataRoot ?? resource.dataRoot;
     if (options.appIds !== undefined && !options.appIds.includes(resource.appId)) continue;
     const shared = resource.volumeScope === "global" && resource.volumeClass === "cache";
-    if (coverage?.provider === resource.providerId && (shared || coverage.app === resource.appId)) continue;
+    const retainedGlobal =
+      resource.volumeScope === "global" &&
+      resource.volumeClass === "data" &&
+      input.receipts.some(
+        (receipt) =>
+          receipt.kind === "volume" &&
+          receipt.nativeName === resource.nativeName &&
+          receipt.appId === resource.appId &&
+          receipt.dataRoot === dataRoot,
+      );
+    if (
+      !retainedGlobal &&
+      coverage?.provider === resource.providerId &&
+      (shared || coverage.app === resource.appId)
+    )
+      continue;
     if (
       !(resource.volumeClass === "cache"
         ? options.purgeCaches
-        : resource.volumeScope !== "global" && options.volumes)
+        : (resource.volumeScope !== "global" || retainedGlobal) && options.volumes)
     )
       continue;
     const store = { name: resource.nativeName, scope: resource.volumeScope, kind: resource.volumeClass };

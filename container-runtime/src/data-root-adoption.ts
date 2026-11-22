@@ -48,6 +48,7 @@ export const adoptLegacyDataRoot = Effect.fn("DataRootAdoption.adopt")(function*
     return;
 
   const receipts: AdoptionBatch["receipts"][number][] = [];
+  const verifiedVolumes: ReturnType<typeof resourcesForPlan> = [];
   for (const candidate of resourcesForPlan(previous)) {
     const nativeName = candidate.nativeName;
     const escapedName = encodeURIComponent(nativeName);
@@ -112,6 +113,7 @@ export const adoptLegacyDataRoot = Effect.fn("DataRootAdoption.adopt")(function*
         kind: "volume",
         ...(volumeInstance === undefined ? {} : { volumeInstance }),
       });
+      verifiedVolumes.push(candidate);
       continue;
     }
 
@@ -133,5 +135,9 @@ export const adoptLegacyDataRoot = Effect.fn("DataRootAdoption.adopt")(function*
       receipts.push({ ...receipt, kind: candidate.kind, nativeId });
     }
   }
-  yield* input.store.recordAdoption(owner.appRoot, { previousAppId: previous.id, dataRoot, receipts });
+  yield* input.store.recordAdoption(
+    owner.appRoot,
+    { previousAppId: previous.id, dataRoot, receipts },
+    verifiedVolumes,
+  );
 });

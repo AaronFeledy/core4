@@ -233,6 +233,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
   const recordAdoption = Effect.fn("ResourceOwnership.recordAdoption")(function* (
     root: AbsolutePath,
     batch: AdoptionBatch,
+    verifiedVolumes: readonly OwnedResource[],
   ) {
     const bucket = yield* open(root);
     yield* bucket
@@ -247,6 +248,11 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
         ) {
           return [undefined, existing];
         }
+        const resources = [
+          ...new Map(
+            [...(existing?.resources ?? []), ...verifiedVolumes].map((item) => [keyFor(item), item]),
+          ).values(),
+        ];
         return [
           undefined,
           validate(
@@ -254,9 +260,9 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
               appRoot: root,
               ownerKey: planAppIdentity({ root }).ownerKey,
               providerId: ProviderId.make(providerId),
-              appIds: [],
-              resources: [],
               ...existing,
+              appIds: [...new Set(resources.map((item) => item.appId))],
+              resources,
               adoptions: [...adoptions, batch],
             },
             root,

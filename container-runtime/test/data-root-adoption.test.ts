@@ -11,6 +11,8 @@ import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { DateTime, Effect } from "effect";
 import { adoptLegacyDataRoot } from "../src/data-root-adoption.ts";
+import type { EngineHttpApi } from "../src/engine-api.ts";
+import { makeOwnedResourcesCleanup } from "../src/resource-cleanup.ts";
 import { makeResourceOwnershipStore } from "../src/resource-ownership.ts";
 import { volumeOwnershipLabels } from "../src/volume-ownership.ts";
 
@@ -106,4 +108,66 @@ test.each([
   ["a failed apply left intent behind for a retry", { prior: false, retry: true }],
 ] as const)("does not write an adoption receipt when %s", async (_description, input) => {
   expect(await runAdoption(input)).toEqual([]);
+});
+
+test("global volume cleanup removes a receipted legacy volume but leaves an unverified one", async () => {
+  const stores = ["old-data", "unverified-data"].map((name) => ({
+    name,
+    scope: "global" as const,
+    kind: "data" as const,
+  }));
+  const legacy = { ...previous, id: AppId.make("global"), stores };
+  const scoped = { ...legacy, identity: plan.identity };
+  const state = makeTestStateStore();
+  const store = makeResourceOwnershipStore(
+    legacy.provider,
+    makePluginStateStore(state.service, plan.identity.dataRoot, {
+      enforce: async () => undefined,
+      verify: async () => undefined,
+    }),
+  );
+  const volumes = new Map(
+    stores.map((entry) => [
+      entry.name,
+      {
+        ...volumeOwnershipLabels(legacy, entry),
+        "dev.lando.app": legacy.id,
+        "dev.lando.scope": entry.scope,
+        "dev.lando.store": entry.name,
+        "dev.lando.volume-instance": "generation-1",
+      },
+    ]),
+  );
+  const request: NonNullable<EngineHttpApi["request"]> = ({ method, path }) =>
+    Effect.sync(() => {
+      const name = path.slice("/volumes/".length);
+      const labels = volumes.get(name);
+      if (!path.startsWith("/volumes/") || labels === undefined) return { status: 404, body: "" };
+      if (method === "DELETE") {
+        volumes.delete(name);
+        return { status: 204, body: "" };
+      }
+      return { status: 200, body: JSON.stringify({ Name: name, Labels: labels }) };
+    });
+  const cleanup = makeOwnedResourcesCleanup({
+    ctx: { providerId: legacy.provider, remediation: "Retry", env: {} },
+    store,
+    api: { request },
+    userDataRoot: plan.identity.dataRoot,
+    endpointNamespace: "fixture",
+  });
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* adoptLegacyDataRoot(scoped, legacy, {
+        store,
+        request,
+        volumeWitness: (name) => Effect.succeed(name === "old-data" ? "generation-1" : "replaced"),
+      });
+      return yield* cleanup(legacy.root, { volumes: true });
+    }).pipe(Effect.provide(state.layer)),
+  );
+
+  expect(result.volumesRemoved).toEqual({ data: 1, cache: 0 });
+  expect([...volumes.keys()]).toEqual(["unverified-data"]);
 });

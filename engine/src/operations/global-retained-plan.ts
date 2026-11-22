@@ -1,4 +1,4 @@
-import { ownsServiceContainer } from "@lando/container-runtime/native-ownership";
+import { adoptionReceiptsFromSummary, ownsServiceContainer } from "@lando/container-runtime/native-ownership";
 import { GlobalAppError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
@@ -7,16 +7,19 @@ import {
   isActiveRunStatus,
   isIdleRunStatus,
   landoNativeAppSlug,
+  planAppIdentity,
 } from "@lando/sdk/schema";
 import {
   EventService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   type ServiceRuntimeInfo,
+  StateStore,
 } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
 import { resolveGlobalPlacement } from "../global-app/placement.ts";
 import { readGlobalResolution } from "../global-app/resolution.ts";
+import { adoptPlanDataRoot } from "../lifecycle/volume-coordination.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import { composeGlobalRecordedPlan } from "./global-recorded-plan.ts";
 import { selectGlobalPlan } from "./global-selected-plan.ts";
@@ -65,17 +68,47 @@ export const retireGlobalReplacement = Effect.fn("GlobalApp.retireReplacement")(
 ) {
   const stores = new Set(next.stores.map(({ name }) => name));
   const retained = prior.stores.filter(({ name, kind }) => kind === "data" && !stores.has(name));
+  const dataRoot = next.identity?.dataRoot;
+  const adopting =
+    prior.identity?.dataRoot === undefined && dataRoot !== undefined && provider.adoptDataRoot !== undefined;
+  const retirement = adopting ? { ...prior, identity: { ...planAppIdentity(prior), dataRoot } } : prior;
+  if (adopting) yield* adoptPlanDataRoot(provider, retirement, yield* StateStore);
+  const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+  const receipts =
+    adopting && Option.isSome(registry)
+      ? adoptionReceiptsFromSummary(
+          yield* registry.value.resourceOwnership?.(prior.provider, prior.root) ?? Effect.succeed(undefined),
+        )
+      : [];
+  const cleanup = retained.filter(({ name }) =>
+    receipts.some(
+      (receipt) => receipt.kind === "volume" && receipt.nativeName === name && receipt.dataRoot === dataRoot,
+    ),
+  );
+  const unverified = retained.filter((store) => !cleanup.includes(store));
   if (retained.length > 0) {
     const events = yield* Effect.serviceOption(EventService);
     if (Option.isSome(events))
       yield* events.value.publish(
         MessageWarnEvent.make({
-          body: `Persisted global mounts changed. Old volumes are retained (${retained.map(({ name }) => name).join(", ")}); replacement stores do not inherit their data.`,
+          body: [
+            "Persisted global mounts changed; replacement stores do not inherit their data.",
+            ...(cleanup.length === 0
+              ? []
+              : [
+                  `Retained volumes: ${cleanup.map(({ name }) => name).join(", ")}. To delete them, run \`lando global:destroy --volumes\`.`,
+                ]),
+            ...(unverified.length === 0
+              ? []
+              : [
+                  `Retained without verified ownership: ${unverified.map(({ name }) => name).join(", ")}. Lando will not automatically delete them.`,
+                ]),
+          ].join(" "),
           timestamp: DateTime.nowUnsafe(),
         }),
       );
   }
-  yield* provider.destroy({ app: prior.id, plan: prior }, { volumes: false, removeState: true });
+  yield* provider.destroy({ app: retirement.id, plan: retirement }, { volumes: false, removeState: true });
 });
 
 export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(function* (
