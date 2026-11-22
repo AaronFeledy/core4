@@ -16,7 +16,7 @@ import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from
 import { planInventoryVolumeDeletions } from "./inventory-volume-deletions.ts";
 import {
   Observations,
-  networkLabelsDecision,
+  matchesPrivateNetworkLabels,
   privateNetworkLabels,
   serviceContainerOwnershipProblem,
 } from "./native-ownership.ts";
@@ -142,16 +142,13 @@ export const makeOwnedResourcesCleanup = (input: {
         );
       if (resource.kind === "network") {
         const exactName = (observed.Name ?? observed.name) === resource.nativeName;
-        const decision = networkLabelsDecision(
-          labels,
-          privateNetworkLabels({ ...resource, dataRoot: expectedOwner }),
-          exactName,
-        );
-        if (
-          decision === "foreign" ||
-          (decision === "legacy" &&
-            (resource.role === "authored" || resource.dataRoot !== undefined || !exactName))
-        )
+        const unscopedLabelFree =
+          expectedOwner === undefined &&
+          resource.role !== "authored" &&
+          resource.scratchId === undefined &&
+          exactName &&
+          Object.keys(labels).length === 0;
+        if (!unscopedLabelFree && !matchesPrivateNetworkLabels(labels, privateNetworkLabels(resource)))
           return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
       }
       if (!nativeId && resource.kind === "container")

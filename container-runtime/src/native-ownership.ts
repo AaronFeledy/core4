@@ -9,7 +9,7 @@ import {
 } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
 import { serviceContainerName } from "./container-name.ts";
-import { dataRootLabels, matchesDataRoot } from "./data-root-labels.ts";
+import { dataRootLabels } from "./data-root-labels.ts";
 import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
 
 export { matchesDataRoot, ownsSharedCrossAppNetwork } from "./data-root-labels.ts";
@@ -128,18 +128,16 @@ export const coherentPrivateNetworkOwnership = (
   const scratchId = labels[SCRATCH_ID_LABEL];
   if ((scratch !== undefined || scratchId !== undefined) && (scratch !== "TRUE" || scratchId !== appId))
     return false;
-  return (
-    networkLabelsDecision(
-      labels,
-      privateNetworkLabels({
-        appId,
-        appRoot,
-        dataRoot: labels[LANDO_DATA_ROOT_LABEL],
-        ownerKey: appIdentityKey("owner", appRoot),
-        providerId,
-        ...(scratch === "TRUE" ? { scratchId: appId } : {}),
-      }),
-    ) === "owned"
+  return matchesPrivateNetworkLabels(
+    labels,
+    privateNetworkLabels({
+      appId,
+      appRoot,
+      dataRoot: labels[LANDO_DATA_ROOT_LABEL],
+      ownerKey: appIdentityKey("owner", appRoot),
+      providerId,
+      ...(scratch === "TRUE" ? { scratchId: appId } : {}),
+    }),
   );
 };
 
@@ -180,20 +178,16 @@ export const networkOwnershipLabels = (plan: AppPlan) => {
 };
 
 /** Legacy labels require separate exact-name proof because native lookup also accepts ID prefixes. */
-export const networkLabelsDecision = (
-  labels: Readonly<Record<string, string>> | undefined,
+export const matchesPrivateNetworkLabels = (
+  labels: Readonly<Record<string, string>>,
   expected: Readonly<Record<string, string>>,
-  recorded = false,
-): "owned" | "legacy" | "foreign" => {
-  if (labels === undefined || Object.keys(labels).length === 0)
-    return SCRATCH_ID_LABEL in expected ? "foreign" : "legacy";
-  const owner = labels[LANDO_DATA_ROOT_LABEL];
-  const { [LANDO_DATA_ROOT_LABEL]: expectedOwner, ...proof } = expected;
-  return matchesDataRoot(owner, expectedOwner, recorded) &&
-    Object.keys(labels).length === Object.keys(proof).length + (owner === undefined ? 0 : 1) &&
-    Object.entries(proof).every(([key, value]) => labels[key] === value)
-    ? "owned"
-    : "foreign";
+): boolean => {
+  const { [LANDO_DATA_ROOT_LABEL]: _observedRoot, ...observed } = labels;
+  const { [LANDO_DATA_ROOT_LABEL]: _expectedRoot, ...proof } = expected;
+  return (
+    Object.keys(observed).length === Object.keys(proof).length &&
+    Object.entries(proof).every(([key, value]) => observed[key] === value)
+  );
 };
 
 export const isSharedNetwork = (plan: Pick<AppPlan, "networking">, name: string): boolean =>
@@ -371,16 +365,17 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
           ...dataRootRefusal(native),
         });
       }
-      const decision = networkLabelsDecision(
-        Object.keys(labels).length === 0 ? undefined : labels,
-        target.labels,
-        dataRoot !== undefined,
-      );
+      const unscopedUnnamedLabels =
+        dataRoot === undefined &&
+        target.legacy === "accept" &&
+        exactName &&
+        Object.keys(labels).length === 0 &&
+        !(SCRATCH_ID_LABEL in target.labels);
       if (
         !id ||
         (target.exactName === true && !exactName) ||
-        decision === "foreign" ||
-        (decision === "legacy" && (target.legacy === "reject" || !exactName))
+        (dataRoot === undefined && labels[LANDO_DATA_ROOT_LABEL] !== undefined) ||
+        (!unscopedUnnamedLabels && !matchesPrivateNetworkLabels(labels, target.labels))
       )
         return yield* Effect.fail(refused(ctx, { ...target, labels, expected: target.labels }));
       return id;

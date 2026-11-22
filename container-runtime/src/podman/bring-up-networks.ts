@@ -11,7 +11,7 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi } from "../engine-errors.ts";
-import { networkOwnershipLabels } from "../native-ownership.ts";
+import { matchesPrivateNetworkLabels, networkOwnershipLabels } from "../native-ownership.ts";
 
 const NetworkInspection = Schema.fromJsonString(
   Schema.Struct({
@@ -133,8 +133,6 @@ export const ensurePrivateNetwork = Effect.fnUntraced(function* (
       ...dataRootRefusal(resource),
     });
   }
-  const { [LANDO_DATA_ROOT_LABEL]: observedRoot, ...structural } = actual;
-  const { [LANDO_DATA_ROOT_LABEL]: _expectedRoot, ...expected } = labels;
   if (Object.keys(actual).length === 0) {
     return yield* fail(
       "it is not verifiably Lando's network.",
@@ -142,10 +140,9 @@ export const ensurePrivateNetwork = Effect.fnUntraced(function* (
     );
   }
   if (
-    (dataRoot === undefined && observedRoot !== undefined) ||
+    (dataRoot === undefined && actual[LANDO_DATA_ROOT_LABEL] !== undefined) ||
     (input.sharedDataRoot === undefined
-      ? Object.keys(structural).length !== Object.keys(expected).length ||
-        !Object.entries(expected).every(([key, value]) => structural[key] === value)
+      ? !matchesPrivateNetworkLabels(actual, labels)
       : !ownsSharedCrossAppNetwork(input.sharedDataRoot, name, actual))
   ) {
     return yield* fail("another project owns this network.", input.conflictRemediation ?? retry);
