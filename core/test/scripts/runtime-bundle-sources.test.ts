@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 
-import {
-  RUNTIME_BUNDLE_SOURCES_PATH,
-  parseRuntimeBundleSources,
-} from "../../../scripts/runtime-bundle-sources.ts";
+import { parseRuntimeBundleSources } from "../../../scripts/runtime-bundle-sources.ts";
 import { fixtureLicense } from "./runtime-bundle-license-fixture.ts";
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
@@ -120,20 +116,15 @@ describe("runtime-bundle source pins", () => {
         url: "https://raw.githubusercontent.com/bminor/glibc/glibc-2.41/COPYING.LIB",
         sha256: "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
       });
-      // ftp-master dropped the u4 copyright URL; u5 is byte-identical (same sha256).
+      // Debian source/copyright for the exact Built-Using version (not a placeholder).
       expect(byFile.get("glibc-copyright")).toEqual({
         file: "glibc-copyright",
-        url: "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u5_copyright",
+        url: "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u4_copyright",
         sha256: "f5788886720a2605a946e81d571e6c8162b09f58d2e2ceb8d36e5768fccd850d",
       });
       // license.source stays the catatonit source archive, not the binary .deb.
       expect(catatonit.license.source).toBe(catatonit.source.url);
       expect(catatonit.license.source).not.toBe(catatonit.url);
     }
-    const raw = await readFile(RUNTIME_BUNDLE_SOURCES_PATH, "utf8");
-    expect(raw).toContain("Built-Using glibc (= 2.41-12+deb13u4)");
-    expect(raw).not.toContain("Built-Using glibc (= 2.41-12+deb13u5)");
-    expect(raw).toContain("ftp-master dropped the u4 URL");
-    expect(raw).toContain("byte-identical text, same sha256");
   });
 });

@@ -42,6 +42,7 @@ import type {
   ConfigTranslatorRegistry,
   ContainerHelperAssets,
   DataMover,
+  DatabaseCredentialConvergence,
   Downloader,
   EnvironmentValueResolver,
   EventService,
@@ -182,6 +183,7 @@ type ScratchRuntimeServices =
   | ScratchResourceScanner
   | ScratchAppService;
 export type AppRuntimeServices =
+  | DatabaseCredentialConvergence
   | ProviderRuntimeServices
   | BuildOrchestrator
   | LandofileService

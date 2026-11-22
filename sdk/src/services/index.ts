@@ -6,6 +6,7 @@ export * from "./cli.ts";
 export * from "./config.ts";
 export * from "./config-translator.ts";
 export * from "./data-transfer.ts";
+export * from "./database-credential-convergence.ts";
 export * from "./deprecation.ts";
 export * from "./downloader.ts";
 export * from "./environment-value-resolver.ts";

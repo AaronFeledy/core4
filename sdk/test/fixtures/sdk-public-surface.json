@@ -171,6 +171,9 @@
     "ContainerHelperAssets": [
       "resolve:(target:ContainerHelperTarget) => Effect.Effect<ContainerHelperArtifact,ContainerHelperUnavailableError>"
     ],
+    "DatabaseCredentialConvergence": [
+      "reconcile:(request:DatabaseCredentialConvergenceRequest) => Effect.Effect<DatabaseCredentialConvergenceResult,DatabaseCredentialConvergenceError>"
+    ],
     "DataMover": [
       "findOrphanedSnapshots:Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>,DataMoverError>",
       "listSnapshots:(filter:SnapshotFilter) => Effect.Effect<ReadonlyArray<SnapshotInfo>,DataMoverError>",
@@ -897,6 +900,10 @@
       "SnapshotOwnershipError",
       "SqlCommandFailedError",
       "SqlConfirmRequiredError",
+      "SqlCredentialAdminAuthError",
+      "SqlCredentialApplyError",
+      "SqlCredentialMember",
+      "SqlCredentialTargetError",
       "SqlDatabasePathError",
       "SqlDumpCompressionError",
       "SqlDumpIncompleteError",
@@ -2207,6 +2214,8 @@
       "ConfigTranslatorRegistry",
       "ContainerHelperAssets",
       "DataMover",
+      "DatabaseCredentialConvergence",
+      "DatabaseCredentialConvergenceResult",
       "Dataset",
       "DeprecationService",
       "Downloader",

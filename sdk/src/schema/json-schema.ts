@@ -151,6 +151,7 @@ import {
 } from "../events/index.ts";
 import { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
 import { ExecutionSiteMatch } from "../landofile/execution-sites.ts";
+import { DatabaseCredentialConvergenceResult } from "../services/database-credential-convergence.ts";
 import {
   AgentSocketBridgeInput,
   AgentSocketBridgeResult,
@@ -667,6 +668,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceCredsConfig,
   DatabaseConnection,
   DatabaseClientCreds,
+  DatabaseCredentialConvergenceResult,
   DatabaseClientCheckState,
   DatabaseClientCheckResult,
   DatabaseLocalCheck,

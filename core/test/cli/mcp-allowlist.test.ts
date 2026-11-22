@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   MCP_ALLOWLIST_FORBIDDEN_IDS,
+  MCP_NEVER_ALLOWED_IDS,
   assertMcpAllowlistSafe,
   computeMcpDefaultAllowlist,
   isMcpAllowlistForbidden,
+  isMcpNeverAllowed,
 } from "@lando/mcp/allowlist";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
@@ -51,7 +53,7 @@ const mcpSpecFor = (id: string): Pick<McpCommandSpec, "id" | "mcpAllowed"> => {
 
 describe("MCP allowlist forbidden-id guard", () => {
   test("flags the explicitly destructive ids", () => {
-    for (const id of ["app:destroy", "apps:poweroff", "meta:uninstall"]) {
+    for (const id of ["app:destroy", "apps:poweroff", "meta:uninstall", "db:creds:apply"]) {
       expect(isMcpAllowlistForbidden(id)).toBe(true);
       expect(MCP_ALLOWLIST_FORBIDDEN_IDS).toContain(id);
     }
@@ -61,6 +63,22 @@ describe("MCP allowlist forbidden-id guard", () => {
     for (const id of ["meta:plugin:add", "meta:plugin:remove", "meta:plugin:trust"]) {
       expect(isMcpAllowlistForbidden(id)).toBe(true);
     }
+  });
+
+  test("db:creds:apply is never-allowed and stays out of defaults even if self-allowed", () => {
+    const id = "db:creds:apply";
+    expect(isMcpAllowlistForbidden(id)).toBe(true);
+    expect(isMcpNeverAllowed(id)).toBe(true);
+    expect(MCP_NEVER_ALLOWED_IDS.has(id)).toBe(true);
+    expect(MCP_DEFAULT_ALLOWLIST).not.toContain(id);
+    expect(
+      computeMcpDefaultAllowlist([{ id, mcpAllowed: true, flags: { yes: { type: "boolean" } } }]),
+    ).toEqual([]);
+    const catalog = buildCatalog({
+      commandEntries: [],
+      effective: computeEffectiveAllowlist({ defaults: [], allow: [id] }),
+    });
+    expect(catalog.tools.map((tool) => tool.commandId)).not.toContain(id);
   });
 
   test("does not flag read-only / lateral ids", () => {

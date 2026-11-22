@@ -844,6 +844,10 @@ describe("schema snapshot artifact-set gate", () => {
     expect(JSON.stringify(artifact)).toContain("Deprecation Notice");
   });
 
+  test("publishes the database credential convergence result for schema consumers", () => {
+    expect(JSON_SCHEMA_NAMES).toContain("DatabaseCredentialConvergenceResult");
+  });
+
   test("generator emits a draft 2020-12 schema artifact for every public SDK schema", async () => {
     for (const schemaName of JSON_SCHEMA_NAMES) {
       const artifact = JSON.parse(await readFile(schemaArtifactPath(schemaName), "utf8")) as Record<

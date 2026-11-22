@@ -23,7 +23,7 @@ import {
   ScratchAppIdInvalidError,
   ScratchSourceUnresolvedError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, type IsolateMode } from "@lando/sdk/schema";
+import { AbsolutePath, type IsolateMode, StartAppResult } from "@lando/sdk/schema";
 import type {
   ProviderError,
   ScratchGcOptions,
@@ -96,6 +96,7 @@ export const ScratchAppRefResultSchema = Schema.Struct({
 export const ScratchHandleResultSchema = Schema.Struct({
   id: Schema.String,
   app: ScratchAppRefResultSchema,
+  credentialChanges: StartAppResult.fields.credentialChanges,
 });
 
 export const ScratchSummaryResultSchema = Schema.Struct({
