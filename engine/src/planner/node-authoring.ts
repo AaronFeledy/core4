@@ -47,6 +47,16 @@ export const loadAuthorizedServiceProjectFiles = (
       ),
     );
   }
+  if (input.pinnedService.packageCache !== undefined && !node) {
+    return Effect.fail(
+      landofileFailure(
+        input.appRoot,
+        ["services", input.name, "packageCache"],
+        `Service ${input.name} may use packageCache only with a Node service type.`,
+        "Remove packageCache or use a Node service type.",
+      ),
+    );
+  }
   if (input.service.type === "node") {
     const replacementBuild = input.service.build !== undefined && isComposeBuild(input.service.build);
     if (input.service.image !== undefined || replacementBuild) {

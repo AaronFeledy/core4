@@ -197,9 +197,10 @@ describe("derived stores", () => {
   );
 
   test("keeps canonical caches shared and app sources app-scoped", () => {
-    expect(["nuget", "composer"].map(landoCacheStoreName)).toEqual([
+    expect(["nuget", "composer", "node-packages"].map(landoCacheStoreName)).toEqual([
       "lando-cache-nuget",
       "lando-cache-composer",
+      "lando-cache-node-packages",
     ]);
     expect(landoAppStoreName("foo", "bar-web")).toBe("lando-foo_bar-web");
     expect(landoAppStoreName("foo", "bar-web")).not.toBe(landoAppStoreName("foo-bar", "web"));

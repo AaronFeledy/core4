@@ -427,6 +427,65 @@ tooling:
 
 `lando exec worker -- npm install` also works without any tooling.
 
+### Share package downloads across apps
+
+Stock Node services share downloaded packages across apps on the same provider.
+Lando mounts `lando-cache-node-packages` at `/var/lib/lando/node-cache` and
+prepares that directory mode `1777` in the image so both the default root user
+and `user: node` can write. It does not chown the live volume at start.
+
+Lando sets cache environment only when you have not set it in the service's
+`environment:`:
+
+| Manager | Variable | Path |
+| --- | --- | --- |
+| npm (always) | `npm_config_cache` | `/var/lib/lando/node-cache/npm` |
+| pnpm 10 and earlier | `npm_config_store_dir` | `/var/lib/lando/node-cache/pnpm` |
+| pnpm 11 and later | `pnpm_config_store_dir` | `/var/lib/lando/node-cache/pnpm` |
+| Yarn classic | `YARN_CACHE_FOLDER` | `/var/lib/lando/node-cache/yarn` |
+| Yarn 2 and later | `YARN_GLOBAL_FOLDER` | `/var/lib/lando/node-cache/yarn-global` |
+
+A custom image or replacement Compose build does not get this default. Set
+`packageCache: false` to skip it on a stock service. An authored mount at
+`/var/lib/lando/node-cache` replaces the shared volume.
+
+Auth files such as `.npmrc` stay in the service home, not this store.
+
+The shared cache survives rebuilds and ordinary `lando destroy` runs. Run
+`lando destroy --purge-caches` from any app configured to use the cache, even
+if another app created it. Lando removes the shared cache when no container
+uses it. After a purge, other apps may need to download packages again.
+
+If you already have a pnpm tree, changing the store path can force a reinstall
+or error: `node_modules/.modules.yaml` records the old store path. Keep the
+same store directory across apps, or remove that tree and install again.
+
+Tarballs from a private registry that land in the shared cache are visible to
+other local apps on the same provider.
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    packageCache: false
+```
+
+  <Scenario id="shared-package-cache" render={false} reason="Plan-time JSON proof of the shared Node package cache mount and opt-out">
+    <Step name="plan">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: node-demo\nservices:\n  app:\n    type: node:22\n    primary: true\n"));
+lastRun = yield* context.runCli("lando info --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).toMatch(/lando-cache-node-packages/);
+expect(lastRun.stdout).toMatch(/\/var\/lib\/lando\/node-cache/);`} displayCode={`lando info --format=json`} />
+    </Step>
+    <Step name="opt-out">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: node-demo\nservices:\n  app:\n    type: node:22\n    primary: true\n    packageCache: false\n"));
+lastRun = yield* context.runCli("lando info --format=json");
+expect(lastRun.exitCode).toBe(0);
+expect(lastRun.stdout).not.toMatch(/lando-cache-node-packages/);`} displayCode={`lando info --format=json`} />
+    </Step>
+  </Scenario>
+
 ### Run a binary your project installed
 
 Tools such as `vite`, `next`, or `eslint` live in your project's

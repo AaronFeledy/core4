@@ -159,6 +159,15 @@ describe("@lando/service-lando registration", () => {
     expect(appPlan.provider).toBe(ProviderId.make("lando"));
     expect(appPlan.services[ServiceName.make("web")]?.type).toBe("node:lts");
     expect(appPlan.services[ServiceName.make("db")]?.type).toBe("postgres");
+    expect(appPlan.stores).toContainEqual({
+      name: "lando-cache-node-packages",
+      scope: "global",
+      kind: "cache",
+      key: "node-packages",
+    });
+    expect(appPlan.services[ServiceName.make("web")]?.environment.npm_config_cache).toBe(
+      "/var/lib/lando/node-cache/npm",
+    );
   });
 
   test("AppPlanner composes RabbitMQ, MinIO, and LocalStack through PluginRegistry", async () => {

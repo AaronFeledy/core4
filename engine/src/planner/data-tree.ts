@@ -21,6 +21,7 @@ import {
   type MountPlan,
   type ServiceProjectUser,
   formatValidationIssuePath,
+  landoCacheStoreName,
   parseContainerDestination,
   serviceAppMount,
 } from "@lando/sdk/schema";
@@ -167,6 +168,9 @@ export const projectUserVolumeTrees = (input: {
   const appMount = serviceAppMount(input);
   return mounts.flatMap((mount) => {
     if (mount.type !== "volume" || mount.readOnly || mount.store === homeStore) return [];
+    // Node services do not share one uid, so the shared package cache is
+    // prepared 1777 in the image instead of chowned to a project user.
+    if (mount.store === landoCacheStoreName("node-packages")) return [];
     const enclosesApp =
       mount.origin === "authored" &&
       appMount !== undefined &&

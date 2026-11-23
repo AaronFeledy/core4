@@ -1132,6 +1132,7 @@ describe("AppPlannerLayer.layer", () => {
       expect(extension).toMatchObject({
         buildSteps: [
           { id: "lando.boot:scaffold", phase: "build" },
+          { id: "service-lando.node:package-cache", phase: "build", user: "root" },
           { id: "authored-app:1", phase: "app", command: { command: ["sh", "-c", "npm ci"] } },
           { id: "authored-app:2", phase: "app", command: { command: ["sh", "-c", "npm run build"] } },
         ],
@@ -3171,6 +3172,7 @@ describe("AppPlannerLayer.layer", () => {
     ],
     [{ type: "node:22", image: "node:22-alpine", packageRoot: "apps/web" }, /owns its toolchain/i],
     [{ type: "php:8.3", packageRoot: "apps/web" }, /packageRoot only with a Node service type/i],
+    [{ type: "php:8.3", packageCache: false }, /packageCache only with a Node service type/i],
     [{ type: "node", packageRoot: "missing" }, /directory does not exist/i],
     [{ type: "node", packageRoot: "../outside" }, /escapes the app root/i],
   ] satisfies ReadonlyArray<readonly [ServiceConfig, RegExp]>)(

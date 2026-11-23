@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BindMountPlan, ServiceProjectUser, TmpfsMountPlan, VolumeMountPlan } from "@lando/sdk/schema";
-import { PortablePath } from "@lando/sdk/schema";
+import { PortablePath, landoCacheStoreName } from "@lando/sdk/schema";
 
 import { dataTreeOwnershipStep, projectUserVolumeTrees } from "../../src/planner/data-tree.ts";
 import { projectUserTmpfsMounts } from "../../src/planner/project-user.ts";
@@ -38,6 +38,20 @@ const tmpfs = (options?: string): TmpfsMountPlan => ({
 });
 
 describe("projectUserVolumeTrees", () => {
+  test("does not chown the shared Node package cache for a project user", () => {
+    const cache = {
+      ...volume("/var/lib/lando/node-cache", landoCacheStoreName("node-packages")),
+      origin: "service",
+    } as const satisfies VolumeMountPlan;
+    expect(
+      projectUserVolumeTrees({
+        mounts: [cache],
+        cacheStores: new Set([landoCacheStoreName("node-packages")]),
+        projectUser: { name: "node", uid: 1000, gid: 1000 },
+      }),
+    ).toEqual([]);
+  });
+
   test("seeds writable service caches with the realized project user ids", () => {
     const cache = {
       ...volume("/var/cache/packages", "lando-cache-packages"),
