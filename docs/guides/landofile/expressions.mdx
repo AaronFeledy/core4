@@ -304,7 +304,7 @@ Name the service every time. `{{ service.url }}` only works in a service's `envi
 
 A URL exists only while the app is serving. Steps in `post-start`, `post-restart`, and `post-rebuild` read the new address. Steps in `pre-stop`, `pre-restart`, `pre-rebuild`, and `pre-destroy` read the address the app is about to leave.
 
-`pre-init`, `post-init`, and `pre-start` run before start applies the app's routes, and `post-stop` and `post-destroy` run once the app is no longer serving, so a step there that reads the URL fails when the event runs. That includes a `task:` or `command:` step whose target reads it. Lint warns ahead of time with reason `event-phase`. See [Landofile events](./events.mdx) for what a failed step does to each command.
+`pre-init`, `post-init`, and `pre-start` run before start applies the app's routes, and `post-stop` and `post-destroy` run once the app is no longer serving, so a step there that reads the URL fails when the event runs. That includes a `task:` or `command:` step whose target reads it. Lint reports it ahead of time as an error with reason `event-phase`. See [Landofile events](./events.mdx) for what a failed step does to each command.
 
 ### When a URL can't be resolved
 
@@ -323,7 +323,7 @@ An event resolves each step's URLs as that step runs, so earlier steps may alrea
 | `authority-unavailable` | The router hasn't recorded its port. | Run `lando start`. |
 | `event-phase` | The step runs in an event when the app isn't serving. | Move it to an event listed above. |
 
-`lando app:config:lint` catches what the Landofile alone can show. For tooling and event reads it adds warnings, leaving `valid` true, with reasons `unknown-service`, `routing-disabled`, `no-route` (the service declares only wildcard routes or an empty `routes` list, or declares no routes and has no HTTP listener to give it a default route), and `event-phase`. Lint skips a read of a service it couldn't resolve. A URL in a service `environment` is stricter: a service without a concrete route, or a disabled router, is an error there. Global apps don't support public URL bindings.
+`lando app:config:lint` catches what the Landofile alone can show. For tooling and event reads it reports errors, so `valid` is false, with reasons `unknown-service`, `no-route` (the service declares only wildcard routes or an empty `routes` list, or declares no routes and has no HTTP listener to give it a default route), and `event-phase`. Routing that is turned off is only a warning, reason `routing-disabled`, because turning it off is a deliberate choice. Lint skips a read of a service it couldn't resolve. A URL in a service `environment` is stricter: a service without a concrete route, or a disabled router, is an error there. Global apps don't support public URL bindings.
 
 ## Use invocation values in tooling
 
@@ -438,12 +438,12 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
     <Step name="cleanup-url-tooling"><Cleanup /></Step>
   </Scenario>
 
-  <Scenario id="public-url-event-phase-warns" render={false} reason="Check that lint warns about a pre-start step that reads a public URL">
+  <Scenario id="public-url-event-phase-refused" render={false} reason="Check that lint reports a pre-start step that reads a public URL as an error">
     <Step name="scaffold-url-event-phase"><UseFixture name="expressions-url-event-phase" /></Step>
     <Step name="lint-url-event-phase">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"reason\":\\s*\"event-phase\",\\s*\"severity\":\\s*\"warning\",\\s*\"path\":\\s*\\[\\s*\"events\",\\s*\"pre-start\",\\s*0,\\s*\"cmd\"\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"reason\":\\s*\"event-phase\",\\s*\"severity\":\\s*\"error\",\\s*\"path\":\\s*\\[\\s*\"events\",\\s*\"pre-start\",\\s*0,\\s*\"cmd\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-url-event-phase"><Cleanup /></Step>
   </Scenario>

@@ -18,7 +18,9 @@ export type ServiceUrlLintFacts =
  * route that has a concrete hostname, and a lifecycle step that runs while no route is served. A
  * service without authored routes gets a generated default route only when it has an HTTP
  * listener, so one without is reported. Findings that depend on a service lint could not resolve
- * are left out. Global `hostEvents` are not linted here: `app:config:lint` reports no host-step
+ * are left out. Each finding is a deterministic authoring error except `routing-disabled`, a
+ * warning because disabling routing is a deliberate opt-out. Planning accepts all of them: they
+ * are refused only when the command runs. Global `hostEvents` are not linted here: `app:config:lint` reports no host-step
  * findings for them, and their URL reads are refused when they run.
  */
 export const serviceUrlLintIssues = (input: {
@@ -26,16 +28,20 @@ export const serviceUrlLintIssues = (input: {
   readonly services: ReadonlyMap<string, ServiceUrlLintFacts>;
   readonly routes: ReadonlyMap<string, readonly NormalizedRoute[] | undefined>;
   readonly routerEnabled: boolean;
-}): readonly (PlannerIssue & { readonly severity: "warning" })[] =>
+}): readonly (PlannerIssue & { readonly severity: "error" | "warning" })[] =>
   input.sites.flatMap((site) => {
     const [root, name] = site.path;
     if (root !== "tooling" && root !== "events") return [];
     return [...serviceUrlReads(site.template).services].flatMap(([service, read]) => {
       const fact = [...read][0] ?? "url";
-      const finding = (reason: string, message: string, suggestion: string) => [
+      const finding = (
+        reason: "event-phase" | "unknown-service" | "routing-disabled" | "no-route",
+        message: string,
+        suggestion: string,
+      ) => [
         {
           rule: "landofile.tooling" as const,
-          severity: "warning" as const,
+          severity: reason === "routing-disabled" ? ("warning" as const) : ("error" as const),
           reason,
           path: site.path,
           source: site.source,
