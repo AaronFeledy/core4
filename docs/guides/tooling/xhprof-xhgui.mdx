@@ -111,7 +111,7 @@ lando exec app -- php -m
 lando composer require perftools/php-profiler:1.4.2
 ```
 
-Check that `xhprof` and `curl` appear in the module list. The profiler uses PHP's cURL extension to upload runs. Composer writes `composer.json` and `composer.lock` to your app directory; commit both so the next `lando composer install` gets the same profiler release. The `vendor` directory stays inside the `app` service, not on your host.
+Check that `xhprof` and `curl` appear in the module list. The profiler uses PHP's cURL extension to upload runs. Composer writes `composer.json` and `composer.lock` to your app directory; commit both so the next `lando composer install` gets the same profiler release. `vendor` lands in your app directory too. Keep it out of git.
 
 ## Profile a request
 
@@ -280,7 +280,7 @@ These checks exercise the declared services and tooling, with the large-profile 
 
 ## Keep or remove the profiles
 
-`lando destroy -y` removes the app's containers and networks but keeps its named volumes: the `profiles` data store and the `vendor` shadow, so saved runs and the installed profiler are still there after the next start:
+`lando destroy -y` removes the app's containers and networks but keeps its named volumes, including the `profiles` data store. Saved runs and the installed profiler are still there after the next start:
 
 ```sh
 lando destroy -y

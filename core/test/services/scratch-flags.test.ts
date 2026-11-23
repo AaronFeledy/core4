@@ -103,7 +103,9 @@ const forkLandofile = [
   "provider: lando",
   "services:",
   "  appserver:",
-  "    type: node:22",
+  "    type: compose",
+  "    image: alpine",
+  "    command: [sleep, infinity]",
   "    primary: true",
   "",
 ].join("\n");
@@ -261,7 +263,7 @@ describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
   test.each(["full", "baked", "cwd"] as const)(
     "fork %s isolates app-relative mounts through provider acquisition",
     async (isolate) => {
-      const yaml = `${forkLandofile}    mounts:\n      - ./config:/etc/project\n      - ../outside:/outside\n    appMount:\n      target: /app\n      excludes: [vendor]\n  worker:\n    type: node:22\n    mounts:\n      - ./jobs:/jobs\n`;
+      const yaml = `${forkLandofile}    mounts:\n      - ./config:/etc/project\n      - ../outside:/outside\n    appMount:\n      target: /app\n      excludes: [vendor]\n  worker:\n    type: compose\n    image: alpine\n    command: [sleep, infinity]\n    mounts:\n      - ./jobs:/jobs\n`;
       await withScratchEnv(yaml, async (dir) => {
         const absolute = `${yaml}      - ${dir}:/absolute\n`;
         await writeFile(join(dir, ".lando.yml"), absolute);

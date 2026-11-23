@@ -62,8 +62,8 @@ The generated Drush task uses the current app URL, including its proxy port, for
 Every flag after `lando drush` goes to Drush, including ones Lando also has: `lando drush status --format=json` passes `--format=json` to Drush. Put Lando's own flags before `drush`, as in `lando --format=json drush status`.
 
 On Windows, a later Composer install can hit Composer's 300-second subprocess
-limit while moving Drupal core from the `vendor` volume into `web/` on the
-host bind mount. If Composer reports that `mv` timed out, retry that install
+limit while moving Drupal core from `vendor` into `web/` in your project
+directory. If Composer reports that `mv` timed out, retry that install
 with a bounded timeout for just this command:
 
 ```sh

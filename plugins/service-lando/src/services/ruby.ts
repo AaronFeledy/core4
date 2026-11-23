@@ -59,7 +59,7 @@ const runtime = makeLanguageRuntime({
   frameworks: SUPPORTED_RUBY_FRAMEWORKS,
   presets: FRAMEWORK_PRESETS,
   baseEnv: { BUNDLE_PATH: "vendor/bundle" },
-  mountExcludes: [".bundle"],
+  mountExcludes: [".bundle", "vendor/bundle"],
   includeWebrootInFeatureConfig: true,
   extensionKey: "lando-service-ruby",
   featureId: RUBY_FEATURE_ID,

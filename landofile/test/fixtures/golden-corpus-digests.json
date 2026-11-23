@@ -38,7 +38,7 @@
     },
     {
       "fixture": "docs/guides/build-steps/fixtures/build-steps-demo",
-      "digest": "e99e4d894c91996b3cce021214b5a072f463d2c6480f98d72df6396a1e30d736"
+      "digest": "9f68dd4acc1bd1750e7e42cbba320bf964bcc527bae777cdb498d63354c1fc80"
     },
     {
       "fixture": "docs/guides/build-steps/fixtures/build-steps-invalid-user",
@@ -633,12 +633,32 @@
       "digest": "537ab88131383995790ce40ad25fd7972820cd4321076cafdb6ed1ef30cf843d"
     },
     {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/default-app-mount",
+      "digest": "f9d78acb18053e618650280576b10280c54ffe0291b1ce08c41d5c7952be80e7"
+    },
+    {
       "fixture": "docs/guides/file-sync-excludes/fixtures/excludes-demo",
-      "digest": "655a03023d4ccad27bed30d049ee32d422bc24b17ae97106a5f200290bab14c0"
+      "digest": "5414e37800d36ca82a65f9e6907ca692a32b9c0d49ed0b5cd2db44fbfe99d9f6"
     },
     {
       "fixture": "docs/guides/file-sync-excludes/fixtures/nested-mounts",
-      "digest": "902da5597d15933c4fc5c5abe7e255b4697873680843069e4d04ee1553308f68"
+      "digest": "14c6cf99fe19e403d24a4e7935b7ba956717cada48e547a9cb854a61a4a7b097"
+    },
+    {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/no-presets",
+      "digest": "73e8bacf27a74957e57ac6f3e402b583a1d904917fed0b32db03a599478679a4"
+    },
+    {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/vendor-on-host",
+      "digest": "4294e9eb6bedf2bce49e9a9ffcc8149a8df9fccceea9845b5f017b94e79f153a"
+    },
+    {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/vendor-shadow-build",
+      "digest": "b4b1b5fba0ed974f81f32608c5ca2a0e8cc8636514a4bd0a34d93904309d7e64"
+    },
+    {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/vendor-shadow",
+      "digest": "474db5560a9c92933077bdae5b6e4d78173275194b40bc1ab943dfdabe907eb6"
     },
     {
       "fixture": "docs/guides/file-sync-mutagen/fixtures/accelerated-excludes",
@@ -777,11 +797,11 @@
     },
     {
       "fixture": "docs/guides/laravel-horizon/fixtures/laravel-horizon",
-      "digest": "fc1ae9c33c5c3bbe5b074a003897e2cbeb977bc5c00763d66103c8325e5426e5"
+      "digest": "8a4e5fc073e4ce6c3b7e020bb0c52e4433368adfd2eb60f63400f1323cafd93a"
     },
     {
       "fixture": "docs/guides/laravel-reverb/fixtures/laravel-reverb",
-      "digest": "040d06f957a733ef342cedccb2aef5cf1da0f35dc4c0db865661cc389ae75cdc"
+      "digest": "3b1a29b3477819f66ec7e1cb563670aeccd59fb1e96003fd22545f3bf3b1730f"
     },
     {
       "fixture": "docs/guides/laravel-vite/fixtures/laravel-vite",
@@ -1517,7 +1537,7 @@
     },
     {
       "fixture": "docs/guides/symfony-messenger/fixtures/symfony-messenger",
-      "digest": "626d6ba842cfa4a9eedb18a43ea13ee5cb795d660b9ece0043762c360943fbfa"
+      "digest": "583b20e7a61f5a1070ec36876068028494d8e437e277fe6f63da496106c63840"
     },
     {
       "fixture": "docs/guides/task-events/fixtures/bracketed-build",

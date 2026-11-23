@@ -1,0 +1,9 @@
+name: vendor-shadow-demo
+services:
+  app:
+    type: "php:8.4"
+    primary: true
+    appMount:
+      target: /app
+      excludes:
+        - vendor
