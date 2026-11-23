@@ -58,7 +58,7 @@ export const ServiceContainerChange = Schema.Struct({
   ),
   anonymousVolumes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
     description:
-      "Container paths of a replaced container's anonymous volumes, meaning volume mounts whose destination no planned mount or store of the service covers.",
+      "Container paths of a replaced container's anonymous volumes: volumes created by the engine, not by Lando, whose destinations no planned mount of the service covers. A named volume the plan stopped mounting survives the replacement and is not listed.",
   }),
 });
 export type ServiceContainerChange = typeof ServiceContainerChange.Type;

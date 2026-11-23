@@ -56,7 +56,7 @@ import {
 } from "../healthcheck-attempt.ts";
 import { inspectImageUser } from "../image-build-user.ts";
 import { isProducedArtifact, producedImageMissing } from "../image-ensure.ts";
-import { PROVIDER_LABEL } from "../labels.ts";
+import { PROVIDER_LABEL, VOLUME_INSTANCE_LABEL } from "../labels.ts";
 import { listenerAuthorityAction, listenerDiagnostic } from "../listener-diagnostic.ts";
 import { observeTcpListener } from "../listener-observation.ts";
 import {
@@ -65,6 +65,7 @@ import {
   isSharedNetwork,
   verifiedNativeId,
 } from "../native-ownership.ts";
+import { NativeVolumeSchema } from "../native-volume-identity.ts";
 import {
   commonContainerLabels,
   containerCreateBodyFragment,
@@ -900,11 +901,17 @@ const publish = (
         ),
       );
 
+const ENGINE_GENERATED_VOLUME_NAME = /^[0-9a-f]{64}$/u;
+
 /**
- * Anonymous volumes are the inspected container's volume mounts that no planned mount or store of
- * the service covers. They leave with a replaced container, so the change reports their paths.
+ * Inspect engine-named candidates before removal, which may delete the volumes.
+ * A hex-shaped name alone does not distinguish a Lando store from an anonymous volume.
  */
-const anonymousVolumePaths = (service: ServicePlan, body: unknown): ReadonlyArray<string> => {
+const anonymousVolumePaths = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  service: ServicePlan,
+  body: unknown,
+): Effect.fn.Return<readonly string[]> {
   if (typeof body !== "object" || body === null) return [];
   const mounts = Reflect.get(body, "Mounts");
   if (!Array.isArray(mounts)) return [];
@@ -915,10 +922,20 @@ const anonymousVolumePaths = (service: ServicePlan, body: unknown): ReadonlyArra
     if (Reflect.get(mount, "Type") !== "volume") continue;
     const destination = Reflect.get(mount, "Destination");
     if (typeof destination !== "string" || planned.has(destination)) continue;
+    const name = Reflect.get(mount, "Name");
+    if (typeof name !== "string" || !ENGINE_GENERATED_VOLUME_NAME.test(name)) continue;
+    const observed = yield* Effect.option(
+      request(deps, { method: "GET", path: `/volumes/${encodeURIComponent(name)}` }),
+    );
+    if (Option.isNone(observed) || observed.value.status !== 200) continue;
+    const volume = Schema.decodeUnknownOption(Schema.fromJsonString(NativeVolumeSchema))(observed.value.body);
+    if (Option.isNone(volume) || volume.value.Name !== name) continue;
+    const labels = volume.value.Labels;
+    if (labels?.[VOLUME_INSTANCE_LABEL] !== undefined || labels?.[PROVIDER_LABEL] !== undefined) continue;
     paths.push(destination);
   }
   return paths;
-};
+});
 
 const startService = Effect.fnUntraced(function* (
   deps: BringUpDeps,
@@ -970,12 +987,14 @@ const startService = Effect.fnUntraced(function* (
   const existedBefore = inspected.exists;
   const recreateReasons = existedBefore ? bringUpRecreateReasons(plan, service, inspected) : [];
   let replacedReason: ServiceContainerChange["reason"];
+  let anonymousVolumes: readonly string[] = [];
   let before = inspected;
   let startedIdentity: string | undefined = before.exists ? existingId : undefined;
   if (before.exists && (deps.options.reconcile === true || recreateReasons.length > 0)) {
     yield* prepareCreationEnvironment(deps, plan, service);
     if (existingId !== undefined) {
       yield* stopContainerSilent(deps, existingId);
+      anonymousVolumes = yield* anonymousVolumePaths(deps, service, inspected.body);
       yield* removeContainer(deps, service, existingId);
       replacedReason = deps.options.reconcile === true ? "reconcile" : recreateReasons[0];
     }
@@ -1051,6 +1070,9 @@ const startService = Effect.fnUntraced(function* (
           ));
         if (recoveryId !== undefined) {
           yield* stopContainerSilent(deps, recoveryId);
+          if (existedBefore && replacedReason === undefined) {
+            anonymousVolumes = yield* anonymousVolumePaths(deps, service, inspected.body);
+          }
           yield* removeContainer(deps, service, recoveryId);
           // Preserve the original replacement reason if bind recovery recreates it again.
           if (existedBefore) replacedReason ??= "host-port";
@@ -1139,7 +1161,6 @@ const startService = Effect.fnUntraced(function* (
             : before.running
               ? "kept"
               : "started";
-      const anonymousVolumes = action === "replaced" ? anonymousVolumePaths(service, inspected.body) : [];
       deps.changes.set(String(service.name), {
         action,
         ...(replacedReason === undefined ? {} : { reason: replacedReason }),
@@ -1174,7 +1195,6 @@ const startService = Effect.fnUntraced(function* (
         : before.running
           ? "kept"
           : "started";
-  const anonymousVolumes = action === "replaced" ? anonymousVolumePaths(service, inspected.body) : [];
   deps.changes.set(String(service.name), {
     action,
     ...(replacedReason === undefined ? {} : { reason: replacedReason }),
