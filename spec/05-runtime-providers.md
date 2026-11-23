@@ -214,7 +214,7 @@ The §5.3.1 registry evidence members (`appliedPlansFor`, `resolveAppliedPlan`, 
 | `serviceExec` | Executes commands in services. |
 | `serviceLogs` | Streams service console logs. |
 | `serviceLogSources` | Follows declared in-service log files. |
-| `serviceHealth` | Health realization is `native`, `lando`, or `none`. |
+| `serviceHealth` | Who schedules native healthchecks: `native` (the engine or its runtime service), `lando` (Lando), or `none` (nothing, so inspected native health is not evidence and info projects it as `unknown`, §6.10). Every bundled provider states it. Docker, system Podman, and the Lando-managed macOS and Windows machines declare `native`. The Lando-managed provider declares `none` on Linux: its service runs with Podman's systemd timers off (`DISABLE_HC_SYSTEMD`, §5.8.1), and Lando cannot vouch for an external socket. |
 | `hostReachability` | Container-to-host reachability is `native`, `emulated`, or `none`. |
 | `sharedCrossAppNetwork` | Supports cross-app DNS/networking required by global services (§20.4). |
 | `persistentStorage` | Supports persistent stores. |

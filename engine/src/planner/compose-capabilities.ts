@@ -1,6 +1,7 @@
 import { CapabilityError } from "@lando/sdk/errors";
 import {
   type AppPlan,
+  type ComposePreservedPathKey,
   type HostPlatform,
   type PluginManifest,
   type ProviderCapabilities,
@@ -204,6 +205,17 @@ export const assertComposeProjectFieldsSupported = (
   );
 };
 
+const preservedPathRemoval = (key: ComposePreservedPathKey, service: string): string => {
+  switch (key) {
+    case "healthcheck.start_interval":
+      return `Move the start cadence to \`readiness.startIntervalSeconds\` on service ${service} (Lando applies it on every provider), or remove \`startIntervalSeconds\` (\`start_interval\`) from \`services.${service}.healthcheck\``;
+    case "depends_on.*.restart":
+      return `Remove ${key} from service ${service}`;
+    default:
+      return key satisfies never;
+  }
+};
+
 export const assertComposePreservedPathsSupported = (
   context: CapabilityContext,
   services: ComposeServices,
@@ -221,7 +233,7 @@ export const assertComposePreservedPathsSupported = (
       providerId: String(providerId),
       remediation: capabilityRemediation(
         context,
-        `Remove ${use.key} from service ${use.service}`,
+        preservedPathRemoval(use.key, use.service),
         (alternative) => findUnsupportedComposePreservedPath([use], alternative) === undefined,
       ),
     }),

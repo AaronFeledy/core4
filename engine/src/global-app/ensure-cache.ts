@@ -258,8 +258,9 @@ export const observeWarmGlobalServices = Effect.fnUntraced(
       if (
         runtimeIdentity(runtime) !== expected ||
         runtime.status !== "running" ||
-        runtime.health === "unhealthy" ||
-        runtime.health === "starting"
+        // Native health nothing schedules is stale whatever it says, so it is not a reason to re-ensure.
+        (provider.capabilities.serviceHealth !== "none" &&
+          (runtime.health === "unhealthy" || runtime.health === "starting"))
       )
         return undefined;
       observed.set(service, runtime);

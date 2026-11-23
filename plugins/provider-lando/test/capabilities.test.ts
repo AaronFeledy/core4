@@ -50,6 +50,12 @@ describe("provider-lando capabilities", () => {
       );
     }
   });
+  test("reports that nothing schedules native health on Linux, and machines schedule it natively", () => {
+    expect(mvpProviderCapabilities("linux", "x64").serviceHealth).toBe("none");
+    for (const platform of ["darwin", "win32"] as const) {
+      expect(mvpProviderCapabilities(platform, "arm64").serviceHealth).toBe("native");
+    }
+  });
   test("declares prepared-volume targets only under the complete managed Windows preparation gate", async () => {
     const appliedPlanState = makePluginStateStore(
       makeTestStateStore().service,

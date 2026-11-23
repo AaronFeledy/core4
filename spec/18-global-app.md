@@ -175,6 +175,7 @@ Generated-layer events carry the trigger, contribution identities, enablement, c
 `AppFeature.requires.globalServices` and the selected router contribution's `requires.globalServices` (§10.2) are the only hard dependency declarations for global services. During user-app `pre-start`, after early subscribers and before user-app build, the planner aggregates required ids and calls `GlobalAppService.ensureRunning`.
 
 - A fresh retained set whose owned running identity and readiness are verified with current provider reads emits the start pair with `cached: true`, skipping regeneration, planning, building, and apply.
+- A service whose native health is `starting` or `unhealthy` makes the set cold, unless its provider declares `serviceHealth: none` (§6.10): nothing schedules that check, so any native health the engine last recorded there is stale and the cache ignores it entirely.
 - A cold or unhealthy set starts the required services with `cached: false` before user-app build. Shared services started this way stay up when the user-app start later fails or is interrupted; a failed user app never undoes global services.
 - A required id absent from the resolved global plan emits `pre-global-start`, fails with `GlobalServiceMissingError`, aborts user-app start, and MUST NOT emit `post-global-start`.
 

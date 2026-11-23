@@ -129,6 +129,10 @@ export const providerLandoCapabilitiesForPlatform = (
         : ("host-ids" as const);
   return buildProviderCapabilities({
     bindMounts: true,
+    // A machine's Podman runs under the VM's systemd and schedules its own healthcheck timers. The
+    // managed Linux service runs with systemd timers off (`DISABLE_HC_SYSTEMD`), and Lando cannot
+    // vouch for an external socket, so nothing on Linux schedules native checks.
+    serviceHealth: family === "linux" ? "none" : "native",
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: bindMountPerformanceForPlatform(family),

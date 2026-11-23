@@ -130,7 +130,7 @@ export const testCapabilities: ProviderCapabilities = {
   serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
-  serviceHealth: "lando",
+  serviceHealth: "native",
   hostReachability: "emulated",
   sharedCrossAppNetwork: true,
   persistentStorage: true,

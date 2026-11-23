@@ -131,6 +131,10 @@ test("lint reports all unsupported Compose fields using planner remediation and 
       "services.web.profiles",
       "services.web.read_only",
     ]);
+    // A refused start interval names the readiness cadence that every provider applies.
+    expect(findings.find((issue) => issue.path.at(-1) === "start_interval")?.suggestion).toContain(
+      "readiness.startIntervalSeconds",
+    );
     const planned = await planWith(root, capabilities, () => capabilities);
     expect(Result.isFailure(planned)).toBe(true);
     if (Result.isFailure(planned)) expect(planned.failure._tag).toBe("CapabilityError");
