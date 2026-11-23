@@ -13,9 +13,8 @@ import type {
   EventStepPlan,
   LandofileEventName,
   LandofileEventsOutcome,
-  ServiceRunStatus,
 } from "@lando/sdk/schema";
-import { LANDO_HOST_EVENT_ENV, ServiceName, isIdleRunStatus } from "@lando/sdk/schema";
+import { LANDO_HOST_EVENT_ENV, ServiceName, isDownRunStatus } from "@lando/sdk/schema";
 // allow: SIZE_OK - the lifecycle bracket owns admission, execution, and failure compensation as one scoped coordinator.
 import {
   EnvironmentValueResolver,
@@ -100,10 +99,6 @@ const hostStepService = (step: EventStep, primary: string | undefined): string |
   return primary;
 };
 
-/** A paused or departing container cannot run a step, so the step is skipped rather than failed. */
-const isStoppedStatus = (status: ServiceRunStatus | undefined): boolean =>
-  status !== undefined && (status === "paused" || status === "removing" || isIdleRunStatus(status));
-
 const inspectHostContainer = Effect.fnUntraced(function* (plan: AppPlan, service: string) {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
   if (Option.isNone(registry)) return undefined;
@@ -146,7 +141,8 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (
         eventError(error, event, entry.step, context.redactor, entry.source, entry.sourceIndex),
       ),
     );
-    if (isStoppedStatus(status)) {
+    // A down container cannot run a step, so the step is skipped rather than failed.
+    if (status !== undefined && isDownRunStatus(status)) {
       if (scopedGuard && entry.source !== "host") {
         yield* publishInfo(
           `Skipped events.${event}[${entry.sourceIndex}]: service ${service} is not running.`,
