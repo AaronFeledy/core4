@@ -42,6 +42,42 @@ afterEach(() => {
   tempRoots.clear();
 });
 
+describe("preserved symlinks outside tests", () => {
+  const run = (cmd: string[], cwd: string, value?: string) => {
+    const { NODE_PRESERVE_SYMLINKS: _preserveSymlinks, ...env } = process.env;
+    const child = Bun.spawnSync(cmd, {
+      cwd,
+      env: value === undefined ? env : { ...env, NODE_PRESERVE_SYMLINKS: value },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return { exitCode: child.exitCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
+  };
+
+  test.each([
+    { name: "a repo-root bun command with the variable set", cmd: ["-e", "console.log('ran')"], value: "1" },
+    {
+      name: "a repo-root bun command with --preserve-symlinks",
+      cmd: ["--preserve-symlinks", "-e", "console.log('ran')"],
+    },
+  ])("refuses $name before it runs", ({ cmd, value }) => {
+    const child = run([process.execPath, ...cmd], repoRoot, value);
+    expect(child.exitCode).toBe(1);
+    expect(child.stdout).toBe("");
+    expect(child.stderr).toContain("preserved symlinks");
+  });
+
+  test("the source CLI refuses the variable when run from an app folder outside the repo", () => {
+    const appDir = mkdtempSync(join(tmpdir(), "lando-source-cli-symlinks-"));
+    tempRoots.add(appDir);
+    const cli = join(repoRoot, "core/bin/lando.ts");
+    const refused = run([process.execPath, cli, "version"], appDir, "1");
+    expect(refused.exitCode).toBe(1);
+    expect(refused.stderr).toContain("env -u NODE_PRESERVE_SYMLINKS");
+    expect(run([process.execPath, cli, "version"], appDir).exitCode).toBe(0);
+  });
+});
+
 describe("test preload symlink resolution", () => {
   test.each([
     { value: undefined, allowed: true },

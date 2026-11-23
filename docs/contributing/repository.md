@@ -14,6 +14,8 @@ Read the root [repository instructions](../../AGENTS.md) and any package-specifi
 
 You need Git and Bun. Use the version pinned in [`.bun-version`](../../.bun-version); the current minimum is Bun 1.4.3. Node is not a supported host runtime. Use Bun for dependency installation, scripts, and tests.
 
+Don't export `NODE_PRESERVE_SYMLINKS` in your shell profile. With it set, Bun loads each workspace package twice, so error checks fail in confusing ways. Repo commands, tests, the source CLI, and compiled builds refuse to run until you remove it. To clear it for a single command, put `env -u NODE_PRESERVE_SYMLINKS` in front.
+
 `bun install` provides TypeScript 7 as `tsc` and the TypeScript 6 compiler API as `@typescript/typescript6`. The [TypeScript 7 toolchain decision](./decisions.md#typescript-7-toolchain-decision) explains the layout.
 
 Follow the [source-build steps](../alpha-install-and-bug-reports.md#option-2-build-from-source)

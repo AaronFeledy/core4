@@ -122,14 +122,11 @@ test("internal selected stop preserves unrelated ownership hints", async () => {
   });
   // When
   await Effect.runPromise(
-    haltAppRuntime(
-      {},
-      {
-        plan: plannedApp,
-        root: plannedApp.root,
-        app: { kind: "user", id: plannedApp.id, root: plannedApp.root },
-      },
-    ).pipe(Effect.provide(harness.layer)),
+    haltAppRuntime({
+      plan: plannedApp,
+      root: plannedApp.root,
+      app: { kind: "user", id: plannedApp.id, root: plannedApp.root },
+    }).pipe(Effect.provide(harness.layer)),
   );
   // Then
   expect(cleanups).toBe(0);

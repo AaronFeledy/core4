@@ -100,6 +100,7 @@ export const makeHarness = (
     readonly appliedFileSyncState?: "missing" | "ordinary" | "accelerated" | "unknown";
     readonly appliedFileSyncSessions?: ReadonlyArray<FileSyncSessionSpec>;
     readonly appliedFileSyncEngineId?: string;
+    readonly list?: RuntimeProviderShape["list"];
   } = {},
 ) => {
   const events: LandoEvent[] = [];
@@ -111,6 +112,20 @@ export const makeHarness = (
       (options.destroyEffect ?? Effect.void).pipe(
         Effect.as({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
       ),
+    list:
+      options.list ??
+      (() =>
+        Effect.succeed(
+          Object.values(plan.services).map((service) => ({
+            app: plan.id,
+            appRoot: plan.root,
+            service: service.name,
+            providerId,
+            status: "running" as const,
+            containerId: `cid-${String(service.name)}`,
+            publications: { status: "unknown" as const },
+          })),
+        )),
     listVolumes: () => Effect.succeed(options.volumes ?? []),
     ...(options.appliedFileSyncState === undefined
       ? {}

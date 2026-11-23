@@ -569,6 +569,45 @@ describe("selected service restart", () => {
     );
   });
 
+  test.each(["restart", "rebuild"] as const)(
+    "a selected %s publishes no route for a sibling that stayed down, and the record keeps it (#2648)",
+    async (operation) => {
+      const plannedApp = twoServicePlan();
+      const selected = runSelected(plannedApp, { operation, services: [redis.name] });
+      selected.runtimes.set(
+        String(web.name),
+        runtimeFor(plannedApp, web.name, { status: "exited", exitCode: 0 }),
+      );
+
+      await Effect.runPromise(selected.operation);
+
+      expect(selected.applyRoutes).toEqual([]);
+      expect(selected.removeRoutes).toHaveLength(1);
+      expect(selected.applyCalls[0]?.options.recordedPlan?.routes).toEqual(plannedApp.routes);
+    },
+  );
+
+  test("keeps a down sibling's route published while a selected consumer reads its URL", async () => {
+    const plannedApp = twoServicePlan();
+    const consumer = {
+      ...redis,
+      environment: { PUBLIC_URL: { _tag: "RouteText", parts: [{ service: web.name, encoding: "raw" }] } },
+    } satisfies typeof redis;
+    const consumerPlan = { ...plannedApp, services: { ...plannedApp.services, [redis.name]: consumer } };
+    const selected = runSelected(consumerPlan, { services: [redis.name] });
+    selected.runtimes.set(
+      String(web.name),
+      runtimeFor(consumerPlan, web.name, { status: "exited", exitCode: 0 }),
+    );
+
+    await Effect.runPromise(selected.operation);
+
+    expect(selected.applyRoutes).toEqual([route.hostname]);
+    expect(selected.applyCalls[0]?.plan.services[redis.name]?.environment.PUBLIC_URL).toBe(
+      "http://web.test:8080",
+    );
+  });
+
   test.each([
     { operation: "restart", hostname: "web-new.test", prior: "http://web.test:8080", refuses: true },
     { operation: "rebuild", hostname: "web.test", prior: "http://web.test:9080", refuses: true },

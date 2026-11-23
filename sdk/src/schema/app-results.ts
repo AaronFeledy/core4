@@ -105,6 +105,9 @@ export const StopAppResult = Schema.Struct({
   servicesStopped: Schema.Array(Schema.String).annotate({
     description: "Names of the services stopped by the operation.",
   }),
+  servicesKeptRunning: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+    description: "Names of services that stayed running after a selected stop. Omitted for whole-app stop.",
+  }),
   shutdownObservations: Schema.optionalKey(Schema.Array(ServiceShutdownObservation)).annotate({
     description: "Attributed daemon shutdown facts, when the provider supports observation.",
   }),

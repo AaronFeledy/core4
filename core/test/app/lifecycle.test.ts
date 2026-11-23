@@ -764,6 +764,27 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 
+  test("selected stop keeps the managed start scope that running siblings still use", async () => {
+    await withTempApp(async (dir) => {
+      const tracking = makeTrackingEngine();
+      const base = planWithFileSync(dir);
+      const worker = { ...webService, name: ServiceName.make("worker"), primary: false, endpoints: [] };
+      const plan: AppPlan = { ...base, services: { ...base.services, [worker.name]: worker } };
+      const sizes = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const app = yield* resolveApp();
+            yield* app.start();
+            yield* app.stop({ services: [worker.name] });
+            return tracking.sessions.size;
+          }),
+        ).pipe(Effect.provide(appLayer(tracking.engine, dir, plan))),
+      );
+
+      expect(sizes).toBe(1);
+    });
+  });
+
   test("successful destroy closes the managed start scope before returning", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingEngine();
@@ -818,7 +839,7 @@ describe("App handle managed lifecycle scopes", () => {
       });
     });
   }
-  test("repeated accelerated stop fails closed after the managed session was drained", async () => {
+  test("repeated accelerated stop succeeds after the managed session was drained", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingEngine();
       const destroys: Array<{ volumes: boolean; removeState: boolean | undefined }> = [];
@@ -840,9 +861,11 @@ describe("App handle managed lifecycle scopes", () => {
         ).pipe(Effect.provide(appLayer(tracking.engine, dir, planWithFileSync(dir), provider))),
       );
 
-      expect(secondStop._tag).toBe("Failure");
-      if (secondStop._tag === "Failure") expect(secondStop.failure._tag).toBe("FileSyncStopError");
-      expect(destroys).toEqual([{ volumes: false, removeState: false }]);
+      expect(secondStop._tag).toBe("Success");
+      expect(destroys).toEqual([
+        { volumes: false, removeState: false },
+        { volumes: false, removeState: false },
+      ]);
       expect(tracking.sessions.size).toBe(0);
     });
   });

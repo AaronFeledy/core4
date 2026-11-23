@@ -2068,6 +2068,7 @@
       "isActiveRunStatus",
       "isContainerUser",
       "isCoreServiceEnvKey",
+      "isDownRunStatus",
       "isHostEventContainerStep",
       "isIdleRunStatus",
       "isLandoGlobalNativeSlug",
