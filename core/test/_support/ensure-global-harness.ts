@@ -248,6 +248,10 @@ export const makeHarness = async (
     Layer.succeed(
       RuntimeProviderRegistry,
       makeTestRuntimeProviderRegistry({
+        readAppliedPlanStrict: ({ id, provider }) =>
+          Effect.sync(() =>
+            recordedPlan?.id === id && recordedPlan.provider === provider ? recordedPlan : undefined,
+          ),
         resolveAppliedPlan: (root) =>
           Effect.sync(() => (recordedPlan?.root === root ? recordedPlan : undefined)),
         resolveTeardownEvidence: (root) =>

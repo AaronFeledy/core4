@@ -20,7 +20,7 @@ export const resolveSeedSource = Effect.fn("Sql.resolveSeedSource")(function* (
     input.fromPath === undefined
       ? undefined
       : yield* deps.canonicalizeSourcePath(resolve(input.hostCwd ?? process.cwd(), input.fromPath));
-  if (deps.appliedPlans === undefined) {
+  if (deps.findAppliedSource === undefined) {
     return yield* Effect.fail(
       new SqlSeedSourceError({
         message: `Provider ${deps.providerId} cannot list applied apps for database seeding.`,
@@ -32,8 +32,12 @@ export const resolveSeedSource = Effect.fn("Sql.resolveSeedSource")(function* (
       }),
     );
   }
-  const plans = yield* deps.appliedPlans;
-  const source = plans.find((plan) => (root === undefined ? plan.id === input.fromApp : plan.root === root));
+  const source =
+    root !== undefined
+      ? yield* deps.findAppliedSource({ root })
+      : input.fromApp === undefined
+        ? undefined
+        : yield* deps.findAppliedSource({ id: input.fromApp });
   if (source === undefined) {
     return yield* Effect.fail(
       new SqlSeedSourceError({

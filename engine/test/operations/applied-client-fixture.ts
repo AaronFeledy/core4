@@ -230,6 +230,7 @@ export const appliedClientFixture = (
         list: Effect.succeed([base.provider]),
         capabilities: Effect.succeed(provider.capabilities),
         appliedPlansFor: () => Effect.succeed(input.applied === "missing" ? [] : [applied]),
+        readAppliedPlanStrict: () => Effect.succeed(input.applied === "missing" ? undefined : applied),
         resolveAppliedPlan: () => Effect.succeed(applied),
         select: () =>
           Effect.sync(() => {

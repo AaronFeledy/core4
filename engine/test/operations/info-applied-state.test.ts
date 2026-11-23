@@ -79,6 +79,7 @@ const baseRegistry = (
   };
   return makeTestRuntimeProviderRegistry({
     appliedStateInventory: () => Effect.die("Info must not scan inventory to diagnose a targeted read"),
+    readAppliedPlanStrict: () => Effect.succeed(undefined),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -110,7 +111,14 @@ describe("info applied-state observation", () => {
       appId: "demo",
     });
     const result = await runInfo(
-      baseRegistry({ readAppliedPlanStrict: () => Effect.fail(error) }, () => Effect.fail(error)),
+      baseRegistry(
+        {
+          readAppliedPlanStrict: () => Effect.fail(error),
+          appliedPlansFor: (_root, options) =>
+            options?.observe === true ? Effect.succeed([]) : Effect.fail(error),
+        },
+        () => Effect.fail(error),
+      ),
     );
     expect(result.appliedStateIssue).toMatchObject({
       reason: "newer-version",

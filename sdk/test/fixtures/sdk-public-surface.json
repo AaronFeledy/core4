@@ -463,7 +463,7 @@
       "waitForExit:(target:ServiceSelector,options?:WaitForExitOptions) => Effect.Effect<ServiceExitResult,ProviderError,Scope.Scope>"
     ],
     "RuntimeProviderRegistry": [
-      "appliedPlansFor:(root:AbsolutePath,providerId?:ProviderId) => Effect.Effect<ReadonlyArray<AppPlan>,ProviderUnavailableError|NoProviderInstalledError>",
+      "appliedPlansFor:(root:AbsolutePath,options?:{ readonly providerId?:ProviderId; readonly observe?:true }) => Effect.Effect<ReadonlyArray<AppPlan>,ProviderUnavailableError|AppliedStateVersionError|NoProviderInstalledError>",
       "appliedStateInventory:(providerId:ProviderId) => Effect.Effect<AppliedStateInventory,ProviderUnavailableError|AppliedStateVersionError|NoProviderInstalledError>",
       "capabilities:Effect.Effect<ProviderCapabilities,ProviderSelectionError>",
       "hasRecordedOwnership?:(providerId:ProviderId) => Effect.Effect<boolean,ProviderUnavailableError|NoProviderInstalledError>",

@@ -1,9 +1,11 @@
+import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runtime/applied-state";
 import { AppPlacementError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { type AppPlan, AppRef, type ProviderId, isActiveRunStatus } from "@lando/sdk/schema";
+import { AppId, type AppPlan, AppRef, type ProviderId, isActiveRunStatus } from "@lando/sdk/schema";
 import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { resolveAppPlacement } from "../providers/app-placement.ts";
 import { matchesAppPlanIdentity } from "../providers/app-plan-identity.ts";
+import { hostProviderId } from "../providers/host-provider.ts";
 import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
 import { missingRootAppliedTarget } from "./applied-state-target.ts";
 import { prepareOwnedResourceCleanupFrom } from "./owned-resource-teardown.ts";
@@ -21,21 +23,23 @@ const appRef = (plan: AppPlan): AppRef => ({
   root: plan.identity?.appRoot ?? plan.root,
 });
 
-export const switchGlobalProviderForSetup = Effect.fn("Setup.switchGlobalProvider")(function* (
+export const preflightGlobalProviderSwitch = Effect.fn("Setup.preflightGlobalProviderSwitch")(function* (
   selected: ProviderId,
 ) {
   const globalApp = yield* Effect.serviceOption(GlobalAppService);
   if (globalApp._tag === "None") return undefined;
   const paths = yield* globalApp.value.paths;
   const app = { kind: "global" as const, id: "global", root: paths.root };
-  const placement = yield* resolveAppPlacement(app, selected);
-  const plan = placement.plan;
-  if (plan === undefined || plan.provider === selected) return undefined;
-  yield* missingRootAppliedTarget(plan, plan.identity?.appRoot ?? plan.root);
-
+  const placement = yield* resolveAppPlacement(app, selected, undefined, true);
+  const previous = placement.realized ?? (yield* hostProviderId);
+  if (previous === selected) return undefined;
   const registry = yield* RuntimeProviderRegistry;
+  const plan = yield* registry.readAppliedPlanStrict({ id: AppId.make(app.id), provider: previous });
+  if (plan === undefined || plan.provider === selected) return undefined;
+  yield* missingRootAppliedTarget(plan, paths.root);
+
   const provider = yield* registry.select(plan.provider);
-  if (provider.appliedPlans === undefined || !(yield* provider.isAvailable))
+  if (!(yield* provider.isAvailable))
     return yield* Effect.fail(
       new ProviderUnavailableError({
         providerId: plan.provider,
@@ -44,13 +48,20 @@ export const switchGlobalProviderForSetup = Effect.fn("Setup.switchGlobalProvide
         remediation: `Restore ${plan.provider}, run \`lando poweroff --yes\`, then retry setup.`,
       }),
     );
-  const appPlans = (yield* provider.appliedPlans).filter(
+  const inventory = yield* registry.appliedStateInventory(plan.provider);
+  const appPlans = inventory.plans.filter(
     (candidate) =>
       candidate.provider === plan.provider &&
       ((candidate.identity?.appRoot ?? candidate.root) !== (plan.identity?.appRoot ?? plan.root) ||
         !matchesAppPlanIdentity(candidate, app)),
   );
   const services = yield* provider.list({ includeUnplanned: true });
+  for (const service of services) {
+    if (service.providerId !== plan.provider || service.app === plan.id || !isActiveRunStatus(service.status))
+      continue;
+    const issue = inventory.unreadable.find((entry) => inventoryProtectsApp(entry, service.app));
+    if (issue !== undefined) return yield* Effect.fail(protectedSlotError(plan.provider, issue, service.app));
+  }
   const runningApps = appPlans
     .filter(
       (candidate) =>
@@ -81,6 +92,18 @@ export const switchGlobalProviderForSetup = Effect.fn("Setup.switchGlobalProvide
       }),
     );
 
+  return { plan, provider, appPlans };
+});
+
+export const switchGlobalProviderForSetup = Effect.fn("Setup.switchGlobalProvider")(function* (
+  selected: ProviderId,
+  preflight?: { readonly checked: Effect.Success<ReturnType<typeof preflightGlobalProviderSwitch>> },
+) {
+  const prepared =
+    preflight === undefined ? yield* preflightGlobalProviderSwitch(selected) : preflight.checked;
+  if (prepared === undefined) return undefined;
+  const { plan, provider, appPlans } = prepared;
+  const registry = yield* RuntimeProviderRegistry;
   const root = plan.identity?.appRoot ?? plan.root;
   const ownership = yield* registry.resourceOwnership?.(plan.provider, root) ?? Effect.succeed(undefined);
   const options = { volumes: false, removeState: true };

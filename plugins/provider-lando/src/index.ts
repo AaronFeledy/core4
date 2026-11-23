@@ -134,7 +134,6 @@ import {
   appliedStateInspectError,
   inspectAppliedPlan,
   listAppliedPlans,
-  listObservedPlans,
   loadAppliedPlanStrict,
   persistAppliedPlan,
   removeAppliedPlan,
@@ -227,7 +226,7 @@ export {
   appliedPlanPath,
   appliedPlansDir,
   listAppliedPlans,
-  loadAppliedPlan,
+  loadAppliedPlanStrict,
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
@@ -1020,11 +1019,11 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
       }
       return prior.plan;
     });
-    const hydratePlansFromDisk: Effect.Effect<void, ProviderUnavailableError> =
+    const hydratePlansFromDisk =
       options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
         ? Effect.void
-        : listObservedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
-            Effect.tap((diskPlans) =>
+        : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
+            Effect.tap(({ plans: diskPlans }) =>
               Effect.sync(() => {
                 plans.clear();
                 for (const diskPlan of diskPlans) {
@@ -1433,7 +1432,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         appliedPlans:
           options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
             ? Effect.succeed([])
-            : listObservedPlans(options.appliedPlanState, options.appliedPlanStateDir),
+            : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
+                Effect.map(({ plans }) => plans),
+              ),
         ensureReady: ensureEffect,
         ...(family === "win32" && appliedPlanState !== undefined && podmanApi !== undefined
           ? {
@@ -1940,10 +1941,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           ),
         logs: (target, logOptions) =>
           Stream.unwrap(
-            (target.plan === undefined
-              ? resolvePlan(target.app)
-              : Effect.succeed<AppPlan | undefined>(target.plan)
-            ).pipe(
+            resolvePlan(target.app).pipe(
+              Effect.map((recorded) => target.plan ?? recorded),
               Effect.flatMap((plan) =>
                 plan === undefined
                   ? Effect.succeed(Stream.fail(makeNoPlanError(target.app, "logs")))
@@ -2088,10 +2087,6 @@ export const plugin = definePlugin({
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
         readAppliedPlanStrict: (ctx, appId) => loadAppliedPlanStrict(ctx.stateStore, appId),
-        appliedPlans: (ctx) =>
-          Effect.flatMap(PathsService, (paths) =>
-            listObservedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
-          ),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
           const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan, eventService } =
             yield* providerHostInputs;

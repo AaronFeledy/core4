@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { appliedStateVersionError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -7,6 +8,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
 
 import { appliedServicePlan } from "../../src/services/execution-identity.ts";
@@ -50,10 +52,7 @@ const plan: AppPlan = {
 };
 
 const registry = (result: () => Promise<AppPlan | undefined>) =>
-  ({
-    resolveAppliedPlan: (_root: AbsolutePath, _app: unknown, lookup?: string) =>
-      lookup === "exact" ? Effect.promise(result) : Effect.die("command identity must ask for the exact app"),
-  }) as unknown as Parameters<typeof appliedServicePlan>[0];
+  makeTestRuntimeProviderRegistry({ readAppliedPlanStrict: () => Effect.promise(result) });
 
 describe("appliedServicePlan", () => {
   test("returns the applied service, not the desired one", async () => {
@@ -98,33 +97,33 @@ describe("appliedServicePlan", () => {
       ...plan,
       services: { [ServiceName.make("web")]: service("web", { name: "www-data", uid: 33, gid: 33 }) },
     };
-    const calls: Array<{ readonly root: AbsolutePath; readonly lookup: string | undefined }> = [];
     const resolved = await Effect.runPromise(
       appliedServicePlan(
-        {
-          resolveAppliedPlan: (root: AbsolutePath, _app: unknown, lookup?: string) => {
-            calls.push({ root, lookup });
-            return Effect.succeed(lookup === "exact" ? undefined : parent);
-          },
-        } as unknown as Parameters<typeof appliedServicePlan>[0],
+        makeTestRuntimeProviderRegistry({ readAppliedPlanStrict: () => Effect.succeed(parent) }),
         nested,
         "web",
       ),
     );
     expect(resolved).toBeUndefined();
-    expect(calls).toEqual([{ root: nested.root, lookup: "exact" }]);
   });
 
-  test("returns undefined when applied state cannot be read", async () => {
+  test("container execution identity reports protected applied state", async () => {
+    const error = appliedStateVersionError({
+      providerId: plan.provider,
+      appId: plan.id,
+      path: "/state/app.json",
+      operation: "applied-state.read",
+      scope: "app",
+      storedVersion: 12,
+      supportedVersion: 11,
+    });
     const resolved = await Effect.runPromise(
       appliedServicePlan(
-        {
-          resolveAppliedPlan: () => Effect.fail(new Error("unreadable")),
-        } as unknown as Parameters<typeof appliedServicePlan>[0],
+        makeTestRuntimeProviderRegistry({ readAppliedPlanStrict: () => Effect.fail(error) }),
         plan,
         "web",
-      ),
+      ).pipe(Effect.flip),
     );
-    expect(resolved).toBeUndefined();
+    expect(resolved).toBe(error);
   });
 });

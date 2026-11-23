@@ -67,6 +67,7 @@ export const AppsListResultSchema = Schema.Struct({
   apps: Schema.Array(AppsListEntrySchema),
   pruned: Schema.optionalKey(Schema.Array(AppsListEntrySchema)),
   pruneFailures: Schema.optionalKey(Schema.Array(AppsListPruneFailureSchema)),
+  appliedStateIssues: Schema.optionalKey(Schema.Array(AppsListPruneFailureSchema)),
 });
 
 export interface ListServicesOptions {
@@ -125,8 +126,10 @@ export const renderAppsListResult = (
         .join("  ");
     return [pad(header), ...rows.map(pad)].join("\n");
   })();
-  if (result.pruned === undefined && result.pruneFailures === undefined) return inventory;
   const parts = [inventory];
+  for (const issue of result.appliedStateIssues ?? []) {
+    parts.push(`Warning: ${issue.message} ${issue.remediation}`);
+  }
   if (result.pruned !== undefined) {
     if (result.pruned.length === 0) {
       parts.push("Pruned 0 stale inventory entries.");
@@ -174,9 +177,21 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
   if (userDataRoot === undefined) return { apps: [] };
 
+  const appliedStateIssues: AppsListPruneFailure[] = [];
   const persisted = yield* Effect.promise(async () => {
     try {
-      return await readAppliedPlansFromUserData(userDataRoot);
+      return await readAppliedPlansFromUserData(userDataRoot, (issue) => {
+        const { providerId, path, storedVersion, supportedVersion, message, remediation } = issue;
+        appliedStateIssues.push({
+          reason: "newer-version",
+          providerId,
+          path,
+          storedVersion,
+          supportedVersion,
+          message,
+          remediation,
+        });
+      });
     } catch {
       return [];
     }
@@ -348,6 +363,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   for (const warning of ownershipWarnings.values()) yield* recordCommandWarning(warning);
   return {
     apps: visible,
+    ...(appliedStateIssues.length === 0 ? {} : { appliedStateIssues }),
     ...(pruneCandidate === undefined
       ? {}
       : {

@@ -73,6 +73,8 @@ const layers = (plans: ReadonlyArray<AppPlan>, globalRoot: AbsolutePath = root) 
         // Exact canonical-root equality, as the production registry filters.
         appliedPlansFor: (target) =>
           Effect.succeed(plans.filter((applied) => applied.identity?.appRoot === target)),
+        appliedStateInventory: (id) =>
+          Effect.succeed({ plans: plans.filter((plan) => plan.provider === id), unreadable: [] }),
         select: () => Effect.die("placement must not construct providers"),
       }),
     ),

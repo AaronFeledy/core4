@@ -194,6 +194,7 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
         RuntimeProviderRegistry,
         makeTestRuntimeProviderRegistry({
           appliedPlansFor: () => Effect.succeed([changed]),
+          readAppliedPlanStrict: () => Effect.succeed(changed),
           list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
         }),
       ),

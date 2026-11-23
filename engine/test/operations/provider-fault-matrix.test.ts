@@ -61,7 +61,7 @@ for (const operation of operations) {
         Effect.sync(() => calls.push(operation.member)).pipe(Effect.andThen(Effect.fail(fault)));
       const provider = { ...baseline, [operation.member]: fail };
       const registry = registryLayer(provider, {
-        contribution: { appliedPlans: () => Effect.succeed([applied]) },
+        contribution: { appliedStateInventory: () => Effect.succeed({ plans: [applied], unreadable: [] }) },
       });
       try {
         // When the first mutating provider member fails, through the operation entry point.

@@ -171,11 +171,13 @@ const makeHarness = async (input: {
   const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
     appliedStateInventory: () => Effect.succeed({ plans: input.holdingPlans ?? [], unreadable: [] }),
+    readAppliedPlanStrict: ({ id, provider }) =>
+      Effect.succeed(input.globalPlans?.find((plan) => plan.id === id && plan.provider === provider)),
     observeRuntime:
       input.observationFailure === undefined
         ? Effect.succeed([snapshot])
         : Effect.fail(input.observationFailure),
-    appliedPlansFor: (root: AbsolutePath, scope?: ProviderId) => {
+    appliedPlansFor: (root, { providerId: scope } = {}) => {
       const user =
         (scope === undefined || scope === providerId) && plans.has(root) ? [plans.get(root) as AppPlan] : [];
       const global = (input.globalPlans ?? []).filter(

@@ -1,6 +1,7 @@
 import type { Dirent } from "node:fs";
 import { access, readFile, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import {
   APP_LABEL,
   APP_ROOT_LABEL,
@@ -11,9 +12,9 @@ import {
   VOLUME_OWNER_LABEL,
 } from "@lando/container-runtime/labels";
 import { type AdoptionReceipt, decideDataRootOwnership } from "@lando/container-runtime/native-ownership";
-
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { makeLandoPaths, sameRealpath } from "@lando/paths";
+import { appliedStateVersionError } from "@lando/sdk/errors";
 import { AbsolutePath, LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 import type { Context } from "effect";
@@ -158,7 +159,11 @@ const planLikeToEntry = (value: unknown, fallbackProvider: string): AppsListEntr
   };
 };
 
-export const decodeAppliedStateFile = (content: string, fallbackProvider: string): AppsListEntry[] => {
+export const decodeAppliedStateFile = (
+  content: string,
+  fallbackProvider: string,
+  reportNewer?: (storedVersion: number) => void,
+): AppsListEntry[] => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
@@ -166,6 +171,11 @@ export const decodeAppliedStateFile = (content: string, fallbackProvider: string
     return [];
   }
   if (!Predicate.isObject(parsed)) return [];
+  const version = parsed.version;
+  if (typeof version === "number" && Number.isSafeInteger(version) && version > APPLIED_STATE_VERSION) {
+    reportNewer?.(version);
+    return [];
+  }
 
   if ("data" in parsed) {
     const single = planLikeToEntry(parsed.data, fallbackProvider);
@@ -190,7 +200,13 @@ export const decodeAppliedStateFile = (content: string, fallbackProvider: string
   return direct === undefined ? [] : [direct];
 };
 
-const readJsonPlanFiles = async (dir: string, fallbackProvider: string): Promise<AppsListEntry[]> => {
+type ReportNewerRecord = (providerId: string, path: string, storedVersion: number) => void;
+
+const readJsonPlanFiles = async (
+  dir: string,
+  fallbackProvider: string,
+  reportNewer?: ReportNewerRecord,
+): Promise<AppsListEntry[]> => {
   let names: string[];
   try {
     names = await readdir(dir);
@@ -201,8 +217,13 @@ const readJsonPlanFiles = async (dir: string, fallbackProvider: string): Promise
   for (const name of names) {
     if (!name.endsWith(".json")) continue;
     try {
-      const content = await readFile(join(dir, name), "utf8");
-      apps.push(...decodeAppliedStateFile(content, fallbackProvider));
+      const path = join(dir, name);
+      const content = await readFile(path, "utf8");
+      apps.push(
+        ...decodeAppliedStateFile(content, fallbackProvider, (version) =>
+          reportNewer?.(fallbackProvider, path, version),
+        ),
+      );
     } catch {
       // ignore unreadable / corrupt state files
     }
@@ -210,9 +231,15 @@ const readJsonPlanFiles = async (dir: string, fallbackProvider: string): Promise
   return apps;
 };
 
-const readJsonPlanRecord = async (path: string, fallbackProvider: string): Promise<AppsListEntry[]> => {
+const readJsonPlanRecord = async (
+  path: string,
+  fallbackProvider: string,
+  reportNewer?: ReportNewerRecord,
+): Promise<AppsListEntry[]> => {
   try {
-    return decodeAppliedStateFile(await readFile(path, "utf8"), fallbackProvider);
+    return decodeAppliedStateFile(await readFile(path, "utf8"), fallbackProvider, (version) =>
+      reportNewer?.(fallbackProvider, path, version),
+    );
   } catch {
     return [];
   }
@@ -246,20 +273,38 @@ const listPluginStateRoots = async (pluginsDir: string): Promise<string[]> => {
   return roots;
 };
 
-export const readAppliedPlansFromUserData = async (userDataRoot: string): Promise<AppsListEntry[]> => {
+export const readAppliedPlansFromUserData = async (
+  userDataRoot: string,
+  reportIssue?: (issue: ReturnType<typeof appliedStateVersionError>) => void,
+): Promise<AppsListEntry[]> => {
   const paths = makeLandoPaths({ userDataRoot });
   const apps: AppsListEntry[] = [];
+  const reportNewer: ReportNewerRecord = (providerId, path, storedVersion) => {
+    reportIssue?.(
+      appliedStateVersionError({
+        providerId,
+        operation: "applied-state.list",
+        path,
+        storedVersion,
+        supportedVersion: APPLIED_STATE_VERSION,
+        scope: basename(path) === APPLIED_PLANS_RECORD ? "provider" : "app",
+      }),
+    );
+  };
   // Plugin applied-plans are authoritative; leftover providers/*/apps is fallback only.
   for (const pluginRoot of await listPluginStateRoots(paths.pluginsDir)) {
     const providerId = providerIdFromPluginRoot(pluginRoot);
-    apps.push(...(await readJsonPlanFiles(join(pluginRoot, APPLIED_PLANS_NAMESPACE), providerId)));
-    apps.push(...(await readJsonPlanRecord(join(pluginRoot, APPLIED_PLANS_RECORD), providerId)));
+    apps.push(
+      ...(await readJsonPlanFiles(join(pluginRoot, APPLIED_PLANS_NAMESPACE), providerId, reportNewer)),
+    );
+    apps.push(...(await readJsonPlanRecord(join(pluginRoot, APPLIED_PLANS_RECORD), providerId, reportNewer)));
   }
   for (const providerName of LEGACY_PROVIDER_DIRS) {
     apps.push(
       ...(await readJsonPlanFiles(
         join(userDataRoot, "providers", providerName, "apps"),
         providerName.replace(/^provider-/u, ""),
+        reportNewer,
       )),
     );
   }

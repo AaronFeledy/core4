@@ -107,7 +107,6 @@ import { Effect, Layer, Schema, Stream } from "effect";
 import { AGENT_RELAY_IMAGE, makeDockerDesktopAgentSocketBridge } from "./agent-socket-relay.ts";
 import {
   listAppliedPlans,
-  listObservedPlans,
   loadAppliedPlanStrict,
   persistAppliedPlan,
   removeAppliedPlan,
@@ -124,7 +123,7 @@ export {
   appliedPlanPath,
   appliedPlansDir,
   listAppliedPlans,
-  loadAppliedPlan,
+  loadAppliedPlanStrict,
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
@@ -562,11 +561,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       remove: removeAppliedPlan,
     });
     const { appliedPlans } = planState;
-    const resolvePlan = (target: {
-      readonly app: AppId;
-      readonly plan?: AppPlan;
-    }): Effect.Effect<AppPlan | undefined, never> =>
-      target.plan === undefined ? appliedPlans.resolvePlan(target.app) : Effect.succeed(target.plan);
+    const resolvePlan = (target: { readonly app: AppId; readonly plan?: AppPlan }) =>
+      appliedPlans.resolvePlan(target.app).pipe(Effect.map((recorded) => target.plan ?? recorded));
 
     const resolvedOps = bindResolvedProviderOps(planState, {
       ctx: DOCKER_CTX,
@@ -631,7 +627,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       appliedPlans:
         options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
           ? Effect.succeed([])
-          : listObservedPlans(options.appliedPlanState, options.appliedPlanStateDir),
+          : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
+              Effect.map(({ plans }) => plans),
+            ),
       planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
         Effect.succeed({ providerId: ProviderId.make(PROVIDER_ID), changes: [] }),
       ),
@@ -900,10 +898,6 @@ export const plugin = definePlugin({
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
         readAppliedPlanStrict: (ctx, appId) => loadAppliedPlanStrict(ctx.stateStore, appId),
-        appliedPlans: (ctx) =>
-          Effect.flatMap(PathsService, (paths) =>
-            listObservedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
-          ),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
           const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan, eventService } =
             yield* providerHostInputs;

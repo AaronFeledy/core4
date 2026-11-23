@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { RedactionService } from "@lando/redaction/service";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, appliedStateVersionError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type AppPlan,
@@ -87,6 +87,30 @@ const withProvider =
         }),
       ),
     );
+
+test("reports unknown SSH attribution with upgrade advice for newer global state", async () => {
+  const protection = appliedStateVersionError({
+    providerId: applied.provider,
+    appId: applied.id,
+    operation: "applied-state.read",
+    path: "/state/global.json",
+    storedVersion: 12,
+    supportedVersion: 11,
+    scope: "app",
+  });
+  const result = await Effect.runPromise(
+    runtimeSshAgentCheck.pipe(
+      Effect.provideService(GlobalAppService, globalApp),
+      Effect.provideService(PathsService, testPaths()),
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({ resolveAppliedPlan: () => Effect.fail(protection) }),
+      ),
+    ),
+  );
+  expect(result.state).toBe("unknown");
+  expect(result.detail).toContain(protection.remediation);
+});
 
 test("builds a read-only passthrough bind when the socket uses a host directory", () => {
   // Given

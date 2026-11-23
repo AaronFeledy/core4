@@ -50,7 +50,12 @@ export type SqlCommandDeps = SqlMover &
     readonly environmentResolver: EnvironmentValueResolver["Service"];
     readonly providerId: string;
     readonly waitForReady: (service: string) => Effect.Effect<void, unknown>;
-    readonly appliedPlans?: RuntimeProvider["Service"]["appliedPlans"];
+    readonly findAppliedSource?: (
+      selector: { readonly id: string } | { readonly root: AbsolutePath },
+    ) => Effect.Effect<
+      import("@lando/sdk/schema").AppPlan | undefined,
+      import("@lando/sdk/services").ProviderError | import("@lando/sdk/errors").NoProviderInstalledError
+    >;
     readonly inspectSource: RuntimeProvider["Service"]["inspect"];
     readonly canonicalizeSourcePath: (
       path: string,

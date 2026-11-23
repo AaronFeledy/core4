@@ -46,5 +46,5 @@ export const canonicalAppRoot = Effect.fnUntraced(function* (root: string) {
       );
 });
 
-export const appRootIdentityKey = (app: AppRef, canonicalRoot: string) =>
+export const appRootIdentityKey = (app: Pick<AppRef, "kind">, canonicalRoot: string) =>
   JSON.stringify([app.kind, canonicalRoot]);

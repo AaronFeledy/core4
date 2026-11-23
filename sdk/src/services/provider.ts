@@ -431,8 +431,11 @@ export class RuntimeProviderRegistry extends Context.Service<
      */
     readonly appliedPlansFor: (
       root: AbsolutePath,
-      providerId?: ProviderId,
-    ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
+      options?: { readonly providerId?: ProviderId; readonly observe?: true },
+    ) => Effect.Effect<
+      ReadonlyArray<AppPlan>,
+      ProviderUnavailableError | AppliedStateVersionError | NoProviderInstalledError
+    >;
     /** Strict host-wide inventory for one provider, preserving unreadable ownership records.
      * Filesystem-only: never constructs, initializes, or contacts a runtime. */
     readonly appliedStateInventory: (
