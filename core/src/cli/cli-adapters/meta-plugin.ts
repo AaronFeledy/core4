@@ -1,4 +1,5 @@
 import { bundledPluginModules } from "@lando/engine/composition";
+import { makePrepareUninstallCleanup, providerPurgeHooks } from "@lando/engine/install/uninstall-discovery";
 import { uninstall } from "@lando/engine/operations/uninstall";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeHostMaintenanceRegistryLayer } from "@lando/engine/runtime/host-maintenance";
@@ -38,12 +39,16 @@ export const runMetaUninstall = async (
 ): Promise<void> => {
   if (await rejectInvalidInvocation("meta:uninstall", tokens.argv, context)) return;
   const input = compiledCommandInputFromArgv("meta:uninstall", tokens.argv, { tokens, context });
+  const modules = bundledPluginModules();
+  const prepare = makePrepareUninstallCleanup(providerPurgeHooks(modules), undefined, undefined, {
+    hostEnv: context.env,
+  });
   return runCompiledCommand(
-    uninstall(uninstallOptionsFromInput(input)),
+    uninstall(uninstallOptionsFromInput(input, prepare)),
     Layer.mergeAll(
       PrivateFileAccessService.layer,
       HostPrivilegeService.layer,
-      makeHostMaintenanceRegistryLayer(bundledPluginModules()),
+      makeHostMaintenanceRegistryLayer(modules),
     ),
     (value, renderContext) => renderUninstallResult(value, renderContext, context.setExitCode),
     { context, ...(signal === undefined ? {} : { signal }) },

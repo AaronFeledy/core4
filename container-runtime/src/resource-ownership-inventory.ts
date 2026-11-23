@@ -79,6 +79,7 @@ export const AdoptionBatch = Schema.Struct({
 });
 export type AdoptionBatch = typeof AdoptionBatch.Type;
 
+export const RESOURCE_OWNERSHIP_NAMESPACE = "resource-ownership";
 export const RESOURCE_OWNERSHIP_VERSION = 3;
 export const ResourceOwnershipInventory = Schema.Struct({
   ...ResourceOwnership.fields,

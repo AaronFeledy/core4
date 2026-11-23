@@ -82,8 +82,13 @@ export const assertUninstallSyncSafe = async (input: {
   readonly userDataRoot: string;
   readonly runtimes: readonly UninstallRuntime[];
   readonly exec: RuntimeExec;
+  readonly hostSyncPresent?: boolean;
 }): Promise<void> => {
   await assertPersistedSyncSafe(input.userDataRoot);
+  if (input.hostSyncPresent)
+    throw uninstallCleanupFailure(
+      "Accelerated sync helper or volume exists for this data root. Run lando stop to flush, then lando destroy --volumes before purging.",
+    );
   for (const runtime of input.runtimes) {
     const run = (args: readonly string[]) => runUninstallRuntime(input.exec, runtime, { args });
     try {
@@ -95,23 +100,21 @@ export const assertUninstallSyncSafe = async (input: {
         throw uninstallCleanupFailure(
           "accelerated sync helper or volume exists; run lando stop to flush, then lando destroy --volumes before purging",
         );
-      if (runtime.managed) {
-        const [allContainers, allVolumes] = await Promise.all([
-          run(["ps", "-a", "--format", "{{.Names}}"]),
-          run(["volume", "ls", "--format", "{{.Name}}"]),
-        ]);
-        if (
-          allContainers.stdout
-            .split(/\r?\n/u)
-            .some((name) => /^lando-sync-.+-[a-f0-9]{16}$/u.test(name.trim())) ||
-          allVolumes.stdout
-            .split(/\r?\n/u)
-            .some((name) => /-(?:app-mount|mount-(?:[0-9a-f]{8}|[0-9]+))$/u.test(name.trim()))
-        )
-          throw uninstallCleanupFailure(
-            "possible unlabeled Lando sync helper or volume exists; inspect its data before purging",
-          );
-      }
+      const [allContainers, allVolumes] = await Promise.all([
+        run(["ps", "-a", "--format", "{{.Names}}"]),
+        run(["volume", "ls", "--format", "{{.Name}}"]),
+      ]);
+      if (
+        allContainers.stdout
+          .split(/\r?\n/u)
+          .some((name) => /^lando-sync-.+-[a-f0-9]{16}$/u.test(name.trim())) ||
+        allVolumes.stdout
+          .split(/\r?\n/u)
+          .some((name) => /-(?:app-mount|mount-(?:[0-9a-f]{8}|[0-9]+))$/u.test(name.trim()))
+      )
+        throw uninstallCleanupFailure(
+          "possible unlabeled Lando sync helper or volume exists; inspect its data before purging",
+        );
     } catch (cause) {
       throw uninstallCleanupFailure(
         `Cannot safely purge ${runtime.cmd}: ${cause instanceof Error ? cause.message : String(cause)}. Managed runtime, volumes, and state were preserved.`,

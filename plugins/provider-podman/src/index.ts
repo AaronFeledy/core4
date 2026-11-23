@@ -18,6 +18,7 @@ import {
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
+import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
@@ -1088,6 +1089,22 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        purge: Effect.fn("Podman.preflightPurge")(function* (input) {
+          const endpoint = resolvePodmanSocket(input);
+          const unsupported = unsupportedSocket(input.platform, endpoint);
+          if (unsupported)
+            return {
+              kind: "skipped" as const,
+              endpoint: "Podman socket",
+              reason: "Unsupported socket transport",
+            };
+          const ctx = podmanContextForEnv(input.env);
+          return yield* preflightDataRootPurge(makeRuntimePodmanApiClient(endpoint, ctx), ctx, {
+            ...input,
+            endpoint,
+            pluginId: PLUGIN_NAME,
+          });
+        }),
         declaredCapabilities: (platform, arch) =>
           podmanCapabilitiesForPlatform(platform, hostProxyContainerTargets(arch)),
         resourceOwnership: (ctx, root) =>
