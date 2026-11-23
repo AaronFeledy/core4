@@ -47,8 +47,8 @@ export const serviceUrlFailureText = (
   read: { readonly service: string; readonly fact: PublicRouteFact },
   event?: string,
 ): { readonly message: string; readonly suggestion: string } => {
-  const { service } = read;
-  const expression = `services.${service}.${read.fact}`;
+  const { service, fact } = read;
+  const expression = `services.${service}.${fact}`;
   switch (reason) {
     case "event-phase":
       return {

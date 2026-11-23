@@ -32,22 +32,17 @@ export const refuseRetainedRouteConsumers = Effect.fn("Activation.refuseRetained
     for (const { consumer, service, facts } of input.retained) {
       const previous = recordedRouteFacts(consumer, service);
       const next = input.proof?.facts.get(service);
-      if (previous === undefined) {
-        target ??= service;
-        affected.add(consumer.name);
-        reasons.push(
-          `Lando has no record of the route ${consumer.name} was started with for services.${service}.`,
-        );
-        continue;
-      }
-      const changed = changedRouteFacts(facts, previous, next);
-      if (changed.length === 0) continue;
+      const found =
+        previous === undefined
+          ? [`Lando has no record of the route ${consumer.name} was started with for services.${service}.`]
+          : changedRouteFacts(facts, previous, next).map(
+              (fact) =>
+                `${consumer.name} uses ${previous[fact]} for services.${service}.${fact}, but this ${input.operation} publishes ${next?.[fact] ?? "no value"}.`,
+            );
+      if (found.length === 0) continue;
       target ??= service;
       affected.add(consumer.name);
-      for (const fact of changed)
-        reasons.push(
-          `${consumer.name} uses ${previous[fact]} for services.${service}.${fact}, but this ${input.operation} publishes ${next?.[fact] ?? "no value"}.`,
-        );
+      reasons.push(...found);
     }
     if (target !== undefined) {
       const consumers = [...affected];

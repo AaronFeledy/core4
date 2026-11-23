@@ -129,7 +129,6 @@ export const lowerRouteUrls = (
         else {
           const facts = proof.facts.get(part.service);
           if (facts === undefined) return Result.fail(unsupported(part.service));
-          // The part names its fact; encoding applies to that fact's text.
           const text = facts[routeUrlPartFact(part)];
           parts.push(part.encoding === "raw" ? text : encodeUriComponent(text));
         }

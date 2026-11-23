@@ -165,11 +165,10 @@ export const readsServiceUrl = (ast: ExpressionTemplate | ExpressionNode): boole
 
 /**
  * Whether an authored value path may read `{{ services.<name>.url }}` (or its `hostname` or
- * `origin`) at invocation: tooling
- * commands, `cmds` steps, env values, and vars (literal, `sh`, and var `env`), `toolingDefaults`
- * env and literal vars, and Landofile event step `cmd`, `defer`, `env`, and `if`. A v1 `hostEvents`
- * step has only a command, so only its string form or `cmd` may. Placement fields, selectors, Lando
- * command inputs, task ids, and include fields never may.
+ * `origin`) at invocation: tooling commands, `cmds` steps, env values, and vars (literal, `sh`, and
+ * var `env`), `toolingDefaults` env and literal vars, and Landofile event step `cmd`, `defer`,
+ * `env`, and `if`. A v1 `hostEvents` step has only a command, so only its string form or `cmd` may.
+ * Placement fields, selectors, Lando command inputs, task ids, and include fields never may.
  */
 export const isServiceUrlInvocationPath = (path: readonly (string | number)[]): boolean => {
   const [root, name, field, index, leaf, extra] = path;

@@ -21,8 +21,9 @@ export const routeFactDriftWarnings = (
   Object.values(applied.services).flatMap((consumer) =>
     [...boundRouteFacts(consumer)].flatMap(([target, bound]) => {
       const now = Object.hasOwn(current, target) ? current[target] : undefined;
-      const recorded = now === undefined ? undefined : recordedRouteFacts(consumer, target);
-      if (now === undefined || recorded === undefined) return [];
+      if (now === undefined) return [];
+      const recorded = recordedRouteFacts(consumer, target);
+      if (recorded === undefined) return [];
       const changed = changedRouteFacts(bound, recorded, now);
       if (changed.length === 0) return [];
       const reads = changed.map((fact) => `services.${target}.${fact}`);

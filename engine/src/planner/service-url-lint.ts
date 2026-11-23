@@ -13,15 +13,15 @@ export type ServiceUrlLintFacts =
 
 /**
  * Lint findings for `{{ services.<name>.url }}`, `.hostname`, and `.origin` reads at tooling and
- * Landofile event sites, judged
- * against the desired configuration only: an unknown service, routing disabled, a service with no
- * route that has a concrete hostname, and a lifecycle step that runs while no route is served. A
- * service without authored routes gets a generated default route only when it has an HTTP
- * listener, so one without is reported. Findings that depend on a service lint could not resolve
- * are left out. Each finding is a deterministic authoring error except `routing-disabled`, a
- * warning because disabling routing is a deliberate opt-out. Planning accepts all of them: they
- * are refused only when the command runs. Global `hostEvents` are not linted here: `app:config:lint` reports no host-step
- * findings for them, and their URL reads are refused when they run.
+ * Landofile event sites, judged against the desired configuration only: an unknown service,
+ * routing disabled, a service with no route that has a concrete hostname, and a lifecycle step
+ * that runs while no route is served. A service without authored routes gets a generated default
+ * route only when it has an HTTP listener, so one without is reported. Findings that depend on a
+ * service lint could not resolve are left out. Each finding is a deterministic authoring error
+ * except `routing-disabled`, a warning because disabling routing is a deliberate opt-out. Planning
+ * accepts all of them: they are refused only when the command runs. Global `hostEvents` are not
+ * linted here: `app:config:lint` reports no host-step findings for them, and their URL reads are
+ * refused when they run.
  */
 export const serviceUrlLintIssues = (input: {
   readonly sites: readonly ParsedPendingSite[];
