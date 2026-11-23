@@ -95,7 +95,13 @@ test.each(["running", "exited"] as const)(
       f.setLegacyBridge();
       const sibling = f.runtimes.get("sibling");
       if (sibling === undefined) throw new Error("Missing sibling");
-      const { status: _status, health: _health, exitCode: _exitCode, ...identity } = sibling;
+      const {
+        status: _status,
+        health: _health,
+        healthCheckedAt: _healthCheckedAt,
+        exitCode: _exitCode,
+        ...identity
+      } = sibling;
       f.runtimes.set("sibling", { ...identity, status });
       const result = await f.ensure(["app"]);
       expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(
@@ -531,7 +537,13 @@ for (const change of [
         if (runtime === undefined) throw new Error("expected dependency");
         if (change === "identity") f.runtimes.set("dependency", { ...runtime, containerId: "replacement" });
         else {
-          const { health: _health, exitCode: _exitCode, status: _status, ...fields } = runtime;
+          const {
+            health: _health,
+            healthCheckedAt: _healthCheckedAt,
+            exitCode: _exitCode,
+            status: _status,
+            ...fields
+          } = runtime;
           f.runtimes.set("dependency", { ...fields, status: "exited" });
         }
       }
@@ -542,21 +554,24 @@ for (const change of [
 }
 
 test.each([
-  ["none", 1],
-  ["lando", 2],
+  ["none", "starting", 1],
+  ["none", "unhealthy", 1],
+  ["lando", "starting", 2],
+  ["native", "starting", 2],
+  ["native", "unhealthy", 2],
 ] as const)(
-  "a starting service stays warm only when nothing schedules native health (serviceHealth %s)",
-  async (serviceHealth, applies) => {
+  "native health forces the cold path only when something schedules it (serviceHealth %s, health %s)",
+  async (serviceHealth, health, applies) => {
     await withFixture(async (f) => {
       // Given a provider whose native health is scheduled, or not, and a warm record
       f.setCapabilities({ ...TestRuntimeProvider.capabilities, serviceHealth });
       await f.ensure();
       const runtime = f.runtimes.get("dependency");
       if (runtime?.status !== "running") throw new Error("expected a running dependency");
-      // When the engine still reports `starting`
-      f.runtimes.set("dependency", { ...runtime, health: "starting" });
+      // When the engine reports a not-yet-healthy state
+      f.runtimes.set("dependency", { ...runtime, health });
       await f.ensure();
-      // Then an unscheduled check never forces the cold path
+      // Then health nothing schedules never forces the cold path
       expect(f.calls.apply).toBe(applies);
     });
   },

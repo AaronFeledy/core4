@@ -72,10 +72,15 @@ export const projectServiceObservation = (
 ): Pick<ServiceInfo, "status" | "health" | "readiness"> => {
   const { runtime } = observed;
   const readiness = effectiveReadiness(service);
+  const healthState = nativeHealthState(service, runtime.health, serviceHealth);
+  const observedVerdict = healthState !== "unknown" && healthState !== "not-monitored";
   return {
     status: serviceStateOf(runtime, observed.state === "completed"),
     health: {
-      state: nativeHealthState(service, runtime.health, serviceHealth),
+      state: healthState,
+      ...(observedVerdict && runtime.healthCheckedAt !== undefined
+        ? { checkedAt: runtime.healthCheckedAt }
+        : {}),
       ...(service.healthcheck === undefined
         ? {}
         : { check: describeProbe(service.healthcheck, service, "healthcheck") }),
