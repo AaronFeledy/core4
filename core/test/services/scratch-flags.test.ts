@@ -8,6 +8,7 @@ import {
   type ProviderCapabilities,
   ProviderId,
   type ServicePlan,
+  landoSharedCrossAppNetworkName,
   landoSharedNetworkName,
   serviceAppMount,
 } from "@lando/core/schema";
@@ -110,7 +111,7 @@ const forkLandofile = [
 
 const withScratchEnv = async <T>(
   landofile: string | undefined,
-  run: (dir: string) => Promise<T>,
+  run: (dir: string, dataRoot: string) => Promise<T>,
 ): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-flags-cwd-")));
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-flags-cache-")));
@@ -126,7 +127,7 @@ const withScratchEnv = async <T>(
     process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
     process.env.LANDO_USER_DATA_ROOT = dataRoot;
     process.env.LANDO_USER_CONF_ROOT = confRoot;
-    return await run(dir);
+    return await run(dir, dataRoot);
   } finally {
     process.chdir(previousCwd);
     if (previousCacheRoot === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
@@ -402,7 +403,7 @@ describe("ScratchAppServiceLayer.layer --share-global-storage transform", () => 
       "    primary: true",
       "    primary: true\n    networks:\n      peer:\n        aliases: [api]\n      default:\n        aliases: [www]",
     );
-    await withScratchEnv(withNetworks, async () => {
+    await withScratchEnv(withNetworks, async (_dir, dataRoot) => {
       const appliedPlans: AppPlan[] = [];
       await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) =>
@@ -421,17 +422,17 @@ describe("ScratchAppServiceLayer.layer --share-global-storage transform", () => 
         },
       ]);
       expect(networking?.perAppBridge?.aliases).toMatchObject({ appserver: ["www"] });
-      expect(networking?.sharedNetworkMembership?.name).toBe("lando_bridge_network");
+      expect(networking?.sharedNetworkMembership?.name).toBe(landoSharedCrossAppNetworkName(dataRoot));
     });
   });
   test("joins the shared cross-app network and stamps the share marker", async () => {
-    await withScratchEnv(undefined, async () => {
+    await withScratchEnv(undefined, async (_dir, dataRoot) => {
       const appliedPlans: AppPlan[] = [];
       await Effect.runPromise(acquireRecipe(appliedPlans, { shareGlobalStorage: true }));
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch acquire did not apply a plan");
       expect(appliedPlan.networking?.sharedNetworkMembership).toBeDefined();
-      expect(landoSharedNetworkName(appliedPlan)).toBe("lando_bridge_network");
+      expect(landoSharedNetworkName(appliedPlan)).toBe(landoSharedCrossAppNetworkName(dataRoot));
       const marker = scratchMarker(appliedPlan);
       expect(marker.shareGlobalStorage).toBe(true);
       expect(marker.id).toBe(appliedPlan.id);
