@@ -17,7 +17,6 @@ export * as AppPlannerLayer from "@lando/engine/services/planner";
 export {
   AppPlanner,
   applyAuthoredHealthcheck,
-  mergeDefaultExcludes,
   validateAuthoredAppMount,
 } from "@lando/engine/services/planner";
 export * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";

@@ -46,6 +46,7 @@ export const observeInfoAppliedState = Effect.fnUntraced(function* (plan: AppPla
           remediation: failure.remediation,
           storedVersion: failure.storedVersion,
           supportedVersion: failure.supportedVersion,
+          ...(failure.writtenBy === undefined ? {} : { writtenBy: failure.writtenBy }),
         } satisfies InfoAppliedStateIssue,
       };
     case "ProviderUnavailableError":

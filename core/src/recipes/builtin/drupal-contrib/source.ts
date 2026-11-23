@@ -21,7 +21,6 @@ const { webroot: _siteWebroot, ...contribStackOptions } = drupalOptions;
 const contribSiteVolume = `site:${contribDir}`;
 const contribAppMount = {
   target: contribMountTarget("{{ recipe.type }}", "{{ recipe.project }}"),
-  includes: ["vendor", "node_modules", "tmp"],
 };
 
 const contribAppserver = {

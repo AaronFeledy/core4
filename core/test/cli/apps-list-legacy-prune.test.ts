@@ -11,7 +11,7 @@ import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer, Result, Schema } from "effect";
-import { listServicesWithPrune } from "../../src/cli/commands/list.ts";
+import { AppsListResultSchema, listServicesWithPrune } from "../../src/cli/commands/list.ts";
 import { readAppliedPlansFromUserData } from "../../src/cli/commands/list-discovery.ts";
 import { pruneAppliedPlanState } from "../../src/cli/commands/list-prune-state.ts";
 
@@ -400,7 +400,6 @@ test("podman prune protects a future-version map without deleting it", async () 
     supportedVersion: APPLIED_STATE_VERSION,
     providerId: "podman",
   });
-  expect(result.success.failure.remediation).toMatch(/newer Lando|upgrade Lando/i);
   expect(result.success.failure.remediation).not.toMatch(/move it aside|destroy/i);
   expect(await readFile(record, "utf8")).toBe(payload);
 });
@@ -473,7 +472,8 @@ test.each(["lando", "docker"])(
     await rm(f.legacyPath);
     const modern = join(f.paths.pluginStateDir(`@lando/provider-${provider}`), "applied-plans", "alpha.json");
     await mkdir(join(modern, ".."), { recursive: true });
-    const payload = JSON.stringify({ version: APPLIED_STATE_VERSION + 1, data: f.plan });
+    const writtenBy = "4.15.0";
+    const payload = JSON.stringify({ version: APPLIED_STATE_VERSION + 1, writtenBy, data: f.plan });
     await writeFile(modern, payload);
 
     // When
@@ -483,17 +483,18 @@ test.each(["lando", "docker"])(
     expect(result.apps).toEqual([]);
     expect(result.pruned).toEqual([]);
     expect(result.pruneFailures).toBeUndefined();
-    expect(result.appliedStateIssues).toEqual([
+    const wire = Schema.encodeSync(AppsListResultSchema)(result);
+    expect(wire.appliedStateIssues).toEqual([
       expect.objectContaining({
         reason: "newer-version",
         providerId: provider,
         path: modern,
+        writtenBy,
         storedVersion: APPLIED_STATE_VERSION + 1,
         supportedVersion: APPLIED_STATE_VERSION,
       }),
     ]);
     const failure = result.appliedStateIssues?.[0];
-    expect(failure?.remediation).toMatch(/newer Lando|upgrade Lando/i);
     expect(failure?.remediation).not.toMatch(/move it aside|destroy/i);
     expect(await readFile(modern, "utf8")).toBe(payload);
   },

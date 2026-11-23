@@ -471,7 +471,6 @@ describe("provider-lando applied state persistence", () => {
         storedVersion: 99,
         supportedVersion: APPLIED_STATE_VERSION,
       });
-      expect(failure.remediation).toContain("upgrade Lando");
       expect(failure.remediation).not.toContain("move it aside");
       expect(await readFile(path, "utf8")).toBe(bytes);
     });

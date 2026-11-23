@@ -92,7 +92,9 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
   const discovered = discovery.success;
   const { appRoot, filePath } = discovered;
   const resolved = yield* Effect.result(
-    loadLandofileLayers(appRoot, filePath).pipe(Effect.provide(StateStoreLayer.layer)),
+    loadLandofileLayers(appRoot, filePath).pipe(
+      Effect.provide(StateStoreLayer.layerWith({ writer: CORE_VERSION })),
+    ),
   );
   if (Result.isFailure(resolved)) {
     if (resolved.failure._tag === "LandofileLoadError") {

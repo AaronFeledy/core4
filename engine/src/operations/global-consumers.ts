@@ -11,6 +11,7 @@ import { Effect, Schema } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
 import { observeRuntime, workloadsProvablyStopped } from "../providers/runtime-observation.ts";
 import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
+import { CORE_VERSION } from "../version.ts";
 
 export const GlobalConsumerSchema = Schema.Struct({
   id: Schema.String,
@@ -187,6 +188,8 @@ export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")
               path: issue.path,
               storedVersion: issue.storedVersion,
               supportedVersion: issue.supportedVersion,
+              reader: CORE_VERSION,
+              ...(issue.writtenBy === undefined ? {} : { writtenBy: issue.writtenBy }),
               ...(issue.appId === undefined ? {} : { appId: issue.appId }),
               providerId,
               operation: "applied-state.list",

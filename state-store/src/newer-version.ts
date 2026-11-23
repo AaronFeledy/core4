@@ -1,15 +1,20 @@
-import { StateStoreError } from "@lando/sdk/errors";
+import { StateStoreError, newerStateRemediation } from "@lando/sdk/errors";
 
-export const newerStateVersionError = (input: {
+export const newerStateVersionError = ({
+  reader,
+  ...input
+}: {
   readonly operation: string;
   readonly path: string;
   readonly storedVersion: number;
   readonly supportedVersion: number;
+  readonly writtenBy?: string;
+  readonly reader?: string | undefined;
 }): StateStoreError =>
   new StateStoreError({
     ...input,
     reason: "newer-version",
-    remediation: `A newer Lando wrote ${input.path} (envelope version ${input.storedVersion}; this Lando supports ${input.supportedVersion}). Run the newer Lando that wrote it or upgrade Lando. Leave the file in place: replacing or deleting it would discard state the newer Lando depends on.`,
+    remediation: newerStateRemediation({ ...input, reader }),
   });
 
 export type NewerVersionStoreError = StateStoreError & {

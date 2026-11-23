@@ -65,6 +65,7 @@ const DEFAULT_SECTIONS = [
   "global-app",
   "mcp",
   "accelerated-starts",
+  "state-compatibility",
   "missing-app-roots",
   "orphaned-volume-snapshots",
   "legacy-snapshot-catalogs",

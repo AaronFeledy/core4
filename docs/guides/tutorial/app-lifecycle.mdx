@@ -236,7 +236,7 @@ These are facts the runtime reported, not a verdict. Exit `0` does not prove you
 
 ## Keep data across stop, restart, and destroy
 
-Database data stores, persistent homes, `node_modules` and `vendor` shadows, and caches use named volumes. The app lifecycle commands retain that storage unless you request its removal with `--volumes`, `--purge`, or `--purge-caches`. Bind mounts keep their files on the host instead.
+Database data stores, persistent homes, excluded directories such as `node_modules`, and caches use named volumes. The app lifecycle commands retain that storage unless you request its removal with `--volumes`, `--purge`, or `--purge-caches`. Bind mounts keep their files on the host instead.
 
 Images Lando built stay around too. `lando destroy` keeps the newest one for each service for up to seven days, so the next `lando start` reuses it without building. `--purge-caches` removes those images right away.
 

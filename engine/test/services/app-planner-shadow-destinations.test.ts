@@ -22,7 +22,9 @@ const planAppMount = async (appMount: { readonly includes: string[]; readonly ex
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "shadowapp",
       runtime: 4,
-      services: { web: { type: "node:22", home: false, appMount: { target: "/app", ...appMount } } },
+      services: {
+        web: { type: "compose", image: "alpine", home: false, appMount: { target: "/app", ...appMount } },
+      },
     });
     const planner = AppPlannerLayer.layer.pipe(
       Layer.provide(
@@ -48,10 +50,10 @@ test.each([
   ["vendor/", "./vendor"],
   ["vendor/", "vendor/"],
 ])("plans one canonical shadow for equivalent authored excludes %j", async (first, second) => {
-  // Given authored spellings of the default vendor exclude, with the other defaults included instead.
+  // Given equivalent authored spellings of one vendor exclude.
   // When the production planner assembles the app.
   const appPlan = await planAppMount({
-    includes: ["node_modules", ".git", "tmp"],
+    includes: [],
     excludes: [first, second],
   });
 
@@ -69,7 +71,7 @@ test("an include cancels every spelling of the exclude it names", async () => {
   // Given an include and an exclude that name the same directory differently.
   // When the production planner assembles the app.
   const appPlan = await planAppMount({
-    includes: ["node_modules", ".git", "tmp", "./vendor/"],
+    includes: ["./vendor/"],
     excludes: ["vendor/"],
   });
 
@@ -148,7 +150,8 @@ test.each(["gitfile", "directory", "file", "directory-link", "file-link", "file-
         runtime: 4,
         services: {
           web: {
-            type: "node:22",
+            type: "compose",
+            image: "alpine",
             home: false,
             appMount: {
               target: "/app",
@@ -200,8 +203,13 @@ test.each(["gitfile", "directory", "file", "directory-link", "file-link", "file-
         web?.mounts.some((mount) => mount.type === "bind" && mount.source === "/elsewhere/.git/worktrees/x"),
       ).toBe(false);
       expect(
-        web?.mounts.some((mount) => mount.type === "volume" && String(mount.target) === "/app/node_modules"),
-      ).toBe(true);
+        web?.mounts.some(
+          (mount) =>
+            mount.type === "volume" &&
+            String(mount.target) !== `/app/${effectiveExclude}` &&
+            String(mount.target).startsWith("/app/"),
+        ),
+      ).toBe(false);
       expect(plan.fileSync.some(({ session }) => session.excludes.includes(effectiveExclude))).toBe(true);
     } finally {
       await rm(appRoot, { recursive: true, force: true });
@@ -220,7 +228,7 @@ test("invalidates cached Git mounts when .git changes between directory and gitf
       Schema.decodeUnknownSync(LandofileShape)({
         name: "shadowapp",
         runtime: 4,
-        services: { web: { type: "node:22", home: false } },
+        services: { web: { type: "compose", image: "alpine", home: false } },
       }),
       appRoot,
     );

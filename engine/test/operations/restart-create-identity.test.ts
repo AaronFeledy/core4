@@ -51,6 +51,7 @@ const runRestart = (
   let running = options.initiallyStopped !== true;
   let exists = options.missingContainer !== true;
   let containerId = "retained-container";
+  const anonymousVolumeName = "a".repeat(64);
   let labels = options.missingContainer === true ? {} : commonContainerLabels(applied, realized);
   const privateNetworkName = landoAppNetworkName(applied);
   const sharedNetworkName = landoSharedNetworkName(applied);
@@ -79,6 +80,8 @@ const runRestart = (
           throw new Error(`Unexpected network request: ${request.method} ${request.path}`);
         if (request.method === "GET" && request.path.startsWith("/containers/json"))
           return { status: 200, body: "[]" };
+        if (request.method === "GET" && request.path === `/volumes/${anonymousVolumeName}`)
+          return { status: 200, body: JSON.stringify({ Name: anonymousVolumeName, Labels: null }) };
         if (request.method === "GET" && request.path.endsWith("/json")) {
           return exists
             ? {
@@ -90,7 +93,7 @@ const runRestart = (
                   Mounts: [
                     {
                       Type: "volume",
-                      Name: "retained-anonymous-data",
+                      Name: anonymousVolumeName,
                       Destination: "/var/lib/postgresql/data",
                     },
                   ],

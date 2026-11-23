@@ -92,7 +92,7 @@ describe("node:lts ServiceType", () => {
     expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
     expect(String(serviceAppMount(plan)?.target)).toBe("/app");
     expect(serviceAppMount(plan)?.readOnly).toBe(false);
-    expect(serviceAppMount(plan)?.excludes).toEqual([]);
+    expect(serviceAppMount(plan)?.excludes).toEqual(["node_modules"]);
     expect(serviceAppMount(plan)?.includes).toEqual([]);
     expect(serviceAppMount(plan)?.realization).toBe("passthrough");
     expect(
@@ -263,6 +263,7 @@ describe("node:22 ServiceType", () => {
 
     expect(plan.type).toBe("node:22");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "node:22-alpine" });
+    expect(serviceAppMount(plan)?.excludes).toEqual(["node_modules"]);
     expect(plan.command).toBe("npm run dev");
     expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
     expect(plan.endpoints).toEqual([

@@ -339,7 +339,6 @@ test.each(["app", "provider"] as const)(
       await expect(runDestroy(f)).rejects.toMatchObject({
         _tag: "ScratchAppError",
         cause: { _tag: "AppliedStateVersionError", storedVersion: 11 },
-        remediation: expect.stringContaining("upgrade Lando"),
       });
       await access(f.instanceRoot);
       expect(f.entries.has(f.id)).toBe(true);

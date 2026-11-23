@@ -19,9 +19,9 @@ skip those hooks and install scripts. Then build the frontend with
 `lando npm install` and `lando npm run build`. `node_modules`
 stays in the `node` service's volume; `public/build` lands in the shared `/app`.
 
-When `worker` is true, both PHP services author
-`appMount: { target: "/app", includes: ["vendor"] }`, sharing host dependencies
-instead of creating separate vendor shadows. The default keeps its vendor shadow.
+`vendor` is project content in the app mount, so every PHP service that mounts
+the app shares it, including `worker` when that option is true. The recipe
+authors no `appMount` entries for it.
 The queue worker needs the application and dependencies first. Start warns about a
 `restarting` worker while they are missing. The engine retries the worker automatically
 and it starts on its own once installation finishes. Check `lando logs --service=worker`.
@@ -36,8 +36,8 @@ and it starts on its own once installation finishes. Check `lando logs --service
 - `cache`: `redis`.
 - `node`: `node:22`, `primary: false`, no `command`, so it idles until
   `lando npm` runs. It shares the app root at `/app` (sources, lockfiles,
-  `public/build`) with the PHP services; the planner's default excludes put its
-  `node_modules` in a service-private named volume.
+  `public/build`) with the PHP services; the Node service type excludes
+  `node_modules`, which puts it in a service-private named volume.
 - `worker`: additional `php:<version>` with `via: cli` running
   `php artisan queue:work` with `restart: unless-stopped` when prompt `worker` answers `true`.
 

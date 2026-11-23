@@ -49,7 +49,6 @@ import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts
 import { GlobalConfigSources } from "../../src/services/config.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
-import { DEFAULT_APP_MOUNT_EXCLUDES } from "../../src/services/planner.ts";
 import { HOST_INTERNAL_ALIAS, HOST_IP_ENV_KEY } from "../../src/subsystems/networking.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 import {
@@ -3227,7 +3226,13 @@ describe("AppPlannerLayer.layer", () => {
 
   test("marks slow provider app mounts as accelerated without a mirror bind", async () => {
     await withTempCwd(async () => {
-      const appPlan = await plan(landofileFixture, slowBindMountCapabilities);
+      const appPlan = await plan(
+        {
+          ...landofileFixture,
+          services: { [ServiceName.make("web")]: { type: "compose", image: "alpine", home: false } },
+        },
+        slowBindMountCapabilities,
+      );
       const web = appPlan.services[ServiceName.make("web")];
 
       expect(serviceAppMount(web ?? { mounts: [] })?.realization).toBe("accelerated");
@@ -3242,11 +3247,7 @@ describe("AppPlannerLayer.layer", () => {
           (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
         ),
       ).toEqual([]);
-      expect(web?.mounts.filter((mount) => mount.type === "volume").map((mount) => mount.target)).toEqual([
-        PortablePath.make("/app/node_modules"),
-        PortablePath.make("/app/tmp"),
-        PortablePath.make("/app/vendor"),
-      ]);
+      expect(web?.mounts.filter((mount) => mount.type === "volume")).toEqual([]);
     });
   });
 
@@ -3303,6 +3304,7 @@ describe("AppPlannerLayer.layer", () => {
       expect(appPlan.fileSync).toEqual([]);
       expect(serviceAppMount(appPlan.services[ServiceName.make("web")] ?? { mounts: [] })).toMatchObject({
         realization: "passthrough",
+        excludes: ["node_modules"],
       });
       expect(
         serviceAppMount(appPlan.services[ServiceName.make("web")] ?? { mounts: [] })?.mountKey,
@@ -3874,7 +3876,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("default overlay and sync-only excludes are merged separately", async () => {
+  test("an app mount without a type preset or authored excludes has none", async () => {
     await withTempCwd(async () => {
       const appPlan = await planWithCustomRegistry({
         name: "defapp",
@@ -3884,28 +3886,29 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
       const web = appPlan.services[ServiceName.make("web")];
-      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(DEFAULT_APP_MOUNT_EXCLUDES);
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual([]);
+      expect(
+        web?.mounts.some((mount) => mount.type === "volume" && String(mount.target).startsWith("/app/")),
+      ).toBe(false);
     });
   });
 
-  test("user-authored excludes extend defaults rather than replace them", async () => {
+  test("user-authored excludes are the only app-mount excludes without a type preset", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan({
         name: "extapp",
         runtime: 4,
         services: {
           [ServiceName.make("web")]: {
-            type: "node:lts",
+            type: "compose",
+            image: "alpine",
             home: false,
             appMount: { target: "/app", excludes: ["dist"] },
           },
         },
       });
       const web = appPlan.services[ServiceName.make("web")];
-      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual([
-        ...DEFAULT_APP_MOUNT_EXCLUDES,
-        "dist",
-      ]);
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(["dist"]);
     });
   });
 
@@ -3926,10 +3929,7 @@ describe("AppPlannerLayer.layer", () => {
         providerLandoCapabilities,
       );
       const web = appPlan.services[ServiceName.make("web")];
-      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(
-        expect.arrayContaining([...DEFAULT_APP_MOUNT_EXCLUDES, "__pycache__", ".venv", "dist"]),
-      );
-      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toContain("__pycache__");
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(["__pycache__", ".venv", "dist"]);
     });
   });
 
@@ -3953,11 +3953,7 @@ describe("AppPlannerLayer.layer", () => {
         providerLandoCapabilities,
       );
       const web = appPlan.services[ServiceName.make("web")];
-      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual([
-        ...DEFAULT_APP_MOUNT_EXCLUDES,
-        "__pycache__",
-        ".venv",
-      ]);
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(["__pycache__", ".venv"]);
       const venvStores = ["web", "worker"].map((name) => {
         const mount = appPlan.services[ServiceName.make(name)]?.mounts.find(
           (entry) => entry.type === "volume" && entry.target === "/app/.venv",
@@ -4042,32 +4038,33 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("FileSyncPlan session.excludes inherits defaults on slow providers", async () => {
+  test("FileSyncPlan session.excludes carries only fixed sync ignores without type presets", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(
         {
           name: "myapp",
           runtime: 4,
-          services: { [ServiceName.make("web")]: { image: "node:lts", home: false } },
+          services: {
+            [ServiceName.make("web")]: { type: "compose", image: "alpine", home: false },
+          },
         },
         slowBindMountCapabilities,
       );
       const webEntry = appPlan.fileSync.find((e) => String(e.session.service) === "web");
       expect(webEntry).toBeDefined();
-      expect(webEntry?.session.excludes).toEqual(
-        expect.arrayContaining(["node_modules", "vendor", ".git", "tmp"]),
-      );
+      expect(webEntry?.session.excludes).toEqual([".git"]);
     });
   });
 
   test("expands appMount.excludes into volume-shadow stores in AppPlan.stores", async () => {
     await withTempCwd(async () => {
-      const appPlan = await planWithCustomRegistry({
+      const appPlan = await plan({
         name: "shadowapp",
         runtime: 4,
         services: {
           [ServiceName.make("web")]: {
-            type: "appmount-only",
+            type: "compose",
+            image: "alpine",
             home: false,
             appMount: {
               target: "/app",
@@ -4080,7 +4077,6 @@ describe("AppPlannerLayer.layer", () => {
       const storeNames = appPlan.stores.map((s) => s.name).sort();
       expect(storeNames).toEqual([
         "lando-shadowapp--web--shadow--app-node-modules-ad806e3f",
-        "lando-shadowapp--web--shadow--app-tmp-43bdc5ce",
         "lando-shadowapp--web--shadow--app-vendor-64784057",
       ]);
       expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
@@ -4093,10 +4089,9 @@ describe("AppPlannerLayer.layer", () => {
           .sort() ?? [];
       expect(shadowTargets).toEqual([
         PortablePath.make("/app/node_modules"),
-        PortablePath.make("/app/tmp"),
         PortablePath.make("/app/vendor"),
       ]);
-      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(["node_modules", "vendor", "tmp"]);
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(["node_modules", "vendor"]);
     });
   });
 
@@ -4108,7 +4103,8 @@ describe("AppPlannerLayer.layer", () => {
           runtime: 4,
           services: {
             [ServiceName.make("web")]: {
-              type: "node:lts",
+              type: "compose",
+              image: "alpine",
               home: false,
               appMount: { target: "/app", excludes: [exclude] },
             },

@@ -1,0 +1,12 @@
+name: vendor-shadow-build-demo
+services:
+  app:
+    type: "php:8.4"
+    primary: true
+    appMount:
+      target: /app
+      excludes:
+        - vendor
+    build:
+      app:
+        - composer install
