@@ -1,19 +1,13 @@
 import type { RecipeSource } from "@lando/sdk/schema";
+import { drupalTestingConfig, drupalTestingOverrides } from "../drupal-testing.ts";
 import { drupalTool } from "../drupal-tooling.ts";
 import { composerTool, drupalOptions, drupalWebVariantsFor, phpAppserver } from "../source-php.ts";
-import {
-  DRUPAL_CONTRIB_CHROME_IMAGE,
-  DRUPAL_CONTRIB_MINK_DRIVER_ARGS,
-  contribMountTarget,
-  contribSyncArgv,
-  mysqlSimpletestDb,
-  pgsqlSimpletestDb,
-} from "./stack.ts";
+import { contribMountTarget, contribSyncArgv } from "./stack.ts";
 
 const contribDir = "/app";
 /** The scaffold installs drupal/recommended-project, whose docroot is always web/. */
 const contribWebroot = `${contribDir}/web`;
-const { webroot: _siteWebroot, ...contribStackOptions } = drupalOptions;
+const testing = drupalTestingConfig(contribWebroot);
 /**
  * One app-scoped volume holds the Drupal site, so the nginx edge serves the
  * same tree the appserver scaffolds. Each service nests the checkout in it.
@@ -21,22 +15,15 @@ const { webroot: _siteWebroot, ...contribStackOptions } = drupalOptions;
 const contribSiteVolume = `site:${contribDir}`;
 const contribAppMount = {
   target: contribMountTarget("{{ recipe.type }}", "{{ recipe.project }}"),
-  includes: ["vendor", "node_modules", "tmp"],
 };
 
 const contribAppserver = {
   ...phpAppserver("drupal"),
   webroot: contribWebroot,
   working_dir: contribDir,
-  depends_on: ["database", "chrome"],
+  ...testing.services.appserver,
   appMount: contribAppMount,
   mounts: [contribSiteVolume],
-  environment: {
-    SIMPLETEST_BASE_URL: "http://appserver",
-    SIMPLETEST_DB: mysqlSimpletestDb,
-    BROWSERTEST_OUTPUT_DIRECTORY: "/app/web/sites/simpletest/browser_output",
-    MINK_DRIVER_ARGS_WEBDRIVER: DRUPAL_CONTRIB_MINK_DRIVER_ARGS,
-  },
 };
 
 const contribToolingDir = { dir: contribDir } as const;
@@ -68,7 +55,7 @@ export const source = {
       default: "^11",
       prompt: { message: "Drupal core constraint" },
     },
-    ...contribStackOptions,
+    ...drupalOptions,
   },
   config: {
     runtime: 4,
@@ -77,19 +64,7 @@ export const source = {
     services: {
       appserver: contribAppserver,
       database: { type: "{{ recipe.database }}" },
-      chrome: {
-        type: "compose",
-        image: DRUPAL_CONTRIB_CHROME_IMAGE,
-        appMount: false,
-        home: false,
-        shm_size: "2gb",
-        healthcheck: {
-          kind: "command",
-          command: ["/opt/bin/check-grid.sh"],
-          intervalSeconds: 5,
-          retries: 24,
-        },
-      },
+      chrome: testing.services.chrome,
     },
     tooling: {
       drush: {
@@ -109,13 +84,7 @@ export const source = {
         cmd: contribSyncArgv,
         ...contribToolingDir,
       },
-      phpunit: {
-        service: "appserver",
-        user: "www-data",
-        description: "Run Drupal PHPUnit tests as the web server user, from your current directory.",
-        cmd: [`${contribDir}/vendor/bin/phpunit`, "-c", `${contribDir}/web/core`],
-        wrapper: true,
-      },
+      ...testing.tooling,
       phpcs: drupalTool("phpcs", "Run PHP_CodeSniffer with Drupal Coder from your current directory."),
       phpcbf: drupalTool("phpcbf", "Run phpcbf with Drupal Coder from your current directory."),
       phpstan: drupalTool("phpstan", "Run PHPStan from your current directory."),
@@ -123,20 +92,12 @@ export const source = {
   },
   variants: [
     ...drupalWebVariantsFor(contribWebroot),
+    ...drupalTestingOverrides(false),
     {
       when: '{{ eq(options.webserver, "nginx") }}',
       config: {
         services: {
-          appserver: { environment: { SIMPLETEST_BASE_URL: "http://edge" } },
           edge: { appMount: contribAppMount, mounts: [`${contribSiteVolume}:ro`] },
-        },
-      },
-    },
-    {
-      when: '{{ eq(options.database, "postgres:16") }}',
-      config: {
-        services: {
-          appserver: { environment: { SIMPLETEST_DB: pgsqlSimpletestDb } },
         },
       },
     },

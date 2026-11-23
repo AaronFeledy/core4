@@ -8,6 +8,7 @@ import {
   type ServiceShutdownObservation,
 } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import type { AdoptionReceipt } from "../data-root-ownership.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { APP_LABEL, SERVICE_LABEL } from "../labels.ts";
 import { ownsServiceContainer } from "../native-ownership.ts";
@@ -62,6 +63,7 @@ export const selectStaleServiceContainers = (
   plan: AppPlan,
   providerId: string,
   containers: ReadonlyArray<LabeledServiceContainer>,
+  receipts: readonly AdoptionReceipt[] = [],
 ): ReadonlyArray<StaleServiceContainer> => {
   const ownershipPlan = { ...plan, provider: ProviderId.make(providerId) };
   const planned = new Map(
@@ -75,19 +77,25 @@ export const selectStaleServiceContainers = (
     const labels = container.labels;
     const service = labels[SERVICE_LABEL];
     if (service === undefined) continue;
+    const names = container.names.map(stripName).filter((name) => name.length > 0);
+    const name = names[0];
+    if (name === undefined) continue;
     if (
-      !ownsServiceContainer(ownershipPlan, {
-        containerId: container.id,
-        service,
-        labels,
-      })
+      !ownsServiceContainer(
+        ownershipPlan,
+        {
+          containerId: container.id,
+          nativeName: name,
+          service,
+          labels,
+        },
+        receipts,
+      )
     )
       continue;
     const expected = planned.get(service);
     if (expected === undefined) continue;
-    const names = container.names.map(stripName).filter((name) => name.length > 0);
-    const name = names[0];
-    if (name === undefined || names.includes(expected)) continue;
+    if (names.includes(expected)) continue;
     selected.push({
       containerId: container.id,
       service,

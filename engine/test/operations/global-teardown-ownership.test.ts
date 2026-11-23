@@ -18,7 +18,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer } from "effect";
 import { executeGlobalTeardown, resolveGlobalTeardown } from "../../src/operations/global-teardown.ts";
@@ -93,6 +93,7 @@ const harnessAt = (
                 labels: {
                   "dev.lando.app": "global",
                   "dev.lando.app-root": root,
+                  "dev.lando.data-root": dataRoot,
                   "dev.lando.service": "orphan",
                 },
               },
@@ -157,8 +158,9 @@ const harnessAt = (
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         appliedPlansFor: () => Effect.succeed(input.applied ? [plan] : []),
+        readAppliedPlanStrict: () => Effect.succeed(input.applied ? plan : undefined),
         resolveAppliedPlan: () => Effect.succeed(input.applied ? plan : undefined),
         list: Effect.succeed([providerId, ProviderId.make("docker")]),
         capabilities: Effect.succeed(provider.capabilities),

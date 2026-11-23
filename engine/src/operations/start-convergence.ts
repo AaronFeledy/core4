@@ -1,5 +1,5 @@
 import { ROLE_LABEL } from "@lando/container-runtime/labels";
-import { ownsServiceContainer } from "@lando/container-runtime/native-ownership";
+import { type AdoptionReceipt, ownsServiceContainer } from "@lando/container-runtime/native-ownership";
 import { type EventError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { MessageInfoEvent, PostServiceStopEvent, PreServiceStopEvent } from "@lando/sdk/events";
 import { type AppPlan, type AppRef, planAppIdentity } from "@lando/sdk/schema";
@@ -83,6 +83,7 @@ export const servicesHaltWillRemove = Effect.fn("AppOperation.servicesHaltWillRe
 export const convergeRemovedServices = Effect.fn("AppOperation.convergeRemovedServices")(function* <
   AdmissionE,
   AdmissionR,
+  ReceiptError,
 >(
   plan: AppPlan,
   provider: Pick<RuntimeProviderShape, "removeObservedService">,
@@ -90,11 +91,12 @@ export const convergeRemovedServices = Effect.fn("AppOperation.convergeRemovedSe
     readonly app: AppRef;
     readonly events: EventService["Service"];
     readonly observations: ReadonlyArray<ServiceRuntimeInfo>;
+    readonly receipts: Effect.Effect<readonly AdoptionReceipt[], ReceiptError>;
     readonly verifyAdmission: Effect.Effect<void, AdmissionE, AdmissionR>;
   },
 ): Effect.fn.Return<
   ReadonlyArray<string>,
-  ProviderError | EventError | AdmissionE,
+  ProviderError | EventError | AdmissionE | ReceiptError,
   AdmissionR | EventService
 > {
   const desired = new Set(Object.values(plan.services).map((service) => String(service.name)));
@@ -114,7 +116,8 @@ export const convergeRemovedServices = Effect.fn("AppOperation.convergeRemovedSe
     .sort((left, right) => String(left.service).localeCompare(String(right.service)));
   if (candidates.length === 0) return [];
 
-  const foreign = candidates.find((observation) => !ownsServiceContainer(plan, observation));
+  const receipts = plan.identity?.dataRoot === undefined ? [] : yield* execution.receipts;
+  const foreign = candidates.find((observation) => !ownsServiceContainer(plan, observation, receipts));
   if (foreign !== undefined) return yield* Effect.fail(ownershipRefusal(plan, foreign));
 
   yield* execution.verifyAdmission;

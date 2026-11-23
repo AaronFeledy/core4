@@ -217,7 +217,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     if (action === "restore" || (action === "seed" && input.snapshotId !== undefined)) {
       const scope = yield* resolveSnapshotSource({
         plan: deps.plan,
-        appliedPlans: deps.appliedPlans,
+        findAppliedSource: deps.findAppliedSource,
         ...(store === undefined ? {} : { store: store.store }),
         ownerKey: owner.ownerKey,
         ...(deps.plan.identity?.repoGroupKey === undefined
@@ -237,7 +237,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     if (action === "prune") {
       const filter = yield* resolveSnapshotSource({
         plan: deps.plan,
-        appliedPlans: deps.appliedPlans,
+        findAppliedSource: deps.findAppliedSource,
         ...(store === undefined ? {} : { store: store.store }),
         ownerKey: owner.ownerKey,
         ...(deps.plan.identity?.repoGroupKey === undefined
@@ -372,7 +372,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       case "snapshots": {
         const filter = yield* resolveSnapshotSource({
           plan: deps.plan,
-          appliedPlans: deps.appliedPlans,
+          findAppliedSource: deps.findAppliedSource,
           ...(store === undefined ? {} : { store: store.store }),
           ownerKey: owner.ownerKey,
           ...(deps.plan.identity?.repoGroupKey === undefined

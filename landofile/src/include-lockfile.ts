@@ -126,6 +126,7 @@ const openLockfileBucket = (
       lock: "none",
       onCorrupt: "fail",
       default: [],
+      // Custom codec is unversioned: the store never emits newer-version for this file.
       codec: {
         encode: (entries) => renderLockfile(entries),
         decode: (raw) => parseLockEntriesFromText(lockTextDecoder.decode(raw)),

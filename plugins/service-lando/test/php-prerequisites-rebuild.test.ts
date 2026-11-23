@@ -16,7 +16,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { BuildOrchestrator, PathsService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 
 import {
@@ -224,10 +224,7 @@ const providerLayer = (engine: ReturnType<typeof makeEngine>) => {
   };
   return Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),

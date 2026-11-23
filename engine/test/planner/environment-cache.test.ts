@@ -16,6 +16,7 @@ import * as Registry from "../../src/plugins/registry.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 test.each([
   ["literal", "echo literal"],
@@ -68,7 +69,9 @@ test.each([
         }),
       ),
     ).pipe(Layer.provide(Registry.layerWith({ bundled: false }, [])));
-    const layer = Planner.layer.pipe(Layer.provide(Layer.mergeAll(Cache.layer, FileSystem.layer, registry)));
+    const layer = Planner.layer.pipe(
+      Layer.provide(Layer.mergeAll(Cache.layer, FileSystem.layer, registry, pathsServiceLayer())),
+    );
     const document = {
       name: "env-cache",
       services: { web: { type: serviceType.id, image: "alpine:3.22", home: false } },

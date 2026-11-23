@@ -7,13 +7,14 @@ import { Effect, Layer } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { planTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const plan = (document: LandofileShape) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
       planTestLandofile(planner, document, TestRuntimeProvider.capabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(Layer.merge(services, PluginRegistryLayer.layer)),
     ),
   );

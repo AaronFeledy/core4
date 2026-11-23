@@ -6,11 +6,12 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import * as cache from "../../src/cache/app-plan.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const withTempCwd = async (run: (root: string) => Promise<void>) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-inference-config-plan-")));
@@ -45,7 +46,7 @@ const planBoth = () => {
   return Effect.flatMap(AppPlanner, (planner) =>
     planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
   ).pipe(
-    Effect.provide(AppPlannerLayer.layer),
+    Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
     Effect.provide(PluginRegistryLayer.layer),
     Effect.provide(BunFileSystem.layer),
   );
@@ -55,7 +56,7 @@ const planLandofile = (landofile: LandofileShape) =>
   Effect.flatMap(AppPlanner, (planner) =>
     planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
   ).pipe(
-    Effect.provide(AppPlannerLayer.layer),
+    Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
     Effect.provide(PluginRegistryLayer.layer),
     Effect.provide(BunFileSystem.layer),
   );

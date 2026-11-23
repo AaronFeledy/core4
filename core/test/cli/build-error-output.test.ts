@@ -116,14 +116,14 @@ test.each(["text", "json"] as const)(
       transcriptPath,
       message: "Build step web:app:install for service web exited with code 1.",
       outputTail: "first line\nsecond line",
-      remediation: `Inspect the build transcript at ${transcriptPath}, fix step web:app:install, and rebuild.`,
+      remediation: `Inspect the build transcript at ${transcriptPath}, fix step web:app:install, then run lando start.`,
     });
     const error = new BuildPhaseFailedError({
       app: { kind: "user", id: app, root: AbsolutePath.make("/tmp/build-phase-output") },
       phase: "app",
       message: "App build failed: 1 of 1 build steps failed.",
       failures: [stepFailure],
-      remediation: "Fix the reported app-phase build step failures and rebuild.",
+      remediation: "Fix each failed build step, then run lando start.",
     });
 
     // When

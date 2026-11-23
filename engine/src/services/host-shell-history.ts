@@ -5,6 +5,7 @@ import { AbsolutePath } from "@lando/sdk/schema";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
+import { CORE_VERSION } from "../version.ts";
 
 export const DEFAULT_SHELL_HISTORY_LIMIT = 1000;
 
@@ -30,7 +31,7 @@ const ensureHistoryRoot = (path: string): Effect.Effect<void, StateStoreError> =
 const historyBucket = (path: string, limit: number, privateFileAccess: PrivateFileAccess) =>
   ensureHistoryRoot(path).pipe(
     Effect.flatMap(() =>
-      makeStateStore({ privateFileAccess }).open({
+      makeStateStore({ privateFileAccess, writer: CORE_VERSION }).open({
         root: { path: AbsolutePath.make(dirname(path)) },
         key: basename(path),
         schema: HistorySchema,

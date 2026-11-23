@@ -8,7 +8,7 @@ import {
   type ServiceRunObservation,
 } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
 import { infoForPlan } from "../../src/operations/info.ts";
 import { projectServiceObservation } from "../../src/operations/info-probes.ts";
@@ -55,10 +55,7 @@ const observe = async (
     infoForPlan(planned).pipe(
       Effect.provideService(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([planned.provider]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),

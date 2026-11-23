@@ -378,11 +378,11 @@ describe("php:8.5 ServiceType", () => {
 });
 
 describe("php:8.6 ServiceType", () => {
-  test("plans a selectable PHP 8.6 service against the official RC bookworm image", async () => {
+  test("plans a selectable PHP 8.6 service against the official bookworm image", async () => {
     const plan = await composePhpPlan(php86ServiceType, { type: "php:8.6" });
 
     expect(plan.type).toBe("php:8.6");
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.6-rc-apache-bookworm" });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.6-apache-bookworm" });
     expect(plan.environment.LANDO_SERVICE_TYPE).toBe("php:8.6");
     expect(plan.extensions["lando-service-php"]).toMatchObject({ version: "8.6" });
   });
@@ -391,17 +391,6 @@ describe("php:8.6 ServiceType", () => {
     await expectRejectsToThrow(
       composePhpPlan(php86ServiceType, { type: "php:8.6", composer: "2.7.7" }),
       /cannot run on PHP 8\.6/,
-    );
-  });
-
-  test("rejects xdebug on php:8.6 because the shipped pin stops at 8.5", async () => {
-    await expectRejectsToThrow(
-      composePhpPlan(php86ServiceType, { type: "php:8.6", xdebug: true }),
-      /Xdebug is not available on PHP 8\.6/,
-    );
-    await expectRejectsToThrow(
-      composePhpPlan(php86ServiceType, { type: "php:8.6", xdebug: true }),
-      /Remove xdebug: or set type to php:8\.5/,
     );
   });
 });

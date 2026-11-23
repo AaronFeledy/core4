@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { basename, dirname } from "node:path";
 import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { openJournal } from "../../src/operations/accelerated-start-journal.ts";
 import { prepareAppsGc } from "../../src/operations/apps-gc.ts";
@@ -28,18 +29,21 @@ test("GC reports attempted cleanup and unverified completion when its owner beco
           ...fs,
           exists: (path) => (path === plan.root ? Effect.succeed(false) : fs.exists(path)),
         }),
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          observeRuntime: Effect.sync(() => [
-            {
-              providerId: plan.provider,
-              runtimeObserved: !destroyed,
-              appliedPlans: destroyed ? [] : [plan],
-              services: [],
-              volumes: [],
-            },
-          ]),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            observeRuntime: Effect.sync(() => [
+              {
+                providerId: plan.provider,
+                runtimeObserved: !destroyed,
+                appliedPlans: destroyed ? [] : [plan],
+                services: [],
+                volumes: [],
+              },
+            ]),
+          }),
+        ),
       );
     }).pipe(Effect.provide(Layer.merge(harness.layer, BunFileSystem.layer))),
   );
@@ -68,18 +72,21 @@ test("GC with volumes withholds prepared copy deletion before changing the app",
           readDir: (path) =>
             path === dirname(journal.path) ? Effect.succeed([basename(journal.path)]) : fs.readDir(path),
         }),
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          observeRuntime: Effect.succeed([
-            {
-              providerId: acceleratedPlan.provider,
-              runtimeObserved: true,
-              appliedPlans: [acceleratedPlan],
-              services: [],
-              volumes: [],
-            },
-          ]),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            observeRuntime: Effect.succeed([
+              {
+                providerId: acceleratedPlan.provider,
+                runtimeObserved: true,
+                appliedPlans: [acceleratedPlan],
+                services: [],
+                volumes: [],
+              },
+            ]),
+          }),
+        ),
       );
     }).pipe(Effect.provide(Layer.merge(harness.layer, BunFileSystem.layer))),
   );

@@ -12,6 +12,7 @@ import { globalEnable } from "@lando/engine/operations/global-policy";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { parseLandofile } from "@lando/landofile/parser";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Result, Schema } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
@@ -74,10 +75,7 @@ const layerWithFakeGlobalService = (modulePath: string) => {
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -264,10 +262,7 @@ describe("global configuration reconciliation", () => {
         ),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
+          makeTestRuntimeProviderRegistry({
             list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
             capabilities: Effect.succeed(dockerProvider.capabilities),
             select: (plan) => {

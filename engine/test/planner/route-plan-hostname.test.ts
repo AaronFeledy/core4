@@ -10,6 +10,7 @@ import { decodeAppPlan } from "../../src/planner/plan-decode.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { planTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const planService = (service: string, certs: boolean) => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -18,7 +19,13 @@ const planService = (service: string, certs: boolean) => {
   });
   return Effect.flatMap(AppPlanner, (planner) =>
     planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
-  ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))));
+  ).pipe(
+    Effect.provide(
+      AppPlannerLayer.layer.pipe(
+        Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, pathsServiceLayer())),
+      ),
+    ),
+  );
 };
 
 test.each([
@@ -61,7 +68,13 @@ test("final plan validation rejects an HTTPS route no certificate can cover, fro
   const plan = await Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
       planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
-    ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer)))),
+    ).pipe(
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(
+          Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, pathsServiceLayer())),
+        ),
+      ),
+    ),
   );
   const encoded = Schema.encodeSync(CurrentExecutableAppPlan)(plan);
   const contributed = { ...encoded.routes[0], hostname: "wild.*.app.lndo.site" };
@@ -90,7 +103,13 @@ test("final plan validation rejects verified backend TLS intent only on a plain 
   const plan = await Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
       planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
-    ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer)))),
+    ).pipe(
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(
+          Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, pathsServiceLayer())),
+        ),
+      ),
+    ),
   );
   const encoded = Schema.encodeSync(CurrentExecutableAppPlan)(plan);
   const route = encoded.routes[0];
@@ -133,7 +152,9 @@ test("a cached plan whose HTTPS route no certificate can cover is rejected on th
         planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
       ).pipe(Effect.provide(layer), Effect.result),
     );
-  const planner = AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer));
+  const planner = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, pathsServiceLayer())),
+  );
   const fresh = await plan(planner);
   if (Result.isFailure(fresh)) throw new Error("Expected the fresh plan to succeed");
   const route = fresh.success.routes[0];

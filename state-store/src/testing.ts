@@ -15,7 +15,8 @@ import { lockTimeout, lockWaitBudget } from "./lock.ts";
 import { makeLockGate } from "./lock-gate.ts";
 import { makeLockReentryGuard } from "./lock-reentry.ts";
 import { resolveStatePath } from "./paths.ts";
-import { validateCacheSpec } from "./spec.ts";
+import { validateBucketSpec } from "./spec.ts";
+import { type StateWriterOptions, resolveStateWriter } from "./writer.ts";
 
 const textEncoder = new TextEncoder();
 
@@ -80,15 +81,25 @@ const makeMemoryBucketBackend = (
   withLock: (file, _operation, body) => withInMemoryAdvisoryLock(file, body),
 });
 
-const makeInMemoryStateStore = (files: Map<string, Uint8Array>): StateStoreShape => {
+const makeInMemoryStateStore = (
+  files: Map<string, Uint8Array>,
+  options: StateWriterOptions,
+): StateStoreShape => {
   const withInMemoryAdvisoryLock = makeMemoryLocks();
   return StateStore.of({
     open: Effect.fn("StateStore.open")(
       <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
         resolveStatePath(spec.root, spec.namespace, spec.key, "open").pipe(
-          Effect.tap(() => validateCacheSpec(spec)),
-          Effect.map((resolved) =>
-            buildStateBucket(spec, resolved.file, makeMemoryBucketBackend(files, withInMemoryAdvisoryLock)),
+          Effect.tap(() => validateBucketSpec(spec)),
+          Effect.flatMap((resolved) =>
+            Effect.map(resolveStateWriter(options), (writer) =>
+              buildStateBucket(
+                spec,
+                resolved.file,
+                makeMemoryBucketBackend(files, withInMemoryAdvisoryLock),
+                writer,
+              ),
+            ),
           ),
         ),
     ),
@@ -108,9 +119,9 @@ export interface TestStateStore {
   readonly snapshot: () => ReadonlyMap<string, Uint8Array>;
 }
 
-export const makeTestStateStore = (): TestStateStore => {
+export const makeTestStateStore = (options: StateWriterOptions = {}): TestStateStore => {
   const files = new Map<string, Uint8Array>();
-  const service = makeInMemoryStateStore(files);
+  const service = makeInMemoryStateStore(files, options);
 
   const readRaw = (file: AbsolutePath): Effect.Effect<Uint8Array | null> =>
     Effect.sync(() => {

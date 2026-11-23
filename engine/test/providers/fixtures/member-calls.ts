@@ -97,6 +97,7 @@ export const memberCalls = {
   restoreVolume: (p) => p.restoreVolume({ snapshot, target: volume, expectedTargetGeneration: "generation" }),
   listVolumes: (p) => p.listVolumes({}),
   locateVolume: (p) => p.locateVolume(volume),
+  adoptDataRoot: (p) => required(p.adoptDataRoot)(plan, () => Effect.succeed(undefined)),
   inspectResourceNames: (p) => required(p.inspectResourceNames)({ kind: "volume", limit: 1 }),
   observeVolume: (p) => required(p.observeVolume)(target, destination),
   adoptVolume: (p) => required(p.adoptVolume)(target, destination),

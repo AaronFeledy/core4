@@ -11,7 +11,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { makeTestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Deferred, Effect, Fiber, Layer, Queue } from "effect";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { withBuiltArtifactsLock } from "../../src/services/build-artifact-lock.ts";
@@ -58,10 +58,7 @@ const fixture = async () => {
         return { kind: "removed" as const };
       }),
   };
-  const registry = RuntimeProviderRegistry.of({
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("test")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),

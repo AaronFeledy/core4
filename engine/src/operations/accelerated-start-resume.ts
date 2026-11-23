@@ -88,6 +88,9 @@ export const verifyPendingStartResume = Effect.fnUntraced(function* (
   const record = yield* readPendingAcceleratedStart(app, plan, services);
   if (record === null) return null;
   const registry = yield* RuntimeProviderRegistry;
+  // A provider may report protected applied state as an `unknown` file-sync verdict; read it
+  // strictly first so a record a newer Lando wrote never admits target preparation.
+  yield* registry.readAppliedPlanStrict(plan);
   const provider = yield* registry
     .select(plan)
     .pipe(mapFailureErrors((cause) => resumeError(record, "The recorded provider is unavailable.", cause)));

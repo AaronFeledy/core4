@@ -3,10 +3,11 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/core/schema";
-import { AppPlanner } from "@lando/core/services";
+import { AppPlanner, PathsService } from "@lando/core/services";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { literalLandofile } from "../_support/value-contracts.ts";
@@ -40,7 +41,13 @@ const plan = (landofile: typeof LandofileShape.Type) =>
     ).pipe(
       Effect.provide(
         AppPlannerLayer.layer.pipe(
-          Layer.provide(Layer.mergeAll(BunFileSystem.layer, PluginRegistryLayer.layer)),
+          Layer.provide(
+            Layer.mergeAll(
+              BunFileSystem.layer,
+              PluginRegistryLayer.layer,
+              Layer.succeed(PathsService, makeLandoPaths()),
+            ),
+          ),
         ),
       ),
     ),

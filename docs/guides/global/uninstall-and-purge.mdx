@@ -224,7 +224,7 @@ intend to enable every known plugin and reset its individual choices.
 
 ## Destroy provider resources
 
-`lando global:destroy` asks before it deletes. On a terminal the prompt names what goes: the global app's containers and networks, the data volumes with `--volumes` or `--purge`, and the built images with `--purge`. Answer no and nothing changes. In a non-interactive run, pass `--yes` or the command fails before touching anything and tells you to rerun with it.
+`lando global:destroy` asks before it deletes this data root's global app. On a terminal the prompt names what goes: its containers and private networks, data volumes with `--volumes` or `--purge`, and built images with `--purge`. The data root's cross-app bridge stays available to other apps in this root. Answer no and nothing changes. In a non-interactive run, pass `--yes` or the command fails before touching anything.
 
 ```sh
 lando global:destroy
@@ -250,11 +250,13 @@ lando global:destroy --volumes
 ```
 
 Add `--purge` instead to remove those volumes and the built images right away.
-Volumes declared with `scope: global` survive both:
+Volumes declared with `scope: global` normally survive both:
 
 ```sh
 lando global:destroy --purge
 ```
+
+If an upgrade moves your global services to new volumes, Lando names the old volumes it kept. `lando global:destroy --volumes` can delete the old volumes Lando verified as belonging to this installation. Lando leaves any unverified volumes untouched.
 
 Stop and destroy use the global app's applied state, so an invalid edit to a global Landofile doesn't block cleanup. Fix the config before starting the app again.
 

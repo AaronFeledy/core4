@@ -3,12 +3,17 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { type Server, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, type AppId } from "@lando/sdk/schema";
-import type { ProcessRunner } from "@lando/sdk/services";
+import { PathsService, type ProcessRunner } from "@lando/sdk/services";
 import { makeTestSshService } from "@lando/sdk/test";
 import { type Context, Effect } from "effect";
 import type { DoctorFinding } from "../../src/cli/commands/doctor-contract.ts";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
+
+const testPaths = makeLandoPaths();
+const runWithPaths = <A, E>(effect: Effect.Effect<A, E, PathsService>) =>
+  Effect.runPromise(effect.pipe(Effect.provideService(PathsService, testPaths)));
 
 const gpgDetails = (check: Pick<DoctorFinding, "details">) => {
   const value = check.details;
@@ -51,7 +56,7 @@ test("reports gpg detail when forward is enabled and omits exported key bytes", 
   const calls: string[][] = [];
   try {
     // When
-    const check = await Effect.runPromise(
+    const check = await runWithPaths(
       sshAgentPostureCheck({
         globalConfig: { gpgAgent: { forward: true, socket } },
         platform: "linux",
@@ -83,7 +88,7 @@ test("doctor never launches gpg-agent when the socket is missing", async () => {
   // Given
   const calls: string[][] = [];
   // When
-  const check = await Effect.runPromise(
+  const check = await runWithPaths(
     sshAgentPostureCheck({
       globalConfig: { gpgAgent: { forward: true, socket: "/nowhere/S.gpg-agent.extra" } },
       platform: "linux",
@@ -102,7 +107,7 @@ test("doctor never launches gpg-agent when the socket is missing", async () => {
 
 test("omits the gpg detail when forwarding is disabled", async () => {
   // Given
-  const check = await Effect.runPromise(
+  const check = await runWithPaths(
     sshAgentPostureCheck({
       globalConfig: {},
       platform: "linux",

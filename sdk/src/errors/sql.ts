@@ -1,6 +1,56 @@
 import { Schema } from "effect";
 
+import { DatabaseConnection } from "../schema/database-connection.ts";
 import { VolumeInitializationPhase } from "../schema/volume-initialization.ts";
+
+export const SqlCredentialMember = Schema.Literals(["user", "password", "database", "rootPassword"]);
+export type SqlCredentialMember = typeof SqlCredentialMember.Type;
+
+export class SqlCredentialTargetError extends Schema.TaggedError<SqlCredentialTargetError>()(
+  "SqlCredentialTargetError",
+  {
+    message: Schema.String,
+    service: Schema.optional(Schema.String),
+    reason: Schema.Literals(["not-running", "unsupported-target", "unsafe-name", "target-changed"]),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
+
+export class SqlCredentialAdminAuthError extends Schema.TaggedError<SqlCredentialAdminAuthError>()(
+  "SqlCredentialAdminAuthError",
+  {
+    message: Schema.String,
+    service: Schema.String,
+    family: DatabaseConnection.fields.family,
+    reason: Schema.Literals([
+      "admin-user-required",
+      "admin-password-required",
+      "rejected",
+      "insufficient-privilege",
+    ]),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
+
+export class SqlCredentialApplyError extends Schema.TaggedError<SqlCredentialApplyError>()(
+  "SqlCredentialApplyError",
+  {
+    message: Schema.String,
+    service: Schema.String,
+    family: DatabaseConnection.fields.family,
+    phase: Schema.Literals(["preflight", "apply", "verify"]),
+    mutation: Schema.Literals(["none", "possible", "partial"]),
+    retryable: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Whether a transient preflight failure can be retried without replaying database writes.",
+      }),
+    ),
+    completed: Schema.Array(SqlCredentialMember),
+    exitCode: Schema.optional(Schema.Number),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
 
 export class SqlServiceNotFoundError extends Schema.TaggedError<SqlServiceNotFoundError>()(
   "SqlServiceNotFoundError",
@@ -106,6 +156,7 @@ export class SqlRecoveryUnavailableError extends Schema.TaggedError<SqlRecoveryU
     service: Schema.String,
     reason: Schema.String,
     recoveryFile: Schema.optional(Schema.String),
+    cause: Schema.optional(Schema.Unknown),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

@@ -1,0 +1,7 @@
+name: db-creds-apply-pg
+services:
+  db:
+    type: postgres
+    creds:
+      database: credential_demo
+      password: pg-fixture-pass-one

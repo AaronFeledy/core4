@@ -275,9 +275,29 @@ Replace `/path/to/podman.sock` with a running Podman-compatible provider socket.
 
 Normal codegen is offline: it checks local hashes and template invariants and derives the ignored embedded TypeScript catalog. Commit only paired inputs and the generated workflow, not the derived catalog. The daily/dispatch `tomcat-bump` workflow merges `main` into its rolling branch, prepares candidates, runs focused unit checks before proposing, then explicitly dispatches `ci.yml` on the proposal branch. That CI run includes service-lando live integration tests; the workflow does not auto-merge.
 
+## Update the Xdebug pins
+
+Run the network updater from the repository root:
+
+```bash
+bun run update:xdebug
+```
+
+The updater verifies the committed tarballs against their SHA-256 checksums before looking for updates. It picks the newest compatible stable release it finds for each PHP version, or the newest compatible pre-release if it finds no stable release. It skips a candidate release whose tarball is missing or unreadable and prints a warning, but a committed pin that fails verification fails the run. It writes `plugins/service-lando/src/services/php-xdebug-pins.json` only if a pin changes.
+
+With Docker running, check a changed pin locally. For example, to check PHP 8.6, run:
+
+```bash
+bun run scripts/check-xdebug-build.ts 8.6
+```
+
+The check runs Lando's install command on the stock PHP CLI Bookworm image and confirms PHP loads the pinned Xdebug version. Pass each changed PHP version to check them in one run.
+
+The daily `xdebug-bump` workflow builds only changed pins before it opens or updates the PR. It does not auto-merge. If you see an `xdebug-bump automation failure` issue, open the linked run to see which check failed. A URL or checksum failure means a stock PHP image build that uses that pin may fail. Investigate the upstream tarball before accepting a replacement checksum.
+
 ## Extend the internal maintenance workflows
 
-`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts`, `build-compose-vendor-bump-workflow.ts`, and `build-node-releases-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts`, `build-compose-vendor-bump-workflow.ts`, `build-node-releases-bump-workflow.ts`, and `build-xdebug-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
 
 The `report-failure` job runs after every run that was not cancelled as a whole, and it is the only job with `issues: write`. It reports every job whose result is not `success` or `skipped`, so a timeout (reported as `cancelled`), a lost runner (`abandoned`), and any result GitHub adds later all count. When nothing failed, it exits without touching issues. Otherwise it searches open issues in `GH_REPO` for the title `<workflow name> automation failure`, keeps only exact title matches, comments on the oldest match, and files a new issue only when none is open. The issue or comment links the run and lists the failed jobs, marking them `(timed out or cancelled)` or with their result name, such as `(abandoned)`.
 
@@ -672,6 +692,18 @@ The live region exists so a hung job leaves evidence of where it stopped; see th
 
 The e2e `@smoke` scenarios run in their own job, `guide-e2e-linux-x64`, so the generated-scenario job above no longer waits for the binary or spends its time limit on them. The job runs as two shards. Each one downloads the Linux x64 compiled binary, provisions the same managed Podman socket that provider integration uses, sets `LANDO_GUIDE_E2E=1`, and runs half of the generated scenarios tagged `@smoke` on the `e2e` layer, one at a time. The wrapper's `--smoke-e2e` flag selects those files from the header that the scenario generator writes into each one, and Bun's `--shard=<i>/<n>` splits them by sorted path. E2e guide scenarios without the `@smoke` tag are not part of the PR gate; the nightly job below runs every `[e2e]` scenario.
 
+With an explicit `LANDO_TEST_PODMAN_SOCKET`, guide runs with `LANDO_GUIDE_E2E=1` and test selections that opt into runner-owned Podman roots use one temporary directory for the data, config, cache, and system-plugin roots. An `[e2e]` name filter alone does not enable guide e2e or allocate roots. The runner allocates roots only if none of the four root variables is set and `LANDO_TEST_USE_REAL_ROOTS` is not `1`. Before the tests run, it runs `lando setup` in those roots for the Podman provider and the local CA tooling, so routed scenarios can issue certificates. It skips the router helper, shell integration, the file-sync engine, and trust-store changes, which belong to your installation. If that setup fails, the runner skips the tests and still retires the roots. Selections that need an existing managed installation use the job's or caller's roots instead. The runner never retires those roots. A fixture that supplies its own temporary roots retires them itself.
+
+After reaping the test child, even if it fails, the runner gives the compiled CLI a bounded time to run `lando uninstall --purge --yes --format=json` with the test roots and a private `LANDO_SHELL_PROFILE`. Purge can remove the data, config, and cache roots itself. Before deleting the enclosing temporary directory, the runner checks the same endpoint for containers, networks, and volumes labeled for the original data root and images labeled for its build store. Shared cache volumes without a data-root label are outside this check.
+
+If purge fails or verification cannot confirm cleanup, the runner exits nonzero and preserves the enclosing directory and anything purge did not remove. Its error reports the original test exit status, the directory, the socket, and what it kept or could not verify. After you resolve the cause, run this from the repository root, using the socket and runner-owned directory from the report:
+
+```bash
+LANDO_TEST_PODMAN_SOCKET=<socket> bun scripts/live-test-roots.ts retire <directory>
+```
+
+Use the same `LANDO_SCENARIO_E2E_BINARY` if the original run did not use `core/dist/lando`. On `SIGINT` or `SIGTERM`, the runner forwards the signal, reaps the child, and attempts retirement before exiting with status 130 or 143, respectively. `SIGKILL` cannot be handled and can prevent cleanup.
+
 Run the whole subset locally, or add `--shard=1/2` to run the first CI shard:
 
 ```bash
@@ -801,7 +833,7 @@ The live Drupal recipe path is a separate gate from compile smoke and from linux
 
 The generated workflow is `.github/workflows/drupal-journey.yml`, produced by `scripts/build-drupal-journey-workflow.ts`. Do not hand-edit the YAML. The gate script is `scripts/drupal-journey.ts`.
 
-The live path is `lando init --recipe drupal`, `lando start`, `lando info`, README scaffold plus Drush (`drupal-scaffold` then `drush`), then `lando destroy -y`. It runs on all six compile targets.
+The live path is `lando init --recipe drupal`, `lando start` (first start scaffolds Drupal and Drush), `lando info`, README Drush check (`drush`), then `lando destroy -y`. It runs on all six compile targets.
 
 The journey runs on its schedule and manual dispatch, not on pull requests. Linux x64 uses Ubuntu 26.04; Linux arm64 uses `ubuntu-24.04-arm`. Darwin and Windows use self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`, restricted to `main`. A missing runner is a job error, not a skip.
 

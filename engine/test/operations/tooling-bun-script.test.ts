@@ -10,6 +10,7 @@ import {
   RuntimeProviderRegistry,
   ToolingEngine,
 } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
@@ -157,10 +158,7 @@ test.each(["direct", "fallback"] as const)(
         ),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            appliedPlansFor: () => Effect.succeed([]),
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          makeTestRuntimeProviderRegistry({
             list: Effect.die("unused"),
             capabilities: Effect.die("unused"),
             select: () => Effect.die("unused"),

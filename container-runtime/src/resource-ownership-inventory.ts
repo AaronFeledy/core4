@@ -1,5 +1,5 @@
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -21,6 +21,7 @@ const ResourceOwner = Schema.Struct({
   nativeName: Schema.String,
   appId: AppId,
   appRoot: AbsolutePath,
+  dataRoot: Schema.optionalKey(AbsolutePath),
   ownerKey: Schema.String,
   providerId: ProviderId,
 });
@@ -45,26 +46,69 @@ const ResourceIdentity = Schema.Union([ContainerIdentity, NetworkIdentity, Volum
 export const OwnedResource = Schema.Union([
   Schema.Struct({ ...ContainerIdentity.fields, identityDigest: Schema.String }),
   Schema.Struct({ ...NetworkIdentity.fields, identityDigest: Schema.String }),
-  Schema.Struct({ ...VolumeIdentity.fields, identityDigest: Schema.String }),
+  Schema.Struct({
+    ...VolumeIdentity.fields,
+    identityDigest: Schema.String,
+    volumeInstance: Schema.optionalKey(Schema.String),
+  }),
 ]);
 export type OwnedResource = typeof OwnedResource.Type;
-export const RESOURCE_OWNERSHIP_VERSION = 1;
+const ReceiptOwner = {
+  nativeName: Schema.NonEmptyString,
+  dataRoot: AbsolutePath,
+  providerId: ProviderId,
+  appRoot: AbsolutePath,
+  appId: AppId,
+};
+const AdoptionReceipt = Schema.Union([
+  Schema.Struct({
+    ...ReceiptOwner,
+    kind: Schema.Literals(["container", "network"]),
+    nativeId: Schema.NonEmptyString,
+  }),
+  Schema.Struct({
+    ...ReceiptOwner,
+    kind: Schema.Literal("volume"),
+    volumeInstance: Schema.optionalKey(Schema.String),
+  }),
+]);
+export const AdoptionBatch = Schema.Struct({
+  previousAppId: AppId,
+  dataRoot: AbsolutePath,
+  receipts: Schema.Array(AdoptionReceipt),
+});
+export type AdoptionBatch = typeof AdoptionBatch.Type;
+
+export const RESOURCE_OWNERSHIP_NAMESPACE = "resource-ownership";
+export const RESOURCE_OWNERSHIP_VERSION = 3;
 export const ResourceOwnershipInventory = Schema.Struct({
   ...ResourceOwnership.fields,
   resources: Schema.Array(OwnedResource),
+  adoptions: Schema.optionalKey(Schema.Array(AdoptionBatch)),
 });
 export type ResourceInventory = typeof ResourceOwnershipInventory.Type;
 
+const OWNERSHIP_REMEDIATION = "Repair the provider plugin state and retry cleanup before starting this app.";
+
+/** Map ownership store failures; keep upgrade remediation for newer envelopes. */
 export const ownershipFailure = (providerId: string, cause?: unknown) =>
   new ProviderUnavailableError({
     providerId,
     operation: "resource-ownership",
     message: "Resource ownership inventory could not be verified or persisted.",
-    remediation: "Repair the provider plugin state and retry cleanup before starting this app.",
+    remediation:
+      cause instanceof StateStoreError && cause.reason === "newer-version"
+        ? cause.remediation
+        : OWNERSHIP_REMEDIATION,
     ...(cause === undefined ? {} : { cause }),
   });
 
 const digest = (resource: typeof ResourceIdentity.Type) => sha256Hex(canonicalJson(resource));
+export const legacyResourceDigest = ({
+  dataRoot: _root,
+  identityDigest: _digest,
+  ...identity
+}: OwnedResource) => digest(identity);
 const identify = (resource: typeof ResourceIdentity.Type): OwnedResource => ({
   ...resource,
   identityDigest: digest(resource),
@@ -74,6 +118,7 @@ export const resourcesForPlan = (plan: AppPlan): OwnedResource[] => {
   const owner = planAppIdentity(plan);
   const identity = {
     appRoot: owner.appRoot,
+    ...(owner.dataRoot === undefined ? {} : { dataRoot: owner.dataRoot }),
     ownerKey: owner.ownerKey,
     appId: plan.id,
     providerId: plan.provider,
@@ -139,10 +184,26 @@ export const validate = (inventory: ResourceInventory, root: AbsolutePath, provi
       (resource.kind === "network" &&
         resource.scratchId !== undefined &&
         resource.scratchId !== resource.appId) ||
-      identityDigest !== digest(identity) ||
+      identityDigest !== digest(identity.kind === "volume" ? withoutVolumeInstance(identity) : identity) ||
       !inventory.appIds.includes(resource.appId)
     )
       throw ownershipFailure(providerId);
   }
+  for (const batch of inventory.adoptions ?? []) {
+    for (const receipt of batch.receipts) {
+      if (
+        receipt.appRoot !== root ||
+        receipt.providerId !== providerId ||
+        receipt.dataRoot !== batch.dataRoot ||
+        (receipt.kind === "network" && isSharedNetwork({}, receipt.nativeName))
+      )
+        throw ownershipFailure(providerId);
+    }
+  }
   return inventory;
 };
+
+const withoutVolumeInstance = ({
+  volumeInstance: _witness,
+  ...identity
+}: typeof VolumeIdentity.Type & { readonly volumeInstance?: string }) => identity;

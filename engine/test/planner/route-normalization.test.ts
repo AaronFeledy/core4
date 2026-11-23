@@ -8,13 +8,20 @@ import { Effect, Layer, Result } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const plan = (input: unknown) =>
   Effect.flatMap(AppPlanner, (planner) =>
     compileTestLandofile(input).pipe(
       Effect.flatMap((compiled) => planner.plan(compiled, TestRuntimeProvider.capabilities)),
     ),
-  ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))));
+  ).pipe(
+    Effect.provide(
+      AppPlannerLayer.layer.pipe(
+        Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, pathsServiceLayer())),
+      ),
+    ),
+  );
 
 for (const fixture of [
   { name: "absent", service: {}, expected: ["web.routes-app.lndo.site"] },

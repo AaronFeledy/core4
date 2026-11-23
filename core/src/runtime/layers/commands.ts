@@ -3,6 +3,7 @@ import * as SubscriberRuntimeLayer from "@lando/engine/lifecycle/subscribers";
 import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";
 import * as CommandRegistryLayer from "@lando/engine/services/command-registry";
 import * as EngineLandofileServiceLayer from "@lando/engine/services/landofile-live";
+import * as UserAppResolverLayer from "@lando/engine/services/user-app-resolver";
 import { EventService } from "@lando/sdk/services";
 import { Context, Layer } from "effect";
 import { commandAliasRegistrationError } from "../../cli/command-alias-policy.ts";
@@ -13,6 +14,7 @@ import { makePluginsBootstrapBaseLayer } from "./plugins.ts";
 export const makeCommandsBootstrapBaseLayer = (inputs: MinimalBootstrapLayerInputs) => {
   const pluginsBase = makePluginsBootstrapBaseLayer(inputs);
   const landofileServiceLayer = EngineLandofileServiceLayer.layerDefault.pipe(Layer.provide(pluginsBase));
+  const userAppResolverLayer = UserAppResolverLayer.layer.pipe(Layer.provide(landofileServiceLayer));
   const commandRegistryLayer = CommandRegistryLayer.layerWith((policy, entries, pluginIds) =>
     commandAliasRegistrationError(
       policy,
@@ -21,7 +23,7 @@ export const makeCommandsBootstrapBaseLayer = (inputs: MinimalBootstrapLayerInpu
       pluginIds,
     ),
   ).pipe(Layer.provide(Layer.mergeAll(landofileServiceLayer, pluginsBase)));
-  return Layer.mergeAll(pluginsBase, landofileServiceLayer, commandRegistryLayer).pipe(
+  return Layer.mergeAll(pluginsBase, landofileServiceLayer, userAppResolverLayer, commandRegistryLayer).pipe(
     Layer.tap((context) => inputs.lifecycle.complete("commands", Context.get(context, EventService))),
   );
 };

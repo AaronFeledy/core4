@@ -6,6 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@lando/container-runtime": "workspace:*",
     "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
     "effect": "catalog:"

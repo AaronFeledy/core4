@@ -2,12 +2,39 @@ import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
+  type AppIdentity,
   type LandofileShape,
   type ServiceConfig,
-  type landoNetworkingPlan,
+  landoNetworkingPlan,
   validationIssue,
 } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import { networkServicesWithClones } from "./cloned-services.ts";
+
+export const planNetworking = Effect.fn("AppPlanner.planNetworking")(function* (input: {
+  readonly landofile: LandofileShape;
+  readonly provenance?: LandofileProvenance | undefined;
+  readonly appRoot: string;
+  readonly slug: string;
+  readonly identity: AppIdentity | undefined;
+  readonly sharedCrossAppNetwork: boolean;
+  readonly serviceNames: readonly string[];
+  readonly serviceHostnames: Parameters<typeof landoNetworkingPlan>[0]["serviceHostnames"];
+  readonly resolvedServices: Parameters<typeof networkServicesWithClones>[0];
+  readonly clones: Parameters<typeof networkServicesWithClones>[1];
+}) {
+  const perAppBridge = input.slug !== "global";
+  const authored = yield* normalizeNetworks({
+    landofile: input.landofile,
+    provenance: input.provenance,
+    services: networkServicesWithClones(input.resolvedServices, input.clones, input.serviceNames),
+    appRoot: input.appRoot,
+    perAppBridge,
+  });
+  return input.serviceNames.length === 0
+    ? undefined
+    : landoNetworkingPlan({ ...input, perAppBridge, ...authored });
+});
 
 /** Normalize canonical service attachments without changing their preserved Compose record. */
 export const normalizeNetworks = Effect.fn("AppPlanner.normalizeNetworks")(function* (input: {

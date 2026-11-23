@@ -31,6 +31,8 @@ type scaffoldManifest struct {
 	// Applied is command-owned state recorded while staging and written as the
 	// completion marker's contents, so a later run knows what this one applied.
 	Applied json.RawMessage `json:"applied,omitempty"`
+
+	SiteIntent *drupalSiteIntent `json:"siteIntent,omitempty"`
 }
 
 // scaffoldEntry records one top-level staged path and the exact filesystem
@@ -75,10 +77,14 @@ type scaffold struct {
 }
 
 type scaffoldOptions struct {
+	siteIntent      *drupalSiteIntent
+	requiredOutputs []string
+
 	preflight    func(resumed bool, manifest *scaffoldManifest) error
 	generate     func(stage string, manifest *scaffoldManifest) error
 	afterPromote func(manifest *scaffoldManifest) error
 	complete     func(appRoot string) bool
+	receipt      func() ([]byte, error)
 }
 
 type scaffoldAlreadyComplete struct {
@@ -161,11 +167,6 @@ func (s *scaffold) executeLocked(options scaffoldOptions) error {
 		s.cleanup()
 		return &scaffoldAlreadyComplete{message: s.completeMessage}
 	}
-	if options.preflight != nil {
-		if err := options.preflight(resumed, manifest); err != nil {
-			return err
-		}
-	}
 	if resumed && hasMarker {
 		// A completion marker whose outputs are gone is repair work, not a
 		// completed scaffold: remove it and rebuild from the same manifest.
@@ -173,18 +174,28 @@ func (s *scaffold) executeLocked(options scaffoldOptions) error {
 			return err
 		}
 	}
-	if !resumed {
+	return s.executeManifestLocked(options, manifest)
+}
+
+func (s *scaffold) executeManifestLocked(options scaffoldOptions, manifest *scaffoldManifest) error {
+	if options.preflight != nil {
+		if err := options.preflight(manifest != nil, manifest); err != nil {
+			return err
+		}
+	}
+	if manifest == nil {
 		manifest = s.newManifest()
+		manifest.SiteIntent = options.siteIntent
 		if err := s.saveManifest(manifest); err != nil {
 			return err
 		}
-		if err := s.stage(manifest, options.generate); err != nil {
+		if err := s.stage(manifest, options); err != nil {
 			return err
 		}
 	} else {
 		switch manifest.Phase {
 		case "staging":
-			if err := s.stage(manifest, options.generate); err != nil {
+			if err := s.stage(manifest, options); err != nil {
 				return err
 			}
 		case "staged", "promoted":
@@ -215,7 +226,13 @@ func (s *scaffold) executeLocked(options scaffoldOptions) error {
 			return err
 		}
 	}
-	if !options.complete(s.appRoot) {
+	if options.receipt != nil {
+		applied, err := options.receipt()
+		if err != nil {
+			return err
+		}
+		return s.finish(applied)
+	} else if !options.complete(s.appRoot) {
 		return fmt.Errorf("%s scaffold did not produce %s.", s.label, s.outputs)
 	}
 	return s.finish(manifest.Applied)

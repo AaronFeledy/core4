@@ -239,8 +239,10 @@ instructions for existing imports.
 
 `packageRoot` selects which `package.json` Lando reads. With bare `type: node`,
 Lando also infers the Node version from `.nvmrc` and `engines.node` in that
-directory. It does not change mounts or the container working directory. You
-still need tooling `dir:` so `lando npm` runs in the theme.
+directory. The app mount target and the container working directory stay the
+same, so you still need tooling `dir:` so `lando npm` runs in the theme. The
+theme's `node_modules` becomes a volume that belongs to the `node` service, so
+installed packages stay out of your project directory.
 
 Use bare `type: node` when the theme should choose the Node version. The
 directory must already exist:

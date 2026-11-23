@@ -6,6 +6,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
 import { ProcessRunner, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Exit, Scope, Stream } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { startApp } from "../../src/operations/start.ts";
@@ -86,14 +87,17 @@ for (const failFirst of [false, true]) {
       };
       const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
         effect.pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...harness.runtimeProviderRegistry,
-            select: () =>
-              Effect.succeed({
-                ...provider,
-                capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
-              }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...harness.runtimeProviderRegistry,
+              select: () =>
+                Effect.succeed({
+                  ...provider,
+                  capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
+                }),
+            }),
+          ),
           Effect.provideService(ProcessRunner, {
             run: () => Effect.succeed({ exitCode: 0, stdout: socketPath, stderr: "" }),
             stream: () => Stream.empty,

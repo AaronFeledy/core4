@@ -1,6 +1,7 @@
 import { Context, type Effect, type Redacted, Schema, type Scope, type Stream } from "effect";
 import type {
   AppResolveError,
+  AppliedStateVersionError,
   ArtifactBuildError,
   ArtifactTransferError,
   EnvironmentValueResolutionError,
@@ -99,6 +100,7 @@ export type ProviderError =
   | ProviderSetupProvisioningError
   | ProviderSetupUnsupportedHostError
   | ProviderUnavailableError
+  | AppliedStateVersionError
   | ServiceExecError
   | ServiceNotFoundError
   | ServiceStartError
@@ -237,6 +239,7 @@ export interface AppSelector {
 
 export interface ExecTarget extends ServiceSelector {
   readonly user?: string;
+  readonly expectedContainerId?: string;
 }
 
 export interface CommandSpec {
@@ -347,6 +350,7 @@ export interface ServiceRuntimeFields {
   /** Native container identity: stable across in-place restarts, different after replacement.
    * Omission means consumers cannot prove that container-local work can be reused. */
   readonly containerId?: string;
+  readonly nativeName?: string;
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
   readonly publications: PublicationObservation;
@@ -427,19 +431,29 @@ export class RuntimeProviderRegistry extends Context.Service<
      */
     readonly appliedPlansFor: (
       root: AbsolutePath,
-      providerId?: ProviderId,
-    ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
+      options?: { readonly providerId?: ProviderId; readonly observe?: true },
+    ) => Effect.Effect<
+      ReadonlyArray<AppPlan>,
+      ProviderUnavailableError | AppliedStateVersionError | NoProviderInstalledError
+    >;
     /** Strict host-wide inventory for one provider, preserving unreadable ownership records.
      * Filesystem-only: never constructs, initializes, or contacts a runtime. */
-    readonly appliedStateInventory?: (
+    readonly appliedStateInventory: (
       providerId: ProviderId,
-    ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError | NoProviderInstalledError>;
+    ) => Effect.Effect<
+      AppliedStateInventory,
+      ProviderUnavailableError | AppliedStateVersionError | NoProviderInstalledError
+    >;
     readonly hasRecordedOwnership?: (
       providerId: ProviderId,
     ) => Effect.Effect<boolean, ProviderUnavailableError | NoProviderInstalledError>;
-    readonly assertAppliedStateReadable?: (
-      plan: Pick<AppPlan, "id" | "provider">,
-    ) => Effect.Effect<void, ProviderUnavailableError | NoProviderInstalledError>;
+    /** Filesystem-only targeted read. Returns undefined only when the app has no record. */
+    readonly readAppliedPlanStrict: (
+      target: Pick<AppPlan, "id" | "provider">,
+    ) => Effect.Effect<
+      AppPlan | undefined,
+      ProviderUnavailableError | AppliedStateVersionError | NoProviderInstalledError
+    >;
     readonly select: (
       target?: AppPlan | ProviderId,
     ) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;
@@ -663,6 +677,10 @@ export class RuntimeProvider extends Context.Service<
     ) => Effect.Effect<void, ProviderError | E, Scope.Scope | R>;
     readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
     readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
+    readonly adoptDataRoot?: (
+      plan: AppPlan,
+      volumeWitness: (coordinationKey: string) => Effect.Effect<string | undefined, ProviderError>,
+    ) => Effect.Effect<void, ProviderError>;
     readonly inspectResourceNames?: (
       query: DoctorResourceNameQuery,
     ) => Effect.Effect<ReadonlyArray<string>, ProviderError>;

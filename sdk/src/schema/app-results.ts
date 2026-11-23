@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { FileSyncInfo } from "./file-sync-policy.ts";
 import { AppLifecycleEventName } from "./landofile-events.ts";
 import { CheckResult } from "./networking.ts";
@@ -50,6 +51,19 @@ export const LandofileEventsOutcome = Schema.Union([
 export type LandofileEventsOutcome = typeof LandofileEventsOutcome.Type;
 
 export const StartAppResult = Schema.Struct({
+  credentialChanges: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        service: Schema.String.annotate({ description: "Service whose database credentials were verified." }),
+        family: Schema.Literals(["postgres", "mysql", "mariadb", "mongodb", "mssql"]).annotate({
+          description: "Database family.",
+        }),
+        changedMembers: Schema.Array(
+          Schema.Literals(["user", "password", "database", "rootPassword"]),
+        ).annotate({ description: "Credential members changed without exposing their values." }),
+      }),
+    ).annotate({ [SchemaNotCredentialAnnotationId]: true }),
+  ).annotate({ description: "Verified database credential changes made during activation." }),
   app: Schema.String.annotate({ description: "Name of the started app." }),
   servicesStarted: Schema.Array(StartedService).annotate({
     description: "Services started with their observed endpoints and connections.",
@@ -104,6 +118,7 @@ export const RestartAppResult = Schema.Struct({
   app: Schema.String.annotate({ description: "Name of the restarted app." }),
   servicesStarted: StartAppResult.fields.servicesStarted,
   checks: StartAppResult.fields.checks,
+  credentialChanges: StartAppResult.fields.credentialChanges,
   servicesRemoved: StartAppResult.fields.servicesRemoved,
 }).annotate({ description: "Services and optional readiness checks returned after restarting an app." });
 export type RestartAppResult = typeof RestartAppResult.Type;
@@ -115,6 +130,7 @@ export const RebuildAppResult = Schema.Struct({
   }),
   servicesStarted: StartAppResult.fields.servicesStarted,
   checks: StartAppResult.fields.checks,
+  credentialChanges: StartAppResult.fields.credentialChanges,
   servicesRemoved: StartAppResult.fields.servicesRemoved,
 }).annotate({
   description: "Rebuilt services and their post-start observations returned after rebuilding an app.",
@@ -201,6 +217,40 @@ export const InfoAppHostProxy = Schema.Struct({
 });
 export type InfoAppHostProxy = typeof InfoAppHostProxy.Type;
 
+/**
+ * Filesystem applied-state observation for `lando info`. Distinct from service runtime status:
+ * a newer or damaged record is unknown with a version/unreadable diagnosis, never silent absence.
+ */
+const infoAppliedStateIssueFields = {
+  path: Schema.String.annotate({ description: "Path to the applied-state file." }),
+  message: Schema.String.annotate({ description: "Why Lando could not read the applied state." }),
+  remediation: Schema.String.annotate({ description: "How to recover from the reported issue." }),
+};
+
+export const InfoAppliedStateIssue = Schema.Union([
+  Schema.Struct({
+    ...infoAppliedStateIssueFields,
+    reason: Schema.Literal("unreadable").annotate({ description: "The applied state could not be read." }),
+  }),
+  Schema.Struct({
+    ...infoAppliedStateIssueFields,
+    reason: Schema.Literal("newer-version").annotate({
+      description: "A newer Lando wrote this applied state.",
+    }),
+    storedVersion: Schema.Int.annotate({ description: "Applied-state format version stored on disk." }),
+    supportedVersion: Schema.Int.annotate({
+      description: "Applied-state format version this Lando supports.",
+    }),
+    writtenBy: Schema.optionalKey(
+      Schema.String.annotate({ description: "Lando version that wrote the record, when recorded." }),
+    ),
+  }),
+]).annotate({
+  description:
+    "A diagnosis for applied provider state that Lando leaves in place because it cannot read it safely.",
+});
+export type InfoAppliedStateIssue = typeof InfoAppliedStateIssue.Type;
+
 export const InfoAppResult = Schema.Struct({
   app: Schema.String.annotate({ description: "Name of the inspected app." }),
   dataName: Schema.optionalKey(Schema.String).annotate({
@@ -219,6 +269,9 @@ export const InfoAppResult = Schema.Struct({
   }),
   fileSync: Schema.optionalKey(FileSyncInfo).annotate({
     description: "File synchronization status, when available.",
+  }),
+  appliedStateIssue: Schema.optionalKey(InfoAppliedStateIssue).annotate({
+    description: "Present only when Lando cannot safely read this app's applied-state record.",
   }),
 }).annotate({ description: "Service and host-integration observations returned when inspecting an app." });
 export type InfoAppResult = typeof InfoAppResult.Type;

@@ -69,7 +69,7 @@ The `mariadb` type ships the client task. After start:
 lando mariadb
 ```
 
-`lando start` checks the configured login when it started or recreated the database container, or when the planned connection changed since the last apply, and warns when the running server rejects it. An unchanged running database is checked by `lando doctor --app`, `lando restart`, and `lando rebuild`. See [Recover when credentials don't match](#recover-when-credentials-dont-match).
+The readiness probe pings the server without requiring a working application login. See [Recover when credentials don't match](#recover-when-credentials-dont-match).
 
 The generated client supplies its password for each invocation. Lando scopes the client-only `MYSQL_PWD` variable to client and healthcheck processes, not the database server's initialization environment.
 
@@ -138,36 +138,15 @@ lando mariadb -N -e 'SELECT @@port'
 
 ## Recover when credentials don't match
 
-`creds:` seeds a fresh volume. MariaDB ignores it once its data volume holds data, so changing `creds:` on an existing app changes what Lando's clients send, not the accounts the server stores. After the service is ready, `lando start` checks the configured login when it started or recreated the container, or when the planned connection changed since the last apply; `lando restart` and `lando rebuild` check the services they restart. Each warns when the server rejects it. When Lando has the previously applied plan to compare, the warning names the `creds` members whose descriptors changed and says that comparison does not prove the cause. It never names a value. Without the warning, the first `lando mariadb` or `lando db:*` command fails with `ERROR 1045 Access denied`.
+After editing `creds`, run `lando start`. Lando applies the settings to the catalog server without dropping or renaming existing users or databases. For these updates, Lando connects over the container's Unix socket as `lando_admin`, an account restricted to `localhost`. Its password is derived from a private key and the volume identity. Lando never prints it.
 
-Fix it without losing data, in this order:
+If start warns that it couldn't update the credentials, follow [Keep database credentials in sync](../tooling/db-creds-apply.mdx) to preview and apply a repair with `lando db:creds:apply`. If Lando needs a fallback password, supply the current root password, not the new one.
 
-1. Put `creds:` back to the values the volume was created with, then run `lando start` so Lando's clients send them again.
-2. To keep the new password, sign in with the old one and change it inside MariaDB. The password prompt keeps the value out of your shell history and the container's argv:
-
-   ```sh
-   lando exec db -- mariadb -u root -p
-   ```
-
-   Then, in that shell, replace `<user>` and `<new-password>`:
-
-   ```sql
-   ALTER USER '<user>'@'%' IDENTIFIED BY '<new-password>';
-   ```
-
-   Set `creds:` to the new values and run `lando start` again.
-3. Only when the data is disposable, start over. This deletes the database:
-
-   ```sh
-   lando destroy -y --volumes
-   lando start
-   ```
-
-Lando never picks option 3 for you. `lando doctor --app` runs the same login check against a running app and reports what it observed.
+`LANDO_DATABASE_ADMIN_SEED_UNAVAILABLE` means Lando skipped adopting `lando_admin` and tried the previous or desired root password instead. See [how to restore access to the seed](../tooling/db-creds-apply.mdx).
 
 ## Pin a version
 
-Set `image:` when `mariadb:11.4` isn't the version you want. For example, the 10.11 LTS line:
+Set `image:` when `mariadb:11.4` isn't the version you want. For images outside the catalog, Lando can [check the configured login](../tooling/db-creds-apply.mdx#check-credentials-for-a-custom-image-or-launcher), but it doesn't apply credential changes. For example, to use the 10.11 LTS line:
 
 ```yaml
 services:

@@ -33,7 +33,13 @@ const plan = async (
     const document = Schema.decodeUnknownSync(LandofileShape)({
       name: "mountapp",
       runtime: 4,
-      services: { web: { type: "node:22", home: false, ...service } },
+      services: {
+        web: {
+          ...(service.type === undefined ? { type: "compose", image: "alpine" } : {}),
+          home: false,
+          ...service,
+        },
+      },
     });
     const layer = AppPlannerLayer.layer.pipe(
       Layer.provide(
@@ -77,7 +83,7 @@ test("#2461 prepares authored storage and the nested app bind's parents in the i
       composer: false,
       home: {},
       storage: ["/app"],
-      appMount: { target: "/app/web/modules/custom/example", includes: ["vendor", "node_modules", "tmp"] },
+      appMount: { target: "/app/web/modules/custom/example" },
     },
     false,
     true,
@@ -99,7 +105,10 @@ test("#2461 prepares authored storage and the nested app bind's parents in the i
 });
 
 test("nested authored bind coexists with its parent shadow", async () => {
-  const app = await plan({ mounts: ["./vendor/acme/sdk:/app/vendor/acme/sdk"] });
+  const app = await plan({
+    appMount: { target: "/app", excludes: ["vendor"] },
+    mounts: ["./vendor/acme/sdk:/app/vendor/acme/sdk"],
+  });
   const mounts = web(app).mounts;
   expect(mounts.find((mount) => mount.target === "/app/vendor")?.type).toBe("volume");
   expect(mounts.find((mount) => mount.target === "/app/vendor/acme/sdk")).toMatchObject({
@@ -110,7 +119,9 @@ test("nested authored bind coexists with its parent shadow", async () => {
 });
 
 test("nested includes reopen their own shadow", async () => {
-  const app = await plan({ appMount: { target: "/app", includes: ["vendor/acme/sdk"] } });
+  const app = await plan({
+    appMount: { target: "/app", excludes: ["vendor"], includes: ["vendor/acme/sdk"] },
+  });
   expect(web(app).mounts.find((mount) => mount.target === "/app/vendor/acme/sdk")).toMatchObject({
     type: "bind",
     source: join(app.root, "vendor/acme/sdk"),
@@ -119,9 +130,19 @@ test("nested includes reopen their own shadow", async () => {
   });
 });
 
+test.each(["vendor", "vendor/acme"])(
+  "native vendor include %s adds no overlay without a shadow",
+  async (include) => {
+    const app = await plan({ appMount: { target: "/app", includes: [include] } });
+    expect(
+      web(app).mounts.filter(({ target }) => target === "/app/vendor" || target.startsWith("/app/vendor/")),
+    ).toEqual([]);
+  },
+);
+
 test("includes never cross an intervening authored mount", async () => {
   const app = await plan({
-    appMount: { target: "/app", includes: ["vendor/acme/sdk"] },
+    appMount: { target: "/app", excludes: ["vendor"], includes: ["vendor/acme/sdk"] },
     mounts: ["./other:/app/vendor/acme"],
   });
   expect(web(app).mounts.some((mount) => mount.target === "/app/vendor/acme/sdk")).toBe(false);
@@ -137,7 +158,10 @@ test.each(["/absolute", "../outside", "vendor/../outside", "vendor/*", "vendor/?
 );
 
 test("authored bind at the exclude target replaces its shadow", async () => {
-  const app = await plan({ mounts: ["./alternate:/app/vendor"] });
+  const app = await plan({
+    appMount: { target: "/app", excludes: ["vendor"] },
+    mounts: ["./alternate:/app/vendor"],
+  });
   expect(web(app).mounts.filter((mount) => mount.target === "/app/vendor")).toMatchObject([
     { type: "bind", source: join(app.root, "alternate") },
   ]);
@@ -286,14 +310,7 @@ test("mount order and identity keys do not depend on authored order", async () =
   const first = await plan({ mounts: entries }, true);
   const second = await plan({ mounts: [...entries].reverse() }, true);
   const service = web(first);
-  expect(wireMounts(first).map(({ target }) => target)).toEqual([
-    "/aaa",
-    "/app",
-    "/app/node_modules",
-    "/app/tmp",
-    "/app/vendor",
-    "/app/deep/z",
-  ]);
+  expect(wireMounts(first).map(({ target }) => target)).toEqual(["/aaa", "/app", "/app/deep/z"]);
   expect(serviceAppMount(service)).toMatchObject({ realization: "accelerated", mountKey: "app-mount" });
   expect(
     service.mounts

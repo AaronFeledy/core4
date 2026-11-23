@@ -1,14 +1,22 @@
 import { chmod, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import {
+  ownsAppliedGlobalService,
+  resolveAppliedGlobalPlan,
+} from "@lando/container-runtime/applied-global-service";
 import { type RootOverrides, makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { withDeadline } from "@lando/sdk/command-result";
-import { SshError, causeMessage } from "@lando/sdk/errors";
+import {
+  AppliedStateVersionError,
+  ProviderUnavailableError,
+  SshError,
+  causeMessage,
+} from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import {
   type AgentSocketBridgeResult,
   type AgentSocketKind,
-  AppId,
   type AppRef,
   GPG_AGENT_SOCKET_NAME,
   type MountPlan,
@@ -16,7 +24,7 @@ import {
   SSH_AGENT_SOCKET_NAME,
   ServiceName,
 } from "@lando/sdk/schema";
-import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { GlobalAppService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Duration, Effect, Option, Ref } from "effect";
 import { prepareHealthcheckAttempt } from "../healthcheck/attempt.ts";
 import { probeSshAgent } from "./agent-probe.ts";
@@ -47,7 +55,7 @@ export const agentSocketMountPlan = (mount: AgentSocketBridgeResult, target: Por
   }
 };
 
-export type SshSidecarState = "starting" | "stopped" | "ready";
+export type SshSidecarState = "starting" | "stopped" | "ready" | "unknown";
 export interface SshSidecarReadiness {
   readonly state: SshSidecarState;
   readonly detail?: string;
@@ -61,13 +69,21 @@ const inspectSshAgent = Effect.gen(function* () {
   if (Option.isNone(globalApp))
     return { state: "starting" as const, detail: "Global app service is unavailable." };
   const { root } = yield* globalApp.value.paths;
-  const id = AppId.make(globalApp.value.id);
-  const plan = yield* registry.value.resolveAppliedPlan(root, { kind: "global", id }, "exact");
+  const paths = yield* PathsService;
+  const plan = yield* resolveAppliedGlobalPlan(registry.value, {
+    appRoot: root,
+    dataRoot: paths.roots.userDataRoot,
+  });
   if (plan === undefined)
     return { state: "stopped" as const, detail: "No applied global app plan for the SSH agent sidecar." };
   const provider = yield* registry.value.select(plan);
   const target = { app: plan.id, service: ServiceName.make("ssh-agent"), plan };
   const service = yield* provider.inspect(target);
+  if (plan.identity?.dataRoot !== undefined && !ownsAppliedGlobalService(plan, service))
+    return {
+      state: "stopped" as const,
+      detail: "The SSH agent container does not prove ownership by this global plan.",
+    };
   if (service.status !== "running")
     return {
       state: service.status === "restarting" ? ("starting" as const) : ("stopped" as const),
@@ -98,6 +114,16 @@ export const runtimeSshAgentCheck = withDeadline(inspectSshAgent, "5 seconds").p
       checked._tag === "Completed"
         ? checked.value
         : { state: "starting", detail: "SSH sidecar observation timed out." },
+  ),
+  Effect.catchIf(
+    (error) =>
+      error instanceof AppliedStateVersionError ||
+      (error instanceof ProviderUnavailableError && error.operation === "applied-state.read"),
+    (error) =>
+      Effect.succeed<SshSidecarReadiness>({
+        state: "unknown",
+        detail: `${error.message} ${error.remediation}`,
+      }),
   ),
 );
 
@@ -141,7 +167,7 @@ export const SSH_SIDECAR_READINESS_POLICY = {
 } as const;
 
 export const awaitRuntimeSshAgent = Effect.fnUntraced(function* (
-  check: Effect.Effect<SshSidecarReadiness, unknown> = runtimeSshAgentCheck,
+  check: Effect.Effect<SshSidecarReadiness, unknown, PathsService> = runtimeSshAgentCheck,
 ) {
   const lastState = yield* Ref.make<SshSidecarState>("starting");
   const lastFailure = yield* Ref.make<string | undefined>(undefined);
@@ -156,7 +182,7 @@ export const awaitRuntimeSshAgent = Effect.fnUntraced(function* (
       policy: SSH_SIDECAR_READINESS_POLICY,
       // Green ends probing for both terminal states; the Ref preserves which terminal state won.
       classify: {
-        success: (state) => (state === "starting" ? "yellow" : "green"),
+        success: (state) => (state === "starting" ? "yellow" : state === "unknown" ? "red" : "green"),
         failure: () => "yellow",
       },
     },

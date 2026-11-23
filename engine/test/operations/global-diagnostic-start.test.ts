@@ -21,7 +21,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Effect, Schema } from "effect";
 
 import { renderGlobalDist } from "../../src/global-app/service.ts";
@@ -187,18 +187,20 @@ for (const failBuild of [false, true]) {
         Effect.provideService(AppPlanner, {
           plan: () => Effect.succeed({ ...globalPlan, valueModel: 1 as const }),
         }),
-        Effect.provideService(RuntimeProviderRegistry, {
-          appliedPlansFor: (requestedRoot) =>
-            Effect.sync(() =>
-              appliedGlobal === undefined || requestedRoot !== globalRoot ? [] : [appliedGlobal],
-            ),
-          resolveAppliedPlan: (requestedRoot) =>
-            Effect.sync(() => (requestedRoot === globalRoot ? appliedGlobal : undefined)),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          list: Effect.succeed([plan.provider]),
-          capabilities: Effect.succeed(provider.capabilities),
-          select: () => Effect.succeed(provider),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            appliedPlansFor: (requestedRoot) =>
+              Effect.sync(() =>
+                appliedGlobal === undefined || requestedRoot !== globalRoot ? [] : [appliedGlobal],
+              ),
+            resolveAppliedPlan: (requestedRoot) =>
+              Effect.sync(() => (requestedRoot === globalRoot ? appliedGlobal : undefined)),
+            list: Effect.succeed([plan.provider]),
+            capabilities: Effect.succeed(provider.capabilities),
+            select: () => Effect.succeed(provider),
+          }),
+        ),
         Effect.provideService(RouterService, {
           ...TestRouterService,
           id: "traefik",

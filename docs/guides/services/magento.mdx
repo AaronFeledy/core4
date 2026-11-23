@@ -59,7 +59,7 @@ tooling:
     description: Run bin/magento inside the appserver service.
 ```
 
-These sample credentials initialize a new database. If you followed an earlier version of this guide, keep your existing database credentials and Magento connection settings. Editing `creds` does not change the password stored in an existing MariaDB volume. Don't delete the volume to match this example; see [MariaDB's initialization rules](https://mariadb.com/docs/server/server-management/automated-mariadb-deployment-and-administration/docker-and-mariadb/mariadb-server-docker-official-image-environment-variables).
+These sample credentials initialize a new database. If you followed an earlier version of this guide, keep your existing database credentials and Magento connection settings rather than changing them to match the example. If you intentionally change `creds`, `lando start` applies the new settings to MariaDB without deleting its data. Update Magento's connection files separately. See [Keep database credentials in sync](../tooling/db-creds-apply.mdx).
 
 Save this as `php.ini` beside it:
 
@@ -188,7 +188,7 @@ lando restart
 lando schedule:list
 ```
 
-The list should show `magento-cron` on `appserver`, user `www-data`, with a next run time within the minute. Lando runs the job in a sidecar service named `appserver-schedule-www-data`, which shares the code, `vendor` volume, and environment of `appserver`. It starts and stops with the app, so there's nothing to launch by hand.
+The list should show `magento-cron` on `appserver`, user `www-data`, with a next run time within the minute. Lando runs the job in a sidecar service named `appserver-schedule-www-data`, which shares the code, mounts, and environment of `appserver`. It starts and stops with the app, so there's nothing to launch by hand.
 
 To trigger a run without waiting, or to see its output in your terminal:
 
@@ -277,7 +277,7 @@ This command checks PHP style, not whether the module works or its XML is valid.
 - `webroot: pub` keeps non-public application files outside Apache's document root. `allowOverride: true` enables Magento's `.htaccess` rules; Lando enables `mod_rewrite` for this PHP service.
 - `php.ini` applies the same 2 GB memory limit to CLI PHP and Apache. `lando magento` runs from `/app` as `www-data`, matching the web server's PHP worker.
 - `database` and `search` are internal service names, not hostnames to open in your browser. OpenSearch's security plugin is disabled. Don't publish its port for other machines.
-- `vendor` lives in a service volume by default, so your host editor won't see it. To keep it in your host project instead, add `appMount: { target: /app, includes: [vendor] }` to `appserver`, run `lando start`, then `lando composer install` and repeat the access checks. Changing the mount doesn't copy dependencies out of the old volume. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
+- `vendor` is in your project directory, so your host editor reads the same packages PHP does. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
 - This small local stack uses filesystem caches and the database-backed message queue. Redis or Valkey, RabbitMQ, Varnish, email delivery, and production deployment need their own configuration; they aren't established by this walkthrough.
 
 ## Check the config
@@ -316,7 +316,7 @@ To pause the app without removing containers, run `lando stop`. The cron sidecar
 lando destroy -y
 ```
 
-By default, the database, OpenSearch, and `vendor` volumes remain. Run `lando start` when you want to use the store again; Magento cron starts with it.
+By default, the database and OpenSearch volumes remain. Run `lando start` when you want to use the store again; Magento cron starts with it.
 
 Adding `--volumes` permanently deletes those volumes. It doesn't remove the application files or `app/etc/env.php` from your project. Back up anything you need before deleting data; for a clean reinstall, use a new empty project directory rather than rerunning `setup:install` against leftover configuration.
 

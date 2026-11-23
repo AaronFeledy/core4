@@ -8,11 +8,12 @@ import {
   type ServiceType,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const APP_ROOT = process.cwd();
 
@@ -47,7 +48,7 @@ const planWithFeature = (feature: ServiceFeatureDefinition) => {
     return yield* Effect.flatMap(AppPlanner, (planner) =>
       planner.plan(literalTestLandofile(landofile, APP_ROOT), TestRuntimeProvider.capabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provideService(PluginRegistry, {
         ...registry,
         loadServiceType: (id) =>

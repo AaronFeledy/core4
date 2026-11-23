@@ -15,7 +15,7 @@ import {
   type ServiceRuntimeFields,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
@@ -97,12 +97,8 @@ const makeRegistry = (observations: Readonly<Record<string, Observed>>, inspecte
       return Effect.succeed(runtimeFor(name, observed));
     },
   };
-  return RuntimeProviderRegistry.of({
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+  return makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),
   });
 };
@@ -336,10 +332,13 @@ describe("incomplete start notice", () => {
             Effect.exit(
               withIncompleteStartNotice(mutated.pipe(Effect.andThen(failing)), { verb: "start" }),
             ).pipe(
-              Effect.provideService(RuntimeProviderRegistry, {
-                ...registry,
-                select: (target) => selection.pipe(Effect.andThen(() => registry.select(target))),
-              }),
+              Effect.provideService(
+                RuntimeProviderRegistry,
+                makeTestRuntimeProviderRegistry({
+                  ...registry,
+                  select: (target) => selection.pipe(Effect.andThen(() => registry.select(target))),
+                }),
+              ),
             ),
           );
           yield* TestClock.adjust("999 millis");

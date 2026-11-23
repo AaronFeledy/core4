@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { GlobalAutoStartError, McpTransportError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { GlobalAutoStartError, McpTransportError, appliedStateVersionError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { dispatchTool } from "../src/dispatch";
@@ -11,11 +11,15 @@ test("MCP inspection and tool responses preserve redacted wrapped command causes
     app: "app1",
     services: ["traefik"],
     message: "Failed to auto-start global services.",
-    cause: new ProviderUnavailableError({
+    cause: appliedStateVersionError({
       providerId: "lando",
       operation: "applied-state.read",
-      message: "Cannot read private-state.",
-      remediation: "Restore the file.",
+      path: "/state/private-state.json",
+      storedVersion: 12,
+      supportedVersion: 11,
+      writtenBy: "4.15.0",
+      reader: "4.14.0",
+      scope: "provider",
     }),
   });
   const entry = {
@@ -39,8 +43,9 @@ test("MCP inspection and tool responses preserve redacted wrapped command causes
   );
 
   const cause = {
-    _tag: "ProviderUnavailableError",
-    message: "Cannot read [redacted].",
+    _tag: "AppliedStateVersionError",
+    path: "/state/[redacted].json",
+    writtenBy: "4.15.0",
     operation: "applied-state.read",
   };
   expect(response.structuredContent).toMatchObject({

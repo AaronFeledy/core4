@@ -94,6 +94,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly appId: ReturnType<typeof AppId.make>;
   readonly appRoot: string;
   readonly appSlug: string;
+  readonly nativeSlug?: string;
   readonly dataSlug?: string;
   readonly appName: string;
   readonly appKind?: "user" | "global" | "scratch";
@@ -413,6 +414,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ...planned,
       environment: sortRecord(planned.environment),
       ...(logSources.length === 0 ? {} : { logSources }),
+      ...(entry.plannedPort === undefined ? {} : { plannedPort: entry.plannedPort }),
     };
 
     const withArtifact = resolveServiceArtifact(servicePlan, entry, input.manifests);

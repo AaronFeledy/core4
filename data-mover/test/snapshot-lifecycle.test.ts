@@ -3,7 +3,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
+import { StateStore } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Deferred, Effect, Fiber, Stream } from "effect";
 import { run, runScoped, store, withCatalog } from "./catalog-fixture.ts";
 
@@ -152,7 +153,7 @@ test("a registry returning the wrong recording provider leaves the snapshot list
     // Given an A snapshot and a registry that incorrectly returns B for A.
     const handle = await runScoped(f.mover().snapshot(store));
     const wrong = f.provider({ id: "B" });
-    const registry = RuntimeProviderRegistry.of({ ...f.registry, select: () => Effect.succeed(wrong) });
+    const registry = makeTestRuntimeProviderRegistry({ ...f.registry, select: () => Effect.succeed(wrong) });
     const mover = f.mover(wrong, f.stateStore, registry);
 
     // When removal resolves a provider with the wrong identity.
@@ -168,7 +169,7 @@ test("missing recording provider leaves the snapshot listed", () =>
   withCatalog(async (f) => {
     // Given a snapshot recorded by A, which the registry can no longer select.
     const handle = await runScoped(f.mover().snapshot(store));
-    const registry = RuntimeProviderRegistry.of({
+    const registry = makeTestRuntimeProviderRegistry({
       ...f.registry,
       select: () =>
         Effect.fail(

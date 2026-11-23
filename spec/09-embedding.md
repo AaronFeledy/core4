@@ -91,6 +91,10 @@ Remote methods MUST enforce §10.12.8 and retain applied-data/code side effects 
 
 **Runtime reuse is the required performance shape for long-lived hosts.** Hosts SHOULD acquire one runtime at the lowest sufficient bootstrap level, reuse it across sequential programs, and close it only at host shutdown. Reuse avoids repeated bootstrap, plugin contribution-graph construction, and cache loading; Landofile app-root discovery stays operation-owned (§7.1) and is the basis of the §2.1 hot-path budgets. Isolation-sensitive tenants or tests use separate roots and runtimes. Hosts driving many scratch apps SHOULD reuse one non-scratch runtime and call `runtime.scratch` (§21.12).
 
+Effect programs MAY use `UserAppResolver` from `commands` bootstrap for canonical user Landofile loading (§7.1). It does not select a provider, create an `App` handle, or grant process stdio (§8.3).
+
+Effect programs at `app` bootstrap MAY use `DatabaseCredentialConvergence` to preview or apply catalog credential deltas for an exact canonical user root and optional service (§6.12.4, §10.7). The port revalidates desired and applied placement itself; callers MUST NOT assert a physical target. Hosts that need interactive fallback supply `readPassword` through `InteractionService` or a granted stdin effect; the port never opens process stdio on its own. Lifecycle convergence on `app.start` / restart / rebuild remains internal to the activation applier and does not require hosts to call this port.
+
 ### 16.4 Plugin behavior in library mode
 
 Library runtimes discover no plugins by default. Hosts explicitly contribute direct Layers, pre-resolved manifests and entries, or independently enable bundled, system, user, and app discovery.

@@ -93,6 +93,8 @@ export const supervisedExecStream = (
       const container = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Container))(
         response.body,
       ).pipe(mapFailures((cause) => failure("container-inspect", cause)));
+      if (target.expectedContainerId !== undefined && container.Id !== target.expectedContainerId)
+        return yield* Effect.fail(failure("container-identity-changed"));
       const run = runObservationFromInspectState(container.State).status;
       if (run === "created" || run === "exited" || run === "dead") return yield* Effect.fail(notRunning(run));
       const helper = yield* resolveContainerHelper(helperTarget).pipe(

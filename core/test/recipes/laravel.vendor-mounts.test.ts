@@ -54,14 +54,19 @@ test.each([
       ).pipe(Effect.provide(planner)),
     );
 
-    // Then worker mode shares host vendor, while the default retains its vendor shadow.
-    for (const name of worker ? ["appserver", "worker"] : ["appserver"]) {
+    // Then every service that mounts the app shares vendor, with no includes needed.
+    for (const name of worker ? ["appserver", "worker", "node"] : ["appserver", "node"]) {
       const service = plan.services[ServiceName.make(name)];
       if (service === undefined) throw new Error("Expected Laravel service");
-      const vendor = service.mounts.filter(({ target }) => target === "/app/vendor");
-      expect(vendor.map(({ type }) => type)).toEqual(worker ? [] : ["volume"]);
+      expect(service.mounts.filter(({ target }) => target === "/app/vendor")).toEqual([]);
       const appMount = serviceAppMount(service);
-      expect(appMount).toMatchObject({ source: root, target: "/app" });
+      expect(appMount).toMatchObject({
+        source: root,
+        target: "/app",
+        realization: slow ? "accelerated" : "passthrough",
+      });
+      expect(appMount?.includes ?? []).toEqual([]);
+      expect(appMount?.excludes ?? []).not.toContain("vendor");
       expect(
         service.mounts.filter(
           (mount) => mount.type === "bind" && mount.source === root && mount !== appMount,
@@ -71,7 +76,7 @@ test.each([
         if (appMount === undefined) throw new Error("Expected Laravel app mount");
         const ignores = plan.fileSync.find(({ session }) => session.service === name)?.session.excludes;
         expect(ignores).toEqual(bindSyncIgnores(service, appMount));
-        expect(ignores?.includes("vendor")).toBe(!worker);
+        expect(ignores?.includes("vendor")).toBe(false);
       }
     }
 
@@ -90,10 +95,6 @@ test.each([
       type: "node:22",
       primary: false,
       endpoints: [],
-    });
-    expect(node === undefined ? undefined : serviceAppMount(node)).toMatchObject({
-      source: root,
-      target: "/app",
     });
     expect(node?.healthcheck).toBeUndefined();
     expect(node?.command).toEqual([

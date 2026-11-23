@@ -18,6 +18,7 @@ import { GlobalConfigSources } from "../../src/services/config.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { planLiteralTestLandofile } from "../compiled-landofile.ts";
 import { fileSyncEngineLayer } from "../file-sync-engine.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const pullingCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -38,7 +39,7 @@ const planExit = (service: Record<string, unknown>) =>
         pullingCapabilities,
       ),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(
         Layer.mergeAll(
           PluginRegistryLayer.layer,

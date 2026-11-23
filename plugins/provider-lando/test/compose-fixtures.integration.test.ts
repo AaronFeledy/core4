@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { podmanVolumeCreationLabels } from "@lando/container-runtime/podman/bring-up";
 import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -9,6 +10,7 @@ import { loadLandofileFile } from "@lando/engine/services/landofile-live";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { AppPlanner } from "@lando/engine/services/planner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { makeLandoPaths } from "@lando/paths";
 import {
   bringDown,
   bringUp,
@@ -26,6 +28,7 @@ import {
   landoAuthoredNetworkName,
   landoServiceContainerName,
 } from "@lando/sdk/schema";
+import { PathsService } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Layer, Stream } from "effect";
 import { assertServiceContainerRunning } from "./compose-fixture-container-state.ts";
 
@@ -33,7 +36,11 @@ const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
 const fixturesRoot = resolve(import.meta.dir, "../../../core/test/fixtures/compose");
 const plannerLayer = AppPlannerLayer.layer.pipe(
   Layer.provide(
-    Layer.mergeAll(BunFileSystem.layer, PluginRegistryLayer.layerWith({ app: false, user: false })),
+    Layer.mergeAll(
+      BunFileSystem.layer,
+      PluginRegistryLayer.layerWith({ app: false, user: false }),
+      Layer.succeed(PathsService, makeLandoPaths()),
+    ),
   ),
 );
 
@@ -229,14 +236,8 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
             path: "/volumes/create",
             body: {
               Name: store.name,
-              Labels: {
-                "dev.lando.app": plan.id,
-                "dev.lando.provider": plan.provider,
-                "dev.lando.store": store.name,
-                "dev.lando.scope": store.scope,
-                "dev.lando.volume-selector": `${plan.provider}:${plan.id}:${store.kind === "cache" ? "cache" : "data"}`,
-                ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
-              },
+              // Seed the volume exactly as bringUp would create it, so bringUp proves it owns it.
+              Labels: podmanVolumeCreationLabels(plan, store),
             },
           }),
         );

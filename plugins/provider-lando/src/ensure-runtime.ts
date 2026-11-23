@@ -5,6 +5,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
+import { storeErrorRemediation } from "@lando/state-store";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 import { Duration, Effect, Exit } from "effect";
 import { type EnsureManagedCatatonitOptions, ensureManagedCatatonit } from "./catatonit-provision.ts";
@@ -129,8 +130,14 @@ const mapLaunchLockError = (
     ? new ProviderUnavailableError({
         providerId: "lando",
         operation: "setup",
-        message: "Failed to acquire the Lando runtime launch lock.",
-        remediation: "Wait for the current runtime launch to finish, then retry the command.",
+        message:
+          cause.reason === "newer-version"
+            ? cause.message
+            : "Failed to acquire the Lando runtime launch lock.",
+        remediation: storeErrorRemediation(
+          cause,
+          "Wait for the current runtime launch to finish, then retry the command.",
+        ),
         details: { runRoot: deps.runRoot },
         cause,
       })

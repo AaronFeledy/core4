@@ -131,18 +131,15 @@ const defaultSpawn = async (
   return { exitCode, stdout, stderr };
 };
 
-export const teardownManagedProviderMachine = async (
-  userDataRoot: string,
-  seams: MachineTeardownSeams = {},
-): Promise<{ readonly removed: boolean; readonly name?: string }> => {
-  const classify =
-    seams.classify ?? ((root: string) => classifyManagedProviderMachine(root, undefined, seams.platform));
-  const classification = classify(userDataRoot);
+export const verifyManagedProviderMachine = async (
+  classification: ManagedProviderMachineClassification,
+  spawn: NonNullable<MachineTeardownSeams["spawn"]>,
+): Promise<string | undefined> => {
   const name = classification.name;
   // TOCTOU defense: only ever remove a machine whose recorded ownership is explicitly
   // Lando-created, and only under the managed name.
   if (classification.ownership !== "owned" || name !== MANAGED_MACHINE_NAME) {
-    return { removed: false };
+    return undefined;
   }
 
   if (typeof classification.createdAt !== "string" || classification.createdAt.length === 0) {
@@ -150,13 +147,12 @@ export const teardownManagedProviderMachine = async (
       "Managed Podman machine creation identity is unavailable; review it manually before removal.",
     );
   }
-  const spawn = seams.spawn ?? ((args: ReadonlyArray<string>) => defaultSpawn(userDataRoot, args));
   const inspected = await spawn(["machine", "inspect", name]);
   if (
     inspected.exitCode === PODMAN_MACHINE_NOT_FOUND_EXIT &&
     PODMAN_MACHINE_NOT_FOUND_PATTERN.test(inspected.stderr)
   )
-    return { removed: false, name };
+    return undefined;
   if (inspected.exitCode !== 0) {
     throw new Error(
       `Could not verify managed Podman machine identity (exit ${inspected.exitCode}: ${inspected.stderr.trim()}).`,
@@ -176,6 +172,21 @@ export const teardownManagedProviderMachine = async (
       `Podman machine ${name} does not match Lando's recorded creation identity. Review it manually; Lando will not remove it.`,
     );
   }
+  return name;
+};
+
+export const teardownManagedProviderMachine = async (
+  userDataRoot: string,
+  seams: MachineTeardownSeams = {},
+): Promise<{ readonly removed: boolean; readonly name?: string }> => {
+  const classification =
+    seams.classify?.(userDataRoot) ?? classifyManagedProviderMachine(userDataRoot, undefined, seams.platform);
+  const spawn = seams.spawn ?? ((args: ReadonlyArray<string>) => defaultSpawn(userDataRoot, args));
+  const name = await verifyManagedProviderMachine(classification, spawn);
+  if (!name)
+    return classification.ownership === "owned" && classification.name !== undefined
+      ? { removed: false, name: classification.name }
+      : { removed: false };
   const result = await spawn(["machine", "rm", "--force", name]);
   if (result.exitCode === 0) return { removed: true, name };
   if (

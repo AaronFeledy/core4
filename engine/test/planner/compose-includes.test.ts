@@ -5,13 +5,14 @@ import { join } from "node:path";
 import { ServiceName, serviceAppMount } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import * as PluginRegistry from "../../src/plugins/registry.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
 import { loadLandofileLayers } from "../../src/services/landofile-live.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 test("a catalog type override does not grant identity to a Compose include's custom image", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-compose-home-"));
@@ -26,7 +27,7 @@ test("a catalog type override does not grant identity to a Compose include's cus
         const compiled = yield* loadLandofileLayers(root, join(root, ".lando.yml"));
         return yield* (yield* AppPlanner).plan(compiled, TestRuntimeProvider.capabilities);
       }).pipe(
-        Effect.provide(Planner.layer),
+        Effect.provide(Planner.layer.pipe(Layer.provide(pathsServiceLayer()))),
         Effect.provide(PluginRegistry.layer),
         Effect.provide(FileSystem.layer),
         Effect.provide(makeTestStateStore().layer),
@@ -65,7 +66,7 @@ test.each([
         const plan = yield* planner.plan(compiled, TestRuntimeProvider.capabilities);
         return { lint, plan };
       }).pipe(
-        Effect.provide(Planner.layer),
+        Effect.provide(Planner.layer.pipe(Layer.provide(pathsServiceLayer()))),
         Effect.provide(PluginRegistry.layer),
         Effect.provide(FileSystem.layer),
         Effect.provide(makeTestStateStore().layer),

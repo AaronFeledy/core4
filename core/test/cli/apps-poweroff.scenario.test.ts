@@ -48,6 +48,7 @@ const serviceAt = (root: string): ServiceRuntimeInfo => ({
   status: "running",
   containerId: "container-web",
   publications: { status: "unknown" },
+  labels: { "dev.lando.data-root": dataRoot },
 });
 
 const scratchSummary = (root: string) => ({

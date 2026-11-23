@@ -171,6 +171,9 @@
     "ContainerHelperAssets": [
       "resolve:(target:ContainerHelperTarget) => Effect.Effect<ContainerHelperArtifact,ContainerHelperUnavailableError>"
     ],
+    "DatabaseCredentialConvergence": [
+      "reconcile:(request:DatabaseCredentialConvergenceRequest) => Effect.Effect<DatabaseCredentialConvergenceResult,DatabaseCredentialConvergenceError>"
+    ],
     "DataMover": [
       "findOrphanedSnapshots:Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>,DataMoverError>",
       "listSnapshots:(filter:SnapshotFilter) => Effect.Effect<ReadonlyArray<SnapshotInfo>,DataMoverError>",
@@ -427,6 +430,7 @@
       "listVolumeSnapshots?:() => Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>,ProviderError>",
       "listVolumes:(filter:VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>,ProviderError>",
       "locateVolume:(ref:VolumeRef) => Effect.Effect<VolumeLocator,ProviderError>",
+      "adoptDataRoot?:(plan:AppPlan,volumeWitness:(coordinationKey:string) => Effect.Effect<string|undefined,ProviderError>) => Effect.Effect<void,ProviderError>",
       "logs:(target:LogTarget,options:LogOptions) => Stream.Stream<LogChunk,ProviderError>",
       "matchingPublishPorts?:(containerId:string,ports:ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>,ProviderError>",
       "observeVolume?:(target:ServiceSelector,destination:PortablePath) => Effect.Effect<VolumeInfo,ProviderError>",
@@ -459,13 +463,13 @@
       "waitForExit:(target:ServiceSelector,options?:WaitForExitOptions) => Effect.Effect<ServiceExitResult,ProviderError,Scope.Scope>"
     ],
     "RuntimeProviderRegistry": [
-      "assertAppliedStateReadable?:(plan:Pick<AppPlan,\"id\" | \"provider\">) => Effect.Effect<void,ProviderUnavailableError | NoProviderInstalledError>",
-      "appliedPlansFor:(root:AbsolutePath,providerId?:ProviderId) => Effect.Effect<ReadonlyArray<AppPlan>,ProviderUnavailableError|NoProviderInstalledError>",
-      "appliedStateInventory?:(providerId:ProviderId) => Effect.Effect<AppliedStateInventory,ProviderUnavailableError|NoProviderInstalledError>",
+      "appliedPlansFor:(root:AbsolutePath,options?:{ readonly providerId?:ProviderId; readonly observe?:true }) => Effect.Effect<ReadonlyArray<AppPlan>,ProviderUnavailableError|AppliedStateVersionError|NoProviderInstalledError>",
+      "appliedStateInventory:(providerId:ProviderId) => Effect.Effect<AppliedStateInventory,ProviderUnavailableError|AppliedStateVersionError|NoProviderInstalledError>",
       "capabilities:Effect.Effect<ProviderCapabilities,ProviderSelectionError>",
       "hasRecordedOwnership?:(providerId:ProviderId) => Effect.Effect<boolean,ProviderUnavailableError|NoProviderInstalledError>",
       "list:Effect.Effect<ReadonlyArray<ProviderId>,ProviderUnavailableError>",
       "observeRuntime?:Effect.Effect<ReadonlyArray<ProviderRuntimeSnapshot>,AppResolveError|ProviderError|NoProviderInstalledError>",
+      "readAppliedPlanStrict:(target:Pick<AppPlan,\"id\"|\"provider\">) => Effect.Effect<AppPlan|undefined,ProviderUnavailableError|AppliedStateVersionError|NoProviderInstalledError>",
       "resolveAppliedPlan:(root:AbsolutePath,app?:Pick<AppRef,\"kind\"|\"id\">,lookup?:AppliedPlanLookup) => Effect.Effect<AppPlan|undefined,AppResolveError|ProviderError|NoProviderInstalledError>",
       "resolveTeardownEvidence:(root:AbsolutePath,app?:Pick<AppRef,\"kind\"|\"id\">) => Effect.Effect<AppliedTeardownEvidence,AppResolveError|ProviderError|NoProviderInstalledError>",
       "resourceOwnership?:(providerId:ProviderId,root:AbsolutePath) => Effect.Effect<ResourceOwnership|undefined,ProviderUnavailableError|NoProviderInstalledError>",
@@ -533,6 +537,10 @@
       "detectCollisions:(appIds:ReadonlyArray<AppId>) => Effect.Effect<ReadonlyArray<PortCollision>,ScannerError|PortCollisionError>",
       "id:string",
       "scan:(appId:AppId,options?:{ plan?:AppPlan;urls?:ReadonlyArray<{ service:ServiceName;url:string;endpoint?:EndpointRef;}>;/** Observe completed attempts without affecting probe verdicts;detail is redacted and expected is final. */ onAttempt?:(attempt:ScanAttempt) => Effect.Effect<void>;}) => Effect.Effect<ScanResult,ScannerError>"
+    ],
+    "UserAppResolver": [
+      "current:Effect.Effect<LoadScopedLandofile,UserLandofileError>",
+      "load:(root:AbsolutePath) => Effect.Effect<LoadScopedLandofile,UserLandofileError>"
     ]
   },
   "subpathExports": {
@@ -679,6 +687,7 @@
       "AppLockTimeoutError",
       "AppPlacementError",
       "AppResolveError",
+      "AppliedStateVersionError",
       "ArchiveFormatError",
       "ArtifactBuildError",
       "ArtifactTransferError",
@@ -893,6 +902,10 @@
       "SnapshotOwnershipError",
       "SqlCommandFailedError",
       "SqlConfirmRequiredError",
+      "SqlCredentialAdminAuthError",
+      "SqlCredentialApplyError",
+      "SqlCredentialMember",
+      "SqlCredentialTargetError",
       "SqlDatabasePathError",
       "SqlDumpCompressionError",
       "SqlDumpIncompleteError",
@@ -930,6 +943,7 @@
       "UnknownCommandError",
       "VolumeNotFoundError",
       "VolumeOperationError",
+      "appliedStateVersionError",
       "causeMessage",
       "choicesUnavailableFields",
       "errnoCode",
@@ -937,8 +951,10 @@
       "interactionRequiredFields",
       "isErrnoCode",
       "landofileLoadFailures",
+      "newerStateRemediation",
       "promptValidationFields",
-      "safeFileIoError"
+      "safeFileIoError",
+      "sanitizeStateWriter"
     ],
     "./events": [
       "BeforeExitEvent",
@@ -1589,6 +1605,7 @@
       "InfoAppAgentEnv",
       "InfoAppHostProxy",
       "InfoAppResult",
+      "InfoAppliedStateIssue",
       "InlineProps",
       "InspectProps",
       "InstallUidmapHostChange",
@@ -1600,8 +1617,11 @@
       "KeymapConfig",
       "LANDOFILE_EDITOR_SCHEMA_URL",
       "LANDOFILE_MERGE_DIRECTIVE",
+      "LANDO_DATA_ROOT_LABEL",
       "LANDO_HOST_EVENT_ENV",
+      "LANDO_NETWORK_ROLE_LABEL",
       "LANDO_SHARED_CROSS_APP_NETWORK",
+      "LANDO_SHARED_NETWORK_ROLE",
       "LIFECYCLE_COMMAND_ALIASES",
       "LIFECYCLE_COMMAND_IDS",
       "LOG_LEVELS",
@@ -1808,6 +1828,7 @@
       "RendererPanelWatch",
       "ResolvedPluginInput",
       "ResourceOwnership",
+      "ResourceOwnershipMember",
       "RestartAppResult",
       "RetainedFileSyncQuiescence",
       "RouteBackendTls",
@@ -2049,6 +2070,8 @@
       "isCoreServiceEnvKey",
       "isHostEventContainerStep",
       "isIdleRunStatus",
+      "isLandoGlobalNativeSlug",
+      "isLandoScopedSharedNetworkName",
       "isLifecycleCommandId",
       "isMappableEveryDurationMs",
       "isMergeDirectiveMemberAst",
@@ -2062,8 +2085,10 @@
       "landoAppStoreName",
       "landoAuthoredNetworkName",
       "landoCacheStoreName",
+      "landoDataRootToken",
       "landoDependencyEnvironmentStoreName",
       "landoExternalNetworkNames",
+      "landoNativeAppSlug",
       "landoNetworkNames",
       "landoNetworkingPlan",
       "landoOwnedNetworkNames",
@@ -2074,6 +2099,7 @@
       "landoServiceShadowStoreName",
       "landoServiceStorageName",
       "landoServiceStoreName",
+      "landoSharedCrossAppNetworkName",
       "landoSharedNetworkName",
       "layerMerge",
       "logicalEndpointIdentity",
@@ -2207,6 +2233,8 @@
       "ConfigTranslatorRegistry",
       "ContainerHelperAssets",
       "DataMover",
+      "DatabaseCredentialConvergence",
+      "DatabaseCredentialConvergenceResult",
       "Dataset",
       "DeprecationService",
       "Downloader",
@@ -2257,6 +2285,7 @@
       "TunnelService",
       "UpdateService",
       "UrlScanner",
+      "UserAppResolver",
       "markDeprecated",
       "physicalVolumeLockKey"
     ],
@@ -2327,6 +2356,7 @@
       "makeTestHealthcheckRunner",
       "makeTestRouterService",
       "makeTestRuntimeProvider",
+      "makeTestRuntimeProviderRegistry",
       "makeTestSshService",
       "makeTestUrlScanner",
       "makeToolingEngineContractSuite",

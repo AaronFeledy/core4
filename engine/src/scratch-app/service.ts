@@ -297,6 +297,7 @@ const markScratchPlan = (plan: AppPlan, scratchId: string): AppPlan => ({
 const applyShareGlobalStorage = (plan: AppPlan): AppPlan => {
   const built = landoNetworkingPlan({
     slug: plan.slug,
+    identity: plan.identity,
     serviceNames: Object.keys(plan.services),
     sharedCrossAppNetwork: true,
   });
@@ -729,7 +730,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
         ),
       ),
     );
-    yield* applyScratchStartup(
+    const credentialChanges = yield* applyScratchStartup(
       {
         id: scratchId,
         plan: certifiedPlan,
@@ -748,6 +749,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     return {
       id: scratchId,
       app: { kind: "scratch", id: scratchId, root: markedPlan.root },
+      ...(credentialChanges === undefined ? {} : { credentialChanges }),
     } satisfies ScratchHandle;
   });
 

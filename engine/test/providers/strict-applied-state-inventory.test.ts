@@ -11,8 +11,6 @@ const providerId = ProviderId.make("test");
 const inventory = (selected = providerId) =>
   Effect.gen(function* () {
     const registry = yield* RuntimeProviderRegistry;
-    if (registry.appliedStateInventory === undefined)
-      return yield* Effect.die("Strict inventory API missing");
     return yield* registry.appliedStateInventory(selected);
   });
 
@@ -20,8 +18,13 @@ test("strict inventory preserves all roots and unreadable ownership without cons
   const expected: AppliedStateInventory = {
     plans: [plan, { ...plan, id: AppId.make("other-app"), root: AbsolutePath.make("/tmp/other-app") }],
     unreadable: [
-      { path: "/tmp/applied/aggregate.json" },
-      { path: "/tmp/applied/protected.json", appId: AppId.make("protected") },
+      {
+        path: "/tmp/applied/aggregate.json",
+        reason: "newer-version",
+        storedVersion: 11,
+        supportedVersion: 10,
+      },
+      { path: "/tmp/applied/protected.json", appId: AppId.make("protected"), reason: "unreadable" },
     ],
   };
   const result = await Effect.runPromise(
@@ -30,7 +33,6 @@ test("strict inventory preserves all roots and unreadable ownership without cons
         registryLayer(TestRuntimeProvider, {
           contribution: {
             make: () => Effect.die("Strict inventory must not construct a runtime"),
-            appliedPlans: () => Effect.die("Strict inventory must not call the lossy plans reader"),
             appliedStateInventory: () =>
               Effect.gen(function* () {
                 const paths = yield* PathsService;
@@ -54,7 +56,7 @@ test("an installed third-party provider without strict inventory fails instead o
         registryLayer(TestRuntimeProvider, {
           contribution: {
             make: () => Effect.die("Missing strict inventory must not construct a runtime"),
-            appliedPlans: () => Effect.die("Missing strict inventory must not use the lossy fallback"),
+            ...Object.fromEntries([["appliedStateInventory", undefined]]),
           },
         }),
       ),
@@ -66,10 +68,10 @@ test("an installed third-party provider without strict inventory fails instead o
     failure: {
       _tag: "ProviderUnavailableError",
       providerId: "test",
-      operation: "applied-state.list",
+      operation: "load-contribution",
     },
   });
-  if (result._tag === "Failure") expect(result.failure.message).toContain("strict applied-state inventory");
+  if (result._tag === "Failure") expect(result.failure.remediation).toContain("appliedStateInventory");
 });
 
 test("an unknown provider fails without reading another installed provider's inventory", async () => {
@@ -79,7 +81,6 @@ test("an unknown provider fails without reading another installed provider's inv
         registryLayer(TestRuntimeProvider, {
           contribution: {
             make: () => Effect.die("Unknown provider must not construct another runtime"),
-            appliedPlans: () => Effect.die("Unknown provider must not read another provider"),
             appliedStateInventory: () => Effect.die("Unknown provider must not read another inventory"),
           },
         }),

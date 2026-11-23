@@ -151,8 +151,8 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
       root: placement.plan.root,
     };
   }
+  yield* registry.readAppliedPlanStrict(validatedTarget.plan);
   const owningProvider = yield* registry.select(validatedTarget.plan);
-  yield* registry.assertAppliedStateReadable?.(validatedTarget.plan) ?? Effect.void;
   const runtimeState = (yield* owningProvider.getStatus).state;
   if (runtimeState === "running" && placement.superseded.length > 0) {
     // Preserve cross-provider ambiguity and validate inventories before retirement.

@@ -79,6 +79,7 @@ export const servicePortExpression = (template: ExpressionTemplate, path: Readon
   if (self.members.size === 0) return "absent";
   if (self.members.size !== 1 || !self.members.has("port")) return "unsupported-member";
   if (path[0] !== "services") return "unsupported-site";
+  if (isServiceEnvironmentValuePath(path)) return "supported";
   const match = executionSiteAt(path);
   if (
     match?.site === "service-command" ||

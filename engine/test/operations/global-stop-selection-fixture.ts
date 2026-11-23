@@ -6,7 +6,9 @@ import {
   type AppPlan,
   PluginManifest,
   ProviderId,
+  type ResourceOwnership,
   ServiceName,
+  planAppIdentity,
 } from "@lando/sdk/schema";
 import {
   PathsService,
@@ -85,6 +87,8 @@ export const harness = (
     readonly observations?: readonly ServiceRuntimeInfo[];
     readonly disabled?: readonly string[];
     readonly inventoryFailure?: boolean;
+    readonly ownership?: ResourceOwnership;
+    readonly dataRoot?: AbsolutePath;
   } = {},
 ) => {
   const removed: ServiceRuntimeInfo[] = [];
@@ -126,7 +130,14 @@ export const harness = (
   };
   const resolved: Resolved = {
     provider,
-    evidence: { kind: "applied", plan },
+    evidence: {
+      kind: "applied",
+      plan:
+        options.dataRoot === undefined
+          ? plan
+          : { ...plan, identity: { ...planAppIdentity(plan), dataRoot: options.dataRoot } },
+      ...(options.ownership === undefined ? {} : { ownership: [options.ownership] }),
+    },
     materialized: false,
     paths: {
       root,

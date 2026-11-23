@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { posix, resolve } from "node:path";
 import type { ServiceTypeError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type {
@@ -85,11 +85,16 @@ const resolveCatalogNode = (
     const selected = selectVersion(projectFiles);
     const packageManager = resolveNodePackageManager(projectFiles);
     if (packageManager !== undefined) validatePackageManagerDistribution(packageManager);
-    const includes = usesYarnPnp(packageManager, projectFiles) ? ["node_modules"] : [];
     const packageManagerConfig =
       packageManager === undefined ? undefined : packageManagerConfigFor(packageManager);
     // The planner supplies no candidates when the author owns the image/build.
     const catalogOwned = projectFiles.length > 0;
+    // Container paths are POSIX even when a Windows host authored `apps\web`.
+    const packageRoot = catalogOwned ? (input.service.packageRoot ?? ".").replaceAll("\\", "/") : ".";
+    // Workspace installs may hoist to the app root; standalone packages install locally.
+    const excludes = usesYarnPnp(packageManager, projectFiles)
+      ? []
+      : [...new Set(["node_modules", posix.join(packageRoot, "node_modules")])];
     const globals = applyProvisionedGlobals(normalizeNpmGlobals(input.service.globals), packageManager);
     const files = projectFiles.map((file) => ({
       path: file.path,
@@ -108,7 +113,7 @@ const resolveCatalogNode = (
             ...(packageManagerConfig === undefined ? {} : { packageManager: packageManagerConfig }),
           },
         },
-        { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET, includes } },
+        { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET, excludes } },
       ],
       launchers: nodeServiceLaunchers({
         catalogOwned,

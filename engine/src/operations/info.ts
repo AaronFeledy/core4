@@ -30,6 +30,7 @@ import { observedAppPlan } from "../providers/app-placement.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
 import { hostProxyEligibleServices } from "../subsystems/host-proxy/worker-service-plan.ts";
 import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
+import { isSameInfoAppliedStateFailure, observeInfoAppliedState } from "./info-applied-state.ts";
 import { projectFileSyncInfo } from "./info-file-sync.ts";
 import { infoLogSources } from "./info-log-sources.ts";
 import { projectServiceObservation } from "./info-probes.ts";
@@ -107,6 +108,12 @@ const serviceInfoMetadata = (
   };
 };
 
+const unknownFileSyncPolicy = {
+  mode: "unknown" as const,
+  reason: "unknown" as const,
+  services: [] as const,
+};
+
 // Requires only RuntimeProviderRegistry (no LandofileService/AppPlanner) so
 // out-of-band plan resolvers (global-app commands) reuse this without pulling
 // user-Landofile resolution into their bootstrap layer.
@@ -117,11 +124,38 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     readonly plannedPolicy?: AppPlan | null;
     readonly appName?: string;
     readonly desiredOnly?: ReadonlySet<string>;
+    readonly kind?: "user" | "global";
   } = {},
 ): Effect.fn.Return<InfoAppResult, InfoAppError, RuntimeProviderRegistry> {
   const registry = yield* RuntimeProviderRegistry;
+  const { applied, appliedStateIssue } = yield* observeInfoAppliedState(
+    completionPlan,
+    options.kind ?? "user",
+  );
   const provider = yield* registry.select(plan);
-  const observations = yield* collectPlanObservations(plan, completionPlan, provider);
+  const observations = yield* collectPlanObservations(
+    plan,
+    completionPlan,
+    appliedStateIssue === undefined
+      ? provider
+      : {
+          ...provider,
+          inspect: (target) =>
+            provider.inspect(target).pipe(
+              Effect.catchIf(
+                (failure) => isSameInfoAppliedStateFailure(failure, appliedStateIssue, plan.provider),
+                () =>
+                  Effect.succeed({
+                    app: target.app,
+                    service: target.service,
+                    providerId: plan.provider,
+                    status: "unknown" as const,
+                    publications: { status: "unknown" as const },
+                  }),
+              ),
+            ),
+        },
+  );
   const rows = yield* collectObservedConnections(plan, observations);
   const services = rows.map((row) => {
     const service = Object.values(plan.services).find((service) => String(service.name) === row.name);
@@ -147,24 +181,25 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     hostProxyEligibleServices(plan).length === 0
       ? undefined
       : (hostProxyPlanExtension(plan) ?? { runLando: { availability: "available" as const } });
-  const applied = yield* registry.resolveAppliedPlan(
-    completionPlan.identity?.appRoot ?? completionPlan.root,
-    {
-      kind: "user",
-      id: completionPlan.id,
-    },
-    "exact",
-  );
   // selectInfoPlan returns the original plan only for an unscoped view.
   const selectedServices = plan === completionPlan ? undefined : Object.keys(plan.services);
   const appName = options.appName ?? plan.name;
   const dataName = plan.identity?.dataName ?? plan.name;
   const plannedPolicy = options.plannedPolicy === undefined ? completionPlan : options.plannedPolicy;
+  const fileSync =
+    appliedStateIssue !== undefined
+      ? {
+          ...projectFileSyncInfo(plannedPolicy ?? undefined, undefined, selectedServices),
+          applied: unknownFileSyncPolicy,
+          pendingChange: false,
+        }
+      : projectFileSyncInfo(plannedPolicy ?? undefined, applied, selectedServices);
   return {
     app: appName,
     ...(dataName === appName ? {} : { dataName }),
     services,
-    fileSync: projectFileSyncInfo(plannedPolicy ?? undefined, applied, selectedServices),
+    fileSync,
+    ...(appliedStateIssue === undefined ? {} : { appliedStateIssue }),
     ...(hostProxy === undefined ? {} : { hostProxy }),
   };
 });
@@ -193,7 +228,7 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
     ({ plan, landofile } = yield* planDesiredApp);
   }
 
-  const observedPlan = yield* observedAppPlan(plan);
+  const observedPlan = yield* observedAppPlan(plan, true);
   let desired: AppPlan | null = target?.plan ?? plan;
   if (observedTarget !== undefined && target === undefined) {
     const planned = yield* Effect.result(planDesiredApp);

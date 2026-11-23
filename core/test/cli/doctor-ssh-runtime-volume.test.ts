@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import {
   AbsolutePath,
   AppId,
@@ -10,14 +11,18 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
-import { ConfigService, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { ConfigService, GlobalAppService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
 import { setupReadinessPath, writeSetupReadiness } from "../../src/cli/commands/setup-readiness.ts";
 import { globalAppForProvider } from "../_support/global-provider.ts";
 import { globalPlanAt } from "../_support/global-teardown-harness.ts";
+
+const testPaths = makeLandoPaths();
+const runWithPaths = <A, E>(effect: Effect.Effect<A, E, PathsService>) =>
+  Effect.runPromise(effect.pipe(Effect.provideService(PathsService, testPaths)));
 
 const root = AbsolutePath.make("/isolated/global");
 const service = ServiceName.make("ssh-agent");
@@ -63,7 +68,7 @@ test.each([
         }),
     } satisfies typeof TestRuntimeProvider;
     // When
-    const check = await Effect.runPromise(
+    const check = await runWithPaths(
       sshAgentPostureCheck({
         globalConfig: {},
         capabilities: { agentSocket: { delivery: "guest-bridge" } },
@@ -81,10 +86,8 @@ test.each([
         Effect.provideService(GlobalAppService, globalApp),
         Effect.provideService(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
+          makeTestRuntimeProviderRegistry({
             resolveAppliedPlan: () => Effect.succeed(plan),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([provider.id]),
             capabilities: Effect.succeed(provider.capabilities),
             select: () => Effect.succeed(provider),
@@ -131,7 +134,7 @@ test.each([true, false])(
           }),
         exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       };
-      const check = await Effect.runPromise(
+      const check = await runWithPaths(
         Effect.gen(function* () {
           const fiber = yield* Effect.forkChild(
             sshAgentPostureCheck({
@@ -161,15 +164,16 @@ test.each([true, false])(
             load: Effect.succeed(config),
             get: (key) => Effect.succeed(config[key]),
           }),
-          Effect.provideService(RuntimeProviderRegistry, {
-            resolveAppliedPlan: () =>
-              Effect.succeed(globalPlanAt(root, converged && publishesReadiness ? readiness : undefined)),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
-            list: Effect.succeed([provider.id]),
-            capabilities: Effect.succeed(provider.capabilities),
-            select: () => Effect.succeed(provider),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              resolveAppliedPlan: () =>
+                Effect.succeed(globalPlanAt(root, converged && publishesReadiness ? readiness : undefined)),
+              list: Effect.succeed([provider.id]),
+              capabilities: Effect.succeed(provider.capabilities),
+              select: () => Effect.succeed(provider),
+            }),
+          ),
         ),
       );
       expect(check).toMatchObject({

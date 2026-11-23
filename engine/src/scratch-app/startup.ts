@@ -70,7 +70,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
             }),
       ),
     );
-    yield* applyActivation({
+    const applied = yield* applyActivation({
       routeUrls,
       provider: services.provider,
       plan: runtimePlan,
@@ -111,6 +111,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
             }),
       ),
     );
+    return applied.credentialChanges;
   });
   if (!requiresGlobalConsumerAdmission(plan)) return yield* activate;
   if (services.admissionContext === undefined)

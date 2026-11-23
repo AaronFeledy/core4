@@ -92,11 +92,11 @@ export const restartApp = Effect.fn("AppOperation.restart")(
           admitted.scope === "services"
             ? {
                 app: plan.name,
-                servicesStarted: yield* relaunchSelectedServices(admitted, {
+                ...(yield* relaunchSelectedServices(admitted, {
                   operation: "restart",
                   ...(options.signal === undefined ? {} : { signal: options.signal }),
                   ...(managed === undefined ? {} : { managed }),
-                }),
+                })),
                 ...(removedByResume.length === 0 ? {} : { servicesRemoved: removedByResume }),
               }
             : yield* haltAndRelaunchApp(

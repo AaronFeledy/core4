@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import { AppId, type AppPlan, appIdentityKey } from "@lando/sdk/schema";
 import { ManagedFileTransactionGuard, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestFileSyncEngine } from "@lando/sdk/test";
+import { TestFileSyncEngine, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
@@ -121,15 +121,18 @@ test.each(operations)(
       const base = await Effect.runPromise(harness.runtimeProviderRegistry.select());
       const result = await Effect.runPromise(
         operation({}, { plan, root: plan.root, app: { kind: "user", id: plan.id, root: plan.root } }).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...harness.runtimeProviderRegistry,
-            select: () =>
-              Effect.succeed({
-                ...base,
-                inspectAppliedFileSync: (plan) =>
-                  Effect.succeed({ status: plan.id === unsafe.id ? "unknown" : "ordinary" }),
-              }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...harness.runtimeProviderRegistry,
+              select: () =>
+                Effect.succeed({
+                  ...base,
+                  inspectAppliedFileSync: (plan) =>
+                    Effect.succeed({ status: plan.id === unsafe.id ? "unknown" : "ordinary" }),
+                }),
+            }),
+          ),
           Effect.provideService(ManagedFileTransactionGuard, {
             assertReadable: () => Effect.void,
             pending: () => Effect.succeed(null),

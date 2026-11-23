@@ -7,6 +7,7 @@ import { Effect, Layer, Result, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const plan = (input: unknown, hostProvider: string) =>
   Effect.flatMap(AppPlanner, (planner) =>
@@ -16,7 +17,11 @@ const plan = (input: unknown, hostProvider: string) =>
       TestRuntimeProvider.capabilities,
     ),
   ).pipe(
-    Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))),
+    Effect.provide(
+      AppPlannerLayer.layer.pipe(
+        Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, pathsServiceLayer())),
+      ),
+    ),
     Effect.provideService(HostProviderOverride, ProviderId.make(hostProvider)),
   );
 
