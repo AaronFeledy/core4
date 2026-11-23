@@ -156,7 +156,7 @@ Generated tests MUST preserve source path, line range, scenario, variant, step, 
 - `GuideFrontmatter`, scenario, component, matcher, transcript, tab, and variant schema validity.
 - Component placement (§19.3): a misplaced, nested, or inline executable component fails with its source path and line.
 - Allowed Diátaxis buckets and unique scenario/step ids.
-- At least one reader scenario unless explicitly test-only.
+- At least one reader scenario, unless every scenario on the page declares `render={false}`; that page's prose fences stay subject to the container-command coverage rule below.
 - Required reasons, ownership metadata, and cleanup for every e2e scenario variant.
 - Hidden and inline discipline.
 - No raw shell fence inside a scenario; executable shell uses `<Run>` or justified `<Inline>`.
