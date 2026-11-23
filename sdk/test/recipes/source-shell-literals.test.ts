@@ -8,17 +8,21 @@ const context = { sourceKind: "local", packageName: "example", assets: [] } as c
 const base = { id: "example", title: "Example", description: "Example", version: "1.0.0" };
 const renderContext = { appRoot: AbsolutePath.make("/app"), env: { HOME: "/host-home" } };
 
-test("carries the recipe's authored service port expression to planning", () => {
+test("carries the recipe's authored service port expressions to planning", () => {
   const command = ["redis-server", "--port", "{{ service.port }}"];
-  const config = { services: { cache: { type: "redis", command } } };
+  const environment = { PORT: "{{ service.port }}" };
+  const config = { services: { cache: { type: "redis", command, environment } } };
   const manifest = Result.getOrThrow(compileRecipeSource({ ...base, config }, context));
   const compiled = Result.getOrThrow(renderCompiledRecipeSnapshot(manifest.snapshot, {}, renderContext));
   expect(compiled.document).toEqual(config);
-  expect(compiled.pendingSites.map((site) => site.path)).toEqual([["services", "cache", "command", 2]]);
+  expect(compiled.pendingSites.map((site) => site.path)).toEqual([
+    ["services", "cache", "command", 2],
+    ["services", "cache", "environment", "PORT"],
+  ]);
 });
 
 test.each([
-  [{ environment: { PORT: "{{ service.port }}" } }, ["environment", "PORT"]],
+  [{ port: "{{ service.port }}" }, ["port"]],
   [{ command: ["redis-server", "--port", "{{ service.name }}"] }, ["command", 2]],
 ] as const)("rejects a recipe self expression at %j (%j)", (service, path) => {
   const config = { services: { cache: { type: "redis", ...service } } };

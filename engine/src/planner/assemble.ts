@@ -273,7 +273,6 @@ function* assemblePlan(
     const authoredStores = new Map(authored.byStore);
     for (const [store, info] of resolvedAuthored.byStore) authoredStores.set(store, info);
     const storageAuthored = { ...authored, byStore: authoredStores };
-    const logSources = seed.logSources;
     const seededFeatureIds = plannerSeededFeatureIds(resolution.base);
     const securityFeature =
       resolution.base === "lando"
@@ -332,7 +331,8 @@ function* assemblePlan(
       authored: storageAuthored,
       serviceType,
       resolution,
-      logSources,
+      logSources: seed.logSources,
+      plannedPort: seed.plannedPort,
       prepared,
       applicationConfigs,
       endpointContributions,

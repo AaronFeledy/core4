@@ -162,7 +162,7 @@ lando app:config:lint --format=json
 lando app:cache:refresh
 ```
 
-A service can't read its own published facts, such as `services.cache.creds.user` inside `cache`. Lando points to the field that reads the fact. If an allowed command, entrypoint, or container probe reads `{{ services.cache.port }}` and `cache` has a planned port, Lando suggests `{{ service.port }}` instead. Use that expression for the service's own listen port. It isn't available in fields such as `environment:` or in configurations with no planned listener.
+A service can't read its own published facts, such as `services.cache.creds.user` inside `cache`. Lando points to the field that reads the fact. If an allowed command, entrypoint, map-form `environment:`, or container probe reads `{{ services.cache.port }}` and `cache` has a planned port, Lando suggests `{{ service.port }}` instead. Use that expression for the service's own listen port. Configurations with no planned listener still have no port fact.
 
 Services also can't read one another's published facts in a cycle. Lando names the services in the cycle so you can remove one of those reads.
 
@@ -202,7 +202,7 @@ The command gets `6380` as one argument, and the healthcheck uses the same port.
 
 When you only need extra daemon flags and Lando already owns the launcher, use [`extraArgs:`](../services/extra-args.mdx) instead of replacing `command:`. Lando keeps its port, persistence, password, and config-file flags, then appends your argv list. A non-empty `extraArgs:` with an authored `command:` or `entrypoint:` is rejected.
 
-Use `service.port` in `command:`, `entrypoint:`, `extraArgs:` elements, or a command in a container `healthcheck:` or `readiness:` probe. It does not refer to a published host port. It is not available in host readiness, `environment:`, build steps, events, or tooling. Some modes, such as PHP in CLI mode, have no planned listen port.
+Use `service.port` in `command:`, `entrypoint:`, `extraArgs:` elements, a map-form service `environment:` value, or a command in a container `healthcheck:` or `readiness:` probe. It does not refer to a published host port. It is not available in host readiness, build steps, events, or tooling. Some modes, such as PHP in CLI mode, have no planned listen port.
 
 On raw `type: lando` and `type: compose` services, set `port:` yourself. You can omit `type:` on a custom image when neither the image nor the service name selects a registered type. For example, if your image provides `api-server`:
 
@@ -216,7 +216,7 @@ services:
 
 Lando passes `0.0.0.0:8080` as one argument. On a raw service, `port:` only supplies the expression value. It does not configure the daemon, declare an endpoint, publish a port, add a route, or create a probe. If you leave out `port:`, there is no default. Run `lando app:config:lint --format=json` from the app directory to locate the argument that reads the missing value.
 
-For a **different** service's database port, use its name. For example, `DB_PORT: "{{ services.db.port }}"` passes PostgreSQL's `5432` as text if `db` uses the default. Finite numbers from plan-time expressions render as text at text fields, whether the expression is the whole value or part of a longer string.
+For a **different** service's planned listen port, use its name. For example, `DB_PORT: "{{ services.db.port }}"` passes PostgreSQL's `5432` as text if `db` uses the default, and `EDGE: "http://edge:{{ services.edge.port }}"` passes nginx's planned HTTP port. Database services publish the connection port; other types with a planned listener publish that port. Finite numbers from plan-time expressions render as text at text fields, whether the expression is the whole value or part of a longer string.
 
 ## Set an extra host with expressions
 
@@ -594,13 +594,13 @@ expect(JSON.parse(lint.stdout).result.violations).toMatchObject([
 }`} />
     </Step>
   </Scenario>
-  <Scenario id="service-port-misuse" render={false} reason="Verify that lint and planning report the same unsupported environment field.">
+  <Scenario id="service-port-misuse" render={false} reason="Verify that lint and planning report the same unsupported port field.">
     <Step name="scaffold-service-port-misuse">
       <UseFixture name="expressions-service-port-misuse" />
     </Step>
     <Step name="report-service-port-misuse">
-      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"cache\",\\s*\"environment\",\\s*\"PORT\"\\s*\\]" } }} />
-      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"cache\",\\s*\"environment\",\\s*\"PORT\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"cache\",\\s*\"port\"\\s*\\]" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"cache\",\\s*\"port\"\\s*\\]" } }} />
     </Step>
   </Scenario>
   <Scenario id="list-extra-host-expression" render={false} reason="Check the load-time hostname and plan-time address in the same list entry.">

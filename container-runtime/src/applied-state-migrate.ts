@@ -13,8 +13,8 @@ import { migrateAppliedInit } from "./applied-init-migrate.ts";
 import { migrateAppliedNames } from "./applied-names-migrate.ts";
 import { visitAppliedNetworkVocabulary } from "./applied-network-vocabulary.ts";
 
-/** Durable applied-plan frame version: v9 added keepAlive intent; v10 adds RouteText descriptors. */
-export const APPLIED_STATE_VERSION = 11;
+/** Durable applied-plan frame version: v9 added keepAlive intent; v10 RouteText descriptors; v12 planned listen ports. */
+export const APPLIED_STATE_VERSION = 12;
 
 const APP_MOUNT_KEY = "app-mount";
 
@@ -269,7 +269,8 @@ export const migrateAppliedPlanWithCoordinate = (
   if (!isMigratableVersion(fromVersion)) return "version";
   // v4 records predate the exclusive SQLite branch, v5 records predate the optional service
   // pullPolicy, and v6 records predate the optional project-user plan fields. v8 predates keepAlive
-  // intent, and v8 and v9 predate RouteText environment values. These additions need no rewrite.
+  // intent, v8 and v9 predate RouteText environment values, and v11 predates the optional
+  // plannedPort. These additions need no rewrite.
   // No v5 record holds a Compose pull_policy knob, because no provider ever declared it.
   const initialized =
     fromVersion >= 3 ? raw : migrateAppliedInit(fromVersion === 1 ? migrateV1PlanRaw(raw) : raw);

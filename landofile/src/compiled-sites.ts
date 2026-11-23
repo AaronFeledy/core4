@@ -136,6 +136,17 @@ export const consumeSites = (input: {
     const selfName = isServiceEnvironmentValuePath(site.path) ? site.path[1] : undefined;
     const self = typeof selfName === "string" ? input.context.services?.[selfName] : undefined;
     const selfUrl = isPlainRecord(self) ? { url: self.url } : undefined;
+    const plannerSelf = isPlainRecord(input.context.service) ? input.context.service : undefined;
+    const serviceSelf =
+      plannerSelf === undefined && selfUrl === undefined ? undefined : { ...plannerSelf, ...selfUrl };
+    // Only the planner supplies `service.port`, so a self-port read waits for it.
+    if (
+      plannerSelf?.port === undefined &&
+      expressionScopeMembers(site.template, "service", "direct-property").members.has("port")
+    ) {
+      pendingSites.push(site);
+      continue;
+    }
     // Lowered shell sites keep their authored text: only binding sites materialize
     // into deferred descriptors here, or an invocation would receive a SecretRef object.
     if (
@@ -145,7 +156,7 @@ export const consumeSites = (input: {
       pendingSites.push(site);
       continue;
     }
-    const scopes = [...input.scopes, "secrets", ...(selfUrl === undefined ? [] : ["service"])];
+    const scopes = [...input.scopes, "secrets", ...(serviceSelf === undefined ? [] : ["service"])];
     if (!expressionInterpolationsTouchOnlyScopes(site.template, scopes)) {
       pendingSites.push(site);
       continue;
@@ -174,7 +185,7 @@ export const consumeSites = (input: {
     }
     const evaluated = evaluateTemplateEither(
       site.template,
-      { ...input.context, ...(selfUrl === undefined ? {} : { service: selfUrl }), secrets },
+      { ...input.context, ...(serviceSelf === undefined ? {} : { service: serviceSelf }), secrets },
       {
         path: site.path,
         filePath: "file" in site.source ? site.source.file : undefined,

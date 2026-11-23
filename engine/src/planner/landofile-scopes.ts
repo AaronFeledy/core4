@@ -132,7 +132,7 @@ export const serviceCredsScopeForPlan = (plan: AppPlan): ServiceCredsScope =>
   Object.fromEntries(
     Object.values(plan.services).map((service) => [
       service.name,
-      serviceExpressionFacts(service.name, service),
+      serviceExpressionFacts(service.name, service, service.plannedPort),
     ]),
   );
 

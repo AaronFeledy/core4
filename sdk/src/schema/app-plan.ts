@@ -29,6 +29,7 @@ import {
   AppId,
   CommandSpec,
   PlanMetadata,
+  PortNumber,
   PortablePath,
   ProjectUserExplanation,
   ProviderExtensionConfig,
@@ -124,6 +125,10 @@ const ServicePlanFields = {
       "Every container mount, sorted shallow to deep with unique targets; the app-source bind has role app.",
   }),
   endpoints: Schema.Array(EndpointPlan),
+  plannedPort: Schema.optionalKey(PortNumber).annotate({
+    description:
+      "Container listen port the service type planned for `service.port`, published to `services.<name>.port` when the service has no database connection.",
+  }),
   routes: Schema.Array(RouteRef),
   dependsOn: Schema.Array(DependencyPlan),
   healthcheck: Schema.optionalKey(HealthcheckPlan),
