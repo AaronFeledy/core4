@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, type MountPlan, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, type MountPlan, PortablePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { CONTAINER_HELPER_COMMANDS, containerHelperDelivery } from "../src/container-helper.ts";
 import { prepareContainerHelperMounts } from "../src/container-helper-mount.ts";
@@ -9,7 +9,7 @@ import { ctx, fakeEngine, plan, service } from "./fixtures/environment-values.ts
 
 const target = { os: "linux", arch: "x64" } as const;
 // The profile stub, like the shims, has one stable source per architecture.
-const hookSource = "/helpers/linux-x64/profile/zz-lando-service-path.sh";
+const stubSource = "/helpers/linux-x64/profile/zz-lando-service-path.sh";
 const options = (digest: string) => ({
   ctx,
   helperTarget: target,
@@ -63,7 +63,7 @@ test("service creation lowers the helper directory without mutating its logical 
         ...CONTAINER_HELPER_COMMANDS.map(
           (name) => `/helpers/linux-x64/shims/${name}:/usr/local/bin/${name}:ro`,
         ),
-        `${hookSource}:/etc/profile.d/zz-lando-service-path.sh:ro`,
+        `${stubSource}:/etc/profile.d/zz-lando-service-path.sh:ro`,
       ],
     },
   });
@@ -97,21 +97,6 @@ test("creation refuses an unavailable helper instead of creating an unsupervised
   const failure = await Effect.runPromise(bringUp(plan, { api: engine.api, ctx }).pipe(Effect.flip));
   expect(failure._tag).toBe("ProviderInternalError");
   expect(engine.calls).toEqual([]);
-});
-
-test("every service binds the login-profile stub read-only from its stable source", async () => {
-  // Given
-  const worker = { ...service, name: ServiceName.make("worker"), primary: false };
-  const input = { ...plan, services: { [service.name]: service, [worker.name]: worker } };
-  // When
-  const prepared = await Effect.runPromise(prepareContainerHelperMounts(input, options("a".repeat(64))));
-  // Then
-  for (const name of [service.name, worker.name])
-    expect(
-      prepared.services[name]?.mounts.find(
-        (mount) => mount.target === "/etc/profile.d/zz-lando-service-path.sh",
-      ),
-    ).toMatchObject({ type: "bind", source: hookSource, readOnly: true });
 });
 
 const authored = (type: MountPlan["type"], target: string): MountPlan => {

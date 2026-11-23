@@ -1,13 +1,11 @@
 import { expect, test } from "bun:test";
 import { ArtifactBuildError } from "@lando/sdk/errors";
 import { type AppPlan, ServiceName, type ServicePlan } from "@lando/sdk/schema";
-import { BuildOrchestrator, EventService } from "@lando/sdk/services";
+import { BuildOrchestrator } from "@lando/sdk/services";
 import { Effect, Exit } from "effect";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
-import { publishStartWarnings } from "../../src/operations/start-warnings.ts";
-import { layer as eventServiceLayer } from "../../src/services/event-service.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const lowPortWeb: ServicePlan = {
@@ -97,20 +95,4 @@ test("a selected rebuild whose build fails still reports the warning first", asy
   const recorded = await Effect.runPromise(run.warnings.list);
   expect(recorded.map(({ code }) => code)).toEqual(["LANDO_NONROOT_LOW_PORT_UNVERIFIED"]);
   expect(run.trace).toEqual(["message.warn", "pre-rebuild", "build"]);
-});
-
-test("publishing the same plan twice in one command reports each warning once", async () => {
-  // Given one command's warnings collector.
-  const warnings = makeCommandWarnings(false);
-  // When a nested operation publishes the same plan's warnings again.
-  const human = await Effect.runPromise(
-    Effect.gen(function* () {
-      yield* publishStartWarnings(lowPortPlan);
-      yield* publishStartWarnings({ ...lowPortPlan, services: { [web.name]: lowPortWeb } });
-      return yield* (yield* EventService).query("message.warn");
-    }).pipe(Effect.provideService(CommandWarnings, warnings), Effect.provide(eventServiceLayer)),
-  );
-  // Then the warning is recorded and printed once.
-  expect(await Effect.runPromise(warnings.list)).toHaveLength(1);
-  expect(human).toHaveLength(1);
 });

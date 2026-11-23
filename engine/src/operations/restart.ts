@@ -87,7 +87,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
           timestamp: DateTime.nowUnsafe(),
           ...(selected === undefined ? {} : { services: [...selected] }),
         });
-        // Before hooks, for the plan this relaunch applies; a whole relaunch's own launch skips repeats.
+        // A whole relaunch announces its launch again; the publisher skips the repeats.
         yield* publishStartWarnings(selectedPlan);
         yield* publishAndRunAppEvent(plan, "pre-restart", preRestart);
         yield* publishPlacementVolumeTransitionNotices(placement, selectedPlan);

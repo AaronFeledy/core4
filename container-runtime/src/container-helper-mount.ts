@@ -70,8 +70,8 @@ export const prepareContainerHelperMounts = Effect.fn("RuntimeProvider.prepareCo
             ...(service.mounts.some(
               (mount) =>
                 mountTargetCovers(mount.target, CONTAINER_HELPER_PROFILE_TARGET) &&
-                mountTargetCovers(CONTAINER_HELPER_PROFILE_TARGET, mount.target),
-            ) || helperBindCoveredBy(service.mounts, CONTAINER_HELPER_PROFILE_TARGET) !== undefined
+                (mount.type !== "tmpfs" || mountTargetCovers(CONTAINER_HELPER_PROFILE_TARGET, mount.target)),
+            )
               ? []
               : [stub]),
           ],

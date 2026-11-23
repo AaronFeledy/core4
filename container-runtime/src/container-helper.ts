@@ -22,7 +22,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { type ContainerHelperArtifact, type MountPlan, mountTargetCovers } from "@lando/sdk/schema";
 
 export const CONTAINER_HELPER_FILE = "lando-container-helper";
-export const CONTAINER_HELPER_TARGET = "/run/lando/helper";
+const CONTAINER_HELPER_TARGET = "/run/lando/helper";
 
 /** The directory a provider bind-mounts at `CONTAINER_HELPER_TARGET`. */
 export const containerHelperDirectory = (helper: ContainerHelperArtifact): string => {
@@ -127,12 +127,9 @@ export const helperBindCoveredBy = (
 
 /**
  * Why `mount` cannot coexist with the helper binds every service receives, or
- * undefined. The helper directory is mandatory: a mount at it or beneath it would
- * shadow or nest inside it, and a bind or volume above it would gain Lando's
- * mountpoints in its source. A tmpfs above it (`/run` on a read-only service)
- * persists nothing, so the helper mounts beneath it. A mount at a helper command
- * target would replace that command. Planning and lint refuse these; providers
- * repeat the check for plans that did not come from the planner.
+ * undefined: a mount at or beneath the helper directory, a bind or volume above it
+ * (which would gain Lando's mountpoints in its source), or a mount at a helper
+ * command target. A tmpfs above the directory persists nothing and is allowed.
  */
 export const reservedHelperTargetConflict = (
   serviceName: string,

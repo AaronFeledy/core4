@@ -12,7 +12,7 @@ import { Cause, DateTime, Effect, Exit } from "effect";
 import { CONTAINER_HELPER_COMMANDS } from "../src/container-helper.ts";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
-import { fixtureHelperMount, fixtureHelperProfileHookBind } from "./support/exec-supervision.ts";
+import { fixtureHelperMount, fixtureHelperProfileStubBind } from "./support/exec-supervision.ts";
 import { bringUp, commonContainerLabels } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
@@ -205,7 +205,7 @@ describe("Podman Compose knob bring-up realization", () => {
       ...CONTAINER_HELPER_COMMANDS.map(
         (name) => `${fixtureHelperMount.source}/shims/${name}:/usr/local/bin/${name}:ro`,
       ),
-      fixtureHelperProfileHookBind,
+      fixtureHelperProfileStubBind,
     ]);
     expect(field(host, "Mounts")).toEqual([
       {
@@ -361,7 +361,7 @@ describe("Podman Compose knob bring-up realization", () => {
       ...CONTAINER_HELPER_COMMANDS.map(
         (name) => `${fixtureHelperMount.source}/shims/${name}:/usr/local/bin/${name}:ro`,
       ),
-      fixtureHelperProfileHookBind,
+      fixtureHelperProfileStubBind,
     );
     expect(create?.body).toEqual(expected);
   });

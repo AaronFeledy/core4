@@ -45,7 +45,7 @@ export const fixtureHelperCommandMounts = CONTAINER_HELPER_COMMANDS.map((name) =
   readOnly: true,
   realization: "passthrough" as const,
 }));
-export const fixtureHelperProfileHookBind = `${containerHelperProfileStubPath(artifact)}:${CONTAINER_HELPER_PROFILE_TARGET}:ro`;
+export const fixtureHelperProfileStubBind = `${containerHelperProfileStubPath(artifact)}:${CONTAINER_HELPER_PROFILE_TARGET}:ro`;
 
 /** Labels of a container created with the fixture helper, lowered by the provider's own mount preparation. */
 export const fixtureContainerLabels: typeof commonContainerLabels = (plan, service) => {

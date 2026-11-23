@@ -80,7 +80,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
         app: ref,
         timestamp: DateTime.nowUnsafe(),
       });
-      // Before hooks, for the plan this relaunch applies; a whole relaunch's own launch skips repeats.
+      // A whole relaunch announces its launch again; the publisher skips the repeats.
       yield* publishStartWarnings(selectedPlan);
       yield* publishAndRunAppEvent(plan, "pre-rebuild", preRebuild);
       yield* publishPlacementVolumeTransitionNotices(placement, selectedPlan);

@@ -9,7 +9,7 @@ import {
   containerHelperTestOptions,
   fixtureHelperCommandMounts,
   fixtureHelperMount,
-  fixtureHelperProfileHookBind,
+  fixtureHelperProfileStubBind,
   resolveBuiltContainerHelperForTest,
 } from "@lando/container-runtime/testing/exec-supervision";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
@@ -416,7 +416,7 @@ describe("provider-lando bringUp", () => {
       `${appRoot}:/app`,
       `${fixtureHelperMount.source}:/run/lando/helper:ro`,
       ...fixtureHelperCommandMounts.map((mount) => `${mount.source}:${mount.target}:ro`),
-      fixtureHelperProfileHookBind,
+      fixtureHelperProfileStubBind,
     ]);
     expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
       "lando-bringupapp": { Aliases: ["node"] },
@@ -624,7 +624,7 @@ describe("provider-lando bringUp", () => {
       "BringUp-App-node-mount-cace0001:/cache:ro",
       `${fixtureHelperMount.source}:/run/lando/helper:ro`,
       ...fixtureHelperCommandMounts.map((mount) => `${mount.source}:${mount.target}:ro`),
-      fixtureHelperProfileHookBind,
+      fixtureHelperProfileStubBind,
     ]);
   });
 

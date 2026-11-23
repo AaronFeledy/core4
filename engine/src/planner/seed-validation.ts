@@ -71,7 +71,6 @@ export const validateServiceSeed = Effect.fnUntraced(function* (
   if (mount !== undefined) errors.push(mount);
   const pullPolicy = validateServicePullPolicy(seed.service, seed.name, landofilePath);
   if (pullPolicy !== undefined) errors.push(pullPolicy);
-  // Host-proxy binds its client at fixed command paths, so an exact mount there is refused while planning.
   const hostProxy = declaredServiceFeatures(seed.resolution, false).featureRefs.some(
     (feature) => feature.id === HOST_PROXY_FEATURE_ID,
   );

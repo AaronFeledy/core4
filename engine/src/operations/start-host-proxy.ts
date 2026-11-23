@@ -96,10 +96,11 @@ export const withHostProxyRunLando = Effect.fnUntraced(function* (
         addMount: (mount) => {
           // A mount above a command target owns that directory; the start warning names the skipped commands.
           if (
-            !HOST_PROXY_COMMAND_TARGETS.includes(mount.target) ||
-            helperBindCoveredBy(service.mounts, mount.target) === undefined
+            HOST_PROXY_COMMAND_TARGETS.includes(mount.target) &&
+            helperBindCoveredBy(service.mounts, mount.target) !== undefined
           )
-            mounts.push(mount);
+            return;
+          mounts.push(mount);
         },
         addExtension: (name, value) => {
           extensions[name] = value;
