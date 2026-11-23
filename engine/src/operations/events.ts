@@ -38,6 +38,7 @@ import { runCanonicalCommand, withinEventInvocation } from "./event-invocation.t
 import { eventStepFailure } from "./event-step-failure.ts";
 import { eventStepFile, eventStepLabel } from "./event-step-identity.ts";
 import { type EventRedactionSources, makeEventStepRunners } from "./event-step-runtime.ts";
+import { resolveInvocationServiceUrls } from "./invocation-service-urls.ts";
 
 interface EventRedactor {
   readonly redactString: (value: string) => string;
@@ -299,6 +300,14 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           redactorFor,
           runCanonical: (leaf, redactionTokens) => runCanonicalCommand(plan, leaf, redactionTokens),
         }),
+        // Event steps have no defaults expansion, so a site's authored path is its effective path.
+        (sites) =>
+          resolveInvocationServiceUrls({
+            plan,
+            tool: event,
+            sites,
+            effectivePath: (site) => site.source.path,
+          }),
       ).pipe(mapFailureErrors((error) => eventError(error, event, first.step, redactor, first.source)));
     }),
   );

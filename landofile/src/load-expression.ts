@@ -119,7 +119,7 @@ export const resolveLandofileLoadExpressions = (
         const suggestion =
           shell === undefined
             ? scopeRoots.some((root) => root === "info" || root === "service")
-              ? "Read a public URL with `{{ service.url }}` or `{{ services.<name>.url }}` in a service's map-form environment."
+              ? "Read a public URL with `{{ services.<name>.url }}` in a service's map-form environment, a tooling command, env value, or var, or an event step; `{{ service.url }}` works only in a service's map-form environment."
               : "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope."
             : shellParameterSuggestion(path, shell.name);
         throw new LandofileValidationError({

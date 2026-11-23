@@ -60,15 +60,24 @@ export const compileInvocationSites = (
     }),
   );
 
-/** Explicit authored boundary for standalone/host programs, never for compiled values. */
-export const authoredInvocationSites = (value: unknown, file: string): InvocationProgram => {
+/**
+ * Explicit authored boundary for standalone/host programs, never for compiled values. `pathPrefix`
+ * places `value` in its document, so site and source paths name the authored location.
+ */
+export const authoredInvocationSites = (
+  value: unknown,
+  file: string,
+  options: { readonly layer?: "base" | "config-file"; readonly pathPrefix?: readonly string[] } = {},
+): InvocationProgram => {
   const sites: ParsedPendingSite[] = [];
+  const layer = options.layer ?? "base";
+  const prefix = options.pathPrefix ?? [];
   const visit = (entry: unknown, path: readonly (string | number)[]): void => {
     if (typeof entry === "string") {
       const template = parseExpressionEither(entry, { filePath: file, bareShellParameters: "preserve" });
       if (Result.isFailure(template)) throw template.failure;
       {
-        const source = { file, layer: "base" as const, path };
+        const source = { file, layer, path };
         sites.push({ id: JSON.stringify(source), path, source, template: template.success });
       }
     } else if (Array.isArray(entry))
@@ -78,9 +87,9 @@ export const authoredInvocationSites = (value: unknown, file: string): Invocatio
     else if (isPlainRecord(entry))
       for (const [key, child] of Object.entries(entry)) visit(child, [...path, key]);
   };
-  visit(value, []);
+  visit(value, prefix);
   return sites.map((site) =>
-    InvocationSite.make({ ...site, expression: siteExpression(site, value), captures: {} }),
+    InvocationSite.make({ ...site, expression: siteExpression(site, value, prefix.length), captures: {} }),
   );
 };
 

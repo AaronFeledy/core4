@@ -31,6 +31,14 @@ lando app:config:set services.appserver.environment.PRIMARY_SITE_URL '{{ service
 
 `{{ service.url }}` is the URL the router publishes for `appserver`, the same one `lando info` prints. Lando fills it in when it creates the container.
 
+The installer needs the same URL as an option. Add a task that passes it:
+
+```sh
+lando app:config:set tooling.craft-install '{"service":"appserver","cmd":["php","craft","install","--site-url={{ services.appserver.url }}","--interactive=0"],"wrapper":true,"description":"Install Craft at the URL Lando publishes."}' --type json
+```
+
+`lando craft-install` runs `php craft install --site-url=<site URL> --interactive=0` followed by the options you give it. Lando fills in the URL when the task runs, from the routes the last `lando start` published. In tooling you name the service, `services.appserver.url`, because `{{ service.url }}` only works in a service's `environment`. See [Use the URL in tooling and events](../landofile/expressions.mdx#use-the-url-in-tooling-and-events).
+
 Check the file, then start the app:
 
 ```sh
@@ -70,21 +78,19 @@ lando craft setup/db-creds \
 
 `--database` matches the app name (here `craft-demo`). Use the service key `database`, not `127.0.0.1` or `localhost`.
 
-Run the installer inside `appserver` so `--site-url` gets the current value of `PRIMARY_SITE_URL`. Craft saves the URL it was given in `.env`.
+The `craft-install` task gives the installer `--site-url`. Craft saves the URL it was given in `.env`.
 
 Generate the admin password, then install. Run this from a POSIX shell (WSL on Windows) with `openssl` on your path. The password stays out of shell history, but it's on the command line, so process lists can see it while install runs.
 
 ```sh
 CRAFT_ADMIN_PASSWORD="$(openssl rand -base64 18)"
 printf 'Save this Craft admin password: %s\n' "$CRAFT_ADMIN_PASSWORD"
-lando exec appserver -- sh -c 'php craft install \
+lando craft-install \
   --email=admin@example.com \
   --username=admin \
-  --password="$1" \
+  --password="$CRAFT_ADMIN_PASSWORD" \
   --site-name="Craft Demo" \
-  --site-url="$PRIMARY_SITE_URL" \
-  --language=en \
-  --interactive=0' craft-install "$CRAFT_ADMIN_PASSWORD"
+  --language=en
 unset CRAFT_ADMIN_PASSWORD
 ```
 
@@ -168,6 +174,7 @@ lando db:restore before-update --yes
       <Run command="lando init --recipe lamp --name={{appName}} --answer=webroot=web --yes" />
       <Run command={`lando app:config:set tooling.craft '{"service":"appserver","cmds":["php craft"],"wrapper":true,"description":"Run the Craft CLI inside the appserver service."}' --type json`} />
       <Run command={`lando app:config:set services.appserver.environment.PRIMARY_SITE_URL '{{ service.url }}'`} />
+      <Run command={`lando app:config:set tooling.craft-install '{"service":"appserver","cmd":["php","craft","install","--site-url={{ services.appserver.url }}","--interactive=0"],"wrapper":true,"description":"Install Craft at the URL Lando publishes."}' --type json`} />
     </Step>
     <Step name="confirm-config">
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
@@ -178,6 +185,7 @@ lando db:restore before-update --yes
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"craft\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"craft\":\\s*\\{[^}]*\"wrapper\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"craft-install\":\\s*\\{[^}]*\"--site-url=\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"PRIMARY_SITE_URL\":\\s*\"\\{\\{ service\\.url \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"create-project\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
     </Step>
@@ -192,6 +200,7 @@ lando db:restore before-update --yes
       <Run command="lando init --recipe lamp --name=craft-demo --answer=webroot=web --yes" />
       <Run command={`lando app:config:set tooling.craft '{"service":"appserver","cmds":["php craft"],"wrapper":true,"description":"Run the Craft CLI inside the appserver service."}' --type json`} />
       <Run command={`lando app:config:set services.appserver.environment.PRIMARY_SITE_URL '{{ service.url }}'`} />
+      <Run command={`lando app:config:set tooling.craft-install '{"service":"appserver","cmd":["php","craft","install","--site-url={{ services.appserver.url }}","--interactive=0"],"wrapper":true,"description":"Install Craft at the URL Lando publishes."}' --type json`} />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
       <Verify command="lando exec appserver -- printenv PRIMARY_SITE_URL" expect={{ stdout: { regex: "^https://craft-demo\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
     </Step>
@@ -199,7 +208,7 @@ lando db:restore before-update --yes
       <Run command={`lando create-project craftcms/craft "^5" --no-scripts`} />
       <Run command={`lando exec appserver -- sh -c 'mv composer.json.default composer.json && cp .env.example.dev .env'`} />
       <Run command="lando craft setup/db-creds --driver=mysql --server=database --port=3306 --user=lando --password=lando --database=craft-demo --interactive=0" />
-      <Run command={`lando exec appserver -- sh -c 'php craft install --email=admin@example.com --username=admin --password="$1" --site-name=Craft --site-url="$PRIMARY_SITE_URL" --language=en --interactive=0' craft-install Aa1-craft-e2e-only`} />
+      <Run command="lando craft-install --email=admin@example.com --username=admin --password=Aa1-craft-e2e-only --site-name=Craft --language=en" />
       <Verify command={`lando exec appserver -- sh -c 'test -n "$PRIMARY_SITE_URL" && grep -Fxq -e "PRIMARY_SITE_URL=$PRIMARY_SITE_URL" -e "PRIMARY_SITE_URL=\${PRIMARY_SITE_URL%/}/" .env'`} />
     </Step>
     <Step name="ownership">

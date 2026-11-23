@@ -18,7 +18,9 @@ lando start
 
 The named init creates `wp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4 and skips Redis. Start builds `appserver` with mysqli and checksum-verified WP-CLI, then brings up Apache and MariaDB. Confirm the tools below, then install WordPress.
 
-The `app:config:set` line gives `appserver` a `WP_HOME` variable. `{{ services.appserver.url }}` is the URL the router publishes for `appserver`, the same one `lando info` prints, and Lando fills it in when it creates the container. The install steps below read the site address from it.
+The `app:config:set` line gives `appserver` a `WP_HOME` variable. `{{ services.appserver.url }}` is the URL the router publishes for `appserver`, the same one `lando info` prints, and Lando fills it in when it creates the container. WordPress reads its address from that variable.
+
+The recipe's `wp-install` and `wp-replace-url` tasks pass the same URL to WP-CLI, so you never type the site address. `lando wp-install` runs `wp core install --url=<site URL>` followed by the options you give it, and `lando wp-replace-url <old URL>` rewrites an imported database to the local address. Lando fills in the URL each time a task runs, from the routes the last `lando start` published, so both need a started app. See [Use the URL in tooling and events](../landofile/expressions.mdx#use-the-url-in-tooling-and-events).
 
 If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it. `WP_HOME` carries that port too:
 
@@ -47,10 +49,10 @@ lando wp config set WP_SITEURL "getenv('WP_HOME')" --raw
 
 The two `config set` lines add `define( 'WP_HOME', getenv('WP_HOME') );` and its `WP_SITEURL` twin to `wp-config.php`. WordPress uses those constants instead of the addresses stored in the database, so the site follows the router: when it moves to another port, the next `lando start` recreates `appserver` with the new URL and WordPress picks it up.
 
-`core install` still needs `--url`. The command below runs in a shell inside `appserver`, where `$WP_HOME` holds the URL. Keep the outer single quotes so your host shell leaves `$WP_HOME` alone. Leave `--admin_password` off: WP-CLI generates one and prints it once on an `Admin password:` line, so save it in your password manager.
+`core install` still needs `--url`, and the `wp-install` task supplies it. Leave `--admin_password` off: WP-CLI generates one and prints it once on an `Admin password:` line, so save it in your password manager.
 
 ```sh
-lando exec appserver -- sh -c 'wp core install --url="$WP_HOME" --title="WP Demo" --admin_user=admin --admin_email=admin@example.com --skip-email'
+lando wp-install --title="WP Demo" --admin_user=admin --admin_email=admin@example.com --skip-email
 ```
 
 Then:
@@ -72,7 +74,7 @@ The appserver sets `uploadDirs: [wp-content/uploads]` to keep PHP out of uploade
 | `appserver` | `php:8.4`, `framework: wordpress`, WP-CLI and mysqli, `memory_limit = 512M`, Apache on port `80`, depends on `database` (and `cache` with Redis) |
 | `database` | `type: mariadb` (MariaDB 11.4) |
 | `cache` (optional) | `type: redis` with `--answer=redis=true` |
-| Tooling | `lando wp` and `lando composer` on `appserver`, `lando mariadb` from `database`, `lando redis-cli` when `cache` exists |
+| Tooling | `lando wp`, `lando wp-install`, `lando wp-replace-url`, and `lando composer` on `appserver`, `lando mariadb` from `database`, `lando redis-cli` when `cache` exists |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` when you want PHP 8.2 instead.
 
@@ -97,11 +99,11 @@ Import executes the dump's SQL, which can change or replace data in the app data
 ```sh
 lando db:snapshot --label before-import
 lando db:import prod.sql.gz --yes
-lando exec appserver -- sh -c 'wp search-replace "https://www.example.com" "$WP_HOME" --all-tables --skip-columns=guid'
+lando wp-replace-url https://www.example.com
 lando wp cache flush
 ```
 
-`.gz` dumps gunzip on the way in, and `--yes` skips the confirmation prompt. To roll back, run `lando db:restore before-import --yes`. `lando db:export` writes `database.sql.gz` when you want a dump of your own.
+`wp-replace-url` swaps the address the dump was exported with, here `https://www.example.com`, for the one Lando publishes, port included. `.gz` dumps gunzip on the way in, and `--yes` skips the confirmation prompt. To roll back, run `lando db:restore before-import --yes`. `lando db:export` writes `database.sql.gz` when you want a dump of your own.
 
 ## Run WP-Cron on a schedule
 
@@ -137,7 +139,7 @@ lando wp config set DB_USER lando
 lando wp config set DB_PASSWORD lando
 ```
 
-Bring your data over with [Import a database](#import-a-database), using `https://my-site.lndo.site` as the search-replace target.
+Bring your data over with [Import a database](#import-a-database). `lando wp-replace-url` already targets the URL Lando publishes for `my-site`.
 
 ## Catch outgoing mail
 
@@ -197,6 +199,9 @@ Add `node` next to `appserver`, point `lando npm` at the theme with tooling
       <Run command={`lando app:config:set services.appserver.environment.WP_HOME '{{ services.appserver.url }}'`} />
     </Step>
     <Step name="confirm-defaults">
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true,\\s*\"violations\":\\s*\\[\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"wp-install\":\\s*\\{[^}]*\"--url=\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
+      <Verify command="lando help wp-replace-url --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"from\",\\s*\"order\":\\s*0,\\s*\"required\":\\s*true" } }} />
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"wordpress\"" } }} />
@@ -242,11 +247,11 @@ Add `node` next to `appserver`, point `lando npm` at the theme with tooling
       <Run command="lando wp config create --dbname=wp-demo --dbuser=lando --dbpass=lando --dbhost=database" />
       <Run command={`lando wp config set WP_HOME "getenv('WP_HOME')" --raw`} />
       <Run command={`lando wp config set WP_SITEURL "getenv('WP_HOME')" --raw`} />
-      <Verify command={`lando exec appserver -- sh -c 'wp core install --url="$WP_HOME" --title="WP Demo" --admin_user=admin --admin_email=admin@example.com --skip-email'`} expect={{ stdout: { regex: "Success: WordPress installed successfully" } }} />
+      <Verify command={`lando wp-install --title="WP Demo" --admin_user=admin --admin_email=admin@example.com --skip-email`} expect={{ stdout: { regex: "Success: WordPress installed successfully" } }} />
     </Step>
     <Step name="replace-imported-url">
       <Run command="lando wp option add imported_url https://www.example.com" />
-      <Run command={`lando exec appserver -- sh -c 'wp search-replace "https://www.example.com" "$WP_HOME" --all-tables --skip-columns=guid'`} />
+      <Run command="lando wp-replace-url https://www.example.com" />
       <Verify command={`lando exec appserver -- sh -c 'test "$(wp option get imported_url)" = "$WP_HOME"'`} />
     </Step>
     <Step name="cleanup">

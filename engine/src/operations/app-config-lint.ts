@@ -40,6 +40,7 @@ import { lintCapabilityIssues } from "../planner/lint-capabilities.ts";
 import { planningLintFindings } from "../planner/lint-planning.ts";
 import { expressionPlannerIssue } from "../planner/resolved-validation.ts";
 import { routerTlsTerminationIssues } from "../planner/router-tls-lint.ts";
+import { serviceUrlLintFacts, serviceUrlLintIssues } from "../planner/service-url-lint.ts";
 import { toolingDeclarationIssues } from "../planner/tooling-declaration-issues.ts";
 import { toolingDynamicIssues } from "../planner/tooling-dynamic-issues.ts";
 import { toolingAndEventIssues } from "../planner/tooling-event-issues.ts";
@@ -229,6 +230,12 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     ...toolingDeclarationIssues(resolution),
     ...toolingDynamicIssues(resolution, invocationSites),
     ...hostShellIssues(resolution, invocationSites),
+    ...serviceUrlLintIssues({
+      sites: invocationSites,
+      services: serviceUrlLintFacts(resolution),
+      routes: resolution.routes,
+      routerEnabled: routerEnabledFrom(resolution.globalConfig?.router, resolution.landofile.router),
+    }),
     ...(yield* lintCapabilityIssues(
       resolution,
       providerAlternatives(

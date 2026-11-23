@@ -199,8 +199,7 @@ export const bindToolingShellSite = (
       throw new ToolingCompileError({
         tool: "<tooling-task>",
         message: `Public URL bindings are not supported at ${formatValidationIssuePath(site.source.path)}.`,
-        remediation:
-          "Put the expression in the service's environment map and have the command read the variable.",
+        remediation: "Read one service's URL with {{ services.<name>.url }}, naming the service literally.",
       });
     const value =
       segment.kind === "LiteralSegment" && trimNextLiteral

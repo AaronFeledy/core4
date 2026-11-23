@@ -112,6 +112,51 @@ const memoryFiles = () => {
 };
 
 describe("acquisition authority ports", () => {
+  test("route authorities come only from a recorded acquisition, never a guessed default", async () => {
+    // Given: a router that has not acquired ports yet.
+    const store = memoryFiles();
+    const runtime = makeApplyRuntime(store.files);
+    const service = makeTraefikRouterService({
+      stateStore: makeAckStore([]),
+      readTraefikState: () => Effect.succeed("running"),
+      httpClient: runtime.httpClient,
+      probeForward: () => Effect.succeed({ kind: "success" }),
+      certificateAuthority: makeTestCertificateAuthority(),
+      fileSystem: store.fileSystem,
+      paths,
+      globalApp: {
+        ownedPublishPorts: runtime.ownedPublishPorts,
+        ensureRunning: () =>
+          Effect.succeed([
+            {
+              name: "traefik",
+              state: "running",
+              endpoints: ["http://127.0.0.1:38080", "https://127.0.0.1:38443"],
+            },
+          ]),
+      },
+      socketProxy: {
+        user: "lando-dev",
+        userDataRoot: USER_DATA_ROOT,
+        hasHostSystemd: () => false,
+        exists: () => Effect.succeed(false),
+        readText: () => Effect.fail(new Error("missing")),
+        processRunner: makeRunner().service,
+        privilege: makePrivilege().service,
+        classifyOverride: {
+          http: { bind: { kind: "EADDRINUSE", code: "EADDRINUSE" }, forward: { kind: "success" } },
+          https: { bind: { kind: "EADDRINUSE", code: "EADDRINUSE" }, forward: { kind: "success" } },
+        },
+      },
+    });
+    const authorities = () => Effect.runPromise(service.routeAuthorities?.(routes) ?? Effect.die("missing"));
+
+    // When / Then: nothing is reported before setup records the acquisition, then its ports are.
+    expect(await authorities()).toEqual([]);
+    await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
+    expect(await authorities()).toEqual([{ scheme: "http", hostname: "web.demo.lndo.site", port: 80 }]);
+  });
+
   test("status authorities use 80/443 after setup in mocked-direct mode", async () => {
     // Given: classification is forced to a successful privileged bind.
     const store = memoryFiles();

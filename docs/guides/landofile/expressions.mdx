@@ -231,7 +231,13 @@ For an app named `demo`, this illustration maps `peer.test` to `192.0.2.4`. Use 
 
 ## Read a service's public URL
 
-Use `{{ service.url }}` for the current service's public URL or `{{ services.<name>.url }}` for a named service in the same app. For example, add this to the `web` service in your Landofile if the app also has a routed `api` service:
+`{{ services.<name>.url }}` is the address the router publishes for a service in the same app. You can read it in a service's `environment`, in tooling tasks, and in event steps.
+
+Lando uses the first route with a concrete hostname that serves HTTPS, or the first concrete HTTP route if there isn't one. The URL matches `lando info --format=json`: it includes the route's path prefix without a trailing slash and the router's actual host port, including fallback ports such as `8443`. It omits the port only for HTTP on `80` or HTTPS on `443`. This is a browser URL, not a container-to-container address.
+
+### Give a service its URL
+
+Add the expression to a map-form service `environment`, including on `type: compose` services. There, `{{ service.url }}` is shorthand for the service you're writing. For example, add this to the `web` service if the app also has a routed `api` service:
 
 ```yaml
 environment:
@@ -239,13 +245,85 @@ environment:
   API_URL: "{{ services.api.url }}/v1"
 ```
 
-Lando uses the first route with a concrete hostname that serves HTTPS, or the first concrete HTTP route if there isn't one. The URL matches `lando info --format=json`: it includes the route's path prefix without a trailing slash and the router's actual host port, including fallback ports such as `8443`. It omits the port only for HTTP on `80` or HTTPS on `443`. This is a browser URL, not a container-to-container address.
+Lando fills in the value when it creates the container, and `lando app:config` still shows the authored expression. When the router moves to another port, the next `lando start` recreates only the services that read the URL.
 
-When the router moves to another port, the next `lando start` recreates only the services that read the URL.
+In `environment`, you can copy the URL, concatenate it with text or other public URLs, or pass it to `url.encodeComponent()`. Other helpers and conditional tests can't consume it there. Put any secret in a separate variable. A service's `command`, `entrypoint`, and other fields can't read the URL, so read `APP_URL` from the process environment instead.
 
-Use the expression only in a map-form service `environment`, including for `type: compose` services. Read `APP_URL` from the process environment instead of putting the expression in `command`, tooling, or another field. You can copy the URL, concatenate it with text or other public URLs, or pass it to `url.encodeComponent()`. Other helpers and conditional tests can't consume the URL. Put any secret in a separate variable.
+### Use the URL in tooling and events
 
-Run `lando app:config:lint` to find the Landofile path of a misplaced expression or a reference to a service without a concrete route. If the router is disabled, enable it before using a URL expression. `lando app:config` still shows the authored expression; Lando fills in the URL at activation. Global apps don't support public URL bindings.
+A tooling task or an event step reads the URL when it runs, so a command can take the address as an argument without anyone copying it from `lando info`:
+
+```yaml
+name: url-tooling
+services:
+  web:
+    type: nginx
+    primary: true
+    routes:
+      - hostname: url-tooling.lndo.site
+        scheme: both
+tooling:
+  smoke:
+    service: ":host"
+    description: Fetch the home page through the proxy.
+    cmd: "curl -fsSk {{ services.web.url }}/"
+  site-url:
+    service: web
+    description: Print the address the router publishes for web.
+    env:
+      SITE_URL: "{{ services.web.url }}"
+    cmd: printenv SITE_URL
+  site-host:
+    service: web
+    description: Print the hostname part of the published address.
+    cmd: [echo, "{{ url.parse(services.web.url).hostname }}"]
+events:
+  post-start:
+    - service: web
+      cmd: "echo Site is up at {{ services.web.url }}"
+```
+
+Run `lando start`, then `lando smoke`. The task fetches `https://url-tooling.lndo.site/`, or `https://url-tooling.lndo.site:8443/` when the router fell back to that port. `lando site-url` prints the same address from inside `web`, and `lando site-host` prints `url-tooling.lndo.site`.
+
+By the time the command runs, the URL is an ordinary string. Helpers such as `url.parse()` and `url.encodeComponent()` and conditional tests all accept it. In shell text Lando quotes it as data, the same way it treats [invocation values](#use-invocation-values-in-tooling), and never parses it as another template.
+
+The value is the address Lando last applied for the service's route, at the port the router recorded, not the Landofile as it reads now. After you change a route, run `lando start` before the URL changes. A service you removed from the Landofile keeps its old address until the next start, and one you added has none until then. It isn't a health check: Lando doesn't test that anything answers there.
+
+These fields accept the expression:
+
+| Where | Fields |
+| --- | --- |
+| Tooling task | `cmd` (string or argv element), `cmds` steps and their `env`, task `env`, and `vars` (literal, `sh`, and var `env`) |
+| `toolingDefaults` | `env` values and literal `vars` |
+| Landofile `events` steps | `cmd`, `defer`, `env` values, and `if` |
+| `hostEvents` steps in `config.yml` | `cmd` |
+
+Name the service every time. `{{ service.url }}` only works in a service's `environment`, and Lando refuses it in tooling and events. The fields that decide where a command runs (`service`, `user`, and `dir`) can't read the URL, directly or through a var. Neither can `for` selectors, the `task` and `command` ids of an event step or the inputs it passes to a Lando command, or include conditions. The service name must be written out for a URL, so `services[vars.name].url` and a read of a whole `services.web` entry are refused too. Other facts, such as `services[vars.name].port`, can still use a computed name. `lando app:config:lint` reports each of these as an error at its Landofile path.
+
+### Pick an event that has a URL
+
+A URL exists only while the app is serving. Steps in `post-start`, `post-restart`, and `post-rebuild` read the new address. Steps in `pre-stop`, `pre-restart`, `pre-rebuild`, and `pre-destroy` read the address the app is about to leave.
+
+`pre-init`, `post-init`, and `pre-start` run before start applies the app's routes, and `post-stop` and `post-destroy` run once the app is no longer serving, so a step there that reads the URL fails when the event runs. That includes a `task:` or `command:` step whose target reads it. Lint warns ahead of time with reason `event-phase`. See [Landofile events](./events.mdx) for what a failed step does to each command.
+
+### When a URL can't be resolved
+
+A tooling task resolves every URL it reads before any of its vars or commands run. If one is missing, the task exits `1` with `ToolingCompileError`, and `--format=json` lists the affected reading sites under `error.issues` with one of these `reason` values. A reason about the whole app, such as `app-not-started`, lists every site that reads a URL.
+
+An event resolves each step's URLs as that step runs, so earlier steps may already have run. The refused step fails the event with `LandofileEventStepFailedError`, which carries the same `issues` and no `exitCode`, because the step never started. `ignoreError` doesn't skip it.
+
+| Reason | Meaning | Fix |
+| --- | --- | --- |
+| `app-not-started` | The app has never been started. | Run `lando start`. |
+| `unknown-service` | No service has that name. | Name a service from the Landofile. |
+| `applied-state-unreadable` | Lando couldn't read what the last start applied. | Run `lando start`. |
+| `no-applied-route` | The last start applied no route with a concrete hostname for the service, or the service was added since. | Add a non-wildcard route, then `lando start`. |
+| `routing-disabled` | The router is off for this app. | Enable it, then `lando start`. |
+| `router-unsupported` | The selected router can't report its addresses. | Run `lando setup`, then `lando start`. |
+| `authority-unavailable` | The router hasn't recorded its port. | Run `lando start`. |
+| `event-phase` | The step runs in an event when the app isn't serving. | Move it to an event listed above. |
+
+`lando app:config:lint` catches what the Landofile alone can show. For tooling and event reads it adds warnings, leaving `valid` true, with reasons `unknown-service`, `routing-disabled`, `no-route` (the service declares only wildcard routes or an empty `routes` list, or declares no routes and has no HTTP listener to give it a default route), and `event-phase`. Lint skips a read of a service it couldn't resolve. A URL in a service `environment` is stricter: a service without a concrete route, or a disabled router, is an error there. Global apps don't support public URL bindings.
 
 ## Use invocation values in tooling
 
@@ -326,6 +404,59 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
     </Step>
     <Step name="refresh-public-url"><Run command="lando app:cache:refresh" /></Step>
     <Step name="cleanup-public-url"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="public-url-tooling-live" layer="e2e" render={false} reason="Run a tooling task and a post-start step that read the published URL">
+    <Step name="scaffold-url-tooling-live"><UseFixture name="expressions-url-tooling-live" /></Step>
+    <Step name="refuse-before-start">
+      <Run command="lando site-url --format=json" expectExit={1} />
+      <Verify command="lando site-url --format=json" expectExit={1} expect={{ stdout: { regex: "\"_tag\":\\s*\"ToolingCompileError\"[\\s\\S]*\"reason\":\\s*\"app-not-started\"" } }} />
+    </Step>
+    <Step name="start-url-tooling-live"><Run command="lando start" /></Step>
+    <Step name="check-url-tooling-live">
+      <Verify command="lando site-url" expect={{ stdout: { regex: "https://expressions-url-tooling\\.lndo\\.site(:[0-9]+)?\\s*$" } }} />
+      <Verify command="lando site-host" expect={{ stdout: { regex: "expressions-url-tooling\\.lndo\\.site\\s*$" } }} />
+      <Verify command="lando exec web -- cat /tmp/published-url" expect={{ stdout: { regex: "^https://expressions-url-tooling\\.lndo\\.site(:[0-9]+)?\\s*$" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"url\":\\s*\"https://expressions-url-tooling\\.lndo\\.site(:[0-9]+)?\"" } }} />
+    </Step>
+    <Step name="cleanup-url-tooling-live">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="public-url-tooling-lints" render={false} reason="Check that tooling and event reads of a public URL lint clean and refuse an unstarted app">
+    <Step name="scaffold-url-tooling"><UseFixture name="expressions-url-tooling" /></Step>
+    <Step name="lint-url-tooling">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true,\\s*\"violations\":\\s*\\[\\s*\\]" } }} />
+    </Step>
+    <Step name="refuse-unstarted-url-tooling">
+      <Run command="lando site-url --format=json" expectExit={1} />
+      <Verify command="lando site-url --format=json" expectExit={1} expect={{ stdout: { regex: "\"_tag\":\\s*\"ToolingCompileError\"[\\s\\S]*\"reason\":\\s*\"app-not-started\"[\\s\\S]*\"path\":\\s*\\[\\s*\"tooling\",\\s*\"site-url\",\\s*\"env\",\\s*\"SITE_URL\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-url-tooling"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="public-url-event-phase-warns" render={false} reason="Check that lint warns about a pre-start step that reads a public URL">
+    <Step name="scaffold-url-event-phase"><UseFixture name="expressions-url-event-phase" /></Step>
+    <Step name="lint-url-event-phase">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"reason\":\\s*\"event-phase\",\\s*\"severity\":\\s*\"warning\",\\s*\"path\":\\s*\\[\\s*\"events\",\\s*\"pre-start\",\\s*0,\\s*\"cmd\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-url-event-phase"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="public-url-tooling-refused" render={false} reason="Check that tooling refuses service.url and a URL in a placement field">
+    <Step name="scaffold-url-tooling-refused"><UseFixture name="expressions-url-tooling-refused" /></Step>
+    <Step name="lint-url-tooling-refused">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"tooling\",\\s*\"self\",\\s*\"cmd\"\\s*\\],\\s*\"message\":\\s*\"service\\.url is not supported" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"tooling\",\\s*\"placed\",\\s*\"dir\"\\s*\\],\\s*\"message\":\\s*\"services\\.web\\.url is not supported" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"reason\":\\s*\"service-url-placement\",\\s*\"severity\":\\s*\"error\",\\s*\"path\":\\s*\\[\\s*\"tooling\",\\s*\"placed-var\",\\s*\"dir\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-url-tooling-refused"><Cleanup /></Step>
   </Scenario>
 
   <Scenario id="public-url-command-refused" render={false} reason="Check that a command cannot read a public URL expression">

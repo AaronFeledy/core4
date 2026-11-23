@@ -9,6 +9,7 @@ import { Effect, Option } from "effect";
 import { toolingSourceResolverForPlan } from "../planner/effective-tooling.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
+import { resolveInvocationServiceUrls } from "./invocation-service-urls.ts";
 import { type CompileToolingInput, compileToolingInvocations } from "./tooling-compile.ts";
 import { makeDynamicToolingVarResolver } from "./tooling-dynamic-vars.ts";
 import { admitToolingTask } from "./tooling-input-admission.ts";
@@ -55,8 +56,21 @@ export const prepareToolingInvocation = Effect.fnUntraced(function* (input: {
   return yield* Effect.gen(function* () {
     const preparedInput = { ...admitted, redactionTokens };
     const name = input.options.lookupKey;
+    // A var the caller supplies never runs its definition: none of its literal, `env`, `service`,
+    // or `sh` sites is evaluated, preflighted, or resolved against a route.
+    const callerVars = input.context?.vars ?? {};
+    const sites = input.sites.filter(
+      (site) => site.path[0] !== "vars" || !Object.hasOwn(callerVars, String(site.path[1])),
+    );
+    const serviceUrls = yield* resolveInvocationServiceUrls({
+      plan: input.plan,
+      tool: name,
+      sites,
+      effectivePath: (site) => ["tooling", name, ...site.path],
+    });
     const context = {
       ...input.context,
+      ...(serviceUrls === undefined ? {} : { services: { ...input.context?.services, ...serviceUrls } }),
       flags: admitted.values.flags,
       args: admitted.values.args,
       raw:
@@ -70,7 +84,7 @@ export const prepareToolingInvocation = Effect.fnUntraced(function* (input: {
         canonicalId: `app:${name}`,
       },
     };
-    const resolved = yield* resolveToolingTaskShape(input.options.task, context, input.sites, {
+    const resolved = yield* resolveToolingTaskShape(input.options.task, context, sites, {
       name: input.options.lookupKey,
       evaluate: makeDynamicToolingVarResolver({
         plan: input.plan,

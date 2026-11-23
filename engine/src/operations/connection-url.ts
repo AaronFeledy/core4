@@ -7,16 +7,24 @@ import {
   selectHttpEndpoint,
 } from "@lando/sdk/schema";
 
+/**
+ * The route a public service URL names: the first concrete HTTPS or `both` route, otherwise the
+ * first concrete HTTP route, in route-table order. Wildcard hostnames never name a URL.
+ */
+export const primaryConcreteRoute = (
+  routes: readonly RoutePlan[],
+  service: string,
+): RoutePlan | undefined => {
+  const own = routes.filter((route) => route.service === service && !route.hostname.includes("*"));
+  return own.find((route) => route.scheme !== "http") ?? own[0];
+};
+
 export const primaryRouteCandidates = (
   routes: readonly RoutePlan[],
   service: Pick<ServicePlan, "name" | "endpoints" | "certs">,
-  options?: { readonly concreteOnly: true },
 ): readonly RoutePlan[] => {
-  const own = routes.filter(
-    (route) => route.service === service.name && (!options?.concreteOnly || !route.hostname.includes("*")),
-  );
+  const own = routes.filter((route) => route.service === service.name);
   const https = own.filter((route) => route.scheme !== "http");
-  if (options?.concreteOnly) return https.length > 0 ? https : own;
   const endpoint = selectHttpEndpoint(
     service.endpoints,
     undefined,

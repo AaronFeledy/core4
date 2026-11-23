@@ -1,0 +1,27 @@
+name: url-tooling
+services:
+  web:
+    type: nginx
+    primary: true
+    routes:
+      - hostname: url-tooling.lndo.site
+        scheme: both
+tooling:
+  smoke:
+    service: ":host"
+    description: Fetch the home page through the proxy.
+    cmd: "curl -fsSk {{ services.web.url }}/"
+  site-url:
+    service: web
+    description: Print the address the router publishes for web.
+    env:
+      SITE_URL: "{{ services.web.url }}"
+    cmd: printenv SITE_URL
+  site-host:
+    service: web
+    description: Print the hostname part of the published address.
+    cmd: [echo, "{{ url.parse(services.web.url).hostname }}"]
+events:
+  post-start:
+    - service: web
+      cmd: "echo Site is up at {{ services.web.url }}"

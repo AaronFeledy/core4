@@ -42,10 +42,93 @@ test("defers a public URL in a Compose service environment map", () =>
   }));
 
 test.each([
+  [{ tooling: { demo: `curl ${publicUrl}` } }, ["tooling", "demo"]],
+  [{ tooling: { demo: { cmd: `curl ${publicUrl}` } } }, ["tooling", "demo", "cmd"]],
+  [{ tooling: { demo: { cmd: ["curl", publicUrl] } } }, ["tooling", "demo", "cmd", 1]],
+  [{ tooling: { demo: { cmds: [`curl ${publicUrl}`] } } }, ["tooling", "demo", "cmds", 0]],
+  [{ tooling: { demo: { cmds: [{ cmd: `curl ${publicUrl}` }] } } }, ["tooling", "demo", "cmds", 0, "cmd"]],
+  [
+    { tooling: { demo: { cmds: [{ cmd: "true", env: { URL: publicUrl } }] } } },
+    ["tooling", "demo", "cmds", 0, "env", "URL"],
+  ],
+  [{ tooling: { demo: { env: { URL: publicUrl } } } }, ["tooling", "demo", "env", "URL"]],
+  [{ tooling: { demo: { vars: { site: publicUrl } } } }, ["tooling", "demo", "vars", "site"]],
+  [
+    { tooling: { demo: { vars: { site: { sh: `echo ${publicUrl}` } } } } },
+    ["tooling", "demo", "vars", "site", "sh"],
+  ],
+  [
+    { tooling: { demo: { vars: { site: { sh: "echo $URL", env: { URL: publicUrl } } } } } },
+    ["tooling", "demo", "vars", "site", "env", "URL"],
+  ],
+  [{ tooling: { demo: { cmd: "{{ url.parse(services.web.url).hostname }}" } } }, ["tooling", "demo", "cmd"]],
+  [{ tooling: { demo: { cmd: '{{ services["web"].url }}' } } }, ["tooling", "demo", "cmd"]],
+  [{ tooling: { demo: { cmd: "{{ (services.web).url }}" } } }, ["tooling", "demo", "cmd"]],
+  [{ toolingDefaults: { env: { URL: publicUrl } } }, ["toolingDefaults", "env", "URL"]],
+  [{ toolingDefaults: { vars: { site: publicUrl } } }, ["toolingDefaults", "vars", "site"]],
+  [{ events: { "post-start": [`curl ${publicUrl}`] } }, ["events", "post-start", 0]],
+  [{ events: { "post-start": [{ cmd: `curl ${publicUrl}` }] } }, ["events", "post-start", 0, "cmd"]],
+  [{ events: { "post-start": [{ defer: `curl ${publicUrl}` }] } }, ["events", "post-start", 0, "defer"]],
+  [
+    { events: { "post-start": [{ cmd: "true", env: { URL: publicUrl } }] } },
+    ["events", "post-start", 0, "env", "URL"],
+  ],
+  [
+    { events: { "post-start": [{ cmd: "true", if: "{{ services.web.url != '' }}" }] } },
+    ["events", "post-start", 0, "if"],
+  ],
+  // Event phase is checked when the step runs, so load admits every event name.
+  [{ events: { "pre-start": [`curl ${publicUrl}`] } }, ["events", "pre-start", 0]],
+])("defers a public URL read at invocation site %j", (value, path) =>
+  withApp(async (appRoot) => {
+    const resolved = await Effect.runPromise(resolveValue(appRoot, value));
+    expect(resolved.pendingSites.map((site) => site.path)).toEqual([path]);
+  }),
+);
+
+test.each([
   [{ services: { web: { environment: [`URL=${publicUrl}`] } } }, ["services", "web", "environment", 0]],
   [{ services: { web: { command: publicUrl } } }, ["services", "web", "command"]],
   [{ services: { web: { command: "{{ service.url }}" } } }, ["services", "web", "command"]],
-  [{ tooling: { demo: { env: { URL: publicUrl } } } }, ["tooling", "demo", "env", "URL"]],
+  [{ tooling: { demo: { cmd: "curl {{ service.url }}" } } }, ["tooling", "demo", "cmd"]],
+  [{ events: { "post-start": ["curl {{ service.url }}"] } }, ["events", "post-start", 0]],
+  [{ tooling: { demo: { cmd: "true", dir: publicUrl } } }, ["tooling", "demo", "dir"]],
+  [{ tooling: { demo: { cmd: "true", user: publicUrl } } }, ["tooling", "demo", "user"]],
+  [{ tooling: { demo: { cmd: "true", service: publicUrl } } }, ["tooling", "demo", "service"]],
+  [
+    { tooling: { demo: { cmds: [{ cmd: "true", service: publicUrl }] } } },
+    ["tooling", "demo", "cmds", 0, "service"],
+  ],
+  [
+    { tooling: { demo: { vars: { site: { sh: "true", service: publicUrl } } } } },
+    ["tooling", "demo", "vars", "site", "service"],
+  ],
+  [{ toolingDefaults: { dir: publicUrl } }, ["toolingDefaults", "dir"]],
+  [
+    { events: { "post-start": [{ cmd: "true", service: publicUrl }] } },
+    ["events", "post-start", 0, "service"],
+  ],
+  [{ events: { "post-start": [{ task: publicUrl }] } }, ["events", "post-start", 0, "task"]],
+  [
+    { events: { "post-start": [{ task: "demo", vars: { site: publicUrl } }] } },
+    ["events", "post-start", 0, "vars", "site"],
+  ],
+  [
+    { events: { "post-start": [{ command: "app:info", flags: { site: publicUrl } }] } },
+    ["events", "post-start", 0, "flags", "site"],
+  ],
+  [{ tooling: { demo: { cmd: "curl {{ services[vars.name].url }}" } } }, ["tooling", "demo", "cmd"]],
+  [{ tooling: { demo: { cmd: "true", dir: "{{ services[vars.name].url }}" } } }, ["tooling", "demo", "dir"]],
+  [
+    { tooling: { demo: { cmd: "true", dir: "{{ services.web[env.M] }}{{ services[env.NAME].url }}" } } },
+    ["tooling", "demo", "dir"],
+  ],
+  [
+    { events: { "post-start": [{ task: "{{ services[vars.name].url }}" }] } },
+    ["events", "post-start", 0, "task"],
+  ],
+  [{ tooling: { demo: { cmd: "curl {{ services.web[vars.member] }}" } } }, ["tooling", "demo", "cmd"]],
+  [{ tooling: { demo: { cmd: "curl {{ services.web }}" } } }, ["tooling", "demo", "cmd"]],
   [{ "x-note": publicUrl }, ["x-note"]],
   [
     { services: { web: { environment: { URL: { _tag: "RouteText", parts: [] } } } } },

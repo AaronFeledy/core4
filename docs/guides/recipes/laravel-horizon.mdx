@@ -101,10 +101,9 @@ Horizon starts asynchronously. If `horizon:status` reports inactive, check `land
 
 ```sh
 lando info
-curl https://horizon-demo.lndo.site/horizon/api/stats
 ```
 
-Open `/horizon` on the appserver URL from `lando info`. Use that URL's port in the curl command too if Lando falls back to `:8443`. The stats endpoint returns JSON; check that `status` is `running`, rather than relying on a fixed worker count.
+Open `/horizon` on the `appserver` URL that `lando info` prints, for example `https://horizon-demo.lndo.site/horizon`. That URL already includes the port when Lando falls back to one such as `:8443`. The dashboard reports the same supervisor status as `lando artisan horizon:status`, so check that instead of a fixed worker count.
 
 `APP_ENV=local` permits dashboard access without a login. Keep this app local; configure Horizon's authorization gate before exposing it to others. Both PHP services read the shared `.env`; service-level environment overrides take precedence.
 
