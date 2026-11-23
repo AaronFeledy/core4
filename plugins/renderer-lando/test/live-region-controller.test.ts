@@ -384,6 +384,59 @@ describe("LiveRegionController", () => {
     expect(probe.wasRemoved()).toBe(true);
   });
 
+  test("commits rows deferred during a spooled drain after the drained rows", async () => {
+    const fixture = makeFixture();
+    const spooled: string[] = [];
+    const { promise: readStarted, resolve: startRead } = Promise.withResolvers<void>();
+    const { promise: readFinished, resolve: finishRead } = Promise.withResolvers<void>();
+    const writes: string[] = [];
+    const controller = await createLiveRegionController(
+      { stdout: createCapturingStdout(writes), width: 80, height: 24 },
+      {
+        loadModule: async () => fixture.module,
+        createRenderer: async () => fixture.renderer,
+        spool: () => ({
+          append: (line: string) => spooled.push(line),
+          readLines: async () => {
+            const snapshot = [...spooled];
+            startRead();
+            await readFinished;
+            return snapshot;
+          },
+          remove: async () => {},
+        }),
+      },
+    );
+    await controller.enterFullTail();
+    for (let index = 0; index < 300; index += 1) {
+      controller.commitScrollback(`L${index}-${"x".repeat(1024)}`);
+    }
+
+    let exited = false;
+    const exiting = controller.exitFullTail().then(() => {
+      exited = true;
+    });
+    await readStarted;
+    controller.commitScrollback("during-1");
+    controller.commitScrollback("during-2");
+    finishRead();
+    // One row per microtask across the whole handoff, so a row lands in every gap between steps.
+    const handoff: string[] = [];
+    while (!exited) {
+      await Promise.resolve();
+      const row = `[handoff-${handoff.length}]`;
+      handoff.push(row);
+      controller.commitScrollback(row);
+    }
+    await exiting;
+    controller.commitScrollback("after");
+
+    const text = writes.join("");
+    const rows = ["L0-", "L299-", "during-1", "during-2", ...handoff, "after"];
+    expectOrder(text, rows);
+    for (const row of rows) expect(text.split(row)).toHaveLength(2);
+  });
+
   test("removes the deferred spool when disposed during full tail", async () => {
     const fixture = makeFixture();
     const probe = makeSpoolProbe();
