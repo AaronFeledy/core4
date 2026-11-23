@@ -138,6 +138,25 @@ test("selects tests through configured preload imports", async () => {
   ]);
 });
 
+test("resolves data imports as leaf edges", async () => {
+  const root = await fixture();
+  await put(
+    root,
+    "pkg/test/a.test.ts",
+    'import data from "../data/data.json" with { type: "json" };\nvoid data;\n',
+  );
+  await put(root, "pkg/data/data.json", "{}\n");
+  await put(root, "pkg/test/b.test.ts", "export {};\n");
+  const result = await selectAffectedTests({
+    root,
+    changed: ["pkg/data/data.json"],
+    eligible: ["pkg/test/a.test.ts", "pkg/test/b.test.ts"],
+  });
+  expect(result.selected).toEqual(["pkg/test/a.test.ts"]);
+  expect(result.fixtureTests).toEqual([]);
+  expect(result.uncertain.filter((entry) => entry.includes("unresolved local module"))).toEqual([]);
+});
+
 test("broadly selects when a configured preload cannot be statically resolved", async () => {
   for (const preload of ['["../outside.ts"]', '["./pkg/preload-${name}.ts"]', "17"]) {
     const root = await fixture();

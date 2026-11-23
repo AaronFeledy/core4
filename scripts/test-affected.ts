@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
  * Local, source-based unit-test selection. This is a review aid; CI still runs
  * its complete selected shards. Paths and witnesses are repository-relative.
  */
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import ts from "@typescript/typescript6";
 
 import { loadWorkspacePackages, resolveFile, resolveWorkspaceSpecifier } from "./boundary/graph.ts";
@@ -284,6 +284,10 @@ export const selectAffectedTests = async (options: {
         addEdge(file, target);
         if (prior) priorEdges.add(`${file}\0${target}`);
         targets.push(target);
+      } else if (!SOURCE.test(targetBase) && extname(targetBase) && existsSync(targetBase)) {
+        // A data import (JSON, text, TOML) is a leaf: Bun loads it, nothing is scanned.
+        addEdge(file, targetBase);
+        if (prior) priorEdges.add(`${file}\0${targetBase}`);
       } else
         uncertain.add(`${norm(relative(root, file))}:${edge.line}: unresolved local module ${specifier}`);
     }
@@ -317,10 +321,7 @@ export const selectAffectedTests = async (options: {
   const eligibleSet = new Set(eligible);
   for (const changedPath of changed) {
     const rootPath = resolve(root, changedPath);
-    const queue: string[][] = [
-      [rootPath],
-      ...(fixtureSources.get(changedPath) ?? []).map((file) => [rootPath, file]),
-    ];
+    const queue: string[][] = [[rootPath]];
     const reached = new Set<string>();
     for (let head = 0; head < queue.length; head++) {
       const witness = queue[head];
@@ -336,7 +337,12 @@ export const selectAffectedTests = async (options: {
             path,
             witness.map((entry) => norm(relative(root, entry))),
           );
-          if (witness.length > 1 && fixtureSources.get(changedPath)?.includes(witness[1] ?? "")) {
+          const first = witness[1];
+          if (
+            first &&
+            !reverse.get(rootPath)?.has(first) &&
+            fixtureSources.get(changedPath)?.includes(first)
+          ) {
             fixtureTests.add(path);
           }
           if (
@@ -350,6 +356,8 @@ export const selectAffectedTests = async (options: {
         }
       }
       for (const importer of sorted(reverse.get(node) ?? [])) queue.push([...witness, importer]);
+      // Literal references come after import edges so an import witness wins.
+      if (head === 0) queue.push(...(fixtureSources.get(changedPath) ?? []).map((file) => [rootPath, file]));
     }
   }
   if (broadReason) {
