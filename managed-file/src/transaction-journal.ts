@@ -11,7 +11,12 @@ import { realpathOrDeepestExisting } from "@lando/state-store/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
-import { ManagedFileTransactionError, transactionError, transactionIO } from "./transaction-error.ts";
+import {
+  ManagedFileTransactionError,
+  storeAwareTransactionError,
+  transactionError,
+  transactionIO,
+} from "./transaction-error.ts";
 import { ensureDirectory, statMaybe } from "./transaction-fs.ts";
 
 const Digest = Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u)));
@@ -133,12 +138,13 @@ export const openJournal = Effect.fnUntraced(function* (
       // every write method demands as a `TransactionLock`.
       lock: "none",
       onCorrupt: "fail",
+      // Migrator receives only older envelopes; the store refuses newer before this runs.
       onVersionMismatch: (payload, fromVersion) => {
-        if (fromVersion !== 1) throw transactionError("journal", "inspect");
-        return Schema.decodeUnknownSync(Journal)(payload);
+        if (fromVersion === 1) return Schema.decodeUnknownSync(Journal)(payload);
+        throw transactionError("journal", "inspect");
       },
     })
-    .pipe(mapFailures(() => transactionError("journal", "inspect")));
+    .pipe(mapFailures((cause) => storeAwareTransactionError("journal", "inspect", cause)));
   const inspectFile = Effect.gen(function* () {
     const stats = yield* transactionIO("inspect", () => statMaybe(bucket.path));
     if (stats === null) return;
@@ -155,7 +161,9 @@ export const openJournal = Effect.fnUntraced(function* (
     );
   });
   const read = inspectFile.pipe(
-    Effect.andThen(bucket.get.pipe(mapFailures(() => transactionError("journal", "inspect")))),
+    Effect.andThen(
+      bucket.get.pipe(mapFailures((cause) => storeAwareTransactionError("journal", "inspect", cause))),
+    ),
     Effect.filterOrFail(
       (journal) => journal === null || journal.root === root,
       () => transactionError("journal", "inspect"),
@@ -167,7 +175,7 @@ export const openJournal = Effect.fnUntraced(function* (
       wait: "operation",
       resource: "managed project files",
       privateFileAccess,
-    }).pipe(mapFailures((cause) => transactionError("lock", phase, cause.path, cause.remediation)));
+    }).pipe(mapFailures((cause) => storeAwareTransactionError("lock", phase, cause)));
     return yield* Effect.acquireRelease(
       Effect.sync(() => new HeldTransactionLock(dir)),
       (held) => Effect.sync(() => HeldTransactionLock.release(held)),
@@ -204,7 +212,11 @@ export const openJournal = Effect.fnUntraced(function* (
         mapFailures((error) =>
           error instanceof ManagedFileTransactionError
             ? error
-            : transactionError("journal", error.operation === "get" ? "inspect" : phase),
+            : storeAwareTransactionError(
+                "journal",
+                "operation" in error && error.operation === "get" ? "inspect" : phase,
+                error,
+              ),
         ),
       );
     if (removed) yield* transactionIO("cleanup", () => syncDirectory(dir));

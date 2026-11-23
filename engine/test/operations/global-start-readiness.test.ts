@@ -3,6 +3,7 @@ import { ArtifactBuildError, ProviderUnavailableError } from "@lando/sdk/errors"
 import type { AppPlan } from "@lando/sdk/schema";
 import { AbsolutePath, landoNativeAppSlug, landoServiceStoreName, planAppIdentity } from "@lando/sdk/schema";
 import { type ApplyOptions, BuildOrchestrator, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Result } from "effect";
 import { installAndLoadGlobalPlan } from "../../src/operations/global-install.ts";
 import { globalRebuild } from "../../src/operations/global-rebuild.ts";
@@ -125,7 +126,7 @@ test.each(["start", "selected start", "rebuild"] as const)(
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const registry = yield* RuntimeProviderRegistry;
-        const guardedRegistry = RuntimeProviderRegistry.of({
+        const guardedRegistry = makeTestRuntimeProviderRegistry({
           ...registry,
           select: (target) =>
             registry.select(target).pipe(

@@ -8,8 +8,10 @@ import {
   AppId,
   type AppPlan,
   GlobalConfig,
+  LANDO_DATA_ROOT_LABEL,
   PluginManifest,
   ProviderId,
+  ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
@@ -72,6 +74,9 @@ const moduleFor = (
   const contribution = {
     id: providerId,
     appliedPlans: () => inventory,
+    appliedStateInventory: () => Effect.map(inventory, (plans) => ({ plans, unreadable: [] })),
+    readAppliedPlanStrict: (_ctx: unknown, appId: string) =>
+      Effect.map(inventory, (plans) => plans.find((plan) => plan.id === appId)),
     make: () =>
       initialize.pipe(
         Effect.map((provider) => ({ ...TestRuntimeProvider, ...provider, id, appliedPlans: inventory })),
@@ -182,6 +187,70 @@ test("exact applied-plan lookup never adopts an enclosing app's plan", async () 
   expect(await run(modules, "exact", nested)).toMatchObject({ _tag: "Success", success: undefined });
 });
 
+test.each(["offline ownership", "runtime labels beside a readable plan"] as const)(
+  "teardown reports the damaged receipt tied to the root by %s",
+  async (source) => {
+    const appId = AppId.make("damaged-owner");
+    const path = "/tmp/applied-state-registry/damaged.json";
+    const failure = new ProviderUnavailableError({
+      providerId: plan.provider,
+      operation: "applied-state.read",
+      message: "Damaged applied receipt.",
+      details: { path, coordinate: "plan.services" },
+      remediation: "Restore the receipt from backup.",
+    });
+    const offline = source === "offline ownership";
+    const plans = offline ? [] : [plan];
+    const module = moduleFor(
+      plan.provider,
+      Effect.succeed(plans),
+      Effect.succeed({
+        ...TestRuntimeProvider,
+        getStatus: offline
+          ? Effect.fail(unavailable(plan.provider, "getStatus"))
+          : TestRuntimeProvider.getStatus,
+        list: () =>
+          Effect.succeed([
+            {
+              app: appId,
+              appRoot: root,
+              labels: { [LANDO_DATA_ROOT_LABEL]: testPaths.roots.userDataRoot },
+              providerId: plan.provider,
+              service: ServiceName.make("web"),
+              status: "running",
+              publications: { status: "unknown" },
+            },
+          ]),
+      }),
+    );
+    const contribution = module.runtimeProviders?.get(plan.provider);
+    if (contribution === undefined) throw new Error("missing provider contribution");
+    const damaged = {
+      ...contribution,
+      appliedStateInventory: () =>
+        Effect.succeed({ plans, unreadable: [{ appId, path, reason: "unreadable" as const }] }),
+      readAppliedPlanStrict: (ctx: Parameters<typeof contribution.readAppliedPlanStrict>[0], id: AppId) =>
+        id === appId ? Effect.fail(failure) : contribution.readAppliedPlanStrict(ctx, id),
+      ...(offline
+        ? {
+            resourceOwnership: () =>
+              Effect.succeed({
+                appRoot: root,
+                ownerKey: appIdentityKey("owner", root),
+                providerId: plan.provider,
+                appIds: [appId],
+              }),
+          }
+        : {}),
+    };
+    expect(
+      await run([{ ...module, runtimeProviders: new Map([[plan.provider, damaged]]) }], "teardown", root),
+    ).toMatchObject({ _tag: "Failure", failure });
+  },
+);
+
+const testPaths = makeLandoPaths({ userDataRoot: "/tmp/applied-state-registry" });
+
 const run = (
   modules: ReadonlyArray<LandoPluginModule>,
   observe: boolean | "teardown" | "exact" = false,
@@ -222,7 +291,7 @@ const run = (
       ContainerHelperAssets.of({ resolve: () => Effect.die("unused helper") }),
     ),
     Layer.succeed(ManagedFileService, Effect.runSync(makeTestManagedFileStore()).service),
-    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/applied-state-registry" })),
+    Layer.succeed(PathsService, testPaths),
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (value) => value })),
   );

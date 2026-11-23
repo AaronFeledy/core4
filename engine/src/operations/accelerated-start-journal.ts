@@ -4,6 +4,7 @@ import { FileSyncStartError, type StateStoreError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, ServiceName } from "@lando/sdk/schema";
 import { StateStore, type StateWrite } from "@lando/sdk/services";
 import { illegalTransitionMessage } from "@lando/sdk/transitions";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect } from "effect";
 import {
   type PendingStart,
@@ -24,7 +25,7 @@ const journalError = (message: string, cause?: unknown, journalPath = "accelerat
   new FileSyncStartError({
     engineId: "mutagen",
     message,
-    remediation: journalRecovery(journalPath),
+    remediation: storeErrorRemediation(cause, journalRecovery(journalPath)),
     ...(cause === undefined ? {} : { cause }),
   });
 const journalRoot = (root: string) =>

@@ -129,6 +129,7 @@ export type {
   InfoAppAgentEnv,
   InfoAppHostProxy,
   InfoAppResult,
+  InfoAppliedStateIssue,
   LandofileEventsOutcome,
   RebuildAppResult,
   RestartAppResult,

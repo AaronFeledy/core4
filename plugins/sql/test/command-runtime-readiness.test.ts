@@ -21,7 +21,7 @@ import {
   StateStore,
   UserAppResolver,
 } from "@lando/sdk/services";
-import { makeTestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { DateTime, Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
@@ -109,15 +109,20 @@ test("SQLite command resume waits through the SDK readiness port before returnin
       }),
       load: () => Effect.die("unused"),
     }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(provider.capabilities),
-      appliedPlansFor: () => Effect.succeed([planned]),
-      select: () => Effect.succeed(provider),
-      resolveAppliedPlan: (_root, _app, lookup) =>
-        lookup === "exact" ? Effect.succeed(planned) : Effect.die("SQL commands must ask for the exact app"),
-      resolveTeardownEvidence: () => unused,
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      makeTestRuntimeProviderRegistry({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(provider.capabilities),
+        appliedPlansFor: () => Effect.succeed([planned]),
+        select: () => Effect.succeed(provider),
+        resolveAppliedPlan: (_root, _app, lookup) =>
+          lookup === "exact"
+            ? Effect.succeed(planned)
+            : Effect.die("SQL commands must ask for the exact app"),
+        resolveTeardownEvidence: () => unused,
+      }),
+    ),
     Layer.succeed(DataMover, makeTestDataMover().service),
     Layer.succeed(EnvironmentValueResolver, f.deps.environmentResolver),
     Layer.succeed(InteractionService, {

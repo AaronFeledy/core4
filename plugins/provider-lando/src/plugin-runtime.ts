@@ -4,6 +4,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 import type { LandoPluginContext } from "@lando/sdk/plugins";
 import type { Downloader, StateBucket } from "@lando/sdk/services";
+import { storeErrorRemediation } from "@lando/state-store";
 import { type Context, Effect, Schema } from "effect";
 
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
@@ -15,7 +16,10 @@ const providerStateError = (message: string, cause?: unknown) =>
     providerId: "lando",
     operation: "setup",
     message,
-    remediation: "Verify the provider-lando plugin state directory is writable, then retry.",
+    remediation: storeErrorRemediation(
+      cause,
+      "Verify the provider-lando plugin state directory is writable, then retry.",
+    ),
     ...(cause === undefined ? {} : { cause }),
   });
 

@@ -49,7 +49,7 @@ import type {
 } from "@lando/sdk/services";
 import { DataMover, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as DiskStateStore from "@lando/state-store/service";
 import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
@@ -400,14 +400,13 @@ const makeDestroyLayer = (
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plannedApp)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         resolveTeardownEvidence: () =>
           Effect.succeed(
             options.absent !== true
               ? { kind: "applied" as const, plan: plannedApp }
               : { kind: "absent" as const },
           ),
-        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),

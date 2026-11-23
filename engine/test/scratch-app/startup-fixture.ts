@@ -16,7 +16,7 @@ import {
   type RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer, Stream } from "effect";
@@ -130,10 +130,7 @@ const makeFixture = async (
   };
   const providers = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([source.provider]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),

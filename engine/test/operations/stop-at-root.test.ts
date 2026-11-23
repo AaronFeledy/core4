@@ -30,7 +30,12 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { TestFileSyncEngine, TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import {
+  TestFileSyncEngine,
+  TestRuntimeProvider,
+  makeTestRouterService,
+  makeTestRuntimeProviderRegistry,
+} from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
 import {
@@ -184,10 +189,15 @@ const makeHarness = (input: {
         calls.push(`cleanupOwnedResources(volumes:${options.volumes})`);
         if (options.volumes) volumes.clear();
         cleanupRoots.push(root);
-        return { servicesRemoved: ["owned-web"], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } };
+        return {
+          servicesRemoved: [ServiceName.make("owned-web")],
+          networksRemoved: 0,
+          volumesRemoved: { data: 0, cache: 0 },
+        };
       }),
   };
-  const registry = {
+  const readAppliedPlan = () => Effect.sync(() => appliedPlan);
+  const registry = makeTestRuntimeProviderRegistry({
     appliedPlansFor: (root: AbsolutePath, scope?: ProviderId) => {
       appliedPlanReads.push(scope);
       return Effect.succeed(
@@ -198,15 +208,13 @@ const makeHarness = (input: {
           : [],
       );
     },
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     list: Effect.succeed([providerId, otherProviderId]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: (target?: AppPlan | ProviderId) =>
       Effect.succeed({
         ...provider,
         id: typeof target === "string" ? target : (target?.provider ?? provider.id),
       }),
-    resolveAppliedPlan: () => Effect.sync(() => appliedPlan),
+    resolveAppliedPlan: readAppliedPlan,
     resolveTeardownEvidence: (root: AbsolutePath) =>
       Effect.gen(function* () {
         const scope = yield* TeardownProvider;
@@ -225,7 +233,7 @@ const makeHarness = (input: {
       }),
     resourceOwnership: () => Effect.succeed(undefined),
     observeRuntime: Effect.succeed([]),
-  };
+  });
   const router = RouterService.of({
     ...makeTestRouterService(),
     removeRoutes: (owner) =>
@@ -284,7 +292,7 @@ const makeHarness = (input: {
   return {
     layer,
     listVolumes: provider.listVolumes,
-    readAppliedPlan: registry.resolveAppliedPlan,
+    readAppliedPlan,
     calls,
     destroyCalls,
     removalAttempts,

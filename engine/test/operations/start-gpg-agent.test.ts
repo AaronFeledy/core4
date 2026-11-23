@@ -10,6 +10,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Stream } from "effect";
 import { startApp } from "../../src/operations/start.ts";
@@ -408,19 +409,22 @@ for (const prepareExit of [0, 1]) {
             },
           ),
         ).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...harness.runtimeProviderRegistry,
-            select: () =>
-              Effect.succeed({
-                ...provider,
-                capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
-                exec: () =>
-                  Effect.sync(() => {
-                    calls.push("gpg-prepare");
-                    return { exitCode: prepareExit, stdout: "", stderr: "" };
-                  }),
-              }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...harness.runtimeProviderRegistry,
+              select: () =>
+                Effect.succeed({
+                  ...provider,
+                  capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
+                  exec: () =>
+                    Effect.sync(() => {
+                      calls.push("gpg-prepare");
+                      return { exitCode: prepareExit, stdout: "", stderr: "" };
+                    }),
+                }),
+            }),
+          ),
           Effect.provide(harness.layer),
         ),
       );

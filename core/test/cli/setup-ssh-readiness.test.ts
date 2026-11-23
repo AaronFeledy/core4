@@ -17,7 +17,7 @@ import {
   RuntimeProviderRegistry,
   SshService,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestSshService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry, makeTestSshService } from "@lando/sdk/test";
 import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
@@ -108,18 +108,19 @@ test.each([
                 load: Effect.succeed(config),
                 get: (key) => Effect.succeed(config[key]),
               }),
-              Layer.succeed(RuntimeProviderRegistry, {
-                resolveAppliedPlan: () => Effect.succeed(plan),
-                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                appliedPlansFor: () => Effect.succeed([]),
-                list: Effect.succeed([ProviderId.make("lando")]),
-                capabilities: Effect.succeed(provider.capabilities),
-                select: (plan) =>
-                  Effect.sync(() => {
-                    selections.push(typeof plan === "string" ? plan : (plan?.provider ?? "default"));
-                    return provider;
-                  }),
-              }),
+              Layer.succeed(
+                RuntimeProviderRegistry,
+                makeTestRuntimeProviderRegistry({
+                  resolveAppliedPlan: () => Effect.succeed(plan),
+                  list: Effect.succeed([ProviderId.make("lando")]),
+                  capabilities: Effect.succeed(provider.capabilities),
+                  select: (plan) =>
+                    Effect.sync(() => {
+                      selections.push(typeof plan === "string" ? plan : (plan?.provider ?? "default"));
+                      return provider;
+                    }),
+                }),
+              ),
               Layer.succeed(SshService, { ...ssh, id: "sidecar" }),
               Layer.succeed(GlobalAppService, {
                 ...globalAppForProvider(ProviderId.make("lando")),

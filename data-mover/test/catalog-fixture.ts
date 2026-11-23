@@ -17,12 +17,11 @@ import {
 } from "@lando/sdk/schema";
 import {
   PathsService,
-  RuntimeProviderRegistry,
   type RuntimeProviderShape,
   StateStore,
   type StateStoreShape,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import * as DiskStateStore from "@lando/state-store/service";
 import { DateTime, Effect, Layer } from "effect";
 import { openSnapshot } from "../src/snapshot-catalog.ts";
@@ -95,10 +94,7 @@ const catalogFixture = async (root: string) => {
     ...overrides,
   });
   const recording = provider();
-  const registry = RuntimeProviderRegistry.of({
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("A")]),
     capabilities: Effect.succeed(recording.capabilities),
     select: (id) =>

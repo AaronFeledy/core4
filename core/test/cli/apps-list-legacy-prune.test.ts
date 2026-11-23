@@ -235,7 +235,7 @@ test.each(["lando", "docker"])(
     const payload = JSON.stringify({ version: 1, data: { ...f.plan, root: liveRoot } });
     await writeFile(modern, payload);
     // When: prune is asked to remove the missing-root identity, not the live root.
-    const removed = await Effect.runPromise(
+    const outcome = await Effect.runPromise(
       pruneAppliedPlanState(f.paths, f.store, {
         appId: "alpha",
         appName: "alpha",
@@ -244,9 +244,9 @@ test.each(["lando", "docker"])(
         services: [],
       }).pipe(Effect.provide(BunFileSystem.layer)),
     );
-    // Then: the live modern record is unchanged.
+    // Then: the live modern record is unchanged; legacy-only evidence was removed.
     expect(await readFile(modern, "utf8")).toBe(payload);
-    expect(removed).toBe(true);
+    expect(outcome).toEqual({ status: "removed" });
   },
 );
 
@@ -270,7 +270,7 @@ test("does not delete a live podman record for a stale missing-root candidate", 
   const payload = JSON.stringify({ version: 1, data: { alpha: plan } });
   await writeFile(record, payload);
   // When
-  const removed = await Effect.runPromise(
+  const outcome = await Effect.runPromise(
     pruneAppliedPlanState(f.paths, f.store, {
       appId: "alpha",
       appName: "alpha",
@@ -280,7 +280,7 @@ test("does not delete a live podman record for a stale missing-root candidate", 
     }).pipe(Effect.provide(BunFileSystem.layer)),
   );
   // Then
-  expect(removed).toBe(false);
+  expect(outcome).toEqual({ status: "kept" });
   expect(await readFile(record, "utf8")).toBe(payload);
 });
 
@@ -379,12 +379,33 @@ const webWithEndpoint = (endpoint: Record<string, unknown>) => ({
   },
 });
 
+test("podman prune protects a future-version map without deleting it", async () => {
+  // Given: a shared Podman record stamped by a newer Lando.
+  const f = await fixture("podman");
+  const record = podmanRecordPath(f.paths);
+  const data = { alpha: podmanPlan("alpha", "/missing") };
+  const payload = await writePodmanRecord(record, APPLIED_STATE_VERSION + 1, data);
+  await rm(f.legacyPath);
+
+  // When
+  const result = await prunePodman(f, "/missing");
+
+  // Then: protected skip, bytes intact, upgrade remediation.
+  if (Result.isFailure(result)) throw result.failure;
+  expect(result.success.status).toBe("protected");
+  if (result.success.status !== "protected") throw new Error("expected protected");
+  expect(result.success.failure).toMatchObject({
+    reason: "newer-version",
+    storedVersion: APPLIED_STATE_VERSION + 1,
+    supportedVersion: APPLIED_STATE_VERSION,
+    providerId: "podman",
+  });
+  expect(result.success.failure.remediation).toMatch(/newer Lando|upgrade Lando/i);
+  expect(result.success.failure.remediation).not.toMatch(/move it aside|destroy/i);
+  expect(await readFile(record, "utf8")).toBe(payload);
+});
+
 test.each([
-  {
-    name: "future version",
-    version: APPLIED_STATE_VERSION + 1,
-    data: { alpha: podmanPlan("alpha", "/missing") },
-  },
   {
     name: "legacy map with mixed endpoint discriminators",
     version: 7,
@@ -440,6 +461,182 @@ test.each([
 
   // Then: Keep, no write; a lost match is not treated as empty inventory.
   if (Result.isFailure(result)) throw result.failure;
-  expect(result.success).toBe(false);
+  expect(result.success).toEqual({ status: "kept" });
   expect(await readFile(record, "utf8")).toBe(payload);
+});
+
+test.each(["lando", "docker"])(
+  "protects a future-version modern %s record that alone backs the candidate",
+  async (provider) => {
+    // Given: modern state from a newer Lando is the only record for the missing root.
+    const f = await fixture(provider);
+    await rm(f.legacyPath);
+    const modern = join(f.paths.pluginStateDir(`@lando/provider-${provider}`), "applied-plans", "alpha.json");
+    await mkdir(join(modern, ".."), { recursive: true });
+    const payload = JSON.stringify({ version: APPLIED_STATE_VERSION + 1, data: f.plan });
+    await writeFile(modern, payload);
+
+    // When
+    const result = await f.run();
+
+    // Then: partial failure, nothing deleted, upgrade remediation.
+    expect(result.pruned).toEqual([]);
+    expect(result.pruneFailures).toEqual([
+      expect.objectContaining({
+        reason: "newer-version",
+        providerId: provider,
+        appId: "alpha",
+        storedVersion: APPLIED_STATE_VERSION + 1,
+        supportedVersion: APPLIED_STATE_VERSION,
+      }),
+    ]);
+    const failure = result.pruneFailures?.[0];
+    expect(failure?.remediation).toMatch(/newer Lando|upgrade Lando/i);
+    expect(failure?.remediation).not.toMatch(/move it aside|destroy/i);
+    expect(await readFile(modern, "utf8")).toBe(payload);
+  },
+);
+
+test.each(
+  (["lando", "docker"] as const).flatMap((provider) =>
+    (["same", "other"] as const).map((claimedRoot) => ({ provider, claimedRoot })),
+  ),
+)(
+  "keeps a legacy row and a future-version modern record whose $claimedRoot root it cannot prove ($provider)",
+  async ({ provider, claimedRoot }) => {
+    // Given: a stale legacy row at a missing root and a same-id record from a newer Lando.
+    const f = await fixture(provider);
+    const modern = join(f.paths.pluginStateDir(`@lando/provider-${provider}`), "applied-plans", "alpha.json");
+    await mkdir(join(modern, ".."), { recursive: true });
+    const root = claimedRoot === "same" ? f.plan.root : join(f.root, "elsewhere");
+    const payload = JSON.stringify({ version: APPLIED_STATE_VERSION + 1, data: { ...f.plan, root } });
+    await writeFile(modern, payload);
+    const legacyBody = await readFile(f.legacyPath, "utf8");
+
+    // When
+    const outcome = await Effect.runPromise(
+      pruneAppliedPlanState(f.paths, f.store, {
+        appId: "alpha",
+        appName: "alpha",
+        providerId: provider,
+        appRoot: f.plan.root,
+        services: [],
+      }).pipe(Effect.provide(BunFileSystem.layer)),
+    );
+
+    // Then: the newer payload's root is not trusted either way; nothing is deleted or reported.
+    expect(outcome).toEqual({ status: "kept" });
+    expect(await readFile(modern, "utf8")).toBe(payload);
+    expect(await readFile(f.legacyPath, "utf8")).toBe(legacyBody);
+  },
+);
+
+test.each(["lando", "docker"])(
+  "keeps a readable modern %s record whose stored id differs from its key",
+  async (provider) => {
+    // Given: the candidate's key holds a readable record for another app at the same missing root.
+    const f = await fixture(provider);
+    await rm(f.legacyPath);
+    const modern = join(f.paths.pluginStateDir(`@lando/provider-${provider}`), "applied-plans", "alpha.json");
+    await mkdir(join(modern, ".."), { recursive: true });
+    const payload = JSON.stringify({ version: APPLIED_STATE_VERSION, data: { ...f.plan, id: "beta" } });
+    await writeFile(modern, payload);
+
+    // When
+    const outcome = await Effect.runPromise(
+      pruneAppliedPlanState(f.paths, f.store, {
+        appId: "alpha",
+        appName: "alpha",
+        providerId: provider,
+        appRoot: f.plan.root,
+        services: [],
+      }).pipe(Effect.provide(BunFileSystem.layer)),
+    );
+
+    // Then
+    expect(outcome).toEqual({ status: "kept" });
+    expect(await readFile(modern, "utf8")).toBe(payload);
+  },
+);
+
+test("prunes an unrelated candidate while protecting a future-version podman record", async () => {
+  // Given: one protected newer podman map entry and one removable lando legacy-only app.
+  const f = await fixture("podman");
+  const record = podmanRecordPath(f.paths);
+  const payload = await writePodmanRecord(record, APPLIED_STATE_VERSION + 1, {
+    alpha: podmanPlan("alpha", f.plan.root),
+  });
+  await rm(f.legacyPath);
+
+  const landoLegacyDir = join(f.root, "providers", "provider-lando", "apps");
+  await mkdir(landoLegacyDir, { recursive: true });
+  const betaRoot = join(f.root, "missing-beta");
+  const betaLegacy = {
+    version: 1 as const,
+    providerId: "lando",
+    plan: { id: "beta", name: "beta", root: betaRoot, provider: "lando", services: {} },
+  };
+  await writeFile(join(landoLegacyDir, "beta.json"), JSON.stringify(betaLegacy));
+
+  const result = await Effect.runPromise(
+    listServicesWithPrune({
+      userDataRoot: f.root,
+      userCacheRoot: f.root,
+      discoverContainersEvidence: async () => ({
+        apps: [],
+        confirmedProviderIds: ["podman", "lando"],
+        ownedResources: [],
+      }),
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(
+            ConfigService,
+            ConfigService.of({
+              load: Effect.succeed(Schema.decodeUnknownSync(GlobalConfig)({})),
+              get: (key) => Effect.succeed(Schema.decodeUnknownSync(GlobalConfig)({})[key]),
+            }),
+          ),
+          Layer.succeed(PathsService, f.paths),
+          Layer.succeed(StateStore, StateStore.of(f.store)),
+          BunFileSystem.layer,
+          PrivateFileAccessService.layer,
+        ),
+      ),
+    ),
+  );
+
+  // Then: beta pruned, alpha protected, podman bytes intact.
+  expect(result.pruned?.map((entry) => entry.appId)).toEqual(["beta"]);
+  expect(result.pruneFailures).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        reason: "newer-version",
+        providerId: "podman",
+        storedVersion: APPLIED_STATE_VERSION + 1,
+      }),
+    ]),
+  );
+  expect(await readFile(record, "utf8")).toBe(payload);
+  expect(await Bun.file(join(landoLegacyDir, "beta.json")).exists()).toBe(false);
+});
+
+test("prune leaves a newer record at an existing app root alone without reporting failure", async () => {
+  const f = await fixture("lando");
+  await rm(f.legacyPath);
+  const existingRoot = await mkdtemp(join(tmpdir(), "lando-existing-newer-"));
+  roots.push(existingRoot);
+  const modern = join(f.paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
+  await mkdir(join(modern, ".."), { recursive: true });
+  const payload = JSON.stringify({
+    version: APPLIED_STATE_VERSION + 1,
+    data: { ...f.plan, root: existingRoot },
+  });
+  await writeFile(modern, payload);
+
+  const result = await f.run();
+
+  expect(result.pruned).toEqual([]);
+  expect(result).not.toHaveProperty("pruneFailures");
+  expect(await readFile(modern, "utf8")).toBe(payload);
 });

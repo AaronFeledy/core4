@@ -61,7 +61,8 @@ export const inspectAppliedFileSync = Effect.fnUntraced(function* (
   plan: AppPlan,
 ): Effect.fn.Return<AppliedFileSyncInspection> {
   const prior = yield* inspectAppliedPlan(stateStore, plan.id);
-  if (prior.status === "unreadable") return { status: "unknown" } as const;
+  if (prior.status === "unreadable" || prior.status === "newer-version")
+    return { status: "unknown" } as const;
   if (prior.status === "readable") {
     if (prior.plan.id !== plan.id || prior.plan.root !== plan.root) return { status: "unknown" } as const;
     const sessions = verifiedFileSyncSessions(prior.plan);

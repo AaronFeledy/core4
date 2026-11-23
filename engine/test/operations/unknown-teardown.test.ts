@@ -6,7 +6,7 @@ import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, LoadScopedLandofile, ProviderId, appIdentityKey } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { destroyApp, destroyAppAtRoot, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { globalDestroy } from "../../src/operations/global-destroy.ts";
@@ -211,12 +211,15 @@ test("destroy with an explicit provider reads only that provider's applied state
           { yes: true, providerId: ProviderId.make("lando") },
           { plan: applied, root, app: { kind: "user", id: applied.id, root } },
         ).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...registry,
-            // Only an unscoped read reaches the unreadable provider.
-            appliedPlansFor: (root, providerId) =>
-              providerId === "lando" ? registry.appliedPlansFor(root, providerId) : Effect.fail(unrelated),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...registry,
+              // Only an unscoped read reaches the unreadable provider.
+              appliedPlansFor: (root, providerId) =>
+                providerId === "lando" ? registry.appliedPlansFor(root, providerId) : Effect.fail(unrelated),
+            }),
+          ),
         );
       }).pipe(Effect.provide(harness.layer), Effect.result),
     );

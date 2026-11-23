@@ -125,7 +125,7 @@ Lando first checks that the previously applied app state is fully yours and read
 
 After that, Lando retires the old applied state without removing named data or cache volumes and without running authored destroy steps. It applies the new plan: an ordinary bind with no session, or a fresh session under the new engine that populates from your project.
 
-Start refuses the switch and leaves everything in place when it can't do that safely: an unresolved file conflict, a session whose history is gone, an engine it can't reach, applied state it doesn't recognize, a failed flush, or an unfinished accelerated start recorded for a different plan. Fix the reported problem, or restore the previous settings, then run `lando start` again. An interrupted switch resumes from where it stopped.
+Start refuses the switch and leaves everything in place when it can't do that safely: an unresolved file conflict, a session whose history is gone, an engine it can't reach, damaged applied state, applied state written by a newer Lando, a failed flush, or an unfinished accelerated start recorded for a different plan. Follow the error's recovery: restore or move aside damaged state; for a newer-format record, run that newer Lando or upgrade and leave the file in place; otherwise fix the reported problem or restore the previous settings, then run `lando start` again. An interrupted switch resumes from where it stopped.
 
 `lando restart -s` and `lando rebuild -s` don't prepare or retire sync targets. When a selected service's accelerated mount is new, changed, or removed, they refuse and tell you to run `lando start`, which prepares a new target and flushes a retired one first.
 

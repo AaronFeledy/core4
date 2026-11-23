@@ -6,20 +6,15 @@ import { openLandoRuntime } from "@lando/core";
 import { ProviderId, ServiceName } from "@lando/core/schema";
 import { EventService, RouterService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { TestRouterService } from "@lando/sdk/test";
+import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 
 const providerLayers = [
   Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
   Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
     }),
   ),
   Layer.succeed(RouterService, RouterService.of(TestRouterService)),

@@ -8,7 +8,7 @@ import {
   type ServiceShutdownObservation,
 } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { mergeShutdownObservations } from "../../src/operations/shutdown-observations.ts";
@@ -120,12 +120,15 @@ test.each(["accelerated", "ordinary", "no-observations"] as const)(
       Effect.gen(function* () {
         const registry = yield* RuntimeProviderRegistry;
         return yield* destroyAppForTarget({}, { plan, root: plan.root, app }).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...registry,
-            select: () => Effect.succeed(provider),
-            resolveAppliedPlan: () => Effect.succeed(plan),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...registry,
+              select: () => Effect.succeed(provider),
+              resolveAppliedPlan: () => Effect.succeed(plan),
+              resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan }),
+            }),
+          ),
         );
       }).pipe(Effect.provide(harness.layer)),
     );

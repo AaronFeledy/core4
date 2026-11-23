@@ -16,7 +16,7 @@ import {
   PathsService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup";
 import { readSetupReadiness, writeSetupReadiness } from "../../src/cli/commands/setup-readiness";
@@ -58,14 +58,14 @@ test.each(["provider", "ca", "selection-failure", "selection-defect"] as const)(
         get: (key) => Effect.succeed(config[key]),
       }),
       Layer.succeed(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
-      Layer.succeed(RuntimeProviderRegistry, {
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        list: Effect.succeed([ProviderId.make("podman")]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select,
-      }),
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([ProviderId.make("podman")]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select,
+        }),
+      ),
       Layer.succeed(CertificateAuthority, {
         ...makeTestCertificateAuthority(),
         setup: () => Effect.interrupt,

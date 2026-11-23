@@ -13,6 +13,7 @@ import {
   GlobalAppService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import { routeFile } from "../src/proxy-paths.ts";
@@ -52,10 +53,13 @@ test.each([
         Layer.provide(EventService.layer),
         Layer.provide(
           Layer.mergeAll(
-            Layer.succeed(RuntimeProviderRegistry, {
-              ...global.registry,
-              select: () => Effect.succeed(provider),
-            }),
+            Layer.succeed(
+              RuntimeProviderRegistry,
+              makeTestRuntimeProviderRegistry({
+                ...global.registry,
+                select: () => Effect.succeed(provider),
+              }),
+            ),
             Layer.succeed(BuildOrchestrator, {
               build: () => Effect.die("withdrawal must not build"),
               buildApp: () => Effect.die("withdrawal must not build"),

@@ -24,7 +24,7 @@ import {
   ScratchAppService,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Result } from "effect";
 import { pendingStartBucketSpec } from "../../src/operations/accelerated-start-record.ts";
 import { PoweroffStopError, poweroff } from "../../src/operations/poweroff.ts";
@@ -168,9 +168,8 @@ const makeHarness = async (input: {
         return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
   };
-  const registry = {
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     appliedStateInventory: () => Effect.succeed({ plans: input.holdingPlans ?? [], unreadable: [] }),
     observeRuntime:
       input.observationFailure === undefined
@@ -186,7 +185,6 @@ const makeHarness = async (input: {
       );
       return Effect.succeed([...user, ...global]);
     },
-    resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: (root: AbsolutePath) =>
       Effect.succeed(
         plans.has(root)
@@ -198,7 +196,7 @@ const makeHarness = async (input: {
         ? Effect.fail(input.ownershipFailure)
         : Effect.succeed(undefined),
     select: () => Effect.succeed(provider),
-  };
+  });
   const scratch = Layer.succeed(
     ScratchAppService,
     ScratchAppService.of({

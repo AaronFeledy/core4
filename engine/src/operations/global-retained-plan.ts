@@ -42,7 +42,7 @@ export const prepareGlobalReplacement = Effect.fn("GlobalApp.prepareReplacement"
   selectedProvider: RuntimeProviderShape,
 ) {
   const registry = yield* RuntimeProviderRegistry;
-  yield* registry.assertAppliedStateReadable?.({ id: desired.id, provider: desired.provider }) ?? Effect.void;
+  yield* registry.readAppliedPlanStrict(desired);
   const { plan: placed } = yield* resolveGlobalPlacement();
   const renamed = placed !== undefined && landoNativeAppSlug(placed) !== landoNativeAppSlug(desired);
   const prior = renamed ? undefined : placed;

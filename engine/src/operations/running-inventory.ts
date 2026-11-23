@@ -16,12 +16,9 @@ import { matchesAppPlanIdentity } from "../providers/app-plan-identity.ts";
 import { readAcceleratedStartInventory } from "./accelerated-start-inventory.ts";
 import { digest } from "./accelerated-start-record.ts";
 import { appRootIdentityKey } from "./app-root-identity.ts";
+import { appliedStateIssueError } from "./applied-state-issue.ts";
 import { currentDataRoot, scopeRuntimeSnapshot } from "./data-root-scope.ts";
-import {
-  providerInventoryFailure,
-  unobservedRuntimeError,
-  unreadableAppliedState,
-} from "./poweroff-failures.ts";
+import { providerInventoryFailure, unobservedRuntimeError } from "./poweroff-failures.ts";
 
 type InventoryFailure = {
   readonly kind: "user" | "scratch";
@@ -57,16 +54,13 @@ const readProviderSnapshots = Effect.fnUntraced(function* (journalProviders: Rea
   if (Result.isFailure(idsResult)) failures.push(providerInventoryFailure("providers", idsResult.failure));
 
   for (const id of ids) {
-    const state =
-      registry.appliedStateInventory === undefined
-        ? undefined
-        : yield* registry.appliedStateInventory(id).pipe(Effect.result);
-    if (state !== undefined && Result.isFailure(state))
-      failures.push(providerInventoryFailure(String(id), state.failure));
-    if (state !== undefined && Result.isSuccess(state) && state.success.unreadable.length > 0)
-      failures.push(
-        providerInventoryFailure(String(id), unreadableAppliedState(id, state.success.unreadable.length)),
-      );
+    const state = yield* registry.appliedStateInventory(id).pipe(Effect.result);
+    if (Result.isFailure(state)) failures.push(providerInventoryFailure(String(id), state.failure));
+    else
+      for (const issue of state.success.unreadable)
+        failures.push(
+          providerInventoryFailure(String(id), appliedStateIssueError(id, issue, "lando poweroff")),
+        );
     const ownership =
       registry.hasRecordedOwnership === undefined
         ? undefined
@@ -75,8 +69,9 @@ const readProviderSnapshots = Effect.fnUntraced(function* (journalProviders: Rea
       failures.push(providerInventoryFailure(String(id), ownership.failure));
     const hasRecordedHoldings =
       journalProviders.has(String(id)) ||
-      (state !== undefined &&
-        (Result.isFailure(state) || state.success.plans.length > 0 || state.success.unreadable.length > 0)) ||
+      Result.isFailure(state) ||
+      state.success.plans.length > 0 ||
+      state.success.unreadable.length > 0 ||
       (ownership !== undefined && (Result.isFailure(ownership) || ownership.success));
 
     // Scope each observation so a broken provider cannot hide another provider's workloads.

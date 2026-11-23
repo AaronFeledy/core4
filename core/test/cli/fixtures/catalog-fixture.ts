@@ -10,7 +10,6 @@ export const createCatalogFixture = async () => {
     ...process.env,
     LANDO_USER_DATA_ROOT: join(root, "data"),
     LANDO_USER_CACHE_ROOT: join(root, "cache"),
-    LANDO_USER_CONFIG_ROOT: join(root, "config"),
     LANDO_USER_CONF_ROOT: join(root, "config"),
   };
   const registry: Record<string, { name: string; version: string; path: string }> = {};

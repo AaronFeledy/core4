@@ -10,6 +10,7 @@ import {
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import { ServiceName, landoAppNetworkName, landoSharedNetworkName } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { restartApp } from "../../src/operations/restart.ts";
 import { serviceWithArtifact } from "../../src/services/build-artifact-runner.ts";
@@ -167,10 +168,13 @@ const runRestart = (
     { services: [web.name] },
     { plan: desired, root: desired.root, app: { kind: "user", id: desired.id, root: desired.root } },
   ).pipe(
-    Effect.provideService(RuntimeProviderRegistry, {
-      ...harness.runtimeProviderRegistry,
-      resolveAppliedPlan: () => Effect.succeed(applied),
-    }),
+    Effect.provideService(
+      RuntimeProviderRegistry,
+      makeTestRuntimeProviderRegistry({
+        ...harness.runtimeProviderRegistry,
+        resolveAppliedPlan: () => Effect.succeed(applied),
+      }),
+    ),
     Effect.provide(harness.layer),
   );
   return { operation, mutations, secretReads, requests, inspections, harness };

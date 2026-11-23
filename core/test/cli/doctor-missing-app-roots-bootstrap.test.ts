@@ -13,7 +13,7 @@ import {
   ServiceName,
 } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
 
@@ -54,10 +54,7 @@ test.each([false, true])(
       ).pipe(Layer.provide(BunFileSystem.layer)),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([ProviderId.make(provider.id)]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
