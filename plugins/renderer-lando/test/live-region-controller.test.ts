@@ -437,6 +437,62 @@ describe("LiveRegionController", () => {
     for (const row of rows) expect(text.split(row)).toHaveLength(2);
   });
 
+  const openTuiOnTerminalStdin = async () => {
+    const fixture = makeFixture();
+    const stdin = {
+      isTTY: true,
+      isRaw: true,
+      readableFlowing: true as boolean | null,
+      setRawMode: (mode: boolean) => {
+        stdin.isRaw = mode;
+      },
+      pause: () => {
+        stdin.readableFlowing = false;
+      },
+      resume: () => {
+        stdin.readableFlowing = true;
+      },
+    };
+    const destroy = fixture.renderer.destroy;
+    // OpenTUI's teardown leaves raw mode and pauses the stream it read keys from.
+    fixture.renderer.destroy = () => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      destroy();
+    };
+    const controller = await createLiveRegionController(
+      { stdout: createCapturingStdout([]), width: 80, height: 24 },
+      { loadModule: async () => fixture.module, createRenderer: async () => fixture.renderer, stdin },
+    );
+    return { controller, stdin };
+  };
+
+  test("hands stdin back in raw flowing mode after full tail closes", async () => {
+    const { controller, stdin } = await openTuiOnTerminalStdin();
+
+    await controller.enterFullTail();
+    await controller.exitFullTail();
+
+    expect({ isRaw: stdin.isRaw, readableFlowing: stdin.readableFlowing }).toEqual({
+      isRaw: true,
+      readableFlowing: true,
+    });
+  });
+
+  test("keeps stdin released when its key listener let go during full tail", async () => {
+    const { controller, stdin } = await openTuiOnTerminalStdin();
+    await controller.enterFullTail();
+
+    stdin.setRawMode(false);
+    stdin.pause();
+    await controller.dispose();
+
+    expect({ isRaw: stdin.isRaw, readableFlowing: stdin.readableFlowing }).toEqual({
+      isRaw: false,
+      readableFlowing: false,
+    });
+  });
+
   test("removes the deferred spool when disposed during full tail", async () => {
     const fixture = makeFixture();
     const probe = makeSpoolProbe();
