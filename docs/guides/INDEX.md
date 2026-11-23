@@ -337,4 +337,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | profile PHP requests with XHProf and XHGui | `docs/guides/tooling/xhprof-xhgui.mdx` | Shipped |
 | - | - | Adminer service for Postgres, MySQL, MariaDB, and SQLite | `docs/guides/services/adminer.mdx` | Shipped |
 | - | - | Keycloak OpenID Connect login server via Compose passthrough | `docs/guides/services/keycloak.mdx` | Shipped |
-| - | - | copy a production Drupal database through a private temp directory, sanitize it, check custom tables and mail, and log in with a one-time link | `docs/guides/recipes/drupal-production-copy.mdx` | Shipped |
+| - | - | stream a production Drupal database into Lando, sanitize it, check custom tables and mail, log in with a one-time link, and repeat it with a tooling task | `docs/guides/recipes/drupal-production-copy.mdx` | Shipped |
