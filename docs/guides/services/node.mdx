@@ -430,20 +430,24 @@ tooling:
 ### Share package downloads across apps
 
 Stock Node services share downloaded packages across apps on the same provider.
-Lando mounts `lando-cache-node-packages` at `/var/lib/lando/node-cache` and
-prepares that directory mode `1777` in the image so both the default root user
-and `user: node` can write. It does not chown the live volume at start.
+Lando mounts `lando-cache-node-packages` at `/var/lib/lando/node-cache`. Each
+service process user writes under `/var/lib/lando/node-cache/<uid>/`, because
+npm creates `_cacache` and `_logs` as mode `0755` directories owned by the
+writer; a `1777` seed on the volume root does not apply to those subdirs. The
+default root user uses `0`; `user: node` on the catalog image uses `1000`. The
+image creates and owns those uid directories. Lando does not chown the live
+volume at start.
 
 Lando sets cache environment only when you have not set it in the service's
 `environment:`:
 
 | Manager | Variable | Path |
 | --- | --- | --- |
-| npm (always) | `npm_config_cache` | `/var/lib/lando/node-cache/npm` |
-| pnpm 10 and earlier | `npm_config_store_dir` | `/var/lib/lando/node-cache/pnpm` |
-| pnpm 11 and later | `pnpm_config_store_dir` | `/var/lib/lando/node-cache/pnpm` |
-| Yarn classic | `YARN_CACHE_FOLDER` | `/var/lib/lando/node-cache/yarn` |
-| Yarn 2 and later | `YARN_GLOBAL_FOLDER` | `/var/lib/lando/node-cache/yarn-global` |
+| npm (always) | `npm_config_cache` | `/var/lib/lando/node-cache/<uid>/npm` |
+| pnpm 10 and earlier | `npm_config_store_dir` | `/var/lib/lando/node-cache/<uid>/pnpm` |
+| pnpm 11 and later | `pnpm_config_store_dir` | `/var/lib/lando/node-cache/<uid>/pnpm` |
+| Yarn classic | `YARN_CACHE_FOLDER` | `/var/lib/lando/node-cache/<uid>/yarn` |
+| Yarn 2 and later | `YARN_GLOBAL_FOLDER` | `/var/lib/lando/node-cache/<uid>/yarn-global` |
 
 A custom image or replacement Compose build does not get this default. Set
 `packageCache: false` to skip it on a stock service. An authored mount at
@@ -458,7 +462,8 @@ uses it. After a purge, other apps may need to download packages again.
 
 If you already have a pnpm tree, changing the store path can force a reinstall
 or error: `node_modules/.modules.yaml` records the old store path. Keep the
-same store directory across apps, or remove that tree and install again.
+same store directory across apps, including the same `<uid>` segment, or
+remove that tree and install again.
 
 Tarballs from a private registry that land in the shared cache are visible to
 other local apps on the same provider.

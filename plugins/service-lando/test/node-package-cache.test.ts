@@ -13,12 +13,14 @@ import { Schema } from "effect";
 import {
   NODE_FEATURE_ID,
   NODE_PACKAGE_CACHE,
-  NODE_PACKAGE_CACHE_PATHS,
+  NODE_PACKAGE_CACHE_CATALOG_UIDS,
   NODE_PACKAGE_CACHE_PREPARE,
   NODE_PACKAGE_CACHE_STEP_ID,
   NODE_PACKAGE_CACHE_TARGET,
   node22ServiceType,
   nodePackageCacheEnvironment,
+  nodePackageCachePaths,
+  nodePackageCacheUid,
   nodeServiceFeature,
 } from "../src/services/node.ts";
 import {
@@ -96,56 +98,112 @@ const manager = (name: "pnpm" | "yarn", version: string): NodePackageManagerConf
   launcher: PACKAGE_MANAGER_LAUNCHER_REVISION,
 });
 
+describe("nodePackageCacheUid", () => {
+  test("maps the catalog process user to a numeric cache uid", () => {
+    expect(nodePackageCacheUid(undefined)).toBe(NODE_PACKAGE_CACHE_CATALOG_UIDS.root);
+    expect(nodePackageCacheUid("root")).toBe(NODE_PACKAGE_CACHE_CATALOG_UIDS.root);
+    expect(nodePackageCacheUid("0")).toBe(NODE_PACKAGE_CACHE_CATALOG_UIDS.root);
+    expect(nodePackageCacheUid("0:0")).toBe(NODE_PACKAGE_CACHE_CATALOG_UIDS.root);
+    expect(nodePackageCacheUid("node")).toBe(NODE_PACKAGE_CACHE_CATALOG_UIDS.node);
+    expect(nodePackageCacheUid("node:node")).toBe(NODE_PACKAGE_CACHE_CATALOG_UIDS.node);
+    expect(nodePackageCacheUid("1000")).toBe(NODE_PACKAGE_CACHE_CATALOG_UIDS.node);
+    expect(nodePackageCacheUid("1000:1000")).toBe(NODE_PACKAGE_CACHE_CATALOG_UIDS.node);
+  });
+});
+
 describe("nodePackageCacheEnvironment", () => {
+  const rootPaths = nodePackageCachePaths(NODE_PACKAGE_CACHE_CATALOG_UIDS.root);
+  const nodePaths = nodePackageCachePaths(NODE_PACKAGE_CACHE_CATALOG_UIDS.node);
+
   test("sets npm_config_cache when the user has not", () => {
-    expect(nodePackageCacheEnvironment(undefined, undefined)).toEqual({
-      npm_config_cache: NODE_PACKAGE_CACHE_PATHS.npm,
+    expect(nodePackageCacheEnvironment(undefined, undefined, NODE_PACKAGE_CACHE_CATALOG_UIDS.root)).toEqual({
+      npm_config_cache: rootPaths.npm,
+    });
+  });
+
+  test("points root and user: node at distinct writable uid trees", () => {
+    expect(rootPaths.npm).toBe(`${NODE_PACKAGE_CACHE_TARGET}/0/npm`);
+    expect(nodePaths.npm).toBe(`${NODE_PACKAGE_CACHE_TARGET}/1000/npm`);
+    expect(rootPaths.npm).not.toBe(nodePaths.npm);
+    expect(nodePackageCacheEnvironment(undefined, undefined, NODE_PACKAGE_CACHE_CATALOG_UIDS.node)).toEqual({
+      npm_config_cache: nodePaths.npm,
     });
   });
 
   test("leaves a user-set npm_config_cache alone", () => {
-    expect(nodePackageCacheEnvironment({ npm_config_cache: "/tmp/npm" }, undefined)).toEqual({});
+    expect(
+      nodePackageCacheEnvironment(
+        { npm_config_cache: "/tmp/npm" },
+        undefined,
+        NODE_PACKAGE_CACHE_CATALOG_UIDS.root,
+      ),
+    ).toEqual({});
   });
 
   test("uses npm_config_store_dir for pnpm 10 and pnpm_config_store_dir for pnpm 11", () => {
-    expect(nodePackageCacheEnvironment(undefined, manager("pnpm", "10.15.0"))).toEqual({
-      npm_config_cache: NODE_PACKAGE_CACHE_PATHS.npm,
-      npm_config_store_dir: NODE_PACKAGE_CACHE_PATHS.pnpm,
+    expect(
+      nodePackageCacheEnvironment(
+        undefined,
+        manager("pnpm", "10.15.0"),
+        NODE_PACKAGE_CACHE_CATALOG_UIDS.root,
+      ),
+    ).toEqual({
+      npm_config_cache: rootPaths.npm,
+      npm_config_store_dir: rootPaths.pnpm,
     });
-    expect(nodePackageCacheEnvironment(undefined, manager("pnpm", "11.0.0"))).toEqual({
-      npm_config_cache: NODE_PACKAGE_CACHE_PATHS.npm,
-      pnpm_config_store_dir: NODE_PACKAGE_CACHE_PATHS.pnpm,
+    expect(
+      nodePackageCacheEnvironment(undefined, manager("pnpm", "11.0.0"), NODE_PACKAGE_CACHE_CATALOG_UIDS.root),
+    ).toEqual({
+      npm_config_cache: rootPaths.npm,
+      pnpm_config_store_dir: rootPaths.pnpm,
     });
   });
 
   test("uses YARN_CACHE_FOLDER for Yarn classic and YARN_GLOBAL_FOLDER for Berry", () => {
-    expect(nodePackageCacheEnvironment(undefined, manager("yarn", "1.22.22"))).toEqual({
-      npm_config_cache: NODE_PACKAGE_CACHE_PATHS.npm,
-      YARN_CACHE_FOLDER: NODE_PACKAGE_CACHE_PATHS.yarn,
+    expect(
+      nodePackageCacheEnvironment(
+        undefined,
+        manager("yarn", "1.22.22"),
+        NODE_PACKAGE_CACHE_CATALOG_UIDS.root,
+      ),
+    ).toEqual({
+      npm_config_cache: rootPaths.npm,
+      YARN_CACHE_FOLDER: rootPaths.yarn,
     });
-    expect(nodePackageCacheEnvironment(undefined, manager("yarn", "4.18.1"))).toEqual({
-      npm_config_cache: NODE_PACKAGE_CACHE_PATHS.npm,
-      YARN_GLOBAL_FOLDER: NODE_PACKAGE_CACHE_PATHS.yarnGlobal,
+    expect(
+      nodePackageCacheEnvironment(undefined, manager("yarn", "4.18.1"), NODE_PACKAGE_CACHE_CATALOG_UIDS.root),
+    ).toEqual({
+      npm_config_cache: rootPaths.npm,
+      YARN_GLOBAL_FOLDER: rootPaths.yarnGlobal,
     });
   });
 
   test("leaves manager-specific env alone when the user already set it", () => {
     expect(
-      nodePackageCacheEnvironment({ pnpm_config_store_dir: "/tmp/pnpm" }, manager("pnpm", "11.0.0")),
+      nodePackageCacheEnvironment(
+        { pnpm_config_store_dir: "/tmp/pnpm" },
+        manager("pnpm", "11.0.0"),
+        NODE_PACKAGE_CACHE_CATALOG_UIDS.root,
+      ),
     ).toEqual({
-      npm_config_cache: NODE_PACKAGE_CACHE_PATHS.npm,
+      npm_config_cache: rootPaths.npm,
     });
     expect(
-      nodePackageCacheEnvironment({ YARN_CACHE_FOLDER: "/tmp/yarn" }, manager("yarn", "1.22.22")),
+      nodePackageCacheEnvironment(
+        { YARN_CACHE_FOLDER: "/tmp/yarn" },
+        manager("yarn", "1.22.22"),
+        NODE_PACKAGE_CACHE_CATALOG_UIDS.root,
+      ),
     ).toEqual({
-      npm_config_cache: NODE_PACKAGE_CACHE_PATHS.npm,
+      npm_config_cache: rootPaths.npm,
     });
   });
 });
 
 describe("shared Node package cache", () => {
-  test("mounts the shared cache, seeds 1777, and sets npm_config_cache", async () => {
+  test("mounts the shared cache, seeds per-uid dirs, and sets npm_config_cache", async () => {
     const plan = await composeNodePlan({});
+    const rootPaths = nodePackageCachePaths(NODE_PACKAGE_CACHE_CATALOG_UIDS.root);
 
     expect(cacheMount(plan)).toEqual([
       {
@@ -156,7 +214,7 @@ describe("shared Node package cache", () => {
         readOnly: false,
       },
     ]);
-    expect(plan.environment.npm_config_cache).toBe(NODE_PACKAGE_CACHE_PATHS.npm);
+    expect(plan.environment.npm_config_cache).toBe(rootPaths.npm);
     expect(plan.environment.npm_config_store_dir).toBeUndefined();
     expect(plan.environment.pnpm_config_store_dir).toBeUndefined();
     expect(plan.environment.YARN_CACHE_FOLDER).toBeUndefined();
@@ -167,7 +225,33 @@ describe("shared Node package cache", () => {
       user: "root",
       command: ["sh", "-c", NODE_PACKAGE_CACHE_PREPARE],
     });
-    expect(NODE_PACKAGE_CACHE_PREPARE).toContain("chmod 1777");
+    expect(NODE_PACKAGE_CACHE_PREPARE).toContain(`chmod 1777 ${NODE_PACKAGE_CACHE_TARGET}`);
+    expect(NODE_PACKAGE_CACHE_PREPARE).toContain(`chown 0:0 ${NODE_PACKAGE_CACHE_TARGET}/0`);
+    expect(NODE_PACKAGE_CACHE_PREPARE).toContain(`chown 1000:1000 ${NODE_PACKAGE_CACHE_TARGET}/1000`);
+    expect(NODE_PACKAGE_CACHE_PREPARE).not.toContain("chown -R");
+  });
+
+  test("points a default-root service and a user: node service at distinct uid trees", async () => {
+    const root = await composeNodePlan({});
+    const node = await composeNodePlan({ user: "node" });
+    const rootPaths = nodePackageCachePaths(NODE_PACKAGE_CACHE_CATALOG_UIDS.root);
+    const nodePaths = nodePackageCachePaths(NODE_PACKAGE_CACHE_CATALOG_UIDS.node);
+
+    expect(root.environment.npm_config_cache).toBe(rootPaths.npm);
+    expect(node.environment.npm_config_cache).toBe(nodePaths.npm);
+    expect(root.environment.npm_config_cache).not.toBe(node.environment.npm_config_cache);
+    expect(node.user).toBe("node");
+  });
+
+  test("points user: node pnpm at the node uid store, not the root uid store", async () => {
+    const plan = await composeNodePlan({ user: "node" }, [packageJson({ packageManager: "pnpm@11.0.0" })]);
+    const nodePaths = nodePackageCachePaths(NODE_PACKAGE_CACHE_CATALOG_UIDS.node);
+
+    expect(plan.environment.npm_config_cache).toBe(nodePaths.npm);
+    expect(plan.environment.pnpm_config_store_dir).toBe(nodePaths.pnpm);
+    expect(plan.environment.pnpm_config_store_dir).not.toBe(
+      nodePackageCachePaths(NODE_PACKAGE_CACHE_CATALOG_UIDS.root).pnpm,
+    );
   });
 
   test("leaves a user-set npm_config_cache alone while still mounting the cache", async () => {
@@ -180,20 +264,22 @@ describe("shared Node package cache", () => {
   test("sets pnpm 10 and pnpm 11 store env from the selected manager", async () => {
     const pnpm10 = await composeNodePlan({}, [packageJson({ packageManager: "pnpm@10.15.0" })]);
     const pnpm11 = await composeNodePlan({}, [packageJson({ packageManager: "pnpm@11.0.0" })]);
+    const rootPaths = nodePackageCachePaths(NODE_PACKAGE_CACHE_CATALOG_UIDS.root);
 
-    expect(pnpm10.environment.npm_config_store_dir).toBe(NODE_PACKAGE_CACHE_PATHS.pnpm);
+    expect(pnpm10.environment.npm_config_store_dir).toBe(rootPaths.pnpm);
     expect(pnpm10.environment.pnpm_config_store_dir).toBeUndefined();
-    expect(pnpm11.environment.pnpm_config_store_dir).toBe(NODE_PACKAGE_CACHE_PATHS.pnpm);
+    expect(pnpm11.environment.pnpm_config_store_dir).toBe(rootPaths.pnpm);
     expect(pnpm11.environment.npm_config_store_dir).toBeUndefined();
   });
 
   test("sets Yarn classic and Berry cache env from the selected manager", async () => {
     const classic = await composeNodePlan({}, [packageJson({ packageManager: "yarn@1.22.22" })]);
     const berry = await composeNodePlan({}, [packageJson({ packageManager: "yarn@4.18.1" })]);
+    const rootPaths = nodePackageCachePaths(NODE_PACKAGE_CACHE_CATALOG_UIDS.root);
 
-    expect(classic.environment.YARN_CACHE_FOLDER).toBe(NODE_PACKAGE_CACHE_PATHS.yarn);
+    expect(classic.environment.YARN_CACHE_FOLDER).toBe(rootPaths.yarn);
     expect(classic.environment.YARN_GLOBAL_FOLDER).toBeUndefined();
-    expect(berry.environment.YARN_GLOBAL_FOLDER).toBe(NODE_PACKAGE_CACHE_PATHS.yarnGlobal);
+    expect(berry.environment.YARN_GLOBAL_FOLDER).toBe(rootPaths.yarnGlobal);
     expect(berry.environment.YARN_CACHE_FOLDER).toBeUndefined();
   });
 
@@ -213,7 +299,9 @@ describe("shared Node package cache", () => {
     const plan = await composeNodePlan({ image: "node:22" });
 
     expect(cacheMount(plan)).toHaveLength(1);
-    expect(plan.environment.npm_config_cache).toBe(NODE_PACKAGE_CACHE_PATHS.npm);
+    expect(plan.environment.npm_config_cache).toBe(
+      nodePackageCachePaths(NODE_PACKAGE_CACHE_CATALOG_UIDS.root).npm,
+    );
   });
 
   test("lets an authored mount at the cache target replace the shared volume", async () => {
@@ -231,6 +319,8 @@ describe("shared Node package cache", () => {
         realization: "passthrough",
       },
     ]);
-    expect(plan.environment.npm_config_cache).toBe(NODE_PACKAGE_CACHE_PATHS.npm);
+    expect(plan.environment.npm_config_cache).toBe(
+      nodePackageCachePaths(NODE_PACKAGE_CACHE_CATALOG_UIDS.root).npm,
+    );
   });
 });

@@ -1,4 +1,10 @@
-import { PortablePath, type ServiceConfig, landoCacheStoreName, sameImageReference } from "@lando/sdk/schema";
+import {
+  NODE_PACKAGE_CACHE_KEY,
+  PortablePath,
+  type ServiceConfig,
+  landoCacheStoreName,
+  sameImageReference,
+} from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
@@ -19,14 +25,29 @@ export const NODE_FEATURE_ID = "service-lando.node" as const;
 export const NODE_FEATURE_PRIORITY = 600;
 export const NODE_GLOBALS_STEP_ID = "service-lando.node:globals" as const;
 export const NODE_PACKAGE_CACHE_STEP_ID = "service-lando.node:package-cache" as const;
-export const NODE_PACKAGE_CACHE_KEY = "node-packages" as const;
+export { NODE_PACKAGE_CACHE_KEY };
 export const NODE_PACKAGE_CACHE_TARGET = "/var/lib/lando/node-cache" as const;
-export const NODE_PACKAGE_CACHE_PATHS = {
-  npm: `${NODE_PACKAGE_CACHE_TARGET}/npm`,
-  pnpm: `${NODE_PACKAGE_CACHE_TARGET}/pnpm`,
-  yarn: `${NODE_PACKAGE_CACHE_TARGET}/yarn`,
-  yarnGlobal: `${NODE_PACKAGE_CACHE_TARGET}/yarn-global`,
-} as const;
+/** Catalog Node image principals: default root is uid 0; `node` is uid 1000. */
+export const NODE_PACKAGE_CACHE_CATALOG_UIDS = { root: 0, node: 1000 } as const;
+const NUMERIC_USER = /^[0-9]+$/u;
+
+/** Effective process uid that writes the shared Node package cache. */
+export const nodePackageCacheUid = (user: string | undefined): number => {
+  const separator = user === undefined ? -1 : user.indexOf(":");
+  const principal = user === undefined ? "root" : separator === -1 ? user : user.slice(0, separator);
+  if (principal === "root") return NODE_PACKAGE_CACHE_CATALOG_UIDS.root;
+  if (principal === "node") return NODE_PACKAGE_CACHE_CATALOG_UIDS.node;
+  return NUMERIC_USER.test(principal) ? Number(principal) : NODE_PACKAGE_CACHE_CATALOG_UIDS.root;
+};
+
+export const nodePackageCachePaths = (uid: number) =>
+  ({
+    npm: `${NODE_PACKAGE_CACHE_TARGET}/${uid}/npm`,
+    pnpm: `${NODE_PACKAGE_CACHE_TARGET}/${uid}/pnpm`,
+    yarn: `${NODE_PACKAGE_CACHE_TARGET}/${uid}/yarn`,
+    yarnGlobal: `${NODE_PACKAGE_CACHE_TARGET}/${uid}/yarn-global`,
+  }) as const;
+
 export const NODE_PACKAGE_CACHE = {
   store: landoCacheStoreName(NODE_PACKAGE_CACHE_KEY),
   target: PortablePath.make(NODE_PACKAGE_CACHE_TARGET),
@@ -34,11 +55,16 @@ export const NODE_PACKAGE_CACHE = {
   kind: "cache",
   key: NODE_PACKAGE_CACHE_KEY,
 } as const;
-const NODE_PACKAGE_CACHE_DIRS = Object.values(NODE_PACKAGE_CACHE_PATHS);
+const NODE_PACKAGE_CACHE_UID_DIRS = Object.values(NODE_PACKAGE_CACHE_CATALOG_UIDS).map(
+  (uid) => `${NODE_PACKAGE_CACHE_TARGET}/${uid}`,
+);
 export const NODE_PACKAGE_CACHE_PREPARE = [
   "set -eu",
-  ["mkdir -p", ...NODE_PACKAGE_CACHE_DIRS].join(" "),
-  ["chmod 1777", NODE_PACKAGE_CACHE_TARGET, ...NODE_PACKAGE_CACHE_DIRS].join(" "),
+  ["mkdir -p", NODE_PACKAGE_CACHE_TARGET, ...NODE_PACKAGE_CACHE_UID_DIRS].join(" "),
+  `chmod 1777 ${NODE_PACKAGE_CACHE_TARGET}`,
+  ...Object.values(NODE_PACKAGE_CACHE_CATALOG_UIDS).map(
+    (uid) => `chown ${uid}:${uid} ${NODE_PACKAGE_CACHE_TARGET}/${uid}`,
+  ),
 ].join("; ");
 
 // The kernel drops default-disposition signals to PID 1, so the idle process handles them itself.
@@ -87,22 +113,21 @@ const unsetEnvironment = (environment: ServiceConfig["environment"], name: strin
 export const nodePackageCacheEnvironment = (
   environment: ServiceConfig["environment"],
   packageManager: NodePackageManagerConfig | undefined,
+  uid: number,
 ): Record<string, string> => {
   const assigned: Record<string, string> = {};
+  const paths = nodePackageCachePaths(uid);
   const set = (name: string, value: string): void => {
     if (unsetEnvironment(environment, name)) assigned[name] = value;
   };
-  set("npm_config_cache", NODE_PACKAGE_CACHE_PATHS.npm);
+  set("npm_config_cache", paths.npm);
   if (packageManager?.name === "pnpm") {
     const major = Number(packageManager.version.split(".")[0]);
-    set(major >= 11 ? "pnpm_config_store_dir" : "npm_config_store_dir", NODE_PACKAGE_CACHE_PATHS.pnpm);
+    set(major >= 11 ? "pnpm_config_store_dir" : "npm_config_store_dir", paths.pnpm);
   }
   if (packageManager?.name === "yarn") {
     const major = Number(packageManager.version.split(".")[0]);
-    set(
-      major >= 2 ? "YARN_GLOBAL_FOLDER" : "YARN_CACHE_FOLDER",
-      major >= 2 ? NODE_PACKAGE_CACHE_PATHS.yarnGlobal : NODE_PACKAGE_CACHE_PATHS.yarn,
-    );
+    set(major >= 2 ? "YARN_GLOBAL_FOLDER" : "YARN_CACHE_FOLDER", major >= 2 ? paths.yarnGlobal : paths.yarn);
   }
   return assigned;
 };
@@ -129,7 +154,11 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   if (usesNodePackageCache(service, version)) {
     const { store, target, readOnly } = NODE_PACKAGE_CACHE;
     ctx.addStorage({ store, target, readOnly });
-    const cacheEnv = nodePackageCacheEnvironment(service.environment, packageManager);
+    const cacheEnv = nodePackageCacheEnvironment(
+      service.environment,
+      packageManager,
+      nodePackageCacheUid(service.user),
+    );
     for (const [name, value] of Object.entries(cacheEnv)) ctx.addEnv(name, value);
     ctx.addBuildStep({
       id: NODE_PACKAGE_CACHE_STEP_ID,

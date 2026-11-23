@@ -166,7 +166,7 @@ describe("@lando/service-lando registration", () => {
       key: "node-packages",
     });
     expect(appPlan.services[ServiceName.make("web")]?.environment.npm_config_cache).toBe(
-      "/var/lib/lando/node-cache/npm",
+      "/var/lib/lando/node-cache/0/npm",
     );
   });
 
