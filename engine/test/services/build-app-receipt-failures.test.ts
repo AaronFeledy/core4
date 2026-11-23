@@ -121,7 +121,7 @@ for (const body of [
     failures: [],
     defects: [],
     interrupts: [517],
-    summary: "web:app:install interrupted",
+    summary: "web interrupted",
   },
 ] as const) {
   test(`receipt defect preserves the already failing ${body.name} exactly once`, async () => {

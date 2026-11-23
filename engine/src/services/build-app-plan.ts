@@ -24,7 +24,12 @@ type AppBuildStepIntent = typeof AppBuildStepIntent.Type;
 export interface AppStep {
   readonly command: AppBuildStepIntent["command"];
   readonly step: BuildStep;
+  /** What task rows call the step: the service, numbered when the service has several app steps. */
+  readonly subject: string;
 }
+
+/** Row label of an app step; its settled summaries name the same subject. */
+export const appStepLabel = (appStep: AppStep): string => `Build ${appStep.subject}`;
 
 export type AppStepBatchPlan =
   | { readonly _tag: "Batches"; readonly batches: ReadonlyArray<ReadonlyArray<AppStep>> }
@@ -73,8 +78,10 @@ const stepFor = (
           ...intent.command,
           env: { ...identity.environment, ...intent.command.env },
         };
+  const name = String(service.name);
   return {
     command,
+    subject: intents.length === 1 ? name : `${name} (${index + 1} of ${intents.length})`,
     step: {
       id,
       service: service.name,
