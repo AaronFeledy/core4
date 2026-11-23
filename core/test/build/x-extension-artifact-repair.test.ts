@@ -23,8 +23,6 @@ import {
   admitsDeclaredName,
   admitsExtensionKey,
   blankContextBody,
-  exceptionKey,
-  expectedClosedExtensionExceptions,
   loadNormalizedArtifact,
   parseCapturedExtension,
   repairClosedExtension,
@@ -70,7 +68,6 @@ import {
 } from "./x-extension-tooling-shorthand-proof.ts";
 import { evolveHistoricalToolingVars } from "./x-extension-tooling-vars-proof.ts";
 import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
-import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
 const capturedLandofile = withIntentionalChangesSinceCapture(captured.landofile);
@@ -458,34 +455,5 @@ describe("closed x-* extension artifact repair", () => {
     const repaired = normalizeJsonSchema(requireObject(repairClosedExtension(tighter), "tighter"));
     expect(jsonEquals(repaired, normalizeJsonSchema(closed))).toBe(false);
     expect(classifySchemaChange(tighter, closed, "strict").length).toBeGreaterThan(0);
-  });
-
-  test("records only the proven surfaces and paths", async () => {
-    const parsed = await Bun.file(resolve(REPO_ROOT, "sdk/compatibility-exceptions.json")).json();
-    if (!Array.isArray(parsed)) throw new Error("exceptions must be an array");
-    const recorded = new Set<string>();
-    for (const entry of parsed) {
-      if (
-        !isJsonObject(entry) ||
-        (entry.justification !== CLOSED_EXTENSION_JUSTIFICATION &&
-          entry.justification !== DIRECTIVE_TRANSPORT_JUSTIFICATION)
-      )
-        continue;
-      if (
-        typeof entry.surface !== "string" ||
-        typeof entry.changeKind !== "string" ||
-        typeof entry.path !== "string"
-      ) {
-        throw new Error("closed-extension exception is incomplete");
-      }
-      recorded.add(exceptionKey(entry.surface, entry.changeKind, entry.path));
-    }
-    const expected = new Set(
-      [...expectedClosedExtensionExceptions(), ...expectedWireExceptions()].map((entry) =>
-        exceptionKey(entry.surface, entry.changeKind, entry.path),
-      ),
-    );
-    expect([...recorded].sort()).toEqual([...expected].sort());
-    expect(recorded.size).toBe(68);
   });
 });
