@@ -498,7 +498,7 @@ MCP tooling input schemas MUST project the canonical declaration into real `enum
 
 #### 8.5.2 Commands and dependencies
 
-Steps are string commands or objects containing `cmd`, `task`, `command`, `defer`, or `for`. Per-step overrides include `service`, `dir`, `env`, `user`, `platforms`, `if`, `silent`, `ignoreError`, and `interactive`. `defer` finalizes in LIFO order when supported. Dependencies precede the body and independent dependencies run concurrently; `failFast: true` interrupts siblings. Serial composition uses ordered task steps.
+Steps are string commands or objects containing `cmd`, `task`, `command`, `defer`, or `for`. Per-step overrides include `service`, `dir`, `env`, `user`, `platforms`, `if`, `silent`, `ignoreError`, and `interactive`. A failing step stops the task: later steps do not run unless that step sets `ignoreError: true`. `defer` finalizes in LIFO order when supported. Dependencies precede the body and independent dependencies run concurrently; `failFast: true` interrupts siblings. Serial composition uses ordered task steps.
 
 ##### 8.5.2.1 The `command:` step
 
