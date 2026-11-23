@@ -11,28 +11,41 @@ const parse = (text: string): ExpressionTemplate => {
 
 describe("serviceUrlReads", () => {
   test.each([
-    ["{{ services.web.url }}", ["web"]],
-    ['{{ services["web"].url }}', ["web"]],
-    ['{{ services.web["url"] }}', ["web"]],
-    ["{{ (services.web).url }}", ["web"]],
-    ["{{ (services).web.url }}", ["web"]],
-    ["{{ url.parse(services.web.url).hostname }}", ["web"]],
-    ["{{ flags.secure ? services.web.url : services.api.url }}", ["web", "api"]],
-    ["{{ services.database.creds.user }} {{ services.database.port }}", []],
-    ["{{ services[vars.name].creds.user }}", []],
-    ["{{ vars[services.web.url] }}", ["web"]],
-  ])("accepts %s as literal URL reads of %j", (text, services) => {
-    // When
-    const reads = serviceUrlReads(parse(text));
-    // Then
-    expect({ services: [...reads.services], refusal: reads.refusal }).toEqual({
-      services,
-      refusal: undefined,
-    });
-  });
+    ["{{ services.web.url }}", { web: ["url"] }],
+    ['{{ services["web"].url }}', { web: ["url"] }],
+    ['{{ services.web["url"] }}', { web: ["url"] }],
+    ["{{ (services.web).url }}", { web: ["url"] }],
+    ["{{ (services).web.url }}", { web: ["url"] }],
+    ["{{ services.web.hostname }}", { web: ["hostname"] }],
+    ['{{ services["web"].hostname }}', { web: ["hostname"] }],
+    ['{{ services.web["origin"] }}', { web: ["origin"] }],
+    ["{{ (services.web).origin }}", { web: ["origin"] }],
+    ["{{ (services).web.hostname }}", { web: ["hostname"] }],
+    ["{{ services.web.origin }}/api {{ services.web.hostname }}", { web: ["origin", "hostname"] }],
+    ["{{ url.parse(services.web.url).hostname }}", { web: ["url"] }],
+    ["{{ flags.secure ? services.web.url : services.api.origin }}", { web: ["url"], api: ["origin"] }],
+    ["{{ services.database.creds.user }} {{ services.database.port }}", {}],
+    ["{{ services[vars.name].creds.user }}", {}],
+    ["{{ vars[services.web.url] }}", { web: ["url"] }],
+  ] as const satisfies readonly (readonly [string, Readonly<Record<string, readonly string[]>>])[])(
+    "accepts %s as literal route-fact reads %j",
+    (text, services) => {
+      // When
+      const reads = serviceUrlReads(parse(text));
+      // Then
+      expect({
+        services: Object.fromEntries(
+          [...reads.services].map(([name, facts]): [string, readonly string[]] => [name, [...facts]]),
+        ),
+        refusal: reads.refusal,
+      }).toEqual({ services, refusal: undefined });
+    },
+  );
 
   test.each([
     ["{{ services[vars.name].url }}", "computed-service"],
+    ["{{ services[vars.name].hostname }}", "computed-service"],
+    ["{{ services[vars.name].origin }}", "computed-service"],
     ["{{ services.web[vars.member] }}", "computed-member"],
     ["{{ services.web }}", "whole-service"],
     ["{{ services }}", "whole-service"],
@@ -43,13 +56,18 @@ describe("serviceUrlReads", () => {
 });
 
 describe("serviceUrlReadPath", () => {
-  test("normalizes the parenthesized form and keeps trailing segments", () => {
+  test.each([
+    ["{{ (services.web).url[0] }}", "url"],
+    ['{{ (services["web"]).hostname[0] }}', "hostname"],
+    ['{{ services.web["origin"][0] }}', "origin"],
+  ] as const)("normalizes %s and keeps trailing segments", (text, fact) => {
     // Given
-    const segment = parse("{{ (services.web).url[0] }}").segments[0];
+    const segment = parse(text).segments[0];
     if (segment?.kind !== "InterpolationSegment") throw new Error("expected an interpolation");
     // When / Then
     expect(serviceUrlReadPath(segment.expression)).toEqual({
       service: "web",
+      fact,
       rest: [{ type: "index", index: 0 }],
     });
   });

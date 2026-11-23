@@ -24,7 +24,7 @@ import { readsServiceUrl } from "./service-url-reads.ts";
 
 export * from "./invocation-sites.ts";
 export { routeUrlSiteError } from "./route-url-expression.ts";
-export { serviceUrlReads } from "./service-url-reads.ts";
+export { isPublicRouteFact, serviceUrlReads } from "./service-url-reads.ts";
 export {
   dynamicToolingNames,
   dynamicToolingReferenceIssues,
@@ -141,18 +141,21 @@ export const consumeSites = (input: {
   const pendingSites: ParsedPendingSite[] = [];
   for (const site of input.pendingSites) {
     const environmentSite = isServiceEnvironmentValuePath(site.path);
-    // Load admits URL reads outside a service environment only at invocation sites, where the
-    // applied route table supplies them when the command runs; keep the whole expression for then.
+    // Load admits route-fact reads outside a service environment only at invocation sites, where
+    // the applied route table supplies them when the command runs; keep the whole expression for then.
     if (!environmentSite && readsServiceUrl(site.template)) {
       pendingSites.push(site);
       continue;
     }
     const selfName = environmentSite ? site.path[1] : undefined;
     const self = typeof selfName === "string" ? input.context.services?.[selfName] : undefined;
-    const selfUrl = isPlainRecord(self) ? { url: self.url } : undefined;
+    // A service reads its own route facts as `service.url`, `service.hostname`, and `service.origin`.
+    const selfRoute = isPlainRecord(self)
+      ? { url: self.url, hostname: self.hostname, origin: self.origin }
+      : undefined;
     const plannerSelf = isPlainRecord(input.context.service) ? input.context.service : undefined;
     const serviceSelf =
-      plannerSelf === undefined && selfUrl === undefined ? undefined : { ...plannerSelf, ...selfUrl };
+      plannerSelf === undefined && selfRoute === undefined ? undefined : { ...plannerSelf, ...selfRoute };
     // Only the planner supplies `service.port`, so a self-port read waits for it.
     if (
       plannerSelf?.port === undefined &&
@@ -233,7 +236,7 @@ export const consumeSites = (input: {
       return Result.fail(
         new ConfigExpressionError({
           message: misplacedRoute
-            ? `A public service URL is not supported at ${site.path.join(".")}.`
+            ? `A public service route fact is not supported at ${site.path.join(".")}.`
             : "This field takes text; the expression must return text or a finite number.",
           path: site.path,
           source: site.source,

@@ -64,6 +64,8 @@ test.each([...cases])(
     expect(effectiveToolingForPlan(plan)?.["redis-cli"]?.env?.REDISCLI_AUTH).toEqual(password);
     expect(serviceCredsScopeForPlan(plan).cache).toEqual({
       url: { _tag: "RouteText", parts: [{ service: "cache", encoding: "raw" }] },
+      hostname: { _tag: "RouteText", parts: [{ service: "cache", member: "hostname", encoding: "raw" }] },
+      origin: { _tag: "RouteText", parts: [{ service: "cache", member: "origin", encoding: "raw" }] },
       port: PortNumber.make(6379),
       creds: { user: "default", database: "0", password },
     });

@@ -198,8 +198,9 @@ export const bindToolingShellSite = (
     if (typeof result === "object" && result !== null && "_tag" in result && result._tag === "RouteText")
       throw new ToolingCompileError({
         tool: "<tooling-task>",
-        message: `Public URL bindings are not supported at ${formatValidationIssuePath(site.source.path)}.`,
-        remediation: "Read one service's URL with {{ services.<name>.url }}, naming the service literally.",
+        message: `Public route fact bindings are not supported at ${formatValidationIssuePath(site.source.path)}.`,
+        remediation:
+          "Read one service's route fact with {{ services.<name>.url }}, .hostname, or .origin, naming the service literally.",
       });
     const value =
       segment.kind === "LiteralSegment" && trimNextLiteral

@@ -12,7 +12,8 @@ export type ServiceUrlLintFacts =
   | { readonly _tag: "Resolved"; readonly endpoints: readonly EndpointPlan[] };
 
 /**
- * Lint findings for `{{ services.<name>.url }}` reads at tooling and Landofile event sites, judged
+ * Lint findings for `{{ services.<name>.url }}`, `.hostname`, and `.origin` reads at tooling and
+ * Landofile event sites, judged
  * against the desired configuration only: an unknown service, routing disabled, a service with no
  * route that has a concrete hostname, and a lifecycle step that runs while no route is served. A
  * service without authored routes gets a generated default route only when it has an HTTP
@@ -29,7 +30,8 @@ export const serviceUrlLintIssues = (input: {
   input.sites.flatMap((site) => {
     const [root, name] = site.path;
     if (root !== "tooling" && root !== "events") return [];
-    return [...serviceUrlReads(site.template).services].flatMap((service) => {
+    return [...serviceUrlReads(site.template).services].flatMap(([service, read]) => {
+      const fact = [...read][0] ?? "url";
       const finding = (reason: string, message: string, suggestion: string) => [
         {
           rule: "landofile.tooling" as const,
@@ -42,7 +44,7 @@ export const serviceUrlLintIssues = (input: {
         },
       ];
       const known = (reason: "event-phase" | "unknown-service" | "routing-disabled", event?: string) => {
-        const text = serviceUrlFailureText(reason, service, event);
+        const text = serviceUrlFailureText(reason, { service, fact }, event);
         return finding(reason, text.message, text.suggestion);
       };
       if (root === "events" && SERVICE_URL_REFUSED_EVENTS.has(String(name)))
@@ -61,8 +63,8 @@ export const serviceUrlLintIssues = (input: {
       if (routes.some((route) => !route.hostname.includes("*"))) return [];
       return noRoute(
         routes.length === 0
-          ? `${service} declares no routes, so it has no public URL.`
-          : `${service} has only wildcard routes, so it has no public URL.`,
+          ? `${service} declares no routes, so services.${service}.${fact} has no value.`
+          : `${service} has only wildcard routes, so services.${service}.${fact} has no value.`,
       );
     });
   });

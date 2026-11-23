@@ -414,36 +414,41 @@ test("lint tells a generated default route from a service with no HTTP listener 
   }
 });
 
-test("lint refuses a placement field that follows a URL-reading var", async () => {
-  // Given
-  const root = await mkdtemp(join(tmpdir(), "lando-lint-service-url-var-"));
-  try {
-    await writeFile(
-      join(root, ".lando.yml"),
-      [
-        "name: urls",
-        "tooling:",
-        "  ping:",
-        "    service: ':host'",
-        "    cmd: echo body",
-        "    dir: '{{ vars.home }}'",
-        "    vars:",
-        "      home: '{{ vars.site }}'",
-        "      site: '{{ services.web.url }}'",
-        "",
-      ].join("\n"),
-    );
-    // When
-    const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
-    // Then
-    expect(result.violations).toContainEqual(
-      expect.objectContaining({
-        rule: "landofile.tooling",
-        reason: "service-url-placement",
-        path: ["tooling", "ping", "dir"],
-      }),
-    );
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
+test.each(["url", "hostname", "origin"])(
+  "lint refuses a placement field that follows a var reading %s",
+  async (fact) => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-lint-service-url-var-"));
+    try {
+      await writeFile(
+        join(root, ".lando.yml"),
+        [
+          "name: urls",
+          "tooling:",
+          "  ping:",
+          "    service: ':host'",
+          "    cmd: echo body",
+          "    dir: '{{ vars.home }}'",
+          "    vars:",
+          "      home: '{{ vars.site }}'",
+          `      site: '{{ services.web.${fact} }}'`,
+          "",
+        ].join("\n"),
+      );
+      // When
+      const result = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)),
+      );
+      // Then
+      expect(result.violations).toContainEqual(
+        expect.objectContaining({
+          rule: "landofile.tooling",
+          reason: "service-url-placement",
+          path: ["tooling", "ping", "dir"],
+        }),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

@@ -38,13 +38,17 @@ export const captureTemplate = (site: ParsedPendingSite, context: ExpressionCont
   const segments = (parts: readonly PathSegment[]): readonly PathSegment[] =>
     parts.map((part) => (part.type === "dynamic" ? { ...part, expr: node(part.expr) } : part));
   const node = (value: ExpressionNode): ExpressionNode => {
-    // A public URL comes from the applied routes when the command runs, never from a capture.
-    const url = serviceUrlReadPath(value);
-    if (url !== undefined)
+    // A public route fact comes from the applied routes when the command runs, never from a capture.
+    const read = serviceUrlReadPath(value);
+    if (read !== undefined)
       return {
         kind: "Path",
         head: "services",
-        segments: [{ type: "key", key: url.service }, { type: "prop", name: "url" }, ...segments(url.rest)],
+        segments: [
+          { type: "key", key: read.service },
+          { type: "prop", name: read.fact },
+          ...segments(read.rest),
+        ],
       };
     switch (value.kind) {
       case "Literal":

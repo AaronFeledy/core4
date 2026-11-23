@@ -6,10 +6,16 @@ import {
   type RoutePlan,
   type ServicePlan,
   encodeUriComponent,
+  routeUrlPartFact,
 } from "@lando/sdk/schema";
 import type { RouterServiceShape } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
-import { primaryConcreteRoute, routeUrl, routeUrlScheme } from "../operations/connection-url.ts";
+import {
+  type RouteFacts,
+  primaryConcreteRoute,
+  routeFacts,
+  routeUrlScheme,
+} from "../operations/connection-url.ts";
 import { routeUrlConsumers } from "../planner/route-url-validation.ts";
 
 const preparedRouteUrls = Symbol("PreparedRouteUrls");
@@ -17,7 +23,8 @@ export interface PreparedRouteUrls {
   readonly [preparedRouteUrls]: true;
   readonly routes: readonly RoutePlan[];
   readonly authorities: ReadonlyMap<string, ProxyAuthority>;
-  readonly urls: ReadonlyMap<string, string>;
+  /** Each target service's public route facts, projected from its route and prepared authority. */
+  readonly facts: ReadonlyMap<string, RouteFacts>;
 }
 
 export const routeUrlRouterError = (plan: AppPlan, router: RouterServiceShape | undefined) => {
@@ -44,17 +51,19 @@ const unsupported = (service: string) =>
     remediation: "Select a router that reports its published authorities and run `lando start`.",
   });
 
-/** The URL a router authority gives a route, or undefined when the router reports none for it. */
-export const authorizedRouteUrl = (
+/** The facts a router authority gives a route, or undefined when the router reports none for it. */
+export const authorizedRouteFacts = (
   route: RoutePlan,
   authorities: readonly ProxyAuthority[],
-): { readonly authority: ProxyAuthority; readonly url: string } | undefined => {
+): { readonly authority: ProxyAuthority; readonly facts: RouteFacts } | undefined => {
   const scheme = routeUrlScheme(route);
   const authority = authorities.find(
     (candidate) =>
       candidate.scheme === scheme && candidate.hostname.toLowerCase() === route.hostname.toLowerCase(),
   );
-  return authority === undefined ? undefined : { authority, url: routeUrl(route, scheme, authority.port) };
+  return authority === undefined
+    ? undefined
+    : { authority, facts: routeFacts(route, scheme, authority.port) };
 };
 
 export const prepareRouteUrlBindings = Effect.fn("Activation.prepareRouteUrlBindings")(function* (input: {
@@ -80,22 +89,22 @@ export const prepareRouteUrlBindings = Effect.fn("Activation.prepareRouteUrlBind
     ...Object.keys(input.plan.services),
   ]);
   const authorities = new Map<string, ProxyAuthority>();
-  const urls = new Map<string, string>();
+  const facts = new Map<string, RouteFacts>();
   for (const service of targets) {
     const route = known.has(service) ? primaryConcreteRoute(input.routes, service) : undefined;
     if (route === undefined) {
       if (input.retainedTargets?.has(service)) continue;
       return yield* noRoute(service);
     }
-    const authorized = authorizedRouteUrl(route, available);
+    const authorized = authorizedRouteFacts(route, available);
     if (authorized === undefined) {
       if (input.retainedTargets?.has(service)) continue;
       return yield* unsupported(service);
     }
     authorities.set(service, authorized.authority);
-    urls.set(service, authorized.url);
+    facts.set(service, authorized.facts);
   }
-  return { [preparedRouteUrls]: true, routes: input.routes, authorities, urls } satisfies PreparedRouteUrls;
+  return { [preparedRouteUrls]: true, routes: input.routes, authorities, facts } satisfies PreparedRouteUrls;
 });
 
 export const lowerRouteUrls = (
@@ -118,9 +127,11 @@ export const lowerRouteUrls = (
       for (const part of value.parts) {
         if (typeof part === "string") parts.push(part);
         else {
-          const url = proof.urls.get(part.service);
-          if (url === undefined) return Result.fail(unsupported(part.service));
-          parts.push(part.encoding === "raw" ? url : encodeUriComponent(url));
+          const facts = proof.facts.get(part.service);
+          if (facts === undefined) return Result.fail(unsupported(part.service));
+          // The part names its fact; encoding applies to that fact's text.
+          const text = facts[routeUrlPartFact(part)];
+          parts.push(part.encoding === "raw" ? text : encodeUriComponent(text));
         }
       }
       environment[key] = parts.join("");

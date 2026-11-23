@@ -20,7 +20,7 @@ export const recordRouteUrlEvidence = (
   if (proof === undefined) return record;
   const byConsumer = new Map<string, Map<string, string>>();
   for (const { consumer, service } of routeUrlConsumers(activated)) {
-    const url = proof.urls.get(service);
+    const url = proof.facts.get(service)?.url;
     if (url === undefined) continue;
     const evidence = byConsumer.get(consumer) ?? new Map<string, string>();
     evidence.set(service, url);

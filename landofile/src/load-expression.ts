@@ -119,7 +119,7 @@ export const resolveLandofileLoadExpressions = (
         const suggestion =
           shell === undefined
             ? scopeRoots.some((root) => root === "info" || root === "service")
-              ? "Read a public URL with `{{ services.<name>.url }}` in a service's map-form environment, a tooling command, env value, or var, or an event step; `{{ service.url }}` works only in a service's map-form environment."
+              ? "Read a public route fact with `{{ services.<name>.url }}`, `.hostname`, or `.origin` in a service's map-form environment, a tooling command, env value, or var, or an event step; `{{ service.url }}`, `{{ service.hostname }}`, and `{{ service.origin }}` work only in a service's map-form environment."
               : "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope."
             : shellParameterSuggestion(path, shell.name);
         throw new LandofileValidationError({
@@ -272,7 +272,7 @@ export const resolveLandofileLoadExpressions = (
           const admittedScopes = [
             ...scopes,
             ...(executableExpressionPath(path) ? INVOCATION_SCOPES : []),
-            ...(self === "supported" || self === "url" ? ["service"] : []),
+            ...(self === "supported" || self === "route-fact" ? ["service"] : []),
           ];
           if (expressionInterpolationsTouchOnlyScopes(parsed.success, admittedScopes)) {
             if (

@@ -29,7 +29,7 @@ export const refuseRetainedRouteConsumers = Effect.fn("Activation.refuseRetained
     let target: string | undefined;
     for (const { consumer, service } of input.retained) {
       const previous = recordedRouteUrl(consumer, service);
-      const next = input.proof?.urls.get(service);
+      const next = input.proof?.facts.get(service)?.url;
       if (previous !== undefined && previous === next) continue;
       target ??= service;
       affected.add(consumer.name);

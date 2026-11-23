@@ -4,6 +4,7 @@ import { type ExpressionTemplate, expressionScopeMembers } from "@lando/sdk/expr
 import { isServiceEnvironmentValuePath } from "@lando/sdk/landofile/execution-sites";
 import {
   type ServiceUrlReadRefusal,
+  isPublicRouteFact,
   isServiceUrlInvocationPath,
   serviceUrlReads,
 } from "./service-url-reads.ts";
@@ -11,10 +12,10 @@ import {
 export { isServiceEnvironmentValuePath };
 
 export const ROUTE_URL_SITE_REMEDIATION =
-  "Read a public URL with {{ services.<name>.url }} in a tooling command, cmds step, env value, or var, or in an event step's cmd, defer, env, or if, where Lando resolves it when the step runs. A service's map-form environment also accepts {{ service.url }}. Placement fields (service, user, dir), Lando command inputs, and include conditions cannot read it.";
+  "Read a public route fact with {{ services.<name>.url }}, {{ services.<name>.hostname }}, or {{ services.<name>.origin }} in a tooling command, cmds step, env value, or var, or in an event step's cmd, defer, env, or if, where Lando resolves it when the step runs. A service's map-form environment also accepts {{ service.url }}, {{ service.hostname }}, and {{ service.origin }}. Placement fields (service, user, dir), Lando command inputs, and include conditions cannot read them.";
 
-const SELF_URL_REMEDIATION =
-  "{{ service.url }} is only available in a service's map-form environment. Name the service instead: {{ services.<name>.url }}.";
+const selfRemediation = (fact: string) =>
+  `{{ service.${fact} }} is only available in a service's map-form environment. Name the service instead: {{ services.<name>.${fact} }}.`;
 
 const refusalText: Record<ServiceUrlReadRefusal, { readonly message: string; readonly remediation: string }> =
   {
@@ -55,25 +56,28 @@ export const routeUrlSiteError = (
   const { path } = source;
   if (isServiceEnvironmentValuePath(path)) return undefined;
   const where = path.join(".");
-  if (expressionScopeMembers(template, "service").members.has("url"))
-    return siteError(source, `service.url is not supported at ${where}.`, SELF_URL_REMEDIATION);
+  const self = [...expressionScopeMembers(template, "service").members].find(isPublicRouteFact);
+  if (self !== undefined)
+    return siteError(source, `service.${self} is not supported at ${where}.`, selfRemediation(self));
   const reads = serviceUrlReads(template);
   if (isServiceUrlInvocationPath(path)) {
     if (reads.refusal === undefined) return undefined;
     const text = refusalText[reads.refusal];
     return siteError(source, `${text.message} is not supported at ${where}.`, text.remediation);
   }
-  const named = [...reads.services][0];
-  if (named !== undefined)
+  const [named] = reads.services;
+  if (named !== undefined) {
+    const [service, facts] = named;
     return siteError(
       source,
-      `services.${named}.url is not supported at ${where}.`,
+      `services.${service}.${[...facts][0] ?? "url"} is not supported at ${where}.`,
       ROUTE_URL_SITE_REMEDIATION,
     );
+  }
   return reads.refusal === "computed-service"
     ? siteError(
         source,
-        `A services URL read with a computed service name is not supported at ${where}.`,
+        `A services route-fact read with a computed service name is not supported at ${where}.`,
         ROUTE_URL_SITE_REMEDIATION,
       )
     : undefined;

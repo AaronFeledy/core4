@@ -292,3 +292,74 @@ describe("landofile load-time route hostname expressions", () => {
     });
   });
 });
+
+describe("hostname and origin route facts", () => {
+  test.each(["hostname", "origin"])(
+    "defers services.web.%s and service.%s in a service environment",
+    (fact) =>
+      withApp(async (appRoot) => {
+        const value = {
+          services: {
+            web: {
+              type: "compose",
+              environment: { PEER: `{{ services.web.${fact} }}`, SELF: `{{ service.${fact} }}` },
+            },
+          },
+        };
+        const resolved = await Effect.runPromise(resolveValue(appRoot, value));
+        expect(resolved.pendingSites.map((site) => site.path)).toEqual([
+          ["services", "web", "environment", "PEER"],
+          ["services", "web", "environment", "SELF"],
+        ]);
+      }),
+  );
+
+  test.each([
+    [{ tooling: { demo: { cmd: "curl {{ services.web.hostname }}" } } }, ["tooling", "demo", "cmd"]],
+    [{ tooling: { demo: { env: { O: '{{ services["web"].origin }}' } } } }, ["tooling", "demo", "env", "O"]],
+    [
+      { events: { "post-start": [{ cmd: "echo {{ (services.web).origin }}" }] } },
+      ["events", "post-start", 0, "cmd"],
+    ],
+  ])("defers an invocation read at %j", (value, path) =>
+    withApp(async (appRoot) => {
+      const resolved = await Effect.runPromise(resolveValue(appRoot, value));
+      expect(resolved.pendingSites.map((site) => site.path)).toEqual([path]);
+    }),
+  );
+
+  test.each([
+    [
+      { tooling: { demo: { cmd: "curl {{ service.hostname }}" } } },
+      ["tooling", "demo", "cmd"],
+      "service.hostname is not supported at tooling.demo.cmd.",
+    ],
+    [
+      { services: { web: { command: "{{ service.origin }}" } } },
+      ["services", "web", "command"],
+      "service.origin is not supported at services.web.command.",
+    ],
+    [
+      { tooling: { demo: { cmd: "true", dir: "{{ services.web.hostname }}" } } },
+      ["tooling", "demo", "dir"],
+      "services.web.hostname is not supported at tooling.demo.dir.",
+    ],
+    [
+      { tooling: { demo: { cmd: "true", dir: "{{ services[vars.name].origin }}" } } },
+      ["tooling", "demo", "dir"],
+      "A services route-fact read with a computed service name is not supported at tooling.demo.dir.",
+    ],
+  ])("refuses %j and names the fact read", (value, path, message) =>
+    withApp(async (appRoot) => {
+      const result = await Effect.runPromise(resolveValue(appRoot, value).pipe(Effect.result));
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "LandofileValidationError",
+          message,
+          issues: [{ path, rule: "unsupported-expression" }],
+        },
+      });
+    }),
+  );
+});

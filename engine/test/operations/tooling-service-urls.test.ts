@@ -170,6 +170,46 @@ describe("tooling invocation service URLs", () => {
     });
   });
 
+  test.each([
+    ["url", "https://applied.test:8443/app"],
+    ["hostname", "applied.test"],
+    ["origin", "https://applied.test:8443"],
+  ] as const)("resolves services.web.%s from the applied route and authority", async (fact, expected) => {
+    // When the fact is read in argv and env, and separately in shell text
+    const { result, calls } = await run(
+      hostTask({
+        cmd: ["echo", `{{ services["web"].${fact} }}`],
+        env: { SITE: `{{ (services.web).${fact} }}` },
+      }),
+    );
+    const shell = await run(hostTask({ cmd: `echo {{ services.web.${fact} }}` }));
+    // Then each site gets the same projection, with one applied-state read and one authority batch
+    expect(result).toMatchObject({
+      _tag: "Success",
+      success: { invocations: [{ commands: [["echo", expected]], env: { SITE: expected } }] },
+    });
+    expect(shell.result).toMatchObject({
+      _tag: "Success",
+      success: { normalized: { steps: [{ cmd: `echo '${expected}'` }] } },
+    });
+    expect(calls).toMatchObject({ applied: 1, authorities: 1 });
+  });
+
+  test("names the fact a site reads in its failure", async () => {
+    // When
+    const { result } = await run(hostTask({ cmd: ["echo", "{{ services.api.hostname }}"] }));
+    // Then
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ToolingCompileError",
+        issues: [
+          { reason: "unknown-service", message: "services.api.hostname names no service in this app." },
+        ],
+      },
+    });
+  });
+
   test("lets ordinary helpers read the resolved URL", async () => {
     // When
     const { result } = await run(hostTask({ cmd: ["echo", "{{ url.parse(services.web.url).hostname }}"] }));
