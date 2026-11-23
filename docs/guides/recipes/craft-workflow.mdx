@@ -53,7 +53,7 @@ lando exec appserver -- sh -c 'mv composer.json.default composer.json && cp .env
 
 `lando create-project` installs the project in the app root without overwriting `.lando.yml`. `--no-scripts` skips Craft's Composer hooks, which would start its interactive installer. The second command performs the remaining hook actions: it swaps in the project's `composer.json` and creates `.env` from the dev example.
 
-`vendor/` lives in a service volume, so it stays empty on the host while PHP sees the packages inside the container. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
+`vendor/` lands in your project directory, so your editor reads the same packages PHP does.
 
 Save the database connection to `.env`:
 
@@ -245,4 +245,4 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 - [Change a LAMP stack after init](./lamp-stack-variants.mdx)
 - [Who owns your app files](../services/file-ownership.mdx)
 - [Customize PHP](../services/php-customization.mdx) for extra extensions
-- [Exclude paths from the app mount](../setup/file-sync-excludes.mdx) when you want `vendor/` on the host
+- [Exclude paths from the app mount](../setup/file-sync-excludes.mdx) to give a service its own copy of a directory

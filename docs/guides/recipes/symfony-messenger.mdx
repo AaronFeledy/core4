@@ -20,15 +20,10 @@ cd symfony-messenger
 
 Init writes the service and tooling definitions, plus a `recipe:` block recording the selected options. Keep that block: `{{ recipe.php }}` reads its PHP option, which defaults to `8.4`.
 
-Before the first start, merge these changes into `.lando.yml`. Add the `appMount` block to the existing `appserver` service and add the new `worker` service:
+Before the first start, add the new `worker` service to `.lando.yml`:
 
 ```yaml
 services:
-  appserver:
-    appMount:
-      target: /app
-      includes:
-        - vendor
   worker:
     type: "php:{{ recipe.php }}"
     via: cli
@@ -37,16 +32,12 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=16&charset=utf8"
-    appMount:
-      target: /app
-      includes:
-        - vendor
     depends_on:
       database:
         condition: service_healthy
 ```
 
-Each service keeps its own `vendor` directory unless you include it. These `includes` entries cancel that default exclusion, so both services use the project directory's `vendor`. `lando composer` runs inside `appserver`, not on your host; its files are visible to both services through the shared app mount. The worker gets the same `DATABASE_URL` the recipe gives `appserver`, built from the database's resolved credentials. `--time-limit=3600` asks the consumer to exit after an hour, once its current work finishes, and `unless-stopped` starts a fresh one.
+Both services mount your project at `/app`, `vendor` included. `lando composer` runs inside `appserver`, not on your host, and the worker sees the packages it installs. The worker gets the same `DATABASE_URL` the recipe gives `appserver`, built from the database's resolved credentials. `--time-limit=3600` asks the consumer to exit after an hour, once its current work finishes, and `unless-stopped` starts a fresh one.
 
 Check the config and start the app:
 
@@ -220,7 +211,6 @@ Check that both `async` and `failed` show a count of `0`.
 | `relation "messenger_messages" does not exist` | Run `lando console messenger:setup-transports`. |
 | The worker runs old handler code | Run `lando console messenger:stop-workers` and wait for the new `Consuming messages` entry. |
 | `worker` stays `stopped` after `messenger:stop-workers` | The service has no `restart: unless-stopped`. Add it and run `lando start`. |
-| Class not found in the worker but fine in `lando console` | The worker isn't sharing `vendor`. Add `includes: [vendor]` to both services' `appMount` and run `lando start`. |
 
 ## Tear down
 
@@ -242,8 +232,6 @@ lando destroy -y
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"php bin/console messenger:consume async --time-limit=3600 -vv\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"restart\":\\s*\"unless-stopped\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"console\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{(?:(?!\"worker\":)[\\s\\S])*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"depends_on\":\\s*\\{\\s*\"database\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"" } }} />
     </Step>
     <Step name="start">

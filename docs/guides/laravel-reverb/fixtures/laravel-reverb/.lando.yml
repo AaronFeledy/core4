@@ -10,10 +10,6 @@ services:
     port: 80
     environment:
       APP_URL: "{{ services.appserver.url }}"
-    appMount:
-      target: /app
-      includes:
-        - vendor
     depends_on:
       - database
       - cache
@@ -30,10 +26,6 @@ services:
     command: php artisan queue:listen
     environment:
       APP_URL: "{{ services.appserver.url }}"
-    appMount:
-      target: /app
-      includes:
-        - vendor
     depends_on:
       database:
         condition: service_healthy
@@ -41,10 +33,6 @@ services:
     type: "php:8.4"
     port: 8080
     command: php artisan reverb:start --host=0.0.0.0 --port=8080
-    appMount:
-      target: /app
-      includes:
-        - vendor
     depends_on:
       database:
         condition: service_healthy

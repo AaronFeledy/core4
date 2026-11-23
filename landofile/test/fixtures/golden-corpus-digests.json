@@ -797,11 +797,11 @@
     },
     {
       "fixture": "docs/guides/laravel-horizon/fixtures/laravel-horizon",
-      "digest": "fc1ae9c33c5c3bbe5b074a003897e2cbeb977bc5c00763d66103c8325e5426e5"
+      "digest": "8a4e5fc073e4ce6c3b7e020bb0c52e4433368adfd2eb60f63400f1323cafd93a"
     },
     {
       "fixture": "docs/guides/laravel-reverb/fixtures/laravel-reverb",
-      "digest": "040d06f957a733ef342cedccb2aef5cf1da0f35dc4c0db865661cc389ae75cdc"
+      "digest": "3b1a29b3477819f66ec7e1cb563670aeccd59fb1e96003fd22545f3bf3b1730f"
     },
     {
       "fixture": "docs/guides/laravel-vite/fixtures/laravel-vite",
@@ -1537,7 +1537,7 @@
     },
     {
       "fixture": "docs/guides/symfony-messenger/fixtures/symfony-messenger",
-      "digest": "626d6ba842cfa4a9eedb18a43ea13ee5cb795d660b9ece0043762c360943fbfa"
+      "digest": "583b20e7a61f5a1070ec36876068028494d8e437e277fe6f63da496106c63840"
     },
     {
       "fixture": "docs/guides/task-events/fixtures/bracketed-build",
