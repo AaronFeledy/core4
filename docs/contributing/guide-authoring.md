@@ -111,8 +111,9 @@ What each part does:
   on failure or interruption. Keep it in every scenario that creates an app.
   For `layer="e2e"`, put `lando destroy -y --volumes` or `lando destroy -y --purge`
   in the same step.
-- A regex inside `expect={{ ... }}` must contain no single quote. The prop is
-  converted to JSON, and that conversion turns every `'` into `"`.
+- Write `expect={{ ... }}` with literals, arrays, and plain objects only. The
+  compiler evaluates the prop without running it, so a variable, a function
+  call, or a template with `${}` fails the guide build. Either quote style works.
 
 A scenario must exercise or assert product behavior. Keep prose outside the
 scenario, and do not add a scenario solely to hold variables or setup.
