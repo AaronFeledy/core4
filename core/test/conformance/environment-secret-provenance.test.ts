@@ -117,22 +117,44 @@ test.each([
     const durable = JSON.stringify(app);
     const requests: EngineHttpRequest[] = [];
     const networks = new Map<string, string>();
-    const networkRequest = Schema.Struct({
+    const labelsSchema = Schema.Record(Schema.String, Schema.String);
+    const libpodNetworkRequest = Schema.Struct({
       name: Schema.String,
       driver: Schema.String,
-      labels: Schema.Record(Schema.String, Schema.String),
+      labels: labelsSchema,
     });
+    const compatNetworkRequest = Schema.Struct({
+      Name: Schema.String,
+      Driver: Schema.String,
+      Labels: labelsSchema,
+    });
+    const volumeRequest = Schema.Struct({ Name: Schema.String, Labels: labelsSchema });
     let created = false;
     const api: EngineHttpApi = {
       request: (request) =>
         Effect.sync(() => {
           requests.push(request);
-          if (request.method === "POST" && request.path === "/libpod/networks/create") {
-            const network = Schema.decodeUnknownOption(networkRequest)(request.body);
+          if (
+            request.method === "POST" &&
+            (request.path === "/libpod/networks/create" || request.path === "/networks/create")
+          ) {
+            const network = Option.orElse(
+              Option.map(Schema.decodeUnknownOption(libpodNetworkRequest)(request.body), (body) => ({
+                Name: body.name,
+                Driver: body.driver,
+                Labels: body.labels,
+              })),
+              () => Schema.decodeUnknownOption(compatNetworkRequest)(request.body),
+            );
             if (Option.isNone(network)) return { status: 400, body: "{}" };
-            const { name, driver, labels } = network.value;
-            networks.set(name, JSON.stringify({ Id: name, Name: name, Driver: driver, Labels: labels }));
+            const { Name, Driver, Labels } = network.value;
+            networks.set(Name, JSON.stringify({ Id: Name, Name, Driver, Labels }));
             return { status: 201, body: "{}" };
+          }
+          if (request.method === "POST" && request.path === "/volumes/create") {
+            const volume = Schema.decodeUnknownOption(volumeRequest)(request.body);
+            if (Option.isNone(volume)) return { status: 400, body: "{}" };
+            return { status: 201, body: JSON.stringify(volume.value) };
           }
           if (request.method === "GET" && request.path.startsWith("/networks/")) {
             const body = networks.get(decodeURIComponent(request.path.slice("/networks/".length)));
