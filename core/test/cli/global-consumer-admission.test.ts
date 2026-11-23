@@ -384,8 +384,8 @@ test("selected restart rechecks policy after its pre-restart hook before stoppin
             ...registry,
             resolveAppliedPlan: (root) =>
               root === f.plan.root ? Effect.succeed(f.plan) : registry.resolveAppliedPlan(root),
-            appliedPlansFor: (root, providerId) =>
-              root === f.plan.root ? Effect.succeed([f.plan]) : registry.appliedPlansFor(root, providerId),
+            appliedPlansFor: (root, options) =>
+              root === f.plan.root ? Effect.succeed([f.plan]) : registry.appliedPlansFor(root, options),
             select: (target) =>
               registry.select(target).pipe(
                 Effect.map((provider) => ({

@@ -25,7 +25,10 @@ export const prepareDestroyOwners = Effect.fn("AppOperation.prepareDestroyOwners
   const roots = options.roots ?? [root];
   // An explicit provider reads only its own applied state; another provider's failure cannot block it.
   const plans = (yield* Effect.forEach(roots, (root) =>
-    registry.appliedPlansFor(root, selected === undefined ? undefined : ProviderId.make(selected)),
+    registry.appliedPlansFor(
+      root,
+      selected === undefined ? undefined : { providerId: ProviderId.make(selected) },
+    ),
   )).flat();
   const ownership =
     registry.resourceOwnership === undefined

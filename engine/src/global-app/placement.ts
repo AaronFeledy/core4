@@ -15,7 +15,7 @@ const globalPlacementInput = Effect.gen(function* () {
 
 export const resolveGlobalPlacement = Effect.fn("GlobalApp.resolvePlacement")(function* () {
   const { selection, app } = yield* globalPlacementInput;
-  return { ...(yield* resolveAppPlacement(app, selection.providerId)), selection };
+  return { ...(yield* resolveAppPlacement(app, selection.providerId, undefined, true)), selection };
 });
 
 export const globalCreateProviderId = Effect.fn("GlobalApp.createProviderId")(

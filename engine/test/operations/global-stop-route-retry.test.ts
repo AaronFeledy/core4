@@ -93,6 +93,7 @@ test("selected global stop retries failed route cleanup after its container was 
         RuntimeProviderRegistry,
         makeTestRuntimeProviderRegistry({
           appliedPlansFor: () => Effect.succeed([plan]),
+          readAppliedPlanStrict: () => Effect.succeed(plan),
           list: Effect.succeed([plan.provider]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),

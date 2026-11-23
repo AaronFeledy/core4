@@ -455,7 +455,7 @@ test("an owner that cannot start does not block another owner's confirmation", a
     list: Effect.succeed([healthy, broken]),
     select: (target) =>
       Effect.succeed(providerFor(typeof target === "string" ? target : (target?.provider ?? healthy))),
-    appliedPlansFor: (root, providerId) =>
+    appliedPlansFor: (root, { providerId } = {}) =>
       Effect.sync(() =>
         plans.filter(
           (plan) => plan.root === root && (providerId === undefined || plan.provider === providerId),

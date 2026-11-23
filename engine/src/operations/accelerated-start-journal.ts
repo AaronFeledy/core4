@@ -11,13 +11,12 @@ import {
   type PendingStartStep,
   digest,
   journalRecovery,
-  pendingStartBucketSpec,
+  pendingStartAtRoot,
   pendingStartTransitions,
   recordedStartCommand,
   sameStartIdentity,
 } from "./accelerated-start-record.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
-import { appRootIdentityKey } from "./app-root-identity.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 
@@ -36,11 +35,7 @@ const journalRoot = (root: string) =>
 export const openJournal = (app: AppRef) =>
   journalRoot(String(app.root)).pipe(
     Effect.flatMap((canonicalRoot) =>
-      StateStore.pipe(
-        Effect.flatMap((store) =>
-          store.open(pendingStartBucketSpec(`${digest(appRootIdentityKey(app, canonicalRoot))}.json`)),
-        ),
-      ),
+      StateStore.pipe(Effect.flatMap((store) => store.open(pendingStartAtRoot(app.kind, canonicalRoot)))),
     ),
     mapFailures((cause) => journalError("The accelerated-start journal cannot be opened.", cause)),
   );

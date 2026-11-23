@@ -1128,7 +1128,7 @@ describe("meta:setup command", () => {
     }
   });
 
-  test.each(["env", "flag"])(
+  test.each(["env", "flag", "protected"])(
     "setup switches global placement only for a persisted %s selection",
     async (source) => {
       const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-switch-command-"));
@@ -1170,6 +1170,24 @@ describe("meta:setup command", () => {
       const registry = makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("podman")]),
         appliedPlansFor: () => Effect.succeed(globalApplied ? [globalPlan] : []),
+        readAppliedPlanStrict: ({ provider }) =>
+          provider !== globalPlan.provider || !globalApplied
+            ? Effect.succeed(undefined)
+            : source === "protected"
+              ? Effect.fail(
+                  new ProviderUnavailableError({
+                    providerId: provider,
+                    operation: "applied-state.read",
+                    message: "Cannot read previous global receipt.",
+                    remediation: "Restore the previous applied receipt.",
+                  }),
+                )
+              : Effect.succeed(globalPlan),
+        appliedStateInventory: (provider) =>
+          Effect.succeed({
+            plans: provider === globalPlan.provider ? [globalPlan, userPlan] : [],
+            unreadable: [],
+          }),
         select: (target?: AppPlan | ProviderId) =>
           Effect.succeed(
             (typeof target === "string" ? target : target?.provider) === "podman"
@@ -1202,7 +1220,7 @@ describe("meta:setup command", () => {
         const result = await withEnvVar("LANDO_PROVIDER", "lando", () =>
           Effect.runPromise(
             setupSpec
-              .run({ installDir: "/opt/lando", flags: source === "flag" ? { provider: "lando" } : {} })
+              .run({ installDir: "/opt/lando", flags: source !== "env" ? { provider: "lando" } : {} })
               .pipe(
                 Effect.provideService(GlobalAppService, globalApp),
                 Effect.provide(
@@ -1227,6 +1245,14 @@ describe("meta:setup command", () => {
               ),
           ),
         );
+        if (source === "protected") {
+          expect(result).toMatchObject({
+            _tag: "Failure",
+            failure: { _tag: "ProviderUnavailableError", operation: "applied-state.read" },
+          });
+          expect(calls).toEqual([]);
+          return;
+        }
         if (source === "env") {
           expect(result).toMatchObject({
             _tag: "Failure",

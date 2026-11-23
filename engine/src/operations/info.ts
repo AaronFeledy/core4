@@ -228,7 +228,7 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
     ({ plan, landofile } = yield* planDesiredApp);
   }
 
-  const observedPlan = yield* observedAppPlan(plan);
+  const observedPlan = yield* observedAppPlan(plan, true);
   let desired: AppPlan | null = target?.plan ?? plan;
   if (observedTarget !== undefined && target === undefined) {
     const planned = yield* Effect.result(planDesiredApp);

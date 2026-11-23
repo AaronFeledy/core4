@@ -1,3 +1,4 @@
+import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runtime/applied-state";
 import { hasResourceOwnershipRecords } from "@lando/container-runtime/provider-assembly";
 import { redactProviderError } from "@lando/redaction/provider-error";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -8,7 +9,15 @@ import {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { AbsolutePath, type AppPlan, type AppRef, type PluginManifest, ProviderId } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  type AppRef,
+  type PluginManifest,
+  ProviderId,
+  appIdentityKey,
+} from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   type AppliedPlanLookup,
@@ -27,6 +36,7 @@ import { Context, Effect, Layer, Result, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
+import { pendingStartAtRoot } from "../operations/accelerated-start-record.ts";
 import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
@@ -83,6 +93,22 @@ export const makeRuntimeProviderRegistry = (
       const redactFailure = (error: ProviderUnavailableError) => redactProviderError(error, errorRedactor);
       const appPlanSanitizer = yield* AppPlanSanitizer;
       const stateStore = yield* StateStore;
+      const journalSlots = Effect.fnUntraced(function* (root: AbsolutePath) {
+        const reads = yield* Effect.forEach(["user", "global", "scratch"] as const, (kind) =>
+          stateStore.open(pendingStartAtRoot(kind, root)).pipe(
+            Effect.flatMap((bucket) => bucket.get),
+            Effect.result,
+          ),
+        );
+        return reads.flatMap((read) =>
+          Result.isSuccess(read) &&
+          read.success !== null &&
+          read.success.appRoot === root &&
+          read.success.phase !== "completed"
+            ? [{ provider: read.success.providerId, id: AppId.make(read.success.appId) }]
+            : [],
+        );
+      });
       const httpClient = yield* HttpClient.HttpClient;
 
       const providerManifests = pluginRegistry.list.pipe(
@@ -180,7 +206,6 @@ export const makeRuntimeProviderRegistry = (
         return {
           contribution: {
             ...contribution,
-            appliedPlans: (ctx) => contribution.appliedPlans(ctx).pipe(mapFailures(redactFailure)),
             appliedStateInventory: (ctx) =>
               contribution
                 .appliedStateInventory(ctx)
@@ -227,7 +252,9 @@ export const makeRuntimeProviderRegistry = (
           (id) =>
             contributionFor(id).pipe(
               Effect.flatMap((descriptor) =>
-                makeAppliedStateProvider(id, descriptor, { makeProvider, paths }),
+                makeAppliedStateProvider(id, descriptor, { makeProvider, paths }).pipe(
+                  Effect.map((provider) => ({ ...provider, journalSlots })),
+                ),
               ),
             ),
         );
@@ -300,16 +327,46 @@ export const makeRuntimeProviderRegistry = (
         ),
         appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (
           root: AbsolutePath,
-          providerId?: ProviderId,
+          options?: { readonly providerId?: ProviderId; readonly observe?: true },
         ) {
+          const providerId = options?.providerId;
           const ids = providerId === undefined ? yield* providerIds : [providerId];
-          const plans = yield* Effect.forEach(ids, (id) =>
-            contributionFor(id).pipe(
-              Effect.flatMap(({ contribution, context }) => contribution.appliedPlans(context)),
-              Effect.provideService(PathsService, paths),
-            ),
+          const recordedSlots = yield* Effect.cached(journalSlots(root));
+          const plans = yield* Effect.forEach(
+            ids,
+            Effect.fnUntraced(function* (id) {
+              const { contribution, context } = yield* contributionFor(id);
+              const inventory = yield* contribution
+                .appliedStateInventory(context)
+                .pipe(Effect.provideService(PathsService, paths));
+              const matching = inventory.plans.filter(
+                (plan) => plan.provider === id && plan.identity?.appRoot === root,
+              );
+              if (options?.observe === true || inventory.unreadable.length === 0) return matching;
+              const ownership = yield* contribution.resourceOwnership?.(context, root) ??
+                Effect.succeed(undefined);
+              const owned =
+                ownership?.appRoot === root &&
+                ownership.providerId === id &&
+                ownership.ownerKey === appIdentityKey("owner", root)
+                  ? ownership.appIds
+                  : [];
+              const pending = (yield* recordedSlots).filter((slot) => slot.provider === id);
+              for (const appId of new Set([
+                ...owned,
+                ...matching.map((plan) => plan.id),
+                ...pending.map((slot) => slot.id),
+              ])) {
+                const issue = inventory.unreadable.find((entry) => inventoryProtectsApp(entry, appId));
+                if (issue !== undefined)
+                  return yield* Effect.fail(
+                    redactProviderError(protectedSlotError(id, issue, appId), errorRedactor),
+                  );
+              }
+              return matching;
+            }),
           );
-          return plans.flat().filter((plan) => plan.identity?.appRoot === root);
+          return plans.flat();
         }),
         capabilities: Effect.map(activeProvider, (provider) => provider.capabilities),
         select: Effect.fn("RuntimeProviderRegistry.select")(function* (target?: AppPlan | ProviderId) {

@@ -13,8 +13,6 @@ export {
 const store = makeAppliedPlanStore({ providerId: "lando", layout: "per-app" });
 export const {
   listAppliedPlans,
-  listObservedPlans,
-  loadAppliedPlan,
   loadAppliedPlanStrict,
   inspectAppliedPlan,
   persistAppliedPlan,

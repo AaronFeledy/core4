@@ -160,6 +160,7 @@ const harnessAt = (
       RuntimeProviderRegistry,
       makeTestRuntimeProviderRegistry({
         appliedPlansFor: () => Effect.succeed(input.applied ? [plan] : []),
+        readAppliedPlanStrict: () => Effect.succeed(input.applied ? plan : undefined),
         resolveAppliedPlan: () => Effect.succeed(input.applied ? plan : undefined),
         list: Effect.succeed([providerId, ProviderId.make("docker")]),
         capabilities: Effect.succeed(provider.capabilities),

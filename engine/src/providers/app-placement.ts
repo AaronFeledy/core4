@@ -1,5 +1,5 @@
 import { AppPlacementError, AppResolveError } from "@lando/sdk/errors";
-import { AbsolutePath, type AppPlan, type AppRef, type ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, type AppRef, type ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Context, Effect } from "effect";
 import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
@@ -25,11 +25,19 @@ export const resolveAppPlacement = Effect.fn("AppPlacement.resolve")(function* (
   app: AppRef,
   desired: ProviderId,
   providerId?: ProviderId,
+  observe = false,
 ) {
   const root = AbsolutePath.make(yield* canonicalMissingAppRoot(app.root));
   const registry = yield* RuntimeProviderRegistry;
-  const plans = (yield* registry.appliedPlansFor(root, providerId)).filter(
-    (plan) => (providerId === undefined || plan.provider === providerId) && matchesAppPlanIdentity(plan, app),
+  const discovered = yield* registry.appliedPlansFor(root, {
+    ...(providerId === undefined ? {} : { providerId }),
+    ...(observe ? { observe: true } : {}),
+  });
+  const plans = discovered.filter(
+    (plan) =>
+      (plan.identity?.appRoot ?? plan.root) === root &&
+      (providerId === undefined || plan.provider === providerId) &&
+      matchesAppPlanIdentity(plan, app),
   );
   const current = app.kind === "user" ? plans.filter((plan) => plan.id === app.id) : plans;
   const superseded = app.kind === "user" ? plans.filter((plan) => plan.id !== app.id) : [];
@@ -55,6 +63,9 @@ export const ensureAppPlacementState = Effect.fn("AppPlacement.ensureState")(fun
   app: AppRef,
   desired: ProviderId,
 ) {
+  const registry = yield* RuntimeProviderRegistry;
+  if (app.kind !== "global")
+    yield* registry.readAppliedPlanStrict({ id: AppId.make(app.id), provider: desired });
   const placement = yield* resolveAppPlacement(app, desired);
   const realized = placement.realized;
   if (realized !== undefined && realized !== desired)
@@ -77,7 +88,15 @@ export const ensureAppPlacement = Effect.fn("AppPlacement.ensure")(function* (
   return (yield* ensureAppPlacementState(app, desired)).desired;
 });
 
-export const observedAppPlan = Effect.fn("AppPlacement.observedPlan")(function* (plan: AppPlan) {
-  const placement = yield* resolveAppPlacement({ kind: "user", id: plan.id, root: plan.root }, plan.provider);
+export const observedAppPlan = Effect.fn("AppPlacement.observedPlan")(function* (
+  plan: AppPlan,
+  observe = false,
+) {
+  const placement = yield* resolveAppPlacement(
+    { kind: "user", id: plan.id, root: plan.root },
+    plan.provider,
+    undefined,
+    observe,
+  );
   return placement.plan ?? plan;
 });

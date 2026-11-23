@@ -108,7 +108,7 @@ export const prepareSqliteCommand = Effect.fn("Sql.prepareSqliteCommand")(functi
   if (input.action === "restore") {
     const scope = yield* resolveSnapshotSource({
       plan: deps.plan,
-      appliedPlans: deps.appliedPlans,
+      findAppliedSource: deps.findAppliedSource,
       store: store.store,
       ownerKey: owner.ownerKey,
       service: target.name,
@@ -123,7 +123,7 @@ export const prepareSqliteCommand = Effect.fn("Sql.prepareSqliteCommand")(functi
   if (input.action === "prune") {
     const sourceFilter = yield* resolveSnapshotSource({
       plan: deps.plan,
-      appliedPlans: deps.appliedPlans,
+      findAppliedSource: deps.findAppliedSource,
       store: store.store,
       ownerKey: owner.ownerKey,
       ...(deps.plan.identity?.repoGroupKey === undefined

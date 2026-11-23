@@ -16,7 +16,7 @@ import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import {
   appliedPlanPath,
   listAppliedPlans,
-  loadAppliedPlan,
+  loadAppliedPlanStrict,
   persistAppliedPlan,
   removeAppliedPlan,
 } from "@lando/provider-lando";
@@ -35,7 +35,7 @@ import { makeStateStore as makeStateStoreUsing } from "@lando/state-store/servic
 const makeStateStore = () => makeStateStoreUsing({ privateFileAccess: ownerOnlyFileAccess });
 
 import { inspectAppliedFileSync } from "../src/applied-file-sync.ts";
-import { inspectAppliedPlan, loadAppliedPlanStrict } from "../src/applied-state.ts";
+import { inspectAppliedPlan } from "../src/applied-state.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -262,7 +262,7 @@ describe("provider-lando applied state persistence", () => {
       expect(raw.version).toBe(APPLIED_STATE_VERSION);
       expect(raw.data).toBeDefined();
 
-      const loaded = await Effect.runPromise(loadAppliedPlan(stateB, proxyPlan.id));
+      const loaded = await Effect.runPromise(loadAppliedPlanStrict(stateB, proxyPlan.id));
       expect(loaded?.services[web.name]?.environment.HTTPS_PROXY).toBe(proxyUrl);
     });
   });
@@ -443,10 +443,10 @@ describe("provider-lando applied state persistence", () => {
       });
     });
   });
-  test("loadAppliedPlan returns undefined when the file is missing", async () => {
+  test("strict load returns undefined when the file is missing", async () => {
     await withStateDir(async (stateDir) => {
       const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
-      const loaded = await Effect.runPromise(loadAppliedPlan(state, AppId.make("missing-app")));
+      const loaded = await Effect.runPromise(loadAppliedPlanStrict(state, AppId.make("missing-app")));
       expect(loaded).toBeUndefined();
     });
   });
@@ -477,15 +477,15 @@ describe("provider-lando applied state persistence", () => {
     });
   });
 
-  test("loadAppliedPlan returns undefined when the file contents are corrupt", async () => {
+  test("strict load diagnoses a corrupt file", async () => {
     await withStateDir(async (stateDir) => {
       const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
       const path = appliedPlanPath(stateDir, plan.id);
       await Effect.runPromise(persistAppliedPlan(state, plan));
       await writeFile(path, "not valid json");
 
-      const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
-      expect(loaded).toBeUndefined();
+      const failure = await Effect.runPromise(Effect.flip(loadAppliedPlanStrict(state, plan.id)));
+      expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", details: { path } });
     });
   });
 
@@ -494,7 +494,7 @@ describe("provider-lando applied state persistence", () => {
       const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
       await Effect.runPromise(persistAppliedPlan(state, plan));
       await Effect.runPromise(removeAppliedPlan(state, plan.id));
-      expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toBeUndefined();
+      expect(await Effect.runPromise(loadAppliedPlanStrict(state, plan.id))).toBeUndefined();
 
       await Effect.runPromise(removeAppliedPlan(state, plan.id));
     });

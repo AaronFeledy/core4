@@ -74,7 +74,7 @@ export const fixture = (
               remediation: "Restore the global record, then run `lando global:start`.",
             }),
           )
-        : Effect.succeed(undefined),
+        : Effect.succeed(options.prior),
     appliedPlansFor: () => Effect.succeed(options.prior === undefined ? [] : [options.prior]),
     resolveAppliedPlan: () => Effect.succeed(options.prior),
     list: Effect.succeed([ProviderId.make("lando")]),

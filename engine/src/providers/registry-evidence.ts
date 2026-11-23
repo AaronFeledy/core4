@@ -36,9 +36,6 @@ export const makeAppliedStateProvider = Effect.fnUntraced(function* (
     canCleanupOwnedResources: runtime.pipe(
       Effect.map((provider) => provider.cleanupOwnedResources !== undefined),
     ),
-    appliedPlans: contribution
-      .appliedPlans(context)
-      .pipe(Effect.provideService(PathsService, services.paths)),
     isAvailable: runtime.pipe(
       Effect.flatMap((provider) =>
         observeRuntime(provider).pipe(

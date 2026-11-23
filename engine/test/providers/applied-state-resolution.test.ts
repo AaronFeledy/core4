@@ -115,18 +115,8 @@ test.each(["per-app", "record"] as const)(
             : undefined,
         ),
     };
-    const evidence = await Effect.runPromise(resolveTeardownEvidence(root, [damaged]));
-    expect(evidence).toEqual({
-      kind: "owned",
-      ownership: [
-        {
-          appRoot: root,
-          ownerKey: appIdentityKey("owner", root),
-          providerId: ProviderId.make("docker"),
-          appIds: [appId],
-        },
-      ],
-    });
+    const failure = await Effect.runPromise(Effect.flip(resolveTeardownEvidence(root, [damaged])));
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", operation: "applied-state.read" });
     expect(
       await Effect.runPromise(resolveTeardownEvidence(AbsolutePath.make("/tmp/outside-app"), [damaged])),
     ).toEqual({ kind: "absent" });
@@ -160,7 +150,7 @@ test("unreadable applied state refuses teardown before label-owned resources can
 });
 
 test.each(["per-app", "record"] as const)(
-  "read-only discovery treats %s protected state as unknown, not orphaned",
+  "decision lookup refuses %s protected state at an independently owned root",
   async (layout) => {
     const appId = AppId.make("damaged-a");
     const damaged = {
@@ -196,7 +186,8 @@ test.each(["per-app", "record"] as const)(
           appIds: [appId],
         }),
     };
-    expect(await Effect.runPromise(resolveAppliedPlanEvidence(root, [damaged]))).toBeUndefined();
+    const failure = await Effect.runPromise(Effect.flip(resolveAppliedPlanEvidence(root, [damaged])));
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", operation: "applied-state.read" });
   },
 );
 
@@ -456,11 +447,8 @@ test.each(["per-app", "record"] as const)(
         }),
       canCleanupOwnedResources: Effect.succeed(true),
     };
-    const evidence = await Effect.runPromise(resolveTeardownEvidence(root, [damaged]));
-    expect(evidence.kind).toBe("owned");
-    if (evidence.kind === "owned") {
-      expect(evidence.ownership[0]?.appIds).toEqual([appId]);
-    }
+    const failure = await Effect.runPromise(Effect.flip(resolveTeardownEvidence(root, [damaged])));
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", operation: "applied-state.read" });
   },
 );
 
@@ -504,11 +492,8 @@ test.each(["per-app", "record"] as const)(
         }),
       canCleanupOwnedResources: Effect.succeed(true),
     };
-    const evidence = await Effect.runPromise(resolveTeardownEvidence(root, [damaged]));
-    expect(evidence.kind).toBe("owned");
-    if (evidence.kind === "owned") {
-      expect(evidence.ownership[0]?.appIds).toEqual([appId]);
-    }
+    const failure = await Effect.runPromise(Effect.flip(resolveTeardownEvidence(root, [damaged])));
+    expect(failure).toMatchObject({ _tag: "AppliedStateVersionError", appId, storedVersion: 11 });
   },
 );
 
@@ -540,17 +525,8 @@ test("protected inventory never infers an app root from the unreadable filename"
       ),
     canCleanupOwnedResources: Effect.succeed(true),
   };
-  expect(await Effect.runPromise(resolveTeardownEvidence(root, [damaged]))).toEqual({
-    kind: "owned",
-    ownership: [
-      {
-        appRoot: root,
-        ownerKey: appIdentityKey("owner", root),
-        providerId: ProviderId.make("docker"),
-        appIds: [appId],
-      },
-    ],
-  });
+  const failure = await Effect.runPromise(Effect.flip(resolveTeardownEvidence(root, [damaged])));
+  expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", operation: "applied-state.read" });
   expect(
     await Effect.runPromise(resolveTeardownEvidence(AbsolutePath.make("/tmp/other-app"), [damaged])),
   ).toEqual({ kind: "absent" });

@@ -198,7 +198,7 @@ const makeHarness = (input: {
   };
   const readAppliedPlan = () => Effect.sync(() => appliedPlan);
   const registry = makeTestRuntimeProviderRegistry({
-    appliedPlansFor: (root: AbsolutePath, scope?: ProviderId) => {
+    appliedPlansFor: (root, { providerId: scope } = {}) => {
       appliedPlanReads.push(scope);
       return Effect.succeed(
         appliedPlan !== undefined &&

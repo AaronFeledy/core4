@@ -1,5 +1,6 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
+import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runtime/applied-state";
 import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import { AppResolveError, AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -10,7 +11,6 @@ import {
   type AppliedStateInventory,
   ProviderId,
   type ResourceOwnership,
-  type UnreadableAppliedState,
   appIdentityKey,
 } from "@lando/sdk/schema";
 import type {
@@ -32,12 +32,11 @@ export type AppliedStateProvider = Pick<
   "id" | "appliedPlans" | "list" | "listVolumes"
 > & {
   readonly isAvailable: Effect.Effect<boolean, ProviderError>;
-  /**
-   * Host-wide inventory. The registry always supplies it; pure doubles may omit it
-   * (treated as empty protection and `appliedPlans` for readable plans).
-   */
   readonly appliedStateInventory?: Effect.Effect<AppliedStateInventory, ProviderError>;
   readonly readAppliedPlanStrict?: (id: AppId) => Effect.Effect<AppPlan | undefined, ProviderError>;
+  readonly journalSlots?: (
+    root: AbsolutePath,
+  ) => Effect.Effect<readonly { readonly provider: string; readonly id: AppId }[]>;
   readonly resourceOwnership?: (
     root: AbsolutePath,
   ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError>;
@@ -131,10 +130,6 @@ const isSameOrDescendantPath = (ancestor: string, candidate: string): boolean =>
   return child === "" || (!child.startsWith("..") && !isAbsolute(child));
 };
 
-/** True when an inventory entry protects `appId` (or every app on the provider). Never uses path. */
-export const inventoryProtectsApp = (entry: UnreadableAppliedState, appId: string): boolean =>
-  entry.appId === undefined || entry.appId === appId;
-
 const gatherProviderInventory = (provider: AppliedStateProvider) =>
   (
     provider.appliedStateInventory ??
@@ -208,16 +203,61 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
   const plans = inventories
     .flatMap((inventory) => inventory.plans)
     .filter((plan) => dataRoot === undefined || localAppliedRecord(plan, dataRoot));
+  const selectPlan = Effect.gen(function* () {
+    const matches = plans
+      .filter((plan) => {
+        const appRoot = plan.identity?.appRoot;
+        if (appRoot === undefined || !matchesAppPlanIdentity(plan, app)) return false;
+        return ownership === "exact" ? appRoot === lookupRoot : isSameOrDescendantPath(appRoot, lookupRoot);
+      })
+      .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
+    const selected = matches[0];
+    if (selected === undefined) return;
+    const selectedRoot = selected.identity?.appRoot;
+    const sameRoot = matches.filter((plan) => plan.identity?.appRoot === selectedRoot);
+    if (sameRoot.length === 1) return selected;
+    const providerIds = [...new Set(sameRoot.map((plan) => plan.provider))];
+    const renamed = app.kind === "user" && providerIds.length === 1;
+    const named =
+      renamed && new Set(sameRoot.map((plan) => plan.id)).size === sameRoot.length
+        ? sameRoot.find((plan) => plan.id === app.id)
+        : undefined;
+    if (named !== undefined) return named;
+    return yield* Effect.fail(
+      new AppResolveError({
+        message: renamed
+          ? `App folder ${selectedRoot} has multiple applied app names: ${sameRoot.map((plan) => plan.name).join(", ")}.`
+          : `Multiple providers claim applied state for ${selectedRoot}: ${providerIds.join(", ")}.`,
+        reason: "ambiguous",
+        detail: "applied-state",
+        remediation: renamed
+          ? `Run \`lando start\`, \`lando stop\`, or \`lando destroy\` in ${selectedRoot} to reconcile the app names its Landofile no longer selects.`
+          : `From ${selectedRoot}, remove unwanted realizations with ${providerIds.map((id) => `\`lando destroy --provider=${id} --yes\``).join(" or ")}, then retry.`,
+      }),
+    );
+  });
+  if (!teardown) {
+    const plan = yield* selectPlan;
+    // This lookup uses only the selected plan. Decisions about other slots belong to
+    // teardown, activation reconciliation, and placement.
+    if (plan !== undefined) return { kind: "applied", plan };
+  }
+
   // Always retain inventory issues (including teardown): match against known ids / provider scope
   // before orphan classification. Never infer a root from an unreadable filename.
   const isProtected = (providerId: string, appId: string) =>
     inventories
       .find((inventory) => inventory.providerId === providerId)
       ?.unreadable.some((entry) => inventoryProtectsApp(entry, appId)) === true;
-  const readProtected = (providerId: string, id: AppId) =>
-    isProtected(providerId, id)
-      ? (providers.find((provider) => provider.id === providerId)?.readAppliedPlanStrict?.(id) ?? Effect.void)
-      : Effect.void;
+  const readProtected = Effect.fnUntraced(function* (providerId: string, id: AppId) {
+    const entry = inventories
+      .find((item) => item.providerId === providerId)
+      ?.unreadable.find((issue) => inventoryProtectsApp(issue, id));
+    if (entry === undefined) return;
+    yield* providers.find((provider) => provider.id === providerId)?.readAppliedPlanStrict?.(id) ??
+      Effect.void;
+    return yield* Effect.fail(protectedSlotError(providerId, entry, id));
+  });
   const belongsToApp = (providerId: string, appId: string) => {
     const plan = plans.find(
       (candidate) =>
@@ -247,11 +287,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     }
     const inventories = rawInventories.map((hints): ResourceOwnership | undefined => {
       if (hints === undefined) return undefined;
-      // Teardown keeps protected app ids enumerable so callers can refuse mutation with the
-      // inventory diagnosis; non-teardown drops them so protected state is unknown, not owned.
-      const appIds = hints.appIds.filter(
-        (id) => belongsToApp(hints.providerId, id) && (teardown || !isProtected(hints.providerId, id)),
-      );
+      const appIds = hints.appIds.filter((id) => belongsToApp(hints.providerId, id));
       if (appIds.length === 0) return undefined;
       const allowed = new Set(appIds.map(String));
       const members = hints.members?.filter((member) => allowed.has(String(member.appId)));
@@ -264,17 +300,20 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     const ownershipHints = inventories.filter((item): item is ResourceOwnership => item !== undefined);
     return ownershipHints;
   });
-  const teardownOwnership = teardown ? yield* readOwnership : [];
-  if (teardown) {
-    for (const hints of teardownOwnership) {
-      for (const id of hints.appIds) {
-        yield* readProtected(hints.providerId, id);
-      }
+  if (inventories.some((inventory) => inventory.unreadable.length > 0)) {
+    const pending = yield* providers[0]?.journalSlots?.(lookupRoot) ?? Effect.succeed([]);
+    for (const slot of pending) {
+      if (isProtected(slot.provider, slot.id) && belongsToApp(slot.provider, slot.id))
+        yield* readProtected(slot.provider, slot.id);
     }
+  }
+  const ownershipHints = yield* readOwnership;
+  for (const hints of ownershipHints) {
+    for (const id of hints.appIds) yield* readProtected(hints.providerId, id);
   }
   const requireOwnershipRuntime = Effect.gen(function* () {
     if (teardown)
-      for (const hints of teardownOwnership) {
+      for (const hints of ownershipHints) {
         const provider = providers.find((candidate) => candidate.id === hints.providerId);
         if (
           provider === undefined ||
@@ -291,55 +330,15 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
           );
       }
   });
-  const matches = plans
-    .filter((plan) => {
-      const appRoot = plan.identity?.appRoot;
-      if (appRoot === undefined || !matchesAppPlanIdentity(plan, app)) return false;
-      return ownership === "exact" ? appRoot === lookupRoot : isSameOrDescendantPath(appRoot, lookupRoot);
-    })
-    .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
-  let selected = matches[0];
-  const selectedRoot = selected?.identity?.appRoot;
-  if (
-    selected !== undefined &&
-    matches.some((candidate) => candidate !== selected && candidate.identity?.appRoot === selectedRoot)
-  ) {
-    const sameRoot = matches.filter((plan) => plan.identity?.appRoot === selectedRoot);
-    const providerIds = [...new Set(sameRoot.map((plan) => plan.provider))];
-    const renamed = app.kind === "user" && providerIds.length === 1;
-    const named =
-      renamed && new Set(sameRoot.map((plan) => plan.id)).size === sameRoot.length
-        ? sameRoot.find((plan) => plan.id === app.id)
-        : undefined;
-    if (named !== undefined) selected = named;
-    else {
-      return yield* Effect.fail(
-        new AppResolveError({
-          message: renamed
-            ? `App folder ${selectedRoot} has multiple applied app names: ${sameRoot.map((plan) => plan.name).join(", ")}.`
-            : `Multiple providers claim applied state for ${selectedRoot}: ${providerIds.join(", ")}.`,
-          reason: "ambiguous",
-          detail: "applied-state",
-          remediation: renamed
-            ? `Run \`lando start\`, \`lando stop\`, or \`lando destroy\` in ${selectedRoot} to reconcile the app names its Landofile no longer selects.`
-            : `From ${selectedRoot}, remove unwanted realizations with ${providerIds.map((id) => `\`lando destroy --provider=${id} --yes\``).join(" or ")}, then retry.`,
-        }),
-      );
-    }
-  }
-  if (!teardown && selected !== undefined) return { kind: "applied", plan: selected };
-  const ownershipHints = teardown ? teardownOwnership : yield* readOwnership;
+  const selected = teardown ? yield* selectPlan : undefined;
   const owned = ownershipHints.length === 0 ? {} : { ownership: ownershipHints };
+  const protectedProviders = new Set(
+    inventories
+      .filter((inventory) => inventory.unreadable.length > 0)
+      .map((inventory) => inventory.providerId),
+  );
   const observedProviders =
-    selected === undefined
-      ? providers
-      : teardown
-        ? providers.filter((provider) =>
-            inventories.some(
-              (inventory) => inventory.providerId === provider.id && inventory.unreadable.length > 0,
-            ),
-          )
-        : [];
+    selected === undefined ? providers : providers.filter((provider) => protectedProviders.has(provider.id));
   if (selected === undefined || observedProviders.length > 0) {
     // Only a provider that recorded state for this root fails teardown with its status failure;
     // another installed provider that cannot be observed simply contributes no evidence.
@@ -347,7 +346,8 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     const observations = yield* Effect.forEach(observedProviders, (provider) =>
       runtimeEvidence(
         provider,
-        teardown ? { includeUnplanned: true } : {},
+        // Without a plan, runtime labels can be the only link between a protected slot and this root.
+        teardown || protectedProviders.has(provider.id) ? { includeUnplanned: true } : {},
         teardown && selected === undefined && ownershipHints.some((hint) => hint.providerId === provider.id),
       ).pipe(
         Effect.map((snapshot) =>
@@ -368,10 +368,9 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     const candidates = groupOrphans(lookupRoot, observedProviders, evidence).filter((group) =>
       belongsToApp(group.providerId, group.appId),
     );
-    if (teardown)
-      for (const group of candidates) {
-        yield* readProtected(group.providerId, group.appId);
-      }
+    for (const group of candidates) {
+      yield* readProtected(group.providerId, group.appId);
+    }
     yield* requireOwnershipRuntime;
     if (selected !== undefined) return { kind: "applied", plan: selected, ...owned };
     for (const result of observations)
