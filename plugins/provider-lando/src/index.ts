@@ -1,5 +1,4 @@
 import { dirname } from "node:path";
-import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
 import { volumeWitnessImage } from "@lando/container-runtime/data-plane";
 import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
@@ -102,7 +101,12 @@ import {
 } from "@lando/container-runtime/wait-for-exit";
 import { runtimeLayoutPaths } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
-import { ProviderUnavailableError, ServiceExecError, type StateStoreError } from "@lando/sdk/errors";
+import {
+  type AppliedStateVersionError,
+  ProviderUnavailableError,
+  ServiceExecError,
+  type StateStoreError,
+} from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import { type PluginStateStore, definePlugin } from "@lando/sdk/plugins";
 import type { RetryPolicy } from "@lando/sdk/probe";
@@ -123,9 +127,11 @@ import {
   RuntimeProvider,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { isNewerVersionStoreError, storeErrorRemediation } from "@lando/state-store";
 import { type Context, Effect, Layer, Schema, Semaphore, Stream } from "effect";
 import { inspectAppliedFileSync, verifiedFileSyncSessions } from "./applied-file-sync.ts";
 import {
+  appliedStateInspectError,
   inspectAppliedPlan,
   listAppliedPlans,
   listObservedPlans,
@@ -661,10 +667,13 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             new ProviderUnavailableError({
               providerId,
               operation,
-              message:
-                "Could not complete the managed Windows published-service operation under its lifecycle lock.",
-              remediation:
+              message: isNewerVersionStoreError(cause)
+                ? cause.message
+                : "Could not complete the managed Windows published-service operation under its lifecycle lock.",
+              remediation: storeErrorRemediation(
+                cause,
                 "Wait for the other global service operation to finish, then retry. If the wait persists, inspect the managed Podman machine and global services.",
+              ),
               cause,
             }),
           ),
@@ -965,7 +974,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
     const freshPlanForTeardown = Effect.fnUntraced(function* (
       target: Parameters<RuntimeProviderShape["destroy"]>[0],
       requireReceipt: boolean,
-    ): Effect.fn.Return<AppPlan | undefined, ProviderUnavailableError> {
+    ): Effect.fn.Return<AppPlan | undefined, ProviderUnavailableError | AppliedStateVersionError> {
       const state = options.appliedPlanState;
       if (state === undefined) {
         if (!requireReceipt) return target.plan ?? (yield* resolvePlan(target.app));
@@ -979,9 +988,14 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         );
       }
       const prior = yield* inspectAppliedPlan(state, target.app);
-      if (prior.status === "unreadable")
+      if (prior.status === "unreadable" || prior.status === "newer-version")
         return yield* Effect.fail(
-          unreadableAppliedStateError({ providerId, ...prior, layout: "per-app", appId: target.app }),
+          appliedStateInspectError({
+            providerId,
+            layout: "per-app",
+            read: prior,
+            appId: target.app,
+          }),
         );
       if (requireReceipt && prior.status === "missing") {
         return yield* Effect.fail(
@@ -2073,6 +2087,7 @@ export const plugin = definePlugin({
           Effect.flatMap(PathsService, (paths) =>
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
+        readAppliedPlanStrict: (ctx, appId) => loadAppliedPlanStrict(ctx.stateStore, appId),
         appliedPlans: (ctx) =>
           Effect.flatMap(PathsService, (paths) =>
             listObservedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),

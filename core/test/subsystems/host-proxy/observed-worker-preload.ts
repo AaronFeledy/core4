@@ -9,7 +9,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { makeLandoRuntime } from "../../../src/runtime/layer.ts";
 
@@ -32,13 +32,10 @@ const provider = {
 };
 const registry = Layer.succeed(
   RuntimeProviderRegistry,
-  RuntimeProviderRegistry.of({
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("lando")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   }),
 );
 const router = Layer.succeed(

@@ -24,7 +24,7 @@ import {
   ShellRunner,
   ToolingEngine,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Option, Redacted, Schema, Stream } from "effect";
 import { runEventToolingCommand } from "../../src/operations/event-tooling-command.ts";
@@ -194,10 +194,7 @@ const harness = (input: {
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([service.provider]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () =>
@@ -328,12 +325,7 @@ test.each(["command", "task"] as const)(
               ),
               Effect.provideService(
                 RuntimeProviderRegistry,
-                RuntimeProviderRegistry.of({
-                  appliedPlansFor: () => Effect.succeed([]),
-                  resolveAppliedPlan: () => Effect.succeed(undefined),
-                  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                  list: Effect.succeed([]),
-                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                makeTestRuntimeProviderRegistry({
                   select: () => Effect.die("disabled task selected provider"),
                 }),
               ),

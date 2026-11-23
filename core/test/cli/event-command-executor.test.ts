@@ -31,7 +31,7 @@ import {
   ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, Context, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
@@ -896,14 +896,12 @@ describe("EventCommandExecutorLayer.layer", () => {
     const invocations: string[] = [];
     const hostSecret = "event-executor-host-canary";
     const context = harness.context.pipe(
-      Context.add(RuntimeProviderRegistry, {
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        list: Effect.succeed([ProviderId.make("test")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
-      }),
+      Context.add(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([ProviderId.make("test")]),
+        }),
+      ),
       Context.add(ToolingEngine, {
         id: "test",
         run: (invocation) =>
@@ -958,14 +956,12 @@ describe("EventCommandExecutorLayer.layer", () => {
     );
     const invocations: ToolingInvocation[] = [];
     const context = harness.context.pipe(
-      Context.add(RuntimeProviderRegistry, {
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        list: Effect.succeed([ProviderId.make("test")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
-      }),
+      Context.add(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([ProviderId.make("test")]),
+        }),
+      ),
       Context.add(ToolingEngine, {
         id: "test",
         run: (invocation) =>
@@ -1011,14 +1007,12 @@ describe("EventCommandExecutorLayer.layer", () => {
       { inspect: { cmd: "inspect" } },
     );
     const context = harness.context.pipe(
-      Context.add(RuntimeProviderRegistry, {
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        list: Effect.succeed([ProviderId.make("test")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
-      }),
+      Context.add(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([ProviderId.make("test")]),
+        }),
+      ),
       Context.add(ToolingEngine, {
         id: "test",
         run: (invocation) =>
@@ -1061,14 +1055,12 @@ describe("EventCommandExecutorLayer.layer", () => {
       { inspect: { cmd: "inspect", env: { API_TOKEN: secret } } },
     );
     const context = harness.context.pipe(
-      Context.add(RuntimeProviderRegistry, {
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        list: Effect.succeed([ProviderId.make("test")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
-      }),
+      Context.add(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([ProviderId.make("test")]),
+        }),
+      ),
       Context.add(ToolingEngine, {
         id: "test",
         run: (invocation) => {

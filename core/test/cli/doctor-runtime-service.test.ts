@@ -9,6 +9,7 @@ import type { RuntimeServiceStatus } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, Deferred, Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 
@@ -29,10 +30,7 @@ const steps = [
 ] satisfies ReadonlyArray<SetupReadinessStep>;
 
 const buildRegistry = (provider: RuntimeServiceTestProvider) =>
-  RuntimeProviderRegistry.of({
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),

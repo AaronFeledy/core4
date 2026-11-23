@@ -1,6 +1,7 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { GlobalAppError, type StateStoreError } from "@lando/sdk/errors";
 import { GlobalAppService, StateStore, type StateWrite } from "@lando/sdk/services";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect, Result, Schema } from "effect";
 
 export const GlobalReconciliationPhase = Schema.Literals(["evidence", "containers", "routes", "generation"]);
@@ -108,7 +109,10 @@ const receiptError = (cause: StateStoreError): GlobalAppError =>
   new GlobalAppError({
     operation: "reconciliation",
     message: "Unable to read or save global service reconciliation state.",
-    remediation: "Repair access to the global app state directory, then repeat the policy command.",
+    remediation: storeErrorRemediation(
+      cause,
+      "Repair access to the global app state directory, then repeat the policy command.",
+    ),
     cause,
   });
 

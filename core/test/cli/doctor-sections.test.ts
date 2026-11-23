@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
-import { TestRuntimeProvider } from "@lando/core/testing";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as LandoConfigService from "@lando/engine/services/config";
 import { RedactionService } from "@lando/redaction/service";
 import { MalformedCliFlagValueError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import * as StateStore from "@lando/state-store/service";
 import { Context, Effect, Layer, Schema } from "effect";
 import { inputDoctorOptions, metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor";
@@ -44,14 +44,7 @@ test.each(["none", "config", "runtime"] as const)(
     const report = await Effect.runPromise(
       Effect.gen(function* () {
         const config = yield* Layer.build(configLayer);
-        const registry = RuntimeProviderRegistry.of({
-          list: Effect.succeed([]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(TestRuntimeProvider),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
-          appliedPlansFor: () => Effect.succeed([]),
-        });
+        const registry = makeTestRuntimeProviderRegistry();
         const plugins = yield* Layer.build(PluginRegistryLayer.layer);
         const runtime = Context.merge(Context.add(config, RuntimeProviderRegistry, registry), plugins);
         const contexts: DoctorContexts =

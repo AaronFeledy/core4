@@ -4,11 +4,12 @@ import { Schema } from "effect";
 const BINARY_MAGIC = new Uint8Array([0x4c, 0x53, 0x42, 0x31]); // "LSB1"
 const BINARY_HEADER_LEN = BINARY_MAGIC.length + 4;
 
-export interface DecodedFrame {
-  readonly payload: unknown;
+export interface StateFrame {
+  /** Decode the payload only after checking the envelope version. */
+  readonly readPayload: () => unknown;
   /**
    * The on-disk version, or `null` for a custom codec (which is unversioned and
-   * therefore never triggers `onVersionMismatch`).
+   * therefore never triggers either version policy).
    */
   readonly version: number | null;
 }
@@ -50,14 +51,12 @@ export const encodeFrame = <A, I>(
 };
 
 /**
- * Decode raw disk bytes into a {@link DecodedFrame}. A custom codec decodes the
- * whole file and reports `version: null`; the framed codecs parse the envelope
- * and surface the stamped version. Malformed framed bytes throw
- * {@link FrameDecodeError} so the caller applies its corruption policy.
+ * Inspect framing without running a payload codec. In particular, the binary
+ * body is opaque until the reader accepts the version in its header.
  */
-export const decodeFrame = <A, I>(codec: StateCodec<A, I> | undefined, raw: Uint8Array): DecodedFrame => {
-  if (codec !== undefined && typeof codec === "object") {
-    return { payload: codec.decode(raw), version: null };
+export const readFrame = <A, I>(codec: StateCodec<A, I> | undefined, raw: Uint8Array): StateFrame => {
+  if (isCustomCodec(codec)) {
+    return { readPayload: () => codec.decode(raw), version: null };
   }
   if (codec === "binary") {
     if (raw.length < BINARY_HEADER_LEN) throw new FrameDecodeError("Binary state envelope is truncated.");
@@ -65,14 +64,16 @@ export const decodeFrame = <A, I>(codec: StateCodec<A, I> | undefined, raw: Uint
       if (raw[i] !== BINARY_MAGIC[i]) throw new FrameDecodeError("Binary state envelope magic mismatch.");
     }
     const version = readUint32BE(raw, BINARY_MAGIC.length);
-    const body = raw.subarray(BINARY_HEADER_LEN);
-    let payload: unknown;
-    try {
-      payload = JSON.parse(textDecoder.decode(body));
-    } catch (cause) {
-      throw new FrameDecodeError(`Binary state payload is not valid JSON: ${String(cause)}`);
-    }
-    return { payload, version };
+    return {
+      version,
+      readPayload: () => {
+        try {
+          return JSON.parse(textDecoder.decode(raw.subarray(BINARY_HEADER_LEN)));
+        } catch (cause) {
+          throw new FrameDecodeError(`Binary state payload is not valid JSON: ${String(cause)}`);
+        }
+      },
+    };
   }
   let envelope: unknown;
   try {
@@ -83,13 +84,15 @@ export const decodeFrame = <A, I>(codec: StateCodec<A, I> | undefined, raw: Uint
   if (
     typeof envelope !== "object" ||
     envelope === null ||
-    typeof (envelope as { version?: unknown }).version !== "number" ||
+    !("version" in envelope) ||
+    typeof envelope.version !== "number" ||
+    !Number.isInteger(envelope.version) ||
     !("data" in envelope)
   ) {
     throw new FrameDecodeError("Malformed state envelope.");
   }
-  const { version, data } = envelope as { version: number; data: unknown };
-  return { payload: data, version };
+  const { version, data } = envelope;
+  return { readPayload: () => data, version };
 };
 
 export const isCustomCodec = <A, I>(

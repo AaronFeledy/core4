@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, type AppPlan, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { type ApplyOptions, RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Exit, Scope } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { SSH_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/ssh/intent.ts";
@@ -82,14 +83,17 @@ test.each(["sidecar", "host"] as const)(
             );
           }),
         ).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...harness.runtimeProviderRegistry,
-            select: () =>
-              Effect.succeed({
-                ...provider,
-                capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
-              }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...harness.runtimeProviderRegistry,
+              select: () =>
+                Effect.succeed({
+                  ...provider,
+                  capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
+                }),
+            }),
+          ),
           Effect.provideService(SshService, {
             id: "sidecar",
             setup: () => Effect.void,

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as LandoEventService from "@lando/engine/services/event-service";
@@ -22,6 +21,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Clock, DateTime, Effect, Layer, Schema } from "effect";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import {
@@ -214,10 +214,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
             Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
             Layer.succeed(
               RuntimeProviderRegistry,
-              RuntimeProviderRegistry.of({
-                resolveAppliedPlan: () => Effect.succeed(undefined),
-                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                appliedPlansFor: () => Effect.succeed([]),
+              makeTestRuntimeProviderRegistry({
                 list: Effect.succeed([providerId]),
                 capabilities: Effect.succeed(capabilities),
                 select: () => Effect.succeed(provider),

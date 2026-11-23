@@ -9,7 +9,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 import { infoForPlan } from "../../src/operations/info.ts";
 
@@ -86,10 +86,7 @@ export const runInfo = async (
   };
   const layer = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([selectedPlan.provider]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () =>

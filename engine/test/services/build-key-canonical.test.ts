@@ -22,7 +22,7 @@ import {
   type StateBucketSpec,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import * as FileStateStore from "@lando/state-store/service";
 import { DateTime, Effect, Layer } from "effect";
 import {
@@ -188,14 +188,14 @@ test("does not skip the provider when a version-1 persisted build result has the
       paths,
       store,
       AppEventService.layer,
-      Layer.succeed(RuntimeProviderRegistry, {
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        list: Effect.succeed([provider.id]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select: () => Effect.succeed(runtime),
-      }),
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([provider.id]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(runtime),
+        }),
+      ),
     );
     const layer = Layer.mergeAll(dependencies, AppBuildOrchestrator.layer.pipe(Layer.provide(dependencies)));
     const plan: AppPlan = {

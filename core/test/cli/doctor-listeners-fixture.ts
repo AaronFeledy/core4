@@ -21,7 +21,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Context, DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { withCwd } from "../_support/temp-cwd.ts";
 
@@ -113,9 +113,8 @@ export const listenerProvider = (
 export const listenerRegistry = (plan: AppPlan | undefined, provider: RuntimeProviderShape) =>
   Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
+    makeTestRuntimeProviderRegistry({
       resolveAppliedPlan: () => Effect.succeed(plan),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: () => Effect.succeed(plan === undefined ? [] : [plan]),
       list: Effect.succeed([ProviderId.make(provider.id)]),
       capabilities: Effect.succeed(provider.capabilities),

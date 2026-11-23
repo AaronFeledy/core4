@@ -332,6 +332,22 @@ test("GC recovers the applied plan when the desired cache misses an old frame", 
   });
 });
 
+test.each(["app", "provider"] as const)(
+  "scratch destroy preserves the workspace and registry when the offline %s receipt is newer",
+  async (scope) => {
+    await withDestroyFixture({ skipDesiredPlan: true, offlineNewerReceipt: scope }, async (f) => {
+      await expect(runDestroy(f)).rejects.toMatchObject({
+        _tag: "ScratchAppError",
+        cause: { _tag: "AppliedStateVersionError", storedVersion: 11 },
+        remediation: expect.stringContaining("upgrade Lando"),
+      });
+      await access(f.instanceRoot);
+      expect(f.entries.has(f.id)).toBe(true);
+      expect(f.events.map((event) => event._tag)).not.toContain("pre-scratch-destroy");
+    });
+  },
+);
+
 test("destroy falls back to orphan cleanup when desired and applied plans both miss", async () => {
   // Given no desired cache and no applied plan.
   await withDestroyFixture({ skipDesiredPlan: true, orphan: false }, async (f) => {

@@ -26,7 +26,7 @@ Each app stops through the same lifecycle as `lando stop` from its own app root,
 
 The summary lists apps that stopped under `Powered off`. If Lando checked an app and found nothing to stop, it lists that app under `Nothing to stop`.
 
-If one app fails, poweroff still attempts the remaining user and scratch apps and reports each failure with its remediation. It also reports a provider it cannot observe if that provider has recorded resources or reports a runtime that isn't idle. An unreadable accelerated-start journal is also a failure. A failure before the global stop skips it, and Lando leaves the managed runtime available so you can fix the problem and retry.
+If one app fails, poweroff still attempts the remaining user and scratch apps and reports each failure with its remediation. It also reports a provider it cannot observe if that provider has recorded resources or reports a runtime that isn't idle. An unreadable accelerated-start journal is also a failure. Damaged applied state uses restore-or-move-aside recovery; state written by a newer Lando uses upgrade recovery and stays on disk. A failure before the global stop skips it, and Lando leaves the managed runtime available so you can fix the problem and retry.
 
 A failed `post-stop` step does not prevent poweroff from continuing or change its exit code. The summary names the affected app, event, failure, and remediation. With `--format=json`, look for `landofileEvents.status: "failed"` on the affected app in `result.apps`, or in `error.apps` if another app could not stop. `landofileEvents.stepFailure` carries the error tag, redacted message, and remediation.
 

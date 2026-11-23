@@ -16,7 +16,7 @@ import {
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, type Result } from "effect";
 import { switchGlobalProviderForSetup } from "../../src/operations/setup-provider-switch.ts";
 
@@ -127,7 +127,7 @@ const withSwitch = async (
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
           capabilities: Effect.succeed(provider.capabilities),
           appliedPlansFor: (target) => Effect.succeed(globalApplied && target === root ? [global] : []),

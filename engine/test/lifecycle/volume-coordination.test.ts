@@ -11,7 +11,7 @@ import {
   type StateStoreShape,
   physicalVolumeLockKey,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Result } from "effect";
 import { applyActivation } from "../../src/lifecycle/activation-apply.ts";
@@ -291,29 +291,32 @@ describe("physical volume lifecycle coordination", () => {
           stateStore,
           body: () => Effect.succeed("admitted"),
         }).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            list: Effect.succeed([plan.provider]),
-            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-            select: () => Effect.succeed(TestRuntimeProvider),
-            appliedPlansFor: () => Effect.succeed([]),
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.die("unexpected teardown"),
-            resourceOwnership: () =>
-              Effect.succeed({
-                appRoot: plan.root,
-                ownerKey: plan.identity.ownerKey,
-                providerId: plan.provider,
-                appIds: [plan.id],
-                members: [
-                  {
-                    kind: "volume",
-                    nativeName,
-                    appId: plan.id,
-                    ...(recorded ? { dataRoot: AbsolutePath.make(root), volumeInstance: "one" } : {}),
-                  },
-                ],
-              }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              list: Effect.succeed([plan.provider]),
+              capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+              select: () => Effect.succeed(TestRuntimeProvider),
+              appliedPlansFor: () => Effect.succeed([]),
+              resolveAppliedPlan: () => Effect.succeed(undefined),
+              resolveTeardownEvidence: () => Effect.die("unexpected teardown"),
+              resourceOwnership: () =>
+                Effect.succeed({
+                  appRoot: plan.root,
+                  ownerKey: plan.identity.ownerKey,
+                  providerId: plan.provider,
+                  appIds: [plan.id],
+                  members: [
+                    {
+                      kind: "volume",
+                      nativeName,
+                      appId: plan.id,
+                      ...(recorded ? { dataRoot: AbsolutePath.make(root), volumeInstance: "one" } : {}),
+                    },
+                  ],
+                }),
+            }),
+          ),
           Effect.result,
         ),
       );

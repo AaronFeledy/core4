@@ -1,5 +1,6 @@
 import { mapDefectCause, mapFailureCause } from "@lando/sdk/command-result";
 import {
+  AppliedStateVersionError,
   ArtifactBuildError,
   ArtifactTransferError,
   EnvironmentValueResolutionError,
@@ -37,6 +38,7 @@ export const isProviderError = Schema.is(
     EnvironmentValueResolutionError,
     PlanReplanRequiredError,
     ProviderUnavailableError,
+    AppliedStateVersionError,
     ProviderCapabilityError,
     ProviderConfigError,
     ProviderInternalError,
@@ -136,6 +138,15 @@ export function redactProviderError(
       });
     case "ProviderUnavailableError":
       return new ProviderUnavailableError(baseFields(error, redactor, options));
+    case "AppliedStateVersionError":
+      return new AppliedStateVersionError({
+        ...baseFields(error, redactor, options),
+        path: redactor.redactString(error.path),
+        storedVersion: error.storedVersion,
+        supportedVersion: error.supportedVersion,
+        scope: error.scope,
+        ...(error.appId === undefined ? {} : { appId: redactor.redactString(error.appId) }),
+      });
     case "ProviderCapabilityError":
       return new ProviderCapabilityError({
         ...baseFields(error, redactor, options),

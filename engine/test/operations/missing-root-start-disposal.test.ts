@@ -12,7 +12,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import * as DiskStateStore from "@lando/state-store/service";
 import { Effect, Layer, Schema } from "effect";
 import {
@@ -79,47 +79,50 @@ test.each([
           ...fs,
           exists: (path) => (path === app.root ? Effect.succeed(false) : fs.exists(path)),
         }),
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          ...(volumes === "journal-only"
-            ? {
-                appliedPlansFor: () => Effect.succeed([]),
-                resolveAppliedPlan: () => Effect.succeed(undefined),
-                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-              }
-            : {}),
-          select: () =>
-            Effect.succeed({
-              ...provider,
-              id: "lando",
-              capabilities: {
-                ...genericCapabilities,
-                ...(volumes === "prepared-volume" ? { fileSyncTargets: "prepared-volume" as const } : {}),
-              },
-              getStatus: Effect.sync(() => ({
-                state: calls.includes("ready") ? ("running" as const) : ("idle" as const),
-              })),
-              ensureReady: Effect.sync(() => {
-                calls.push("ready");
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            ...(volumes === "journal-only"
+              ? {
+                  appliedPlansFor: () => Effect.succeed([]),
+                  resolveAppliedPlan: () => Effect.succeed(undefined),
+                  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                }
+              : {}),
+            select: () =>
+              Effect.succeed({
+                ...provider,
+                id: "lando",
+                capabilities: {
+                  ...genericCapabilities,
+                  ...(volumes === "prepared-volume" ? { fileSyncTargets: "prepared-volume" as const } : {}),
+                },
+                getStatus: Effect.sync(() => ({
+                  state: calls.includes("ready") ? ("running" as const) : ("idle" as const),
+                })),
+                ensureReady: Effect.sync(() => {
+                  calls.push("ready");
+                }),
+                listVolumes: () =>
+                  Effect.sync(() => {
+                    if (!calls.includes("ready")) throw new Error("Volume preflight reached idle runtime");
+                    return [volume];
+                  }),
+                locateVolume: () =>
+                  Effect.succeed({
+                    coordinationKey: "key",
+                    nativeName: "test-start-web-app-mount",
+                    presence: "present" as const,
+                    identity: volume.identity,
+                  }),
+                removeVolume: () =>
+                  Effect.sync(() => {
+                    calls.push("remove-target");
+                  }),
               }),
-              listVolumes: () =>
-                Effect.sync(() => {
-                  if (!calls.includes("ready")) throw new Error("Volume preflight reached idle runtime");
-                  return [volume];
-                }),
-              locateVolume: () =>
-                Effect.succeed({
-                  coordinationKey: "key",
-                  nativeName: "test-start-web-app-mount",
-                  presence: "present" as const,
-                  identity: volume.identity,
-                }),
-              removeVolume: () =>
-                Effect.sync(() => {
-                  calls.push("remove-target");
-                }),
-            }),
-        }),
+          }),
+        ),
       );
       return { journal: yield* bucket.get, receipt };
     }).pipe(Effect.provide(Layer.merge(harness.layer, BunFileSystem.layer)), Effect.result),
@@ -234,38 +237,37 @@ test.each([false, true, "unavailable"] as const)(
         DiskStateStore.layerAt(paths.roots),
         Layer.succeed(PathsService, paths),
         BunFileSystem.layer,
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([acceleratedPlan.provider]),
-          select: () =>
-            prepared === "unavailable"
-              ? Effect.fail(new NoProviderInstalledError({ message: "Journal provider is unavailable." }))
-              : Effect.succeed({
-                  ...TestRuntimeProvider,
-                  capabilities: {
-                    ...TestRuntimeProvider.capabilities,
-                    ...(prepared === true ? { fileSyncTargets: "prepared-volume" as const } : {}),
-                  },
-                }),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          ...(prepared === "unavailable"
-            ? {
-                observeRuntime: Effect.succeed([
-                  {
-                    providerId: plan.provider,
-                    runtimeObserved: false,
-                    appliedPlans: [
-                      { ...plan, root: otherRoot, identity: { appRoot: otherRoot, ownerKey: "other" } },
-                    ],
-                    services: [],
-                    volumes: [],
-                  },
-                ]),
-              }
-            : {}),
-        }),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            list: Effect.succeed([acceleratedPlan.provider]),
+            select: () =>
+              prepared === "unavailable"
+                ? Effect.fail(new NoProviderInstalledError({ message: "Journal provider is unavailable." }))
+                : Effect.succeed({
+                    ...TestRuntimeProvider,
+                    capabilities: {
+                      ...TestRuntimeProvider.capabilities,
+                      ...(prepared === true ? { fileSyncTargets: "prepared-volume" as const } : {}),
+                    },
+                  }),
+            ...(prepared === "unavailable"
+              ? {
+                  observeRuntime: Effect.succeed([
+                    {
+                      providerId: plan.provider,
+                      runtimeObserved: false,
+                      appliedPlans: [
+                        { ...plan, root: otherRoot, identity: { appRoot: otherRoot, ownerKey: "other" } },
+                      ],
+                      services: [],
+                      volumes: [],
+                    },
+                  ]),
+                }
+              : {}),
+          }),
+        ),
       );
       const settled = await Effect.runPromise(
         beginOrResumeAcceleratedStart(plan, ref).pipe(Effect.provide(layer)),

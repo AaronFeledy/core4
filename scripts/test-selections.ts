@@ -355,6 +355,15 @@ export const TEST_SELECTIONS = [
     ],
     jobs: [{ workflow: "node-releases-bump.yml", job: "bump" }],
   },
+  {
+    id: "xdebug-bump",
+    paths: [
+      "core/test/scripts/xdebug-update.test.ts",
+      "core/test/build/xdebug-bump-workflow.test.ts",
+      "plugins/service-lando/test/php-xdebug.test.ts",
+    ],
+    jobs: [{ workflow: "xdebug-bump.yml", job: "bump" }],
+  },
 ] as const satisfies readonly TestSelection[];
 
 export type TestSelectionId = (typeof TEST_SELECTIONS)[number]["id"];

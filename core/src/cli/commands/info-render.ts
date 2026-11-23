@@ -224,7 +224,11 @@ export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext):
   const rendered = isDecoratedContext(ctx)
     ? formatSummary(buildInfoSummary(result), summaryPaintOptions(ctx))
     : renderPlainInfoAppResult(result);
-  return contextAllowsHyperlinks(ctx) ? linkKnownHttpUrls(rendered, infoHttpUrls(result)) : rendered;
+  const output =
+    result.appliedStateIssue !== undefined
+      ? `${rendered}\n\nApplied state: unknown. ${escapeDiagnosticText(result.appliedStateIssue.message)} ${escapeDiagnosticText(result.appliedStateIssue.remediation)}`
+      : rendered;
+  return contextAllowsHyperlinks(ctx) ? linkKnownHttpUrls(output, infoHttpUrls(result)) : output;
 };
 
 const renderPlainInfoAppResult = (result: InfoAppResult): string => {

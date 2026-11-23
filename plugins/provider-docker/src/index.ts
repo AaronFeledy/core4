@@ -899,6 +899,7 @@ export const plugin = definePlugin({
           Effect.flatMap(PathsService, (paths) =>
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
+        readAppliedPlanStrict: (ctx, appId) => loadAppliedPlanStrict(ctx.stateStore, appId),
         appliedPlans: (ctx) =>
           Effect.flatMap(PathsService, (paths) =>
             listObservedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),

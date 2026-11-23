@@ -1,5 +1,5 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import {
   type AppId,
   type OwnedResourcesCleanupResult,
@@ -158,6 +158,13 @@ export const skippedVolume = (volume: VolumeDeletion, reason: string): SkippedVo
   reason,
 });
 
+/** The skip fields that keep a protecting failure's tag and remediation in machine output. */
+export const protectedSkip = (error: {
+  readonly _tag: string;
+  readonly message: string;
+  readonly remediation: string;
+}) => ({ reason: error.message, errorTag: error._tag, remediation: error.remediation });
+
 export const deleteVolumeSnapshot = Effect.fnUntraced(function* (
   runtime: TeardownVolumeRuntime,
   snapshot: ReadonlyArray<VolumeDeletionCandidate>,
@@ -212,11 +219,16 @@ export const deleteVolumeSnapshot = Effect.fnUntraced(function* (
   const appVolumes = snapshot.filter((candidate) => !candidate.shared);
   if (appVolumes.length > 0)
     yield* work(appVolumes).pipe(
-      mapFailures((error) =>
-        error._tag === "StateStoreError"
-          ? teardownVolumeFailure(runtime.ctx, `Could not acquire the volume locks: ${error.message}`)
-          : error,
-      ),
+      mapFailures((error) => {
+        if (!(error instanceof StateStoreError)) return error;
+        return new ProviderUnavailableError({
+          providerId: runtime.ctx.providerId,
+          operation: "bringDown.volume",
+          message: `Could not acquire the volume locks: ${error.message}`,
+          remediation: error.reason === "newer-version" ? error.remediation : runtime.ctx.remediation,
+          cause: error,
+        });
+      }),
     );
   // Shared cache contention must not prevent app-volume cleanup or another cache's purge.
   for (const candidate of snapshot

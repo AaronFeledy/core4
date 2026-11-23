@@ -10,7 +10,7 @@ import {
   ServiceName,
 } from "@lando/sdk/schema";
 import { GlobalAppService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Clock, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 import {
@@ -69,23 +69,24 @@ const withProvider =
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(
       Effect.provideService(PathsService, testPaths()),
-      Effect.provideService(RuntimeProviderRegistry, {
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: (root, app, lookup) =>
-          Effect.succeed(
-            root === globalRoot && app?.id === applied.id && app.kind === "global" && lookup === "exact"
-              ? (plan ?? undefined)
-              : undefined,
-          ),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        list: Effect.succeed([ProviderId.make(provider.id)]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select: (target) =>
-          Effect.succeed(
-            typeof target !== "string" && target?.provider === provider.id ? provider : TestRuntimeProvider,
-          ),
-      }),
-    ) as Effect.Effect<A, E, Exclude<R, PathsService | RuntimeProviderRegistry>>;
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          resolveAppliedPlan: (root, app, lookup) =>
+            Effect.succeed(
+              root === globalRoot && app?.id === applied.id && app.kind === "global" && lookup === "exact"
+                ? (plan ?? undefined)
+                : undefined,
+            ),
+          list: Effect.succeed([ProviderId.make(provider.id)]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: (target) =>
+            Effect.succeed(
+              typeof target !== "string" && target?.provider === provider.id ? provider : TestRuntimeProvider,
+            ),
+        }),
+      ),
+    );
 
 test("builds a read-only passthrough bind when the socket uses a host directory", () => {
   // Given

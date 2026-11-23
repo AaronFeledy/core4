@@ -12,12 +12,16 @@ import { Effect, Schema } from "effect";
 
 import {
   PHP_FEATURE_ID,
+  SUPPORTED_PHP_VERSIONS,
   php81ServiceType,
   php82ServiceType,
+  php83ServiceType,
+  php84ServiceType,
   php85ServiceType,
   php86ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
+import pins from "../src/services/php-xdebug-pins.json" with { type: "json" };
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const PHP_XDEBUG_CLIENT_HOST = "debugger.lando.internal";
@@ -136,9 +140,7 @@ describe("PHP xdebug option", () => {
     expect(resolution.tooling?.xdebug).toBeUndefined();
   });
 
-  test("Given php:8.2 and xdebug true, when planning, then it installs Xdebug 3.5.3 with debug mode and host gateway", async () => {
-    const url = "https://pecl.php.net/get/xdebug-3.5.3.tgz";
-    const sha256 = "f073de91bea046106abf4d6071c963ea71e58571df6ce58948ceca89d121cb2d";
+  test("Given xdebug true, when planning, then it installs in debug mode with the debugger host alias", async () => {
     const plan = await composePhpPlan({ xdebug: true });
     const steps = buildStepsFor(plan);
     const xdebugStep = steps.find((step) => step.id === "service-lando.php:xdebug");
@@ -148,13 +150,8 @@ describe("PHP xdebug option", () => {
     ).find((step) => (step as { id?: string }).id === "service-lando.php:xdebug");
     const command = String(xdebugStep?.command);
 
-    expect(xdebugStep?.buildKeyInputs).toEqual({
-      xdebug: { version: "3.5.3", sha256, url, phpVersion: "8.2", mode: "debug" },
-    });
     expect(xdebugStep?.user).toBe("root");
     expect("privileged" in (rawXdebug ?? {})).toBe(false);
-    expect(command).toContain(url);
-    expect(command).toContain(sha256);
     expect(command).toContain("xdebug.mode=debug");
     expect(command).toContain(`xdebug.client_host=${PHP_XDEBUG_CLIENT_HOST}`);
     expect(command).toContain(`xdebug.client_port=${PHP_XDEBUG_PORT}`);
@@ -271,20 +268,31 @@ describe("PHP xdebug option", () => {
     await expectRejectsToThrow(planned, /Unsupported Xdebug mode/);
   });
 
-  test("Given php:8.6 and xdebug true, when planning, then it builds Xdebug 3.6.0alpha1 from the pinned tarball", async () => {
-    const url = "https://xdebug.org/files/xdebug-3.6.0alpha1.tgz";
-    const sha256 = "5f464dfbba2f2aec384f9a10cb42cbfb2b3c07274b70491c46080b707271fcde";
-    const plan = await composePhpPlan({ xdebug: true }, php86ServiceType);
-    const step = buildStepsFor(plan).find(({ id }) => id === "service-lando.php:xdebug");
+  const phpTypes = {
+    "8.1": php81ServiceType,
+    "8.2": php82ServiceType,
+    "8.3": php83ServiceType,
+    "8.4": php84ServiceType,
+    "8.5": php85ServiceType,
+    "8.6": php86ServiceType,
+  } satisfies Record<(typeof SUPPORTED_PHP_VERSIONS)[number], ServiceType>;
 
-    expect(step?.command).toContain(url);
-    expect(step?.command).toContain(sha256);
-    expect(step?.command).toContain("tar -xzf /tmp/xdebug.tgz -C /tmp");
-    expect(step?.command).toContain("cd /tmp/xdebug-3.6.0alpha1 && phpize");
-    expect(step?.buildKeyInputs).toEqual({
-      xdebug: { version: "3.6.0alpha1", sha256, url, phpVersion: "8.6", mode: "debug" },
-    });
-  });
+  test.each([...SUPPORTED_PHP_VERSIONS])(
+    "Given php:%s and xdebug true, planning uses its committed pin",
+    async (phpVersion) => {
+      const { url, sha256, version } = pins.releases[phpVersion];
+      const plan = await composePhpPlan({ xdebug: true }, phpTypes[phpVersion]);
+      const step = buildStepsFor(plan).find(({ id }) => id === "service-lando.php:xdebug");
+
+      expect(step?.command).toContain(url);
+      expect(step?.command).toContain(sha256);
+      expect(step?.command).toContain("tar -xzf /tmp/xdebug.tgz -C /tmp");
+      expect(step?.command).toContain(`cd /tmp/xdebug-${version} && phpize`);
+      expect(step?.buildKeyInputs).toEqual({
+        xdebug: { version, sha256, url, phpVersion, mode: "debug" },
+      });
+    },
+  );
 
   test("Given a custom image and xdebug true, when planning, then it skips the install step without XDEBUG_MODE", async () => {
     const plan = await composePhpPlan({ image: "registry.example.com/php:8.2-custom", xdebug: true });

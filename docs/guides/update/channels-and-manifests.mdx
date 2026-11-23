@@ -28,4 +28,6 @@ Update downloads the manifest, its cosign signature, and its certificate, and ve
 
 Update also keeps a freshness record per channel. A verified manifest whose version is older than the last verified version seen for that channel is refused as a possible replay. The remediation is to wait for a newer signed release; freshness checks cannot be disabled from the command line.
 
+If Lando reports that a newer Lando wrote the local freshness record, leave that file in place, run the release that wrote it or upgrade Lando, then retry. The error is about the local record's stored format version, not the version named in the signed manifest.
+
 Run `lando update --dry-run` to see the resolved channel and target version without changing anything. See [Update permission errors](./permission-errors.mdx) when the swap cannot write the install path.

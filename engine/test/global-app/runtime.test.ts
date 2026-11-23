@@ -10,7 +10,7 @@ import {
   planAppIdentity,
 } from "@lando/sdk/schema";
 import { GlobalAppService, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import * as GlobalAppRuntime from "../../src/global-app/runtime.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
@@ -69,11 +69,14 @@ test.each(["idle", "running", "foreign", "stopped", "status-error", "list-error"
     };
     const runtime = GlobalAppRuntime.layer.pipe(
       Layer.provide(
-        Layer.succeed(RuntimeProviderRegistry, {
-          ...harness.runtimeProviderRegistry,
-          resolveAppliedPlan: () => Effect.succeed(plan),
-          select: () => Effect.succeed(provider),
-        }),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...harness.runtimeProviderRegistry,
+            resolveAppliedPlan: () => Effect.succeed(plan),
+            select: () => Effect.succeed(provider),
+          }),
+        ),
       ),
       Layer.provide(harness.layer),
       Layer.provide(BunFileSystem.layer),

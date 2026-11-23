@@ -21,7 +21,7 @@ import {
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
 import { CertificateAuthority, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TEST_CERTIFICATES } from "@lando/sdk/test";
+import { TEST_CERTIFICATES, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Redacted, Result } from "effect";
 
 import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
@@ -177,10 +177,13 @@ const restartAfterIssuing = async (rootAfterStart: "kept" | "rotated") => {
           { plan: desired, root: desired.root, app: { kind: "user", id: desired.id, root: desired.root } },
         ),
       ).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...harness.runtimeProviderRegistry,
-          resolveAppliedPlan: () => Effect.succeed(applied),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...harness.runtimeProviderRegistry,
+            resolveAppliedPlan: () => Effect.succeed(applied),
+          }),
+        ),
         Effect.provide(certificates),
         Effect.provide(harness.layer),
       ),

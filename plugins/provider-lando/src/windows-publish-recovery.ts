@@ -4,6 +4,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import type { EndpointPlan, NetworkingPlan, ServiceNetworkAttachment } from "@lando/sdk/schema";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect, Predicate } from "effect";
 
 import {
@@ -190,8 +191,10 @@ const failure = (operation: string, message: string, cause?: unknown) =>
     providerId: "lando",
     operation,
     message,
-    remediation:
+    remediation: storeErrorRemediation(
+      cause,
       "Check the Lando-owned Podman machine and its published-port rules. Lando will not change ambiguous shared WSL firewall rules.",
+    ),
     ...(cause === undefined ? {} : { cause }),
   });
 

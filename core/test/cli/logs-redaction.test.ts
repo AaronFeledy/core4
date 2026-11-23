@@ -21,6 +21,7 @@ import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provi
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
 import type { LogChunk, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Redacted, Schema, Stream } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
@@ -198,10 +199,7 @@ const makeLayer = (
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(outputRegisteredTestProvider(provider, plan)),

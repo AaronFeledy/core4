@@ -3,6 +3,7 @@ import { AppDataIdentityError } from "@lando/sdk/errors";
 import type { AppIdentity } from "@lando/sdk/schema";
 import { type LandoRoots, StateStore } from "@lando/sdk/services";
 import { defineTransitions } from "@lando/sdk/transitions";
+import { storeErrorRemediation } from "@lando/state-store";
 import * as DiskStateStore from "@lando/state-store/service";
 import { Effect, Option, Schema } from "effect";
 
@@ -28,8 +29,10 @@ const identityFailure = (identity: AppIdentity, cause?: unknown) =>
     appRoot: identity.appRoot,
     ...(cause === undefined ? {} : { cause }),
     message: "The folder's data identity could not be read or updated safely.",
-    remediation:
+    remediation: storeErrorRemediation(
+      cause,
       "Restore the app-data-identity record from a backup or correct its permissions, then retry. Do not remove it while the folder still owns data volumes.",
+    ),
   });
 
 export const readAppDataIdentity = Effect.fn("AppDataIdentity.read")(function* (

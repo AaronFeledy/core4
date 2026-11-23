@@ -50,6 +50,8 @@ test("descriptor-only discovery reports this root's app without constructing a r
           id: providerId,
           purge,
           appliedPlans: () => Effect.die("no applied plan bootstrap"),
+          appliedStateInventory: () => Effect.die("no applied state inventory read"),
+          readAppliedPlanStrict: () => Effect.die("no applied plan read"),
           make: () => Effect.die("no provider bootstrap"),
         },
       ],
