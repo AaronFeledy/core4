@@ -14,7 +14,12 @@ import {
   layerWith,
   resolveContainerHelper,
 } from "../../src/container-helper/assets.ts";
-import { CONTAINER_HELPER_COMMANDS, containerHelperCommandShim } from "../../src/container-helper.ts";
+import {
+  CONTAINER_HELPER_COMMANDS,
+  CONTAINER_HELPER_PROFILE_HOOK,
+  CONTAINER_HELPER_PROFILE_STUB,
+  containerHelperCommandShim,
+} from "../../src/container-helper.ts";
 
 const target = { os: "linux", arch: "x64" } as const;
 const tempDirs: string[] = [];
@@ -168,6 +173,25 @@ describe("resolveContainerHelper", () => {
     expect((await readdir(join(arch, "engines"))).filter((name) => name.includes(".lando-stage"))).toEqual(
       [],
     );
+  });
+
+  test("publishes the profile stub and replaces a stale hook body at its stable path", async () => {
+    // Given a helper directory holding a hook body from an older Lando
+    const root = await tempRoot();
+    const profile = join(root, "linux-x64", "profile");
+    await mkdir(profile, { recursive: true });
+    await writeFile(join(root, "linux-x64", "lando-container-helper"), "helper-bytes");
+    await writeFile(join(profile, "service-path.sh"), "# older hook body\n");
+    // When
+    await Effect.runPromise(resolveContainerHelper(target, { env: { LANDO_CONTAINER_HELPER_DIR: root } }));
+    // Then the body is current and the stub sources it through the helper mount
+    expect(await readFile(join(profile, "service-path.sh"), "utf8")).toBe(CONTAINER_HELPER_PROFILE_HOOK);
+    expect(await readFile(join(profile, "zz-lando-service-path.sh"), "utf8")).toBe(
+      CONTAINER_HELPER_PROFILE_STUB,
+    );
+    for (const name of ["service-path.sh", "zz-lando-service-path.sh"])
+      expect((await stat(join(profile, name))).mode & 0o777).toBe(0o644);
+    expect((await readdir(profile)).filter((name) => name.includes(".lando-stage"))).toEqual([]);
   });
 
   test("concurrent installs of different digests leave one complete engine and one shim", async () => {

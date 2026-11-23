@@ -721,12 +721,28 @@
       "digest": "13571ed573adf3ab277519e4a34d7a9122b8a2516b1f2d3d72f7b20177da4176"
     },
     {
+      "fixture": "docs/guides/home-and-host/fixtures/home-and-host-bin-mount",
+      "digest": "ebe39e7ccf34768e5da0a08a0815e9e8ff35b832e1b0240ae5c50746b5875b2c"
+    },
+    {
+      "fixture": "docs/guides/home-and-host/fixtures/home-and-host-bin-tmpfs",
+      "digest": "816dcd083acd12b117ce8b3a4b14e31334cada14e487c0b3a373c25030719b8c"
+    },
+    {
       "fixture": "docs/guides/home-and-host/fixtures/home-and-host-demo",
       "digest": "8877b309bfae036b7b516a76f8b2cd63033a40632e0d171fd3df5ffa88373372"
     },
     {
       "fixture": "docs/guides/home-and-host/fixtures/home-and-host-explicit-path",
       "digest": "a007e971e60fa3c78d2e445125571aae2f63fa433a8d17d16b8599589adf1dc5"
+    },
+    {
+      "fixture": "docs/guides/home-and-host/fixtures/home-and-host-helper-overlap",
+      "digest": "cc50b5dc76f70c6fae1b23d88bc660e6f3268331c54992f4d8096d84230eaaae"
+    },
+    {
+      "fixture": "docs/guides/home-and-host/fixtures/home-and-host-host-proxy-command",
+      "digest": "f20d79ac7e6a37a22b327e735340d1237fc870da903bce74f71978ffdb0a353f"
     },
     {
       "fixture": "docs/guides/home-and-host/fixtures/home-and-host-unknown-home",
@@ -1515,6 +1531,10 @@
     {
       "fixture": "docs/guides/ssh-sidecar/fixtures/sidecar-default",
       "digest": "7ebd87c42308f62bb70cf51309e319747b5482a21fdb59b347015b09c969c117"
+    },
+    {
+      "fixture": "docs/guides/ssh/fixtures/login-path",
+      "digest": "646761518153b9d07636d9f4785748dd5276f13c3bf63da3de91dfe66ce2125d"
     },
     {
       "fixture": "docs/guides/static/fixtures/static-caddy-demo",

@@ -17,6 +17,7 @@ import {
   advanceGlobalRecordedPlan,
   retireGlobalReplacement,
 } from "./global-retained-plan.ts";
+import { publishStartWarnings } from "./start-warnings.ts";
 
 export const serviceGroups = (
   services: ReadonlyArray<ServicePlan>,
@@ -69,13 +70,14 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
   },
   build: (plan: AppPlan) => Effect.Effect<AppPlan, E, R>,
 ) {
+  const selectedPlan: AppPlan = {
+    ...plan,
+    services: Object.fromEntries(apply.services.map((service) => [service.name, service])),
+  };
+  // Once before the group fan-out, so a failing group build still reports them.
+  yield* publishStartWarnings(selectedPlan);
   const session = yield* (yield* EnvironmentValueResolver).openSession();
-  const preparedOverlays =
-    apply.preparedOverlays ??
-    (yield* prepareDebuggerOverlay({
-      ...plan,
-      services: Object.fromEntries(apply.services.map((service) => [service.name, service])),
-    }));
+  const preparedOverlays = apply.preparedOverlays ?? (yield* prepareDebuggerOverlay(selectedPlan));
   let recordedPlan = apply.recordedPlan ?? plan;
   const changes = new Map<string, ServiceContainerChange>();
   const credentials: NonNullable<

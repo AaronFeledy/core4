@@ -2103,6 +2103,7 @@
       "landoSharedNetworkName",
       "layerMerge",
       "logicalEndpointIdentity",
+      "mountTargetCovers",
       "noVolumesRemoved",
       "normalizeAppSlug",
       "normalizeEnvironmentValue",

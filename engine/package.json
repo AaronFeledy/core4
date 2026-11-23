@@ -138,6 +138,7 @@
     "./operations/source-cache-gc": "./src/operations/source-cache-gc.ts",
     "./operations/start": "./src/operations/start.ts",
     "./operations/start-incomplete-notice": "./src/operations/start-incomplete-notice.ts",
+    "./operations/start-warnings": "./src/operations/start-warnings.ts",
     "./operations/stop": "./src/operations/stop.ts",
     "./operations/stream-frame-sink": "./src/operations/stream-frame-sink.ts",
     "./operations/tooling": "./src/operations/tooling.ts",

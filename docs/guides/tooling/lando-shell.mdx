@@ -24,7 +24,7 @@ Start the app first, then select the service explicitly. Replace `appserver` wit
 lando shell --service appserver
 ```
 
-Lando starts `bash -l` if bash is on the container's `PATH`; otherwise, it starts `sh -l`.
+Lando starts `bash -l` if bash is on the container's `PATH`; otherwise, it starts `sh -l`. That login shell keeps the service's `PATH`, as described in [Keep the service `PATH`](../cli/ssh.mdx#keep-the-service-path).
 
 Use the `--service` flag, not a positional argument. `lando shell appserver` fails with `Unexpected argument: appserver` instead of opening a host shell.
 
