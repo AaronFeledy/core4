@@ -24,7 +24,7 @@ lando db:import dump.sql.zst --yes
 
 ## Export or import a dump
 
-`db:export` writes `<service>.sql.gz` in the current directory when you are inside the app, otherwise the app root. Relative paths resolve the same way.
+`db:export` writes `<service>.sql.gz` in the current directory when you are inside the app, otherwise the app root. Relative paths resolve the same way. An absolute path works for both commands and can point anywhere on the host, so a dump you'd rather not keep in the checkout can stay outside it.
 
 ```sh
 lando db:export backups/app.sql.gz --service database
